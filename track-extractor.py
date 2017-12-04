@@ -11,6 +11,7 @@ import matplotlib.animation as manimation
 import pickle
 import os
 import Tracker
+import ast
 
 
 class TrackEntry:
@@ -184,8 +185,6 @@ class CPTVTrackExtractor:
 
         filename = os.path.split(full_path)[1]
         destination_folder = os.path.join(self.out_folder, tag.lower())
-        destination_file = os.path.join(destination_folder, filename)
-
 
         # read additional information from hints file
         if filename in self.hints:
@@ -212,12 +211,30 @@ class CPTVTrackExtractor:
         else:
             self.log_message("Processing {0} [{1}]".format(filename, tag))
 
+        # read metadata
+        meta_data_filename = os.path.splitext(full_path)[0] + ".dat"
+        if os.path.exists(meta_data_filename):
+
+            meta_data = eval(open(meta_data_filename,'r').read())
+
+            tag_count = len(meta_data['Tags'])
+
+            # we can only handle one tagged animal at a time here.
+            if tag_count != 1:
+                return
+
+            confidence = meta_data['Tags'][0]['confidence']
+        else:
+            print(" - Warning: no metadata found for file.")
+
         tracker = Tracker.Tracker(full_path)
         tracker.max_tracks = max_tracks
         tracker.tag = tag
 
         # save stats to text file for reference
         with open(os.path.join(self.out_folder, tag, filename) + '.txt', 'w') as stats_file:
+            # add in some metadata stats
+            tracker.stats['confidence'] = confidence
             stats_file.write(str(tracker.stats))
 
         tracker.extract()
