@@ -165,7 +165,7 @@ class CPTVTrackExtractor:
 
         base_filename = os.path.splitext(os.path.split(full_path)[1])[0]
         cptv_filename = base_filename + '.cptv'
-        mpeg_filename = base_filename + '.mp4'
+        preview_filename = base_filename + '-preview' + '.mp4'
         stats_filename = base_filename + '.txt'
 
         destination_folder = os.path.join(self.out_folder, tag.lower())
@@ -217,7 +217,7 @@ class CPTVTrackExtractor:
 
         tracker.export(os.path.join(self.out_folder, tag, cptv_filename ))
 
-        tracker.display(os.path.join(self.out_folder, tag.lower(), mpeg_filename), self.colormap)
+        tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
 
         # save some additional stats
         tracker.stats['confidence'] = confidence
@@ -235,8 +235,8 @@ def main():
     # load hints.  Hints are a way to give extra information to the tracker when necessary.
     extractor.load_hints("hints.txt")
 
-    extractor.process('d:\\cac\\out')
-    #extractor.process_file('d:\\cac\out\\possum\\20171101-150843-akaroa03.cptv', 'test', overwrite=True)
+    #extractor.process('d:\\cac\\out')
+    extractor.process_file('d:\\cac\out\\possum\\20171101-150843-akaroa03.cptv', 'test', overwrite=True)
 
 
 main()

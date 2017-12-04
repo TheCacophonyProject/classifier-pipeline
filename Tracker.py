@@ -421,6 +421,7 @@ class Tracker:
                 # palettes, but this was easier to setup for the moment.
                 filtered_frame = 1.5 * (frame - self.background) + Tracker.TEMPERATURE_MIN #use 28000 as baseline (black) background, but bump up the brightness a little.
 
+                # really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
                 stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((filtered_frame, self.background))))
                 im.set_data(stacked)
 
@@ -522,6 +523,8 @@ class Tracker:
     def export(self, filename):
         """ export tracks to given filename base.  An MPEG and TRK file will be exported. """
 
+        base_filename = os.path.splitext(filename)[0]
+
         track_scores = []
 
         # gather usable tracks
@@ -570,8 +573,8 @@ class Tracker:
 
             history = self.track_history[track_id]
 
-            MPEG_filename = filename + "-" + str(counter+1 ) + ".mp4"
-            TRK_filename = filename + "-" + str(counter+1) + ".trk"
+            MPEG_filename = base_filename + "-" + str(counter+1 ) + ".mp4"
+            TRK_filename = base_filename + "-" + str(counter+1) + ".trk"
 
             # export frames
             window_frames = []
