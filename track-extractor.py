@@ -12,14 +12,92 @@ import pickle
 import os
 import Tracker
 
+
+class TrackEntry:
+    """ Database entry for a track """
+
+    def __init__(self):
+        pass
+
+
+class TrackDatabase:
+    """ Database to record processed tracks. """
+
+    def __init__(self, filename):
+        self.filename = filename
+
+        # clips by filename
+        self.clips = {}
+
+        # tracks by filename
+        self.tracks = {}
+
+        self.revision = 0
+        self.load()
+
+    def load(self):
+        """ Loads database from disk. """
+        if (os.path.exists(self.filename)):
+            save_object = pickle.load(open(self.filename, 'rb'))
+            self.tracks = save_object['tracks']
+            self.clips = save_object['clips']
+            self.revision = save_object['revision']
+        else:
+            self.tracks = {}
+            self.clips = {}
+            self.revision = 0
+
+    def save(self, safe_write = True):
+        """
+        Saves database to disk.
+        :param safe_write: If enabled makes sure database hasn't been changed before saving.  If it has been changed
+            throws an exception
+        """
+
+        # make sure no unexpected changes occured
+        if os.path.exists(self.filename):
+            db = pickle.load(open(self.filename, 'rb'))
+            if db['revision'] != self.revision:
+                raise Exception("Database modified by another program.")
+
+        # increment our revision counter, this helps use detect unexpected changes.
+        self.revision = self.revision + 1
+
+        save_object = {}
+        save_object['tracks'] = self.tracks
+        save_object['clips'] = self.clips
+        save_object['revision'] = self.revision
+
+        # save to temp file first so if there is an error we don't loose our database.
+        pickle.dump(save_object, open(self.filename+".tmp", 'wb'))
+        os.remove(self.filename)
+        os.rename(self.filename + ".tmp", self.filename)
+
+
+    def has_clip(self, filename):
+        """ Returns if database contains an entry for given track or not. """
+        return filename in self.tracks
+
+    def add_clip(self, filename, stats):
+        """ Returns if database contains an entry for given track or not. """
+        self.clips[filename] = stats
+
+
 class CPTVTrackExtractor:
-    """ Handles extracting tracks from CPTV files. """
+    """
+    Handles extracting tracks from CPTV files.
+    Maintains a database recording which files have already been processed, and some statistics parameters used
+    during processing.
+    """
+
     def __init__(self, out_folder):
         self.hints = {}
         self.colormap = plt.cm.jet
         self.verbose = True
         self.out_folder = out_folder
         self._init_MpegWriter()
+        self.db = TrackDatabase(os.path.join(self.out_folder, "tracks.db"))
+
 
     def _init_MpegWriter(self):
         """ setup our MPEG4 writer.  Requires FFMPEG to be installed. """
@@ -30,6 +108,7 @@ class CPTVTrackExtractor:
             self.log_warning("FFMPEG is not installed.  MPEG output disabled")
             self.MpegWriter = None
 
+
     def load_custom_colormap(self, filename):
         """ Loads a custom colormap used for creating MPEG previews of tracks. """
 
@@ -37,6 +116,7 @@ class CPTVTrackExtractor:
             return
 
         self.colormap = pickle.load(open(filename, 'rb'))
+
 
     def load_hints(self, filename):
         """ Read in hints file from given path.  If file is not found an empty hints dictionary set."""
@@ -100,9 +180,12 @@ class CPTVTrackExtractor:
         :param overwrite: if true destination file will be overwritten
         """
 
+        self.db.load()
+
         filename = os.path.split(full_path)[1]
         destination_folder = os.path.join(self.out_folder, tag.lower())
         destination_file = os.path.join(destination_folder, filename)
+
 
         # read additional information from hints file
         if filename in self.hints:
@@ -119,11 +202,12 @@ class CPTVTrackExtractor:
             self.log_message(" Making path " +destination_folder)
             os.mkdir(destination_folder)
 
-        # handle overwritting
-        if os.path.exists(destination_file):
+        # check if we have already processed this file
+        if filename in self.db.clips:
             if overwrite:
                 self.log_message("Overwritting {0} [{1}]".format(filename, tag))
             else:
+                # skip this file
                 return
         else:
             self.log_message("Processing {0} [{1}]".format(filename, tag))
@@ -132,29 +216,27 @@ class CPTVTrackExtractor:
         tracker.max_tracks = max_tracks
         tracker.tag = tag
 
-        # display some debuging information
-        """
-        mean_temp = int(np.asarray(sequence.frames).mean())
-        max_temp = int(np.asarray(sequence.frames).max())
-        min_temp = int(np.asarray(sequence.frames).min())
-        local_tz = pytz.timezone('Pacific/Auckland')
-        time_of_day = sequence.video_start_time.astimezone(local_tz).time()
-        self.log_message(" - Temperature:{0} ({3}-{4}), Time of day: {1},Threshold: {2:.1f}".format(mean_temp,
-                            time_of_day.strftime("%H%M"),threshold,min_temp,max_temp))
-        """
+        # save stats to text file for reference
+        with open(os.path.join(self.out_folder, tag, filename) + '.txt', 'w') as stats_file:
+            stats_file.write(str(tracker.stats))
 
         tracker.extract()
 
-        mpeg_filename = os.path.splitext(filename)[0]+".mp4"
-
         tracker.export(os.path.join(self.out_folder, tag, filename))
 
+        mpeg_filename = os.path.splitext(filename)[0]+".mp4"
         tracker.display(os.path.join(self.out_folder, tag.lower(), mpeg_filename), self.colormap)
+
+        self.db.add_clip(filename, tracker.stats)
+
+        self.db.save()
 
 
 def main():
 
     extractor = CPTVTrackExtractor('d:\cac\\tracks')
+
+    print("Database contains {0} clips.".format(len(extractor.db.clips)))
 
     # this colormap is specially designed for heat maps
     extractor.load_custom_colormap('custom_colormap.dat')

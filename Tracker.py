@@ -13,13 +13,14 @@ import numpy as np
 from cptv import CPTVReader
 import cv2
 import os
+import pytz
 import matplotlib.animation as manimation
 
 def apply_threshold(frame, threshold = 'auto'):
     """ Creates a binary mask out of an image by applying a threshold.
         If threshold is not set a blend of the median, and max value of the image will be used.
     """
-    if threshold == 'auto': threshold = (np.median(frame) + (25.0 if USE_BACKGROUND_SUBTRACTION else 50.0))
+    if threshold == 'auto': threshold = (np.median(frame) + (25.0 if Tracker.USE_BACKGROUND_SUBTRACTION else 50.0))
     frame = cv2.GaussianBlur(frame, (5,5), 0)
     thresh = frame - threshold
     thresh[thresh < 0] = 0
@@ -212,13 +213,40 @@ class Tracker:
         self.source = os.path.split(full_path)[1]
         self.track_history = {}
 
-        # stats to keep track of for video
-        self.is_static_background = None
-        self.average_background_change = None
+        # find background
+        self.background, self.auto_threshold = self.get_background()
+        self.average_background_delta = self.get_background_average_change()
+        self.is_static_background = self.average_background_delta < Tracker.STATIC_BACKGROUND_THRESHOLD
 
         # If set to a number only this many frames will be used.
         self.max_tracks = None
+        self.stats = self._get_clip_stats()
 
+
+    def _get_clip_stats(self):
+        """
+        Computes statitics for currently loaded clip and returns a dictionary containing the stats.
+        :return: A dictionary containing stats from video clip.
+        """
+        result = {}
+        local_tz = pytz.timezone('Pacific/Auckland')
+        result['mean_temp'] = int(np.asarray(self.frames).mean())
+        result['max_temp'] = int(np.asarray(self.frames).max())
+        result['min_temp'] = int(np.asarray(self.frames).min())
+        result['date'] = self.video_start_time.astimezone(local_tz)
+        result['time_of_day'] = self.video_start_time.astimezone(local_tz).time()
+        result['source'] = self.source
+        result['is_static_background'] = self.is_static_background
+        result['auto_threshold'] = self.auto_threshold
+        result['is_night'] = self.video_start_time.astimezone(local_tz).time().hour >= 21 or self.video_start_time.astimezone(local_tz).time().hour <= 4
+        result['average_background_delta'] = self.average_background_delta
+
+        return result
+
+    def print_stats(self):
+        self.log_message(" - Temperature:{0} ({1}-{2}), Time of day: {3},Threshold: {4:.1f}".format(
+            self.stats['mean_temp'], self.stats['min_temp'], self.stats['max_temp'],
+            self.stats['time_of_day'].strftime("%H%M"), self.stats['auto_threshold']))
 
     def load(self, source):
         """ Load frames from a CPTV file. """
@@ -227,19 +255,19 @@ class Tracker:
         self.video_start_time = reader.timestamp
 
 
-    def _get_regions_of_interest(self, frame, erosion=1, include_markers=False):
+    def _get_regions_of_interest(self, frame, threshold, erosion=1, include_markers=False):
         """ Returns a list of bounded boxes for all regions of interest in the frame.
             Regions of interest are hotspots that stand out against the background.
         """
 
-        thresh = np.asarray(apply_threshold(frame, threshold=(np.median(frame) + self.use_threshold)), dtype=np.uint8)
+        thresh = np.asarray(apply_threshold(frame, threshold=(np.median(frame) + threshold)), dtype=np.uint8)
 
         # perform erosion
         kernel = np.ones((3, 3), np.uint8)
         eroded = cv2.erode(thresh, kernel, iterations=erosion)
         labels, markers, stats, centroids = cv2.connectedComponentsWithStats(eroded)
 
-        # we enlarge the rects a bit, partly because we erroded them previously, and partly because we want some context.
+        # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = 12
 
         # find regions
@@ -355,14 +383,17 @@ class Tracker:
         Extract regions of interest from frames.
         """
 
-        if Tracker.USE_BACKGROUND_SUBTRACTION:
-            # use use the 10th percentile instead of median we expect the background to be
-            # colder than the animals.
-            self.background, self.use_threshold = self.get_background()
+        if Tracker.USE_BACKGROUND_SUBTRACTION.lower() == 'auto':
+            use_background_subtraction = self.is_static_background
+        else:
+            use_background_subtraction = Tracker.USE_BACKGROUND_SUBTRACTION
+
+        if use_background_subtraction:
+            mask, threshold = self.background, self.auto_threshold
         else:
             # just use a blank mask
-            self.background = self.frames[0].copy()*0
-            self.use_threshold = 50.0
+            mask = np.zeros_like(self.frames[0])
+            threshold = 50.0
 
         active_tracks = []
 
@@ -374,7 +405,7 @@ class Tracker:
         for frame_number, frame in enumerate(self.frames):
 
             # step 1. find regions of interest in this frame
-            new_regions, markers = self._get_regions_of_interest(frame - self.background, include_markers=True)
+            new_regions, markers = self._get_regions_of_interest(frame - mask, threshold, include_markers=True)
 
             self.marked_frames.append(markers)
 
@@ -492,11 +523,8 @@ class Tracker:
             save_file['track_tag'] = self.tag
             save_file['track_origin'] = track_origin
             save_file['source_filename'] = self.source
-            save_file['threshold'] = self.use_threshold
+            save_file['threshold'] = self.auto_threshold
 
             pickle.dump(save_file, open(TRK_filename, 'wb'))
 
             plt.close(fig)
-
-
-
