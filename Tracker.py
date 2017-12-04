@@ -481,7 +481,7 @@ class Tracker:
         if self.stats['mean_temp'] > Tracker.MAX_TEMPERATURE_THRESHOLD:
             return
 
-        TrackedObject._track_id = 0
+        TrackedObject._track_id = 1
 
         prev_frame = self.frames[0]
 
@@ -590,7 +590,7 @@ class Tracker:
 
             MPEG_filename = base_filename + "-" + str(counter+1 ) + ".mp4"
             TRK_filename = base_filename + "-" + str(counter+1) + ".trk"
-            Stats_filename = base_filename + "-" + str(counter + 1) + ".txt"
+            Stats_filename = base_filename + "-" + str(counter+1) + ".txt"
 
             # export frames
             window_frames = []

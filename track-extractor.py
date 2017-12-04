@@ -14,7 +14,13 @@ import os
 import Tracker
 import ast
 import json
+import re
+import glob
 
+
+def purge(dir, pattern):
+    for f in glob.glob(os.path.join(dir, pattern)):
+        os.remove(os.path.join(dir, f))
 
 class TrackEntry:
     """ Database entry for a track """
@@ -125,9 +131,9 @@ class CPTVTrackExtractor:
         print("Warning:",message)
 
 
-    def needs_reprocessing(self, stats_filename):
+    def needs_processing(self, stats_filename):
         """
-        Opens a stats file and checks if this clip needs to be reprocessed.
+        Opens a stats file and checks if this clip needs to be processed.
         :param stats_filename: the full path and filename of the stats file for the clip in question.
         :return: returns true if file should be overwritten, false otherwise
         """
@@ -189,10 +195,15 @@ class CPTVTrackExtractor:
             os.mkdir(destination_folder)
 
         # check if we have already processed this file
-        if self.needs_reprocessing(stats_path_and_filename ):
+        if self.needs_processing(stats_path_and_filename ):
             self.log_message("Processing {0} [{1}]".format(cptv_filename , tag))
         else:
             return
+
+        # delete any previous files
+        purge(destination_folder, base_filename + "*.trk")
+        purge(destination_folder, base_filename + "*.mp4")
+        purge(destination_folder, base_filename + "*.txt")
 
         # read metadata
         meta_data_filename = os.path.splitext(full_path)[0] + ".dat"
