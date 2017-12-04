@@ -261,7 +261,8 @@ def main():
     # load hints.  Hints are a way to give extra information to the tracker when necessary.
     extractor.load_hints("hints.txt")
 
-    extractor.process('d:\\cac\\out')
+    #extractor.process('d:\\cac\\out')
+    extractor.process_file('d:\\cac\out\\possum\\20171101-150843-akaroa03.cptv', 'test', overwrite=True)
 
 main()
 

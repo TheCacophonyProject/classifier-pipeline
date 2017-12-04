@@ -28,11 +28,34 @@ def apply_threshold(frame, threshold = 'auto'):
     return thresh
 
 
-def get_image_subsection(image, bounds):
+def get_image_subsection(image, bounds, window_size):
     """ Returns a subsection of the original image bounded by bounds."""
-    x = max(0, int(bounds.x))
-    y = max(0, int(bounds.y))
-    return image[y:y+bounds.height, x:x+bounds.width]
+
+    # cropping method.  just center on the bounds center and take a section there.
+
+    if len(image.shape) == 2:
+        image = image[:,:,np.newaxis]
+
+    padding = 50
+
+    midx = int(bounds.mid_x + padding)
+    midy = int(bounds.mid_y + padding)
+
+    window_half_width, window_half_height = window_size[0] // 2, window_size[1] // 2
+
+    image_height, image_width, channels = image.shape
+
+    # note, we take the median of all channels, should really be on a per channel basis.
+    enlarged_frame = np.ones([image_height + padding*2, image_width + padding*2, channels]) * np.median(image)
+    enlarged_frame[padding:-padding,padding:-padding] = image
+
+    sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_width:midx+window_half_width]
+
+    if channels == 1:
+        sub_section = sub_section[:,:,0]
+
+    return sub_section
+
 
 class Rectangle:
     """ Defines a rectangle by the topleft point and width / height. """
@@ -177,6 +200,9 @@ class Tracker:
     """ Tracks objects within a CPTV thermal video file. """
 
     # these should really be in some kind of config file...
+
+    # used to keep track of version used to encode the tracks
+    VERSION = 0.1
 
     # size of tracking window output in pixels.
     WINDOW_SIZE = 64
@@ -350,15 +376,16 @@ class Tracker:
         # write video
         frame_number = 0
         with writer.saving(fig, filename, dpi=Tracker.VIDEO_DPI):
-            for frame, marked, rects in zip(self.frames, self.marked_frames, self.regions):
+            for frame, marked, rects, flow, filtered in zip(self.frames, self.marked_frames, self.regions, self.flow_frames, self.filtered_frames):
                 # marked is an image with each pixel's value being the label, 0...n for n objects
                 # I multiply it here, but really I should use a seperate color map for this.
                 # maybe I could multiply it modulo, and offset by some amount?
 
                 # note: it would much be better to have 4 seperate figures, with their own colour
                 # palettes, but this was easier to setup for the moment.
-                delta_frame = 1.5 * (frame - self.background) + Tracker.TEMPERATURE_MIN #use 28000 as baseline (black) background, but bump up the brightness a little.
-                stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((delta_frame, self.background))))
+                filtered_frame = 1.5 * (frame - self.background) + Tracker.TEMPERATURE_MIN #use 28000 as baseline (black) background, but bump up the brightness a little.
+
+                stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((filtered_frame, self.background))))
                 im.set_data(stacked)
 
                 patch_list = []
@@ -399,15 +426,24 @@ class Tracker:
 
         self.regions = []
         self.marked_frames = []
+        self.filtered_frames = []
+        self.flow_frames = []
 
         TrackedObject._track_id = 0
 
+        prev_frame = self.frames[0]
+
         for frame_number, frame in enumerate(self.frames):
+
+            # calculate optical flow
+            self.flow_frames.append(cv2.calcOpticalFlowFarneback(prev_frame, frame, None, 0.5, 3, 15, 3, 5, 1.2, 0))
+            prev_frame = frame
 
             # step 1. find regions of interest in this frame
             new_regions, markers = self._get_regions_of_interest(frame - mask, threshold, include_markers=True)
 
             self.marked_frames.append(markers)
+            self.filtered_frames.append(frame-mask)
 
             used_regions = []
 
@@ -496,6 +532,8 @@ class Tracker:
 
             # export frames
             window_frames = []
+            filtered_frames = []
+            flow_frames = []
             motion_vectors = []
 
             # setup MPEG writer
@@ -504,26 +542,40 @@ class Tracker:
             # process the frames
             with writer.saving(fig, MPEG_filename, dpi=Tracker.VIDEO_DPI):
                 for frame_number, bounds, (vx, vy), (dx, dy) in history:
-                    window = get_image_subsection(self.frames[frame_number], bounds)
-                    resized_image = cv2.resize(window, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
-                    window_frames.append(resized_image)
+
+
+                    window_frames.append(get_image_subsection(self.frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
+                    filtered_frames.append(get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
+                    flow_frames.append(get_image_subsection(self.flow_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
+
                     motion_vectors.append((vx, vy))
 
-                    im.set_data(resized_image)
+                    draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
+                    draw_frame = 1.5 * draw_frame + Tracker.TEMPERATURE_MIN
+
+                    im.set_data(draw_frame)
                     fig.canvas.draw()
                     writer.grab_frame()
 
             save_file = {}
             save_file['track_id'] = track_id
-            save_file['motion_vectors'] = motion_vectors
+            save_file['version'] = Tracker.VERSION
+
             save_file['frames'] = window_frames
+            save_file['filtered_frames'] = filtered_frames
+            save_file['flow_frames'] = flow_frames
             save_file['track_movement'] = track_movement
+
+            save_file['motion_vectors'] = motion_vectors
             save_file['track_max_offset'] = track_max_offset
             save_file['track_timestamp'] = self.video_start_time
             save_file['track_tag'] = self.tag
             save_file['track_origin'] = track_origin
             save_file['source_filename'] = self.source
             save_file['threshold'] = self.auto_threshold
+
+            # bring confidence accross
+            save_file['original_confidence'] = self.stats['confidence'] if 'confidence' in self.stats else None
 
             pickle.dump(save_file, open(TRK_filename, 'wb'))
 
