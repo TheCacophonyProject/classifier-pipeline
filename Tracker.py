@@ -8,16 +8,29 @@ matplotlib.use("SVG")
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
-import pickle
-import numpy as np
-from cptv import CPTVReader
-import cv2
-import os
-import pytz
-import json
-import datetime
-import gzip
 import matplotlib.animation as manimation
+
+import numpy as np
+import cv2
+
+from cptv import CPTVReader
+
+import pytz
+import datetime
+import dateutil
+
+
+import os
+import json
+import pickle
+import gzip
+
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+            # Let the base class default method raise the TypeError
+            return json.JSONEncoder.default(self, obj)
 
 
 def load_tracker_stats(filename):
@@ -27,11 +40,11 @@ def load_tracker_stats(filename):
     :return: returns the stats file
     """
 
-    with open(filename, 'r') as stats_file:
+    with open(filename, 'r') as t:
         # add in some metadata stats
-        stats = json.load(stats_file.read())
+        stats = json.load(t)
 
-    stats['date_time'] = datetime.dateutil.parse(stats['date_time'])
+    stats['date_time'] = dateutil.parser.parse(stats['date_time'])
     return stats
 
 
@@ -135,7 +148,7 @@ class TrackedObject:
     """ Defines an object tracked through the video frames."""
 
     """ keeps track of which id number we are up to."""
-    _track_id = 0
+    _track_id = 1
 
     """ There is no target. """
     TARGET_NONE = 'none'
@@ -221,13 +234,12 @@ class TrackedObject:
         return overlapping_regions
 
 
+
+
 class Tracker:
     """ Tracks objects within a CPTV thermal video file. """
 
     # these should really be in some kind of config file...
-
-    # used to keep track of version used to encode the tracks
-    VERSION = 0.1
 
     # size of tracking window output in pixels.
     WINDOW_SIZE = 64
@@ -305,10 +317,8 @@ class Tracker:
         """ Writes stats to file. """
 
         # we need to convert datetime to a string so it will serialise through json
-        stats= self.stats.copy()
-        stats['date_time'] = stats['date_time'].isoformat()
         with open(filename, 'w') as stats_file:
-            json.dump(stats, stats_file, indent=4)
+            json.dump(self.stats, stats_file, indent=4,  cls=DateTimeEncoder)
 
 
     def load(self, source):
@@ -580,6 +590,7 @@ class Tracker:
 
             MPEG_filename = base_filename + "-" + str(counter+1 ) + ".mp4"
             TRK_filename = base_filename + "-" + str(counter+1) + ".trk"
+            Stats_filename = base_filename + "-" + str(counter + 1) + ".txt"
 
             # export frames
             window_frames = []
@@ -610,27 +621,34 @@ class Tracker:
 
             save_file = {}
             save_file['track_id'] = track_id
-            save_file['version'] = Tracker.VERSION
-
             save_file['frames'] = window_frames
             save_file['filtered_frames'] = filtered_frames
             save_file['flow_frames'] = flow_frames
-            save_file['track_movement'] = track_movement
-
             save_file['motion_vectors'] = motion_vectors
-            save_file['track_max_offset'] = track_max_offset
-            save_file['track_timestamp'] = self.video_start_time
-            save_file['track_tag'] = self.tag
-            save_file['track_origin'] = track_origin
-            save_file['source_filename'] = self.source
-            save_file['threshold'] = self.auto_threshold
+
+            stats = {}
+
+            stats['track_id'] = track_id
+
+            stats['track_movement'] = track_movement
+
+            stats['track_max_offset'] = track_max_offset
+            stats['track_timestamp'] = self.video_start_time
+            stats['track_tag'] = self.tag
+            stats['track_origin'] = track_origin
+            stats['source_filename'] = self.source
+            stats['threshold'] = self.auto_threshold
 
             # bring confidence accross
-            save_file['original_confidence'] = self.stats['confidence'] if 'confidence' in self.stats else None
+            stats['confidence'] = self.stats['confidence']
 
+            # save out track data
             if use_compression:
                 pickle.dump(save_file, gzip.open(TRK_filename, 'wb'))
             else:
                 pickle.dump(save_file, open(TRK_filename, 'wb'))
+
+            with open(Stats_filename, 'w') as f:
+                json.dump(stats, f, indent=4, cls=DateTimeEncoder)
 
             plt.close(fig)

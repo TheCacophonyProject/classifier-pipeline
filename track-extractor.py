@@ -143,6 +143,7 @@ class CPTVTrackExtractor:
             return False
 
         # read in stats file.
+        stats = Tracker.load_tracker_stats(stats_filename)
         try:
             stats = Tracker.load_tracker_stats(stats_filename)
         except Exception as e:
@@ -212,6 +213,9 @@ class CPTVTrackExtractor:
         tracker = Tracker.Tracker(full_path)
         tracker.max_tracks = max_tracks
         tracker.tag = tag
+        # save some additional stats
+        tracker.stats['confidence'] = confidence
+        tracker.stats['version'] = CPTVTrackExtractor.VERSION
 
         tracker.extract()
 
@@ -219,9 +223,6 @@ class CPTVTrackExtractor:
 
         tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
 
-        # save some additional stats
-        tracker.stats['confidence'] = confidence
-        tracker.stats['version'] = CPTVTrackExtractor.VERSION
         tracker.save_stats(stats_path_and_filename )
 
 
