@@ -28,8 +28,11 @@ def apply_threshold(frame, threshold = 'auto'):
     return thresh
 
 
-def get_image_subsection(image, bounds, window_size):
-    """ Returns a subsection of the original image bounded by bounds."""
+def get_image_subsection(image, bounds, window_size, boundary_value = None):
+    """
+    Returns a subsection of the original image bounded by bounds.
+    Area outside of frame will be filled with boundary_vaule.  If None the median value will be used.
+    """
 
     # cropping method.  just center on the bounds center and take a section there.
 
@@ -45,8 +48,10 @@ def get_image_subsection(image, bounds, window_size):
 
     image_height, image_width, channels = image.shape
 
+    if boundary_value is None: boundary_value = np.median(image)
+
     # note, we take the median of all channels, should really be on a per channel basis.
-    enlarged_frame = np.ones([image_height + padding*2, image_width + padding*2, channels]) * np.median(image)
+    enlarged_frame = np.ones([image_height + padding*2, image_width + padding*2, channels]) * boundary_value
     enlarged_frame[padding:-padding,padding:-padding] = image
 
     sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_width:midx+window_half_width]
@@ -222,6 +227,9 @@ class Tracker:
     # the coldest value to display when rendering previews
     TEMPERATURE_MIN = 2800
     TEMPERATURE_MAX = 4200
+
+    # any clips with a mean temperature hotter than this will be excluded
+    MAX_TEMPERATURE_THRESHOLD = 3800
 
     # if the mean pixel change is below this threshold then classify the video as having a static background
     STATIC_BACKGROUND_THRESHOLD = 5.0
@@ -429,6 +437,10 @@ class Tracker:
         self.filtered_frames = []
         self.flow_frames = []
 
+        # don't process clips that are too hot.
+        if self.stats['mean_temp'] > Tracker.MAX_TEMPERATURE_THRESHOLD:
+            return
+
         TrackedObject._track_id = 0
 
         prev_frame = self.frames[0]
@@ -443,7 +455,10 @@ class Tracker:
             new_regions, markers = self._get_regions_of_interest(frame - mask, threshold, include_markers=True)
 
             self.marked_frames.append(markers)
-            self.filtered_frames.append(frame-mask)
+
+            filtered = frame-mask - threshold
+            filtered[filtered < 0] = 0
+            self.filtered_frames.append(filtered)
 
             used_regions = []
 
@@ -545,13 +560,13 @@ class Tracker:
 
 
                     window_frames.append(get_image_subsection(self.frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
-                    filtered_frames.append(get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
-                    flow_frames.append(get_image_subsection(self.flow_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
+                    filtered_frames.append(get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE),0))
+                    flow_frames.append(get_image_subsection(self.flow_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE,0)))
 
                     motion_vectors.append((vx, vy))
 
                     draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
-                    draw_frame = 1.5 * draw_frame + Tracker.TEMPERATURE_MIN
+                    draw_frame = 5 * draw_frame + Tracker.TEMPERATURE_MIN
 
                     im.set_data(draw_frame)
                     fig.canvas.draw()
