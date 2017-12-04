@@ -6,12 +6,14 @@ Processes a CPTV file identifying and tracking regions of interest, and saving t
 import matplotlib
 matplotlib.use("SVG")
 
+import datetime
 import matplotlib.pyplot as plt
 import matplotlib.animation as manimation
 import pickle
 import os
 import Tracker
 import ast
+import json
 
 
 class TrackEntry:
@@ -141,15 +143,14 @@ class CPTVTrackExtractor:
             return False
 
         # read in stats file.
-        with open(stats_filename, 'r') as stats_file:
-            try:
-                stats = eval(stats_file.read())
-                stats_version = stats.get('version', 0)
-            except:
-                # if stats file is corrupted then assume version -1
-                stats_version = -1
+        try:
+            stats = Tracker.load_tracker_stats(stats_filename)
+        except Exception as e:
+            self.log_warning("Invalid stats file "+stats_filename+" error:"+str(e))
+            return True
 
-            return stats_version < CPTVTrackExtractor.VERSION
+        if self.overwrite_mode == CPTVTrackExtractor.OM_OLD_VERSION:
+            return stats['version'] < CPTVTrackExtractor.VERSION
 
         raise Exception("Invalid overwrite mode {0}".format(self.overwrite_mode))
 
@@ -162,13 +163,18 @@ class CPTVTrackExtractor:
         :param overwrite: if true destination file will be overwritten
         """
 
-        filename = os.path.split(full_path)[1]
-        stats_filename = os.path.join(self.out_folder, tag, filename) + '.txt'
+        base_filename = os.path.splitext(os.path.split(full_path)[1])[0]
+        cptv_filename = base_filename + '.cptv'
+        mpeg_filename = base_filename + '.mp4'
+        stats_filename = base_filename + '.txt'
+
         destination_folder = os.path.join(self.out_folder, tag.lower())
 
+        stats_path_and_filename = os.path.join(destination_folder, stats_filename)
+
         # read additional information from hints file
-        if filename in self.hints:
-            max_tracks = self.hints[filename]
+        if cptv_filename in self.hints:
+            max_tracks = self.hints[cptv_filename ]
             if max_tracks == 0:
                 return
         else:
@@ -182,8 +188,8 @@ class CPTVTrackExtractor:
             os.mkdir(destination_folder)
 
         # check if we have already processed this file
-        if self.needs_reprocessing(stats_filename):
-            self.log_message("Processing {0} [{1}]".format(filename, tag))
+        if self.needs_reprocessing(stats_path_and_filename ):
+            self.log_message("Processing {0} [{1}]".format(cptv_filename , tag))
         else:
             return
 
@@ -209,17 +215,14 @@ class CPTVTrackExtractor:
 
         tracker.extract()
 
-        tracker.export(os.path.join(self.out_folder, tag, filename))
+        tracker.export(os.path.join(self.out_folder, tag, cptv_filename ))
 
-        mpeg_filename = os.path.splitext(filename)[0]+".mp4"
         tracker.display(os.path.join(self.out_folder, tag.lower(), mpeg_filename), self.colormap)
 
-        # save stats to text file for reference
-        with open(stats_filename, 'w') as stats_file:
-            # add in some metadata stats
-            tracker.stats['confidence'] = confidence
-            tracker.stats['version'] = CPTVTrackExtractor.VERSION
-            stats_file.write(str(tracker.stats))
+        # save some additional stats
+        tracker.stats['confidence'] = confidence
+        tracker.stats['version'] = CPTVTrackExtractor.VERSION
+        tracker.save_stats(stats_path_and_filename )
 
 
 def main():

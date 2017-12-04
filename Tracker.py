@@ -14,7 +14,25 @@ from cptv import CPTVReader
 import cv2
 import os
 import pytz
+import json
+import datetime
 import matplotlib.animation as manimation
+
+
+def load_tracker_stats(filename):
+    """
+    Loads a stats file for a processed clip.
+    :param filename: full path and filename to stats file
+    :return: returns the stats file
+    """
+
+    with open(filename, 'r') as stats_file:
+        # add in some metadata stats
+        stats = json.load(stats_file.read())
+
+    stats['date_time'] = datetime.dateutil.parse(stats['date_time'])
+    return stats
+
 
 def apply_threshold(frame, threshold = 'auto'):
     """ Creates a binary mask out of an image by applying a threshold.
@@ -201,6 +219,7 @@ class TrackedObject:
 
         return overlapping_regions
 
+
 class Tracker:
     """ Tracks objects within a CPTV thermal video file. """
 
@@ -267,8 +286,7 @@ class Tracker:
         result['mean_temp'] = int(np.asarray(self.frames).mean())
         result['max_temp'] = int(np.asarray(self.frames).max())
         result['min_temp'] = int(np.asarray(self.frames).min())
-        result['date'] = self.video_start_time.astimezone(local_tz).replace(tzinfo=None) # remove timezone from stats, otherwise it won't save in a readable format.
-        result['time_of_day'] = self.video_start_time.astimezone(local_tz).time()
+        result['date_time'] = self.video_start_time.astimezone(local_tz)
         result['source'] = self.source
         result['is_static_background'] = self.is_static_background
         result['auto_threshold'] = self.auto_threshold
@@ -281,6 +299,16 @@ class Tracker:
         self.log_message(" - Temperature:{0} ({1}-{2}), Time of day: {3},Threshold: {4:.1f}".format(
             self.stats['mean_temp'], self.stats['min_temp'], self.stats['max_temp'],
             self.stats['time_of_day'].strftime("%H%M"), self.stats['auto_threshold']))
+
+    def save_stats(self, filename):
+        """ Writes stats to file. """
+
+        # we need to convert datetime to a string so it will serialise through json
+        stats= self.stats.copy()
+        stats['date_time'] = stats['date_time'].isoformat()
+        with open(filename, 'w') as stats_file:
+            json.dump(stats, stats_file, indent=4)
+
 
     def load(self, source):
         """ Load frames from a CPTV file. """
@@ -349,7 +377,7 @@ class Tracker:
         :return: How much each pixel changes in value every frame.
         """
         delta = np.asarray(self.frames[1:],dtype=np.float32) - np.asarray(self.frames[:-1],dtype=np.float32)
-        return np.mean(np.abs(delta))
+        return float(np.mean(np.abs(delta)))
 
 
     def get_background(self):
@@ -368,7 +396,7 @@ class Tracker:
         if threshold > 50.0:
             threshold = 50.0
 
-        return (background, threshold)
+        return (background, float(threshold))
 
     def display(self, filename, colormap = None):
         """
