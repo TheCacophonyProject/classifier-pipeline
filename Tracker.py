@@ -267,7 +267,7 @@ class Tracker:
         result['mean_temp'] = int(np.asarray(self.frames).mean())
         result['max_temp'] = int(np.asarray(self.frames).max())
         result['min_temp'] = int(np.asarray(self.frames).min())
-        result['date'] = self.video_start_time.astimezone(local_tz)
+        result['date'] = self.video_start_time.astimezone(local_tz).replace(tzinfo=None) # remove timezone from stats, otherwise it won't save in a readable format.
         result['time_of_day'] = self.video_start_time.astimezone(local_tz).time()
         result['source'] = self.source
         result['is_static_background'] = self.is_static_background

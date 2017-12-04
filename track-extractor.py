@@ -27,13 +27,27 @@ class CPTVTrackExtractor:
     during processing.
     """
 
+    # version number.  Recorded into stats file when a clip is processed.
+    VERSION = 1
+
+    # all files will be reprocessed
+    OM_ALL = 'all'
+
+    # any clips with a lower version than the current will be reprocessed
+    OM_OLD_VERSION = 'version'
+
+    # no clips will be overwritten
+    OM_NONE = 'none'
+
     def __init__(self, out_folder):
+
         self.hints = {}
         self.colormap = plt.cm.jet
         self.verbose = True
         self.out_folder = out_folder
-        self._init_MpegWriter()
+        self.overwrite_mode = CPTVTrackExtractor.OM_OLD_VERSION
 
+        self._init_MpegWriter()
 
     def _init_MpegWriter(self):
         """ setup our MPEG4 writer.  Requires FFMPEG to be installed. """
@@ -108,6 +122,38 @@ class CPTVTrackExtractor:
         # note, python has really good logging... I should probably make use of this.
         print("Warning:",message)
 
+
+    def needs_reprocessing(self, stats_filename):
+        """
+        Opens a stats file and checks if this clip needs to be reprocessed.
+        :param stats_filename: the full path and filename of the stats file for the clip in question.
+        :return: returns true if file should be overwritten, false otherwise
+        """
+
+        # if no stats file exists we haven't processed file, so reprocess
+        if not os.path.exists(stats_filename):
+            return True
+
+        # otherwise check what needs to be done.
+        if self.overwrite_mode == CPTVTrackExtractor.OM_ALL:
+            return True
+        elif self.overwrite_mode == CPTVTrackExtractor.OM_NONE:
+            return False
+
+        # read in stats file.
+        with open(stats_filename, 'r') as stats_file:
+            try:
+                stats = eval(stats_file.read())
+                stats_version = stats.get('version', 0)
+            except:
+                # if stats file is corrupted then assume version -1
+                stats_version = -1
+
+            return stats_version < CPTVTrackExtractor.VERSION
+
+        raise Exception("Invalid overwrite mode {0}".format(self.overwrite_mode))
+
+
     def process_file(self, full_path, tag, overwrite=False):
         """
         Extract tracks from specific file, and assign given tag.
@@ -136,20 +182,16 @@ class CPTVTrackExtractor:
             os.mkdir(destination_folder)
 
         # check if we have already processed this file
-        if os.path.exists(stats_filename):
-            if overwrite:
-                self.log_message("Overwritting {0} [{1}]".format(filename, tag))
-            else:
-                # skip this file
-                return
-        else:
+        if self.needs_reprocessing(stats_filename):
             self.log_message("Processing {0} [{1}]".format(filename, tag))
+        else:
+            return
 
         # read metadata
         meta_data_filename = os.path.splitext(full_path)[0] + ".dat"
         if os.path.exists(meta_data_filename):
 
-            meta_data = eval(open(meta_data_filename,'r').read())
+            meta_data = ast.literal_eval(open(meta_data_filename,'r').read())
 
             tag_count = len(meta_data['Tags'])
 
@@ -176,6 +218,7 @@ class CPTVTrackExtractor:
         with open(stats_filename, 'w') as stats_file:
             # add in some metadata stats
             tracker.stats['confidence'] = confidence
+            tracker.stats['version'] = CPTVTrackExtractor.VERSION
             stats_file.write(str(tracker.stats))
 
 
@@ -190,6 +233,8 @@ def main():
     extractor.load_hints("hints.txt")
 
     extractor.process('d:\\cac\\out')
+    #extractor.process_file('d:\\cac\out\\possum\\20171101-150843-akaroa03.cptv', 'test', overwrite=True)
+
 
 main()
 
