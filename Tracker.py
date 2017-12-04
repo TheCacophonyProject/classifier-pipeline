@@ -16,6 +16,7 @@ import os
 import pytz
 import json
 import datetime
+import gzip
 import matplotlib.animation as manimation
 
 
@@ -520,8 +521,12 @@ class Tracker:
                     (frame_number, track.bounds.copy(), (track.vx, track.vy), (track.offsetx, track.offsety)))
 
 
-    def export(self, filename):
-        """ export tracks to given filename base.  An MPEG and TRK file will be exported. """
+    def export(self, filename, use_compression = False):
+        """
+        Export tracks to given filename base.  An MPEG and TRK file will be exported.
+        :param filename: full path and filename to export track to
+        :param use_compression: if enabled will gzip track
+        """
 
         base_filename = os.path.splitext(filename)[0]
 
@@ -623,6 +628,9 @@ class Tracker:
             # bring confidence accross
             save_file['original_confidence'] = self.stats['confidence'] if 'confidence' in self.stats else None
 
-            pickle.dump(save_file, open(TRK_filename, 'wb'))
+            if use_compression:
+                pickle.dump(save_file, gzip.open(TRK_filename, 'wb'))
+            else:
+                pickle.dump(save_file, open(TRK_filename, 'wb'))
 
             plt.close(fig)
