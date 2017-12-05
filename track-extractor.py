@@ -6,16 +6,14 @@ Processes a CPTV file identifying and tracking regions of interest, and saving t
 import matplotlib
 matplotlib.use("SVG")
 
-import datetime
 import matplotlib.pyplot as plt
 import matplotlib.animation as manimation
 import pickle
 import os
 import Tracker
 import ast
-import json
-import re
 import glob
+import argparse
 
 
 def purge(dir, pattern):
@@ -232,23 +230,39 @@ class CPTVTrackExtractor:
 
         tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=True)
 
-        tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
+        #tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
 
         tracker.save_stats(stats_path_and_filename )
 
 
-def main():
+def parse_params():
 
-    extractor = CPTVTrackExtractor('d:\cac\\tracks')
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('tag', default='all', help='Tag to process, "all" processes all tags')
+
+    parser.add_argument('-o', '--output-folder', default="d:\cac\\tracks", help='Folder to output tracks to')
+    parser.add_argument('-s', '--source-folder', default="d:\\cac\out", help='Source folder root with class folders containing CPTV files')
+    parser.add_argument('-c', '--color-map', default="custom_colormap.dat", help='Colormap to use when exporting MPEG files')
+
+    args = parser.parse_args()
+
+    extractor = CPTVTrackExtractor(args.output_folder)
 
     # this colormap is specially designed for heat maps
-    extractor.load_custom_colormap('custom_colormap.dat')
+    extractor.load_custom_colormap(args.color_map)
 
     # load hints.  Hints are a way to give extra information to the tracker when necessary.
     extractor.load_hints("hints.txt")
 
-    #extractor.process('d:\\cac\\out')
-    extractor.process_file('d:\\cac\out\\possum\\20171101-150843-akaroa03.cptv', 'test', overwrite=True)
+    if args.tag.lower() == 'all':
+        extractor.process(args.source_folder)
+    else:
+        extractor.process_folder(os.path.join(args.source_folder, args.tag), args.tag)
+
+
+def main():
+    parse_params()
 
 
 main()
