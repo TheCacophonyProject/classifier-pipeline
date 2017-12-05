@@ -159,7 +159,7 @@ class Rectangle:
         return "<({0},{1})-{2}x{3}>".format(self.x, self.y, self.width, self.height)
 
 
-class Tracked:
+class Track:
     """ Defines an object tracked through the video frames."""
 
     """ keeps track of which id number we are up to."""
@@ -180,11 +180,11 @@ class Tracked:
     def __init__(self, x, y, width, height):
 
         self.bounds = Rectangle(x, y, width, height)
-        self.status = Tracked.TARGET_NONE
+        self.status = Track.TARGET_NONE
         self.origin = (self.bounds.mid_x, self.bounds.mid_y)
 
-        self.id = Tracked._track_id
-        Tracked._track_id += 1
+        self.id = Track._track_id
+        Track._track_id += 1
 
         self.vx = 0.0
         self.vy = 0.0
@@ -230,14 +230,14 @@ class Tracked:
 
         if len(similar_regions) == 0:
             # lost target!
-            self.status = Tracked.TARGET_LOST
+            self.status = Track.TARGET_LOST
         elif len(similar_regions) >= 2:
             # target split
-            self.status = Tracked.TARGET_SPLIT
+            self.status = Track.TARGET_SPLIT
         else:
             # just follow target.
             old_x, old_y = self.bounds.mid_x, self.bounds.mid_y
-            self.status = Tracked.TARGET_ACQUIRED
+            self.status = Track.TARGET_ACQUIRED
             self.bounds.x = similar_regions[0].x
             self.bounds.y = similar_regions[0].y
             self.bounds.width = similar_regions[0].width
@@ -503,7 +503,7 @@ class Tracker:
         if self.stats['mean_temp'] > Tracker.MAX_TEMPERATURE_THRESHOLD:
             return
 
-        Tracked._track_id = 1
+        Track._track_id = 1
 
         prev_frame = self.frames[0]
 
@@ -533,16 +533,15 @@ class Tracker:
             for region in new_regions:
                 if region in used_regions:
                     continue
-                print("new track")
-                active_tracks.append(Tracked(region.x, region.y, region.width, region.height))
+                active_tracks.append(Track(region.x, region.y, region.width, region.height))
                 self.track_history[active_tracks[-1]] = []
 
             # step 4. delete lost tracks
             for track in active_tracks:
-                if track.status == Tracked.TARGET_LOST:
+                if track.status == Track.TARGET_LOST:
                     pass
 
-            active_tracks = [track for track in active_tracks if track.status != Tracked.TARGET_LOST]
+            active_tracks = [track for track in active_tracks if track.status != Track.TARGET_LOST]
 
             self.regions.append([track.bounds.copy() for track in active_tracks])
 
@@ -581,6 +580,8 @@ class Tracker:
 
             track.score = track.movement + track.max_offset
 
+            track.duration = track_length / 9.0
+
             # discard any tracks that are less than 3 seconds long (27 frames)
             # these are probably glitches anyway, or don't contain enough information.
             if track_length < 9 * 3:
@@ -591,10 +592,6 @@ class Tracker:
                 continue
 
             track_scores.append((track.score, track))
-
-            # display some debuging output.
-            print(" -track {0}: length {1} frames, movement {2:.2f}, max_offset {3:.2f}, score {4:.2f}".format(counter,
-                        track_length,track.movement,track.max_offset,track.score))
 
             counter += 1
 
@@ -660,8 +657,7 @@ class Tracker:
             stats['movement'] = track.movement
             stats['max_offset'] = track.max_offset
             stats['timestamp'] = self.video_start_time
-            stats['duration'] = len(window_frames) / 9.0
-            stats['frames'] = len(window_frames)
+            stats['duration'] = track.duration
             stats['tag'] = self.tag
             stats['origin'] = track.origin
             stats['filename'] = self.source

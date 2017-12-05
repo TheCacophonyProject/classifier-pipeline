@@ -262,6 +262,14 @@ class CPTVTrackExtractor:
     def run_test(self, source_folder, test: TrackerTestCase):
         """ Runs a specific test case. """
 
+        self.verbose = False
+
+        def are_similar(value, expected, relative_error = 0.2, abs_error = 2.0):
+            """ Checks of value is similar to expected value. An expected value of 0 will always return true. """
+            if expected == 0:
+                return True
+            return (abs(value - expected) / expected) <= relative_error or abs(value - expected) < abs_error
+
         # find the file.  We looking in all the tag folder to make life simpler when creating the test file.
         source_file = find_file(source_folder, test.source)
 
@@ -269,13 +277,21 @@ class CPTVTrackExtractor:
             print("Could not find {0} in root folder {1}".format(test.source, source_folder))
             return
 
-        tracker = self.process_file(source_file, 'test', create_preview_file=True)
+        tracker = self.process_file(source_file, 'test', create_preview_file=self.enable_previews)
 
         # read in stats files and see how we did
         if len(tracker.tracks) != len(test.tracks):
             print("[Fail] {0} Incorrect number of tracks, expected {1} found {2}".format(test.source, len(test.tracks), len(tracker.tracks)))
-        else:
-            print("[PASS] {0}".format(test.source))
+            return
+
+        for test_result, (expected_duration, expected_movement) in zip(tracker.tracks, test.tracks):
+            if not are_similar(test_result.duration, expected_duration) or not are_similar(test_result.max_offset, expected_movement):
+                print("[Fail] {0} Track too dissimilar expected {1} but found {2}".format(
+                    test.source,
+                    (expected_duration, expected_movement),
+                    (test_result.duration, test_result.max_offset)))
+            else:
+                print("[PASS] {0}".format(test.source))
 
 
     def run_tests(self, source_folder, tests_file):
@@ -298,8 +314,8 @@ class CPTVTrackExtractor:
             if line.split()[0].lower() == 'track':
                 if test == None:
                     raise Exception("Can not have track before source file.")
-                _, expeced_length, expected_movement = line.split()
-                test.tracks.append((expeced_length, expected_movement))
+                expected_length, expected_movement = [int(x) for x in line.split()[1:]]
+                test.tracks.append((expected_length, expected_movement))
             else:
                 test = TrackerTestCase()
                 test.source = line
@@ -337,6 +353,9 @@ def parse_params():
 
     extractor.enable_previews = args.enable_previews
 
+    if extractor.enable_previews:
+        print(" -previews enabled.")
+
     if args.tag.lower() == 'test':
         print("Running test suite")
         extractor.run_tests(args.source_folder, args.test_file)
@@ -344,8 +363,6 @@ def parse_params():
 
     print('Processing tag "{0}"'.format(args.tag))
 
-    if extractor.enable_previews:
-        print(" -previews enabled.")
 
     if args.tag.lower() == 'all':
         extractor.process(args.source_folder)
