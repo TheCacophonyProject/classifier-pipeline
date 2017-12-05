@@ -52,6 +52,7 @@ class CPTVTrackExtractor:
         self.verbose = True
         self.out_folder = out_folder
         self.overwrite_mode = CPTVTrackExtractor.OM_OLD_VERSION
+        self.enable_previews = False
 
         self._init_MpegWriter()
 
@@ -116,7 +117,7 @@ class CPTVTrackExtractor:
         for file_name in os.listdir(folder_path):
             full_path = os.path.join(folder_path, file_name)
             if os.path.isfile(full_path) and os.path.splitext(full_path )[1].lower() == '.cptv':
-                self.process_file(full_path, tag)
+                self.process_file(full_path, tag, self.enable_previews)
 
     def log_message(self, message):
         """ Record message in log.  Will be printed if verbose is enabled. """
@@ -160,12 +161,13 @@ class CPTVTrackExtractor:
         raise Exception("Invalid overwrite mode {0}".format(self.overwrite_mode))
 
 
-    def process_file(self, full_path, tag, overwrite=False):
+    def process_file(self, full_path, tag, create_preview_file = False):
         """
         Extract tracks from specific file, and assign given tag.
         :param full: path: path to CPTV file to be processed
         :param tag: the tag to assign all tracks from this CPTV files
-        :param overwrite: if true destination file will be overwritten
+        :param create_preview_file: if enabled creates an MPEG preview file showing the tracking working.  This
+            process can be quite time consuming.
         """
 
         base_filename = os.path.splitext(os.path.split(full_path)[1])[0]
@@ -189,7 +191,7 @@ class CPTVTrackExtractor:
         try:
             os.stat(destination_folder)
         except:
-            self.log_message(" Making path " +destination_folder)
+            self.log_message(" Making path " + destination_folder)
             os.mkdir(destination_folder)
 
         # check if we have already processed this file
@@ -230,7 +232,8 @@ class CPTVTrackExtractor:
 
         tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=True)
 
-        #tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
+        if create_preview_file:
+            tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
 
         tracker.save_stats(stats_path_and_filename )
 
@@ -244,8 +247,11 @@ def parse_params():
     parser.add_argument('-o', '--output-folder', default="d:\cac\\tracks", help='Folder to output tracks to')
     parser.add_argument('-s', '--source-folder', default="d:\\cac\out", help='Source folder root with class folders containing CPTV files')
     parser.add_argument('-c', '--color-map', default="custom_colormap.dat", help='Colormap to use when exporting MPEG files')
+    parser.add_argument('-p', '--enable-previews', action='store_true', help='Enables preview MPEG files (can be slow)')
 
     args = parser.parse_args()
+
+    # setup extractor
 
     extractor = CPTVTrackExtractor(args.output_folder)
 
@@ -254,6 +260,13 @@ def parse_params():
 
     # load hints.  Hints are a way to give extra information to the tracker when necessary.
     extractor.load_hints("hints.txt")
+
+    extractor.enable_previews = args.enable_previews
+
+    print('Processing tag "{0}"'.format(args.tag))
+
+    if extractor.enable_previews:
+        print(" -previews enabled.")
 
     if args.tag.lower() == 'all':
         extractor.process(args.source_folder)
