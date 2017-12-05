@@ -48,6 +48,21 @@ def load_tracker_stats(filename):
     return stats
 
 
+def load_track_stats(filename):
+    """
+    Loads a stats file for a processed track.
+    :param filename: full path and filename to stats file
+    :return: returns the stats file
+    """
+
+    with open(filename, 'r') as t:
+        # add in some metadata stats
+        stats = json.load(t)
+
+    stats['timestamp'] = dateutil.parser.parse(stats['timestamp'])
+    return stats
+
+
 def apply_threshold(frame, threshold = 'auto'):
     """ Creates a binary mask out of an image by applying a threshold.
         If threshold is not set a blend of the median, and max value of the image will be used.
@@ -144,7 +159,7 @@ class Rectangle:
         return "<({0},{1})-{2}x{3}>".format(self.x, self.y, self.width, self.height)
 
 
-class TrackedObject:
+class Tracked:
     """ Defines an object tracked through the video frames."""
 
     """ keeps track of which id number we are up to."""
@@ -165,14 +180,21 @@ class TrackedObject:
     def __init__(self, x, y, width, height):
 
         self.bounds = Rectangle(x, y, width, height)
-        self.status = TrackedObject.TARGET_NONE
-        self.origion = (self.bounds.mid_x, self.bounds.mid_y)
+        self.status = Tracked.TARGET_NONE
+        self.origin = (self.bounds.mid_x, self.bounds.mid_y)
 
-        self.id = TrackedObject._track_id
-        TrackedObject._track_id += 1
+        self.id = Tracked._track_id
+        Tracked._track_id += 1
 
         self.vx = 0.0
         self.vy = 0.0
+
+        # how much this track has moved
+        self.movement = 0.0
+        # how many pixels we have moved from origin
+        self.max_offset = 0.0
+        # how likely this is to be a valid track
+        self.score = 0.0
 
     def __repr__(self):
         return "({0},{1})".format(self.bounds.x, self.bounds.y)
@@ -180,12 +202,12 @@ class TrackedObject:
     @property
     def offsetx(self):
         """ Offset from where object was originally detected. """
-        return self.bounds.mid_x - self.origion[0]
+        return self.bounds.mid_x - self.origin[0]
 
     @property
     def offsety(self):
         """ Offset from where object was originally detected. """
-        return self.bounds.mid_x - self.origion[0]
+        return self.bounds.mid_x - self.origin[0]
 
     def sync_new_location(self, regions_of_interest):
         """ Work out out estimated new location for the frame using last position
@@ -208,15 +230,14 @@ class TrackedObject:
 
         if len(similar_regions) == 0:
             # lost target!
-            self.status = TrackedObject.TARGET_LOST
-            # print('lost')
+            self.status = Tracked.TARGET_LOST
         elif len(similar_regions) >= 2:
             # target split
-            self.status = TrackedObject.TARGET_SPLIT
-            # print('split', similar_regions)
+            self.status = Tracked.TARGET_SPLIT
         else:
             # just follow target.
             old_x, old_y = self.bounds.mid_x, self.bounds.mid_y
+            self.status = Tracked.TARGET_ACQUIRED
             self.bounds.x = similar_regions[0].x
             self.bounds.y = similar_regions[0].y
             self.bounds.width = similar_regions[0].width
@@ -277,7 +298,7 @@ class Tracker:
         self.load(open(full_path, 'rb'))
         self.tag = "UNKNOWN"
         self.source = os.path.split(full_path)[1]
-        self.track_history = {}
+        self.tracks = []
 
         # find background
         self.background, self.auto_threshold = self.get_background()
@@ -455,7 +476,7 @@ class Tracker:
 
     def extract(self):
         """
-        Extract regions of interest from frames.
+        Extract regions of interest from frames, and create some initial tracks.
         """
 
         if Tracker.USE_BACKGROUND_SUBTRACTION.lower() == 'auto':
@@ -472,6 +493,7 @@ class Tracker:
 
         active_tracks = []
 
+        # todo: these are needed for the display routine, should really declare them in init or something.
         self.regions = []
         self.marked_frames = []
         self.filtered_frames = []
@@ -481,7 +503,7 @@ class Tracker:
         if self.stats['mean_temp'] > Tracker.MAX_TEMPERATURE_THRESHOLD:
             return
 
-        TrackedObject._track_id = 1
+        Tracked._track_id = 1
 
         prev_frame = self.frames[0]
 
@@ -496,7 +518,7 @@ class Tracker:
 
             self.marked_frames.append(markers)
 
-            filtered = frame-mask - threshold
+            filtered = frame - mask - threshold
             filtered[filtered < 0] = 0
             self.filtered_frames.append(filtered)
 
@@ -511,25 +533,73 @@ class Tracker:
             for region in new_regions:
                 if region in used_regions:
                     continue
-                #print("discovered new object:", region)
-                active_tracks.append(TrackedObject(region.x, region.y, region.width, region.height))
-                self.track_history[active_tracks[-1].id] = []
+                print("new track")
+                active_tracks.append(Tracked(region.x, region.y, region.width, region.height))
+                self.track_history[active_tracks[-1]] = []
 
             # step 4. delete lost tracks
             for track in active_tracks:
-                if track.status == TrackedObject.TARGET_LOST:
-                    #print("target lost.")
+                if track.status == Tracked.TARGET_LOST:
                     pass
 
-            active_tracks = [track for track in active_tracks if track.status != TrackedObject.TARGET_LOST]
+            active_tracks = [track for track in active_tracks if track.status != Tracked.TARGET_LOST]
 
             self.regions.append([track.bounds.copy() for track in active_tracks])
 
             # step 5. record history.
             for track in active_tracks:
-                self.track_history[track.id].append(
+                self.track_history[track].append(
                     (frame_number, track.bounds.copy(), (track.vx, track.vy), (track.offsetx, track.offsety)))
 
+
+        self.tracks = self.track_history.keys()
+        self.get_tracks_statistics()
+
+    def filter_tracks(self):
+        """ Removes tracks with too poor a score to be used. """
+        if self.max_tracks is not None:
+            print(" -using only {0} tracks out of {1}".format(self.max_tracks, len(self.tracks)))
+            self.tracks = self.tracks[:self.max_tracks]
+
+    def get_tracks_statistics(self):
+        """ Record stats on each track, including assigning it a score.  Also sorts tracks by score. """
+
+        track_scores = []
+
+        counter = 1
+        for track in self.tracks:
+
+            history = self.track_history[track]
+
+            track_length = len(history)
+
+            # calculate movement statistics
+            track.movement = sum(
+                (vx ** 2 + vy ** 2) ** 0.5 for (frame_number, bounds, (vx, vy), (dx, dy)) in history)
+            track.max_offset = max(
+                (dx ** 2 + dy ** 2) ** 0.5 for (frame_number, bounds, (vx, vy), (dx, dy)) in history)
+
+            track.score = track.movement + track.max_offset
+
+            # discard any tracks that are less than 3 seconds long (27 frames)
+            # these are probably glitches anyway, or don't contain enough information.
+            if track_length < 9 * 3:
+                continue
+
+            # discard tracks that do not move enough
+            if track.max_offset < 4.0:
+                continue
+
+            track_scores.append((track.score, track))
+
+            # display some debuging output.
+            print(" -track {0}: length {1} frames, movement {2:.2f}, max_offset {3:.2f}, score {4:.2f}".format(counter,
+                        track_length,track.movement,track.max_offset,track.score))
+
+            counter += 1
+
+        track_scores.sort(reverse=True)
+        self.tracks = [track for (score, track) in track_scores]
 
     def export(self, filename, use_compression = False):
         """
@@ -540,53 +610,11 @@ class Tracker:
 
         base_filename = os.path.splitext(filename)[0]
 
-        track_scores = []
+        self.filter_tracks()
 
-        # gather usable tracks
-        counter = 1
-        for track_id in self.track_history.keys():
+        for counter, track in enumerate(self.tracks):
 
-            history = self.track_history[track_id]
-            track_length = len(history)
-
-            # calculate movement statistics
-            track_movement = sum(
-                (vx ** 2 + vy ** 2) ** 0.5 for (frame_number, bounds, (vx, vy), (dx, dy)) in history)
-            track_max_offset = max(
-                (dx ** 2 + dy ** 2) ** 0.5 for (frame_number, bounds, (vx, vy), (dx, dy)) in history)
-
-            track_origin = (history[0][1].mid_x, history[0][1].mid_y)
-
-            track_score = track_movement + track_max_offset
-
-            # discard any tracks that are less than 3 seconds long (27 frames)
-            # these are probably glitches anyway, or don't contain enough information.
-            if track_length < 9*3:
-                continue
-
-            # discard tracks that do not move enough
-            if track_max_offset < 4.0:
-                continue
-
-            track_scores.append((track_score, track_id))
-
-            # display some debuging output.
-            print(" -track {0}: length {1} frames, movement {2:.2f}, max_offset {3:.2f}, score {4:.2f}".format(counter, track_length,
-                                                                                        track_movement,
-                                                                                        track_max_offset,
-                                                                                        track_score))
-
-            counter += 1
-
-        track_scores.sort(reverse=True)
-        ordered_tracks = [track_id for (score, track_id) in track_scores]
-        if self.max_tracks is not None:
-            print(" -using only {0} tracks out of {1}".format(self.max_tracks, len(ordered_tracks)))
-            ordered_tracks = ordered_tracks [:self.max_tracks]
-
-        for counter, track_id in enumerate(ordered_tracks):
-
-            history = self.track_history[track_id]
+            history = self.track_history[track]
 
             MPEG_filename = base_filename + "-" + str(counter+1 ) + ".mp4"
             TRK_filename = base_filename + "-" + str(counter+1) + ".trk"
@@ -605,7 +633,6 @@ class Tracker:
             with writer.saving(fig, MPEG_filename, dpi=Tracker.VIDEO_DPI):
                 for frame_number, bounds, (vx, vy), (dx, dy) in history:
 
-
                     window_frames.append(get_image_subsection(self.frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
                     filtered_frames.append(get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE),0))
                     flow_frames.append(get_image_subsection(self.flow_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE,0)))
@@ -620,7 +647,7 @@ class Tracker:
                     writer.grab_frame()
 
             save_file = {}
-            save_file['track_id'] = track_id
+            save_file['track_id'] = track.id
             save_file['frames'] = window_frames
             save_file['filtered_frames'] = filtered_frames
             save_file['flow_frames'] = flow_frames
@@ -628,15 +655,16 @@ class Tracker:
 
             stats = {}
 
-            stats['track_id'] = track_id
-
-            stats['track_movement'] = track_movement
-
-            stats['track_max_offset'] = track_max_offset
-            stats['track_timestamp'] = self.video_start_time
-            stats['track_tag'] = self.tag
-            stats['track_origin'] = track_origin
-            stats['source_filename'] = self.source
+            stats['id'] = track.id
+            stats['score'] = track.score
+            stats['movement'] = track.movement
+            stats['max_offset'] = track.max_offset
+            stats['timestamp'] = self.video_start_time
+            stats['duration'] = len(window_frames) / 9.0
+            stats['frames'] = len(window_frames)
+            stats['tag'] = self.tag
+            stats['origin'] = track.origin
+            stats['filename'] = self.source
             stats['threshold'] = self.auto_threshold
 
             # bring confidence accross

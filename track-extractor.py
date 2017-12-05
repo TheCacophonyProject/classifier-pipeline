@@ -20,11 +20,31 @@ def purge(dir, pattern):
     for f in glob.glob(os.path.join(dir, pattern)):
         os.remove(os.path.join(dir, f))
 
+def find_file(root, filename):
+    """
+    Finds a file in root folder, or any subfolders.
+    :param root: root folder to search file
+    :param filename: exact time of file to look for
+    :return: returns full path to file or None if not found.
+    """
+    for root, dir, files in os.walk(root):
+        if filename in files:
+            return os.path.join(root, filename)
+    return None
+
+
 class TrackEntry:
     """ Database entry for a track """
 
     def __init__(self):
         pass
+
+class TrackerTestCase():
+    def __init__(self):
+        self.source = None
+        self.tracks = []
+
+
 
 class CPTVTrackExtractor:
     """
@@ -160,7 +180,6 @@ class CPTVTrackExtractor:
 
         raise Exception("Invalid overwrite mode {0}".format(self.overwrite_mode))
 
-
     def process_file(self, full_path, tag, create_preview_file = False):
         """
         Extract tracks from specific file, and assign given tag.
@@ -168,6 +187,7 @@ class CPTVTrackExtractor:
         :param tag: the tag to assign all tracks from this CPTV files
         :param create_preview_file: if enabled creates an MPEG preview file showing the tracking working.  This
             process can be quite time consuming.
+        :returns the tracker object
         """
 
         base_filename = os.path.splitext(os.path.split(full_path)[1])[0]
@@ -235,19 +255,73 @@ class CPTVTrackExtractor:
         if create_preview_file:
             tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
 
-        tracker.save_stats(stats_path_and_filename )
+        tracker.save_stats(stats_path_and_filename)
+
+        return tracker
+
+    def run_test(self, source_folder, test: TrackerTestCase):
+        """ Runs a specific test case. """
+
+        # find the file.  We looking in all the tag folder to make life simpler when creating the test file.
+        source_file = find_file(source_folder, test.source)
+
+        if source_file is None:
+            print("Could not find {0} in root folder {1}".format(test.source, source_folder))
+            return
+
+        tracker = self.process_file(source_file, 'test', create_preview_file=True)
+
+        # read in stats files and see how we did
+        if len(tracker.tracks) != len(test.tracks):
+            print("[Fail] {0} Incorrect number of tracks, expected {1} found {2}".format(test.source, len(test.tracks), len(tracker.tracks)))
+        else:
+            print("[PASS] {0}".format(test.source))
+
+
+    def run_tests(self, source_folder, tests_file):
+        """ Processes file in test file and compares results to expected output. """
+
+        tests = []
+        test = None
+
+        # we need to make sure all tests are redone every time.
+        self.overwrite_mode = CPTVTrackExtractor.OM_ALL
+
+        # load in the test data
+        for line in open(tests_file, 'r'):
+            line = line.strip()
+            if line == '':
+                continue
+            if line[0] == '#':
+                continue
+
+            if line.split()[0].lower() == 'track':
+                if test == None:
+                    raise Exception("Can not have track before source file.")
+                _, expeced_length, expected_movement = line.split()
+                test.tracks.append((expeced_length, expected_movement))
+            else:
+                test = TrackerTestCase()
+                test.source = line
+                tests.append(test)
+
+        print("Found {0} test cases".format(len(tests)))
+
+        for test in tests:
+            self.run_test(source_folder, test)
 
 
 def parse_params():
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('tag', default='all', help='Tag to process, "all" processes all tags')
+    parser.add_argument('tag', default='all', help='Tag to process, "all" processes all tags, "test" runs test cases')
 
     parser.add_argument('-o', '--output-folder', default="d:\cac\\tracks", help='Folder to output tracks to')
     parser.add_argument('-s', '--source-folder', default="d:\\cac\out", help='Source folder root with class folders containing CPTV files')
     parser.add_argument('-c', '--color-map', default="custom_colormap.dat", help='Colormap to use when exporting MPEG files')
     parser.add_argument('-p', '--enable-previews', action='store_true', help='Enables preview MPEG files (can be slow)')
+    parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
 
     args = parser.parse_args()
 
@@ -263,6 +337,11 @@ def parse_params():
 
     extractor.enable_previews = args.enable_previews
 
+    if args.tag.lower() == 'test':
+        print("Running test suite")
+        extractor.run_tests(args.source_folder, args.test_file)
+        return
+
     print('Processing tag "{0}"'.format(args.tag))
 
     if extractor.enable_previews:
@@ -270,8 +349,10 @@ def parse_params():
 
     if args.tag.lower() == 'all':
         extractor.process(args.source_folder)
+        return
     else:
         extractor.process_folder(os.path.join(args.source_folder, args.tag), args.tag)
+        return
 
 
 def main():
