@@ -250,7 +250,7 @@ class CPTVTrackExtractor:
 
         tracker.extract()
 
-        tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=True)
+        tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=False)
 
         if create_preview_file:
             tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)

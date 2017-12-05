@@ -676,7 +676,6 @@ class Tracker:
             stats['filename'] = self.source
             stats['threshold'] = self.auto_threshold
             stats['confidence'] = self.stats['confidence']
-            print(track.mass_history)
             stats['mass_history'] = track.mass_history
 
             # save out track data
