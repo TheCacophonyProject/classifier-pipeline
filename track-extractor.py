@@ -54,7 +54,7 @@ class CPTVTrackExtractor:
     """
 
     # version number.  Recorded into stats file when a clip is processed.
-    VERSION = 1
+    VERSION = 2
 
     # all files will be reprocessed
     OM_ALL = 'all'
@@ -296,6 +296,9 @@ class CPTVTrackExtractor:
 
     def run_tests(self, source_folder, tests_file):
         """ Processes file in test file and compares results to expected output. """
+
+        # disable hints for tests
+        self.hints = []
 
         tests = []
         test = None

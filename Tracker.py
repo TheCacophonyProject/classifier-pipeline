@@ -109,17 +109,18 @@ def get_image_subsection(image, bounds, window_size, boundary_value = None):
     return sub_section
 
 
-class Rectangle:
+class TrackingFrame:
     """ Defines a rectangle by the topleft point and width / height. """
-    def __init__(self, topleft_x, topleft_y, width, height):
+    def __init__(self, topleft_x, topleft_y, width, height, mass = 0):
         """ Defines new rectangle. """
         self.x = topleft_x
         self.y = topleft_y
         self.width = width
         self.height = height
+        self.mass = mass
 
     def copy(self):
-        return Rectangle(self.x, self.y, self.width, self.height)
+        return TrackingFrame(self.x, self.y, self.width, self.height, self.mass)
 
     @property
     def mid_x(self):
@@ -177,9 +178,9 @@ class Track:
     """ Target collided with another target, or split."""
     TARGET_SPLIT = 'split'
 
-    def __init__(self, x, y, width, height):
+    def __init__(self, x, y, width, height, mass = 0):
 
-        self.bounds = Rectangle(x, y, width, height)
+        self.bounds = TrackingFrame(x, y, width, height)
         self.status = Track.TARGET_NONE
         self.origin = (self.bounds.mid_x, self.bounds.mid_y)
 
@@ -189,6 +190,13 @@ class Track:
         self.vx = 0.0
         self.vy = 0.0
 
+        self.mass = mass
+
+        # history for each frame in track
+        self.mass_history = []
+
+        # average mass
+        self.average_mass = 0.0
         # how much this track has moved
         self.movement = 0.0
         # how many pixels we have moved from origin
@@ -215,15 +223,15 @@ class Track:
         gx = int(self.bounds.x + self.vx)
         gy = int(self.bounds.y + self.vy)
 
-        new_bounds = Rectangle(gx, gy, self.bounds.width, self.bounds.height)
+        new_bounds = TrackingFrame(gx, gy, self.bounds.width, self.bounds.height)
 
         # look for regions and calculate their overlap
         similar_regions = []
         overlapping_regions = []
         for region in regions_of_interest:
             overlap_fraction = (new_bounds.overlap_area(region) * 2) / (new_bounds.area + region.area)
-            realtive_area_difference = abs(region.area - new_bounds.area) / new_bounds.area
-            if overlap_fraction > 0.10 and realtive_area_difference < 0.5:
+            relative_area_difference = abs(region.area - new_bounds.area) / new_bounds.area
+            if overlap_fraction > 0.10 and relative_area_difference < 0.5:
                 similar_regions.append(region)
             if overlap_fraction > 0.10:
                 overlapping_regions.append(region)
@@ -242,6 +250,7 @@ class Track:
             self.bounds.y = similar_regions[0].y
             self.bounds.width = similar_regions[0].width
             self.bounds.height = similar_regions[0].height
+            self.mass = similar_regions[0].mass
             # print("move to ",self.bounds.x, self.bounds.y)
 
             # work out out new velocity
@@ -367,8 +376,8 @@ class Tracker:
         # find regions
         rects = []
         for i in range(1, labels):
-            rect = Rectangle(stats[i, 0] - padding, stats[i, 1] - padding, stats[i, 2] + padding * 2,
-                             stats[i, 3] + padding * 2)
+            rect = TrackingFrame(stats[i, 0] - padding, stats[i, 1] - padding, stats[i, 2] + padding * 2,
+                                 stats[i, 3] + padding * 2, stats[i,4])
             rects.append(rect)
 
         return (rects, markers) if include_markers else rects
@@ -533,7 +542,7 @@ class Tracker:
             for region in new_regions:
                 if region in used_regions:
                     continue
-                active_tracks.append(Track(region.x, region.y, region.width, region.height))
+                active_tracks.append(Track(region.x, region.y, region.width, region.height, region.mass))
                 self.track_history[active_tracks[-1]] = []
 
             # step 4. delete lost tracks
@@ -548,8 +557,7 @@ class Tracker:
             # step 5. record history.
             for track in active_tracks:
                 self.track_history[track].append(
-                    (frame_number, track.bounds.copy(), (track.vx, track.vy), (track.offsetx, track.offsety)))
-
+                    (frame_number, track.bounds.copy(), (track.vx, track.vy), (track.offsetx, track.offsety), track.mass))
 
         self.tracks = self.track_history.keys()
         self.get_tracks_statistics()
@@ -561,7 +569,8 @@ class Tracker:
             self.tracks = self.tracks[:self.max_tracks]
 
     def get_tracks_statistics(self):
-        """ Record stats on each track, including assigning it a score.  Also sorts tracks by score. """
+        """ Record stats on each track, including assigning it a score.  Also sorts tracks by score and filters out
+            poor tracks. """
 
         track_scores = []
 
@@ -574,11 +583,14 @@ class Tracker:
 
             # calculate movement statistics
             track.movement = sum(
-                (vx ** 2 + vy ** 2) ** 0.5 for (frame_number, bounds, (vx, vy), (dx, dy)) in history)
+                (vx ** 2 + vy ** 2) ** 0.5 for (frame_number, bounds, (vx, vy), (dx, dy), mass) in history)
             track.max_offset = max(
-                (dx ** 2 + dy ** 2) ** 0.5 for (frame_number, bounds, (vx, vy), (dx, dy)) in history)
+                (dx ** 2 + dy ** 2) ** 0.5 for (frame_number, bounds, (vx, vy), (dx, dy), mass) in history)
 
             track.score = track.movement + track.max_offset
+
+            track.mass_history = list([int(mass) for (frame_number, bounds, (vx, vy), (dx, dy), mass) in history])
+            track.average_mass = np.mean(track.mass_history)
 
             track.duration = track_length / 9.0
 
@@ -628,7 +640,7 @@ class Tracker:
 
             # process the frames
             with writer.saving(fig, MPEG_filename, dpi=Tracker.VIDEO_DPI):
-                for frame_number, bounds, (vx, vy), (dx, dy) in history:
+                for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
 
                     window_frames.append(get_image_subsection(self.frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
                     filtered_frames.append(get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE),0))
@@ -655,6 +667,7 @@ class Tracker:
             stats['id'] = track.id
             stats['score'] = track.score
             stats['movement'] = track.movement
+            stats['average_mass'] = track.average_mass
             stats['max_offset'] = track.max_offset
             stats['timestamp'] = self.video_start_time
             stats['duration'] = track.duration
@@ -662,9 +675,9 @@ class Tracker:
             stats['origin'] = track.origin
             stats['filename'] = self.source
             stats['threshold'] = self.auto_threshold
-
-            # bring confidence accross
             stats['confidence'] = self.stats['confidence']
+            print(track.mass_history)
+            stats['mass_history'] = track.mass_history
 
             # save out track data
             if use_compression:
