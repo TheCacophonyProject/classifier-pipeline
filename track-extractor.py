@@ -331,7 +331,7 @@ def parse_params():
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('tag', default='all', help='Tag to process, "all" processes all tags, "test" runs test cases')
+    parser.add_argument('tag', default='all', help='Tag to process, "all" processes all tags, "test" runs test cases, or a "cptv" file to run a single source.')
 
     parser.add_argument('-o', '--output-folder', default="d:\cac\\tracks", help='Folder to output tracks to')
     parser.add_argument('-s', '--source-folder', default="d:\\cac\out", help='Source folder root with class folders containing CPTV files')
@@ -354,7 +354,15 @@ def parse_params():
     extractor.enable_previews = args.enable_previews
 
     if extractor.enable_previews:
-        print(" -previews enabled.")
+        print("Previews enabled.")
+
+    if os.path.splitext(args.tag)[1].lower() == '.cptv':
+        # run single source
+        source_file = find_file(args.source_folder, args.tag)
+        tag = os.path.basename(os.path.dirname(source_file))
+        extractor.overwrite_mode = CPTVTrackExtractor.OM_ALL
+        extractor.process_file(source_file, tag, args.enable_previews)
+        return
 
     if args.tag.lower() == 'test':
         print("Running test suite")
