@@ -22,6 +22,16 @@ class Segment:
         # copy across thermal part
         self.data[-1, :, :, 0] = frame
 
+    def append_frame(self, frame):
+        """ Appends another 4 channel frame to the 27 frame buffer and shuffles other frames down.
+            Channels are thermal, filtered, u, v (where u,v are per pixel motion)
+        """
+
+        self.data[0:-1] = self.data[1:]
+
+        # copy across thermal part
+        self.data[-1, :, :, :] = frame
+
 
 class Classifier:
     """ Classifies tracking segments. """

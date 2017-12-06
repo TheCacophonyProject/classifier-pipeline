@@ -111,7 +111,8 @@ def get_image_subsection(image, bounds, window_size, boundary_value = None):
 
 
 def normalise(x):
-    return (x - np.mean(x)) / np.std(x)
+    x = x.astype(np.float32)
+    return (x - np.mean(x)) / max(0.0001, float(np.std(x)))
 
 class TrackingFrame:
     """ Defines a rectangle by the topleft point and width / height. """
@@ -399,7 +400,7 @@ class Tracker:
         return (rects, markers) if include_markers else rects
 
     def _init_classifier(self):
-        self.classifier = Classifier('./models/model4a')
+        self.classifier = Classifier('./models/model4b')
 
     def _init_video(self, title, size):
         """
@@ -704,7 +705,12 @@ class Tracker:
                     track.bounds_history.append((bounds.copy()))
 
                     if self.include_prediction:
-                        segment.append_thermal_frame(normalise(window_frames[-1].astype(np.float32)))
+                        data = np.zeros([64, 64, 4], dtype=np.float32)
+                        data[:, :, 0] = normalise(window_frames[-1])
+                        data[:, :, 1] = normalise(filtered_frames[-1])
+
+                        data[:, :, 2:3+1] = flow_frames[-1]
+                        segment.append_frame(data)
                         track.prediction_history.append(self.classifier.predict(segment))
 
             save_file = {}
@@ -731,7 +737,7 @@ class Tracker:
             stats['mass_history'] = track.mass_history
 
             if len(track.mass_history) != len(window_frames):
-                print("mass history missmatch", len(track.mass_history), len(window_frames))
+                print("mass history mismatch", len(track.mass_history), len(window_frames))
 
             # save out track data
             if use_compression:
