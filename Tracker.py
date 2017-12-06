@@ -19,6 +19,7 @@ import pytz
 import datetime
 import dateutil
 
+from Classifier import Classifier, Segment
 
 import os
 import json
@@ -109,6 +110,9 @@ def get_image_subsection(image, bounds, window_size, boundary_value = None):
     return sub_section
 
 
+def normalise(x):
+    return (x - np.mean(x)) / np.std(x)
+
 class TrackingFrame:
     """ Defines a rectangle by the topleft point and width / height. """
     def __init__(self, topleft_x, topleft_y, width, height, mass = 0):
@@ -183,6 +187,7 @@ class Track:
         self.bounds = TrackingFrame(x, y, width, height)
         self.status = Track.TARGET_NONE
         self.origin = (self.bounds.mid_x, self.bounds.mid_y)
+        self.first_frame = 0
 
         self.id = Track._track_id
         Track._track_id += 1
@@ -194,6 +199,11 @@ class Track:
 
         # history for each frame in track
         self.mass_history = []
+
+        self.bounds_history = []
+
+        # used to record prediction of what kind of animal we are tracking
+        self.prediction_history = []
 
         # average mass
         self.average_mass = 0.0
@@ -309,6 +319,12 @@ class Tracker:
         self.source = os.path.split(full_path)[1]
         self.tracks = []
 
+        # if enabled tracker will try and predict what animals are in each track
+        self.include_prediction = False
+
+        # the classifer to use to classify tracks
+        self.classifier = None
+
         # find background
         self.background, self.auto_threshold = self.get_background()
         self.average_background_delta = self.get_background_average_change()
@@ -382,6 +398,9 @@ class Tracker:
 
         return (rects, markers) if include_markers else rects
 
+    def _init_classifier(self):
+        self.classifier = Classifier('./models/model4a')
+
     def _init_video(self, title, size):
         """
         Initialise an MPEG video with given title and size
@@ -454,6 +473,7 @@ class Tracker:
         frame_number = 0
         with writer.saving(fig, filename, dpi=Tracker.VIDEO_DPI):
             for frame, marked, rects, flow, filtered in zip(self.frames, self.marked_frames, self.regions, self.flow_frames, self.filtered_frames):
+
                 # marked is an image with each pixel's value being the label, 0...n for n objects
                 # I multiply it here, but really I should use a seperate color map for this.
                 # maybe I could multiply it modulo, and offset by some amount?
@@ -466,17 +486,37 @@ class Tracker:
                 stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((filtered_frame, self.background))))
                 im.set_data(stacked)
 
-                patch_list = []
-                for rect in rects:
-                    patch = patches.Rectangle((rect.x, rect.y), rect.width, rect.height, linewidth=1, edgecolor='r', facecolor='none')
-                    ax.add_patch(patch)
-                    patch_list.append(patch)
+                # items to be removed from image after we draw it (otherwise they turn up there next frame)
+                remove_list = []
+
+                # look for any tracks that occur on this frame
+                for track in self.tracks:
+                    frame_offset = frame_number - track.first_frame
+                    if frame_offset and frame_offset < len(track.bounds_history)-1:
+
+                        # display the track
+                        rect = track.bounds_history[frame_offset]
+                        patch = patches.Rectangle((rect.x, rect.y), rect.width, rect.height, linewidth=1, edgecolor='r',
+                                                  facecolor='none')
+                        ax.add_patch(patch)
+
+                        if self.include_prediction:
+                            predicted_class = self.classifier.classes[np.argmax(track.prediction_history[frame_offset])]
+                            predicted_prob = float(max(track.prediction_history[frame_offset]))
+                            if predicted_prob < 0.5:
+                                prediction_text = "Unknown [{0:.1f}%]".format(predicted_prob*100)
+                            else:
+                                prediction_text = "{0} [{1:.1f}%]".format(predicted_class, predicted_prob * 100)
+                            text = ax.text(rect.left, rect.bottom + 5, prediction_text, color='white')
+                            remove_list.append(text)
+
+                        remove_list.append(patch)
 
                 fig.canvas.draw()
                 writer.grab_frame()
 
-                for patch in patch_list:
-                    patch.remove()
+                for item in remove_list:
+                    item.remove()
 
                 frame_number += 1
 
@@ -542,13 +582,10 @@ class Tracker:
             for region in new_regions:
                 if region in used_regions:
                     continue
-                active_tracks.append(Track(region.x, region.y, region.width, region.height, region.mass))
-                self.track_history[active_tracks[-1]] = []
-
-            # step 4. delete lost tracks
-            for track in active_tracks:
-                if track.status == Track.TARGET_LOST:
-                    pass
+                track = Track(region.x, region.y, region.width, region.height, region.mass)
+                track.first_frame = frame_number
+                active_tracks.append(track)
+                self.track_history[track] = []
 
             active_tracks = [track for track in active_tracks if track.status != Track.TARGET_LOST]
 
@@ -617,9 +654,18 @@ class Tracker:
         :param use_compression: if enabled will gzip track
         """
 
+        # todo: would be great to just have a proper segment class that handles most of the code in this function...
+
+        if self.include_prediction and self.classifier is None:
+            print("Loading classfication model.")
+            self._init_classifier()
+
         base_filename = os.path.splitext(filename)[0]
 
         self.filter_tracks()
+
+        # create segments
+        segment = Segment()
 
         for counter, track in enumerate(self.tracks):
 
@@ -654,6 +700,12 @@ class Tracker:
                     im.set_data(draw_frame)
                     fig.canvas.draw()
                     writer.grab_frame()
+
+                    track.bounds_history.append((bounds.copy()))
+
+                    if self.include_prediction:
+                        segment.append_thermal_frame(normalise(window_frames[-1].astype(np.float32)))
+                        track.prediction_history.append(self.classifier.predict(segment))
 
             save_file = {}
             save_file['track_id'] = track.id
