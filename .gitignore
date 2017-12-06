@@ -23,6 +23,7 @@ var/
 wheels/
 *.egg-info/
 .installed.cfg
+.idea
 *.egg
 
 # PyInstaller
@@ -99,3 +100,5 @@ ENV/
 
 # mypy
 .mypy_cache/
+Track Extractor Notes.docx
+Track Extractor Todo.xlsx

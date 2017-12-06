@@ -54,7 +54,7 @@ class CPTVTrackExtractor:
     """
 
     # version number.  Recorded into stats file when a clip is processed.
-    VERSION = 2
+    VERSION = 3
 
     # all files will be reprocessed
     OM_ALL = 'all'
@@ -240,6 +240,8 @@ class CPTVTrackExtractor:
             confidence = meta_data['Tags'][0]['confidence']
         else:
             print(" - Warning: no metadata found for file.")
+            confidence = 0.0
+
 
         tracker = Tracker.Tracker(full_path)
         tracker.max_tracks = max_tracks
