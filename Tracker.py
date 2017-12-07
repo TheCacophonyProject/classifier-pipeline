@@ -706,39 +706,43 @@ class Tracker:
             flow_frames = []
             motion_vectors = []
 
-            # setup MPEG writer
+            # export a MPEG preview of the track
             if include_track_previews:
                 (fig, ax, im, writer) = self._init_video(MPEG_filename, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
-
-            # process the frames
-            with writer.saving(fig, MPEG_filename, dpi=Tracker.VIDEO_DPI):
-                for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
-
-                    window_frames.append(get_image_subsection(self.frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
-                    filtered_frames.append(get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
-                    flow_frames.append(get_image_subsection(self.flow_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
-
-                    motion_vectors.append((vx, vy))
-
-                    if include_track_previews:
+                with writer.saving(fig, MPEG_filename, dpi=Tracker.VIDEO_DPI):
+                    for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
                         # get a frame to be used for the preview
-                        draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
+                        draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds,
+                                                          (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
                         draw_frame = 5 * draw_frame + Tracker.TEMPERATURE_MIN
 
                         im.set_data(draw_frame)
                         fig.canvas.draw()
                         writer.grab_frame()
 
-                    track.bounds_history.append(bounds.copy())
+                plt.close(fig)
 
-                    if self.include_prediction:
-                        data = np.zeros([64, 64, 4], dtype=np.float32)
-                        data[:, :, 0] = normalise(window_frames[-1])
-                        data[:, :, 1] = normalise(filtered_frames[-1])
-                        data[:, :, 2:3+1] = flow_frames[-1]
-                        segment.append_frame(data)
-                        track.prediction_history.append(self.classifier.predict(segment))
+            # export the track file
+            for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
 
+                window_frames.append(get_image_subsection(self.frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
+                filtered_frames.append(get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
+                flow_frames.append(get_image_subsection(self.flow_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
+
+                motion_vectors.append((vx, vy))
+
+                track.bounds_history.append(bounds.copy())
+
+                if self.include_prediction:
+                    data = np.zeros([64, 64, 4], dtype=np.float32)
+                    data[:, :, 0] = normalise(window_frames[-1])
+                    data[:, :, 1] = normalise(filtered_frames[-1])
+                    data[:, :, 2:3+1] = flow_frames[-1]
+                    segment.append_frame(data)
+                    track.prediction_history.append(self.classifier.predict(segment))
+
+
+            # export track stats.
             save_file = {}
             save_file['track_id'] = track.id
             save_file['frames'] = window_frames
@@ -775,6 +779,3 @@ class Tracker:
 
             with open(Stats_filename, 'w') as f:
                 json.dump(stats, f, indent=4, cls=CustomJSONEncoder)
-
-            if include_track_previews:
-                plt.close(fig)

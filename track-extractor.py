@@ -88,7 +88,6 @@ class CPTVTrackExtractor:
             self.log_warning("FFMPEG is not installed.  MPEG output disabled")
             self.MPEGWriter = None
 
-
     def load_custom_colormap(self, filename):
         """ Loads a custom colormap used for creating MPEG previews of tracks. """
 
