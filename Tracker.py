@@ -26,12 +26,16 @@ import json
 import pickle
 import gzip
 
-class DateTimeEncoder(json.JSONEncoder):
+class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime.datetime):
             return obj.isoformat()
             # Let the base class default method raise the TypeError
             return json.JSONEncoder.default(self, obj)
+        if isinstance(obj, TrackingFrame):
+            return (int(obj.left), int(obj.top), int(obj.right), int(obj.bottom))
+        # Let the base class default method raise the TypeError
+        return json.JSONEncoder.default(self, obj)
 
 
 def load_tracker_stats(filename):
@@ -162,6 +166,9 @@ class TrackingFrame:
         return self.width * self.height
 
     def __repr__(self):
+        return "({0},{1},{2},{3})".format(self.left, self.top, self.right, self.bottom)
+
+    def __str__(self):
         return "<({0},{1})-{2}x{3}>".format(self.x, self.y, self.width, self.height)
 
 
@@ -368,7 +375,7 @@ class Tracker:
 
         # we need to convert datetime to a string so it will serialise through json
         with open(filename, 'w') as stats_file:
-            json.dump(self.stats, stats_file, indent=4,  cls=DateTimeEncoder)
+            json.dump(self.stats, stats_file, indent=4,  cls=CustomJSONEncoder)
 
 
     def load(self, source):
@@ -715,7 +722,7 @@ class Tracker:
                     fig.canvas.draw()
                     writer.grab_frame()
 
-                    track.bounds_history.append((bounds.copy()))
+                    track.bounds_history.append(bounds.copy())
 
                     if self.include_prediction:
                         data = np.zeros([64, 64, 4], dtype=np.float32)
@@ -748,6 +755,7 @@ class Tracker:
             stats['confidence'] = self.stats['confidence']
             stats['is_static_background'] = self.is_static_background
             stats['mass_history'] = track.mass_history
+            stats['bounds_history'] = track.bounds_history
 
             if len(track.mass_history) != len(window_frames):
                 print("mass history mismatch", len(track.mass_history), len(window_frames))
@@ -759,6 +767,6 @@ class Tracker:
                 pickle.dump(save_file, open(TRK_filename, 'wb'))
 
             with open(Stats_filename, 'w') as f:
-                json.dump(stats, f, indent=4, cls=DateTimeEncoder)
+                json.dump(stats, f, indent=4, cls=CustomJSONEncoder)
 
             plt.close(fig)
