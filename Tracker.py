@@ -80,10 +80,10 @@ def apply_threshold(frame, threshold = 50.0):
     return thresh
 
 
-def get_image_subsection(image, bounds, window_size, boundary_value=None):
+def get_image_subsection(image, bounds, window_size):
     """
     Returns a subsection of the original image bounded by bounds.
-    Area outside of frame will be filled with boundary_value.  If None the median value will be used.
+    Area outside of frame will be filled by repeating edge pixels
     """
 
     # cropping method.  just center on the bounds center and take a section there.
@@ -91,7 +91,7 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
     if len(image.shape) == 2:
         image = image[:,:,np.newaxis]
 
-    padding = 50
+    padding = 40
 
     midx = int(bounds.mid_x + padding)
     midy = int(bounds.mid_y + padding)
@@ -100,11 +100,7 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
 
     image_height, image_width, channels = image.shape
 
-    if boundary_value is None: boundary_value = np.median(image)
-
-    # note, we take the median of all channels, should really be on a per channel basis.
-    enlarged_frame = np.ones([image_height + padding*2, image_width + padding*2, channels], dtype=np.float16) * boundary_value
-    enlarged_frame[padding:-padding,padding:-padding] = image
+    enlarged_frame = np.pad(image, [(padding, padding), (padding, padding), (0,0)], mode='edge')
 
     sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_width:midx+window_half_width]
 
@@ -116,7 +112,7 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
 
 def normalise(x):
     x = x.astype(np.float32)
-    return (x - np.mean(x)) / max(0.0001, float(np.std(x)))
+    return (x - np.mean(x)) / max(0.000001, float(np.std(x)))
 
 class TrackingFrame:
     """ Defines a rectangle by the topleft point and width / height. """
@@ -710,11 +706,12 @@ class Tracker:
                 for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
 
                     window_frames.append(get_image_subsection(self.frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
-                    filtered_frames.append(get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE),0))
-                    flow_frames.append(get_image_subsection(self.flow_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE,0)))
+                    filtered_frames.append(get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
+                    flow_frames.append(get_image_subsection(self.flow_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
 
                     motion_vectors.append((vx, vy))
 
+                    # get a frame to be used for the preview
                     draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
                     draw_frame = 5 * draw_frame + Tracker.TEMPERATURE_MIN
 
