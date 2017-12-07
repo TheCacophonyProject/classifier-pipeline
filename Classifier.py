@@ -39,9 +39,12 @@ class Classifier:
 
         # TensorFlow session:
         # note we disable the GPU, it won't be needed as classification is very quick anyway.
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.01)
         config = tf.ConfigProto(
-            device_count={'GPU': 0}
+            device_count={'GPU': 0},
+            gpu_options=gpu_options
         )
+
         self.sess = tf.Session(config=config)
 
         # predicton node

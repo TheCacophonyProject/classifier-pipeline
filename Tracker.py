@@ -67,7 +67,7 @@ def load_track_stats(filename):
 def apply_threshold(frame, threshold = 50.0):
     """ Creates a binary mask out of an image by applying a threshold.
         Any pixels more than threshold ahove the median pixel will be set to 1, all others are set to 0.
-        A blur is also aplied as a filtering step
+        A blur is also applied as a filtering step
     """
     frame = cv2.GaussianBlur(frame, (5,5), 0)
     thresh = frame - np.median(frame) - threshold
