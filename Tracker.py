@@ -326,6 +326,9 @@ class Tracker:
         self.source = os.path.split(full_path)[1]
         self.tracks = []
 
+        # class used to write MPEG videos, must be set to enable MPEG video output
+        self.MPEGWriter = None
+
         # if enabled tracker will try and predict what animals are in each track
         self.include_prediction = False
 
@@ -419,13 +422,11 @@ class Tracker:
         :return: returns a tuple containing (figure, axis, image, and writer)
         """
 
-        try:
-            MPEGWriter = manimation.writers['ffmpeg']
-        except Exception as e:
-            raise Exception("MPEG Writer error {0}.  Try installing FFMPEG".format(e))
+        if self.MPEGWriter is None:
+            raise Exception("MPEGWriter not assigned, can not initialise video export.")
 
         metadata = dict(title=title, artist='Cacophony Project')
-        writer = MPEGWriter(fps=9, metadata=metadata)
+        writer = self.MPEGWriter(fps=9, metadata=metadata)
 
         # we create a figure of the appropriate dims.  Assuming 100 dpi
         figure_size = (size[0]/25, size[1]/25)
@@ -469,6 +470,10 @@ class Tracker:
         """
         Exports tracking information to a video file for debugging.
         """
+
+        # Display requires the MPEGWriting to be set.
+        if self.MPEGWriter is None:
+            raise Exception("Can not generate clip preview as MPEGWriter is not initialized.  Try installing FFMPEG.")
 
         if colormap is None: colormap = plt.cm.jet
 
@@ -664,7 +669,7 @@ class Tracker:
         track_scores.sort(reverse=True)
         self.tracks = [track for (score, track) in track_scores]
 
-    def export(self, filename, use_compression = False):
+    def export(self, filename, use_compression=False, include_track_previews=False):
         """
         Export tracks to given filename base.  An MPEG and TRK file will be exported.
         :param filename: full path and filename to export track to
@@ -672,6 +677,9 @@ class Tracker:
         """
 
         # todo: would be great to just have a proper segment class that handles most of the code in this function...
+
+        if include_track_previews and self.MPEGWriter is None:
+            raise Exception("Track previews require MPEGWriter to be initialized.")
 
         if self.include_prediction and self.classifier is None:
             print("Loading classfication model.")
@@ -699,7 +707,8 @@ class Tracker:
             motion_vectors = []
 
             # setup MPEG writer
-            (fig, ax, im, writer) = self._init_video(MPEG_filename, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
+            if include_track_previews:
+                (fig, ax, im, writer) = self._init_video(MPEG_filename, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
 
             # process the frames
             with writer.saving(fig, MPEG_filename, dpi=Tracker.VIDEO_DPI):
@@ -711,13 +720,14 @@ class Tracker:
 
                     motion_vectors.append((vx, vy))
 
-                    # get a frame to be used for the preview
-                    draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
-                    draw_frame = 5 * draw_frame + Tracker.TEMPERATURE_MIN
+                    if include_track_previews:
+                        # get a frame to be used for the preview
+                        draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
+                        draw_frame = 5 * draw_frame + Tracker.TEMPERATURE_MIN
 
-                    im.set_data(draw_frame)
-                    fig.canvas.draw()
-                    writer.grab_frame()
+                        im.set_data(draw_frame)
+                        fig.canvas.draw()
+                        writer.grab_frame()
 
                     track.bounds_history.append(bounds.copy())
 
@@ -766,4 +776,5 @@ class Tracker:
             with open(Stats_filename, 'w') as f:
                 json.dump(stats, f, indent=4, cls=CustomJSONEncoder)
 
-            plt.close(fig)
+            if include_track_previews:
+                plt.close(fig)

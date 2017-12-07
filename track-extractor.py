@@ -74,16 +74,19 @@ class CPTVTrackExtractor:
         self.overwrite_mode = CPTVTrackExtractor.OM_OLD_VERSION
         self.enable_previews = False
 
-        self._init_MpegWriter()
+        self.MPEGWriter  = None
 
-    def _init_MpegWriter(self):
+        self._init_MPEGWriter()
+
+    def _init_MPEGWriter(self):
         """ setup our MPEG4 writer.  Requires FFMPEG to be installed. """
         plt.rcParams['animation.ffmpeg_path'] = 'C:\\ffmpeg\\bin\\ffmpeg.exe'
         try:
-            self.MpegWriter = manimation.writers['ffmpeg']
+            self.MPEGWriter = manimation.writers['ffmpeg']
+            self.log_message("FFMPEG found.")
         except:
             self.log_warning("FFMPEG is not installed.  MPEG output disabled")
-            self.MpegWriter = None
+            self.MPEGWriter = None
 
 
     def load_custom_colormap(self, filename):
@@ -247,13 +250,17 @@ class CPTVTrackExtractor:
         tracker.include_prediction = create_preview_file
         tracker.max_tracks = max_tracks
         tracker.tag = tag
+
+        # pass the mpeg writer to the tracker so that it can output video files
+        tracker.MPEGWriter = self.MPEGWriter
+
         # save some additional stats
         tracker.stats['confidence'] = confidence
         tracker.stats['version'] = CPTVTrackExtractor.VERSION
 
         tracker.extract()
 
-        tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=False)
+        tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=False, include_track_previews=self.MPEGWriter is not None)
 
         if create_preview_file:
             tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
