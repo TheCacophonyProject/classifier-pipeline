@@ -746,6 +746,7 @@ class Tracker:
             stats['filename'] = self.source
             stats['threshold'] = self.auto_threshold
             stats['confidence'] = self.stats['confidence']
+            stats['is_static_background'] = self.is_static_background
             stats['mass_history'] = track.mass_history
 
             if len(track.mass_history) != len(window_frames):
