@@ -54,7 +54,7 @@ class CPTVTrackExtractor:
     """
 
     # version number.  Recorded into stats file when a clip is processed.
-    VERSION = 3
+    VERSION = 4
 
     # all files will be reprocessed
     OM_ALL = 'all'

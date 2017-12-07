@@ -64,13 +64,13 @@ def load_track_stats(filename):
     return stats
 
 
-def apply_threshold(frame, threshold = 'auto'):
+def apply_threshold(frame, threshold = 50.0):
     """ Creates a binary mask out of an image by applying a threshold.
-        If threshold is not set a blend of the median, and max value of the image will be used.
+        Any pixels more than threshold ahove the median pixel will be set to 1, all others are set to 0.
+        A blur is also aplied as a filtering step
     """
-    if threshold == 'auto': threshold = (np.median(frame) + (25.0 if Tracker.USE_BACKGROUND_SUBTRACTION else 50.0))
     frame = cv2.GaussianBlur(frame, (5,5), 0)
-    thresh = frame - threshold
+    thresh = frame - np.median(frame) - threshold
     thresh[thresh < 0] = 0
     thresh[thresh > 0] = 1
     return thresh
@@ -302,7 +302,10 @@ class Tracker:
     TEMPERATURE_MAX = 4200
 
     # any clips with a mean temperature hotter than this will be excluded
-    MAX_TEMPERATURE_THRESHOLD = 3800
+    MAX_MEAN_TEMPERATURE_THRESHOLD = 3800
+
+    # any clips with a temperature dynamic range greater than this will be excluded
+    MAX_TEMPERATURE_RANGE_THRESHOLD = 2000
 
     # if the mean pixel change is below this threshold then classify the video as having a static background
     STATIC_BACKGROUND_THRESHOLD = 5.0
@@ -552,7 +555,11 @@ class Tracker:
         self.flow_frames = []
 
         # don't process clips that are too hot.
-        if self.stats['mean_temp'] > Tracker.MAX_TEMPERATURE_THRESHOLD:
+        if self.stats['mean_temp'] > Tracker.MAX_MEAN_TEMPERATURE_THRESHOLD:
+            return
+
+        # don't process clips with too hot a temperature difference
+        if self.stats['max_temp'] - self.stats['min_temp'] > Tracker.MAX_TEMPERATURE_RANGE_THRESHOLD :
             return
 
         Track._track_id = 1
@@ -566,7 +573,7 @@ class Tracker:
 
             self.marked_frames.append(markers)
 
-            filtered = frame - mask - threshold
+            filtered = frame - mask - (threshold / 2)
             filtered[filtered < 0] = 0
             self.filtered_frames.append(filtered)
 
