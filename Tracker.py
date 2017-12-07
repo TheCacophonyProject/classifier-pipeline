@@ -76,10 +76,10 @@ def apply_threshold(frame, threshold = 'auto'):
     return thresh
 
 
-def get_image_subsection(image, bounds, window_size, boundary_value = None):
+def get_image_subsection(image, bounds, window_size, boundary_value=None):
     """
     Returns a subsection of the original image bounded by bounds.
-    Area outside of frame will be filled with boundary_vaule.  If None the median value will be used.
+    Area outside of frame will be filled with boundary_value.  If None the median value will be used.
     """
 
     # cropping method.  just center on the bounds center and take a section there.
@@ -484,7 +484,9 @@ class Tracker:
                 filtered_frame = 1.5 * (frame - self.background) + Tracker.TEMPERATURE_MIN #use 28000 as baseline (black) background, but bump up the brightness a little.
 
                 # really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
-                stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((filtered_frame, self.background))))
+                # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
+                flow_magnitude = (flow[:,:,0]**2 + flow[:,:,1]**2) ** 0.5
+                stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((filtered_frame, 200 * flow_magnitude + Tracker.TEMPERATURE_MIN))))
                 im.set_data(stacked)
 
                 # items to be removed from image after we draw it (otherwise they turn up there next frame)
@@ -555,13 +557,9 @@ class Tracker:
 
         Track._track_id = 1
 
-        prev_frame = self.frames[0]
+        tvl1 = cv2.createOptFlow_DualTVL1()
 
         for frame_number, frame in enumerate(self.frames):
-
-            # calculate optical flow
-            self.flow_frames.append(cv2.calcOpticalFlowFarneback(prev_frame, frame, None, 0.5, 3, 15, 3, 5, 1.2, 0))
-            prev_frame = frame
 
             # step 1. find regions of interest in this frame
             new_regions, markers = self._get_regions_of_interest(frame - mask, threshold, include_markers=True)
@@ -571,6 +569,16 @@ class Tracker:
             filtered = frame - mask - threshold
             filtered[filtered < 0] = 0
             self.filtered_frames.append(filtered)
+
+            # calculate optical flow (might be better to use DualTVL1 algorithm
+            flow = np.zeros([frame.shape[0], frame.shape[1], 2], dtype=np.uint8)
+            if len(self.filtered_frames) >= 2:
+                prev_gray_frame = self.filtered_frames[-2].astype(np.uint8)
+                current_gray_frame = self.filtered_frames[-1].astype(np.uint8)
+                flow = tvl1.calc(prev_gray_frame, current_gray_frame, flow)
+
+            flow = flow.astype(np.float16)
+            self.flow_frames.append(flow)
 
             used_regions = []
 

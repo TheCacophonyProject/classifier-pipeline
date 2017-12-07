@@ -37,7 +37,8 @@ class Classifier:
     """ Classifies tracking segments. """
     def __init__(self, model_path):
 
-        # TensorFlow session
+        # TensorFlow session:
+        # note we disable the GPU, it won't be needed as classification is very quick anyway.
         config = tf.ConfigProto(
             device_count={'GPU': 0}
         )
