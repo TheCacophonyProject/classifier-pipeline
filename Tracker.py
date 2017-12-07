@@ -66,11 +66,11 @@ def load_track_stats(filename):
 
 def apply_threshold(frame, threshold = 50.0):
     """ Creates a binary mask out of an image by applying a threshold.
-        Any pixels more than threshold ahove the median pixel will be set to 1, all others are set to 0.
+        Any pixels more than the threshold are set 1, all others are set to 0.
         A blur is also applied as a filtering step
     """
-    frame = cv2.GaussianBlur(frame, (5,5), 0)
-    thresh = frame - np.median(frame) - threshold
+
+    thresh = cv2.GaussianBlur(frame, (5,5), 0) - threshold
     thresh[thresh < 0] = 0
     thresh[thresh > 0] = 1
     return thresh
@@ -482,14 +482,10 @@ class Tracker:
                 # I multiply it here, but really I should use a seperate color map for this.
                 # maybe I could multiply it modulo, and offset by some amount?
 
-                # note: it would much be better to have 4 seperate figures, with their own colour
-                # palettes, but this was easier to setup for the moment.
-                filtered_frame = 1.5 * (frame - self.background) + Tracker.TEMPERATURE_MIN #use 28000 as baseline (black) background, but bump up the brightness a little.
-
                 # really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
                 # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
                 flow_magnitude = (flow[:,:,0]**2 + flow[:,:,1]**2) ** 0.5
-                stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((filtered_frame, 200 * flow_magnitude + Tracker.TEMPERATURE_MIN))))
+                stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((filtered + Tracker.TEMPERATURE_MIN, 200 * flow_magnitude + Tracker.TEMPERATURE_MIN))))
                 im.set_data(stacked)
 
                 # items to be removed from image after we draw it (otherwise they turn up there next frame)
@@ -498,7 +494,7 @@ class Tracker:
                 # look for any tracks that occur on this frame
                 for track in self.tracks:
                     frame_offset = frame_number - track.first_frame
-                    if frame_offset and frame_offset < len(track.bounds_history)-1:
+                    if frame_offset > 0 and frame_offset < len(track.bounds_history)-1:
 
                         # display the track
                         rect = track.bounds_history[frame_offset]
@@ -544,7 +540,7 @@ class Tracker:
         else:
             # just use a blank mask
             mask = np.zeros_like(self.frames[0])
-            threshold = 50.0
+            threshold = 75.0
 
         active_tracks = []
 
@@ -568,12 +564,14 @@ class Tracker:
 
         for frame_number, frame in enumerate(self.frames):
 
-            # step 1. find regions of interest in this frame
+            # find regions of interest in this frame
             new_regions, markers = self._get_regions_of_interest(frame - mask, threshold, include_markers=True)
 
             self.marked_frames.append(markers)
 
-            filtered = frame - mask - (threshold / 2)
+            # create a filtered frame
+            filtered = frame - mask
+            filtered = filtered - np.median(filtered)
             filtered[filtered < 0] = 0
             self.filtered_frames.append(filtered)
 
@@ -723,7 +721,6 @@ class Tracker:
                         data = np.zeros([64, 64, 4], dtype=np.float32)
                         data[:, :, 0] = normalise(window_frames[-1])
                         data[:, :, 1] = normalise(filtered_frames[-1])
-
                         data[:, :, 2:3+1] = flow_frames[-1]
                         segment.append_frame(data)
                         track.prediction_history.append(self.classifier.predict(segment))
