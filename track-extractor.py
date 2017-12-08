@@ -14,7 +14,10 @@ import Tracker
 import ast
 import glob
 import argparse
+import time
 
+import queue
+import threading
 
 def purge(dir, pattern):
     for f in glob.glob(os.path.join(dir, pattern)):
@@ -33,18 +36,59 @@ def find_file(root, filename):
     return None
 
 
+class WorkPool:
+    """
+    Worker pool for processing jobs.
+    """
+
+    def __init__(self, num_workers, run, *args):
+        self._q = queue.Queue()
+        args = (self._q, ) + args
+        self._threads = []
+        for _ in range(num_workers):
+            t = threading.Thread(target=run, args=args)
+            t.start()
+            self._threads.append(t)
+
+    def put(self, job):
+        self._q.put(job)
+
+    def stop(self):
+        self._q.join()
+
+        for _ in self._threads:
+            self._q.put(None)
+        for t in self._threads:
+            t.join()
+
+
 class TrackEntry:
     """ Database entry for a track """
 
     def __init__(self):
         pass
 
+
 class TrackerTestCase():
     def __init__(self):
         self.source = None
         self.tracks = []
 
+def job_processor(q, extractor):
+    while True:
+        job = q.get()
 
+        if job is None:
+            break
+
+        try:
+            extractor.process_file(*job)
+        except Exception as e:
+            print("Error: ",e)
+        finally:
+            q.task_done()
+
+        time.sleep(0.001)
 
 class CPTVTrackExtractor:
     """
@@ -76,6 +120,9 @@ class CPTVTrackExtractor:
         self.display_times = False
 
         self.MPEGWriter  = None
+
+        # number of threads to use when processing files.
+        self.workers_threads = 1
 
         self._init_MPEGWriter()
 
@@ -136,10 +183,14 @@ class CPTVTrackExtractor:
         if tag is None:
             tag = os.path.basename(folder_path).upper()
 
+        pool = WorkPool(self.workers_threads, job_processor, self)
+
         for file_name in os.listdir(folder_path):
             full_path = os.path.join(folder_path, file_name)
             if os.path.isfile(full_path) and os.path.splitext(full_path )[1].lower() == '.cptv':
-                self.process_file(full_path, tag, self.enable_previews)
+                pool.put((full_path, tag, self.enable_previews))
+
+        pool.stop()
 
     def log_message(self, message):
         """ Record message in log.  Will be printed if verbose is enabled. """
@@ -185,7 +236,7 @@ class CPTVTrackExtractor:
     def process_file(self, full_path, tag, create_preview_file = False):
         """
         Extract tracks from specific file, and assign given tag.
-        :param full: path: path to CPTV file to be processed
+        :param full_path: path: path to CPTV file to be processed
         :param tag: the tag to assign all tracks from this CPTV files
         :param create_preview_file: if enabled creates an MPEG preview file showing the tracking working.  This
             process can be quite time consuming.
@@ -362,12 +413,18 @@ def parse_params():
     parser.add_argument('-p', '--enable-previews', action='store_true', help='Enables preview MPEG files (can be slow)')
     parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
     parser.add_argument('-b', '--benchmark', action='store_true', help='Run a benchmark on target file.')
+    parser.add_argument('-w', '--workers', default='2', help='Number of worker threads to use.')
 
     args = parser.parse_args()
 
     # setup extractor
 
     extractor = CPTVTrackExtractor(args.output_folder)
+
+    extractor.workers_threads = int(args.workers)
+
+    if extractor.workers_threads >= 2:
+        print("Using {0} worker threads".format(extractor.workers_threads))
 
     # this colormap is specially designed for heat maps
     extractor.load_custom_colormap(args.color_map)
