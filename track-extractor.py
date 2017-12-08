@@ -16,8 +16,7 @@ import glob
 import argparse
 import time
 
-import queue
-import threading
+from multiprocessing import Pool
 
 def purge(dir, pattern):
     for f in glob.glob(os.path.join(dir, pattern)):
@@ -35,33 +34,6 @@ def find_file(root, filename):
             return os.path.join(root, filename)
     return None
 
-
-class WorkPool:
-    """
-    Worker pool for processing jobs.
-    """
-
-    def __init__(self, num_workers, run, *args):
-        self._q = queue.Queue()
-        args = (self._q, ) + args
-        self._threads = []
-        for _ in range(num_workers):
-            t = threading.Thread(target=run, args=args)
-            t.start()
-            self._threads.append(t)
-
-    def put(self, job):
-        self._q.put(job)
-
-    def stop(self):
-        self._q.join()
-
-        for _ in self._threads:
-            self._q.put(None)
-        for t in self._threads:
-            t.join()
-
-
 class TrackEntry:
     """ Database entry for a track """
 
@@ -74,21 +46,11 @@ class TrackerTestCase():
         self.source = None
         self.tracks = []
 
-def job_processor(q, extractor):
-    while True:
-        job = q.get()
-
-        if job is None:
-            break
-
-        try:
-            extractor.process_file(*job)
-        except Exception as e:
-            print("Error: ",e)
-        finally:
-            q.task_done()
-
-        time.sleep(0.001)
+def process_job(job):
+    """ Just a wrapper to pass tupple containing (extractor, *params) to the process_file method. """
+    extractor = job[0]
+    params = job[1:]
+    extractor.process_file(*params)
 
 class CPTVTrackExtractor:
     """
@@ -176,6 +138,102 @@ class CPTVTrackExtractor:
             self.process_folder(folder)
         print("Done.")
 
+    def process_file(self, full_path, tag, create_preview_file=False):
+        """
+        Extract tracks from specific file, and assign given tag.
+        :param full_path: path: path to CPTV file to be processed
+        :param tag: the tag to assign all tracks from this CPTV files
+        :param create_preview_file: if enabled creates an MPEG preview file showing the tracking working.  This
+            process can be quite time consuming.
+        :returns the tracker object
+        """
+
+        base_filename = os.path.splitext(os.path.split(full_path)[1])[0]
+        cptv_filename = base_filename + '.cptv'
+        preview_filename = base_filename + '-preview' + '.mp4'
+        stats_filename = base_filename + '.txt'
+
+        destination_folder = os.path.join(self.out_folder, tag.lower())
+
+        stats_path_and_filename = os.path.join(destination_folder, stats_filename)
+
+        # read additional information from hints file
+        if cptv_filename in self.hints:
+            max_tracks = self.hints[cptv_filename]
+            if max_tracks == 0:
+                return
+        else:
+            max_tracks = None
+
+        # make destination folder if required
+        try:
+            os.stat(destination_folder)
+        except:
+            self.log_message(" Making path " + destination_folder)
+            os.mkdir(destination_folder)
+
+        # check if we have already processed this file
+        if self.needs_processing(stats_path_and_filename):
+            self.log_message("Processing {0} [{1}]".format(cptv_filename, tag))
+        else:
+            return
+
+        # delete any previous files
+        purge(destination_folder, base_filename + "*.trk")
+        purge(destination_folder, base_filename + "*.mp4")
+        purge(destination_folder, base_filename + "*.txt")
+
+        # read metadata
+        meta_data_filename = os.path.splitext(full_path)[0] + ".dat"
+        if os.path.exists(meta_data_filename):
+
+            meta_data = ast.literal_eval(open(meta_data_filename, 'r').read())
+
+            tag_count = len(meta_data['Tags'])
+
+            # we can only handle one tagged animal at a time here.
+            if tag_count != 1:
+                return
+
+            confidence = meta_data['Tags'][0]['confidence']
+        else:
+            print(" - Warning: no metadata found for file.")
+            confidence = 0.0
+
+        # load the track
+        tracker = Tracker.Tracker(full_path)
+        tracker.include_prediction = create_preview_file
+        tracker.max_tracks = max_tracks
+        tracker.tag = tag
+
+        # pass the mpeg writer to the tracker so that it can output video files
+        tracker.MPEGWriter = self.MPEGWriter
+
+        # save some additional stats
+        tracker.stats['confidence'] = confidence
+        tracker.stats['version'] = CPTVTrackExtractor.VERSION
+
+        tracker.extract()
+
+        tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=False,
+                       include_track_previews=create_preview_file and self.MPEGWriter is not None)
+
+        if create_preview_file:
+            tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
+
+        tracker.save_stats(stats_path_and_filename)
+
+        time_stats = tracker.stats['time_per_frame']
+        print("Times (per frame): [total:{}ms]  load:{}ms extract:{}ms optical flow:{}ms export:{}ms".format(
+            time_stats['total'],
+            time_stats['load'],
+            time_stats['extract'],
+            time_stats['optical_flow'],
+            time_stats['export']
+        ))
+
+        return tracker
+
     def process_folder(self, folder_path, tag = None):
         """ Extract tracks from all videos in given folder.
             All tracks will be tagged with 'tag', which defaults to the folder name if not specified."""
@@ -183,14 +241,23 @@ class CPTVTrackExtractor:
         if tag is None:
             tag = os.path.basename(folder_path).upper()
 
-        pool = WorkPool(self.workers_threads, job_processor, self)
+        print('adding jobs')
+        #pool = WorkPool(self.workers_threads, job_processor, self)
+        pool = Pool(self.workers_threads)
+        jobs = []
 
         for file_name in os.listdir(folder_path):
             full_path = os.path.join(folder_path, file_name)
             if os.path.isfile(full_path) and os.path.splitext(full_path )[1].lower() == '.cptv':
-                pool.put((full_path, tag, self.enable_previews))
+                jobs.append((self, full_path, tag, self.enable_previews))
+
+        pool.map(process_job,jobs)
+
+        print("joining")
 
         pool.stop()
+
+        print('done')
 
     def log_message(self, message):
         """ Record message in log.  Will be printed if verbose is enabled. """
@@ -233,102 +300,6 @@ class CPTVTrackExtractor:
 
         raise Exception("Invalid overwrite mode {0}".format(self.overwrite_mode))
 
-    def process_file(self, full_path, tag, create_preview_file = False):
-        """
-        Extract tracks from specific file, and assign given tag.
-        :param full_path: path: path to CPTV file to be processed
-        :param tag: the tag to assign all tracks from this CPTV files
-        :param create_preview_file: if enabled creates an MPEG preview file showing the tracking working.  This
-            process can be quite time consuming.
-        :returns the tracker object
-        """
-
-        base_filename = os.path.splitext(os.path.split(full_path)[1])[0]
-        cptv_filename = base_filename + '.cptv'
-        preview_filename = base_filename + '-preview' + '.mp4'
-        stats_filename = base_filename + '.txt'
-
-        destination_folder = os.path.join(self.out_folder, tag.lower())
-
-        stats_path_and_filename = os.path.join(destination_folder, stats_filename)
-
-        # read additional information from hints file
-        if cptv_filename in self.hints:
-            max_tracks = self.hints[cptv_filename ]
-            if max_tracks == 0:
-                return
-        else:
-            max_tracks = None
-
-        # make destination folder if required
-        try:
-            os.stat(destination_folder)
-        except:
-            self.log_message(" Making path " + destination_folder)
-            os.mkdir(destination_folder)
-
-        # check if we have already processed this file
-        if self.needs_processing(stats_path_and_filename ):
-            self.log_message("Processing {0} [{1}]".format(cptv_filename , tag))
-        else:
-            return
-
-        # delete any previous files
-        purge(destination_folder, base_filename + "*.trk")
-        purge(destination_folder, base_filename + "*.mp4")
-        purge(destination_folder, base_filename + "*.txt")
-
-        # read metadata
-        meta_data_filename = os.path.splitext(full_path)[0] + ".dat"
-        if os.path.exists(meta_data_filename):
-
-            meta_data = ast.literal_eval(open(meta_data_filename,'r').read())
-
-            tag_count = len(meta_data['Tags'])
-
-            # we can only handle one tagged animal at a time here.
-            if tag_count != 1:
-                return
-
-            confidence = meta_data['Tags'][0]['confidence']
-        else:
-            print(" - Warning: no metadata found for file.")
-            confidence = 0.0
-
-
-        # load the track
-        tracker = Tracker.Tracker(full_path)
-        tracker.include_prediction = create_preview_file
-        tracker.max_tracks = max_tracks
-        tracker.tag = tag
-
-
-        # pass the mpeg writer to the tracker so that it can output video files
-        tracker.MPEGWriter = self.MPEGWriter
-
-        # save some additional stats
-        tracker.stats['confidence'] = confidence
-        tracker.stats['version'] = CPTVTrackExtractor.VERSION
-
-        tracker.extract()
-
-        tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=False, include_track_previews=create_preview_file and self.MPEGWriter is not None)
-
-        if create_preview_file:
-            tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
-
-        tracker.save_stats(stats_path_and_filename)
-
-        time_stats = tracker.stats['time_per_frame']
-        print("Times (per frame): [total:{}ms]  load:{}ms extract:{}ms optical flow:{}ms export:{}ms".format(
-            time_stats['total'],
-            time_stats['load'],
-            time_stats['extract'],
-            time_stats['optical_flow'],
-            time_stats['export']
-        ))
-
-        return tracker
 
     def run_test(self, source_folder, test: TrackerTestCase):
         """ Runs a specific test case. """
@@ -414,6 +385,7 @@ def parse_params():
     parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
     parser.add_argument('-b', '--benchmark', action='store_true', help='Run a benchmark on target file.')
     parser.add_argument('-w', '--workers', default='2', help='Number of worker threads to use.')
+    parser.add_argument('-f', '--force-overwrite', default='old', help='Overwrite mode.  Options are all, old, or none.')
 
     args = parser.parse_args()
 
@@ -425,6 +397,11 @@ def parse_params():
 
     if extractor.workers_threads >= 2:
         print("Using {0} worker threads".format(extractor.workers_threads))
+
+    # set overwrite mode
+    if args.force_overwrite.lower() not in ['all','old','none']:
+        raise Exception("Valid overwrite modes are all, old, or none.")
+    extractor.overwrite_mode = args.force_overwrite.lower()
 
     # this colormap is specially designed for heat maps
     extractor.load_custom_colormap(args.color_map)
@@ -464,6 +441,6 @@ def parse_params():
 def main():
     parse_params()
 
-
-main()
+if __name__ == '__main__':
+    main()
 
