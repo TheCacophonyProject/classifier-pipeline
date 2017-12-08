@@ -14,6 +14,7 @@ import Tracker
 import ast
 import glob
 import argparse
+import signal
 import time
 
 from multiprocessing import Pool
@@ -40,7 +41,6 @@ class TrackEntry:
     def __init__(self):
         pass
 
-
 class TrackerTestCase():
     def __init__(self):
         self.source = None
@@ -51,6 +51,7 @@ def process_job(job):
     extractor = job[0]
     params = job[1:]
     extractor.process_file(*params)
+    time.sleep(0.01) # apparently gives me a chance to catch the control-c
 
 class CPTVTrackExtractor:
     """
@@ -241,7 +242,6 @@ class CPTVTrackExtractor:
         if tag is None:
             tag = os.path.basename(folder_path).upper()
 
-        pool = Pool(self.workers_threads)
         jobs = []
 
         for file_name in os.listdir(folder_path):
@@ -249,9 +249,26 @@ class CPTVTrackExtractor:
             if os.path.isfile(full_path) and os.path.splitext(full_path )[1].lower() == '.cptv':
                 jobs.append((self, full_path, tag, self.enable_previews))
 
-        pool.map(process_job,jobs)
-
-        pool.join()
+        if self.workers_threads == 0:
+            # just process the jobs in the main thread
+            for job in jobs: process_job(job)
+        else:
+            # send the jobs to a worker pool
+            original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+            pool = Pool(self.workers_threads)
+            signal.signal(signal.SIGINT, original_sigint_handler)
+            try:
+                # map_async, and the .get(timeout) allow for control-c commands to work properly.
+                # see https://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
+                pool.map_async(process_job, jobs).get(timeout=10 ** 6)
+                pool.close()
+                pool.join()
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt, terminating.")
+                pool.terminate()
+                exit()
+            else:
+                pool.close()
 
     def log_message(self, message):
         """ Record message in log.  Will be printed if verbose is enabled. """
@@ -378,7 +395,7 @@ def parse_params():
     parser.add_argument('-p', '--enable-previews', action='store_true', help='Enables preview MPEG files (can be slow)')
     parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
     parser.add_argument('-v', '--verbose', action='store_true', help='Display additional information.')
-    parser.add_argument('-w', '--workers', default='2', help='Number of worker threads to use.')
+    parser.add_argument('-w', '--workers', default='0', help='Number of worker threads to use.  0 disables worker pool and forces a single thread.')
     parser.add_argument('-f', '--force-overwrite', default='old', help='Overwrite mode.  Options are all, old, or none.')
 
     args = parser.parse_args()
@@ -388,8 +405,7 @@ def parse_params():
     extractor = CPTVTrackExtractor(args.output_folder)
 
     extractor.workers_threads = int(args.workers)
-
-    if extractor.workers_threads >= 2:
+    if extractor.workers_threads >= 1:
         print("Using {0} worker threads".format(extractor.workers_threads))
 
     # set overwrite mode
