@@ -272,8 +272,8 @@ class CPTVTrackExtractor:
         print("Times (per frame): [total:{}ms]  load:{}ms extract:{}ms optical flow:{}ms export:{}ms".format(
             time_stats['total'],
             time_stats['load'],
-            time_stats['optical_flow'],
             time_stats['extract'],
+            time_stats['optical_flow'],
             time_stats['export']
         ))
 

@@ -15,6 +15,7 @@ import cv2
 
 from cptv import CPTVReader
 
+
 import pytz
 import datetime
 import dateutil
@@ -614,6 +615,13 @@ class Tracker:
             if len(self.filtered_frames) >= 2:
                 prev_gray_frame = self.filtered_frames[-2].astype(np.uint8)
                 current_gray_frame = self.filtered_frames[-1].astype(np.uint8)
+
+                # the tvl1 algorithm will take is many threads as it can.  On machines with many cores this ends up
+                # being very inefficent.  For example this takes 80ms on 1 thread, 60ms on 2, and 50ms on 4, so the
+                # gains are very deminising.  However the cpu will be pegged at full.  A better strategy is to simply
+                # run additional instances of the Tracker in parallel
+                cv2.setNumThreads(2)
+
                 flow = tvl1.calc(prev_gray_frame, current_gray_frame, flow)
             optical_flow_time += (time.time() - flow_start_time)
 
