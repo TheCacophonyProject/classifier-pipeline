@@ -66,7 +66,7 @@ class CPTVTrackExtractor:
     OM_ALL = 'all'
 
     # any clips with a lower version than the current will be reprocessed
-    OM_OLD_VERSION = 'version'
+    OM_OLD_VERSION = 'old'
 
     # no clips will be overwritten
     OM_NONE = 'none'
@@ -75,7 +75,7 @@ class CPTVTrackExtractor:
 
         self.hints = {}
         self.colormap = plt.cm.jet
-        self.verbose = True
+        self.verbose = False
         self.out_folder = out_folder
         self.overwrite_mode = CPTVTrackExtractor.OM_OLD_VERSION
         self.enable_previews = False
@@ -174,7 +174,7 @@ class CPTVTrackExtractor:
 
         # check if we have already processed this file
         if self.needs_processing(stats_path_and_filename):
-            self.log_message("Processing {0} [{1}]".format(cptv_filename, tag))
+            print("Processing {0} [{1}]".format(cptv_filename, tag))
         else:
             return
 
@@ -197,7 +197,7 @@ class CPTVTrackExtractor:
 
             confidence = meta_data['Tags'][0]['confidence']
         else:
-            print(" - Warning: no metadata found for file.")
+            self.log_warning(" - Warning: no metadata found for file.")
             confidence = 0.0
 
         # load the track
@@ -224,7 +224,7 @@ class CPTVTrackExtractor:
         tracker.save_stats(stats_path_and_filename)
 
         time_stats = tracker.stats['time_per_frame']
-        print("Times (per frame): [total:{}ms]  load:{}ms extract:{}ms optical flow:{}ms export:{}ms".format(
+        self.log_message("Times (per frame): [total:{}ms]  load:{}ms extract:{}ms optical flow:{}ms export:{}ms".format(
             time_stats['total'],
             time_stats['load'],
             time_stats['extract'],
@@ -241,8 +241,6 @@ class CPTVTrackExtractor:
         if tag is None:
             tag = os.path.basename(folder_path).upper()
 
-        print('adding jobs')
-        #pool = WorkPool(self.workers_threads, job_processor, self)
         pool = Pool(self.workers_threads)
         jobs = []
 
@@ -253,11 +251,7 @@ class CPTVTrackExtractor:
 
         pool.map(process_job,jobs)
 
-        print("joining")
-
-        pool.stop()
-
-        print('done')
+        pool.join()
 
     def log_message(self, message):
         """ Record message in log.  Will be printed if verbose is enabled. """
@@ -383,7 +377,7 @@ def parse_params():
     parser.add_argument('-c', '--color-map', default="custom_colormap.dat", help='Colormap to use when exporting MPEG files')
     parser.add_argument('-p', '--enable-previews', action='store_true', help='Enables preview MPEG files (can be slow)')
     parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
-    parser.add_argument('-b', '--benchmark', action='store_true', help='Run a benchmark on target file.')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Display additional information.')
     parser.add_argument('-w', '--workers', default='2', help='Number of worker threads to use.')
     parser.add_argument('-f', '--force-overwrite', default='old', help='Overwrite mode.  Options are all, old, or none.')
 
@@ -402,6 +396,9 @@ def parse_params():
     if args.force_overwrite.lower() not in ['all','old','none']:
         raise Exception("Valid overwrite modes are all, old, or none.")
     extractor.overwrite_mode = args.force_overwrite.lower()
+
+    # set verbose
+    extractor.verbose = args.verbose
 
     # this colormap is specially designed for heat maps
     extractor.load_custom_colormap(args.color_map)
