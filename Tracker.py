@@ -18,6 +18,7 @@ from cptv import CPTVReader
 import pytz
 import datetime
 import dateutil
+import time
 
 from Classifier import Classifier, Segment
 
@@ -319,6 +320,8 @@ class Tracker:
         :param full_path: path and filename of CPTV file to process
         """
 
+        start = time.time()
+
         self.frames = []
         self.track_history = {}
         self.load(open(full_path, 'rb'))
@@ -343,6 +346,7 @@ class Tracker:
         # If set to a number only this many frames will be used.
         self.max_tracks = None
         self.stats = self._get_clip_stats()
+        self.stats['time_per_frame']['load'] = (time.time() - start) * 1000 / len(self.frames)
 
 
     def _get_clip_stats(self):
@@ -372,7 +376,15 @@ class Tracker:
     def save_stats(self, filename):
         """ Writes stats to file. """
 
-        # we need to convert datetime to a string so it will serialise through json
+        # calculate the total time
+        self.stats['time_per_frame']['total'] = \
+            self.stats['time_per_frame'].get('load',0.0) + \
+            self.stats['time_per_frame'].get('extract', 0.0) + \
+            self.stats['time_per_frame'].get('optical_flow', 0.0) + \
+            self.stats['time_per_frame'].get('export', 0.0) + \
+            self.stats['time_per_frame'].get('preview', 0.0)
+
+            # we need to convert datetime to a string so it will serialise through json
         with open(filename, 'w') as stats_file:
             json.dump(self.stats, stats_file, indent=4,  cls=CustomJSONEncoder)
 
@@ -382,7 +394,6 @@ class Tracker:
         reader = CPTVReader(source)
         self.frames = [frame.copy() for (frame, offset) in reader]
         self.video_start_time = reader.timestamp
-
 
     def _get_regions_of_interest(self, frame, threshold, erosion=1, include_markers=False):
         """ Returns a list of bounded boxes for all regions of interest in the frame.
@@ -471,6 +482,8 @@ class Tracker:
         Exports tracking information to a video file for debugging.
         """
 
+        start = time.time()
+
         # Display requires the MPEGWriting to be set.
         if self.MPEGWriter is None:
             raise Exception("Can not generate clip preview as MPEGWriter is not initialized.  Try installing FFMPEG.")
@@ -532,11 +545,16 @@ class Tracker:
 
         plt.close(fig)
 
+        self.stats['time_per_frame']['preview'] = (time.time() - start) * 1000 / len(self.frames)
+
 
     def extract(self):
         """
         Extract regions of interest from frames, and create some initial tracks.
         """
+
+        start = time.time()
+        optical_flow_time = 0.0
 
         if Tracker.USE_BACKGROUND_SUBTRACTION.lower() == 'auto':
             use_background_subtraction = self.is_static_background
@@ -584,11 +602,13 @@ class Tracker:
             self.filtered_frames.append(filtered)
 
             # calculate optical flow (might be better to use DualTVL1 algorithm
+            flow_start_time = time.time()
             flow = np.zeros([frame.shape[0], frame.shape[1], 2], dtype=np.uint8)
             if len(self.filtered_frames) >= 2:
                 prev_gray_frame = self.filtered_frames[-2].astype(np.uint8)
                 current_gray_frame = self.filtered_frames[-1].astype(np.uint8)
                 flow = tvl1.calc(prev_gray_frame, current_gray_frame, flow)
+            optical_flow_time += time.time() - flow_start_time
 
             flow = flow.astype(np.float16)
             self.flow_frames.append(flow)
@@ -620,6 +640,11 @@ class Tracker:
 
         self.tracks = self.track_history.keys()
         self.get_tracks_statistics()
+
+        self.stats['time_per_frame']['optical_flow'] = optical_flow_time * 1000 / len(self.frames)
+
+        # extraction process includes the optical flow time so we take it out here so as not to count it twice.
+        self.stats['time_per_frame']['extract'] = ((time.time() - start) * 1000 / len(self.frames)) - optical_flow_time
 
     def filter_tracks(self):
         """ Removes tracks with too poor a score to be used. """
@@ -677,6 +702,8 @@ class Tracker:
         """
 
         # todo: would be great to just have a proper segment class that handles most of the code in this function...
+
+        start = time.time()
 
         if include_track_previews and self.MPEGWriter is None:
             raise Exception("Track previews require MPEGWriter to be initialized.")
@@ -779,3 +806,5 @@ class Tracker:
 
             with open(Stats_filename, 'w') as f:
                 json.dump(stats, f, indent=4, cls=CustomJSONEncoder)
+
+        self.stats['time_per_frame']['export'] = (time.time() - start) * 1000 / len(self.frames)

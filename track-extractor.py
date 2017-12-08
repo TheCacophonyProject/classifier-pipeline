@@ -96,7 +96,6 @@ class CPTVTrackExtractor:
 
         self.colormap = pickle.load(open(filename, 'rb'))
 
-
     def load_hints(self, filename):
         """ Read in hints file from given path.  If file is not found an empty hints dictionary set."""
 
@@ -245,10 +244,12 @@ class CPTVTrackExtractor:
             confidence = 0.0
 
 
+        # load the track
         tracker = Tracker.Tracker(full_path)
         tracker.include_prediction = create_preview_file
         tracker.max_tracks = max_tracks
         tracker.tag = tag
+
 
         # pass the mpeg writer to the tracker so that it can output video files
         tracker.MPEGWriter = self.MPEGWriter
@@ -382,7 +383,6 @@ def parse_params():
         return
 
     print('Processing tag "{0}"'.format(args.tag))
-
 
     if args.tag.lower() == 'all':
         extractor.process(args.source_folder)
