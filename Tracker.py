@@ -82,10 +82,10 @@ def apply_threshold(frame, threshold = 50.0):
     return thresh
 
 
-def get_image_subsection(image, bounds, window_size, fill='mean'):
+def get_image_subsection(image, bounds, window_size, fill='min'):
     """
     Returns a subsection of the original image bounded by bounds.
-    Area outside of frame will be filled with mean
+    Area outside of frame will be filled with minimum value
     """
 
     # cropping method.  just center on the bounds center and take a section there.
@@ -108,6 +108,11 @@ def get_image_subsection(image, bounds, window_size, fill='mean'):
         enlarged_frame = np.ones((height+padding*2, width+padding*2, channels))
         for i in range(channels):
             enlarged_frame[:,:,i] *= np.mean(image[:,:,i])
+        enlarged_frame[padding:padding+height, padding:padding+width,:] = image
+    elif fill == 'min':
+        enlarged_frame = np.ones((height+padding*2, width+padding*2, channels))
+        for i in range(channels):
+            enlarged_frame[:,:,i] *= np.min(image[:,:,i])
         enlarged_frame[padding:padding+height, padding:padding+width,:] = image
     else:
         enlarged_frame = np.ones((height + padding * 2, width + padding * 2, channels)) * float(fill)
@@ -620,7 +625,6 @@ class Tracker:
         tvl1 = cv2.createOptFlow_DualTVL1()
         if Tracker.REDUCED_QUALITY_OPTICAL_FLOW:
             # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
-            print(dir(tvl1))
             tvl1.setTau(1/4)
             tvl1.setScalesNumber(3)
             tvl1.setWarpingsNumber(3)
