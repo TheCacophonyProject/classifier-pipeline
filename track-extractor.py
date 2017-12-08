@@ -51,7 +51,7 @@ def process_job(job):
     extractor = job[0]
     params = job[1:]
     extractor.process_file(*params)
-    time.sleep(0.01) # apparently gives me a chance to catch the control-c
+    time.sleep(0.001) # apparently gives me a chance to catch the control-c
 
 class CPTVTrackExtractor:
     """
@@ -61,7 +61,7 @@ class CPTVTrackExtractor:
     """
 
     # version number.  Recorded into stats file when a clip is processed.
-    VERSION = 5
+    VERSION = 6
 
     # all files will be reprocessed
     OM_ALL = 'all'

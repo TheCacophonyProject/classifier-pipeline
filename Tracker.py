@@ -75,17 +75,17 @@ def apply_threshold(frame, threshold = 50.0):
         Any pixels more than the threshold are set 1, all others are set to 0.
         A blur is also applied as a filtering step
     """
-
-    thresh = cv2.GaussianBlur(frame, (5,5), 0) - threshold
+    cv2.setNumThreads(2)
+    thresh = cv2.GaussianBlur(frame.astype(np.float32), (5,5), 0) - threshold
     thresh[thresh < 0] = 0
     thresh[thresh > 0] = 1
     return thresh
 
 
-def get_image_subsection(image, bounds, window_size):
+def get_image_subsection(image, bounds, window_size, fill='mean'):
     """
     Returns a subsection of the original image bounded by bounds.
-    Area outside of frame will be filled by repeating edge pixels
+    Area outside of frame will be filled with mean
     """
 
     # cropping method.  just center on the bounds center and take a section there.
@@ -100,9 +100,18 @@ def get_image_subsection(image, bounds, window_size):
 
     window_half_width, window_half_height = window_size[0] // 2, window_size[1] // 2
 
-    image_height, image_width, channels = image.shape
+    height, width, channels = image.shape
 
-    enlarged_frame = np.pad(image, [(padding, padding), (padding, padding), (0,0)], mode='edge')
+    if fill == 'edge':
+        enlarged_frame = np.pad(image, [(padding, padding), (padding, padding), (0,0)], mode='edge')
+    elif fill == 'mean':
+        enlarged_frame = np.ones((height+padding*2, width+padding*2, channels))
+        for i in range(channels):
+            enlarged_frame[:,:,i] *= np.mean(image[:,:,i])
+        enlarged_frame[padding:padding+height, padding:padding+width,:] = image
+    else:
+        enlarged_frame = np.ones((height + padding * 2, width + padding * 2, channels)) * float(fill)
+        enlarged_frame[padding:padding + height, padding:padding + width, :] = image
 
     sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_width:midx+window_half_width]
 
@@ -118,16 +127,17 @@ def normalise(x):
 
 class TrackingFrame:
     """ Defines a rectangle by the topleft point and width / height. """
-    def __init__(self, topleft_x, topleft_y, width, height, mass = 0):
+    def __init__(self, topleft_x, topleft_y, width, height, mass = 0, id = 0):
         """ Defines new rectangle. """
         self.x = topleft_x
         self.y = topleft_y
         self.width = width
         self.height = height
         self.mass = mass
+        self.id = id
 
     def copy(self):
-        return TrackingFrame(self.x, self.y, self.width, self.height, self.mass)
+        return TrackingFrame(self.x, self.y, self.width, self.height, self.mass, self.id)
 
     @property
     def mid_x(self):
@@ -267,6 +277,7 @@ class Track:
             self.bounds.width = similar_regions[0].width
             self.bounds.height = similar_regions[0].height
             self.mass = similar_regions[0].mass
+            self.bounds.id = similar_regions[0].id
             # print("move to ",self.bounds.x, self.bounds.y)
 
             # work out out new velocity
@@ -315,6 +326,9 @@ class Tracker:
     # if the mean pixel change is below this threshold then classify the video as having a static background
     STATIC_BACKGROUND_THRESHOLD = 5.0
 
+    # faster, but less accurate optical flow.  About 3 times faster.
+    REDUCED_QUALITY_OPTICAL_FLOW = True
+
     def __init__(self, full_path):
         """
         Create a Tracker object
@@ -329,6 +343,11 @@ class Tracker:
         self.tag = "UNKNOWN"
         self.source = os.path.split(full_path)[1]
         self.tracks = []
+
+        self.regions = []
+        self.mask_frames = []
+        self.filtered_frames = []
+        self.flow_frames = []
 
         # class used to write MPEG videos, must be set to enable MPEG video output
         self.MPEGWriter = None
@@ -422,7 +441,7 @@ class Tracker:
         rects = []
         for i in range(1, labels):
             rect = TrackingFrame(stats[i, 0] - padding, stats[i, 1] - padding, stats[i, 2] + padding * 2,
-                                 stats[i, 3] + padding * 2, stats[i,4])
+                                 stats[i, 3] + padding * 2, stats[i,4], i)
             rects.append(rect)
 
         return (rects, markers) if include_markers else rects
@@ -505,7 +524,7 @@ class Tracker:
         # write video
         frame_number = 0
         with writer.saving(fig, filename, dpi=Tracker.VIDEO_DPI):
-            for frame, marked, rects, flow, filtered in zip(self.frames, self.marked_frames, self.regions, self.flow_frames, self.filtered_frames):
+            for frame, marked, rects, flow, filtered in zip(self.frames, self.mask_frames, self.regions, self.flow_frames, self.filtered_frames):
 
                 # marked is an image with each pixel's value being the label, 0...n for n objects
                 # I multiply it here, but really I should use a seperate color map for this.
@@ -561,6 +580,10 @@ class Tracker:
         Extract regions of interest from frames, and create some initial tracks.
         """
 
+        # fisrt call to opencv is really slow, and throws out the timings, so I run cv2 command here
+        # to warm up the library.
+        x = cv2.medianBlur(np.zeros((32,32), dtype=np.float32), 5)
+
         start = time.time()
         optical_flow_time = 0.0
 
@@ -578,9 +601,9 @@ class Tracker:
 
         active_tracks = []
 
-        # todo: these are needed for the display routine, should really declare them in init or something.
+        # reset frame history
         self.regions = []
-        self.marked_frames = []
+        self.mask_frames = []
         self.filtered_frames = []
         self.flow_frames = []
 
@@ -595,21 +618,28 @@ class Tracker:
         Track._track_id = 1
 
         tvl1 = cv2.createOptFlow_DualTVL1()
+        if Tracker.REDUCED_QUALITY_OPTICAL_FLOW:
+            # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
+            print(dir(tvl1))
+            tvl1.setTau(1/4)
+            tvl1.setScalesNumber(3)
+            tvl1.setWarpingsNumber(3)
+            tvl1.setScaleStep(0.5)
 
         for frame_number, frame in enumerate(self.frames):
 
             # find regions of interest in this frame
             new_regions, markers = self._get_regions_of_interest(frame - mask, threshold, include_markers=True)
 
-            self.marked_frames.append(markers)
+            self.mask_frames.append(markers)
 
             # create a filtered frame
             filtered = frame - mask
-            filtered = filtered - np.median(filtered)
+            filtered = filtered - np.median(filtered) - (threshold / 2)
             filtered[filtered < 0] = 0
             self.filtered_frames.append(filtered)
 
-            # calculate optical flow (might be better to use DualTVL1 algorithm
+            # calculate optical flow
             flow_start_time = time.time()
             flow = np.zeros([frame.shape[0], frame.shape[1], 2], dtype=np.uint8)
             if len(self.filtered_frames) >= 2:
@@ -621,8 +651,8 @@ class Tracker:
                 # gains are very deminising.  However the cpu will be pegged at full.  A better strategy is to simply
                 # run additional instances of the Tracker in parallel
                 cv2.setNumThreads(2)
-
                 flow = tvl1.calc(prev_gray_frame, current_gray_frame, flow)
+
             optical_flow_time += (time.time() - flow_start_time)
 
             flow = flow.astype(np.float16)
@@ -743,6 +773,7 @@ class Tracker:
             # export frames
             window_frames = []
             filtered_frames = []
+            mask_frames = []
             flow_frames = []
             motion_vectors = []
 
@@ -751,10 +782,8 @@ class Tracker:
                 (fig, ax, im, writer) = self._init_video(MPEG_filename, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
                 with writer.saving(fig, MPEG_filename, dpi=Tracker.VIDEO_DPI):
                     for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
-                        # get a frame to be used for the preview
-                        draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds,
-                                                          (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
-                        draw_frame = 5 * draw_frame + Tracker.TEMPERATURE_MIN
+                        draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds,(Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
+                        draw_frame = draw_frame * 1.5 + Tracker.TEMPERATURE_MIN
 
                         im.set_data(draw_frame)
                         fig.canvas.draw()
@@ -765,9 +794,21 @@ class Tracker:
             # export the track file
             for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
 
-                window_frames.append(get_image_subsection(self.frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
-                filtered_frames.append(get_image_subsection(self.filtered_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
-                flow_frames.append(get_image_subsection(self.flow_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE)))
+                frame = get_image_subsection(self.frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
+                filtered = get_image_subsection(self.filtered_frames[frame_number], bounds,(Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
+                flow = get_image_subsection(self.flow_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE),fill=0)
+
+                # extract only our id from the mask, so if another object is in the frame it won't be included.
+                mask = get_image_subsection(self.mask_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), fill=0)
+                mask[mask != bounds.id] = 0
+                mask[mask > 0] = 1
+                kernel = np.ones((3, 3), np.uint8)
+                mask = cv2.dilate(mask.astype(np.uint8), kernel, iterations=1)
+
+                window_frames.append(frame.astype(np.float16))
+                filtered_frames.append(filtered.astype(np.float16))
+                flow_frames.append(flow.astype(np.float16))
+                mask_frames.append(mask.astype(np.uint8))
 
                 motion_vectors.append((vx, vy))
 
@@ -787,6 +828,7 @@ class Tracker:
             save_file['track_id'] = track.id
             save_file['frames'] = window_frames
             save_file['filtered_frames'] = filtered_frames
+            save_file['mask_frames'] = mask_frames
             save_file['flow_frames'] = flow_frames
             save_file['motion_vectors'] = motion_vectors
 
