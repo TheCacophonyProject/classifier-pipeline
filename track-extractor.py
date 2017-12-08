@@ -73,6 +73,7 @@ class CPTVTrackExtractor:
         self.out_folder = out_folder
         self.overwrite_mode = CPTVTrackExtractor.OM_OLD_VERSION
         self.enable_previews = False
+        self.display_times = False
 
         self.MPEGWriter  = None
 
@@ -260,12 +261,21 @@ class CPTVTrackExtractor:
 
         tracker.extract()
 
-        tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=False, include_track_previews=self.MPEGWriter is not None)
+        tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=False, include_track_previews=create_preview_file and self.MPEGWriter is not None)
 
         if create_preview_file:
             tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
 
         tracker.save_stats(stats_path_and_filename)
+
+        time_stats = tracker.stats['time_per_frame']
+        print("Times (per frame): [total:{}ms]  load:{}ms extract:{}ms optical flow:{}ms export:{}ms".format(
+            time_stats['total'],
+            time_stats['load'],
+            time_stats['optical_flow'],
+            time_stats['extract'],
+            time_stats['export']
+        ))
 
         return tracker
 
@@ -344,13 +354,14 @@ def parse_params():
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('tag', default='all', help='Tag to process, "all" processes all tags, "test" runs test cases, or a "cptv" file to run a single source.')
+    parser.add_argument('target', default='all', help='Target to process, "all" processes all folders, "test" runs test cases, or a "cptv" file to run a single source.')
 
     parser.add_argument('-o', '--output-folder', default="d:\cac\\tracks", help='Folder to output tracks to')
     parser.add_argument('-s', '--source-folder', default="d:\\cac\out", help='Source folder root with class folders containing CPTV files')
     parser.add_argument('-c', '--color-map', default="custom_colormap.dat", help='Colormap to use when exporting MPEG files')
     parser.add_argument('-p', '--enable-previews', action='store_true', help='Enables preview MPEG files (can be slow)')
     parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
+    parser.add_argument('-b', '--benchmark', action='store_true', help='Run a benchmark on target file.')
 
     args = parser.parse_args()
 
@@ -365,30 +376,31 @@ def parse_params():
     extractor.load_hints("hints.txt")
 
     extractor.enable_previews = args.enable_previews
+    extractor.display_times = args.enable_previews
 
     if extractor.enable_previews:
         print("Previews enabled.")
 
-    if os.path.splitext(args.tag)[1].lower() == '.cptv':
+    if os.path.splitext(args.target)[1].lower() == '.cptv':
         # run single source
-        source_file = find_file(args.source_folder, args.tag)
+        source_file = find_file(args.source_folder, args.target)
         tag = os.path.basename(os.path.dirname(source_file))
         extractor.overwrite_mode = CPTVTrackExtractor.OM_ALL
         extractor.process_file(source_file, tag, args.enable_previews)
         return
 
-    if args.tag.lower() == 'test':
+    if args.target.lower() == 'test':
         print("Running test suite")
         extractor.run_tests(args.source_folder, args.test_file)
         return
 
-    print('Processing tag "{0}"'.format(args.tag))
+    print('Processing tag "{0}"'.format(args.target))
 
-    if args.tag.lower() == 'all':
+    if args.target.lower() == 'all':
         extractor.process(args.source_folder)
         return
     else:
-        extractor.process_folder(os.path.join(args.source_folder, args.tag), args.tag)
+        extractor.process_folder(os.path.join(args.source_folder, args.target), args.target)
         return
 
 

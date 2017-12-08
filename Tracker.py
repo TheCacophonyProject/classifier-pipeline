@@ -346,6 +346,8 @@ class Tracker:
         # If set to a number only this many frames will be used.
         self.max_tracks = None
         self.stats = self._get_clip_stats()
+
+        self.stats['time_per_frame'] = {}
         self.stats['time_per_frame']['load'] = (time.time() - start) * 1000 / len(self.frames)
 
 
@@ -377,12 +379,17 @@ class Tracker:
         """ Writes stats to file. """
 
         # calculate the total time
-        self.stats['time_per_frame']['total'] = \
-            self.stats['time_per_frame'].get('load',0.0) + \
-            self.stats['time_per_frame'].get('extract', 0.0) + \
-            self.stats['time_per_frame'].get('optical_flow', 0.0) + \
-            self.stats['time_per_frame'].get('export', 0.0) + \
-            self.stats['time_per_frame'].get('preview', 0.0)
+        time_stats = self.stats['time_per_frame']
+        time_stats['total'] = \
+            time_stats.get('load',0.0) + \
+            time_stats.get('extract', 0.0) + \
+            time_stats.get('optical_flow', 0.0) + \
+            time_stats.get('export', 0.0) + \
+            time_stats.get('preview', 0.0)
+
+        # force time per frame to rounded numbers
+        for k,v in time_stats.items():
+            time_stats[k] = int(v)
 
             # we need to convert datetime to a string so it will serialise through json
         with open(filename, 'w') as stats_file:
@@ -608,7 +615,7 @@ class Tracker:
                 prev_gray_frame = self.filtered_frames[-2].astype(np.uint8)
                 current_gray_frame = self.filtered_frames[-1].astype(np.uint8)
                 flow = tvl1.calc(prev_gray_frame, current_gray_frame, flow)
-            optical_flow_time += time.time() - flow_start_time
+            optical_flow_time += (time.time() - flow_start_time)
 
             flow = flow.astype(np.float16)
             self.flow_frames.append(flow)
@@ -642,9 +649,7 @@ class Tracker:
         self.get_tracks_statistics()
 
         self.stats['time_per_frame']['optical_flow'] = optical_flow_time * 1000 / len(self.frames)
-
-        # extraction process includes the optical flow time so we take it out here so as not to count it twice.
-        self.stats['time_per_frame']['extract'] = ((time.time() - start) * 1000 / len(self.frames)) - optical_flow_time
+        self.stats['time_per_frame']['extract'] = ((time.time() - start) * 1000 / len(self.frames)) - self.stats['time_per_frame']['optical_flow']
 
     def filter_tracks(self):
         """ Removes tracks with too poor a score to be used. """
