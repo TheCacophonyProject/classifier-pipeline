@@ -835,6 +835,7 @@ class Tracker:
             save_file['mask_frames'] = mask_frames
             save_file['flow_frames'] = flow_frames
             save_file['motion_vectors'] = motion_vectors
+            save_file['background'] = self.background
 
             stats = {}
 

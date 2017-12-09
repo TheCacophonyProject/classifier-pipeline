@@ -19,6 +19,9 @@ import time
 
 from multiprocessing import Pool
 
+# default base path to use if no source or destination folder are given.
+DEFAULT_BASE_PATH = "c:\\cac"
+
 def purge(dir, pattern):
     for f in glob.glob(os.path.join(dir, pattern)):
         os.remove(os.path.join(dir, f))
@@ -226,11 +229,11 @@ class CPTVTrackExtractor:
 
         time_stats = tracker.stats['time_per_frame']
         self.log_message("Times (per frame): [total:{}ms]  load:{}ms extract:{}ms optical flow:{}ms export:{}ms".format(
-            time_stats['total'],
-            time_stats['load'],
-            time_stats['extract'],
-            time_stats['optical_flow'],
-            time_stats['export']
+            time_stats.get('total',0.0),
+            time_stats.get('load',0.0),
+            time_stats.get('extract',0.0),
+            time_stats.get('optical_flow',0.0),
+            time_stats.get('export',0.0)
         ))
 
         return tracker
@@ -389,8 +392,8 @@ def parse_params():
 
     parser.add_argument('target', default='all', help='Target to process, "all" processes all folders, "test" runs test cases, or a "cptv" file to run a single source.')
 
-    parser.add_argument('-o', '--output-folder', default="d:\cac\\tracks", help='Folder to output tracks to')
-    parser.add_argument('-s', '--source-folder', default="d:\\cac\out", help='Source folder root with class folders containing CPTV files')
+    parser.add_argument('-o', '--output-folder', default=os.path.join(DEFAULT_BASE_PATH,"tracks"), help='Folder to output tracks to')
+    parser.add_argument('-s', '--source-folder', default=os.path.join(DEFAULT_BASE_PATH,"clips"), help='Source folder root with class folders containing CPTV files')
     parser.add_argument('-c', '--color-map', default="custom_colormap.dat", help='Colormap to use when exporting MPEG files')
     parser.add_argument('-p', '--enable-previews', action='store_true', help='Enables preview MPEG files (can be slow)')
     parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
