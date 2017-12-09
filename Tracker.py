@@ -103,19 +103,25 @@ def get_image_subsection(image, bounds, window_size, fill='min'):
     height, width, channels = image.shape
 
     if fill == 'edge':
-        enlarged_frame = np.pad(image, [(padding, padding), (padding, padding), (0,0)], mode='edge')
-    elif fill == 'mean':
-        enlarged_frame = np.ones((height+padding*2, width+padding*2, channels))
-        for i in range(channels):
-            enlarged_frame[:,:,i] *= np.mean(image[:,:,i])
-        enlarged_frame[padding:padding+height, padding:padding+width,:] = image
-    elif fill == 'min':
-        enlarged_frame = np.ones((height+padding*2, width+padding*2, channels))
-        for i in range(channels):
-            enlarged_frame[:,:,i] *= np.min(image[:,:,i])
-        enlarged_frame[padding:padding+height, padding:padding+width,:] = image
+        enlarged_frame = np.pad(image, [(padding, padding), (padding, padding), (0, 0)], mode='edge')
     else:
-        enlarged_frame = np.ones((height + padding * 2, width + padding * 2, channels)) * float(fill)
+
+        # get the cropped image
+        sub_image = image[bounds.top:bounds.bottom, bounds.left:bounds.right]
+
+        # create a larger version of the image filled with white
+        enlarged_frame = np.ones((height + padding * 2, width + padding * 2, channels))
+
+        # apply the padding method
+        if fill == 'mean':
+            for i in range(channels):
+                enlarged_frame[:,:,i] *= np.mean(sub_image[:,:,i])
+        elif fill == 'min':
+            for i in range(channels):
+                enlarged_frame[:,:,i] *= np.min(sub_image[:,:,i])
+        else:
+            enlarged_frame *= float(fill)
+
         enlarged_frame[padding:padding + height, padding:padding + width, :] = image
 
     sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_width:midx+window_half_width]
@@ -332,7 +338,7 @@ class Tracker:
     STATIC_BACKGROUND_THRESHOLD = 5.0
 
     # faster, but less accurate optical flow.  About 3 times faster.
-    REDUCED_QUALITY_OPTICAL_FLOW = True
+    REDUCED_QUALITY_OPTICAL_FLOW = False
 
     def __init__(self, full_path):
         """
@@ -639,7 +645,7 @@ class Tracker:
 
             # create a filtered frame
             filtered = frame - mask
-            filtered = filtered - np.median(filtered) - (threshold / 2)
+            filtered = filtered - np.median(filtered)
             filtered[filtered < 0] = 0
             self.filtered_frames.append(filtered)
 
@@ -647,8 +653,9 @@ class Tracker:
             flow_start_time = time.time()
             flow = np.zeros([frame.shape[0], frame.shape[1], 2], dtype=np.uint8)
             if len(self.filtered_frames) >= 2:
-                prev_gray_frame = self.filtered_frames[-2].astype(np.uint8)
-                current_gray_frame = self.filtered_frames[-1].astype(np.uint8)
+                # divide by two so we don't clip too much with hotter targets.
+                prev_gray_frame = (self.filtered_frames[-2] / 2).astype(np.uint8)
+                current_gray_frame = (self.filtered_frames[-1] / 2).astype(np.uint8)
 
                 # the tvl1 algorithm will take is many threads as it can.  On machines with many cores this ends up
                 # being very inefficent.  For example this takes 80ms on 1 thread, 60ms on 2, and 50ms on 4, so the
