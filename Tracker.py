@@ -107,7 +107,7 @@ def get_image_subsection(image, bounds, window_size, fill='min'):
     else:
 
         # get the cropped image
-        sub_image = image[bounds.top:bounds.bottom, bounds.left:bounds.right]
+        sub_image = image[max(0, bounds.top):bounds.bottom, max(0, bounds.left):bounds.right]
 
         # create a larger version of the image filled with white
         enlarged_frame = np.ones((height + padding * 2, width + padding * 2, channels))
