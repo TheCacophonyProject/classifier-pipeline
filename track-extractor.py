@@ -210,7 +210,6 @@ class CPTVTrackExtractor:
 
         # load the track
         tracker = Tracker.Tracker(full_path)
-        tracker.include_prediction = create_preview_file
         tracker.max_tracks = max_tracks
         tracker.tag = tag
 

@@ -114,8 +114,6 @@ def apply_threshold(frame, threshold = 50.0):
     return thresh
 
 
-
-
 def normalise(x):
     x = x.astype(np.float32)
     return (x - np.mean(x)) / max(0.000001, float(np.std(x)))
@@ -301,7 +299,6 @@ class Tracker:
 
     # If enabled removes background by subtracting out the average pixels values before filtering.
     # Set to True to enable, False to disable, and 'auto' to enable only on stationary clips.
-
     USE_BACKGROUND_SUBTRACTION = 'auto'
 
     # auto threshold needs to find a near maximum value to calculate the threshold level
@@ -349,6 +346,9 @@ class Tracker:
 
         # if enabled tracker will try and predict what animals are in each track
         self.include_prediction = False
+
+        # if true excludes any videos with backgroudns that change too much.
+        self.exclude_non_static_videos = True
 
         # the classifer to use to classify tracks
         self.classifier = None
@@ -528,7 +528,7 @@ class Tracker:
                 # really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
                 # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
                 flow_magnitude = (flow[:,:,0]**2 + flow[:,:,1]**2) ** 0.5
-                stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((filtered + Tracker.TEMPERATURE_MIN, 200 * flow_magnitude + Tracker.TEMPERATURE_MIN))))
+                stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((3 * filtered + Tracker.TEMPERATURE_MIN, 200 * flow_magnitude + Tracker.TEMPERATURE_MIN))))
                 im.set_data(stacked)
 
                 # items to be removed from image after we draw it (otherwise they turn up there next frame)
@@ -579,15 +579,13 @@ class Tracker:
         # to warm up the library.
         x = cv2.medianBlur(np.zeros((32,32), dtype=np.float32), 5)
 
+        if self.exclude_non_static_videos and not self.is_static_background:
+            return
+
         start = time.time()
         optical_flow_time = 0.0
 
-        if Tracker.USE_BACKGROUND_SUBTRACTION.lower() == 'auto':
-            use_background_subtraction = self.is_static_background
-        else:
-            use_background_subtraction = Tracker.USE_BACKGROUND_SUBTRACTION
-
-        if use_background_subtraction:
+        if self.is_static_background:
             mask, threshold = self.background, self.auto_threshold
         else:
             # just use a blank mask
