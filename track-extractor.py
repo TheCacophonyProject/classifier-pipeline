@@ -267,7 +267,7 @@ class CPTVTrackExtractor:
             try:
                 # map_async, and the .get(timeout) allow for control-c commands to work properly.
                 # see https://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
-                pool.map_async(process_job, jobs).get(timeout=10 ** 6)
+                pool.map_async(process_job, jobs, chunksize=1).get(timeout=10 ** 6)
                 pool.close()
                 pool.join()
             except KeyboardInterrupt:
