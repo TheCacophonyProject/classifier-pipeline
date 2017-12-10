@@ -492,8 +492,8 @@ class Tracker:
         threshold = np.percentile(deltas, q=Tracker.THRESHOLD_PERCENTILE) / 2
 
         # cap the threshold to something reasonable
-        if threshold < 10.0:
-            threshold = 10.0
+        if threshold < 20.0:
+            threshold = 20.0
         if threshold > 50.0:
             threshold = 50.0
 
