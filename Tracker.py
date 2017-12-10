@@ -39,6 +39,38 @@ class CustomJSONEncoder(json.JSONEncoder):
         # Let the base class default method raise the TypeError
         return json.JSONEncoder.default(self, obj)
 
+def get_image_subsection(image, bounds, window_size, boundary_value=None):
+    """
+    Returns a subsection of the original image bounded by bounds.
+    Area outside of frame will be filled with boundary_value.  If None the median value will be used.
+    """
+
+    # cropping method.  just center on the bounds center and take a section there.
+
+    if len(image.shape) == 2:
+        image = image[:,:,np.newaxis]
+
+    padding = 50
+
+    midx = int(bounds.mid_x + padding)
+    midy = int(bounds.mid_y + padding)
+
+    window_half_width, window_half_height = window_size[0] // 2, window_size[1] // 2
+
+    image_height, image_width, channels = image.shape
+
+    if boundary_value is None: boundary_value = np.median(image)
+
+    # note, we take the median of all channels, should really be on a per channel basis.
+    enlarged_frame = np.ones([image_height + padding*2, image_width + padding*2, channels], dtype=np.float16) * boundary_value
+    enlarged_frame[padding:-padding,padding:-padding] = image
+
+    sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_width:midx+window_half_width]
+
+    if channels == 1:
+        sub_section = sub_section[:,:,0]
+
+    return sub_section
 
 def load_tracker_stats(filename):
     """
@@ -82,54 +114,6 @@ def apply_threshold(frame, threshold = 50.0):
     return thresh
 
 
-def get_image_subsection(image, bounds, window_size, fill='min'):
-    """
-    Returns a subsection of the original image bounded by bounds.
-    Area outside of frame will be filled with minimum value
-    """
-
-    # cropping method.  just center on the bounds center and take a section there.
-
-    if len(image.shape) == 2:
-        image = image[:,:,np.newaxis]
-
-    padding = 40
-
-    midx = int(bounds.mid_x + padding)
-    midy = int(bounds.mid_y + padding)
-
-    window_half_width, window_half_height = window_size[0] // 2, window_size[1] // 2
-
-    height, width, channels = image.shape
-
-    if fill == 'edge':
-        enlarged_frame = np.pad(image, [(padding, padding), (padding, padding), (0, 0)], mode='edge')
-    else:
-
-        # get the cropped image
-        sub_image = image[max(0, bounds.top):bounds.bottom, max(0, bounds.left):bounds.right]
-
-        # create a larger version of the image filled with white
-        enlarged_frame = np.ones((height + padding * 2, width + padding * 2, channels))
-
-        # apply the padding method
-        if fill == 'mean':
-            for i in range(channels):
-                enlarged_frame[:,:,i] *= np.mean(sub_image[:,:,i])
-        elif fill == 'min':
-            for i in range(channels):
-                enlarged_frame[:,:,i] *= np.min(sub_image[:,:,i])
-        else:
-            enlarged_frame *= float(fill)
-
-        enlarged_frame[padding:padding + height, padding:padding + width, :] = image
-
-    sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_width:midx+window_half_width]
-
-    if channels == 1:
-        sub_section = sub_section[:,:,0]
-
-    return sub_section
 
 
 def normalise(x):
@@ -608,7 +592,7 @@ class Tracker:
         else:
             # just use a blank mask
             mask = np.zeros_like(self.frames[0])
-            threshold = 75.0
+            threshold = 50.0
 
         active_tracks = []
 
@@ -623,7 +607,7 @@ class Tracker:
             return
 
         # don't process clips with too hot a temperature difference
-        if self.stats['max_temp'] - self.stats['min_temp'] > Tracker.MAX_TEMPERATURE_RANGE_THRESHOLD :
+        if self.stats['max_temp'] - self.stats['min_temp'] > Tracker.MAX_TEMPERATURE_RANGE_THRESHOLD:
             return
 
         Track._track_id = 1
@@ -644,8 +628,7 @@ class Tracker:
             self.mask_frames.append(markers)
 
             # create a filtered frame
-            filtered = frame - mask
-            filtered = filtered - np.median(filtered)
+            filtered = frame - mask - threshold
             filtered[filtered < 0] = 0
             self.filtered_frames.append(filtered)
 
@@ -805,20 +788,21 @@ class Tracker:
             # export the track file
             for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
 
-                frame = get_image_subsection(self.frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
-                filtered = get_image_subsection(self.filtered_frames[frame_number], bounds,(Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
-                flow = get_image_subsection(self.flow_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE),fill=0)
+                frames =get_image_subsection(self.frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
+                filtered = get_image_subsection(self.filtered_frames[frame_number], bounds,(Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), 0)
+                flow = get_image_subsection(self.flow_frames[frame_number], bounds,(Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE, 0))
 
                 # extract only our id from the mask, so if another object is in the frame it won't be included.
-                mask = get_image_subsection(self.mask_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), fill=0)
+                mask = get_image_subsection(self.mask_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), 0)
                 mask[mask != bounds.id] = 0
                 mask[mask > 0] = 1
                 kernel = np.ones((3, 3), np.uint8)
                 mask = cv2.dilate(mask.astype(np.uint8), kernel, iterations=1)
 
-                window_frames.append(frame.astype(np.float16))
-                filtered_frames.append(filtered.astype(np.float16))
-                flow_frames.append(flow.astype(np.float16))
+                # todo: these should be float16, but just seeing if this makes a difference.
+                window_frames.append(frames.astype(np.float32))
+                filtered_frames.append(filtered.astype(np.float32))
+                flow_frames.append(flow.astype(np.float32))
                 mask_frames.append(mask.astype(np.uint8))
 
                 motion_vectors.append((vx, vy))

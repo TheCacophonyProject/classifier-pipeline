@@ -22,7 +22,7 @@ from multiprocessing import Pool
 # default base path to use if no source or destination folder are given.
 DEFAULT_BASE_PATH = "c:\\cac"
 
-EXCLUDED_FOLDERS = ['false-positive','insect','other','unidentified']
+EXCLUDED_FOLDERS = ['false-positive','insect','other','unidentified','cat','dog']
 
 def purge(dir, pattern):
     for f in glob.glob(os.path.join(dir, pattern)):
