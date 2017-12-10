@@ -777,7 +777,7 @@ class Tracker:
                 with writer.saving(fig, MPEG_filename, dpi=Tracker.VIDEO_DPI):
                     for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
                         draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds,(Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
-                        draw_frame = draw_frame * 1.5 + Tracker.TEMPERATURE_MIN
+                        draw_frame = draw_frame * 3 + Tracker.TEMPERATURE_MIN
 
                         im.set_data(draw_frame)
                         fig.canvas.draw()

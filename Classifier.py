@@ -2,7 +2,12 @@
 Module classify a tracking window based on a 3 second segment.
 """
 
+import os
 import tensorflow as tf
+
+# disable logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 import numpy as np
 import json
 
@@ -81,9 +86,4 @@ class Classifier:
         feed_dict = {"X:0": segment.data[np.newaxis,:,:,:,:]}
         result = self.prediction.eval(feed_dict, session=self.sess)[0]
         return result
-
-
-
-
-
 
