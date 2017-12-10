@@ -231,14 +231,15 @@ class CPTVTrackExtractor:
         tracker.save_stats(stats_path_and_filename)
 
         time_stats = tracker.stats['time_per_frame']
-        self.log_message("Tracks: {} {:.1f}sec - Times (per frame): [total:{}ms]  load:{}ms extract:{}ms optical flow:{}ms export:{}ms".format(
+        self.log_message("Tracks: {} {:.1f}sec - Times (per frame): [total:{}ms]  load:{}ms extract:{}ms optical flow:{}ms export:{}ms preview:{}ms".format(
             len(tracker.tracks),
             sum(track.duration for track in tracker.tracks),
             time_stats.get('total',0.0),
             time_stats.get('load',0.0),
             time_stats.get('extract',0.0),
             time_stats.get('optical_flow',0.0),
-            time_stats.get('export',0.0)
+            time_stats.get('export',0.0),
+            time_stats.get('preview', 0.0)
         ))
 
         return tracker
