@@ -340,6 +340,7 @@ class Tracker:
         self.mask_frames = []
         self.filtered_frames = []
         self.flow_frames = []
+        self.delta_frames = []
 
         # class used to write MPEG videos, must be set to enable MPEG video output
         self.MPEGWriter = None
@@ -599,6 +600,7 @@ class Tracker:
         self.mask_frames = []
         self.filtered_frames = []
         self.flow_frames = []
+        self.delta_frames = []
 
         # don't process clips that are too hot.
         if self.stats['mean_temp'] > Tracker.MAX_MEAN_TEMPERATURE_THRESHOLD:
@@ -647,8 +649,14 @@ class Tracker:
 
             optical_flow_time += (time.time() - flow_start_time)
 
-            flow = flow.astype(np.float16)
+            flow = flow.astype(np.float32)
             self.flow_frames.append(flow)
+
+            # find a delta frame
+            if frame_number > 0:
+                self.delta_frames.append(self.filtered_frames[frame_number].astype(np.float32) - self.filtered_frames[frame_number-1])
+            else:
+                self.delta_frames.append(frame * 0.0)
 
             used_regions = []
 
@@ -706,7 +714,19 @@ class Tracker:
             track.max_offset = max(
                 (dx ** 2 + dy ** 2) ** 0.5 for (frame_number, bounds, (vx, vy), (dx, dy), mass) in history)
 
-            track.score = track.movement + track.max_offset
+            # find total per frame deltas in this region
+            deltas = []
+            for (frame_number, bounds, _, _, _) in history:
+                deltas.append(get_image_subsection(self.delta_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), 0))
+            deltas = np.asarray(deltas, dtype = np.float32)
+            track.delta_std = np.std(deltas)
+
+            movement_points = (track.movement ** 0.5) + track.max_offset
+            delta_points = track.delta_std * 25.0
+
+            track.score = movement_points + delta_points
+
+            print(track, track.score, movement_points, delta_points, track.max_offset)
 
             track.mass_history = list([int(mass) for (frame_number, bounds, (vx, vy), (dx, dy), mass) in history])
             track.average_mass = np.mean(track.mass_history)
@@ -720,6 +740,10 @@ class Tracker:
 
             # discard tracks that do not move enough
             if track.max_offset < 4.0:
+                continue
+
+            # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
+            if track.delta_std < 1.0:
                 continue
 
             track_scores.append((track.score, track))
