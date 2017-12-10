@@ -22,6 +22,8 @@ from multiprocessing import Pool
 # default base path to use if no source or destination folder are given.
 DEFAULT_BASE_PATH = "c:\\cac"
 
+EXCLUDED_FOLDERS = ['false-positive','insect','other','unidentified']
+
 def purge(dir, pattern):
     for f in glob.glob(os.path.join(dir, pattern)):
         os.remove(os.path.join(dir, f))
@@ -138,6 +140,8 @@ class CPTVTrackExtractor:
                    os.path.isdir(os.path.join(root_folder, f))]
 
         for folder in folders:
+            if os.path.basename(folder).lower() in EXCLUDED_FOLDERS:
+                continue
             print("Processing folder {0}".format(folder))
             self.process_folder(folder)
         print("Done.")
