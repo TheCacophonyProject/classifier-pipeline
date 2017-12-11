@@ -493,8 +493,8 @@ class Tracker:
         threshold = np.percentile(deltas, q=Tracker.THRESHOLD_PERCENTILE) / 2
 
         # cap the threshold to something reasonable
-        if threshold < 20.0:
-            threshold = 20.0
+        if threshold < 10.0:
+            threshold = 10.0
         if threshold > 50.0:
             threshold = 50.0
 
@@ -565,6 +565,10 @@ class Tracker:
                     item.remove()
 
                 frame_number += 1
+
+                # limit clip preview's to 1 minute
+                if frame_number >= 60*9:
+                    break
 
         plt.close(fig)
 
@@ -726,8 +730,6 @@ class Tracker:
 
             track.score = movement_points + delta_points
 
-            print(track, track.score, movement_points, delta_points, track.max_offset)
-
             track.mass_history = list([int(mass) for (frame_number, bounds, (vx, vy), (dx, dy), mass) in history])
             track.average_mass = np.mean(track.mass_history)
 
@@ -744,6 +746,10 @@ class Tracker:
 
             # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
             if track.delta_std < 1.0:
+                continue
+
+            # discard tracks that do not have enough enough average mass.
+            if track.average_mass < 2.0:
                 continue
 
             track_scores.append((track.score, track))

@@ -171,7 +171,8 @@ class CPTVTrackExtractor:
             if max_tracks == 0:
                 return
         else:
-            max_tracks = None
+            # some longer clips generate ~70 tracks (because of poor tracking mostly) so for the moment we limit these.
+            max_tracks = 10
 
         # make destination folder if required
         try:
@@ -244,20 +245,8 @@ class CPTVTrackExtractor:
 
         return tracker
 
-    def process_folder(self, folder_path, tag = None):
-        """ Extract tracks from all videos in given folder.
-            All tracks will be tagged with 'tag', which defaults to the folder name if not specified."""
-
-        if tag is None:
-            tag = os.path.basename(folder_path).upper()
-
-        jobs = []
-
-        for file_name in os.listdir(folder_path):
-            full_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(full_path) and os.path.splitext(full_path )[1].lower() == '.cptv':
-                jobs.append((self, full_path, tag, self.enable_previews))
-
+    def process_job_list(self, jobs):
+        """ Processes a list of jobs. """
         if self.workers_threads == 0:
             # just process the jobs in the main thread
             for job in jobs: process_job(job)
@@ -278,6 +267,22 @@ class CPTVTrackExtractor:
                 exit()
             else:
                 pool.close()
+
+    def process_folder(self, folder_path, tag = None):
+        """ Extract tracks from all videos in given folder.
+            All tracks will be tagged with 'tag', which defaults to the folder name if not specified."""
+
+        if tag is None:
+            tag = os.path.basename(folder_path).upper()
+
+        jobs = []
+
+        for file_name in os.listdir(folder_path):
+            full_path = os.path.join(folder_path, file_name)
+            if os.path.isfile(full_path) and os.path.splitext(full_path )[1].lower() == '.cptv':
+                jobs.append((self, full_path, tag, self.enable_previews))
+
+        self.process_job_list(jobs)
 
     def log_message(self, message):
         """ Record message in log.  Will be printed if verbose is enabled. """
