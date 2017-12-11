@@ -179,24 +179,14 @@ class Track:
     """ keeps track of which id number we are up to."""
     _track_id = 1
 
-    """ There is no target. """
-    TARGET_NONE = 'none'
-
-    """ Target has been acquired."""
-    TARGET_ACQUIRED = 'acquired'
-
-    """ Target has been lost."""
-    TARGET_LOST = 'lost'
-
-    """ Target collided with another target, or split."""
-    TARGET_SPLIT = 'split'
-
     def __init__(self, x, y, width, height, mass = 0):
 
         self.bounds = TrackingFrame(x, y, width, height)
-        self.status = Track.TARGET_NONE
         self.origin = (self.bounds.mid_x, self.bounds.mid_y)
         self.first_frame = 0
+
+        # counts number of frames since we last saw target.
+        self.frames_since_target_seen = 0
 
         self.id = Track._track_id
         Track._track_id += 1
@@ -239,55 +229,45 @@ class Track:
         """ Offset from where object was originally detected. """
         return self.bounds.mid_x - self.origin[0]
 
-    def sync_new_location(self, regions_of_interest):
+    def get_track_region_score(self, region):
+        """
+        Calculates a score between this track and a region of interest.  Regions that are close the the expected
+        location for this track are given high scores, as are regions of a similar size.
+        """
+        expected_x = int(self.bounds.mid_x + self.vx)
+        expected_y = int(self.bounds.mid_y + self.vy)
+
+        distance = ((region.mid_x - expected_x) ** 2 + (region.mid_y - expected_y) ** 2) ** 0.5
+
+        # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
+        # area is padded with 50 pixels so small regions don't change too much
+        size_difference = (abs(region.area - self.bounds.area) / (self.bounds.area+50)) * 100
+
+        return distance, size_difference
+
+    def sync_new_location(self, region):
         """ Work out out estimated new location for the frame using last position
             and movement vectors as an initial guess. """
-        gx = int(self.bounds.x + self.vx)
-        gy = int(self.bounds.y + self.vy)
 
-        new_bounds = TrackingFrame(gx, gy, self.bounds.width, self.bounds.height)
+        # reset our counter
+        self.frames_since_target_seen = 0
 
-        # look for regions and calculate their overlap
-        similar_regions = []
-        overlapping_regions = []
-        for region in regions_of_interest:
-            overlap_fraction = (new_bounds.overlap_area(region) * 2) / (new_bounds.area + region.area)
-            relative_area_difference = abs(region.area - new_bounds.area) / new_bounds.area
-            if overlap_fraction > 0.10 and relative_area_difference < 0.5:
-                similar_regions.append(region)
-            if overlap_fraction > 0.10:
-                overlapping_regions.append(region)
+        # just follow target.
+        old_x, old_y = self.bounds.mid_x, self.bounds.mid_y
+        self.bounds.x = region.x
+        self.bounds.y = region.y
+        self.bounds.width = region.width
+        self.bounds.height = region.height
+        self.mass = region.mass
+        self.bounds.id = region.id
 
-        if len(similar_regions) == 0:
-            # lost target!
-            self.status = Track.TARGET_LOST
-        elif len(similar_regions) >= 2:
-            # target split
-            self.status = Track.TARGET_SPLIT
-        else:
-            # just follow target.
-            old_x, old_y = self.bounds.mid_x, self.bounds.mid_y
-            self.status = Track.TARGET_ACQUIRED
-            self.bounds.x = similar_regions[0].x
-            self.bounds.y = similar_regions[0].y
-            self.bounds.width = similar_regions[0].width
-            self.bounds.height = similar_regions[0].height
-            self.mass = similar_regions[0].mass
-            self.bounds.id = similar_regions[0].id
-            # print("move to ",self.bounds.x, self.bounds.y)
-
-            # work out out new velocity
-            new_vx = self.bounds.mid_x - old_x
-            new_vy = self.bounds.mid_y - old_y
-            # smooth out the velocity changes a little bit.
-            smooth = 0.9  # ema smooth
-            self.vx = smooth * self.vx + (1 - smooth) * new_vx
-            self.vy = smooth * self.vy + (1 - smooth) * new_vy
-
-        return overlapping_regions
-
-
-
+        # work out out new velocity
+        new_vx = self.bounds.mid_x - old_x
+        new_vy = self.bounds.mid_y - old_y
+        # smooth out the velocity changes a little bit.
+        smooth = 0.5  # ema smooth
+        self.vx = smooth * self.vx + (1 - smooth) * new_vx
+        self.vy = smooth * self.vy + (1 - smooth) * new_vy
 
 class Tracker:
     """ Tracks objects within a CPTV thermal video file. """
@@ -547,14 +527,16 @@ class Tracker:
                     ax.add_patch(patch)
                     remove_list.append(patch)
 
+                track_colors = ['red','green','blue','purple','yellow','cyan']
+
                 # look for any tracks that occur on this frame
-                for track in self.tracks:
+                for id, track in enumerate(self.tracks):
                     frame_offset = frame_number - track.first_frame
                     if frame_offset > 0 and frame_offset < len(track.bounds_history)-1:
 
                         # display the track
                         rect = track.bounds_history[frame_offset]
-                        patch = patches.Rectangle((rect.x, rect.y), rect.width, rect.height, linewidth=1, edgecolor='r',
+                        patch = patches.Rectangle((rect.x, rect.y), rect.width, rect.height, linewidth=1, edgecolor=track_colors[id % len(track_colors)],
                                                   facecolor='none')
                         ax.add_patch(patch)
 
@@ -677,12 +659,34 @@ class Tracker:
 
             used_regions = []
 
-            # step 2. match these with tracked objects
+            # work out the best matchings for tracks and regions of interest
+            scores = []
             for track in active_tracks:
-                # update each track.
-                used_regions = used_regions + track.sync_new_location(new_regions)
+                for region in new_regions:
+                    distance, size_change = track.get_track_region_score(region)
+                    if distance > 20:
+                        continue
+                    if size_change > 30:
+                        continue
+                    scores.append((distance, track, region))
 
-            # step 3. create new tracks for any unmatched regions
+            # apply matchings in a greedly.  Low score is best.
+            matched_tracks = set()
+            used_regions = set()
+
+            scores.sort(key=lambda record: record[0])
+            results = []
+
+            for (score, track, region) in scores:
+                # don't match a track twice
+                if track in matched_tracks or region in used_regions:
+                    continue
+                track.sync_new_location(region)
+                used_regions.add(region)
+                matched_tracks.add(track)
+                results.append((track, score))
+
+            # create new tracks for any unmatched regions
             for region in new_regions:
                 if region in used_regions:
                     continue
@@ -691,7 +695,14 @@ class Tracker:
                 active_tracks.append(track)
                 self.track_history[track] = []
 
-            active_tracks = [track for track in active_tracks if track.status != Track.TARGET_LOST]
+            # check if any tracks did not find a matched region
+            for track in [track for track in active_tracks if track not in matched_tracks]:
+                # we lost this track.  start a count down, and if we don't get it back soon remove it
+                track.frames_since_target_seen += 1
+
+
+            # remove any tracks that have not seen their target in 9 frames
+            active_tracks = [track for track in active_tracks if track.frames_since_target_seen < 9]
 
             self.regions.append(rect.copy() for rect in new_regions)
 

@@ -337,7 +337,7 @@ class CPTVTrackExtractor:
             """ Checks of value is similar to expected value. An expected value of 0 will always return true. """
             if expected == 0:
                 return True
-            return (abs(value - expected) / expected) <= relative_error or abs(value - expected) < abs_error
+            return ((abs(value - expected) / expected) <= relative_error) or (abs(value - expected) <= abs_error)
 
         # find the file.  We looking in all the tag folder to make life simpler when creating the test file.
         source_file = find_file(source_folder, test.source)
