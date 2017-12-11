@@ -345,6 +345,8 @@ class Tracker:
         self.flow_frames = []
         self.delta_frames = []
 
+        self.verbose = False
+
         # class used to write MPEG videos, must be set to enable MPEG video output
         self.MPEGWriter = None
 
@@ -538,6 +540,13 @@ class Tracker:
                 # items to be removed from image after we draw it (otherwise they turn up there next frame)
                 remove_list = []
 
+                # look for any regions of interest that occur on this frame
+                for rect in rects:
+                    patch = patches.Rectangle((rect.x, rect.y), rect.width, rect.height, linewidth=1, edgecolor='grey',
+                                              facecolor='none')
+                    ax.add_patch(patch)
+                    remove_list.append(patch)
+
                 # look for any tracks that occur on this frame
                 for track in self.tracks:
                     frame_offset = frame_number - track.first_frame
@@ -684,7 +693,7 @@ class Tracker:
 
             active_tracks = [track for track in active_tracks if track.status != Track.TARGET_LOST]
 
-            self.regions.append([track.bounds.copy() for track in active_tracks])
+            self.regions.append(rect.copy() for rect in new_regions)
 
             # step 5. record history.
             for track in active_tracks:
@@ -740,6 +749,11 @@ class Tracker:
 
             track.duration = track_length / 9.0
 
+            if self.verbose:
+                print(" - track duration:{:.1f}sec offset:{:.1f}px delta:{:.1f} mass:{:.1f}px".format(
+                    track_length, track.max_offset, track.delta_std, track.average_mass
+                ))
+
             # discard any tracks that are less than 3 seconds long (27 frames)
             # these are probably glitches anyway, or don't contain enough information.
             if track_length < 9 * 3:
@@ -750,7 +764,7 @@ class Tracker:
                 continue
 
             # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
-            if track.delta_std < 2.0:
+            if track.delta_std < 1.0:
                 continue
 
             # discard tracks that do not have enough enough average mass.

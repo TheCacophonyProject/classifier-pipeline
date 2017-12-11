@@ -196,6 +196,7 @@ class CPTVTrackExtractor:
         tracker = Tracker.Tracker(full_path)
         tracker.max_tracks = max_tracks
         tracker.tag = tag
+        tracker.verbose = self.verbose
 
         # read metadata
         meta_data_filename = os.path.splitext(full_path)[0] + ".dat"
@@ -331,8 +332,6 @@ class CPTVTrackExtractor:
 
     def run_test(self, source_folder, test: TrackerTestCase):
         """ Runs a specific test case. """
-
-        self.verbose = False
 
         def are_similar(value, expected, relative_error = 0.2, abs_error = 2.0):
             """ Checks of value is similar to expected value. An expected value of 0 will always return true. """
