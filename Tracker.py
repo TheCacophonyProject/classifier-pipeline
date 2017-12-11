@@ -223,6 +223,9 @@ class Track:
         # how likely this is to be a valid track
         self.score = 0.0
 
+        # stores various stats about this track.
+        self.stats = {}
+
     def __repr__(self):
         return "({0},{1})".format(self.bounds.x, self.bounds.y)
 
@@ -695,7 +698,7 @@ class Tracker:
 
     def filter_tracks(self):
         """ Removes tracks with too poor a score to be used. """
-        if self.max_tracks is not None:
+        if self.max_tracks is not None and self.max_tracks  < len(self.tracks):
             print(" -using only {0} tracks out of {1}".format(self.max_tracks, len(self.tracks)))
             self.tracks = self.tracks[:self.max_tracks]
 
@@ -723,7 +726,8 @@ class Tracker:
             for (frame_number, bounds, _, _, _) in history:
                 deltas.append(get_image_subsection(self.delta_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), 0))
             deltas = np.asarray(deltas, dtype = np.float32)
-            track.delta_std = np.std(deltas)
+            track.delta_std = float(np.std(deltas))
+            track.stats['delta'] = track.delta_std
 
             movement_points = (track.movement ** 0.5) + track.max_offset
             delta_points = track.delta_std * 25.0
@@ -857,7 +861,6 @@ class Tracker:
             save_file['background'] = self.background
 
             stats = {}
-
             stats['id'] = track.id
             stats['score'] = track.score
             stats['movement'] = track.movement
@@ -871,6 +874,10 @@ class Tracker:
             stats['threshold'] = self.auto_threshold
             stats['confidence'] = self.stats['confidence']
             stats['is_static_background'] = self.is_static_background
+
+            # add in any stats generated during analysis.
+            stats.update(track.stats)
+
             stats['mass_history'] = track.mass_history
             stats['bounds_history'] = track.bounds_history
 
