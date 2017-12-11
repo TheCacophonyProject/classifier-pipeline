@@ -196,7 +196,7 @@ class CPTVTrackExtractor:
         tracker = Tracker.Tracker(full_path)
         tracker.max_tracks = max_tracks
         tracker.tag = tag
-        tracker.verbose = self.verbose
+        tracker.verbose = self.verbose >= 2
 
         # read metadata
         meta_data_filename = os.path.splitext(full_path)[0] + ".dat"
@@ -410,7 +410,7 @@ def parse_params():
     parser.add_argument('-c', '--color-map', default="custom_colormap.dat", help='Colormap to use when exporting MPEG files')
     parser.add_argument('-p', '--enable-previews', action='store_true', help='Enables preview MPEG files (can be slow)')
     parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
-    parser.add_argument('-v', '--verbose', action='store_true', help='Display additional information.')
+    parser.add_argument('-v', '--verbose', action='count', help='Display additional information.')
     parser.add_argument('-w', '--workers', default='0', help='Number of worker threads to use.  0 disables worker pool and forces a single thread.')
     parser.add_argument('-f', '--force-overwrite', default='old', help='Overwrite mode.  Options are all, old, or none.')
 
