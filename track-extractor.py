@@ -4,7 +4,6 @@ Processes a CPTV file identifying and tracking regions of interest, and saving t
 
 # we need to use a non GUI backend.  AGG works but is quite slow so I used SVG instead.
 import matplotlib
-matplotlib.use("SVG")
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as manimation
@@ -230,7 +229,7 @@ class CPTVTrackExtractor:
         tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=False,
                        include_track_previews=create_preview_file and self.MPEGWriter is not None)
 
-        if create_preview_file:
+        if create_preview_file == 2:
             tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
 
         tracker.save_stats(stats_path_and_filename)
@@ -256,11 +255,8 @@ class CPTVTrackExtractor:
             for job in jobs: process_job(job)
         else:
             # send the jobs to a worker pool
-            original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
             pool = Pool(self.workers_threads)
-            signal.signal(signal.SIGINT, original_sigint_handler)
             try:
-                # map_async, and the .get(timeout) allow for control-c commands to work properly.
                 # see https://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
                 pool.map_async(process_job, jobs, chunksize=1).get(timeout=10 ** 6)
                 pool.close()
@@ -408,7 +404,7 @@ def parse_params():
     parser.add_argument('-o', '--output-folder', default=os.path.join(DEFAULT_BASE_PATH,"tracks"), help='Folder to output tracks to')
     parser.add_argument('-s', '--source-folder', default=os.path.join(DEFAULT_BASE_PATH,"clips"), help='Source folder root with class folders containing CPTV files')
     parser.add_argument('-c', '--color-map', default="custom_colormap.dat", help='Colormap to use when exporting MPEG files')
-    parser.add_argument('-p', '--enable-previews', action='store_true', help='Enables preview MPEG files (can be slow)')
+    parser.add_argument('-p', '--enable-previews', action='count', help='Enables preview MPEG files (can be slow)')
     parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
     parser.add_argument('-v', '--verbose', action='count', help='Display additional information.')
     parser.add_argument('-w', '--workers', default='0', help='Number of worker threads to use.  0 disables worker pool and forces a single thread.')
