@@ -192,6 +192,11 @@ class CPTVTrackExtractor:
         purge(destination_folder, base_filename + "*.mp4")
         purge(destination_folder, base_filename + "*.txt")
 
+        # load the track
+        tracker = Tracker.Tracker(full_path)
+        tracker.max_tracks = max_tracks
+        tracker.tag = tag
+
         # read metadata
         meta_data_filename = os.path.splitext(full_path)[0] + ".dat"
         if os.path.exists(meta_data_filename):
@@ -202,23 +207,21 @@ class CPTVTrackExtractor:
 
             # we can only handle one tagged animal at a time here.
             if tag_count != 1:
+                print(" - Warning, too many tags in cptv files, ignoring.")
                 return
 
-            confidence = meta_data['Tags'][0]['confidence']
+            tracker.stats['confidence'] = meta_data['Tags'][0].get('confidence',0.0)
+            tracker.stats['trap'] = meta_data['Tags'][0].get('trap','none')
+            tracker.stats['event'] = meta_data['Tags'][0].get('event','none')
+            tracker.stats['cptv_metadata'] = meta_data['Tags'][0]
+
         else:
             self.log_warning(" - Warning: no metadata found for file.")
-            confidence = 0.0
-
-        # load the track
-        tracker = Tracker.Tracker(full_path)
-        tracker.max_tracks = max_tracks
-        tracker.tag = tag
 
         # pass the mpeg writer to the tracker so that it can output video files
         tracker.MPEGWriter = self.MPEGWriter
 
         # save some additional stats
-        tracker.stats['confidence'] = confidence
         tracker.stats['version'] = CPTVTrackExtractor.VERSION
 
         tracker.extract()

@@ -635,7 +635,8 @@ class Tracker:
             self.mask_frames.append(markers)
 
             # create a filtered frame
-            filtered = frame - mask - threshold
+            filtered = frame - mask
+            filtered = filtered - np.median(filtered)
             filtered[filtered < 0] = 0
             self.filtered_frames.append(filtered)
 
@@ -749,7 +750,7 @@ class Tracker:
                 continue
 
             # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
-            if track.delta_std < 1.0:
+            if track.delta_std < 2.0:
                 continue
 
             # discard tracks that do not have enough enough average mass.
@@ -828,13 +829,10 @@ class Tracker:
                 mask = get_image_subsection(self.mask_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), 0)
                 mask[mask != bounds.id] = 0
                 mask[mask > 0] = 1
-                kernel = np.ones((3, 3), np.uint8)
-                mask = cv2.dilate(mask.astype(np.uint8), kernel, iterations=1)
 
-                # todo: these should be float16, but just seeing if this makes a difference.
-                window_frames.append(frames.astype(np.float32))
-                filtered_frames.append(filtered.astype(np.float32))
-                flow_frames.append(flow.astype(np.float32))
+                window_frames.append(frames.astype(np.float16))
+                filtered_frames.append(filtered.astype(np.float16))
+                flow_frames.append(flow.astype(np.float16))
                 mask_frames.append(mask.astype(np.uint8))
 
                 motion_vectors.append((vx, vy))
@@ -873,6 +871,7 @@ class Tracker:
             stats['filename'] = self.source
             stats['threshold'] = self.auto_threshold
             stats['confidence'] = self.stats['confidence']
+            stats['trap'] = self.stats['trap']
             stats['is_static_background'] = self.is_static_background
 
             # add in any stats generated during analysis.
