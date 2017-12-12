@@ -540,7 +540,7 @@ class Tracker:
             frame_number += 1
 
             # we store the entire video in memory so we need to cap the frame count at some point.
-            if frame_number > 9 * 60 * 2:
+            if frame_number > 9 * 60 * 10:
                 break
 
         self.write_mpeg(filename, video_frames)

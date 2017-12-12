@@ -6,6 +6,8 @@ Processes a CPTV file identifying and tracking regions of interest, and saving t
 import matplotlib
 matplotlib.use("SVG")
 
+import cv2
+
 import matplotlib.pyplot as plt
 import pickle
 import os
@@ -202,14 +204,15 @@ class CPTVTrackExtractor:
                 tags = set([x['animal'] for x in meta_data['Tags']])
                 if len(tags) >= 2:
                     print(" - Warning, mixed tags, can not process.",tags)
+                    return
 
             tracker.stats['confidence'] = meta_data['Tags'][0].get('confidence',0.0)
             tracker.stats['trap'] = meta_data['Tags'][0].get('trap','none')
             tracker.stats['event'] = meta_data['Tags'][0].get('event','none')
             tracker.stats['cptv_metadata'] = meta_data['Tags'][0]
-
         else:
             self.log_warning(" - Warning: no metadata found for file.")
+            return
 
         # save some additional stats
         tracker.stats['version'] = CPTVTrackExtractor.VERSION
@@ -399,8 +402,13 @@ def parse_params():
     parser.add_argument('-v', '--verbose', action='count', help='Display additional information.')
     parser.add_argument('-w', '--workers', default='0', help='Number of worker threads to use.  0 disables worker pool and forces a single thread.')
     parser.add_argument('-f', '--force-overwrite', default='old', help='Overwrite mode.  Options are all, old, or none.')
+    parser.add_argument('-i', '--show-build-information', action='count', help='Show openCV build information and exit.')
 
     args = parser.parse_args()
+
+    if args.show_build_information:
+        print(cv2.getBuildInformation())
+        return
 
     # setup extractor
     extractor = CPTVTrackExtractor(args.output_folder)
@@ -451,6 +459,13 @@ def parse_params():
         extractor.process_folder(os.path.join(args.source_folder, args.target), args.target)
         return
 
+def print_opencl_info():
+    """ Print information about opencv support for opencl. """
+    if cv2.ocl.haveOpenCL():
+        if cv2.ocl.useOpenCL():
+            print("Open CL found and enabled")
+        else:
+            print("Open CL found but disabled")
 
 def main():
     parse_params()
@@ -459,5 +474,6 @@ if __name__ == '__main__':
     # for some reason the fork method seems to memory leak, and unix defaults to this so we
     # stick to spawn.  Also, form might be a problem as some numpy commands have multiple threads?
     multiprocessing.set_start_method('spawn')
+    print_opencl_info()
     main()
 

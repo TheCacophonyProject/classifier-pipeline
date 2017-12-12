@@ -3,7 +3,6 @@ Module classify a tracking window based on a 3 second segment.
 """
 
 import os
-import tensorflow as tf
 
 # disable logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -41,6 +40,9 @@ class Segment:
 class Classifier:
     """ Classifies tracking segments. """
     def __init__(self, model_path):
+
+        global tf
+        import tensorflow as tf
 
         # TensorFlow session:
         # note we disable the GPU, it won't be needed as classification is very quick anyway.
