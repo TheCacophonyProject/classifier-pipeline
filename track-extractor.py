@@ -15,7 +15,7 @@ import glob
 import argparse
 import time
 
-from multiprocessing import Pool
+import multiprocessing
 
 # default base path to use if no source or destination folder are given.
 DEFAULT_BASE_PATH = "c:\\cac"
@@ -245,7 +245,7 @@ class CPTVTrackExtractor:
             for job in jobs: process_job(job)
         else:
             # send the jobs to a worker pool
-            pool = Pool(self.workers_threads)
+            pool = multiprocessing.Pool(self.workers_threads)
             try:
                 # see https://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
                 pool.map(process_job, jobs, chunksize=1)
@@ -456,5 +456,8 @@ def main():
     parse_params()
 
 if __name__ == '__main__':
+    # for some reason the fork method seems to memory leak, and unix defaults to this so we
+    # stick to spawn.  Also, form might be a problem as some numpy commands have multiple threads?
+    multiprocessing.set_start_method('spawn')
     main()
 
