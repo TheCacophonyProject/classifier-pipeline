@@ -463,9 +463,9 @@ def print_opencl_info():
     """ Print information about opencv support for opencl. """
     if cv2.ocl.haveOpenCL():
         if cv2.ocl.useOpenCL():
-            print("Open CL found and enabled")
+            print("OpenCL found and enabled")
         else:
-            print("Open CL found but disabled")
+            print("OpenCL found but disabled")
 
 def main():
     parse_params()

@@ -3,3 +3,4 @@ pytz
 cptv
 opencv-python
 numpy
+scipy

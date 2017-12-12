@@ -15,6 +15,7 @@ import subprocess
 
 import numpy as np
 import scipy
+import scipy.ndimage
 import cv2
 
 from cptv import CPTVReader
@@ -59,7 +60,9 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
     midx = int(bounds.mid_x + padding)
     midy = int(bounds.mid_y + padding)
 
+    # for some reason I write this to only work with even window sizes?
     window_half_width, window_half_height = window_size[0] // 2, window_size[1] // 2
+    window_size = (window_half_width * 2, window_half_height * 2)
 
     image_height, image_width, channels = image.shape
 
@@ -69,7 +72,7 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
     enlarged_frame = np.ones([image_height + padding*2, image_width + padding*2, channels], dtype=np.float16) * boundary_value
     enlarged_frame[padding:-padding,padding:-padding] = image
 
-    sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_width:midx+window_half_width]
+    sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_height:midx+window_half_height]
 
     width, height, channels = sub_section.shape
     if int(width) != window_size[0] or int(height) != window_size[1]:
@@ -237,6 +240,25 @@ class Track:
         """ Offset from where object was originally detected. """
         return self.bounds.mid_x - self.origin[0]
 
+    def get_velocity_from_flow(self, flow, mask):
+        """ sets velocity from flow """
+        track_flow = get_image_subsection(flow, self.bounds, (self.bounds.width, self.bounds.height), 0)
+        track_mask = get_image_subsection(mask, self.bounds, (self.bounds.width, self.bounds.height), 0)
+
+        # make sure we are the one on the mask
+        track_mask[track_mask != self.id] = 0
+        track_mask[track_mask > 0] = 1
+
+        # too few pixels to work with.
+        if np.sum(track_mask) < 2:
+            self.vx = self.vy = 0.0
+            return
+
+        # we average the velocity of every pixel in our mask, but ignore the others.
+        track_flow = track_flow[:, :] * track_mask[:, :, np.newaxis]
+        self.vx = np.sum(track_flow[:, :, 0]) / np.sum(track_mask)
+        self.vy = np.sum(track_flow[:, :, 1]) / np.sum(track_mask)
+
     def get_track_region_score(self, region):
         """
         Calculates a score between this track and a region of interest.  Regions that are close the the expected
@@ -269,13 +291,8 @@ class Track:
         self.mass = region.mass
         self.bounds.id = region.id
 
-        # work out out new velocity
-        new_vx = self.bounds.mid_x - old_x
-        new_vy = self.bounds.mid_y - old_y
-        # smooth out the velocity changes a little bit.
-        smooth = 0.5  # ema smooth
-        self.vx = smooth * self.vx + (1 - smooth) * new_vx
-        self.vy = smooth * self.vy + (1 - smooth) * new_vy
+        self.vx = self.bounds.mid_x - old_x
+        self.vy = self.bounds.mid_y - old_y
 
 class Tracker:
     """ Tracks objects within a CPTV thermal video file. """
@@ -643,33 +660,37 @@ class Tracker:
             tvl1.setWarpingsNumber(3)
             tvl1.setScaleStep(0.5)
 
-        for frame_number, frame in enumerate(self.frames):
-
-            # find regions of interest in this frame
-            new_regions, markers = self._get_regions_of_interest(frame - mask, threshold, include_markers=True)
-
-            self.mask_frames.append(markers)
-
+        # calculate filtered frames
+        for frame in self.frames:
             # create a filtered frame
             filtered = frame - mask
             filtered = filtered - np.median(filtered)
             filtered[filtered < 0] = 0
             self.filtered_frames.append(filtered)
 
-            # calculate optical flow
+        for frame_number in range(len(self.frames)):
+
+            frame = self.frames[frame_number]
+
+            # find regions of interest in this frame
+            new_regions, markers = self._get_regions_of_interest(frame - mask, threshold, include_markers=True)
+
+            self.mask_frames.append(markers)
+
+            # calculate optical flow.
             flow_start_time = time.time()
             flow = np.zeros([frame.shape[0], frame.shape[1], 2], dtype=np.uint8)
-            if len(self.filtered_frames) >= 2:
+            if frame_number > 0
                 # divide by two so we don't clip too much with hotter targets.
-                prev_gray_frame = (self.filtered_frames[-2] / 2).astype(np.uint8)
-                current_gray_frame = (self.filtered_frames[-1] / 2).astype(np.uint8)
+                current_gray_frame = (self.filtered_frames[frame_number-1] / 2).astype(np.uint8)
+                next_gray_frame = (self.filtered_frames[frame_number] / 2).astype(np.uint8)
 
                 # the tvl1 algorithm will take is many threads as it can.  On machines with many cores this ends up
                 # being very inefficent.  For example this takes 80ms on 1 thread, 60ms on 2, and 50ms on 4, so the
                 # gains are very deminising.  However the cpu will be pegged at full.  A better strategy is to simply
                 # run additional instances of the Tracker in parallel
                 cv2.setNumThreads(2)
-                flow = tvl1.calc(prev_gray_frame, current_gray_frame, flow)
+                flow = tvl1.calc(current_gray_frame, next_gray_frame, flow)
 
             optical_flow_time += (time.time() - flow_start_time)
 
@@ -682,16 +703,15 @@ class Tracker:
             else:
                 self.delta_frames.append(frame * 0.0)
 
-            used_regions = []
-
             # work out the best matchings for tracks and regions of interest
             scores = []
             for track in active_tracks:
                 for region in new_regions:
                     distance, size_change = track.get_track_region_score(region)
-                    if distance > 20:
+
+                    if distance > 30:
                         continue
-                    if size_change > 30:
+                    if size_change > 100:
                         continue
                     scores.append((distance, track, region))
 
@@ -719,7 +739,7 @@ class Tracker:
 
                 # make sure we don't overlap with existing tracks.  This can happen if a tail gets tracked as a new object
                 overlaps = [track.bounds.overlap_area(region) for track in active_tracks]
-                if len(overlaps) > 0 and max(overlaps) > (region.area / 2):
+                if len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
                     continue
 
                 track = Track(region.x, region.y, region.width, region.height, region.mass)
@@ -731,7 +751,6 @@ class Tracker:
             for track in [track for track in active_tracks if track not in matched_tracks]:
                 # we lost this track.  start a count down, and if we don't get it back soon remove it
                 track.frames_since_target_seen += 1
-
 
             # remove any tracks that have not seen their target in 9 frames
             active_tracks = [track for track in active_tracks if track.frames_since_target_seen < 9]
@@ -936,6 +955,7 @@ class Tracker:
             stats['threshold'] = self.auto_threshold
             stats['confidence'] = self.stats['confidence']
             stats['trap'] = self.stats['trap']
+            stats['event'] = self.stats['event']
             stats['is_static_background'] = self.is_static_background
 
             # add in any stats generated during analysis.
