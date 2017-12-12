@@ -7,7 +7,6 @@ import matplotlib
 matplotlib.use("SVG")
 
 import matplotlib.pyplot as plt
-import matplotlib.animation as manimation
 import pickle
 import os
 import Tracker

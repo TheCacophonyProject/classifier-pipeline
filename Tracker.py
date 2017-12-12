@@ -53,7 +53,8 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
     if len(image.shape) == 2:
         image = image[:,:,np.newaxis]
 
-    padding = max(window_size)
+    # totally excessive, but just to be safe.
+    padding = 200
 
     midx = int(bounds.mid_x + padding)
     midy = int(bounds.mid_y + padding)
@@ -69,6 +70,10 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
     enlarged_frame[padding:-padding,padding:-padding] = image
 
     sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_width:midx+window_half_width]
+
+    width, height, channels = sub_section.shape
+    if int(width) != window_size[0] or int(height) != window_size[1]:
+        print("Warning: subsection wrong size. Expected {} but found {}".format(window_size,(width, height)))
 
     if channels == 1:
         sub_section = sub_section[:,:,0]
@@ -840,32 +845,26 @@ class Tracker:
             flow_frames = []
             motion_vectors = []
 
-            # export a MPEG preview of the track
-            if include_track_previews:
-                FRAME_SCALE = 4.0
-                video_frames = []
-                for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
-                    draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds,(Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
-                    img = self.convert_heat_to_img(3.0 * draw_frame + Tracker.TEMPERATURE_MIN)
-                    img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
-                    video_frames.append(np.asarray(img))
-                self.write_mpeg(MPEG_filename, video_frames)
+            draw_frames = []
 
             # export the track file
             for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
 
-                window_size = max(Tracker.WINDOW_SIZE, bounds.width, bounds.height)
+                # window size must be even for get_image_subsection to work.
+                window_size = (max(Tracker.WINDOW_SIZE, bounds.width, bounds.height)//2)*2
 
                 frame = get_image_subsection(self.frames[frame_number], bounds, (window_size, window_size))
                 filtered = get_image_subsection(self.filtered_frames[frame_number], bounds,(window_size, window_size), 0)
-                flow = get_image_subsection(self.flow_frames[frame_number], bounds,(window_size, window_size, 0))
+                flow = get_image_subsection(self.flow_frames[frame_number], bounds, (window_size, window_size), 0)
                 mask = get_image_subsection(self.mask_frames[frame_number], bounds, (window_size, window_size), 0)
 
                 if window_size != Tracker.WINDOW_SIZE:
-                    frame = scipy.misc.imresize(frame, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), interp='bilinear')
-                    filtered = scipy.misc.imresize(filtered, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), interp='bilinear')
-                    flow = scipy.misc.imresize(flow, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), interp='bilinear')
-                    mask = scipy.misc.imresize(mask, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), interp='nearest')
+                    scale = Tracker.WINDOW_SIZE / window_size
+                    frame = scipy.ndimage.zoom(np.float32(frame), (scale, scale), order = 1)
+                    filtered = scipy.ndimage.zoom(np.float32(filtered), (scale, scale), order=1)
+                    flow = scipy.ndimage.zoom(np.float32(flow), (scale, scale, 1), order=1)
+                    mask = scipy.ndimage.zoom(np.float32(mask), (scale, scale), order=1)
+                    print(frame.shape, filtered.shape, flow.shape, mask.shape, bounds)
 
                 # make sure only our pixels are included in the mask.
                 mask[mask != bounds.id] = 0
@@ -875,6 +874,7 @@ class Tracker:
                 filtered_frames.append(filtered.astype(np.float16))
                 flow_frames.append(flow.astype(np.float16))
                 mask_frames.append(mask.astype(np.uint8))
+                draw_frames.append(filtered)
 
                 motion_vectors.append((vx, vy))
 
@@ -887,6 +887,17 @@ class Tracker:
                     data[:, :, 2:3+1] = flow_frames[-1]
                     segment.append_frame(data)
                     track.prediction_history.append(self.classifier.predict(segment))
+
+
+            # export a MPEG preview of the track
+            if include_track_previews:
+                FRAME_SCALE = 4.0
+                video_frames = []
+                for draw_frame in draw_frames:
+                    img = self.convert_heat_to_img(3.0 * draw_frame + Tracker.TEMPERATURE_MIN)
+                    img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
+                    video_frames.append(np.asarray(img))
+                self.write_mpeg(MPEG_filename, video_frames)
 
 
             # export track stats.
