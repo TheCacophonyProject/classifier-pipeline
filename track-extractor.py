@@ -194,9 +194,15 @@ class CPTVTrackExtractor:
             tag_count = len(meta_data['Tags'])
 
             # we can only handle one tagged animal at a time here.
-            if tag_count != 1:
-                print(" - Warning, too many tags in cptv files, ignoring.")
+            if tag_count == 0:
+                print(" - Warning, no tags in cptv files, ignoring.")
                 return
+
+            if tag_count >= 2:
+                # make sure all tags are the same
+                tags = set([x['animal'] for x in meta_data['Tags']])
+                if len(tags) >= 2:
+                    print(" - Warning, mixed tags, can not process.",tags)
 
             tracker.stats['confidence'] = meta_data['Tags'][0].get('confidence',0.0)
             tracker.stats['trap'] = meta_data['Tags'][0].get('trap','none')
@@ -243,7 +249,7 @@ class CPTVTrackExtractor:
             pool = Pool(self.workers_threads)
             try:
                 # see https://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
-                pool.map_async(process_job, jobs, chunksize=1).get(timeout=10 ** 6)
+                pool.map(process_job, jobs)
                 pool.close()
                 pool.join()
             except KeyboardInterrupt:
