@@ -6,15 +6,18 @@ Module to handle tracking of objects in thermal video.
 import matplotlib
 matplotlib.use("SVG")
 
-import matplotlib.patches as patches
 import matplotlib.pyplot as plt
-import matplotlib.animation as manimation
+
+# for MPEG exports
+from PIL import ImageDraw
+from PIL import Image
+import subprocess
 
 import numpy as np
+import scipy
 import cv2
 
 from cptv import CPTVReader
-
 
 import pytz
 import datetime
@@ -50,7 +53,7 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
     if len(image.shape) == 2:
         image = image[:,:,np.newaxis]
 
-    padding = 50
+    padding = max(window_size)
 
     midx = int(bounds.mid_x + padding)
     midy = int(bounds.mid_y + padding)
@@ -325,10 +328,10 @@ class Tracker:
         self.flow_frames = []
         self.delta_frames = []
 
-        self.verbose = False
+        # default colormap to use for outputting preview files.
+        self.colormap = plt.cm.jet
 
-        # class used to write MPEG videos, must be set to enable MPEG video output
-        self.MPEGWriter = None
+        self.verbose = False
 
         # if enabled tracker will try and predict what animals are in each track
         self.include_prediction = False
@@ -430,34 +433,6 @@ class Tracker:
     def _init_classifier(self):
         self.classifier = Classifier('./models/model4b')
 
-    def _init_video(self, title, size):
-        """
-        Initialise an MPEG video with given title and size
-
-        :param title: Title for the MPEG file
-        :param size: tuple containing dims (width, height)
-        :param colormap: colormap to use when outputting video
-
-        :return: returns a tuple containing (figure, axis, image, and writer)
-        """
-
-        if self.MPEGWriter is None:
-            raise Exception("MPEGWriter not assigned, can not initialise video export.")
-
-        metadata = dict(title=title, artist='Cacophony Project')
-        writer = self.MPEGWriter(fps=9, metadata=metadata)
-
-        # we create a figure of the appropriate dims.  Assuming 100 dpi
-        figure_size = (size[0]/25, size[1]/25)
-
-        fig, ax = plt.subplots(1, figsize = figure_size)
-        data = np.zeros((size[1], size[0]),dtype=np.float32)
-        ax.axis('off')
-
-        im = plt.imshow(data, vmin=Tracker.TEMPERATURE_MIN , vmax=Tracker.TEMPERATURE_MAX)
-        return (fig, ax, im, writer)
-
-
     def get_background_average_change(self):
         """
         Returns how much each pixel changes on average over the video.  Used to detect static backgrounds.
@@ -465,7 +440,6 @@ class Tracker:
         """
         delta = np.asarray(self.frames[1:],dtype=np.float32) - np.asarray(self.frames[:-1],dtype=np.float32)
         return float(np.mean(np.abs(delta)))
-
 
     def get_background(self):
         """
@@ -483,91 +457,131 @@ class Tracker:
         if threshold > 50.0:
             threshold = 50.0
 
-        return (background, float(threshold))
+        return background, float(threshold)
 
-    def display(self, filename, colormap = None):
+    def convert_heat_to_img(self, frame, colormap = None):
+        """
+        Converts a frame in float32 format to a PIL image in in uint8 format.
+        :param frame: the numpy frame contining heat values to convert
+        :param colormap: an optional colormap to use, if none is provided then tracker.colormap is used.
+        :return: a pillow Image containing a colorised heatmap
+        """
+        # normalise
+        if colormap is None: colormap = self.colormap
+        frame = (frame - Tracker.TEMPERATURE_MIN) / (Tracker.TEMPERATURE_MAX - Tracker.TEMPERATURE_MIN)
+        colorized = np.uint8(255.0*colormap(frame))
+        img = Image.fromarray(colorized[:,:,:3]) #ignore alpha
+        return img
+
+    def display(self, filename):
         """
         Exports tracking information to a video file for debugging.
         """
 
+        # increased resolution of video file.
+        # videos look much better scaled up
+        FRAME_SCALE = 4.0
+
         start = time.time()
 
-        # Display requires the MPEGWriting to be set.
-        if self.MPEGWriter is None:
-            raise Exception("Can not generate clip preview as MPEGWriter is not initialized.  Try installing FFMPEG.")
-
-        if colormap is None: colormap = plt.cm.jet
-
-        # setup the writer
-        (fig, ax, im, writer) = self._init_video(filename, (160*2, 120*2))
-        im.colormap = colormap
+        video_frames = []
+        track_colors = [(255,0,0),(0,255,0),(255,255,0),(128,255,255)]
 
         # write video
         frame_number = 0
-        with writer.saving(fig, filename, dpi=Tracker.VIDEO_DPI):
-            for frame, marked, rects, flow, filtered in zip(self.frames, self.mask_frames, self.regions, self.flow_frames, self.filtered_frames):
+        for frame, marked, rects, flow, filtered in zip(self.frames, self.mask_frames, self.regions, self.flow_frames, self.filtered_frames):
 
-                # marked is an image with each pixel's value being the label, 0...n for n objects
-                # I multiply it here, but really I should use a seperate color map for this.
-                # maybe I could multiply it modulo, and offset by some amount?
+            # marked is an image with each pixel's value being the label, 0...n for n objects
+            # I multiply it here, but really I should use a seperate color map for this.
+            # maybe I could multiply it modulo, and offset by some amount?
 
-                # really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
-                # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
-                flow_magnitude = (flow[:,:,0]**2 + flow[:,:,1]**2) ** 0.5
-                stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((3 * filtered + Tracker.TEMPERATURE_MIN, 200 * flow_magnitude + Tracker.TEMPERATURE_MIN))))
-                im.set_data(stacked)
+            # really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
+            # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
+            flow_magnitude = (flow[:,:,0]**2 + flow[:,:,1]**2) ** 0.5
+            stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((3 * filtered + Tracker.TEMPERATURE_MIN, 200 * flow_magnitude + Tracker.TEMPERATURE_MIN))))
 
-                # items to be removed from image after we draw it (otherwise they turn up there next frame)
-                remove_list = []
+            img = self.convert_heat_to_img(stacked)
+            img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
+            draw = ImageDraw.Draw(img)
 
-                # look for any regions of interest that occur on this frame
-                for rect in rects:
-                    patch = patches.Rectangle((rect.x, rect.y), rect.width, rect.height, linewidth=1, edgecolor='grey',
-                                              facecolor='none')
-                    ax.add_patch(patch)
-                    remove_list.append(patch)
+            # look for any regions of interest that occur on this frame
+            for rect in rects:
+                rect_points = [int(p * FRAME_SCALE) for p in [rect.left, rect.top, rect.right, rect.top, rect.right, rect.bottom, rect.left, rect.bottom, rect.left, rect.top]]
+                draw.line(rect_points, (128, 128, 128))
 
-                track_colors = ['red','green','blue','purple','yellow','cyan']
+            # look for any tracks that occur on this frame
+            for id, track in enumerate(self.tracks):
+                frame_offset = frame_number - track.first_frame
+                if frame_offset > 0 and frame_offset < len(track.bounds_history)-1:
 
-                # look for any tracks that occur on this frame
-                for id, track in enumerate(self.tracks):
-                    frame_offset = frame_number - track.first_frame
-                    if frame_offset > 0 and frame_offset < len(track.bounds_history)-1:
+                    # display the track
+                    rect = track.bounds_history[frame_offset]
+                    rect_points = [int(p * FRAME_SCALE) for p in [rect.left, rect.top, rect.right, rect.top, rect.right, rect.bottom, rect.left, rect.bottom, rect.left, rect.top]]
+                    draw.line(rect_points, track_colors[id % len(track_colors)])
 
-                        # display the track
-                        rect = track.bounds_history[frame_offset]
-                        patch = patches.Rectangle((rect.x, rect.y), rect.width, rect.height, linewidth=1, edgecolor=track_colors[id % len(track_colors)],
-                                                  facecolor='none')
-                        ax.add_patch(patch)
+                    if self.include_prediction:
+                        predicted_class = self.classifier.classes[np.argmax(track.prediction_history[frame_offset])]
+                        predicted_prob = float(max(track.prediction_history[frame_offset]))
+                        if predicted_prob < 0.5:
+                            prediction_text = "Unknown [{0:.1f}%]".format(predicted_prob*100)
+                        else:
+                            prediction_text = "{0} [{1:.1f}%]".format(predicted_class, predicted_prob * 100)
+                        # NIY
+                        #text = ax.text(rect.left, rect.bottom + 5, prediction_text, color='white')
+                        #remove_list.append(text)
 
-                        if self.include_prediction:
-                            predicted_class = self.classifier.classes[np.argmax(track.prediction_history[frame_offset])]
-                            predicted_prob = float(max(track.prediction_history[frame_offset]))
-                            if predicted_prob < 0.5:
-                                prediction_text = "Unknown [{0:.1f}%]".format(predicted_prob*100)
-                            else:
-                                prediction_text = "{0} [{1:.1f}%]".format(predicted_class, predicted_prob * 100)
-                            text = ax.text(rect.left, rect.bottom + 5, prediction_text, color='white')
-                            remove_list.append(text)
+            video_frames.append(np.asarray(img))
 
-                        remove_list.append(patch)
+            frame_number += 1
 
-                fig.canvas.draw()
-                writer.grab_frame()
+            # limit clip preview's to 1 minute
+            if frame_number >= 60*9:
+                break
 
-                for item in remove_list:
-                    item.remove()
-
-                frame_number += 1
-
-                # limit clip preview's to 1 minute
-                if frame_number >= 60*9:
-                    break
-
-        plt.close(fig)
+        self.write_mpeg(filename, video_frames)
 
         self.stats['time_per_frame']['preview'] = (time.time() - start) * 1000 / len(self.frames)
 
+    def write_mpeg(self, filename, frames):
+        """
+        Saves a sequence of frames as an MPEG video.
+        :param filename: output filename
+        :param frames: numpy array of shape [frame, height, width, 3] of type uint8
+        """
+
+        # from http://zulko.github.io/blog/2013/09/27/read-and-write-video-frames-in-python-using-ffmpeg/
+        if os.name == 'nt':
+            FFMPEG_BIN = "ffmpeg.exe"  # on Windows
+        else:
+            FFMPEG_BIN = "ffmpeg"  # on Linux ans Mac OS
+
+        # we may have passed a list of frames, if so convert to a 3d array.
+        frames = np.asarray(frames, np.uint8)
+
+        frame_count, height, width, channels = frames.shape
+
+        command = [FFMPEG_BIN,
+                   '-y',  # (optional) overwrite output file if it exists
+                   '-f', 'rawvideo',
+                   '-vcodec', 'rawvideo',
+                   '-s', str(width)+'x'+str(height),  # size of one frame
+                   '-pix_fmt', 'rgb24',
+                   '-r', '9',  # frames per second
+                   '-i', '-',  # The imput comes from a pipe
+                   '-an',  # Tells FFMPEG not to expect any audio
+                   '-vcodec', 'mpeg4',
+                   filename]
+
+        # write out the data.
+        pipe = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            pipe.stdin.write(frames.tostring())
+            std_out, std_err = pipe.communicate()
+        except Exception as e:
+            print("Failed to write MPEG:",e)
+            std_out, std_err = pipe.communicate()
+            print("out:",std_out)
+            print("error:",std_err)
 
     def extract(self):
         """
@@ -800,9 +814,6 @@ class Tracker:
 
         start = time.time()
 
-        if include_track_previews and self.MPEGWriter is None:
-            raise Exception("Track previews require MPEGWriter to be initialized.")
-
         if self.include_prediction and self.classifier is None:
             print("Loading classfication model.")
             self._init_classifier()
@@ -831,31 +842,36 @@ class Tracker:
 
             # export a MPEG preview of the track
             if include_track_previews:
-                (fig, ax, im, writer) = self._init_video(MPEG_filename, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
-                with writer.saving(fig, MPEG_filename, dpi=Tracker.VIDEO_DPI):
-                    for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
-                        draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds,(Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
-                        draw_frame = draw_frame * 3 + Tracker.TEMPERATURE_MIN
-
-                        im.set_data(draw_frame)
-                        fig.canvas.draw()
-                        writer.grab_frame()
-
-                plt.close(fig)
+                FRAME_SCALE = 4.0
+                video_frames = []
+                for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
+                    draw_frame = get_image_subsection(self.filtered_frames[frame_number], bounds,(Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
+                    img = self.convert_heat_to_img(3.0 * draw_frame + Tracker.TEMPERATURE_MIN)
+                    img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
+                    video_frames.append(np.asarray(img))
+                self.write_mpeg(MPEG_filename, video_frames)
 
             # export the track file
             for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
 
-                frames =get_image_subsection(self.frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE))
-                filtered = get_image_subsection(self.filtered_frames[frame_number], bounds,(Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), 0)
-                flow = get_image_subsection(self.flow_frames[frame_number], bounds,(Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE, 0))
+                window_size = max(Tracker.WINDOW_SIZE, bounds.width, bounds.height)
 
-                # extract only our id from the mask, so if another object is in the frame it won't be included.
-                mask = get_image_subsection(self.mask_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), 0)
+                frame = get_image_subsection(self.frames[frame_number], bounds, (window_size, window_size))
+                filtered = get_image_subsection(self.filtered_frames[frame_number], bounds,(window_size, window_size), 0)
+                flow = get_image_subsection(self.flow_frames[frame_number], bounds,(window_size, window_size, 0))
+                mask = get_image_subsection(self.mask_frames[frame_number], bounds, (window_size, window_size), 0)
+
+                if window_size != Tracker.WINDOW_SIZE:
+                    frame = scipy.misc.imresize(frame, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), interp='bilinear')
+                    filtered = scipy.misc.imresize(filtered, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), interp='bilinear')
+                    flow = scipy.misc.imresize(flow, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), interp='bilinear')
+                    mask = scipy.misc.imresize(mask, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), interp='nearest')
+
+                # make sure only our pixels are included in the mask.
                 mask[mask != bounds.id] = 0
                 mask[mask > 0] = 1
 
-                window_frames.append(frames.astype(np.float16))
+                window_frames.append(frame.astype(np.float16))
                 filtered_frames.append(filtered.astype(np.float16))
                 flow_frames.append(flow.astype(np.float16))
                 mask_frames.append(mask.astype(np.uint8))

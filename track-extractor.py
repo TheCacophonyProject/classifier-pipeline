@@ -4,6 +4,7 @@ Processes a CPTV file identifying and tracking regions of interest, and saving t
 
 # we need to use a non GUI backend.  AGG works but is quite slow so I used SVG instead.
 import matplotlib
+matplotlib.use("SVG")
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as manimation
@@ -13,7 +14,6 @@ import Tracker
 import ast
 import glob
 import argparse
-import signal
 import time
 
 from multiprocessing import Pool
@@ -86,22 +86,9 @@ class CPTVTrackExtractor:
         self.enable_previews = False
         self.display_times = False
 
-        self.MPEGWriter  = None
-
         # number of threads to use when processing files.
-        self.workers_threads = 1
-
-        self._init_MPEGWriter()
-
-    def _init_MPEGWriter(self):
-        """ setup our MPEG4 writer.  Requires FFMPEG to be installed. """
-        plt.rcParams['animation.ffmpeg_path'] = 'C:\\ffmpeg\\bin\\ffmpeg.exe'
-        try:
-            self.MPEGWriter = manimation.writers['ffmpeg']
-            self.log_message("FFMPEG found.")
-        except:
-            self.log_warning("FFMPEG is not installed.  MPEG output disabled")
-            self.MPEGWriter = None
+        # 0 disables worker pool
+        self.workers_threads = 0
 
     def load_custom_colormap(self, filename):
         """ Loads a custom colormap used for creating MPEG previews of tracks. """
@@ -196,6 +183,7 @@ class CPTVTrackExtractor:
         tracker.max_tracks = max_tracks
         tracker.tag = tag
         tracker.verbose = self.verbose >= 2
+        tracker.colormap = self.colormap
 
         # read metadata
         meta_data_filename = os.path.splitext(full_path)[0] + ".dat"
@@ -218,19 +206,16 @@ class CPTVTrackExtractor:
         else:
             self.log_warning(" - Warning: no metadata found for file.")
 
-        # pass the mpeg writer to the tracker so that it can output video files
-        tracker.MPEGWriter = self.MPEGWriter
-
         # save some additional stats
         tracker.stats['version'] = CPTVTrackExtractor.VERSION
 
         tracker.extract()
 
         tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=False,
-                       include_track_previews=create_preview_file and self.MPEGWriter is not None)
+                       include_track_previews=create_preview_file)
 
         if create_preview_file == 2:
-            tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename), self.colormap)
+            tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename))
 
         tracker.save_stats(stats_path_and_filename)
 
