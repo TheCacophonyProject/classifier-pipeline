@@ -485,7 +485,7 @@ class Tracker:
 
         # increased resolution of video file.
         # videos look much better scaled up
-        FRAME_SCALE = 4.0
+        FRAME_SCALE = 3.0
 
         start = time.time()
 
@@ -539,10 +539,6 @@ class Tracker:
 
             frame_number += 1
 
-            # limit clip preview's to 1 minute
-            if frame_number >= 60*9:
-                break
-
         self.write_mpeg(filename, video_frames)
 
         self.stats['time_per_frame']['preview'] = (time.time() - start) * 1000 / len(self.frames)
@@ -574,7 +570,9 @@ class Tracker:
                    '-r', '9',  # frames per second
                    '-i', '-',  # The imput comes from a pipe
                    '-an',  # Tells FFMPEG not to expect any audio
-                   '-vcodec', 'mpeg4',
+                   '-vcodec', 'libx264',
+                   '-tune', 'grain',  # good for keepign the grain in our videos
+                    '-crf', '21',  # quality, lower is better
                    filename]
 
         # write out the data.
@@ -707,8 +705,15 @@ class Tracker:
 
             # create new tracks for any unmatched regions
             for region in new_regions:
+
                 if region in used_regions:
                     continue
+
+                # make sure we don't overlap with existing tracks.  This can happen if a tail gets tracked as a new object
+                overlaps = [track.bounds.overlap_area(region) for track in active_tracks]
+                if len(overlaps) > 0 and max(overlaps) > (region.area / 2):
+                    continue
+
                 track = Track(region.x, region.y, region.width, region.height, region.mass)
                 track.first_frame = frame_number
                 active_tracks.append(track)
@@ -864,7 +869,6 @@ class Tracker:
                     filtered = scipy.ndimage.zoom(np.float32(filtered), (scale, scale), order=1)
                     flow = scipy.ndimage.zoom(np.float32(flow), (scale, scale, 1), order=1)
                     mask = scipy.ndimage.zoom(np.float32(mask), (scale, scale), order=1)
-                    print(frame.shape, filtered.shape, flow.shape, mask.shape, bounds)
 
                 # make sure only our pixels are included in the mask.
                 mask[mask != bounds.id] = 0
