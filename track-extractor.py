@@ -248,7 +248,7 @@ class CPTVTrackExtractor:
             pool = Pool(self.workers_threads)
             try:
                 # see https://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
-                pool.map(process_job, jobs)
+                pool.map(process_job, jobs, chunksize=1)
                 pool.close()
                 pool.join()
             except KeyboardInterrupt:
@@ -403,7 +403,6 @@ def parse_params():
     args = parser.parse_args()
 
     # setup extractor
-
     extractor = CPTVTrackExtractor(args.output_folder)
 
     extractor.workers_threads = int(args.workers)

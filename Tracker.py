@@ -539,6 +539,10 @@ class Tracker:
 
             frame_number += 1
 
+            # we store the entire video in memory so we need to cap the frame count at some point.
+            if frame_number > 9 * 60 * 2:
+                break
+
         self.write_mpeg(filename, video_frames)
 
         self.stats['time_per_frame']['preview'] = (time.time() - start) * 1000 / len(self.frames)
@@ -559,6 +563,10 @@ class Tracker:
         # we may have passed a list of frames, if so convert to a 3d array.
         frames = np.asarray(frames, np.uint8)
 
+        if frames is None or len(frames) == 0:
+            # empty video
+            return
+
         frame_count, height, width, channels = frames.shape
 
         command = [FFMPEG_BIN,
@@ -576,15 +584,15 @@ class Tracker:
                    filename]
 
         # write out the data.
-        pipe = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
-            pipe.stdin.write(frames.tostring())
-            std_out, std_err = pipe.communicate()
+            process = None
+            process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input = frames.tostring())
+            process.check_returncode()
         except Exception as e:
             print("Failed to write MPEG:",e)
-            std_out, std_err = pipe.communicate()
-            print("out:",std_out)
-            print("error:",std_err)
+            if process is not None:
+                print("out:", process.stdout)
+                print("error:", process.stderr)
 
     def extract(self):
         """
