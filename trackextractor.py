@@ -25,7 +25,7 @@ import datetime
 import dateutil
 import time
 
-from Classifier import Classifier, Segment
+from trackclassifier import TrackClassifier, TrackSegment
 
 import os
 import json
@@ -196,6 +196,8 @@ class Track:
         self.origin = (self.bounds.mid_x, self.bounds.mid_y)
         self.first_frame = 0
 
+        self.tracker = None
+
         # counts number of frames since we last saw target.
         self.frames_since_target_seen = 0
 
@@ -210,7 +212,7 @@ class Track:
         # history for each frame in track
         self.mass_history = []
 
-        self.bounds_history = []
+        self.bounds_history = [self.bounds.copy()]
 
         # used to record prediction of what kind of animal we are tracking
         self.prediction_history = []
@@ -239,6 +241,54 @@ class Track:
     def offsety(self):
         """ Offset from where object was originally detected. """
         return self.bounds.mid_x - self.origin[0]
+
+    @property
+    def frames(self):
+        """ Number of frames this track has history for. """
+        return len(self.bounds_history)
+
+    def get_frame(self, frame_number):
+        """
+        Gets 64x64 frame for track at given frame number.  If frame number outside of track's lifespan an exception
+        is thrown
+        :param frame_number: the frame number where 0 is the first frame of track.
+        :return: numpy array of size [64,64,5] where channels are thermal, filtered, u, v, mask
+        """
+
+        if self.tracker is None:
+            raise Exception("Tracker must be assigned to track before frames can be fetched.")
+
+        if frame_number < 0 or frame_number >= self.frames:
+            raise Exception("Frame {} is out of bounds for track with {} frames".format(
+                frame_number, self.frames))
+
+        bounds = self.bounds_history[frame_number]
+        tracker_frame = self.first_frame + frame_number
+
+        # window size must be even for get_image_subsection to work.
+        window_size = (max(TrackExtractor.WINDOW_SIZE, bounds.width, bounds.height) // 2) * 2
+
+        thermal = get_image_subsection(self.tracker.frames[tracker_frame], bounds, (window_size, window_size))
+        filtered = get_image_subsection(self.tracker.filtered_frames[tracker_frame], bounds, (window_size, window_size), 0)
+        flow = get_image_subsection(self.tracker.flow_frames[tracker_frame], bounds, (window_size, window_size), 0)
+        mask = get_image_subsection(self.tracker.mask_frames[tracker_frame], bounds, (window_size, window_size), 0)
+
+        if window_size != TrackExtractor.WINDOW_SIZE:
+            scale = TrackExtractor.WINDOW_SIZE / window_size
+            thermal = scipy.ndimage.zoom(np.float32(thermal), (scale, scale), order=1)
+            filtered = scipy.ndimage.zoom(np.float32(filtered), (scale, scale), order=1)
+            flow = scipy.ndimage.zoom(np.float32(flow), (scale, scale, 1), order=1)
+            mask = scipy.ndimage.zoom(np.float32(mask), (scale, scale), order=1)
+
+        # make sure only our pixels are included in the mask.
+        mask[mask != bounds.id] = 0
+        mask[mask > 0] = 1
+
+        # stack together into a numpy array.
+        frame = np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=2)
+
+        return frame
+
 
     def get_velocity_from_flow(self, flow, mask):
         """ sets velocity from flow """
@@ -294,7 +344,9 @@ class Track:
         self.vx = self.bounds.mid_x - old_x
         self.vy = self.bounds.mid_y - old_y
 
-class Tracker:
+        self.bounds_history.append(self.bounds.copy())
+
+class TrackExtractor:
     """ Tracks objects within a CPTV thermal video file. """
 
     # these should really be in some kind of config file...
@@ -367,7 +419,7 @@ class Tracker:
         # find background
         self.background, self.auto_threshold = self.get_background()
         self.average_background_delta = self.get_background_average_change()
-        self.is_static_background = self.average_background_delta < Tracker.STATIC_BACKGROUND_THRESHOLD
+        self.is_static_background = self.average_background_delta < TrackExtractor.STATIC_BACKGROUND_THRESHOLD
 
         # If set to a number only this many frames will be used.
         self.max_tracks = None
@@ -453,7 +505,7 @@ class Tracker:
         return (rects, markers) if include_markers else rects
 
     def _init_classifier(self):
-        self.classifier = Classifier('./models/model4b')
+        self.classifier = TrackClassifier('./models/model4b')
 
     def get_background_average_change(self):
         """
@@ -471,7 +523,7 @@ class Tracker:
         background = np.percentile(np.asarray(self.frames), q=10.0, axis=0)
 
         deltas = np.reshape(self.frames - background, [-1])
-        threshold = np.percentile(deltas, q=Tracker.THRESHOLD_PERCENTILE) / 2
+        threshold = np.percentile(deltas, q=TrackExtractor.THRESHOLD_PERCENTILE) / 2
 
         # cap the threshold to something reasonable
         if threshold < 10.0:
@@ -490,7 +542,7 @@ class Tracker:
         """
         # normalise
         if colormap is None: colormap = self.colormap
-        frame = (frame - Tracker.TEMPERATURE_MIN) / (Tracker.TEMPERATURE_MAX - Tracker.TEMPERATURE_MIN)
+        frame = (frame - TrackExtractor.TEMPERATURE_MIN) / (TrackExtractor.TEMPERATURE_MAX - TrackExtractor.TEMPERATURE_MIN)
         colorized = np.uint8(255.0*colormap(frame))
         img = Image.fromarray(colorized[:,:,:3]) #ignore alpha
         return img
@@ -520,7 +572,7 @@ class Tracker:
             # really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
             # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
             flow_magnitude = (flow[:,:,0]**2 + flow[:,:,1]**2) ** 0.5
-            stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((3 * filtered + Tracker.TEMPERATURE_MIN, 200 * flow_magnitude + Tracker.TEMPERATURE_MIN))))
+            stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((3 * filtered + TrackExtractor.TEMPERATURE_MIN, 200 * flow_magnitude + TrackExtractor.TEMPERATURE_MIN))))
 
             img = self.convert_heat_to_img(stacked)
             img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
@@ -643,17 +695,17 @@ class Tracker:
         self.delta_frames = []
 
         # don't process clips that are too hot.
-        if self.stats['mean_temp'] > Tracker.MAX_MEAN_TEMPERATURE_THRESHOLD:
+        if self.stats['mean_temp'] > TrackExtractor.MAX_MEAN_TEMPERATURE_THRESHOLD:
             return
 
         # don't process clips with too hot a temperature difference
-        if self.stats['max_temp'] - self.stats['min_temp'] > Tracker.MAX_TEMPERATURE_RANGE_THRESHOLD:
+        if self.stats['max_temp'] - self.stats['min_temp'] > TrackExtractor.MAX_TEMPERATURE_RANGE_THRESHOLD:
             return
 
         Track._track_id = 1
 
         tvl1 = cv2.createOptFlow_DualTVL1()
-        if Tracker.REDUCED_QUALITY_OPTICAL_FLOW:
+        if TrackExtractor.REDUCED_QUALITY_OPTICAL_FLOW:
             # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
             tvl1.setTau(1/4)
             tvl1.setScalesNumber(3)
@@ -680,7 +732,7 @@ class Tracker:
             # calculate optical flow.
             flow_start_time = time.time()
             flow = np.zeros([frame.shape[0], frame.shape[1], 2], dtype=np.uint8)
-            if frame_number > 0
+            if frame_number > 0:
                 # divide by two so we don't clip too much with hotter targets.
                 current_gray_frame = (self.filtered_frames[frame_number-1] / 2).astype(np.uint8)
                 next_gray_frame = (self.filtered_frames[frame_number] / 2).astype(np.uint8)
@@ -744,6 +796,7 @@ class Tracker:
 
                 track = Track(region.x, region.y, region.width, region.height, region.mass)
                 track.first_frame = frame_number
+                track.tracker = self
                 active_tracks.append(track)
                 self.track_history[track] = []
 
@@ -796,7 +849,7 @@ class Tracker:
             # find total per frame deltas in this region
             deltas = []
             for (frame_number, bounds, _, _, _) in history:
-                deltas.append(get_image_subsection(self.delta_frames[frame_number], bounds, (Tracker.WINDOW_SIZE, Tracker.WINDOW_SIZE), 0))
+                deltas.append(get_image_subsection(self.delta_frames[frame_number], bounds, (TrackExtractor.WINDOW_SIZE, TrackExtractor.WINDOW_SIZE), 0))
             deltas = np.asarray(deltas, dtype = np.float32)
             track.delta_std = float(np.std(deltas))
             track.stats['delta'] = track.delta_std
@@ -840,6 +893,7 @@ class Tracker:
         track_scores.sort(reverse=True)
         self.tracks = [track for (score, track) in track_scores]
 
+
     def export(self, filename, use_compression=False, include_track_previews=False):
         """
         Export tracks to given filename base.  An MPEG and TRK file will be exported.
@@ -860,7 +914,7 @@ class Tracker:
         self.filter_tracks()
 
         # create segments
-        segment = Segment()
+        segment = TrackSegment()
 
         for counter, track in enumerate(self.tracks):
 
@@ -882,35 +936,19 @@ class Tracker:
             # export the track file
             for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
 
-                # window size must be even for get_image_subsection to work.
-                window_size = (max(Tracker.WINDOW_SIZE, bounds.width, bounds.height)//2)*2
+                frame, filtered, flow, mask = track.get_frame(track, frame_number - track.first_frame)
 
-                frame = get_image_subsection(self.frames[frame_number], bounds, (window_size, window_size))
-                filtered = get_image_subsection(self.filtered_frames[frame_number], bounds,(window_size, window_size), 0)
-                flow = get_image_subsection(self.flow_frames[frame_number], bounds, (window_size, window_size), 0)
-                mask = get_image_subsection(self.mask_frames[frame_number], bounds, (window_size, window_size), 0)
+                # cast appropriately
+                window_frames.append(np.float16(frame[:,:,0]))
+                filtered_frames.append(np.float16(frame[:,:,1]))
+                flow_frames.append(np.float16(frame[:,:,2:3+1]))
+                mask_frames.append(np.uint8(frame[:,:,4]))
 
-                if window_size != Tracker.WINDOW_SIZE:
-                    scale = Tracker.WINDOW_SIZE / window_size
-                    frame = scipy.ndimage.zoom(np.float32(frame), (scale, scale), order = 1)
-                    filtered = scipy.ndimage.zoom(np.float32(filtered), (scale, scale), order=1)
-                    flow = scipy.ndimage.zoom(np.float32(flow), (scale, scale, 1), order=1)
-                    mask = scipy.ndimage.zoom(np.float32(mask), (scale, scale), order=1)
-
-                # make sure only our pixels are included in the mask.
-                mask[mask != bounds.id] = 0
-                mask[mask > 0] = 1
-
-                window_frames.append(frame.astype(np.float16))
-                filtered_frames.append(filtered.astype(np.float16))
-                flow_frames.append(flow.astype(np.float16))
-                mask_frames.append(mask.astype(np.uint8))
-                draw_frames.append(filtered)
+                draw_frames.append(np.float16(frame[:,:,1]))
 
                 motion_vectors.append((vx, vy))
 
-                track.bounds_history.append(bounds.copy())
-
+                # todo: remove this!
                 if self.include_prediction:
                     data = np.zeros([64, 64, 4], dtype=np.float32)
                     data[:, :, 0] = normalise(window_frames[-1])
@@ -925,7 +963,7 @@ class Tracker:
                 FRAME_SCALE = 4.0
                 video_frames = []
                 for draw_frame in draw_frames:
-                    img = self.convert_heat_to_img(3.0 * draw_frame + Tracker.TEMPERATURE_MIN)
+                    img = self.convert_heat_to_img(3.0 * draw_frame + TrackExtractor.TEMPERATURE_MIN)
                     img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
                     video_frames.append(np.asarray(img))
                 self.write_mpeg(MPEG_filename, video_frames)

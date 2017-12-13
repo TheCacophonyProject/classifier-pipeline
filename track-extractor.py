@@ -11,7 +11,7 @@ import cv2
 import matplotlib.pyplot as plt
 import pickle
 import os
-import Tracker
+import trackextractor
 import ast
 import glob
 import argparse
@@ -180,7 +180,7 @@ class CPTVTrackExtractor:
         purge(destination_folder, base_filename + "*.txt")
 
         # load the track
-        tracker = Tracker.Tracker(full_path)
+        tracker = tracker.Tracker(full_path)
         tracker.max_tracks = max_tracks
         tracker.tag = tag
         tracker.verbose = self.verbose >= 2
@@ -306,9 +306,9 @@ class CPTVTrackExtractor:
             return False
 
         # read in stats file.
-        stats = Tracker.load_tracker_stats(stats_filename)
+        stats = trackextractor.load_tracker_stats(stats_filename)
         try:
-            stats = Tracker.load_tracker_stats(stats_filename)
+            stats = trackextractor.load_tracker_stats(stats_filename)
         except Exception as e:
             self.log_warning("Invalid stats file "+stats_filename+" error:"+str(e))
             return True

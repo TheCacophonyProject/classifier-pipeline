@@ -10,34 +10,37 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import numpy as np
 import json
 
-class Segment:
+class TrackSegment:
     """ A short segment of a track. """
     def __init__(self):
-        self.data = np.zeros((27, 64, 64, 4), dtype=np.float16)
+        self.data = np.zeros((27, 64, 64, 5), dtype=np.float16)
 
     def append_thermal_frame(self, frame):
         """ Appends another thermal frame to the 27 frame buffer and shuffles other frames down. """
 
         self.data[0:-1] = self.data[1:]
 
-        # clear out all 4 channels of the frame
+        # clear out all 5 channels of the frame
         self.data[-1,:,:,:] = 0
 
         # copy across thermal part
         self.data[-1, :, :, 0] = frame
 
     def append_frame(self, frame):
-        """ Appends another 4 channel frame to the 27 frame buffer and shuffles other frames down.
-            Channels are thermal, filtered, u, v (where u,v are per pixel motion)
+        """
+        Appends another 5 channel frame to the 27 frame buffer and shuffles other frames down.
+        Channels are thermal, filtered, u, v, mask (where u,v are per pixel motion)
+        :param frame: numpy array of shape [64, 64, 5]
+        :return:
         """
 
         self.data[0:-1] = self.data[1:]
 
-        # copy across thermal part
+        # copy frames across
         self.data[-1, :, :, :] = frame
 
 
-class Classifier:
+class TrackClassifier:
     """ Classifies tracking segments. """
     def __init__(self, model_path):
 
