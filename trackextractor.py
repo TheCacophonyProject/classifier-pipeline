@@ -344,8 +344,6 @@ class Track:
         self.vx = self.bounds.mid_x - old_x
         self.vy = self.bounds.mid_y - old_y
 
-        self.bounds_history.append(self.bounds.copy())
-
 class TrackExtractor:
     """ Tracks objects within a CPTV thermal video file. """
 
@@ -406,9 +404,6 @@ class TrackExtractor:
         self.colormap = plt.cm.jet
 
         self.verbose = False
-
-        # if enabled tracker will try and predict what animals are in each track
-        self.include_prediction = False
 
         # if true excludes any videos with backgroudns that change too much.
         self.exclude_non_static_videos = True
@@ -504,9 +499,6 @@ class TrackExtractor:
 
         return (rects, markers) if include_markers else rects
 
-    def _init_classifier(self):
-        self.classifier = TrackClassifier('./models/model4b')
-
     def get_background_average_change(self):
         """
         Returns how much each pixel changes on average over the video.  Used to detect static backgrounds.
@@ -592,17 +584,6 @@ class TrackExtractor:
                     rect = track.bounds_history[frame_offset]
                     rect_points = [int(p * FRAME_SCALE) for p in [rect.left, rect.top, rect.right, rect.top, rect.right, rect.bottom, rect.left, rect.bottom, rect.left, rect.top]]
                     draw.line(rect_points, track_colors[id % len(track_colors)])
-
-                    if self.include_prediction:
-                        predicted_class = self.classifier.classes[np.argmax(track.prediction_history[frame_offset])]
-                        predicted_prob = float(max(track.prediction_history[frame_offset]))
-                        if predicted_prob < 0.5:
-                            prediction_text = "Unknown [{0:.1f}%]".format(predicted_prob*100)
-                        else:
-                            prediction_text = "{0} [{1:.1f}%]".format(predicted_class, predicted_prob * 100)
-                        # NIY
-                        #text = ax.text(rect.left, rect.bottom + 5, prediction_text, color='white')
-                        #remove_list.append(text)
 
             video_frames.append(np.asarray(img))
 
@@ -783,6 +764,10 @@ class TrackExtractor:
                 matched_tracks.add(track)
                 results.append((track, score))
 
+            # update bounds history
+            for track in active_tracks:
+                track.bounds_history.append(track.bounds.copy())
+
             # create new tracks for any unmatched regions
             for region in new_regions:
 
@@ -821,9 +806,8 @@ class TrackExtractor:
         self.stats['time_per_frame']['optical_flow'] = optical_flow_time * 1000 / len(self.frames)
         self.stats['time_per_frame']['extract'] = ((time.time() - start) * 1000 / len(self.frames)) - self.stats['time_per_frame']['optical_flow']
 
-    def filter_tracks(self):
         """ Removes tracks with too poor a score to be used. """
-        if self.max_tracks is not None and self.max_tracks  < len(self.tracks):
+        if self.max_tracks is not None and self.max_tracks < len(self.tracks):
             print(" -using only {0} tracks out of {1}".format(self.max_tracks, len(self.tracks)))
             self.tracks = self.tracks[:self.max_tracks]
 
@@ -905,13 +889,7 @@ class TrackExtractor:
 
         start = time.time()
 
-        if self.include_prediction and self.classifier is None:
-            print("Loading classfication model.")
-            self._init_classifier()
-
         base_filename = os.path.splitext(filename)[0]
-
-        self.filter_tracks()
 
         # create segments
         segment = TrackSegment()
@@ -936,7 +914,11 @@ class TrackExtractor:
             # export the track file
             for frame_number, bounds, (vx, vy), (dx, dy), mass in history:
 
-                frame, filtered, flow, mask = track.get_frame(track, frame_number - track.first_frame)
+                if (frame_number - track.first_frame) >= track.frames:
+                    print("warning... track frame out of bounds", frame_number, track.first_frame, track.frames)
+                    continue
+
+                frame = track.get_frame(frame_number - track.first_frame)
 
                 # cast appropriately
                 window_frames.append(np.float16(frame[:,:,0]))
@@ -948,16 +930,6 @@ class TrackExtractor:
 
                 motion_vectors.append((vx, vy))
 
-                # todo: remove this!
-                if self.include_prediction:
-                    data = np.zeros([64, 64, 4], dtype=np.float32)
-                    data[:, :, 0] = normalise(window_frames[-1])
-                    data[:, :, 1] = normalise(filtered_frames[-1])
-                    data[:, :, 2:3+1] = flow_frames[-1]
-                    segment.append_frame(data)
-                    track.prediction_history.append(self.classifier.predict(segment))
-
-
             # export a MPEG preview of the track
             if include_track_previews:
                 FRAME_SCALE = 4.0
@@ -967,7 +939,6 @@ class TrackExtractor:
                     img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
                     video_frames.append(np.asarray(img))
                 self.write_mpeg(MPEG_filename, video_frames)
-
 
             # export track stats.
             save_file = {}
@@ -991,9 +962,9 @@ class TrackExtractor:
             stats['origin'] = track.origin
             stats['filename'] = self.source
             stats['threshold'] = self.auto_threshold
-            stats['confidence'] = self.stats['confidence']
-            stats['trap'] = self.stats['trap']
-            stats['event'] = self.stats['event']
+            stats['confidence'] = self.stats.get('confidence',0)
+            stats['trap'] = self.stats.get('trap','')
+            stats['event'] = self.stats.get('event','')
             stats['is_static_background'] = self.is_static_background
 
             # add in any stats generated during analysis.

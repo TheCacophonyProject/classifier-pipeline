@@ -63,10 +63,26 @@ class TrackClassifier:
         # list of classes
         self.classes = None
 
+        # constants to use to normalise data.
+        self.normalisation_constants = None
 
         self.load_model(model_path)
 
 
+    def normalise(self, data):
+        """
+        Normalises a track segment according to pre-defined normalisation parameters.
+        :param data: numpy array of shape (27, 64, 64, 5)
+        :return: normalised segment data
+        """
+
+        # copy data, and make sure it's in a high enough precision to perform normalisation
+        data = np.float32(data)
+
+        for channel, (offset, scale) in enumerate(self.normalisation_constants):
+            data[:, :, :, channel] = (data[:, :, :, channel] + offset) / scale
+
+        return data
 
     def load_model(self, model_path):
         """ Loads a pre-trained model from disk. """
@@ -77,9 +93,18 @@ class TrackClassifier:
         # get prediction node
         self.prediction = tf.get_collection('predict_op')[0]
 
-        # get addtional stats
+        # get additonal stats
         stats = json.load(open(model_path+".txt",'r'))
         self.classes = stats['classes']
+
+        # todo: get normalisation from a file
+        self.normalisation_constants = [
+            (-3200, 160),
+            (+13, 27),
+            (0, 1),
+            (0, 1),
+            (0, 1)
+        ]
 
     def predict(self, segment):
         """
@@ -88,7 +113,8 @@ class TrackClassifier:
         :return: probability distribution for each class.
         """
 
-        feed_dict = {"X:0": segment.data[np.newaxis,:,:,:,:]}
+        X = self.normalise(segment.data)
+
+        feed_dict = {"X:0": X[np.newaxis, :, :, :, :]}
         result = self.prediction.eval(feed_dict, session=self.sess)[0]
         return result
-
