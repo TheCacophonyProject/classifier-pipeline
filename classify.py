@@ -9,6 +9,9 @@ import trackclassifier
 import numpy as np
 import json
 import ml_tools.tools
+import math
+import PIL as pillow
+import time
 
 class TrackPrediction():
     """ Class to hold the information about the predicted class of a track. """
@@ -19,7 +22,7 @@ class TrackPrediction():
         self.class_best_confidence = [0.0]
 
         # history of probability for each class at various intervals
-        self.prediction_history = prediction_history
+        self.prediction_history = prediction_history.copy()
 
         self.weights = weights
 
@@ -74,21 +77,16 @@ class TrackPrediction():
             # too much confidence can make updates slow, even with very strong evidence.
             prediction = np.clip(prediction, 0.02, 0.98)
 
-            new_confidence = (confidence * prediction) / (confidence * prediction + (confidence * (1.0 - prediction)))
+            # we scale down the predictions based on the weighting.  This will cause the algorithm to
+            # give very low scores when the weight is low.
             if self.weights is not None:
-                delta = new_confidence - confidence
-                delta *= self.weights[i]
-                confidence += delta
-            else:
-                confidence = new_confidence
+                prediction *= self.weights[i]
 
-            if np.max(confidence) > np.max(best):
-                best_result = confidence.copy()
+            confidence = (confidence * prediction) / (confidence * prediction + (confidence * (1.0 - prediction)))
 
             best = [max(best[i], confidence[i]) for i in range(classes)]
 
         self.class_best_confidence = best
-
 
 def identify_track(classifier: trackclassifier.TrackClassifier, track: trackextractor.Track):
     """
@@ -115,12 +113,40 @@ def identify_track(classifier: trackclassifier.TrackClassifier, track: trackextr
         if i >= 26:
             # segments with small mass are weighted less as we can assume the error is higher here.
             mass = np.float32(np.sum(segment.data[:, :, :, 4])) / 27
-            weight = np.clip(mass/30, 0.02, 1.0)
+
+            # we use the squareroot here as the mass is in units squared.
+            # this effectively means we are giving weight based on the diameter
+            # of the object rather than the mass.
+            weight = math.sqrt(np.clip(mass/30, 0.02, 1.0))
 
             predictions.append(classifier.predict(segment))
             weights.append(weight)
 
     return TrackPrediction(predictions, weights)
+
+def paint_predictions(img, frame_index, predictions, label_names):
+
+    # offset prediction to be at the end of the 27 frame window.
+    frame_index -= 27
+
+    # in the frames before don't paint anything.
+    if frame_index < 0 or frame_index >= len(predictions):
+        return
+
+    prediction = predictions[frame_index]
+
+    best_labels = np.argsort(-prediction)[:3]
+
+    width, height = img.width, img.height
+
+    for i, label in enumerate(best_labels):
+        draw = pillow.ImageDraw.Draw(img)
+        score = prediction[label]
+        x = 10
+        y = height - 100 + 10 + i*30
+        draw.rectangle([x, y+16, width - 10, y + 26], outline=(0, 0, 0), fill=(0, 64, 0, 64))
+        draw.rectangle([x, y+16, 10 + score * (width-20), y + 26], outline=(0, 0, 0), fill=(64, 255, 0, 250))
+        draw.text([x,y],label_names[label])
 
 def process_file(filename, enable_preview=True):
     """
@@ -134,11 +160,10 @@ def process_file(filename, enable_preview=True):
 
     # extract tracks from file
     tracker = trackextractor.TrackExtractor(filename)
+    tracker.reduced_quality_optical_flow = True
     tracker.colormap = ml_tools.tools.load_colormap("custom_colormap.dat")
 
     tracker.extract()
-
-    classifier = trackclassifier.TrackClassifier('./models/Model 4e-0.833')
 
     print(os.path.basename(filename)+":")
 
@@ -147,13 +172,13 @@ def process_file(filename, enable_preview=True):
         prediction = identify_track(classifier, track)
         prediction.save(os.path.join('temp',os.path.basename(filename)+"-"+str(i+1)+".txt"))
 
-        if prediction.confidence() > 0.7:
+        if prediction.confidence() > 0.5:
             first_guess = "{} {:.1f} (clarity {:.1f})".format(
                 classifier.classes[prediction.label()], prediction.confidence() * 100, prediction.clarity * 100)
         else:
             first_guess = "[nothing]"
 
-        if prediction.confidence(2) > 0.7:
+        if prediction.confidence(2) > 0.5:
             second_guess = "[second guess - {} {:.1f}]".format(
                 classifier.classes[prediction.label(2)], prediction.confidence(2)*100)
         else:
@@ -162,7 +187,7 @@ def process_file(filename, enable_preview=True):
         print(" - [{}/{}] prediction: {} {}".format(str(i + 1), str(len(tracker.tracks) + 1), first_guess, second_guess))
 
         export_filename = os.path.join('temp',os.path.basename(filename)) + '-'+str(i+1)+" " + (first_guess + " " + second_guess).strip() + ".mp4"
-        tracker.display_track(track, export_filename)
+        tracker.display_track(track, export_filename, preview_scale=4.0, display_hook=paint_predictions, predictions=prediction.prediction_history, label_names = classifier.classes)
 
     # export a preview file showing classification over time.
     """
@@ -178,10 +203,16 @@ def process_folder(folder_path):
     for file_name in os.listdir(folder_path):
         full_path = os.path.join(folder_path, file_name)
         if os.path.isfile(full_path) and os.path.splitext(full_path )[1].lower() == '.cptv':
+            start = time.time()
             process_file(full_path)
+            print("took {:.2f}s".format(time.time() - start))
 
 
 def main():
+
+    # note, this really shouldn't be a global, better to make a class as this point and put all this stuff together.
+    global classifier
+    classifier = trackclassifier.TrackClassifier('./models/Model 4e-0.833', disable_GPU=False)
 
     parser = argparse.ArgumentParser()
 

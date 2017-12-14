@@ -49,22 +49,23 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
     Area outside of frame will be filled with boundary_value.  If None the median value will be used.
     """
 
+    # todo: rewrite. just use the opencv / numpy padding function...
+
     # cropping method.  just center on the bounds center and take a section there.
 
     if len(image.shape) == 2:
         image = image[:,:,np.newaxis]
 
-    # totally excessive, but just to be safe.
-    padding = 200
-
-    midx = int(bounds.mid_x + padding)
-    midy = int(bounds.mid_y + padding)
-
     # for some reason I write this to only work with even window sizes?
     window_half_width, window_half_height = window_size[0] // 2, window_size[1] // 2
     window_size = (window_half_width * 2, window_half_height * 2)
-
     image_height, image_width, channels = image.shape
+
+    # find how many pixels we need to pad by
+    padding = (max(window_size)//2)+1
+
+    midx = int(bounds.mid_x + padding)
+    midy = int(bounds.mid_y + padding)
 
     if boundary_value is None: boundary_value = np.median(image)
 
@@ -376,10 +377,7 @@ class TrackExtractor:
     # if the mean pixel change is below this threshold then classify the video as having a static background
     STATIC_BACKGROUND_THRESHOLD = 5.0
 
-    # faster, but less accurate optical flow.  About 3 times faster.
-    REDUCED_QUALITY_OPTICAL_FLOW = False
-
-    def __init__(self, full_path):
+    def __init__(self, full_path, max_frames = None):
         """
         Create a Tracker object
         :param full_path: path and filename of CPTV file to process
@@ -389,7 +387,7 @@ class TrackExtractor:
 
         self.frames = []
         self.track_history = {}
-        self.load(open(full_path, 'rb'))
+        self.load(open(full_path, 'rb'), max_frames)
         self.tag = "UNKNOWN"
         self.source = os.path.split(full_path)[1]
         self.tracks = []
@@ -399,6 +397,9 @@ class TrackExtractor:
         self.filtered_frames = []
         self.flow_frames = []
         self.delta_frames = []
+
+        # faster, but less accurate optical flow.  About 3 times faster.
+        self.reduced_quality_optical_flow = False
 
         # default colormap to use for outputting preview files.
         self.colormap = plt.cm.jet
@@ -469,10 +470,19 @@ class TrackExtractor:
             json.dump(self.stats, stats_file, indent=4,  cls=CustomJSONEncoder)
 
 
-    def load(self, source):
-        """ Load frames from a CPTV file. """
+    def load(self, source, max_frames = None):
+        """
+        Load frames from a CPTV file.
+        :param source: source file
+        :param max_frames: maximum number of frames to load, None will load the whole video (default)
+        """
         reader = CPTVReader(source)
-        self.frames = [frame.copy() for (frame, offset) in reader]
+        self.frames = []
+        for i, (frame, offset) in enumerate(reader):
+            self.frames.append(frame.copy())
+            if max_frames is not None and i >= max_frames:
+                break
+
         self.video_start_time = reader.timestamp
 
     def _get_regions_of_interest(self, frame, threshold, erosion=1, include_markers=False):
@@ -686,7 +696,7 @@ class TrackExtractor:
         Track._track_id = 1
 
         tvl1 = cv2.createOptFlow_DualTVL1()
-        if TrackExtractor.REDUCED_QUALITY_OPTICAL_FLOW:
+        if self.reduced_quality_optical_flow:
             # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
             tvl1.setTau(1/4)
             tvl1.setScalesNumber(3)
@@ -877,23 +887,25 @@ class TrackExtractor:
         track_scores.sort(reverse=True)
         self.tracks = [track for (score, track) in track_scores]
 
-    def display_track(self, track, filename):
+    def display_track(self, track, filename, preview_scale=4.0, display_hook = None, **display_hook_args):
         """
         Saves a track preview
-        :param filename:
-        :return:
+        :param track: track to export
+        :param filename: filename for MPEG output
+        :param display_hook: an optional function(img, frame_number, params..) that takes an image frame modifies it.
+        :param display_hook_args: arguments for display_hook
         """
 
         video_frames = []
-
-        FRAME_SCALE = 4.0
 
         for i in range(track.frames):
             # export a MPEG preview of the track
             frame = track.get_frame(i)
             draw_frame = np.float16(frame[:, :, 1])
             img = self.convert_heat_to_img(3.0 * draw_frame + TrackExtractor.TEMPERATURE_MIN)
-            img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
+            img = img.resize((int(img.width * preview_scale), int(img.height * preview_scale)), Image.NEAREST)
+            if display_hook is not None:
+                display_hook(img, i, **display_hook_args)
             video_frames.append(np.asarray(img))
 
         self.write_mpeg(filename, video_frames)
