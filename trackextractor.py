@@ -877,12 +877,31 @@ class TrackExtractor:
         track_scores.sort(reverse=True)
         self.tracks = [track for (score, track) in track_scores]
 
-
-    def export(self, filename, use_compression=False, include_track_previews=False):
+    def display_track(self, track, filename):
         """
-        Export tracks to given filename base.  An MPEG and TRK file will be exported.
-        :param filename: full path and filename to export track to
-        :param use_compression: if enabled will gzip track
+        Saves a track preview
+        :param filename:
+        :return:
+        """
+
+        video_frames = []
+
+        FRAME_SCALE = 4.0
+
+        for i in range(track.frames):
+            # export a MPEG preview of the track
+            frame = track.get_frame(i)
+            draw_frame = np.float16(frame[:, :, 1])
+            img = self.convert_heat_to_img(3.0 * draw_frame + TrackExtractor.TEMPERATURE_MIN)
+            img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
+            video_frames.append(np.asarray(img))
+
+        self.write_mpeg(filename, video_frames)
+
+    def export_tracks(self, filename):
+        """
+        Export tracks to given filename base.  An TRK file will be exported.
+        :param filename: full path and filename base name to export track to (-[track_number]) will be appended
         """
 
         # todo: would be great to just have a proper segment class that handles most of the code in this function...
@@ -891,14 +910,10 @@ class TrackExtractor:
 
         base_filename = os.path.splitext(filename)[0]
 
-        # create segments
-        segment = TrackSegment()
-
         for counter, track in enumerate(self.tracks):
 
             history = self.track_history[track]
 
-            MPEG_filename = base_filename + "-" + str(counter+1 ) + ".mp4"
             TRK_filename = base_filename + "-" + str(counter+1) + ".trk"
             Stats_filename = base_filename + "-" + str(counter+1) + ".txt"
 
@@ -926,19 +941,7 @@ class TrackExtractor:
                 flow_frames.append(np.float16(frame[:,:,2:3+1]))
                 mask_frames.append(np.uint8(frame[:,:,4]))
 
-                draw_frames.append(np.float16(frame[:,:,1]))
-
                 motion_vectors.append((vx, vy))
-
-            # export a MPEG preview of the track
-            if include_track_previews:
-                FRAME_SCALE = 4.0
-                video_frames = []
-                for draw_frame in draw_frames:
-                    img = self.convert_heat_to_img(3.0 * draw_frame + TrackExtractor.TEMPERATURE_MIN)
-                    img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
-                    video_frames.append(np.asarray(img))
-                self.write_mpeg(MPEG_filename, video_frames)
 
             # export track stats.
             save_file = {}
@@ -977,10 +980,7 @@ class TrackExtractor:
                 print("mass history mismatch", len(track.mass_history), len(window_frames))
 
             # save out track data
-            if use_compression:
-                pickle.dump(save_file, gzip.open(TRK_filename, 'wb'))
-            else:
-                pickle.dump(save_file, open(TRK_filename, 'wb'))
+            pickle.dump(save_file, open(TRK_filename, 'wb'))
 
             with open(Stats_filename, 'w') as f:
                 json.dump(stats, f, indent=4, cls=CustomJSONEncoder)

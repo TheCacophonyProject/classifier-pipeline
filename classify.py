@@ -145,29 +145,31 @@ def process_file(filename, enable_preview=True):
     # identify each track
     for i, track in enumerate(tracker.tracks):
         prediction = identify_track(classifier, track)
-        prediction.save(os.path.join('temp',os.path.basename(filename)+"-"+str(i)+".txt"))
+        prediction.save(os.path.join('temp',os.path.basename(filename)+"-"+str(i+1)+".txt"))
 
         if prediction.confidence() > 0.7:
             first_guess = "{} {:.1f} (clarity {:.1f})".format(
                 classifier.classes[prediction.label()], prediction.confidence() * 100, prediction.clarity * 100)
         else:
-            first_guess = "<nothing>"
+            first_guess = "[nothing]"
 
         if prediction.confidence(2) > 0.7:
-            second_guess = "second guess - {} {:.1f} ".format(
+            second_guess = "[second guess - {} {:.1f}]".format(
                 classifier.classes[prediction.label(2)], prediction.confidence(2)*100)
         else:
             second_guess = ""
 
         print(" - [{}/{}] prediction: {} {}".format(str(i + 1), str(len(tracker.tracks) + 1), first_guess, second_guess))
 
-    export_filename = os.path.join('temp',os.path.basename(filename))
-    tracker.export(export_filename,include_track_previews=True)
+        export_filename = os.path.join('temp',os.path.basename(filename)) + '-'+str(i+1)+" " + (first_guess + " " + second_guess).strip() + ".mp4"
+        tracker.display_track(track, export_filename)
 
     # export a preview file showing classification over time.
+    """
     if enable_preview:
         # todo write a custom display for this
         tracker.display(os.path.join('temp',os.path.basename(filename))+'.mpg')
+    """
 
 
 def process_folder(folder_path):
