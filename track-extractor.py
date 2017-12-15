@@ -7,6 +7,8 @@ import matplotlib
 matplotlib.use("SVG")
 
 import cv2
+import PIL as pillow
+import numpy as np
 
 import matplotlib.pyplot as plt
 import pickle
@@ -58,7 +60,7 @@ def process_job(job):
     extractor.process_file(*params)
     time.sleep(0.001) # apparently gives me a chance to catch the control-c
 
-class CPTVTrackExtractor:
+class CPTVTrackExtractor(CPTVFileProcessor):
     """
     Handles extracting tracks from CPTV files.
     Maintains a database recording which files have already been processed, and some statistics parameters used
@@ -90,14 +92,6 @@ class CPTVTrackExtractor:
         # number of threads to use when processing files.
         # 0 disables worker pool
         self.workers_threads = 0
-
-    def load_custom_colormap(self, filename):
-        """ Loads a custom colormap used for creating MPEG previews of tracks. """
-
-        if not os.path.exists(filename):
-            return
-
-        self.colormap = pickle.load(open(filename, 'rb'))
 
     def load_hints(self, filename):
         """ Read in hints file from given path.  If file is not found an empty hints dictionary set."""
@@ -350,6 +344,65 @@ class CPTVTrackExtractor:
                     (test_result.duration, test_result.max_offset)))
             else:
                 print("[PASS] {0}".format(test.source))
+
+    # todo: get this using it's own display
+    def __display(self, filename):
+        """
+        Exports tracking information to a video file for debugging.
+        """
+
+        # increased resolution of video file.
+        # videos look much better scaled up
+        FRAME_SCALE = 3.0
+
+        start = time.time()
+
+        video_frames = []
+        track_colors = [(255,0,0),(0,255,0),(255,255,0),(128,255,255)]
+
+        # write video
+        frame_number = 0
+        for frame, marked, rects, flow, filtered in zip(self.frames, self.mask_frames, self.regions, self.flow_frames, self.filtered_frames):
+
+            # marked is an image with each pixel's value being the label, 0...n for n objects
+            # I multiply it here, but really I should use a seperate color map for this.
+            # maybe I could multiply it modulo, and offset by some amount?
+
+            # really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
+            # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
+            flow_magnitude = (flow[:,:,0]**2 + flow[:,:,1]**2) ** 0.5
+            stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((3 * filtered + self.TEMPERATURE_MIN, 200 * flow_magnitude + self.TEMPERATURE_MIN))))
+
+            img = self.convert_heat_to_img(stacked, self.colormap, self.TEMPERATURE_MIN, self.TEMPERATURE_MAX)
+            img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), pillowImage.NEAREST)
+            draw = ImageDraw.Draw(img)
+
+            # look for any regions of interest that occur on this frame
+            for rect in rects:
+                rect_points = [int(p * FRAME_SCALE) for p in [rect.left, rect.top, rect.right, rect.top, rect.right, rect.bottom, rect.left, rect.bottom, rect.left, rect.top]]
+                draw.line(rect_points, (128, 128, 128))
+
+            # look for any tracks that occur on this frame
+            for id, track in enumerate(self.tracks):
+                frame_offset = frame_number - track.first_frame
+                if frame_offset > 0 and frame_offset < len(track.bounds_history)-1:
+
+                    # display the track
+                    rect = track.bounds_history[frame_offset]
+                    rect_points = [int(p * FRAME_SCALE) for p in [rect.left, rect.top, rect.right, rect.top, rect.right, rect.bottom, rect.left, rect.bottom, rect.left, rect.top]]
+                    draw.line(rect_points, track_colors[id % len(track_colors)])
+
+            video_frames.append(np.asarray(img))
+
+            frame_number += 1
+
+            # we store the entire video in memory so we need to cap the frame count at some point.
+            if frame_number > 9 * 60 * 10:
+                break
+
+        self.write_mpeg(filename, video_frames)
+
+        self.stats['time_per_frame']['preview'] = (time.time() - start) * 1000 / len(self.frames)
 
 
     def run_tests(self, source_folder, tests_file):

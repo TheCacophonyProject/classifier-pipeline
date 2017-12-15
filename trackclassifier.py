@@ -63,7 +63,8 @@ class TrackClassifier:
         import tensorflow as tf
 
         # TensorFlow session:
-        # note we disable the GPU, it won't be needed as classification is very quick anyway.
+
+        # GPU is not as necessary if we are just classifying 1 segment at a time.
         if disable_GPU:
             gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.01)
             config = tf.ConfigProto(
@@ -72,6 +73,8 @@ class TrackClassifier:
             )
         else:
             config = tf.ConfigProto()
+            config.gpu_options.allow_growth = True
+            config.gpu_options.per_process_gpu_memory_fraction = 0.8  # save some ram for other applications.
 
         self.sess = tf.Session(config=config)
 
