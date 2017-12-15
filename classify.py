@@ -12,6 +12,7 @@ from ml_tools.tools import write_mpeg, load_colormap, convert_heat_to_img
 import math
 from PIL import Image, ImageDraw
 import time
+from multiprocessing import Value
 from cptvfileprocessor import CPTVFileProcessor
 
 DEFAULT_BASE_PATH = "c:\\cac"
@@ -116,9 +117,6 @@ class ClipClassifier(CPTVFileProcessor):
 
         super(ClipClassifier, self).__init__()
 
-        # classifier
-        self.classifier = trackclassifier.TrackClassifier('./models/Model 4e-0.833', disable_GPU=True)
-
         # prediction record for each track
         self.track_prediction = {}
 
@@ -206,6 +204,17 @@ class ClipClassifier(CPTVFileProcessor):
             video_frames.append(np.asarray(img))
 
         write_mpeg(filename, video_frames)
+
+    @property
+    def classifier(self):
+        """
+        Returns a classifier object, which is creeated on demand.
+        This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
+        """
+        global _classifier
+        if '_classifer' not in globals():
+            _classifier = trackclassifier.TrackClassifier('./models/Model 4e-0.833', disable_GPU=False)
+        return _classifier
 
     def export_tracking_preview(self, filename, tracker:TrackExtractor):
         """
@@ -304,8 +313,10 @@ class ClipClassifier(CPTVFileProcessor):
 
         # extract tracks from file
         tracker = TrackExtractor(filename)
+
         tracker.reduced_quality_optical_flow = True
         tracker.colormap = load_colormap("custom_colormap.dat")
+
         tracker.extract()
 
         base_name = os.path.splitext(os.path.join(self.output_folder, os.path.basename(filename)))[0]
@@ -321,6 +332,7 @@ class ClipClassifier(CPTVFileProcessor):
         for i, track in enumerate(tracker.tracks):
 
             prediction = self.identify_track(track)
+
             self.track_prediction[track] = prediction
 
             prediction.save(track_meta_filename.format(i+1))
