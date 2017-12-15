@@ -12,10 +12,11 @@ from ml_tools.tools import write_mpeg, load_colormap, convert_heat_to_img
 import math
 from PIL import Image, ImageDraw
 import time
-from multiprocessing import Value
 from cptvfileprocessor import CPTVFileProcessor
 
 DEFAULT_BASE_PATH = "c:\\cac"
+
+_classifier = None
 
 class TrackPrediction():
     """
@@ -212,8 +213,10 @@ class ClipClassifier(CPTVFileProcessor):
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
         """
         global _classifier
-        if '_classifer' not in globals():
+        if _classifier is None:
+            print("Loading Classifier")
             _classifier = trackclassifier.TrackClassifier('./models/Model 4e-0.833', disable_GPU=False)
+
         return _classifier
 
     def export_tracking_preview(self, filename, tracker:TrackExtractor):
@@ -360,10 +363,13 @@ class ClipClassifier(CPTVFileProcessor):
         # record results in text file.
         f = open(meta_filename,'w')
         save_file = {}
-        save_file['tags'] = set([self.classifier.classes[prediction.label()] for prediction in self.track_prediction.values()])
+        save_file['tags'] = list(set([self.classifier.classes[prediction.label()] for prediction in self.track_prediction.values()]))
         save_file['max_confidence'] = max([0.0]+[prediction.confidence() for prediction in self.track_prediction.values()])
+        json.dump(save_file,f)
 
-        print("Took {:.1f}s".format(time.time() - start))
+        ms_per_frame = (time.time() - start) * 1000 / max(1, len(tracker.frames))
+        if self.verbose:
+            print("Took {:.1f}ms per frame".format(ms_per_frame))
 
 def main():
 
@@ -387,6 +393,9 @@ def main():
     clip_classifier.output_folder = args.output_folder
     clip_classifier.source_folder = args.source_folder
 
+    # just fetch the classifier now so it doesn't impact the benchmarking on the first clip analysed.
+    clip_classifier.classifier
+
     # apply the colormap
     clip_classifier.colormap = load_colormap(args.color_map)
 
@@ -409,5 +418,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # execute only if run as a script
     main()
