@@ -7,8 +7,12 @@ import matplotlib
 matplotlib.use("SVG")
 
 import cv2
-import PIL as pillow
+from PIL import Image, ImageDraw
 import numpy as np
+
+from cptvfileprocessor import CPTVFileProcessor
+
+from ml_tools import tools
 
 import matplotlib.pyplot as plt
 import pickle
@@ -81,6 +85,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
     def __init__(self, out_folder):
 
+        CPTVFileProcessor.__init__(self)
+
         self.hints = {}
         self.colormap = plt.cm.jet
         self.verbose = False
@@ -127,7 +133,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             self.process_folder(folder)
         print("Done.")
 
-    def process_file(self, full_path, tag, create_preview_file=False):
+    def process_file(self, full_path, tag):
         """
         Extract tracks from specific file, and assign given tag.
         :param full_path: path: path to CPTV file to be processed
@@ -174,7 +180,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         purge(destination_folder, base_filename + "*.txt")
 
         # load the track
-        tracker = tracker.Tracker(full_path)
+        tracker = trackextractor.TrackExtractor(full_path)
         tracker.max_tracks = max_tracks
         tracker.tag = tag
         tracker.verbose = self.verbose >= 2
@@ -213,11 +219,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         tracker.extract()
 
-        tracker.export(os.path.join(self.out_folder, tag, cptv_filename), use_compression=False,
-                       include_track_previews=create_preview_file)
+        tracker.export_tracks(os.path.join(self.out_folder, tag, cptv_filename))
 
-        if create_preview_file == 2:
-            tracker.display(os.path.join(self.out_folder, tag.lower(), preview_filename))
+        # todo: enable previews
 
         tracker.save_stats(stats_path_and_filename)
 
@@ -235,59 +239,14 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         return tracker
 
-    def process_job_list(self, jobs):
-        """ Processes a list of jobs. """
-        if self.workers_threads == 0:
-            # just process the jobs in the main thread
-            for job in jobs: process_job(job)
-        else:
-            # send the jobs to a worker pool
-            pool = multiprocessing.Pool(self.workers_threads)
-            try:
-                # see https://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
-                pool.map(process_job, jobs, chunksize=1)
-                pool.close()
-                pool.join()
-            except KeyboardInterrupt:
-                print("KeyboardInterrupt, terminating.")
-                pool.terminate()
-                exit()
-            else:
-                pool.close()
-
-    def process_folder(self, folder_path, tag = None):
-        """ Extract tracks from all videos in given folder.
-            All tracks will be tagged with 'tag', which defaults to the folder name if not specified."""
-
-        if tag is None:
-            tag = os.path.basename(folder_path).upper()
-
-        jobs = []
-
-        for file_name in os.listdir(folder_path):
-            full_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(full_path) and os.path.splitext(full_path )[1].lower() == '.cptv':
-                jobs.append((self, full_path, tag, self.enable_previews))
-
-        self.process_job_list(jobs)
-
-    def log_message(self, message):
-        """ Record message in log.  Will be printed if verbose is enabled. """
-        # note, python has really good logging... I should probably make use of this.
-        if self.verbose: print(message)
-
-    def log_warning(self, message):
-        """ Record warning message in log.  Will be printed if verbose is enabled. """
-        # note, python has really good logging... I should probably make use of this.
-        print("Warning:",message)
-
-
-    def needs_processing(self, stats_filename):
+    def needs_processing(self, source_filename):
         """
         Opens a stats file and checks if this clip needs to be processed.
         :param stats_filename: the full path and filename of the stats file for the clip in question.
         :return: returns true if file should be overwritten, false otherwise
         """
+
+        stats_filename = os.path.join(self.output_folder,os.path.splitext(os.path.basename(source_filename))[0])+".txt"
 
         # if no stats file exists we haven't processed file, so reprocess
         if not os.path.exists(stats_filename):
@@ -300,6 +259,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             return False
 
         # read in stats file.
+        #STUB: TODO remove this line
         stats = trackextractor.load_tracker_stats(stats_filename)
         try:
             stats = trackextractor.load_tracker_stats(stats_filename)
@@ -374,7 +334,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((3 * filtered + self.TEMPERATURE_MIN, 200 * flow_magnitude + self.TEMPERATURE_MIN))))
 
             img = self.convert_heat_to_img(stacked, self.colormap, self.TEMPERATURE_MIN, self.TEMPERATURE_MAX)
-            img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), pillowImage.NEAREST)
+            img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
             draw = ImageDraw.Draw(img)
 
             # look for any regions of interest that occur on this frame
@@ -479,13 +439,16 @@ def parse_params():
     extractor.verbose = args.verbose
 
     # this colormap is specially designed for heat maps
-    extractor.load_custom_colormap(args.color_map)
+    extractor.colormap = tools.load_colormap(args.color_map)
 
     # load hints.  Hints are a way to give extra information to the tracker when necessary.
     extractor.load_hints("hints.txt")
 
     extractor.enable_previews = args.enable_previews
     extractor.display_times = args.enable_previews
+
+    extractor.source_folder = args.source_folder
+    extractor.output_folder = args.output_folder
 
     if extractor.enable_previews:
         print("Previews enabled.")
@@ -509,7 +472,7 @@ def parse_params():
         extractor.process(args.source_folder)
         return
     else:
-        extractor.process_folder(os.path.join(args.source_folder, args.target), args.target)
+        extractor.process_folder(os.path.join(args.source_folder, args.target), tag=args.target)
         return
 
 def print_opencl_info():
@@ -524,9 +487,6 @@ def main():
     parse_params()
 
 if __name__ == '__main__':
-    # for some reason the fork method seems to memory leak, and unix defaults to this so we
-    # stick to spawn.  Also, form might be a problem as some numpy commands have multiple threads?
-    multiprocessing.set_start_method('spawn')
     print_opencl_info()
     main()
 

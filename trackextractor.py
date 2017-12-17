@@ -222,6 +222,9 @@ class Track:
         # stores various stats about this track.
         self.stats = {}
 
+        # starting time of track
+        self.start_time = None
+
     def __repr__(self):
         return "({0},{1})".format(self.bounds.x, self.bounds.y)
 
@@ -239,6 +242,10 @@ class Track:
     def frames(self):
         """ Number of frames this track has history for. """
         return len(self.bounds_history)
+
+    @property
+    def end_time(self):
+        return self.start_time + datetime.timedelta(seconds=self.frames / 9.0)
 
     def get_frame(self, frame_number):
         """
@@ -278,7 +285,7 @@ class Track:
         mask[mask > 0] = 1
 
         # stack together into a numpy array.
-        frame = np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=2)
+        frame = np.float16(np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=2))
 
         return frame
 
@@ -377,6 +384,9 @@ class TrackExtractor:
 
         start = time.time()
 
+        # date and time when video starts
+        self.video_start_time = None
+
         self.frames = []
         self.track_history = {}
         self.load(open(full_path, 'rb'), max_frames)
@@ -398,7 +408,7 @@ class TrackExtractor:
 
         self.verbose = False
 
-        # if true excludes any videos with backgroudns that change too much.
+        # if true excludes any videos with backgrounds that change too much.
         self.exclude_non_static_videos = True
 
         # the classifer to use to classify tracks
@@ -663,6 +673,7 @@ class TrackExtractor:
                     continue
 
                 track = Track(region.x, region.y, region.width, region.height, region.mass)
+                track.start_time = self.video_start_time + datetime.timedelta(seconds=frame_number / 9.0)
                 track.first_frame = frame_number
                 track.tracker = self
                 active_tracks.append(track)

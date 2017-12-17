@@ -112,3 +112,18 @@ class CPTVFileProcessor:
                 exit()
             else:
                 pool.close()
+
+    def log_message(self, message):
+        """ Record message in log.  Will be printed if verbose is enabled. """
+        # note, python has really good logging... I should probably make use of this.
+        if self.verbose: print(message)
+
+    def log_warning(self, message):
+        """ Record warning message in log.  Will be printed if verbose is enabled. """
+        # note, python has really good logging... I should probably make use of this.
+        print("Warning:",message)
+
+if __name__ == '__main__':
+    # for some reason the fork method seems to memory leak, and unix defaults to this so we
+    # stick to spawn.  Also, form might be a problem as some numpy commands have multiple threads?
+    multiprocessing.set_start_method('spawn')
