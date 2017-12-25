@@ -95,9 +95,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         self.enable_previews = False
         self.display_times = False
 
-        # number of threads to use when processing files.
-        # 0 disables worker pool
-        self.workers_threads = 0
+        # normally poor quality tracks are filtered out, enabling this will let them through.
+        self.disable_track_filters = False
 
     def load_hints(self, filename):
         """ Read in hints file from given path.  If file is not found an empty hints dictionary set."""
@@ -118,20 +117,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             except:
                 raise Exception("Error on line {0}: {1}".format(line_number, line))
             self.hints[filename] = int(file_max_tracks)
-
-    def process(self, root_folder):
-        """ Process all files in root folder.  CPTV files are expected to be found in folders corresponding to their
-            class name. """
-
-        folders = [os.path.join(root_folder, f) for f in os.listdir(root_folder) if
-                   os.path.isdir(os.path.join(root_folder, f))]
-
-        for folder in folders:
-            if os.path.basename(folder).lower() in EXCLUDED_FOLDERS:
-                continue
-            print("Processing folder {0}".format(folder))
-            self.process_folder(folder)
-        print("Done.")
 
     def process_file(self, full_path, tag):
         """
@@ -186,6 +171,11 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         tracker.verbose = self.verbose >= 2
         tracker.colormap = self.colormap
 
+        if self.disable_track_filters:
+            tracker.track_min_delta = 0.0
+            tracker.track_min_mass = 0.0
+            tracker.track_min_offset = 0.0
+
         # read metadata
         meta_data_filename = os.path.splitext(full_path)[0] + ".dat"
         if os.path.exists(meta_data_filename):
@@ -209,7 +199,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             tracker.stats['confidence'] = meta_data['Tags'][0].get('confidence',0.0)
             tracker.stats['trap'] = meta_data['Tags'][0].get('trap','none')
             tracker.stats['event'] = meta_data['Tags'][0].get('event','none')
-            tracker.stats['cptv_metadata'] = meta_data['Tags'][0]
+            tracker.stats['cptv_metadata'] = meta_data
         else:
             self.log_warning(" - Warning: no metadata found for file.")
             return
@@ -416,6 +406,7 @@ def parse_params():
     parser.add_argument('-w', '--workers', default='0', help='Number of worker threads to use.  0 disables worker pool and forces a single thread.')
     parser.add_argument('-f', '--force-overwrite', default='old', help='Overwrite mode.  Options are all, old, or none.')
     parser.add_argument('-i', '--show-build-information', action='count', help='Show openCV build information and exit.')
+    parser.add_argument('--disable-track-filters', action='count', help='Disables filtering of poor quality tracks.')
 
     args = parser.parse_args()
 
@@ -449,6 +440,10 @@ def parse_params():
 
     extractor.source_folder = args.source_folder
     extractor.output_folder = args.output_folder
+
+    # allow everything through
+    extractor.disable_track_filters = args.disable_track_filters
+
 
     if extractor.enable_previews:
         print("Previews enabled.")
