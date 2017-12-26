@@ -98,6 +98,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         # normally poor quality tracks are filtered out, enabling this will let them through.
         self.disable_track_filters = False
 
+        self.reduced_quality_optical_flow = False
+
     def load_hints(self, filename):
         """ Read in hints file from given path.  If file is not found an empty hints dictionary set."""
 
@@ -170,6 +172,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         tracker.tag = tag
         tracker.verbose = self.verbose >= 2
         tracker.colormap = self.colormap
+        tracker.reduced_quality_optical_flow = self.reduced_quality_optical_flow
 
         if self.disable_track_filters:
             tracker.track_min_delta = 0.0
@@ -400,6 +403,7 @@ def parse_params():
     parser.add_argument('-c', '--color-map', default="custom_colormap.dat", help='Colormap to use when exporting MPEG files')
     parser.add_argument('-p', '--enable-previews', action='count', help='Enables preview MPEG files (can be slow)')
     parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
+    parser.add_argument('--high-quality-optical-flow', action='store_true', default=False, help='Enables high quality optical flow (much slower).')
     parser.add_argument('-v', '--verbose', action='count', help='Display additional information.')
     parser.add_argument('-w', '--workers', default='0', help='Number of worker threads to use.  0 disables worker pool and forces a single thread.')
     parser.add_argument('-f', '--force-overwrite', default='old', help='Overwrite mode.  Options are all, old, or none.')
@@ -424,6 +428,10 @@ def parse_params():
         raise Exception("Valid overwrite modes are all, old, or none.")
     extractor.overwrite_mode = args.force_overwrite.lower()
 
+    # set optical flow
+    extractor.reduced_quality_optical_flow = not args.high_quality_optical_flow
+    print(extractor.reduced_quality_optical_flow)
+
     # set verbose
     extractor.verbose = args.verbose
 
@@ -441,7 +449,6 @@ def parse_params():
 
     # allow everything through
     extractor.disable_track_filters = args.disable_track_filters
-
 
     if extractor.enable_previews:
         print("Previews enabled.")
