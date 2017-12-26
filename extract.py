@@ -2,10 +2,6 @@
 Processes a CPTV file identifying and tracking regions of interest, and saving them in the 'trk' format.
 """
 
-# we need to use a non GUI backend.  AGG works but is quite slow so I used SVG instead.
-import matplotlib
-matplotlib.use("SVG")
-
 import cv2
 from PIL import Image, ImageDraw
 import numpy as np
@@ -93,7 +89,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         self.out_folder = out_folder
         self.overwrite_mode = CPTVTrackExtractor.OM_OLD_VERSION
         self.enable_previews = False
-        self.display_times = False
 
         # normally poor quality tracks are filtered out, enabling this will let them through.
         self.disable_track_filters = False
@@ -171,7 +166,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         tracker.max_tracks = max_tracks
         tracker.tag = tag
         tracker.verbose = self.verbose >= 2
-        tracker.colormap = self.colormap
         tracker.reduced_quality_optical_flow = self.reduced_quality_optical_flow
 
         if self.disable_track_filters:
@@ -214,7 +208,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         tracker.export_tracks(os.path.join(self.out_folder, tag, cptv_filename))
 
-        # todo: enable previews
+        # write a preview
+        if self.enable_previews:
+            self.export_mpeg_preview(os.path.join(destination_folder, preview_filename), tracker)
 
         tracker.save_stats(stats_path_and_filename)
 
@@ -280,7 +276,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             print("Could not find {0} in root folder {1}".format(test.source, source_folder))
             return
 
-        tracker = self.process_file(source_file, 'test', create_preview_file=self.enable_previews)
+        tracker = self.process_file(source_file, 'test')
 
         # read in stats files and see how we did
         if len(tracker.tracks) != len(test.tracks):
@@ -296,10 +292,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             else:
                 print("[PASS] {0}".format(test.source))
 
-    # todo: get this using it's own display
-    def __display(self, filename):
+    def export_mpeg_preview(self, filename, tracker: TrackExtractor):
         """
-        Exports tracking information to a video file for debugging.
+        Exports tracking information preview to MPEG file.
         """
 
         # increased resolution of video file.
@@ -313,7 +308,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         # write video
         frame_number = 0
-        for frame, marked, rects, flow, filtered in zip(self.frames, self.mask_frames, self.regions, self.flow_frames, self.filtered_frames):
+
+        for frame, marked, rects, flow, filtered in zip(tracker.frames, tracker.mask_frames, tracker.regions, tracker.flow_frames, tracker.filtered_frames):
 
             # marked is an image with each pixel's value being the label, 0...n for n objects
             # I multiply it here, but really I should use a seperate color map for this.
@@ -322,9 +318,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             # really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
             # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
             flow_magnitude = (flow[:,:,0]**2 + flow[:,:,1]**2) ** 0.5
-            stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((3 * filtered + self.TEMPERATURE_MIN, 200 * flow_magnitude + self.TEMPERATURE_MIN))))
+            stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((3 * filtered + tools.TEMPERATURE_MIN, 200 * flow_magnitude + tools.TEMPERATURE_MIN))))
 
-            img = self.convert_heat_to_img(stacked, self.colormap, self.TEMPERATURE_MIN, self.TEMPERATURE_MAX)
+            img = tools.convert_heat_to_img(stacked, self.colormap, tools.TEMPERATURE_MIN, tools.TEMPERATURE_MAX)
             img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
             draw = ImageDraw.Draw(img)
 
@@ -334,7 +330,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                 draw.line(rect_points, (128, 128, 128))
 
             # look for any tracks that occur on this frame
-            for id, track in enumerate(self.tracks):
+            for id, track in enumerate(tracker.tracks):
                 frame_offset = frame_number - track.first_frame
                 if frame_offset > 0 and frame_offset < len(track.bounds_history)-1:
 
@@ -351,9 +347,10 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             if frame_number > 9 * 60 * 10:
                 break
 
-        self.write_mpeg(filename, video_frames)
+        print(filename)
+        tools.write_mpeg(filename, video_frames)
 
-        self.stats['time_per_frame']['preview'] = (time.time() - start) * 1000 / len(self.frames)
+        tracker.stats['time_per_frame']['preview'] = (time.time() - start) * 1000 / len(tracker.frames)
 
 
     def run_tests(self, source_folder, tests_file):
@@ -442,7 +439,6 @@ def parse_params():
     extractor.load_hints("hints.txt")
 
     extractor.enable_previews = args.enable_previews
-    extractor.display_times = args.enable_previews
 
     extractor.source_folder = args.source_folder
     extractor.output_folder = args.output_folder
