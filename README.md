@@ -48,7 +48,7 @@ CPTV files can be downloaded using the [cptv-downloader](https://github.com/TheC
 
 First download the CPTV files by running
  
-`python download.py`
+`python cptv-download.py --user x --password x`
  
 Next extract the track files.  This can take some time
  
@@ -66,11 +66,7 @@ And finally train the model
 
 A pre-trained model can be used to classify objects within a CPTV video
 
-`python classify [cptv filename] -p`
+`python classify.py [cptv filename] -p`
 
-This will generate a text file listing the animals identified, and create an MPEG file.   `
-
-
-
-    
+This will generate a text file listing the animals identified, and create an MPEG preview file.   `
 

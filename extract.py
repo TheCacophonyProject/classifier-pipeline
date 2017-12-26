@@ -10,14 +10,14 @@ import cv2
 from PIL import Image, ImageDraw
 import numpy as np
 
-from cptvfileprocessor import CPTVFileProcessor
-
+from ml_tools.trackextractor import TrackExtractor
+from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools import tools
 
 import matplotlib.pyplot as plt
 import pickle
 import os
-import trackextractor
+
 import ast
 import glob
 import argparse
@@ -165,7 +165,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         purge(destination_folder, base_filename + "*.txt")
 
         # load the track
-        tracker = trackextractor.TrackExtractor(full_path)
+        tracker = TrackExtractor(full_path)
         tracker.max_tracks = max_tracks
         tracker.tag = tag
         tracker.verbose = self.verbose >= 2
@@ -177,10 +177,10 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             tracker.track_min_offset = 0.0
 
         # read metadata
-        meta_data_filename = os.path.splitext(full_path)[0] + ".dat"
+        meta_data_filename = os.path.splitext(full_path)[0] + ".txt"
         if os.path.exists(meta_data_filename):
 
-            meta_data = ast.literal_eval(open(meta_data_filename, 'r').read())
+            meta_data = tools.load_clip_metadata(meta_data_filename)
 
             tag_count = len(meta_data['Tags'])
 
@@ -249,10 +249,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             return False
 
         # read in stats file.
-        #STUB: TODO remove this line
-        stats = trackextractor.load_tracker_stats(stats_filename)
         try:
-            stats = trackextractor.load_tracker_stats(stats_filename)
+            stats = tools.load_tracker_stats(stats_filename)
         except Exception as e:
             self.log_warning("Invalid stats file "+stats_filename+" error:"+str(e))
             return True
