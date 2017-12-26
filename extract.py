@@ -24,7 +24,7 @@ import multiprocessing
 # default base path to use if no source or destination folder are given.
 DEFAULT_BASE_PATH = "c:\\cac"
 
-EXCLUDED_FOLDERS = ['false-positive','insect','other','unidentified','cat','dog']
+EXCLUDED_FOLDERS = ['false-positive','other','unidentified']
 
 def purge(dir, pattern):
     for f in glob.glob(os.path.join(dir, pattern)):
@@ -115,7 +115,13 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                 raise Exception("Error on line {0}: {1}".format(line_number, line))
             self.hints[filename] = int(file_max_tracks)
 
-    def process_file(self, full_path, tag):
+    def process_all(self, root):
+        for root, folders, files in os.walk(root):
+            for folder in folders:
+                if folder not in EXCLUDED_FOLDERS:
+                    self.process_folder(os.path.join(root,folder), tag=folder.lower())
+
+    def process_file(self, full_path, **kwargs):
         """
         Extract tracks from specific file, and assign given tag.
         :param full_path: path: path to CPTV file to be processed
@@ -124,6 +130,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             process can be quite time consuming.
         :returns the tracker object
         """
+
+        tag = kwargs['tag']
 
         base_filename = os.path.splitext(os.path.split(full_path)[1])[0]
         cptv_filename = base_filename + '.cptv'
@@ -276,7 +284,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             print("Could not find {0} in root folder {1}".format(test.source, source_folder))
             return
 
-        tracker = self.process_file(source_file, 'test')
+        tracker = self.process_file(source_file, tag='test')
 
         # read in stats files and see how we did
         if len(tracker.tracks) != len(test.tracks):
@@ -347,7 +355,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             if frame_number > 9 * 60 * 10:
                 break
 
-        print(filename)
         tools.write_mpeg(filename, video_frames)
 
         tracker.stats['time_per_frame']['preview'] = (time.time() - start) * 1000 / len(tracker.frames)
@@ -454,7 +461,7 @@ def parse_params():
         source_file = find_file(args.source_folder, args.target)
         tag = os.path.basename(os.path.dirname(source_file))
         extractor.overwrite_mode = CPTVTrackExtractor.OM_ALL
-        extractor.process_file(source_file, tag, args.enable_previews)
+        extractor.process_file(source_file, tag=tag)
         return
 
     if args.target.lower() == 'test':
@@ -465,7 +472,7 @@ def parse_params():
     print('Processing tag "{0}"'.format(args.target))
 
     if args.target.lower() == 'all':
-        extractor.process(args.source_folder)
+        extractor.process_all(args.source_folder)
         return
     else:
         extractor.process_folder(os.path.join(args.source_folder, args.target), tag=args.target)
