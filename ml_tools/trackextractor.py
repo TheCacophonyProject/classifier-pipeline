@@ -271,7 +271,7 @@ class TrackExtractor:
     THRESHOLD_PERCENTILE = 99.9
 
     # the dimensions of the tracks in pixels (width and height)
-    WINDOW_SIZE = 64
+    WINDOW_SIZE = 48
 
     # if the mean pixel change is below this threshold then classify the video as having a static background
     STATIC_BACKGROUND_THRESHOLD = 5.0
@@ -283,7 +283,7 @@ class TrackExtractor:
     MAX_TEMPERATURE_RANGE_THRESHOLD = 2000
 
     # number of pixels around object to pad.
-    FRAME_PADDING = 8
+    FRAME_PADDING = 6
 
     # number of frames to wait before deleting a lost track
     DELETE_LOST_TRACK_FRAMES = 9
@@ -471,7 +471,7 @@ class TrackExtractor:
         is thrown.  Requires the frame_buffer to be filled.
         :param track: the track to get frames for.
         :param frame_number: the frame number where 0 is the first frame of the track.
-        :return: numpy array of size [5, 64,64] where channels are thermal, filtered, u, v, mask
+        :return: numpy array of size [channels, height, width] where channels are thermal, filtered, u, v, mask
         """
 
         if frame_number < 0 or frame_number >= len(track):
@@ -499,7 +499,7 @@ class TrackExtractor:
             thermal = scipy.ndimage.zoom(np.float32(thermal), (scale, scale), order=1)
             filtered = scipy.ndimage.zoom(np.float32(filtered), (scale, scale), order=1)
             flow = scipy.ndimage.zoom(np.float32(flow), (scale, scale, 1), order=1)
-            mask = scipy.ndimage.zoom(np.float32(mask), (scale, scale), order=1)
+            mask = scipy.ndimage.zoom(np.float32(mask), (scale, scale), order=0)
 
         # make sure only our pixels are included in the mask.
         mask[mask != bounds.id] = 0
