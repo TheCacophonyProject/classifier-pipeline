@@ -53,6 +53,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         self.out_folder = out_folder
         self.overwrite_mode = CPTVTrackExtractor.OM_NONE
         self.enable_previews = False
+        self.enable_track_output = True
 
         # normally poor quality tracks are filtered out, enabling this will let them through.
         self.disable_track_filters = False
@@ -192,7 +193,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         for track in tracker.tracks:
             track.tag = tag
 
-        tracker.export_tracks(self.database)
+        if self.enable_track_output:
+            tracker.export_tracks(self.database)
 
         # write a preview
         if self.enable_previews:
@@ -234,6 +236,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         # find the file.  We looking in all the tag folder to make life simpler when creating the test file.
         source_file = tools.find_file(source_folder, test.source)
+
+        # make sure we don't write to database
+        self.enable_track_output = False
 
         if source_file is None:
             print("Could not find {0} in root folder {1}".format(test.source, source_folder))
