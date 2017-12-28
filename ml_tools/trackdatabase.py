@@ -13,13 +13,13 @@ from multiprocessing import Lock
 import h5py
 import numpy as np
 
-# global lock to make sure two processes don't write to the file store at the same time.
-hdf5_lock = Lock()
-
 class TrackDatabase:
 
     def __init__(self, database_filename):
-        """ Initialises given database.  If database does not exist an empty one is created. """
+        """
+        Initialises given database.  If database does not exist an empty one is created.
+        :param database_filename: filename of database
+        """
 
         self.database = database_filename
 
@@ -129,3 +129,7 @@ class TrackDatabase:
             track_entry.attrs['finished'] = True
 
             f.close()
+
+# default lock for safe database writes.
+# note for multiprocessing this will need to be overwritten with a shared lock for each process.
+hdf5_lock = Lock()

@@ -5,13 +5,12 @@ Processes a CPTV file identifying and tracking regions of interest, and saving t
 import cv2
 from PIL import Image, ImageDraw
 import numpy as np
-import h5py
 
-from ml_tools import trackextractor
+from ml_tools import trackdatabase
 from ml_tools.trackextractor import TrackExtractor
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
+from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
-from ml_tools import trackdatabase
 
 import matplotlib.pyplot as plt
 import os
@@ -23,40 +22,16 @@ import time
 # default base path to use if no source or destination folder are given.
 DEFAULT_BASE_PATH = "c:\\cac"
 
-EXCLUDED_FOLDERS = ['false-positive','other','unidentified']
-
-def purge(dir, pattern):
-    for f in glob.glob(os.path.join(dir, pattern)):
-        os.remove(os.path.join(dir, f))
-
-def find_file(root, filename):
-    """
-    Finds a file in root folder, or any subfolders.
-    :param root: root folder to search file
-    :param filename: exact time of file to look for
-    :return: returns full path to file or None if not found.
-    """
-    for root, dir, files in os.walk(root):
-        if filename in files:
-            return os.path.join(root, filename)
-    return None
-
-class TrackEntry:
-    """ Database entry for a track """
-    def __init__(self):
-        pass
+EXCLUDED_FOLDERS = ['false-positive', 'other', 'unidentified']
 
 class TrackerTestCase():
     def __init__(self):
         self.source = None
         self.tracks = []
 
-def process_job(job):
-    """ Just a wrapper to pass tupple containing (extractor, *params) to the process_file method. """
-    extractor = job[0]
-    params = job[1:]
-    extractor.process_file(*params)
-    time.sleep(0.001) # apparently gives me a chance to catch the control-c
+def init_workers(lock):
+    print("**Init called for process.", lock)
+    trackdatabase.hdf5_lock = lock
 
 class CPTVTrackExtractor(CPTVFileProcessor):
     """
@@ -84,7 +59,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         self.reduced_quality_optical_flow = False
 
-        self.database = trackdatabase.TrackDatabase(os.path.join(self.out_folder, 'dataset.hdf5'))
+        self.database = TrackDatabase(os.path.join(self.out_folder, 'dataset.hdf5'))
+
+        self.worker_pool_init = init_workers
 
     def load_hints(self, filename):
         """ Read in hints file from given path.  If file is not found an empty hints dictionary set."""
@@ -110,7 +87,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         for root, folders, files in os.walk(root):
             for folder in folders:
                 if folder not in EXCLUDED_FOLDERS:
-                    self.process_folder(os.path.join(root,folder), tag=folder.lower())
+                    self.process_folder(os.path.join(root,folder), tag=folder.lower(), worker_pool_args=(trackdatabase.hdf5_lock,))
 
     def process_file(self, full_path, **kwargs):
         """
@@ -155,7 +132,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             return
 
         # delete any previous files
-        purge(destination_folder, base_filename + "*.mp4")
+        tools.purge(destination_folder, base_filename + "*.mp4")
 
         # load the track
         tracker = TrackExtractor()
@@ -256,7 +233,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             return ((abs(value - expected) / expected) <= relative_error) or (abs(value - expected) <= abs_error)
 
         # find the file.  We looking in all the tag folder to make life simpler when creating the test file.
-        source_file = find_file(source_folder, test.source)
+        source_file = tools.find_file(source_folder, test.source)
 
         if source_file is None:
             print("Could not find {0} in root folder {1}".format(test.source, source_folder))
@@ -444,7 +421,7 @@ def parse_params():
 
     if os.path.splitext(args.target)[1].lower() == '.cptv':
         # run single source
-        source_file = find_file(args.source_folder, args.target)
+        source_file = tools.find_file(args.source_folder, args.target)
         tag = os.path.basename(os.path.dirname(source_file))
         extractor.overwrite_mode = CPTVTrackExtractor.OM_ALL
         extractor.process_file(source_file, tag=tag)
@@ -461,7 +438,7 @@ def parse_params():
         extractor.process_all(args.source_folder)
         return
     else:
-        extractor.process_folder(os.path.join(args.source_folder, args.target), tag=args.target)
+        extractor.process_folder(os.path.join(args.source_folder, args.target), tag=args.target, worker_pool_args=(trackdatabase.hdf5_lock,))
         return
 
 def print_opencl_info():

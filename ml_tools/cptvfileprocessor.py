@@ -45,6 +45,9 @@ class CPTVFileProcessor:
 
         self.verbose = False
 
+        # optional initializer for worker threads
+        self.worker_pool_init = None
+
     def process_file(self, filename, **kwargs):
         """ The function to process an individual file. """
         raise Exception("Process file method must be overwritten in sub class.")
@@ -53,7 +56,7 @@ class CPTVFileProcessor:
         """ Checks if source file needs processing. """
         return True
 
-    def process_folder(self, folder_path, **kwargs):
+    def process_folder(self, folder_path, worker_pool_args=None, **kwargs):
         """Processes all files within a folder."""
 
         jobs = []
@@ -66,16 +69,21 @@ class CPTVFileProcessor:
                 if self.needs_processing(full_path):
                     jobs.append((self, full_path, kwargs))
 
-        self.process_job_list(jobs)
+        self.process_job_list(jobs, worker_pool_args)
 
-    def process_job_list(self, jobs):
-        """ Processes a list of jobs. Supports worker threads. """
+    def process_job_list(self, jobs, worker_pool_args=None):
+        """
+        Processes a list of jobs. Supports worker threads.
+        :param jobs: List of jobs to process
+        :param worker_pool_args: optional arguments to worker pool initializer
+        """
+
         if self.workers_threads == 0:
             # just process the jobs in the main thread
             for job in jobs: process_job(job)
         else:
             # send the jobs to a worker pool
-            pool = multiprocessing.Pool(self.workers_threads)
+            pool = multiprocessing.Pool(self.workers_threads, initializer=self.worker_pool_init, initargs=worker_pool_args)
             try:
                 # see https://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
                 pool.map(process_job, jobs, chunksize=1)
