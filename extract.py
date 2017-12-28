@@ -5,10 +5,13 @@ Processes a CPTV file identifying and tracking regions of interest, and saving t
 import cv2
 from PIL import Image, ImageDraw
 import numpy as np
+import h5py
 
+from ml_tools import trackextractor
 from ml_tools.trackextractor import TrackExtractor
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools import tools
+from ml_tools import trackdatabase
 
 import matplotlib.pyplot as plt
 import os
@@ -65,15 +68,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
     # version number.  Recorded into stats file when a clip is processed.
     VERSION = 6
 
-    # all files will be reprocessed
-    OM_ALL = 'all'
-
-    # any clips with a lower version than the current will be reprocessed
-    OM_OLD_VERSION = 'old'
-
-    # no clips will be overwritten
-    OM_NONE = 'none'
-
     def __init__(self, out_folder):
 
         CPTVFileProcessor.__init__(self)
@@ -82,13 +76,15 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         self.colormap = plt.get_cmap('jet')
         self.verbose = False
         self.out_folder = out_folder
-        self.overwrite_mode = CPTVTrackExtractor.OM_OLD_VERSION
+        self.overwrite_mode = CPTVTrackExtractor.OM_NONE
         self.enable_previews = False
 
         # normally poor quality tracks are filtered out, enabling this will let them through.
         self.disable_track_filters = False
 
         self.reduced_quality_optical_flow = False
+
+        self.database = trackdatabase.TrackDatabase(os.path.join(self.out_folder, 'dataset.hdf5'))
 
     def load_hints(self, filename):
         """ Read in hints file from given path.  If file is not found an empty hints dictionary set."""
@@ -132,7 +128,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         cptv_filename = base_filename + '.cptv'
         preview_filename = base_filename + '-preview' + '.mp4'
         stats_filename = base_filename + '.txt'
-        track_database_filename = os.path.join(self.out_folder,'dataset.hdf5')
 
         destination_folder = os.path.join(self.out_folder, tag.lower())
 
@@ -143,6 +138,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             max_tracks = self.hints[cptv_filename]
             if max_tracks == 0:
                 return
+        else:
+            max_tracks = 10
 
         # make destination folder if required
         try:
@@ -158,9 +155,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             return
 
         # delete any previous files
-        purge(destination_folder, base_filename + "*.trk")
         purge(destination_folder, base_filename + "*.mp4")
-        purge(destination_folder, base_filename + "*.txt")
 
         # load the track
         tracker = TrackExtractor()
@@ -207,11 +202,11 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         # save some additional stats
         tracker.stats['version'] = CPTVTrackExtractor.VERSION
 
-        tracker.load(os.path.join(self.source_folder, tag, cptv_filename))
+        tracker.load(full_path)
 
         tracker.extract_tracks()
 
-        tracker.export_tracks(os.path.join(self.out_folder, tag, track_database_filename))
+        tracker.export_tracks(self.database)
 
         # write a preview
         if self.enable_previews:
@@ -230,35 +225,17 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
     def needs_processing(self, source_filename):
         """
-        Opens a stats file and checks if this clip needs to be processed.
-        :param stats_filename: the full path and filename of the stats file for the clip in question.
-        :return: returns true if file should be overwritten, false otherwise
+        Returns if given source file needs processing or not
+        :param source_filename:
+        :return:
         """
 
-        stats_filename = os.path.join(self.output_folder,os.path.splitext(os.path.basename(source_filename))[0])+".txt"
+        clip_id = os.path.basename(source_filename)
 
-        # if no stats file exists we haven't processed file, so reprocess
-        if not os.path.exists(stats_filename):
+        if self.overwrite_mode == self.OM_ALL:
             return True
 
-        # otherwise check what needs to be done.
-        if self.overwrite_mode == CPTVTrackExtractor.OM_ALL:
-            return True
-        elif self.overwrite_mode == CPTVTrackExtractor.OM_NONE:
-            return False
-
-        # read in stats file.
-        try:
-            stats = tools.load_tracker_stats(stats_filename)
-        except Exception as e:
-            self.log_warning("Invalid stats file "+stats_filename+" error:"+str(e))
-            return True
-
-        if self.overwrite_mode == CPTVTrackExtractor.OM_OLD_VERSION:
-            return stats['version'] < CPTVTrackExtractor.VERSION
-
-        raise Exception("Invalid overwrite mode {0}".format(self.overwrite_mode))
-
+        return not self.database.has_clip(clip_id)
 
     def run_test(self, source_folder, test: TrackerTestCase):
         """ Runs a specific test case. """
@@ -276,6 +253,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             print("Could not find {0} in root folder {1}".format(test.source, source_folder))
             return
 
+        print(source_file)
         tracker = self.process_file(source_file, tag='test')
 
         # read in stats files and see how we did

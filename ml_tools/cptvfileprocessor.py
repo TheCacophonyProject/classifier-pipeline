@@ -20,9 +20,6 @@ class CPTVFileProcessor:
     # all files will be reprocessed
     OM_ALL = 'all'
 
-    # any clips with a lower version than the current will be reprocessed
-    OM_OLD_VERSION = 'old'
-
     # no clips will be overwritten
     OM_NONE = 'none'
 

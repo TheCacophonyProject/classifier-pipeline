@@ -10,7 +10,6 @@ HDF5 file for use in training a neural net.
 import pytz
 import datetime
 from collections import namedtuple
-from multiprocessing import Lock
 import os
 
 import numpy as np
@@ -20,12 +19,9 @@ import scipy.ndimage
 
 from ml_tools.tools import get_image_subsection
 from ml_tools.tools import Rectangle
+from ml_tools.trackdatabase import TrackDatabase
+
 from cptv import CPTVReader
-
-
-# global lock to make sure two processes don't write to the file store at the same time.
-lock = Lock()
-
 
 class Region(Rectangle):
     """ Region is a rectangle extended to support mass. """
@@ -200,15 +196,15 @@ class FrameBuffer:
 
         self.flow = []
 
+        height, width = self.filtered[0].shape
+        flow = np.zeros([height, width, 2], dtype=np.uint8)
+
         current = None
         for next in self.filtered:
             if current is not None:
                 current_gray_frame = (current / 2).astype(np.uint8)
                 next_gray_frame = (next / 2).astype(np.uint8)
                 flow = opt_flow.calc(current_gray_frame, next_gray_frame, flow)
-            else:
-                height, width = self.filtered[0].shape
-                flow = np.zeros([height, width, 2], dtype=np.uint8)
 
             current = next
 
@@ -295,7 +291,6 @@ class TrackExtractor:
 
         # the previous filtered frame
         self._prev_filtered = None
-
 
     def load(self, filename):
         """
@@ -386,11 +381,18 @@ class TrackExtractor:
         self._prev_filtered = filtered.copy()
         self.frame_on += 1
 
-    def export_tracks(self, filename):
+    def export_tracks(self, database: TrackDatabase):
         """
-        Writes tracks to a HD5F file.
-        :param filename: full path and filename to destination dataset
+        Writes tracks to a track database.
+        :param database: database to write track to.
         """
+
+        clip_id = os.path.basename(self.source_file)
+
+        # overwrite any old clips.
+        # Note: we do this even if there are no tracks so there there will be a blank clip entry as a record
+        # that we have processed it.
+        database.create_clip(clip_id)
 
         if len(self.tracks) == 0:
             return
@@ -398,43 +400,18 @@ class TrackExtractor:
         if not self.frame_buffer.has_flow:
             self.frame_buffer.generate_flow(self.opt_flow)
 
-        clip_id = os.path.basename(self.source_file)
-
-        # make sure only one thread writes to the HDF5 file at a time.
-        with lock:
-            if os.path.exists(filename):
-                f = h5py.File(filename, 'a')
-                grp = f['tracks']
-            else:
-                print("Creating new dataset {}".format(filename))
-                f = h5py.File(filename, 'w')
-                grp = f.create_group("tracks")
-
-            if clip_id in grp:
-                # overwrite
-                clip = grp[clip_id]
-                for name in clip:
-                    del clip[name]
-            else:
-                clip = grp.create_group(clip_id)
-
-            for track_number, track in enumerate(self.tracks):
-                # chunk the frames by channel
-                dset = clip.create_dataset(
-                    str(1+track_number),
-                    (len(track), self.WINDOW_SIZE, self.WINDOW_SIZE, 5),
-                    chunks=(9, self.WINDOW_SIZE, self.WINDOW_SIZE, 1),
-                    compression='lzf', shuffle=True, dtype=np.int16
-                )
-                for i in range(len(track)):
-                    channels = self.get_track_channels(track, i)
-                    dset[i] = channels
+        # get track data
+        for track_number, track in enumerate(self.tracks):
+            track_data = []
+            for i in range(len(track)):
+                channels = self.get_track_channels(track, i)
+                track_data.append(channels)
+            track_data = np.int16(track_data)
+            track_id = track_number+1
+            database.add_track(clip_id, track_id, track_data)
 
             # todo: save stats
             # tracker.save_stats(stats_path_and_filename)
-
-            f.flush()
-            f.close()
 
     def get_track_channels(self, track: Track, frame_number):
         """
@@ -590,7 +567,6 @@ class TrackExtractor:
         if self.max_tracks is not None and self.max_tracks < len(self.tracks):
             print(" -using only {0} tracks out of {1}".format(self.max_tracks, len(self.tracks)))
             self.tracks = self.tracks[:self.max_tracks]
-
 
     def _get_filtered(self, thermal):
         """
