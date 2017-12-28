@@ -599,6 +599,22 @@ def classify_segment(model, segment, verbose = False):
     return predicted_class
 
 
+def blosc_opts(complevel=9, complib='blosc:lz4', shuffle=True):
+    """ Gets params to pass for blosc compression.  Requires tables to be imported. """
+    shuffle = 2 if shuffle == 'bit' else 1 if shuffle else 0
+    compressors = ['blosclz', 'lz4', 'lz4hc', 'snappy', 'zlib', 'zstd']
+    complib = ['blosc:' + c for c in compressors].index(complib)
+    args = {
+        'compression': 32001,
+        'compression_opts': (0, 0, 0, 0, complevel, shuffle, complib)
+    }
+    if shuffle:
+        args['shuffle'] = False
+    return args
+
+
+blosc_zstd = blosc_opts(complevel=9, complib='blosc:zstd', shuffle=True)
+
 color_dict = {'red': ((0.0, 0.0, 0.0),
                       (0.5, 0.0, 0.0),
                       (1.0, 1.0, 1.0)),

@@ -204,12 +204,11 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         tracker.load(full_path)
 
-        tracker.extract_tracks()
-
-        if len(tracker.frame_buffer) == 0:
+        if not tracker.extract_tracks():
             # this happens if the tracker rejected the video for some reason (i.e. too hot, or not static background).
             # we still need to make a record that we looked at it though.
             self.database.create_clip(os.path.basename(full_path), tracker)
+            print(" - skiped ({})".format(tracker.reject_reason))
             return tracker
 
         # assign each track the correct tag

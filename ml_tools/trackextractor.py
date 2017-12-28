@@ -17,11 +17,13 @@ import cv2
 import h5py
 import scipy.ndimage
 
-from ml_tools.tools import get_image_subsection
+from ml_tools.tools import get_image_subsection, blosc_zstd
 from ml_tools.tools import Rectangle
 from ml_tools.trackdatabase import TrackDatabase
 
 from cptv import CPTVReader
+
+__import__('tables')  # <-- import PyTables; __import__ so that linters don't complain
 
 
 class Region(Rectangle):
@@ -317,6 +319,9 @@ class TrackExtractor:
         self.track_min_delta = 1.0
         self.track_min_mass = 2.0
 
+        # reason qwhy clip was rejected, or none if clip was accepted
+        self.reject_reason = None
+
         # a list of currently active tracks
         self.active_tracks = []
         # a list of all tracks
@@ -343,9 +348,12 @@ class TrackExtractor:
         """
         Extracts tracks from given source.  Setting self.tracks to a list of good tracks with the clip
         :param source_file: filename of cptv file to process
+        :returns: True if clip was sucessfuly processed, false otherwise
         """
 
         assert self.reader, "Must call load before extracting tracks."
+
+        self.reject_reason = None
 
         # we need to load the entire video so we can analyse the background.
         frames = [frame for frame, offset in self.reader]
@@ -361,17 +369,24 @@ class TrackExtractor:
 
         self.threshold = background_stats.threshold
 
+        if len(frames) <= 9:
+            self.reject_reason = "Clip too short {} frames".format(len(frames))
+            return False
+
         # exclude clips with moving backgrounds
         if background_stats.average_delta > self.STATIC_BACKGROUND_THRESHOLD:
-            return
+            self.reject_reason = "Moving background"
+            return False
 
         # don't process clips that are too hot.
         if background_stats.mean_temp > self.MAX_MEAN_TEMPERATURE_THRESHOLD:
-            return
+            self.reject_reason = "Mean temp too high {}".format(background_stats.mean_temp)
+            return False
 
         # don't process clips with too large of a temperature difference
         if background_stats.max_temp - background_stats.min_temp > self.MAX_TEMPERATURE_RANGE_THRESHOLD:
-            return
+            self.reject_reason = "Temp delta too high {}".format(background_stats.max_temp - background_stats.min_temp)
+            return False
 
         # reset the track ID so we start at 1
         Track._track_id = 1
@@ -395,6 +410,8 @@ class TrackExtractor:
 
         # filter out tracks that do not move, or look like noise
         self.filter_tracks()
+
+        return True
 
     def track_next_frame(self, frame):
         """
@@ -446,9 +463,7 @@ class TrackExtractor:
                 track_data.append(channels)
             track_data = np.int16(track_data)
             track_id = track_number+1
-            database.add_track(clip_id, track_id, track_data, track)
-
-
+            database.add_track(clip_id, track_id, track_data, track, opts=blosc_zstd)
 
     def get_track_channels(self, track: Track, frame_number):
         """
@@ -456,7 +471,7 @@ class TrackExtractor:
         is thrown.  Requires the frame_buffer to be filled.
         :param track: the track to get frames for.
         :param frame_number: the frame number where 0 is the first frame of the track.
-        :return: numpy array of size [64,64,5] where channels are thermal, filtered, u, v, mask
+        :return: numpy array of size [5, 64,64] where channels are thermal, filtered, u, v, mask
         """
 
         if frame_number < 0 or frame_number >= len(track):
@@ -475,8 +490,7 @@ class TrackExtractor:
                tracker_frame, len(self.frame_buffer.thermal)-1))
 
         thermal = get_image_subsection(self.frame_buffer.thermal[tracker_frame], bounds, (window_size, window_size))
-        filtered = get_image_subsection(self.frame_buffer.filtered[tracker_frame], bounds,
-                                        (window_size, window_size), 0)
+        filtered = get_image_subsection(self.frame_buffer.filtered[tracker_frame], bounds, (window_size, window_size), 0)
         flow = get_image_subsection(self.frame_buffer.flow[tracker_frame], bounds, (window_size, window_size), 0)
         mask = get_image_subsection(self.frame_buffer.mask[tracker_frame], bounds, (window_size, window_size), 0)
 
@@ -493,7 +507,7 @@ class TrackExtractor:
 
         # stack together into a numpy array.
         # by using int16 we loose a little precision on the filtered frames, but not much (only 1 unit)
-        frame = np.int16(np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=2))
+        frame = np.int16(np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0))
 
         return frame
 

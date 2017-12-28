@@ -43,7 +43,7 @@ class TrackDatabase:
 
         return has_record
 
-    def create_clip(self, clip_id, tracker = None, overwrite=True):
+    def create_clip(self, clip_id, tracker=None, overwrite=True):
         """
         Creates a blank clip entry in database.
         :param clip_id: id of the clip
@@ -74,47 +74,53 @@ class TrackDatabase:
             clip.attrs['finished'] = True
             f.close()
 
-
-    def add_track(self, clip_id, track_id, track_data, track):
+    def add_track(self, clip_id, track_id, track_data, track=None, opts=None):
         """
         Adds track to database.
         :param clip_id: id of the clip to add track to
         :param track_id: the tracks id
-        :param track_data: data for track, numpy of shape [frames, height, width, channels]
+        :param track_data: data for track, numpy of shape [frames, channels, height, width, channels]
         :param track: the original track record, used to get stats for track
+        :param opts: additional parameters used when creating dataset, if not provided defaults to lzf compression.
         """
 
         track_id = str(track_id)
 
-        frames, height, width, channels = track_data.shape
+        frames, channels, height, width = track_data.shape
 
         with hdf5_lock:
             f = h5py.File(self.database, 'a')
             clips = f['clips']
             track_entry = clips[clip_id]
 
+            # using 9 frames (1 second) and seperating out the channels seems to work best.
+            # Using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
+            chunks = (9, 1, height, width)
+
+            dims = (frames, channels, height, width)
+
             # chunk the frames by channel
-            dset = track_entry.create_dataset(
-                track_id,
-                (frames, height, width, channels),
-                chunks=(9, height, width, 1),
-                compression='lzf', shuffle=True, dtype=np.int16
-            )
+            if opts:
+                dset = track_entry.create_dataset(track_id, dims, chunks=chunks,**opts, dtype=np.int16)
+            else:
+                dset = track_entry.create_dataset(track_id, dims, chunks=chunks, compression='lzf', shuffle=False, dtype=np.int16)
+
             dset[:,:,:,:] = track_data
 
             # write out attributes
-            track_stats = track.get_stats()
+            if track:
+                track_stats = track.get_stats()
 
-            stats = dset.attrs
-            stats['id'] = track.id
-            stats['tag'] = track.tag
+                stats = dset.attrs
+                stats['id'] = track.id
+                stats['tag'] = track.tag
 
-            for name, value in track_stats._asdict().items():
-                stats[name] = value
+                for name, value in track_stats._asdict().items():
+                    stats[name] = value
 
-            # frame history
-            stats['mass_history'] = np.int32([bounds.mass for bounds in track.bounds_history])
-            stats['bounds_history'] = np.int16([[bounds.left, bounds.top, bounds.right, bounds.bottom] for bounds in track.bounds_history])
+                # frame history
+                stats['mass_history'] = np.int32([bounds.mass for bounds in track.bounds_history])
+                stats['bounds_history'] = np.int16([[bounds.left, bounds.top, bounds.right, bounds.bottom] for bounds in track.bounds_history])
 
             f.flush()
 
@@ -123,5 +129,3 @@ class TrackDatabase:
             track_entry.attrs['finished'] = True
 
             f.close()
-
-
