@@ -30,7 +30,7 @@ class TrackerTestCase():
         self.tracks = []
 
 def init_workers(lock):
-    print("**Init called for process.", lock)
+    """ Initialise worker by setting the trackdatabase lock. """
     trackdatabase.hdf5_lock = lock
 
 class CPTVTrackExtractor(CPTVFileProcessor):

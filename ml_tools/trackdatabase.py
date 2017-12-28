@@ -132,4 +132,11 @@ class TrackDatabase:
 
 # default lock for safe database writes.
 # note for multiprocessing this will need to be overwritten with a shared lock for each process.
+# which can be done via
+#
+# def init_workers(lock):
+#    trackdatabase.hdf5_lock = lock
+#
+# pool = multiprocessing.Pool(self.workers_threads, initializer=init_workers, initargs=(shared_lock,))
+
 hdf5_lock = Lock()

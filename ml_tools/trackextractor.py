@@ -188,6 +188,36 @@ class Track:
 
         return distance, size_difference
 
+    def get_overlap_ratio(self, other_track, threshold = 0.05):
+        """
+        Checks what ratio of the time these two tracks overlap.
+        :param other_track: the other track to compare with
+        :param threshold: how much frames must be overlapping to be counted
+        :return: the ratio of frames that overlap
+        """
+
+        if len(self) == 0 or len(other_track) == 0:
+            return 0.0
+
+        start = max(self.start_frame, other_track.start_frame)
+        end = min(self.start_frame + len(self), other_track.start_frame + len(other_track))
+
+        frames_overlapped = 0
+
+        for pos in range(start, end+1):
+            our_index = pos - self.start_frame
+            other_index = pos - other_track.start_frame
+            if our_index >= 0 and other_index >= 0 and our_index < len(self) and other_index < len(other_track):
+                our_bounds = self.bounds_history[our_index]
+                other_bounds = other_track.bounds_history[other_index]
+                overlap = our_bounds.overlap_area(other_bounds) / our_bounds.area
+                if overlap >= threshold:
+                    frames_overlapped += 1
+
+        return frames_overlapped / len(self)
+
+
+
     @property
     def mass(self):
         return self.bounds_history[-1].mass
@@ -203,6 +233,7 @@ class Track:
 
     def __len__(self):
         return len(self.bounds_history)
+
 
 class BackgroundAnalysis:
     """ Stores background analysis statistics. """
@@ -587,9 +618,26 @@ class TrackExtractor:
                     stats.duration, stats.max_offset, stats.delta_std, stats.average_mass
                 ))
 
+        # find how much each track overlaps with other tracks
+
+        track_overlap_ratio = {}
+
+        for track in self.tracks:
+            highest_ratio = 0
+            for other in self.tracks:
+                if track == other:
+                    continue
+                highest_ratio = max(track.get_overlap_ratio(other), highest_ratio)
+            track_overlap_ratio[track] = highest_ratio
+
         # filter out tracks that probably are just noise.
         good_tracks = []
         for stats, track in track_stats:
+
+            # discard any tracks that overlap too often with other tracks.  This normally means we are tracking the
+            # tail of an animal.
+            if track_overlap_ratio[track] > 0.5:
+                continue
 
             # discard any tracks that are less than 3 seconds long (27 frames)
             # these are probably glitches anyway, or don't contain enough information.
@@ -680,7 +728,6 @@ class TrackExtractor:
     def get_video_stats(self):
         """
         Extracts useful statics from video clip.
-        :param source:
         :returns: a dictionary containing the video statistics.
         """
         local_tz = pytz.timezone('Pacific/Auckland')
