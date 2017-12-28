@@ -23,9 +23,10 @@ from ml_tools.trackdatabase import TrackDatabase
 
 from cptv import CPTVReader
 
+
 class Region(Rectangle):
     """ Region is a rectangle extended to support mass. """
-    def __init__(self, topleft_x, topleft_y, width, height, mass=0, pixel_variance=0, id=0):
+    def __init__(self, topleft_x, topleft_y, width, height, mass=0, pixel_variance=0, id=0, frame_index=0):
         super().__init__(topleft_x, topleft_y, width, height)
         # number of active pixels in region
         self.mass = mass
@@ -33,15 +34,20 @@ class Region(Rectangle):
         self.pixel_variance = pixel_variance
         # an identifier for this region
         self.id = id
+        # frame index from clip
+        self.frame_index = frame_index
 
     def copy(self):
-        return Region(self.x, self.y, self.width, self.height, self.mass, self.pixel_variance, self.id)
+        return Region(
+            self.x, self.y, self.width, self.height, self.mass, self.pixel_variance, self.id, self.frame_index
+        )
 
 TrackMovementStatistics = namedtuple(
     'TrackMovementStatistics',
     'movement max_offset score average_mass median_mass duration delta_std'
 )
 TrackMovementStatistics.__new__.__defaults__ = (0,) * len(TrackMovementStatistics._fields)
+
 
 class Track:
     """ Bounds of a tracked object over time. """
@@ -61,6 +67,7 @@ class Track:
             self._track_id += 1
         else:
             self.id = id
+
         # frame number this track starts at
         self.start_frame = 0
         # datetime this track starts
@@ -73,6 +80,9 @@ class Track:
         self.vel_x = 0
         # our current estimated vertical velocity
         self.vel_y = 0
+
+        # the tag for this track
+        self.tag = "unknown"
 
     def add_frame(self, bounds: Region):
         """
@@ -87,6 +97,14 @@ class Track:
             self.vel_y = self.bounds_history[-1].mid_y - self.bounds_history[-2].mid_y
         else:
             self.vel_x = self.vel_y = 0
+
+    def add_blank_frame(self):
+        """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
+        self.bounds_history.append(self.bounds.copy())
+        self.bounds.mass = 0
+        self.bounds.pixel_variance = 0
+        self.bounds.frame_index += 1
+        self.vel_x = self.vel_y = 0
 
     def get_stats(self):
         """
@@ -118,19 +136,39 @@ class Track:
 
         movement_points = (movement ** 0.5) + max_offset
         delta_points = delta_std * 25.0
-        score = movement_points + delta_points
+        score = min(movement_points,100) + min(delta_points, 100)
 
         stats = TrackMovementStatistics(
-            movement=movement,
-            max_offset=max_offset,
+            movement=float(movement),
+            max_offset=float(max_offset),
             average_mass=float(np.mean(mass_history)),
             median_mass=float(np.median(mass_history)),
             duration=len(self) / 9.0,
-            delta_std=delta_std,
-            score=score
+            delta_std=float(delta_std),
+            score=float(score)
         )
 
         return stats
+
+    def trim(self):
+        """
+        Removes empty frames from start and end of track
+        """
+        mass_history = [int(bound.mass) for bound in self.bounds_history]
+
+        start = 0
+        while start < len(self) and mass_history[start] <= 2:
+            start += 1
+        end = len(self)-1
+        while end > 0 and mass_history[end] <= 2:
+            end -= 1
+
+        if end < start:
+            end = start
+
+        self.start_time += datetime.timedelta(seconds=start / 9.0)
+        self.start_frame += start
+        self.bounds_history = self.bounds_history[start:end-1]
 
     def get_track_region_score(self, region: Region):
         """
@@ -392,7 +430,7 @@ class TrackExtractor:
         # overwrite any old clips.
         # Note: we do this even if there are no tracks so there there will be a blank clip entry as a record
         # that we have processed it.
-        database.create_clip(clip_id)
+        database.create_clip(clip_id, self)
 
         if len(self.tracks) == 0:
             return
@@ -408,10 +446,9 @@ class TrackExtractor:
                 track_data.append(channels)
             track_data = np.int16(track_data)
             track_id = track_number+1
-            database.add_track(clip_id, track_id, track_data)
+            database.add_track(clip_id, track_id, track_data, track)
 
-            # todo: save stats
-            # tracker.save_stats(stats_path_and_filename)
+
 
     def get_track_channels(self, track: Track, frame_number):
         """
@@ -434,12 +471,6 @@ class TrackExtractor:
         window_size = (max(self.WINDOW_SIZE, bounds.width, bounds.height) // 2) * 2
 
         if tracker_frame < 0 or tracker_frame >= len(self.frame_buffer.thermal):
-
-            print(len(self.frame_buffer.thermal))
-            print(len(track))
-            print(track.start_frame)
-            print(len(self.frame_buffer.filtered))
-
             raise Exception("Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
                tracker_frame, len(self.frame_buffer.thermal)-1))
 
@@ -489,6 +520,7 @@ class TrackExtractor:
         # apply matchings greedily.  Low score is best.
         matched_tracks = set()
         used_regions = set()
+        new_tracks = set()
 
         scores.sort(key=lambda record: record[0])
         results = []
@@ -514,19 +546,23 @@ class TrackExtractor:
             track.add_frame(region)
             track.start_time = self.video_start_time + datetime.timedelta(seconds=self.frame_on / 9.0)
             track.start_frame = self.frame_on
-            track.tracker = self
+            new_tracks.add(track)
             self.active_tracks.append(track)
             self.tracks.append(track)
 
         # check if any tracks did not find a matched region
-        for track in [track for track in self.active_tracks if track not in matched_tracks]:
+        for track in [track for track in self.active_tracks if track not in matched_tracks and track not in new_tracks]:
             # we lost this track.  start a count down, and if we don't get it back soon remove it
             track.frames_since_target_seen += 1
+            track.add_blank_frame()
 
         # remove any tracks that have not seen their target in 9 frames
         self.active_tracks = [track for track in self.active_tracks if track.frames_since_target_seen < self.DELETE_LOST_TRACK_FRAMES]
 
     def filter_tracks(self):
+
+        for track in self.tracks:
+            track.trim()
 
         track_stats = [(track.get_stats(), track) for track in self.tracks]
         track_stats.sort(reverse=True, key=lambda record : record[0].score)
@@ -590,19 +626,23 @@ class TrackExtractor:
 
         thresh = np.asarray((apply_threshold(filtered, threshold=self.threshold)), dtype=np.uint8)
 
-        # perform erosion
-        # this removes small slivers
-        kernel = np.ones((3, 3), np.uint8)
-        eroded = cv2.erode(thresh, kernel, iterations=1)
-        labels, mask, stats, centroids = cv2.connectedComponentsWithStats(eroded)
+        # applies erosion
+        erosion = 0
+
+        if erosion:
+            # this removes small slivers
+            kernel = np.ones((3, 3), np.uint8)
+            thresh = cv2.erode(thresh, kernel, iterations=erosion)
+
+        labels, mask, stats, centroids = cv2.connectedComponentsWithStats(thresh)
 
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.FRAME_PADDING
 
         # get frames change
         if prev_filtered is not None:
-            # we need a lot of percision because the values are squared.  Float32 tends to get set to infinity.
-            delta_frame = np.abs(np.float16(filtered) - np.float16(prev_filtered), dtype=np.float64)
+            # we need a lot of precision because the values are squared.  Float32 should work.
+            delta_frame = np.abs(np.float16(filtered) - np.float16(prev_filtered), dtype=np.float32)
         else:
             delta_frame = None
 
@@ -611,11 +651,14 @@ class TrackExtractor:
         for i in range(1, labels):
             region = Region(
                 stats[i, 0] - padding, stats[i, 1] - padding, stats[i, 2] + padding * 2,
-                stats[i, 3] + padding * 2, stats[i, 4], i
+                stats[i, 3] + padding * 2, stats[i, 4], 0, i, self.frame_on
             )
             if delta_frame is not None:
-                region_difference = get_image_subsection(delta_frame, region, (self.WINDOW_SIZE, self.WINDOW_SIZE), 0)
+                region_difference = np.float32(get_image_subsection(delta_frame, region, (self.WINDOW_SIZE, self.WINDOW_SIZE), 0))
                 region.pixel_variance = np.var(region_difference)
+                if region.pixel_variance > 100000:
+                    print("Pixel variance very high:",region.pixel_variance, np.mean(region_difference), np.max(region_difference),np.min(region_difference))
+                    print(region_difference)
             regions.append(region)
 
         return regions , mask

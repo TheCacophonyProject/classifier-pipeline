@@ -206,6 +206,16 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         tracker.extract_tracks()
 
+        if len(tracker.frame_buffer) == 0:
+            # this happens if the tracker rejected the video for some reason (i.e. too hot, or not static background).
+            # we still need to make a record that we looked at it though.
+            self.database.create_clip(os.path.basename(full_path), tracker)
+            return tracker
+
+        # assign each track the correct tag
+        for track in tracker.tracks:
+            track.tag = tag
+
         tracker.export_tracks(self.database)
 
         # write a preview
@@ -215,7 +225,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         time_per_frame = (time.time() - start) / len(tracker.frame_buffer)
 
         # time_stats = tracker.stats['time_per_frame']
-        self.log_message("Tracks: {} {:.1f}sec - Time per frame: {:.1f}ms]".format(
+        self.log_message(" -tracks: {} {:.1f}sec - Time per frame: {:.1f}ms]".format(
              len(tracker.tracks),
              sum(track.duration for track in tracker.tracks),
              time_per_frame * 1000
@@ -262,11 +272,14 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             return
 
         for test_result, (expected_duration, expected_movement) in zip(tracker.tracks, test.tracks):
-            if not are_similar(test_result.duration, expected_duration) or not are_similar(test_result.max_offset, expected_movement):
+
+            track_stats = test_result.get_stats()
+
+            if not are_similar(test_result.duration, expected_duration) or not are_similar(track_stats.max_offset, expected_movement):
                 print("[Fail] {0} Track too dissimilar expected {1} but found {2}".format(
                     test.source,
                     (expected_duration, expected_movement),
-                    (test_result.duration, test_result.max_offset)))
+                    (test_result.duration, track_stats.max_offset)))
             else:
                 print("[PASS] {0}".format(test.source))
 
@@ -282,18 +295,15 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         video_frames = []
         track_colors = [(255,0,0),(0,255,0),(255,255,0),(128,255,255)]
 
-        # write video
-        frame_number = 0
-
         if not tracker.frame_buffer.has_flow:
             tracker.frame_buffer.generate_flow(tracker.opt_flow)
 
-        for i in range(len(tracker.frame_buffer.filtered)):
-            thermal = tracker.frame_buffer.thermal[i]
-            filtered = tracker.frame_buffer.filtered[i]
-            mask = tracker.frame_buffer.mask[i]
-            flow = tracker.frame_buffer.flow[i]
-            regions = tracker.region_history[i]
+        for frame_number in range(len(tracker.frame_buffer.filtered)):
+            thermal = tracker.frame_buffer.thermal[frame_number]
+            filtered = tracker.frame_buffer.filtered[frame_number]
+            mask = tracker.frame_buffer.mask[frame_number]
+            flow = tracker.frame_buffer.flow[frame_number]
+            regions = tracker.region_history[frame_number]
 
             # marked is an image with each pixel's value being the label, 0...n for n objects
             # I multiply it here, but really I should use a seperate color map for this.
@@ -316,17 +326,21 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
             # look for any tracks that occur on this frame
             for id, track in enumerate(tracker.tracks):
-                frame_offset = frame_number - track.start_frame
-                if frame_offset > 0 and frame_offset < len(track.bounds_history)-1:
 
+                frame_offset = frame_number - track.start_frame
+                if frame_offset >= 0 and frame_offset < len(track.bounds_history)-1:
                     # display the track
                     rect = track.bounds_history[frame_offset]
+
+                    # stub: make sure frame numbers are correct
+                    if frame_number != rect.frame_index:
+                        print("[{}] desync, {} {} {}".format(id, frame_number, rect.frame_index, track.start_frame))
+
                     rect_points = [int(p * FRAME_SCALE) for p in [rect.left, rect.top, rect.right, rect.top, rect.right, rect.bottom, rect.left, rect.bottom, rect.left, rect.top]]
                     draw.line(rect_points, track_colors[id % len(track_colors)])
 
-            video_frames.append(np.asarray(img))
 
-            frame_number += 1
+            video_frames.append(np.asarray(img))
 
             # we store the entire video in memory so we need to cap the frame count at some point.
             if frame_number > 9 * 60 * 10:
@@ -408,7 +422,6 @@ def parse_params():
 
     # set optical flow
     extractor.reduced_quality_optical_flow = not args.high_quality_optical_flow
-    print(extractor.reduced_quality_optical_flow)
 
     # set verbose
     extractor.verbose = args.verbose
