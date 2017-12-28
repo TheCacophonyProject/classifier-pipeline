@@ -2,7 +2,6 @@ import os
 import time
 import multiprocessing
 
-
 def process_job(job):
     """ Just a wrapper to pass tupple containing (extractor, *params) to the process_file method. """
     processor = job[0]

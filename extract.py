@@ -11,15 +11,11 @@ from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools import tools
 
 import matplotlib.pyplot as plt
-import pickle
 import os
 
-import ast
 import glob
 import argparse
 import time
-
-import multiprocessing
 
 # default base path to use if no source or destination folder are given.
 DEFAULT_BASE_PATH = "c:\\cac"
@@ -44,7 +40,6 @@ def find_file(root, filename):
 
 class TrackEntry:
     """ Database entry for a track """
-
     def __init__(self):
         pass
 
@@ -84,7 +79,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         CPTVFileProcessor.__init__(self)
 
         self.hints = {}
-        self.colormap = plt.cm.jet
+        self.colormap = plt.get_cmap('jet')
         self.verbose = False
         self.out_folder = out_folder
         self.overwrite_mode = CPTVTrackExtractor.OM_OLD_VERSION
@@ -137,6 +132,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         cptv_filename = base_filename + '.cptv'
         preview_filename = base_filename + '-preview' + '.mp4'
         stats_filename = base_filename + '.txt'
+        track_database_filename = os.path.join(self.out_folder,'dataset.hdf5')
 
         destination_folder = os.path.join(self.out_folder, tag.lower())
 
@@ -147,9 +143,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             max_tracks = self.hints[cptv_filename]
             if max_tracks == 0:
                 return
-        else:
-            # some longer clips generate ~70 tracks (because of poor tracking mostly) so for the moment we limit these.
-            max_tracks = 10
 
         # make destination folder if required
         try:
@@ -170,7 +163,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         purge(destination_folder, base_filename + "*.txt")
 
         # load the track
-        tracker = TrackExtractor(full_path)
+        tracker = TrackExtractor()
         tracker.max_tracks = max_tracks
         tracker.tag = tag
         tracker.verbose = self.verbose >= 2
@@ -209,30 +202,29 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             self.log_warning(" - Warning: no metadata found for file.")
             return
 
+        start = time.time()
+
         # save some additional stats
         tracker.stats['version'] = CPTVTrackExtractor.VERSION
 
-        tracker.extract()
+        tracker.load(os.path.join(self.source_folder, tag, cptv_filename))
 
-        tracker.export_tracks(os.path.join(self.out_folder, tag, cptv_filename))
+        tracker.extract_tracks()
+
+        tracker.export_tracks(os.path.join(self.out_folder, tag, track_database_filename))
 
         # write a preview
         if self.enable_previews:
             self.export_mpeg_preview(os.path.join(destination_folder, preview_filename), tracker)
 
-        tracker.save_stats(stats_path_and_filename)
+        time_per_frame = (time.time() - start) / len(tracker.frame_buffer)
 
-        time_stats = tracker.stats['time_per_frame']
-        self.log_message("Tracks: {} {:.1f}sec - Times (per frame): [total:{}ms]  load:{}ms extract:{}ms optical flow:{}ms export:{}ms preview:{}ms".format(
-            len(tracker.tracks),
-            sum(track.duration for track in tracker.tracks),
-            time_stats.get('total',0.0),
-            time_stats.get('load',0.0),
-            time_stats.get('extract',0.0),
-            time_stats.get('optical_flow',0.0),
-            time_stats.get('export',0.0),
-            time_stats.get('preview', 0.0)
-        ))
+        # time_stats = tracker.stats['time_per_frame']
+        self.log_message("Tracks: {} {:.1f}sec - Time per frame: {:.1f}ms]".format(
+             len(tracker.tracks),
+             sum(track.duration for track in tracker.tracks),
+             time_per_frame * 1000
+         ))
 
         return tracker
 
@@ -309,37 +301,44 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         # videos look much better scaled up
         FRAME_SCALE = 3.0
 
-        start = time.time()
-
         video_frames = []
         track_colors = [(255,0,0),(0,255,0),(255,255,0),(128,255,255)]
 
         # write video
         frame_number = 0
 
-        for frame, marked, rects, flow, filtered in zip(tracker.frames, tracker.mask_frames, tracker.regions, tracker.flow_frames, tracker.filtered_frames):
+        if not tracker.frame_buffer.has_flow:
+            tracker.frame_buffer.generate_flow(tracker.opt_flow)
+
+        for i in range(len(tracker.frame_buffer.filtered)):
+            thermal = tracker.frame_buffer.thermal[i]
+            filtered = tracker.frame_buffer.filtered[i]
+            mask = tracker.frame_buffer.mask[i]
+            flow = tracker.frame_buffer.flow[i]
+            regions = tracker.region_history[i]
 
             # marked is an image with each pixel's value being the label, 0...n for n objects
             # I multiply it here, but really I should use a seperate color map for this.
             # maybe I could multiply it modulo, and offset by some amount?
 
-            # really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
+            # This really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
             # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
+
             flow_magnitude = (flow[:,:,0]**2 + flow[:,:,1]**2) ** 0.5
-            stacked = np.hstack((np.vstack((frame, marked*10000)),np.vstack((3 * filtered + tools.TEMPERATURE_MIN, 200 * flow_magnitude + tools.TEMPERATURE_MIN))))
+            stacked = np.hstack((np.vstack((thermal, mask*10000)),np.vstack((3 * filtered + tools.TEMPERATURE_MIN, 200 * flow_magnitude + tools.TEMPERATURE_MIN))))
 
             img = tools.convert_heat_to_img(stacked, self.colormap, tools.TEMPERATURE_MIN, tools.TEMPERATURE_MAX)
             img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
             draw = ImageDraw.Draw(img)
 
             # look for any regions of interest that occur on this frame
-            for rect in rects:
+            for rect in regions:
                 rect_points = [int(p * FRAME_SCALE) for p in [rect.left, rect.top, rect.right, rect.top, rect.right, rect.bottom, rect.left, rect.bottom, rect.left, rect.top]]
                 draw.line(rect_points, (128, 128, 128))
 
             # look for any tracks that occur on this frame
             for id, track in enumerate(tracker.tracks):
-                frame_offset = frame_number - track.first_frame
+                frame_offset = frame_number - track.start_frame
                 if frame_offset > 0 and frame_offset < len(track.bounds_history)-1:
 
                     # display the track
@@ -356,9 +355,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                 break
 
         tools.write_mpeg(filename, video_frames)
-
-        tracker.stats['time_per_frame']['preview'] = (time.time() - start) * 1000 / len(tracker.frames)
-
 
     def run_tests(self, source_folder, tests_file):
         """ Processes file in test file and compares results to expected output. """

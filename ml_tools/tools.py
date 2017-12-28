@@ -16,6 +16,7 @@ import json
 import dateutil
 import binascii
 import time
+import datetime
 import glob
 from sklearn.metrics import confusion_matrix
 from matplotlib.colors import LinearSegmentedColormap
@@ -28,6 +29,68 @@ EPISON = 1e-5
 TEMPERATURE_MIN = 2800
 TEMPERATURE_MAX = 4200
 
+
+class Rectangle:
+    """ Defines a rectangle by the topleft point and width / height. """
+    def __init__(self, topleft_x, topleft_y, width, height):
+        """ Defines new rectangle. """
+        self.x = topleft_x
+        self.y = topleft_y
+        self.width = width
+        self.height = height
+
+    def copy(self):
+        return Rectangle(self.x, self.y, self.width, self.height)
+
+    @property
+    def mid_x(self):
+        return self.x + self.width / 2
+
+    @property
+    def mid_y(self):
+        return self.y + self.height / 2
+
+    @property
+    def left(self):
+        return self.x
+
+    @property
+    def top(self):
+        return self.y
+
+    @property
+    def right(self):
+        return self.x + self.width
+
+    @property
+    def bottom(self):
+        return self.y + self.height
+
+    def overlap_area(self, other):
+        """ Compute the area overlap between this rectangle and another. """
+        x_overlap = max(0, min(self.right, other.right) - max(self.left, other.left))
+        y_overlap = max(0, min(self.bottom, other.bottom) - max(self.top, other.top))
+        return x_overlap * y_overlap
+
+    @property
+    def area(self):
+        return self.width * self.height
+
+    def __repr__(self):
+        return "({0},{1},{2},{3})".format(self.left, self.top, self.right, self.bottom)
+
+    def __str__(self):
+        return "<({0},{1})-{2}x{3}>".format(self.x, self.y, self.width, self.height)
+
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+            # Let the base class default method raise the TypeError
+        if isinstance(obj, Rectangle):
+            return int(obj.left), int(obj.top), int(obj.right), int(obj.bottom)
+        # Let the base class default method raise the TypeError
+        return json.JSONEncoder.default(self, obj)
 
 def purge(dir, pattern):
     for f in glob.glob(os.path.join(dir, pattern)):
@@ -295,6 +358,51 @@ def show_segment(X_in):
     plt.subplots_adjust(wspace=0, hspace=0)
     plt.gcf().set_size_inches(cols * 3, rows * 3)
     plt.show()
+
+
+def get_image_subsection(image, bounds, window_size, boundary_value=None):
+    """
+    Returns a subsection of the original image bounded by bounds.
+    Area outside of frame will be filled with boundary_value.  If None the median value will be used.
+    """
+
+    # todo: rewrite this using opencv's built in method
+    # cropping method.  just center on the bounds center and take a section there.
+
+    if len(image.shape) == 2:
+        image = image[:,:,np.newaxis]
+
+    # for some reason I write this to only work with even window sizes?
+    window_half_width, window_half_height = window_size[0] // 2, window_size[1] // 2
+    window_size = (window_half_width * 2, window_half_height * 2)
+    image_height, image_width, channels = image.shape
+
+    # find how many pixels we need to pad by
+    padding = (max(window_size)//2)+1
+
+    midx = int(bounds.mid_x + padding)
+    midy = int(bounds.mid_y + padding)
+
+    if boundary_value is None: boundary_value = np.median(image)
+
+    # note, we take the median of all channels, should really be on a per channel basis.
+    enlarged_frame = np.ones([image_height + padding*2, image_width + padding*2, channels], dtype=np.float16) * boundary_value
+    enlarged_frame[padding:-padding,padding:-padding] = image
+
+    sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_height:midx+window_half_height]
+
+    width, height, channels = sub_section.shape
+    if int(width) != window_size[0] or int(height) != window_size[1]:
+        print("Warning: subsection wrong size. Expected {} but found {}".format(window_size,(width, height)))
+
+    if channels == 1:
+        sub_section = sub_section[:,:,0]
+
+    return sub_section
+
+
+
+
 
 
 def clipped_zoom(img, zoom_factor, **kwargs):
