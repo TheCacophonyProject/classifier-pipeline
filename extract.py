@@ -22,7 +22,7 @@ import time
 # default base path to use if no source or destination folder are given.
 DEFAULT_BASE_PATH = "c:\\cac"
 
-EXCLUDED_FOLDERS = ['false-positive', 'other', 'unidentified']
+EXCLUDED_FOLDERS = ['false-positive', 'other', 'unidentified', 'untagged']
 
 class TrackerTestCase():
     def __init__(self):
@@ -450,7 +450,7 @@ def print_opencl_info():
     """ Print information about opencv support for opencl. """
     if cv2.ocl.haveOpenCL():
         if cv2.ocl.useOpenCL():
-            print("OpenCL found and enabled")
+            print("OpenCL found and enabled, threads={}".format(cv2.getNumThreads()))
         else:
             print("OpenCL found but disabled")
 
@@ -458,6 +458,13 @@ def main():
     parse_params()
 
 if __name__ == '__main__':
+
+    # opencv sometimes uses too many threads which can reduce performance.  We are running a worker pool which makes
+    # better use of multiple cores, so best to leave thread count per process reasonably low.
+    # there is quite a big difference between 1 thread and 2, but after that gains are very minimal, and a lot of
+    # cpu time gets wasted, starving the other workers.
+    cv2.setNumThreads(2)
+
     print_opencl_info()
     main()
 

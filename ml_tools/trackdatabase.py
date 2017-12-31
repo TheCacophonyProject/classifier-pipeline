@@ -13,6 +13,24 @@ from multiprocessing import Lock
 import h5py
 import numpy as np
 
+class HDF5Manager:
+    """ Class to handle locking of HDF5 files. """
+    def __init__(self, db, mode = 'r'):
+        self.mode = mode
+        self.f = None
+        self.db = db
+
+    def __enter__(self):
+        # note: we might not have to lock when in read only mode?
+        # this could improve performance
+        hdf5_lock.acquire()
+        self.f = h5py.File(self.db, self.mode)
+        return self.f
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.f.close()
+        hdf5_lock.release()
+
 class TrackDatabase:
 
     def __init__(self, database_filename):
@@ -35,11 +53,9 @@ class TrackDatabase:
         :param clip_id: name of clip
         :return: If the database contains given clip
         """
-        with hdf5_lock:
-            f = h5py.File(self.database, 'r')
+        with HDF5Manager(self.database) as f:
             clips = f['clips']
             has_record = clip_id in clips and 'finished' in clips[clip_id].attrs
-            f.close()
 
         return has_record
 
@@ -50,8 +66,7 @@ class TrackDatabase:
         :param tracker: if provided stats from tracker are used for the clip stats
         :param overwrite: Overwrites existing clip (if it exists).
         """
-        with hdf5_lock:
-            f = h5py.File(self.database, 'a')
+        with HDF5Manager(self.database, 'a') as f:
             clips = f['clips']
             if overwrite and clip_id in clips:
                 del clips[clip_id]
@@ -70,9 +85,60 @@ class TrackDatabase:
                 stats['min_temp'] = tracker.stats.get('min_temp', 0)
 
             f.flush()
-
             clip.attrs['finished'] = True
-            f.close()
+
+    def get_all_track_ids(self):
+        """
+        Returns a list of clip_id, track_id pairs.
+        """
+        with HDF5Manager(self.database) as f:
+            clips = f['clips']
+            result = []
+            for clip in clips:
+                for track in clips[clip]:
+                    result.append((clip, track))
+        return result
+
+    def get_track_meta(self, clip_id, track_id):
+        """
+        Gets metadata for given track
+        :param clip_id:
+        :param track_id:
+        :return:
+        """
+        with HDF5Manager(self.database) as f:
+            result = {}
+            for key, value in f['clips'][clip_id][track_id].attrs.items():
+                result[key] = value
+        return result
+
+    def get_clip_meta(self, clip_id):
+        """
+        Gets metadata for given clip
+        :param clip_id:
+        :return:
+        """
+        with HDF5Manager(self.database) as f:
+            result = {}
+            for key, value in f['clips'][clip_id].attrs.items():
+                result[key] = value
+        return result
+
+    def get_track(self, clip_id, track_id, start_frame=None, end_frame=None):
+        """
+        Fetches a track data from database with optional slicing.
+        :param clip_id: id of the clip
+        :param track_id: id of the track
+        :param start_frame: first frame of slice to return.
+        :param end_frame: last frame of slice to return.
+        :return: a numpy array of shape [frames, channels, height, width] and of type np.int16
+        """
+        open("x.txt")
+        with HDF5Manager(self.database) as f:
+            clips = f['clips']
+            track_node = clips[clip_id][track_id]
+            dset = track_node[str(track_id)]
+            return dset[start_frame:end_frame]
 
     def add_track(self, clip_id, track_id, track_data, track=None, opts=None):
         """
@@ -88,10 +154,9 @@ class TrackDatabase:
 
         frames, channels, height, width = track_data.shape
 
-        with hdf5_lock:
-            f = h5py.File(self.database, 'a')
+        with HDF5Manager(self.database, 'a') as f:
             clips = f['clips']
-            track_entry = clips[clip_id]
+            clip_node = clips[clip_id]
 
             # using 9 frames (1 second) and seperating out the channels seems to work best.
             # Using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
@@ -101,9 +166,9 @@ class TrackDatabase:
 
             # chunk the frames by channel
             if opts:
-                dset = track_entry.create_dataset(track_id, dims, chunks=chunks,**opts, dtype=np.int16)
+                dset = clip_node.create_dataset(track_id, dims, chunks=chunks,**opts, dtype=np.int16)
             else:
-                dset = track_entry.create_dataset(track_id, dims, chunks=chunks, compression='lzf', shuffle=False, dtype=np.int16)
+                dset = clip_node.create_dataset(track_id, dims, chunks=chunks, compression='lzf', shuffle=False, dtype=np.int16)
 
             dset[:,:,:,:] = track_data
 
@@ -126,11 +191,11 @@ class TrackDatabase:
 
             # mark the record as have been writen to.
             # this means if we are interupted part way through the track will be overwritten
-            track_entry.attrs['finished'] = True
+            clip_node.attrs['finished'] = True
 
-            f.close()
 
 # default lock for safe database writes.
+#
 # note for multiprocessing this will need to be overwritten with a shared lock for each process.
 # which can be done via
 #

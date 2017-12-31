@@ -21,7 +21,6 @@ import random
 
 from bisect import bisect
 
-# todo: maybe rename to segmentheader?
 class SegmentInfo():
 
     def __init__(self, source, offset, index, weight, tag, average_mass):
