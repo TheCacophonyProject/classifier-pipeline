@@ -10,6 +10,7 @@ Tracks are broken into segments.  Filtered, and then passed to the trainer using
 
 import os
 import datetime
+import math
 from dateutil import parser
 
 import numpy as np
@@ -60,13 +61,16 @@ class TrackHeader():
         self.duration = duration
         # camera this track came from
         self.camera = camera
-        # name of the bin to assign this track to.
-        self.bin = str(start_time.date())+'-'+str(camera)+'-'+label
 
     @property
     def name(self):
         """ Unique name of this track. """
         return TrackHeader.get_name(self.clip_id, self.track_number)
+
+    @property
+    def bin_id(self):
+        # name of the bin to assign this track to.
+        return str(self.start_time.date())+'-'+str(self.camera)+'-'+self.label
 
     @property
     def weight(self):
@@ -89,7 +93,6 @@ class TrackHeader():
             camera=camera
         )
         return result
-
 
 class Dataset():
     """
@@ -186,9 +189,9 @@ class Dataset():
             self.tracks_by_label[track_header.label] = []
         self.tracks_by_label[track_header.label].append(track_header)
 
-        if track_header.bin not in self.tracks_by_bin:
-            self.tracks_by_bin[track_header.bin] = []
-        self.tracks_by_bin[track_header.bin].append(track_header)
+        if track_header.bin_id not in self.tracks_by_bin:
+            self.tracks_by_bin[track_header.bin_id] = []
+        self.tracks_by_bin[track_header.bin_id].append(track_header)
 
         # scan through track looking for good segments to add to our datset
         mass_history = track_meta['mass_history']
@@ -295,28 +298,19 @@ class Dataset():
         self.rebuild_cdf()
 
 
-    def balance_resample(self, max_ratio=2.0, weight_modifiers=None):
-        """ Removes segments until all classes are with given ratio """
-
-        class_count = {}
-        min_class_count = 9999999
-
-        for class_name in self.labels:
-            class_count[class_name] = self.get_class_segments_count(class_name)
-            modifier = 1.0 if weight_modifiers is None else weight_modifiers.get(class_name, 1.0)
-            if modifier > 0:
-                min_class_count = min(min_class_count, class_count[class_name] / modifier)
-
-        max_class_count = int(min_class_count * max_ratio)
+    def balance_resample(self, required_samples, weight_modifiers=None):
+        """ Removes segments until all classes have given number of samples (or less)"""
 
         new_segments = []
 
         for class_name in self.labels:
             segments = self.get_class_segments(class_name)
-            if len(segments) > max_class_count:
+            required_class_samples = required_samples
+            if weight_modifiers:
+                required_class_samples = int(math.ceil(required_class_samples * weight_modifiers.get(class_name, 1.0)))
+            if len(segments) > required_class_samples:
                 # resample down
-                modifier = 1.0 if weight_modifiers is None else weight_modifiers.get(class_name, 1.0)
-                segments = np.random.choice(segments, int(max_class_count * modifier), replace=False).tolist()
+                segments = np.random.choice(segments, required_class_samples, replace=False).tolist()
             new_segments += segments
 
         self.segments = new_segments
@@ -351,11 +345,17 @@ class Dataset():
 
     def get_class_segments_count(self, label):
         """ Returns the total weight for all segments of given class. """
-        return len(self.get_class_segments(label))
+        result = 0
+        for track in self.tracks_by_label.get(label,[]):
+            result += len(track.segments)
+        return result
 
     def get_class_segments(self, label):
         """ Returns the total weight for all segments of given class. """
-        return [segment for segment in self.segments if segment.label == label]
+        result = []
+        for track in self.tracks_by_label.get(label,[]):
+            result.extend(track.segments)
+        return result
 
 
 

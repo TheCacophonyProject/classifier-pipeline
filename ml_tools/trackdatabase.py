@@ -141,6 +141,15 @@ class TrackDatabase:
             dset = track_node[str(track_id)]
             return dset[start_frame:end_frame]
 
+    def get_normalisation_constants(self, n=None):
+        """
+        Gets constants required for normalisation from dataset.  If n is specified uses a random sample of n segements.
+        Segment weight is not taken into account during this sampling.  Otherrwise the entire dataset is used.
+        :param n: If specified calculates constants from n samples
+        :return: normalisation constants
+        """
+
+
     def add_track(self, clip_id, track_id, track_data, track=None, opts=None):
         """
         Adds track to database.

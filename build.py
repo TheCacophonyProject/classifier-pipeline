@@ -19,12 +19,12 @@ from ml_tools.dataset import Dataset
 
 BANNED_CLIPS = set('20171207-114424-akaroa09.cptv')
 
-EXCLUDED_LABELS = ['mouse','insect']
+EXCLUDED_LABELS = ['mouse','insect','rabbit']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
 # however, bin weighting will generally take care of the excessive footage problem.
-REMOVE_TRAPPED = True
+EXCLUDE_TRAPPED = True
 
 # sets a maxmimum number of segments per bin, where the cap is this many standard deviations above the norm.
 # bins with more than this number of segments will be weighted lower so that their segments are not lost, but
@@ -43,6 +43,10 @@ LABEL_WEIGHTS = {
 
 # minimum average mass for test segment
 TEST_MIN_MASS = 20
+
+# number of segments to include in test set for each class (multiplied by label weights)
+TEST_SET_COUNT = 200
+
 
 
 filtered_stats = {'confidence':0,'trap':0,'banned':0}
@@ -102,9 +106,9 @@ def split_dataset():
     for label in dataset.labels:
         bins_by_label[label] = []
 
-    for bin, tracks in dataset.tracks_by_bin.items():
+    for bin_id, tracks in dataset.tracks_by_bin.items():
         label = dataset.track_by_name[tracks[0].name].label
-        bins_by_label[label].append(tracks)
+        bins_by_label[label].append(bin_id)
 
     train = Dataset(db, 'train')
     validation = Dataset(db, 'validation')
@@ -114,24 +118,6 @@ def split_dataset():
     validation.labels = dataset.labels
     test.labels = dataset.labels
 
-    for label in dataset.labels:
-        bins = bins_by_label[label]
-
-        random.shuffle(bins)
-
-        val_bins = math.ceil(len(bins) / 10)
-        test_bins = math.ceil(len(bins) / 10)
-
-        val_start = len(bins) - (val_bins + test_bins)
-        test_start = len(bins) - (test_bins)
-
-        for bin in bins[:val_start]:
-            train.add_tracks(bin)
-        for bin in bins[val_start:test_start]:
-            validation.add_tracks(bin)
-        for bin in bins[test_start:]:
-            test.add_tracks(bin)
-
     # check bins distribution
     bin_segments = []
     for bin, tracks in dataset.tracks_by_bin.items():
@@ -139,14 +125,51 @@ def split_dataset():
         bin_segments.append((count, bin))
     bin_segments.sort()
     for count, bin in bin_segments:
-        print("{:<20} {} segments".format(bin,count))
+        print("{:<20} {} segments".format(bin, count))
     counts = [count for count, bin in bin_segments]
     bin_segment_mean = np.mean(counts)
     bin_segment_std = np.std(counts)
+    max_bin_segments = bin_segment_mean + bin_segment_std * CAP_BIN_WEIGHT
 
     print()
-    print("Bin segment mean:{:.1f} std:{:.1f}".format(bin_segment_mean, bin_segment_std))
+    print("Bin segment mean:{:.1f} std:{:.1f} auto max segments:{:.1f}".format(bin_segment_mean, bin_segment_std, max_bin_segments))
     print()
+
+    # assign bins to test and validation sets
+    for label in dataset.labels:
+
+        available_bins = set(bins_by_label[label])
+
+        # heavy bins are bins with an unsually high number of examples on a day.  We exclude these from the test/validation
+        # set as a single one could dominate the set.
+        heavy_bins = set()
+        for bin_id in available_bins:
+            bin_segments = sum(len(track.segments) for track in dataset.tracks_by_bin[bin_id])
+            if bin_segments > max_bin_segments:
+                heavy_bins.add(bin_id)
+
+        available_bins -= heavy_bins
+
+        required_samples = TEST_SET_COUNT * LABEL_WEIGHTS.get(label, 1.0)
+
+        # we assign bins to the test and validation sets randomly until we have 100 segments in each
+        # the remaining bins can be used for training
+
+        while validation.get_class_segments_count(label) < required_samples and len(available_bins) > 0:
+            sample = random.sample(available_bins, 1)[0]
+            validation.add_tracks(dataset.tracks_by_bin[sample])
+            validation.filter_segments(TEST_MIN_MASS)
+            available_bins.remove(sample)
+
+        while test.get_class_segments_count(label) < required_samples and len(available_bins) > 0:
+            sample = random.sample(available_bins, 1)[0]
+            test.add_tracks(dataset.tracks_by_bin[sample])
+            test.filter_segments(TEST_MIN_MASS)
+            available_bins.remove(sample)
+
+        for bin_id in available_bins | heavy_bins :
+            train.add_tracks(dataset.tracks_by_bin[bin_id])
+
 
     print("Segments per class:")
     print("-"*90)
@@ -155,16 +178,15 @@ def split_dataset():
 
     # if we have lots of segments on a single day, reduce the weight so we don't overtrain on this specific
     # example.
-    train.balance_bins(bin_segment_mean+bin_segment_std * CAP_BIN_WEIGHT)
+    train.balance_bins(max_bin_segments)
     validation.balance_bins(bin_segment_mean + bin_segment_std * CAP_BIN_WEIGHT)
-
-    test.filter_segments(TEST_MIN_MASS)
 
     # balance out the classes
     train.balance_weights(weight_modifiers=LABEL_WEIGHTS)
     validation.balance_weights(weight_modifiers=LABEL_WEIGHTS)
-    test.balance_resample(weight_modifiers=LABEL_WEIGHTS)
+    test.balance_resample(weight_modifiers=LABEL_WEIGHTS, required_samples = TEST_SET_COUNT)
 
+    # display the dataset summary
     for label in dataset.labels:
 
         train_segments = sum(len(track.segments) for track in train.tracks_by_label.get(label,[]))
