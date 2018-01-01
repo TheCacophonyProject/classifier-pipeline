@@ -170,6 +170,12 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             tracker.stats['confidence'] = meta_data['Tags'][0].get('confidence',0.0)
             tracker.stats['trap'] = meta_data['Tags'][0].get('trap','none')
             tracker.stats['event'] = meta_data['Tags'][0].get('event','none')
+
+            # clips tagged with false-positive sometimes come through with a null confidence rating
+            # so we set it to 0.8 here.
+            if tracker.stats['event'] in ['false-positive', 'false positive'] and tracker.stats['confidence'] is None:
+                tracker.stats['confidence'] = 0.8
+
             tracker.stats['cptv_metadata'] = meta_data
         else:
             self.log_warning(" - Warning: no metadata found for file.")

@@ -400,11 +400,6 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
 
     return sub_section
 
-
-
-
-
-
 def clipped_zoom(img, zoom_factor, **kwargs):
 
     # modified from https://stackoverflow.com/questions/37119071/scipy-rotate-and-zoom-an-image-without-changing-its-dimensions

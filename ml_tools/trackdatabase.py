@@ -78,7 +78,7 @@ class TrackDatabase:
                 stats['filename'] = tracker.source_file
                 stats['start_time'] = tracker.video_start_time.isoformat()
                 stats['threshold'] = tracker.threshold
-                stats['confidence'] = tracker.stats.get('confidence', 0)
+                stats['confidence'] = tracker.stats.get('confidence', 0.0) or 0.0
                 stats['trap'] = tracker.stats.get('trap', '') or ''
                 stats['event'] = tracker.stats.get('event', '') or ''
                 stats['average_background_delta'] = tracker.stats.get('average_background_delta',0)
@@ -110,7 +110,7 @@ class TrackDatabase:
         """
         with HDF5Manager(self.database) as f:
             result = {}
-            for key, value in f['clips'][clip_id][track_id].attrs.items():
+            for key, value in f['clips'][str(clip_id)][str(track_id)].attrs.items():
                 result[key] = value
         return result
 
@@ -135,7 +135,6 @@ class TrackDatabase:
         :param end_frame: last frame of slice to return.
         :return: a numpy array of shape [frames, channels, height, width] and of type np.int16
         """
-        open("x.txt")
         with HDF5Manager(self.database) as f:
             clips = f['clips']
             track_node = clips[clip_id][track_id]

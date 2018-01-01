@@ -280,6 +280,10 @@ class FrameBuffer:
             if current is not None:
                 current_gray_frame = (current / 2).astype(np.uint8)
                 next_gray_frame = (next / 2).astype(np.uint8)
+
+                # for some reason openCV spins up lots of threads for this which really slows things down, so we
+                # cap the threads to 2
+                cv2.setNumThreads(2)
                 flow = opt_flow.calc(current_gray_frame, next_gray_frame, flow)
 
             current = next
