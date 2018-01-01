@@ -11,6 +11,7 @@ import pytz
 import datetime
 from collections import namedtuple
 import os
+import pytz
 
 import numpy as np
 import cv2
@@ -231,6 +232,10 @@ class Track:
         """ Duration of track in seconds. """
         return len(self) / 9.0
 
+    @property
+    def end_time(self):
+        return self.start_time + datetime.timedelta(seconds=self.duration)
+
     def __len__(self):
         return len(self.bounds_history)
 
@@ -372,7 +377,8 @@ class TrackExtractor:
         """
         self.source_file = filename
         self.reader = CPTVReader(open(filename, 'rb'))
-        self.video_start_time = self.reader.timestamp
+        local_tz = pytz.timezone('Pacific/Auckland')
+        self.video_start_time = self.reader.timestamp.astimezone(local_tz)
         self.stats.update(self.get_video_stats())
 
     def extract_tracks(self):

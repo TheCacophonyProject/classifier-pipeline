@@ -12,6 +12,7 @@ import os
 from multiprocessing import Lock
 import h5py
 import numpy as np
+from datetime import timedelta
 
 class HDF5Manager:
     """ Class to handle locking of HDF5 files. """
@@ -75,6 +76,7 @@ class TrackDatabase:
             if tracker is not None:
                 stats = clip.attrs
                 stats['filename'] = tracker.source_file
+                stats['start_time'] = tracker.video_start_time.isoformat()
                 stats['threshold'] = tracker.threshold
                 stats['confidence'] = tracker.stats.get('confidence', 0)
                 stats['trap'] = tracker.stats.get('trap', '') or ''
@@ -143,7 +145,7 @@ class TrackDatabase:
     def add_track(self, clip_id, track_id, track_data, track=None, opts=None):
         """
         Adds track to database.
-        :param clip_id: id of the clip to add track to
+        :param clip_id: id of the clip to add track to write
         :param track_id: the tracks id
         :param track_data: data for track, numpy of shape [frames, channels, height, width, channels]
         :param track: the original track record, used to get stats for track
@@ -179,6 +181,8 @@ class TrackDatabase:
                 stats = dset.attrs
                 stats['id'] = track.id
                 stats['tag'] = track.tag
+                stats['start_time'] = track.start_time.isoformat()
+                stats['end_time'] = track.end_time.isoformat()
 
                 for name, value in track_stats._asdict().items():
                     stats[name] = value
