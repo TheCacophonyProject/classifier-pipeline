@@ -11,6 +11,7 @@ Some filtering occurs at this stage as well, for example tracks with low confide
 import os
 import random
 import math
+import pickle
 
 import numpy as np
 
@@ -124,8 +125,8 @@ def split_dataset():
         count = sum(len(track.segments) for track in tracks)
         bin_segments.append((count, bin))
     bin_segments.sort()
-    for count, bin in bin_segments:
-        print("{:<20} {} segments".format(bin, count))
+    #for count, bin in bin_segments:
+    #    print("{:<20} {} segments".format(bin, count))
     counts = [count for count, bin in bin_segments]
     bin_segment_mean = np.mean(counts)
     bin_segment_std = np.std(counts)
@@ -203,6 +204,15 @@ def split_dataset():
             validation_segments,  validation_weight,
             test_segments, test_weight
             ))
+    print()
+
+    # normalisation constants
+    normalisation_constants = train.get_normalisation_constants(10000)
+    print('Normalisation constants:')
+    for i in range(len(normalisation_constants)):
+        print("  {:.4f} {:.4f}".format(normalisation_constants[i][0], normalisation_constants[i][1]))
+
+    train.normalisation_constants = validation.normalisation_constants = test.normalisation_constants = normalisation_constants
 
     return train, validation, test
 
@@ -233,8 +243,9 @@ def main():
     print()
 
     print("Splitting data set into train / validation")
-    train, validation, test = split_dataset()
+    datasets = train, validation, test = split_dataset()
 
+    pickle.dump(datasets,open('datasets.dat','wb'))
 
 
 if __name__ == "__main__":

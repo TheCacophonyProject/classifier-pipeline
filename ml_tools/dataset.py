@@ -11,6 +11,7 @@ Tracks are broken into segments.  Filtered, and then passed to the trainer using
 import os
 import datetime
 import math
+import random
 from dateutil import parser
 
 import numpy as np
@@ -20,27 +21,33 @@ from ml_tools.trackdatabase import TrackDatabase
 class SegmentHeader():
     """ Header for segment. """
 
-    def __init__(self, clip_id, track_number, offset, weight, label, avg_mass):
+    def __init__(self, clip_id, track_number, start_frame, frames, weight, label, avg_mass):
         # reference to clip this segment came from
         self.clip_id = clip_id
         # reference to track this segment came from
         self.track_number = track_number
         # first frame of this segment
-        self.offset = offset
+        self.start_frame = start_frame
+        # length of segment in frames
+        self.frames = frames
         # relative weight of the segment (higher is sampled more often)
         self.weight = weight
         # our label
         self.label = label.lower()
         self.avg_mass = avg_mass
 
-
     @property
     def name(self):
         """ Unique name of this segment. """
-        return self.clip_id + '-' + self.track_number + '-' + str(self.offset)
+        return self.clip_id + '-' + self.track_number + '-' + str(self.start_frame)
+
+    @property
+    def end_frame(self):
+        """ end frame of sgement"""
+        return self.start_frame+self.frames
 
     def __str__(self):
-        return "offset:{0} weight:{1:.1f}".format(self.offset, self.weight)
+        return "offset:{0} weight:{1:.1f}".format(self.start_frame, self.weight)
 
 
 class TrackHeader():
@@ -132,6 +139,9 @@ class Dataset():
         # minimum average frame mass for segment to be included
         self.segment_avg_mass = None
 
+        # constants used to normalise input
+        self.normalisation_constants = None
+
     def next_batch(self, n):
         """
         Returns a batch of n segments (X, y) from dataset.
@@ -212,7 +222,7 @@ class Dataset():
                 continue
 
             segment = SegmentHeader(
-                clip_id=clip_id, track_number=track_number, offset=segment_start,
+                clip_id=clip_id, track_number=track_number, start_frame=segment_start, frames=self.segment_width,
                 weight=1.0, label=track_meta['tag'], avg_mass=segment_avg_mass)
 
             self.segments.append(segment)
@@ -242,11 +252,9 @@ class Dataset():
 
         return filtered
 
-
-
     def fetch_segment(self, segment: SegmentHeader):
         """ Fetches data for segment"""
-        pass
+        return self.db.get_track(segment.clip_id, segment.track_number, segment.start_frame, segment.end_frame)
 
 
     def sample_segment(self):
@@ -328,6 +336,48 @@ class Dataset():
             segments = track.segments
             segments = [segment for segment in segments if (segment in segment_set)]
             track.segments = segments
+
+    def get_normalisation_constants(self, n=None):
+        """
+        Gets constants required for normalisation from dataset.  If n is specified uses a random sample of n segments.
+        Segment weight is not taken into account during this sampling.  Otherrwise the entire dataset is used.
+        :param n: If specified calculates constants from n samples
+        :return: normalisation constants
+        """
+
+        # note:
+        # we calculate the standard deviation and mean using the moments as this allows the calculation to be
+        # done piece at a time.  Otherwise we'd need to load the entire dataset into memory, which might not be
+        # possiable.
+
+        if len(self.segments) == 0:
+            raise Exception("No segments in dataset.")
+
+        sample = self.segments if n is None or n >= len(self.segments) else random.sample(self.segments, n)
+
+        # fetch a sample to see what the dims are
+        example = self.fetch_segment(self.segments[0])
+        _, channels, height, width = example.shape
+
+        # we use float64 as this accumulator will get very large!
+        first_moment = np.zeros((channels, height, width), dtype=np.float64)
+        second_moment = np.zeros((channels, height, width), dtype=np.float64)
+
+        for segment in sample:
+            data = np.float64(self.fetch_segment(segment))
+            first_moment += np.mean(data, axis=0)
+            second_moment += np.mean(np.square(data), axis=0)
+
+        # reduce down to channel only moments, in the future per pixel normalisation would be a good idea.
+        first_moment = np.sum(first_moment, axis=(1,2)) / (len(sample) * width * height)
+        second_moment = np.sum(second_moment, axis=(1,2)) / (len(sample) * width * height)
+
+        mu = first_moment
+        var = second_moment + (mu ** 2) - (2*mu*first_moment)
+
+        normalisation_constants = [(mu[i], math.sqrt(var[i])) for i in range(channels)]
+
+        return normalisation_constants
 
     def rebuild_cdf(self):
         """ Calculates the CDF used for fast random sampling """

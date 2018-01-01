@@ -11,6 +11,7 @@ Handles reading and writing tracks (or segments) to a large database.  Uses HDF5
 import os
 from multiprocessing import Lock
 import h5py
+import tables           # required for blosc compression to work
 import numpy as np
 from datetime import timedelta
 
@@ -91,7 +92,7 @@ class TrackDatabase:
 
     def get_all_track_ids(self):
         """
-        Returns a list of clip_id, track_id pairs.
+        Returns a list of clip_id, track_number pairs.
         """
         with HDF5Manager(self.database) as f:
             clips = f['clips']
@@ -101,16 +102,16 @@ class TrackDatabase:
                     result.append((clip, track))
         return result
 
-    def get_track_meta(self, clip_id, track_id):
+    def get_track_meta(self, clip_id, track_number):
         """
         Gets metadata for given track
         :param clip_id:
-        :param track_id:
+        :param track_number:
         :return:
         """
         with HDF5Manager(self.database) as f:
             result = {}
-            for key, value in f['clips'][str(clip_id)][str(track_id)].attrs.items():
+            for key, value in f['clips'][str(clip_id)][str(track_number)].attrs.items():
                 result[key] = value
         return result
 
@@ -126,41 +127,31 @@ class TrackDatabase:
                 result[key] = value
         return result
 
-    def get_track(self, clip_id, track_id, start_frame=None, end_frame=None):
+    def get_track(self, clip_id, track_number, start_frame=None, end_frame=None):
         """
         Fetches a track data from database with optional slicing.
         :param clip_id: id of the clip
-        :param track_id: id of the track
-        :param start_frame: first frame of slice to return.
-        :param end_frame: last frame of slice to return.
+        :param track_number: id of the track
+        :param start_frame: first frame of slice to return (inclusive).
+        :param end_frame: last frame of slice to return (exclusive).
         :return: a numpy array of shape [frames, channels, height, width] and of type np.int16
         """
         with HDF5Manager(self.database) as f:
             clips = f['clips']
-            track_node = clips[clip_id][track_id]
-            dset = track_node[str(track_id)]
+            dset = clips[clip_id][str(track_number)]
             return dset[start_frame:end_frame]
 
-    def get_normalisation_constants(self, n=None):
-        """
-        Gets constants required for normalisation from dataset.  If n is specified uses a random sample of n segements.
-        Segment weight is not taken into account during this sampling.  Otherrwise the entire dataset is used.
-        :param n: If specified calculates constants from n samples
-        :return: normalisation constants
-        """
-
-
-    def add_track(self, clip_id, track_id, track_data, track=None, opts=None):
+    def add_track(self, clip_id, track_number, track_data, track=None, opts=None):
         """
         Adds track to database.
         :param clip_id: id of the clip to add track to write
-        :param track_id: the tracks id
+        :param track_number: the tracks id
         :param track_data: data for track, numpy of shape [frames, channels, height, width, channels]
         :param track: the original track record, used to get stats for track
         :param opts: additional parameters used when creating dataset, if not provided defaults to lzf compression.
         """
 
-        track_id = str(track_id)
+        track_number = str(track_number)
 
         frames, channels, height, width = track_data.shape
 
@@ -176,9 +167,9 @@ class TrackDatabase:
 
             # chunk the frames by channel
             if opts:
-                dset = clip_node.create_dataset(track_id, dims, chunks=chunks,**opts, dtype=np.int16)
+                dset = clip_node.create_dataset(track_number, dims, chunks=chunks, **opts, dtype=np.int16)
             else:
-                dset = clip_node.create_dataset(track_id, dims, chunks=chunks, compression='lzf', shuffle=False, dtype=np.int16)
+                dset = clip_node.create_dataset(track_number, dims, chunks=chunks, compression='lzf', shuffle=False, dtype=np.int16)
 
             dset[:,:,:,:] = track_data
 
