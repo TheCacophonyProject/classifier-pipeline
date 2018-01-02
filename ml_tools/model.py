@@ -104,6 +104,7 @@ class Model:
         """ Evaluates the model on the test set. """
         print("-"*60)
         train, validation, test = self.datasets
+        test.load_all()
         test_accuracy = self.eval_batch(test.X, test.y)
         print("Test Accuracy {0:.2f}% (error {1:.2f}%)".format(test_accuracy*100,(1.0-test_accuracy)*100))
         return test_accuracy
@@ -112,7 +113,7 @@ class Model:
         saver = tf.train.Saver()
         saver.restore(self.sess, os.path.join(CHECKPOINT_FOLDER,"training-best.sav"))
 
-    def train_model(self, epochs = 10, keep_prob = 0.5, stop_after_no_improvement=None, stop_after_decline=None,
+    def train_model(self, epochs=10, keep_prob=0.5, stop_after_no_improvement=None, stop_after_decline=None,
                     log_dir = None):
         """
         Trains model given number of epocs.  Uses session 'sess'
@@ -146,11 +147,11 @@ class Model:
         train_time = 0
         prep_time = 0
 
-        print_every = 100
+        print_every = 200
 
         # number of samples to use when evaluating the model, 1000 works well but is a bit slow,
         # 100 should give results to within a few percent.
-        eval_samples = 250
+        eval_samples = 500
 
         best_val_accuracy = 0
 

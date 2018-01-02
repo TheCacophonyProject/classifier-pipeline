@@ -159,17 +159,18 @@ def split_dataset():
         while validation.get_class_segments_count(label) < required_samples and len(available_bins) > 0:
             sample = random.sample(available_bins, 1)[0]
             validation.add_tracks(dataset.tracks_by_bin[sample])
-            validation.filter_segments(TEST_MIN_MASS)
+            validation.filter_segments(TEST_MIN_MASS, ['false-positive'])
             available_bins.remove(sample)
 
         while test.get_class_segments_count(label) < required_samples and len(available_bins) > 0:
             sample = random.sample(available_bins, 1)[0]
             test.add_tracks(dataset.tracks_by_bin[sample])
-            test.filter_segments(TEST_MIN_MASS)
+            test.filter_segments(TEST_MIN_MASS, ['false-positive'])
             available_bins.remove(sample)
 
         for bin_id in available_bins | heavy_bins :
             train.add_tracks(dataset.tracks_by_bin[bin_id])
+        train.filter_segments(TEST_MIN_MASS, ['false-positive'])
 
 
     print("Segments per class:")

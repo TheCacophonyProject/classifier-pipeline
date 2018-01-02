@@ -42,14 +42,14 @@ def prod(data):
 class Estimator():
 
     # todo: these should be in some settings file
-    MODEL_NAME = "Model-4g"
+    MODEL_NAME = "Model-4h"
     MODEL_DESCRIPTION = "CNN + LSTM"
 
     BATCH_SIZE = 32
     BATCH_NORM = True
-    LEARNING_RATE = 2e-4 #2e-4
-    LEARNING_RATE_DECAY = 0.9 #0.9
-    L2_REG = 0.01 # 0.005
+    LEARNING_RATE = 2e-4
+    LEARNING_RATE_DECAY = 0.9
+    L2_REG = 0.01
     LABEL_SMOOTHING = 0.1
     LSTM_UNITS = 256
     USE_PEEPHOLES = False # these don't really help.
@@ -97,6 +97,8 @@ class Estimator():
             for dataset in self.datasets:
                 dataset.normalisation_constants = force_normalisation_constants
 
+        self.test.load_all()
+
     def _conv_layer(self, input_layer, filters, kernal_size, conv_stride=2, pool_stride=1):
 
         n, input_filters, h, w = input_layer.shape
@@ -112,12 +114,11 @@ class Estimator():
         """
         layer = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
                                  strides=(conv_stride, conv_stride),
-                                 padding="same", activation=None, data_format='channels_first')
+                                 padding="same", activation=None)
 
         tf.summary.histogram('preactivations', layer)
         if self.BATCH_NORM: layer = tf.contrib.layers.batch_norm(
-            layer, center=True, scale=True,
-            fused=True,
+            layer, center=True, scale=True, fused=True,
             is_training=(self.keep_prob == 1.0)
         )
         layer = tf.nn.relu(layer)
@@ -136,6 +137,7 @@ class Estimator():
         # Define our model
 
         self.X = tf.placeholder(tf.float32, [None, 27, 5, 48, 48], name='X')
+        self.Xt = tf.transpose(self.X, perm=[0, 1, 3, 4, 2])
 
         self.y = tf.placeholder(tf.int64, [None], name='y')
 
@@ -145,16 +147,16 @@ class Estimator():
         self.keep_prob = tf.placeholder_with_default(tf.constant(1.0, tf.float32), [], name='keep_prob')
 
         # first put all frames in batch into one line sequence
-        X_reshaped = tf.reshape(self.X, [-1, 5, 48, 48])
+        X_reshaped = tf.reshape(self.Xt, [-1, 48, 48, 5])
 
         # next run the convolutions
-        c1 = self._conv_layer(X_reshaped[:, 1:2, :, :], 32, [8, 8], conv_stride=4)
+        c1 = self._conv_layer(X_reshaped[:, :, :, 1:2], 32, [8, 8], conv_stride=4)
         c2 = self._conv_layer(c1, 48, [4, 4], conv_stride=2)
         c3 = self._conv_layer(c2, 64, [3, 3], conv_stride=1)
 
         filtered_conv = c3
 
-        c1 = self._conv_layer(X_reshaped[:, 2:4, :, :], 32, [8, 8], conv_stride=4)
+        c1 = self._conv_layer(X_reshaped[:, :, :, 2:4], 32, [8, 8], conv_stride=4)
         c2 = self._conv_layer(c1, 48, [4, 4], conv_stride=2)
         c3 = self._conv_layer(c2, 64, [3, 3], conv_stride=1)
 
@@ -282,8 +284,8 @@ def main():
     normalisation_constants = [
         [3200, 200],
         [8.6, 31.7],
-        [0, 0.4],
-        [0, 0.4],
+        [0, 1],
+        [0, 1],
         [0, 1]
     ]
 
@@ -293,7 +295,7 @@ def main():
 
     estimator.start_async_load()
     estimator.train_model(
-        max_epochs=0.1, stop_after_no_improvement=None, stop_after_decline=None)
+        max_epochs=4, stop_after_no_improvement=None, stop_after_decline=None)
     estimator.save_model()
     estimator.stop_async()
 

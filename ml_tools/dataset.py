@@ -169,6 +169,10 @@ class Dataset():
 
         self.preloader_stop_flag = False
 
+        # a copy of our entire dataset, if loaded.
+        self.X = None
+        self.y = None
+
     @property
     def rows(self):
         return len(self.segments)
@@ -284,10 +288,11 @@ class Dataset():
 
         return True
 
-    def filter_segments(self, avg_mass):
+    def filter_segments(self, avg_mass, ignore_labels=None):
         """
         Removes any segments with an average mass less than the given avg_mass
         :param avg_mass: segments with less avarage mass per frame than this will be removed from the dataset.
+        :ignore_labels: these labels will not be filtered
         :return: number of segments removed
         """
 
@@ -295,7 +300,7 @@ class Dataset():
         new_segments = []
 
         for segment in self.segments:
-            if segment.avg_mass >= avg_mass:
+            if (ignore_labels and segment.label in ignore_labels) or segment.avg_mass >= avg_mass:
                 new_segments.append(segment)
             else:
                 filtered += 1
@@ -305,6 +310,15 @@ class Dataset():
         self._purge_track_segments()
 
         return filtered
+
+    def fetch_all(self, normalise=True):
+        """
+        Fetches all segments
+        :return: X of shape [n,27,channels,height,width], y of shape [n]
+        """
+        X = np.float32([self.fetch_segment(segment, normalise=normalise) for segment in self.segments])
+        y = np.int32([self.labels.index(segment.label) for segment in self.segments])
+        return X,y
 
     def fetch_segment(self, segment: SegmentHeader, normalise=False, augment=False):
         """
@@ -347,7 +361,10 @@ class Dataset():
 
         for channel in range(channels):
             mean, std = self.normalisation_constants[channel]
-            segment_data[:,channel] = (segment_data[:,channel] - mean) * (1/std)
+            segment_data[:, channel] -= mean
+            if channel in [2,3]:
+                segment_data[:, channel] = (np.abs(segment_data[:, channel]) ** 0.5) * np.sign(segment_data[:, channel])
+            segment_data[:, channel] *= (1/std)
 
         return segment_data
 
@@ -374,7 +391,6 @@ class Dataset():
             up_scale = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5]
             down_scale = [0.25, 0.33, 0.5, 0.75]
 
-
             if scale_method == 'up':
                 scale = np.random.choice(up_scale)
             else:
@@ -389,12 +405,16 @@ class Dataset():
 
         return segment_data
 
-
     def sample_segment(self):
         """ Returns a random segment from weighted list. """
         roll = random.random()
         index = bisect(self.segment_cdf, roll)
         return self.segments[index]
+
+    def load_all(self, force=False):
+        """ Loads all X and y into dataset if required. """
+        if self.X is None or force:
+            self.X, self.y = self.fetch_all()
 
     def balance_weights(self, weight_modifiers=None):
         """
