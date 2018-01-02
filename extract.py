@@ -270,6 +270,29 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             else:
                 print("[PASS] {0}".format(test.source))
 
+    def export_track_mpeg_preview(self, filename_base, tracker: TrackExtractor):
+        """
+        Exports preview MPEG for a specific track
+        :param filename_base:
+        :param tracker:
+        :param track:
+        :return:
+        """
+
+        # increased resolution of video file.
+        # videos look much better scaled up
+        FRAME_SCALE = 4.0
+
+        for id, track in enumerate(tracker.tracks):
+            video_frames = []
+            for frame_number in range(len(track.bounds_history)):
+                channels = tracker.get_track_channels(track, frame_number)
+                img = tools.convert_heat_to_img(channels[0], self.colormap, tools.TEMPERATURE_MIN, tools.TEMPERATURE_MAX)
+                img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
+                video_frames.append(np.asarray(img))
+
+            tools.write_mpeg(filename_base+"-"+str(id+1)+".mpg", video_frames)
+
     def export_mpeg_preview(self, filename, tracker: TrackExtractor):
         """
         Exports tracking information preview to MPEG file.
@@ -284,6 +307,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         if not tracker.frame_buffer.has_flow:
             tracker.frame_buffer.generate_flow(tracker.opt_flow)
+
+        self.export_track_mpeg_preview(os.path.splitext(filename)[0], tracker)
 
         for frame_number in range(len(tracker.frame_buffer.filtered)):
             thermal = tracker.frame_buffer.thermal[frame_number]
