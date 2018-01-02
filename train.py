@@ -53,6 +53,7 @@ class Estimator():
     LABEL_SMOOTHING = 0.1
     LSTM_UNITS = 256
     USE_PEEPHOLES = False # these don't really help.
+    AUGMENTATION = True
 
 
     def __init__(self):
@@ -83,7 +84,9 @@ class Estimator():
         self.train, self.validation, self.test = pickle.load(open(os.path.join(base_path, "datasets.dat"),'rb'))
 
         # augmentation really helps with reducing over-fitting, but test set should be fixed so we don't apply it there.
-        self.train.enable_augmentation = True
+        self.train.enable_augmentation = self.AUGMENTATION
+        self.validation.enable_augmentation = False
+        self.test.enable_augmentation = False
 
         logging.info("Training segments: {0:.1f}k".format(self.train.rows/1000))
         logging.info("Validation segments: {0:.1f}k".format(self.validation.rows/1000))
@@ -97,6 +100,7 @@ class Estimator():
     def _conv_layer(self, input_layer, filters, kernal_size, conv_stride=2, pool_stride=1):
 
         n, input_filters, h, w = input_layer.shape
+        """
         init = tf.glorot_uniform_initializer()
         filter_shape = [kernal_size[0], kernal_size[1], int(input_filters), filters]
         kernel = tf.Variable(initial_value = init(filter_shape), name='conv_weights')
@@ -105,6 +109,11 @@ class Estimator():
             input=input_layer, filter=kernel, strides=(1, 1, conv_stride, conv_stride),
             data_format="NCHW", padding="SAME"
         )
+        """
+        layer = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
+                                 strides=(conv_stride, conv_stride),
+                                 padding="same", activation=None, data_format='channels_first')
+
         tf.summary.histogram('preactivations', layer)
         if self.BATCH_NORM: layer = tf.contrib.layers.batch_norm(
             layer, center=True, scale=True,
@@ -136,7 +145,7 @@ class Estimator():
         self.keep_prob = tf.placeholder_with_default(tf.constant(1.0, tf.float32), [], name='keep_prob')
 
         # first put all frames in batch into one line sequence
-        X_reshaped = tf.reshape(self.X[:, :, 0:3+1, :, :], [-1, 4, 48, 48])
+        X_reshaped = tf.reshape(self.X, [-1, 5, 48, 48])
 
         # next run the convolutions
         c1 = self._conv_layer(X_reshaped[:, 1:2, :, :], 32, [8, 8], conv_stride=4)
@@ -231,8 +240,8 @@ class Estimator():
         self.model.batch_size = self.BATCH_SIZE
 
     def start_async_load(self):
-        self.train.start_async_load(512)
-        self.validation.start_async_load(512)
+        self.train.start_async_load(256)
+        self.validation.start_async_load(256)
 
     def stop_async(self):
         self.train.stop_async_load()
@@ -282,9 +291,11 @@ def main():
 
     estimator.build_model()
 
+    estimator.start_async_load()
     estimator.train_model(
-        max_epochs=25, stop_after_no_improvement=None, stop_after_decline=None)
+        max_epochs=0.1, stop_after_no_improvement=None, stop_after_decline=None)
     estimator.save_model()
+    estimator.stop_async()
 
 
 if __name__ == "__main__":

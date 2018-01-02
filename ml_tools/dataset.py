@@ -8,6 +8,10 @@ Tracks are broken into segments.  Filtered, and then passed to the trainer using
 
 """
 
+import queue
+import threading
+import multiprocessing
+
 import os
 import datetime
 import math
@@ -43,7 +47,7 @@ class SegmentHeader():
     @property
     def name(self):
         """ Unique name of this segment. """
-        return self.clip_id + '-' + self.track_number + '-' + str(self.start_frame)
+        return self.clip_id + '-' + str(self.track_number) + '-' + str(self.start_frame)
 
     @property
     def end_frame(self):
@@ -160,17 +164,34 @@ class Dataset():
         # this allows manipulation of data (such as scaling) during the sampling stage.
         self.enable_augmentation = False
 
+        self.preloader_queue = None
+        self.preloader_threads = None
+
+        self.preloader_stop_flag = False
+
     @property
     def rows(self):
         return len(self.segments)
 
-    def next_batch(self, n):
+    def next_batch(self, n, disable_async=False):
         """
         Returns a batch of n segments (X, y) from dataset.
         Applies augmentation and normalisation automatically.
         :param n: number of segments
         :return: X shape [n, channels, height, width], labels of shape [n]
         """
+
+        # if async is enabled use it.
+        if not disable_async and self.preloader_queue is not None:
+            # get samples from queue
+            batch_X = []
+            batch_y = []
+            for _ in range(n):
+                X, y = self.preloader_queue.get()
+                batch_X.append(X[0])
+                batch_y.append(y[0])
+
+            return np.asarray(batch_X), np.asarray(batch_y)
 
         segments = [self.sample_segment() for _ in range(n)]
 
@@ -294,7 +315,7 @@ class Dataset():
         :return:
         """
 
-        if self.enable_augmentation:
+        if augment:
             # jitter first frame
             prev_frames = segment.start_frame
             post_frames = self.track_by_id[segment.track_id].frames - segment.end_frame
@@ -336,13 +357,14 @@ class Dataset():
         :param segment_data: array of shape [frames, channels, height, width]
         :return: augmented array
         """
-        
+
         frames, channels, height, width = segment_data.shape
 
-        mask = segment_data[:, 4, :, :]
+        segment_data = np.float32(segment_data)
 
         # apply scaling
         if random.randint(0, 1) == 0:
+            mask = segment_data[:, 4, :, :]
             av_mass = np.sum(mask) / len(mask)
             scale_options = []
             if av_mass > 50: scale_options.append('down')
@@ -352,6 +374,7 @@ class Dataset():
             up_scale = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5]
             down_scale = [0.25, 0.33, 0.5, 0.75]
 
+
             if scale_method == 'up':
                 scale = np.random.choice(up_scale)
             else:
@@ -359,10 +382,10 @@ class Dataset():
 
             for i in range(frames):
                 # the image is expected to be in hwc format so we convert it here.
-                tools.zoom_image(segment_data[i], scale=scale, channels_first=True)
+                segment_data[i] = tools.zoom_image(segment_data[i], scale=scale, channels_first=True)
 
         if random.randint(0,1) == 0:
-            segment_data = np.flip(segment_data, axis = 2)
+            segment_data = np.flip(segment_data, axis = 3)
 
         return segment_data
 
@@ -524,12 +547,24 @@ class Dataset():
         Starts async load process.
         """
 
-        WORKER_THREADS = 2
+        # threading has limitations due to global lock
+        # but processor ends up slow on windows as the numpy array needs to be pickled across processes which is
+        # 2ms per process..
+        # this could be solved either by using linux (with forking, which is copy on write) or with a shared ctype
+        # array.
+
+        WORKER_THREADS = 1
+        PROCESS_BASED = False
 
         print("Starting async fetcher")
-        self.preloader_queue = queue.Queue()
-        self.preloader_threads = [threading.Thread(target=preloader, args=(self.preloader_queue, self, buffer_size)) for _ in range(WORKER_THREADS)]
-        self.reloader_stop_flag = False
+        if PROCESS_BASED:
+            self.preloader_queue = multiprocessing.Queue(buffer_size)
+            self.preloader_threads = [multiprocessing.Process(target=preloader, args=(self.preloader_queue, self, buffer_size)) for _ in range(WORKER_THREADS)]
+        else:
+            self.preloader_queue = queue.Queue(buffer_size)
+            self.preloader_threads = [threading.Thread(target=preloader, args=(self.preloader_queue, self, buffer_size)) for _ in range(WORKER_THREADS)]
+
+        self.preloader_stop_flag = False
         for thread in self.preloader_threads:
             thread.start()
 
@@ -538,7 +573,7 @@ class Dataset():
         Stops async worker thread.
         """
         if self.preloader_threads is not None:
-            self.reloader_stop_flag = True
+            self.preloader_stop_flag = True
             for thread in self.preloader_threads:
                 thread.join()
 
@@ -546,9 +581,16 @@ class Dataset():
 def preloader(q, dataset, buffer_size):
     """ add a segment into buffer """
     print("Async loader pool starting")
-    while not dataset.shutdown_worker_threads:
-        if q.qsize() < buffer_size:
+    loads = 0
+    timer = time.time()
+    while not dataset.preloader_stop_flag:
+        if not q.full():
             q.put(dataset.next_batch(1, disable_async=True))
+            loads += 1
+            if (time.time() - timer) > 1.0:
+                #print(dataset.name," segments per seconds {:.1f}".format(loads / (time.time() - timer)))
+                timer = time.time()
+                loads = 0
         else:
             time.sleep(0.01)
 
