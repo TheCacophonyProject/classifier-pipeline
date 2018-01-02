@@ -281,17 +281,21 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         # increased resolution of video file.
         # videos look much better scaled up
-        FRAME_SCALE = 4.0
+        FRAME_SCALE = 4
+
+        frame_width, frame_height = int(tracker.WINDOW_SIZE * FRAME_SCALE), int(tracker.WINDOW_SIZE * FRAME_SCALE)
+        frame_width =  frame_width // 4 * 4
+        frame_height = frame_height // 4 * 4
 
         for id, track in enumerate(tracker.tracks):
             video_frames = []
             for frame_number in range(len(track.bounds_history)):
                 channels = tracker.get_track_channels(track, frame_number)
-                img = tools.convert_heat_to_img(channels[0], self.colormap, tools.TEMPERATURE_MIN, tools.TEMPERATURE_MAX)
-                img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
+                img = tools.convert_heat_to_img(channels[1], self.colormap, 0, 350)
+                img = img.resize((frame_width, frame_height), Image.NEAREST)
                 video_frames.append(np.asarray(img))
 
-            tools.write_mpeg(filename_base+"-"+str(id+1)+".mpg", video_frames)
+            tools.write_mpeg(filename_base+"-"+str(id+1)+".mp4", video_frames)
 
     def export_mpeg_preview(self, filename, tracker: TrackExtractor):
         """

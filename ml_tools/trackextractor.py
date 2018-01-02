@@ -464,7 +464,7 @@ class TrackExtractor:
         assert self.background is not None, "Background not initialised."
 
         filtered = self._get_filtered(frame)
-        regions, mask = self.get_regions(filtered, self._prev_filtered)
+        regions, mask = self.get_regions_of_interest(filtered, self._prev_filtered)
 
         # save history
         self.frame_buffer.thermal.append(frame)
@@ -687,7 +687,7 @@ class TrackExtractor:
         filtered[filtered < 0] = 0
         return filtered
 
-    def get_regions(self, filtered, prev_filtered=None):
+    def get_regions_of_interest(self, filtered, prev_filtered=None):
         """
         Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
         rectangles.
@@ -714,7 +714,7 @@ class TrackExtractor:
         # get frames change
         if prev_filtered is not None:
             # we need a lot of precision because the values are squared.  Float32 should work.
-            delta_frame = np.abs(np.float16(filtered) - np.float16(prev_filtered), dtype=np.float32)
+            delta_frame = np.abs(np.float32(filtered) - np.float32(prev_filtered))
         else:
             delta_frame = None
 
@@ -728,9 +728,12 @@ class TrackExtractor:
             if delta_frame is not None:
                 region_difference = np.float32(get_image_subsection(delta_frame, region, (self.WINDOW_SIZE, self.WINDOW_SIZE), 0))
                 region.pixel_variance = np.var(region_difference)
-                if region.pixel_variance > 100000:
-                    print("Pixel variance very high:",region.pixel_variance, np.mean(region_difference), np.max(region_difference),np.min(region_difference))
-                    print(region_difference)
+
+            # filter out regions that are probably just noise
+            #print(region.pixel_variance, region.mass)
+            if region.pixel_variance < 2.0 and region.mass < 8:
+                continue
+
             regions.append(region)
 
         return regions , mask
@@ -768,8 +771,8 @@ class TrackExtractor:
         threshold = float(np.percentile(filtered, q=TrackExtractor.THRESHOLD_PERCENTILE) / 2)
 
         # cap the threshold to something reasonable
-        if threshold < 10.0:
-            threshold = 10.0
+        if threshold < 15.0:
+            threshold = 15.0
         if threshold > 50.0:
             threshold = 50.0
 
