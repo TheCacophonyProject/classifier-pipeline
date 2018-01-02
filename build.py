@@ -108,7 +108,7 @@ def split_dataset():
         bins_by_label[label] = []
 
     for bin_id, tracks in dataset.tracks_by_bin.items():
-        label = dataset.track_by_name[tracks[0].name].label
+        label = dataset.track_by_id[tracks[0].track_id].label
         bins_by_label[label].append(bin_id)
 
     train = Dataset(db, 'train')
@@ -207,7 +207,7 @@ def split_dataset():
     print()
 
     # normalisation constants
-    normalisation_constants = train.get_normalisation_constants(10000)
+    normalisation_constants = train.get_normalisation_constants(1000)
     print('Normalisation constants:')
     for i in range(len(normalisation_constants)):
         print("  {:.4f} {:.4f}".format(normalisation_constants[i][0], normalisation_constants[i][1]))
@@ -234,7 +234,7 @@ def main():
             print("  {} filtered {}".format(key, value))
     print()
 
-    labels = set(dataset.tracks_by_label.keys())
+    labels = sorted(list(set(dataset.tracks_by_label.keys())))
     dataset.labels = labels
 
     show_tracks_breakdown()
@@ -243,9 +243,9 @@ def main():
     print()
 
     print("Splitting data set into train / validation")
-    datasets = train, validation, test = split_dataset()
+    datasets = split_dataset()
 
-    pickle.dump(datasets,open('datasets.dat','wb'))
+    pickle.dump(datasets,open('c:/cac/kea/datasets.dat','wb'))
 
 
 if __name__ == "__main__":

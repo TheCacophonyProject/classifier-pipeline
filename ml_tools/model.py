@@ -43,9 +43,6 @@ class Model:
         # list of classes this model can classify
         self.classes = classes
 
-        # if the model doesn't improve after a certian number of tests stop the training.
-        self.stop_on_overfitting = True
-
         # restore best weights found during training rather than the most recently one.
         self.use_best_weights = True
 
@@ -115,7 +112,7 @@ class Model:
         saver = tf.train.Saver()
         saver.restore(self.sess, os.path.join(CHECKPOINT_FOLDER,"training-best.sav"))
 
-    def train_model(self, epochs = 10, keep_prob = 0.5, stop_after_no_improvement = 10, stop_after_decline = 3,
+    def train_model(self, epochs = 10, keep_prob = 0.5, stop_after_no_improvement=None, stop_after_decline=None,
                     log_dir = None):
         """
         Trains model given number of epocs.  Uses session 'sess'
@@ -228,13 +225,12 @@ class Model:
 
                 prev_ema_val_accuracy = ema_val_accuracy
 
-                if self.stop_on_overfitting:
-                    if stop_after_no_improvement is not None and cycles_since_last_best >= stop_after_no_improvement:
-                        print("Best validation score was too long ago, stopping.")
-                        break
-                    if stop_after_decline is not None and depression_cycles >= stop_after_decline:
-                        print("Validation scores are in decline.  Stopping.")
-                        break
+                if stop_after_no_improvement is not None and cycles_since_last_best >= stop_after_no_improvement:
+                    print("Best validation score was too long ago, stopping.")
+                    break
+                if stop_after_decline is not None and depression_cycles >= stop_after_decline:
+                    print("Validation scores are in decline.  Stopping.")
+                    break
 
                 eval_time = 0
                 train_time = 0

@@ -18,6 +18,7 @@ import binascii
 import time
 import datetime
 import glob
+import cv2
 from sklearn.metrics import confusion_matrix
 from matplotlib.colors import LinearSegmentedColormap
 import subprocess
@@ -400,46 +401,60 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
 
     return sub_section
 
-def clipped_zoom(img, zoom_factor, **kwargs):
+def to_HWC(data):
+    """ converts from CHW format to HWC format. """
+    return np.transpose(data, axes=(1, 2, 0))
 
-    # modified from https://stackoverflow.com/questions/37119071/scipy-rotate-and-zoom-an-image-without-changing-its-dimensions
-    h, w = img.shape[:2]
+def to_CHW(data):
+    """ converts from HWC format to CHW format. """
+    return np.transpose(data, axes=(2, 0, 1))
 
-    # width and height of the zoomed image
-    zh = int(np.round(zoom_factor * h))
-    zw = int(np.round(zoom_factor * w))
 
-    # width and height of the section we need to zoom
-    sh = int(np.round(h / zoom_factor))
-    sw = int(np.round(w / zoom_factor))
+def zoom_image(img, scale, pad_with_min=False, channels_first=False):
+    """
+    Zooms into or out of the center of the image.  The dimensions are left unchanged, and either padding is added, or
+    cropping is performed.
+    :param img: image to process of shape [height, width, channels]
+    :param scale: how much to scale image
+    :param pad_with_min: if true shrunk images will pad with the channels min value (otherwise 0 is used)
+    :param channels_first: if true uses [channels, height, width] format
+    :return: the new image
+    """
 
-    # for multichannel images we don't want to apply the zoom factor to the RGB
-    # dimension, so instead we create a tuple of zoom factors, one per array
-    # dimension, with 1's for any trailing dimensions after the width and height.
-    zoom_tuple = (zoom_factor,) * 2 + (1,) * (img.ndim - 2)
+    if scale == 1:
+        return img
 
-    # zooming out
-    if zoom_factor < 1:
-        # bounding box of the clip region within the output array
-        top = (h - zh) // 2
-        left = (w - zw) // 2
-        # zero-padding
-        out = np.zeros_like(img)
-        out[top:top+zh, left:left+zw] = scipy.ndimage.interpolation.zoom(img, zoom_tuple, **kwargs)
+    if channels_first:
+        img = to_HWC(img)
+    width, height, channels = img.shape
+    if scale < 1:
+        # scale down and pad
+        new_height, new_width = int(height * scale), int(width * scale)
 
-    # zooming in
-    elif zoom_factor > 1:
-        # bounding box of the clip region within the input array
-        top = (h- sh) // 2
-        left = (w - sw) // 2
-        out = scipy.ndimage.interpolation.zoom(img[top:top+sh, left:left+sw], zoom_tuple, **kwargs)
-        # `out` might still be slightly larger than `img` due to rounding, so
-        # trim off any extra pixels at the edges
-        trim_top = ((out.shape[0] - h) // 2)
-        trim_left = ((out.shape[1] - w) // 2)
-        out = out[trim_top:trim_top+h, trim_left:trim_left+w]
+        # note:
+        # cv2.INTER_AREA would be better, but sometimes bugs out for certian scales, not sure why.
+        res = cv2.resize(np.float32(img), (new_height, new_width), interpolation=cv2.INTER_LINEAR)
+        pad_width = (width - new_width) / 2
+        pad_height = (height - new_height) / 2
+        if pad_with_min:
+            min_values = [np.min(res[:, :, i]) for i in range(channels)]
+            img = np.ones([width, height, channels], dtype=np.float32) * min_values
+        else:
+            img = np.zeros([width, height, channels], dtype=np.float32)
 
-    return out
+        img[int(pad_height):int(pad_height) + new_height, int(pad_width):int(pad_width) + new_width, :] = res
+    else:
+        # crop and scale up
+        crop_height, crop_width = int(height / scale), int(width / scale)
+        inset_width = int((width - crop_width) / 2)
+        inset_height = int((height - crop_height) / 2)
+        crop = img[inset_height:inset_height + crop_height, inset_width:inset_width + crop_width]
+        img = cv2.resize(np.float32(crop), dsize=(height, width), interpolation=cv2.INTER_CUBIC)
+
+    if channels_first:
+        img = to_CHW(img)
+
+    return img
 
 def read_track_files(track_folder, min_tracks = 50, ignore_classes = ['false-positive'], track_filter = None):
     """ Read in the tracks files from folder. Returns tupple containing list of class names and dictionary mapping from

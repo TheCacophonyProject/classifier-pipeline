@@ -69,14 +69,10 @@ class Estimator():
         return (self.train, self.validation, self.test)
 
     @property
-    def num_classes(self):
-        return len(self.train.classes)
+    def labels(self):
+        return self.train.labels
 
-    @property
-    def classes(self):
-        return self.train.classes
-
-    def import_dataset(self, base_path, force_normalisation_constants = None):
+    def import_dataset(self, base_path, force_normalisation_constants=None):
         """
         Import dataset from basepath.
         :param base_path:
@@ -84,11 +80,9 @@ class Estimator():
             saved with the dataset.
         :return:
         """
-
-
         self.train, self.validation, self.test = pickle.load(open(os.path.join(base_path, "datasets.dat"),'rb'))
 
-        # augmentation really helps with reducing overfitting, but test set should be fixed so we don't apply it there.
+        # augmentation really helps with reducing over-fitting, but test set should be fixed so we don't apply it there.
         self.train.enable_augmentation = True
 
         logging.info("Training segments: {0:.1f}k".format(self.train.rows/1000))
@@ -100,13 +94,17 @@ class Estimator():
             for dataset in self.datasets:
                 dataset.normalisation_constants = force_normalisation_constants
 
-        # helpful to have the test set in memory.
-        self.test.X, self.test.y = self.test.fetch_all()
-
     def _conv_layer(self, input_layer, filters, kernal_size, conv_stride=2, pool_stride=1):
-        layer = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
-                                 strides=(conv_stride, conv_stride),
-                                 padding="same", activation=None)
+
+        n, input_filters, h, w = input_layer.shape
+        init = tf.glorot_uniform_initializer()
+        filter_shape = [kernal_size[0], kernal_size[1], int(input_filters), filters]
+        kernel = tf.Variable(initial_value = init(filter_shape), name='conv_weights')
+
+        layer = tf.nn.conv2d(
+            input=input_layer, filter=kernel, strides=(1, 1, conv_stride, conv_stride),
+            data_format="NCHW", padding="SAME"
+        )
         tf.summary.histogram('preactivations', layer)
         if self.BATCH_NORM: layer = tf.contrib.layers.batch_norm(
             layer, center=True, scale=True,
@@ -128,7 +126,7 @@ class Estimator():
 
         # Define our model
 
-        self.X = tf.placeholder(tf.float32, [None, 27, 64, 64, 5], name='X')
+        self.X = tf.placeholder(tf.float32, [None, 27, 5, 48, 48], name='X')
 
         self.y = tf.placeholder(tf.int64, [None], name='y')
 
@@ -137,25 +135,17 @@ class Estimator():
         # default keep_probability to 1.0 if not specified
         self.keep_prob = tf.placeholder_with_default(tf.constant(1.0, tf.float32), [], name='keep_prob')
 
-        # channel dropout. Drop channels to force model to learn both motion and appearance
-        #channel_dropout = tf.nn.dropout(tf.constant(1.0, tf.float32, [5]), keep_prob=self.keep_prob)
-        #self.X = self.X * channel_dropout[tf.newaxis, tf.newaxis, tf.newaxis, tf.newaxis, :]
-
-        # frame dropout.  Drop random frames to force LSTM to remember
-        #frame_dropout = tf.nn.dropout(tf.constant(1.0, tf.float32, [27]), keep_prob=self.keep_prob)
-        #self.X = self.X * frame_dropout[tf.newaxis, :, tf.newaxis, tf.newaxis, tf.newaxis]
-
         # first put all frames in batch into one line sequence
-        X_reshaped = tf.reshape(self.X[:, :, :, :, 0:3+1], [-1, 64, 64, 4])
+        X_reshaped = tf.reshape(self.X[:, :, 0:3+1, :, :], [-1, 4, 48, 48])
 
         # next run the convolutions
-        c1 = self._conv_layer(X_reshaped[:, :, :, 1:2], 32, [8, 8], conv_stride=4)
+        c1 = self._conv_layer(X_reshaped[:, 1:2, :, :], 32, [8, 8], conv_stride=4)
         c2 = self._conv_layer(c1, 48, [4, 4], conv_stride=2)
         c3 = self._conv_layer(c2, 64, [3, 3], conv_stride=1)
 
         filtered_conv = c3
 
-        c1 = self._conv_layer(X_reshaped[:, :, :, 2:4], 32, [8, 8], conv_stride=4)
+        c1 = self._conv_layer(X_reshaped[:, 2:4, :, :], 32, [8, 8], conv_stride=4)
         c2 = self._conv_layer(c1, 48, [4, 4], conv_stride=2)
         c3 = self._conv_layer(c2, 64, [3, 3], conv_stride=1)
 
@@ -200,7 +190,7 @@ class Estimator():
         h1 = tf.nn.dropout(lstm_output, keep_prob=self.keep_prob)
 
         # dense layer2
-        logits = tf.layers.dense(inputs=h1, units=self.num_classes, activation=None, name='logits')
+        logits = tf.layers.dense(inputs=h1, units=len(self.labels), activation=None, name='logits')
 
         # prediction with softmax
         class_out = tf.argmax(logits, axis=1, name='class_out')
@@ -214,7 +204,7 @@ class Estimator():
 
         reg_loss = (tf.nn.l2_loss(h2_weights) * self.L2_REG)
         loss = tf.add(
-            tf.losses.softmax_cross_entropy(onehot_labels=tf.one_hot(self.y, self.num_classes), logits=logits,
+            tf.losses.softmax_cross_entropy(onehot_labels=tf.one_hot(self.y, len(self.labels)), logits=logits,
                                             label_smoothing=self.LABEL_SMOOTHING), reg_loss,
             name='loss')
 
@@ -237,7 +227,7 @@ class Estimator():
             train_op = optimizer.minimize(loss=loss, name='train_op')
 
         # define our model
-        self.model = Model(self.datasets, self.X, self.y, self.keep_prob, pred, accuracy, loss, train_op, self.classes)
+        self.model = Model(self.datasets, self.X, self.y, self.keep_prob, pred, accuracy, loss, train_op, self.labels)
         self.model.batch_size = self.BATCH_SIZE
 
     def start_async_load(self):
@@ -248,7 +238,7 @@ class Estimator():
         self.train.stop_async_load()
         self.validation.stop_async_load()
 
-    def train_model(self, max_epochs=10, stop_after_no_improvement=20, stop_after_decline=3, log_dir = None):
+    def train_model(self, max_epochs=10, stop_after_no_improvement=None, stop_after_decline=None, log_dir = None):
         print("{0:.1f}K training examples".format(self.train.rows / 1000))
         self.model.train_model(max_epochs, keep_prob=0.4, stop_after_no_improvement=stop_after_no_improvement,
                                stop_after_decline=stop_after_decline, log_dir=log_dir)
@@ -258,7 +248,6 @@ class Estimator():
         score_part = "{:.3f}".format(self.model.eval_score)
         while len(score_part) < 3:
             score_part = score_part + "0"
-
 
         saver = tf.train.Saver()
         save_filename = os.path.join("./models/", self.MODEL_NAME + '-' + score_part)
@@ -270,7 +259,7 @@ class Estimator():
         model_stats['name'] = self.MODEL_NAME
         model_stats['description'] = self.MODEL_DESCRIPTION
         model_stats['notes'] = ""
-        model_stats['classes'] = self.classes
+        model_stats['classes'] = self.labels
         model_stats['score'] = self.model.eval_score
         model_stats['normalisation'] = self.train.normalisation_constants
 
@@ -281,26 +270,21 @@ def main():
     tf.logging.set_verbosity(3)
     estimator = Estimator()
 
-    # force normalisation levels
     normalisation_constants = [
-            (-3200, 250, 1),
-            (-2, 10, 1),
-            (0, 1, 0.5),  # take squareroot of motion flow vectors.
-            (0, 1, 0.5),
-            (0, 1, 1)
-        ]
+        [3200, 200],
+        [8.6, 31.7],
+        [0, 0.4],
+        [0, 0.4],
+        [0, 1]
+    ]
 
-    estimator.import_dataset("c://cac//bellbird/dataset//", normalisation_constants)
+    estimator.import_dataset("c://cac//kea", force_normalisation_constants=normalisation_constants)
 
     estimator.build_model()
-    estimator.start_async_load()
 
-    #log_dir='./logs'
     estimator.train_model(
-        max_epochs=25, stop_after_no_improvement=999, stop_after_decline=999)
+        max_epochs=25, stop_after_no_improvement=None, stop_after_decline=None)
     estimator.save_model()
-    estimator.stop_async()
-
 
 
 if __name__ == "__main__":

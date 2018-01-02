@@ -12,10 +12,14 @@ import os
 import datetime
 import math
 import random
+import time
 from dateutil import parser
+from bisect import bisect
 
 import numpy as np
+import tensorflow as tf
 
+from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 
 class SegmentHeader():
@@ -46,6 +50,12 @@ class SegmentHeader():
         """ end frame of sgement"""
         return self.start_frame+self.frames
 
+    @property
+    def track_id(self):
+        """ Unique name of this segments track. """
+        return TrackHeader.get_name(self.clip_id, self.track_number)
+
+
     def __str__(self):
         return "offset:{0} weight:{1:.1f}".format(self.start_frame, self.weight)
 
@@ -70,7 +80,7 @@ class TrackHeader():
         self.camera = camera
 
     @property
-    def name(self):
+    def track_id(self):
         """ Unique name of this track. """
         return TrackHeader.get_name(self.clip_id, self.track_number)
 
@@ -83,6 +93,11 @@ class TrackHeader():
     def weight(self):
         """ Returns total weight for all segments in this track"""
         return sum(segment.weight for segment in self.segments)
+
+    @property
+    def frames(self):
+        """ Returns number of frames in this track"""
+        return int(round(self.duration * 9))
 
     @staticmethod
     def get_name(clip_id, track_number):
@@ -117,11 +132,11 @@ class Dataset():
 
         # list of our tracks
         self.tracks = []
-        self.track_by_name = {}
+        self.track_by_id = {}
         self.tracks_by_label = {}
         self.tracks_by_bin = {}
 
-        # cumulative probability distribution for segments.  Allows for super fast weighted random sampling.
+        # cumulative distribution function for segments.  Allows for super fast weighted random sampling.
         self.segment_cdf = []
 
         # segments list
@@ -142,17 +157,35 @@ class Dataset():
         # constants used to normalise input
         self.normalisation_constants = None
 
+        # this allows manipulation of data (such as scaling) during the sampling stage.
+        self.enable_augmentation = False
+
+    @property
+    def rows(self):
+        return len(self.segments)
+
     def next_batch(self, n):
         """
         Returns a batch of n segments (X, y) from dataset.
         Applies augmentation and normalisation automatically.
-        :param n: number of segment
-        :return: numpy array of shape [n, channels, height, width]
+        :param n: number of segments
+        :return: X shape [n, channels, height, width], labels of shape [n]
         """
 
         segments = [self.sample_segment() for _ in range(n)]
+
+        batch_X = []
+        batch_y = []
+
         for segment in segments:
-            data = self.fetch_segment(segment)
+            data = self.fetch_segment(segment, normalise=True, augment=self.enable_augmentation)
+            batch_X.append(data)
+            batch_y.append(self.labels.index(segment.label))
+
+        batch_X = np.float32(batch_X)
+        batch_y = np.int32(batch_y)
+
+        return(batch_X, batch_y)
 
     def load_tracks(self, track_filter=None):
         """
@@ -193,7 +226,7 @@ class Dataset():
         track_header = TrackHeader.from_meta(clip_id, track_meta)
 
         self.tracks.append(track_header)
-        self.track_by_name[track_header.name] = track_header
+        self.track_by_id[track_header.track_id] = track_header
 
         if track_header.label not in self.tracks_by_label:
             self.tracks_by_label[track_header.label] = []
@@ -252,14 +285,93 @@ class Dataset():
 
         return filtered
 
-    def fetch_segment(self, segment: SegmentHeader):
-        """ Fetches data for segment"""
-        return self.db.get_track(segment.clip_id, segment.track_number, segment.start_frame, segment.end_frame)
+    def fetch_segment(self, segment: SegmentHeader, normalise=False, augment=False):
+        """
+        Fetches data for segment.
+        :param segment: The segment header to fetch
+        :param normalise: if true normalises the channels in the segment according to normalisation_constants
+        :param augment: if true applies data augmentation
+        :return:
+        """
+
+        if self.enable_augmentation:
+            # jitter first frame
+            prev_frames = segment.start_frame
+            post_frames = self.track_by_id[segment.track_id].frames - segment.end_frame
+            jitter = np.clip(np.random.randint(-5,5), -prev_frames, post_frames)
+        else:
+            jitter = 0
+
+        data = self.db.get_track(segment.clip_id, segment.track_number, segment.start_frame + jitter, segment.end_frame + jitter)
+
+        if len(data) != 27:
+            print("ERROR, invalid segment length",len(data))
+
+        if augment:
+            data = self.apply_augmentation(data)
+        if normalise:
+            data = self.apply_normalisation(data)
+        return data
+
+    def apply_normalisation(self, segment_data):
+        """
+        Applies a random augmentation to the segment_data.
+        :param segment_data: array of shape [frames, channels, height, width]
+        :return: normalised array
+        """
+
+        frames, channels, height, width = segment_data.shape
+
+        segment_data = np.float32(segment_data)
+
+        for channel in range(channels):
+            mean, std = self.normalisation_constants[channel]
+            segment_data[:,channel] = (segment_data[:,channel] - mean) * (1/std)
+
+        return segment_data
+
+    def apply_augmentation(self, segment_data):
+        """
+        Applies a random augmentation to the segment_data.
+        :param segment_data: array of shape [frames, channels, height, width]
+        :return: augmented array
+        """
+        
+        frames, channels, height, width = segment_data.shape
+
+        mask = segment_data[:, 4, :, :]
+
+        # apply scaling
+        if random.randint(0, 1) == 0:
+            av_mass = np.sum(mask) / len(mask)
+            scale_options = []
+            if av_mass > 50: scale_options.append('down')
+            if av_mass < 100: scale_options.append('up')
+            scale_method = np.random.choice(scale_options)
+
+            up_scale = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5]
+            down_scale = [0.25, 0.33, 0.5, 0.75]
+
+            if scale_method == 'up':
+                scale = np.random.choice(up_scale)
+            else:
+                scale = np.random.choice(down_scale)
+
+            for i in range(frames):
+                # the image is expected to be in hwc format so we convert it here.
+                tools.zoom_image(segment_data[i], scale=scale, channels_first=True)
+
+        if random.randint(0,1) == 0:
+            segment_data = np.flip(segment_data, axis = 2)
+
+        return segment_data
 
 
     def sample_segment(self):
         """ Returns a random segment from weighted list. """
-        pass
+        roll = random.random()
+        index = bisect(self.segment_cdf, roll)
+        return self.segments[index]
 
     def balance_weights(self, weight_modifiers=None):
         """
@@ -407,5 +519,36 @@ class Dataset():
             result.extend(track.segments)
         return result
 
+    def start_async_load(self, buffer_size = 64):
+        """
+        Starts async load process.
+        """
 
+        WORKER_THREADS = 2
+
+        print("Starting async fetcher")
+        self.preloader_queue = queue.Queue()
+        self.preloader_threads = [threading.Thread(target=preloader, args=(self.preloader_queue, self, buffer_size)) for _ in range(WORKER_THREADS)]
+        self.reloader_stop_flag = False
+        for thread in self.preloader_threads:
+            thread.start()
+
+    def stop_async_load(self, buffer_size = 64):
+        """
+        Stops async worker thread.
+        """
+        if self.preloader_threads is not None:
+            self.reloader_stop_flag = True
+            for thread in self.preloader_threads:
+                thread.join()
+
+# continue to read examples until queue is full
+def preloader(q, dataset, buffer_size):
+    """ add a segment into buffer """
+    print("Async loader pool starting")
+    while not dataset.shutdown_worker_threads:
+        if q.qsize() < buffer_size:
+            q.put(dataset.next_batch(1, disable_async=True))
+        else:
+            time.sleep(0.01)
 
