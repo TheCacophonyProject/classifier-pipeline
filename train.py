@@ -42,12 +42,12 @@ def prod(data):
 class Estimator():
 
     # todo: these should be in some settings file
-    MODEL_NAME = "Model-4h"
+    MODEL_NAME = "Model_5a"
     MODEL_DESCRIPTION = "CNN + LSTM"
 
     BATCH_SIZE = 32
     BATCH_NORM = True
-    LEARNING_RATE = 5e-4
+    LEARNING_RATE = 1e-4
     LEARNING_RATE_DECAY = 0.9
     L2_REG = 0.01
     LABEL_SMOOTHING = 0.1
@@ -106,16 +106,6 @@ class Estimator():
     def _conv_layer(self, input_layer, filters, kernal_size, conv_stride=2, pool_stride=1):
 
         n, input_filters, h, w = input_layer.shape
-        """
-        init = tf.glorot_uniform_initializer()
-        filter_shape = [kernal_size[0], kernal_size[1], int(input_filters), filters]
-        kernel = tf.Variable(initial_value = init(filter_shape), name='conv_weights')
-
-        layer = tf.nn.conv2d(
-            input=input_layer, filter=kernel, strides=(1, 1, conv_stride, conv_stride),
-            data_format="NCHW", padding="SAME"
-        )
-        """
         layer = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
                                  strides=(conv_stride, conv_stride),
                                  padding="same", activation=None)
@@ -233,7 +223,7 @@ class Estimator():
 
         # record some stats
         tf.summary.scalar('accuracy', accuracy)
-        tf.summary.scalar('loss', loss)
+        loss_summary = tf.summary.scalar('loss', loss)
         tf.summary.scalar('reg_loss', reg_loss)
 
         # make sure to update batch norms.
@@ -244,6 +234,8 @@ class Estimator():
         # define our model
         self.model = Model(self.datasets, self.X, self.y, self.keep_prob, pred, accuracy, loss, train_op, self.labels)
         self.model.batch_size = self.BATCH_SIZE
+        self.model.every_step_summary = loss_summary
+        self.model.name = self.MODEL_NAME
 
     def start_async_load(self):
         self.train.start_async_load(256)
@@ -299,7 +291,7 @@ def main():
 
     estimator.start_async_load()
     estimator.train_model(
-        max_epochs=10, stop_after_no_improvement=None, stop_after_decline=None)
+        max_epochs=10, stop_after_no_improvement=None, stop_after_decline=None, log_dir='c:/cac/logs')
     estimator.save_model()
     estimator.stop_async()
 

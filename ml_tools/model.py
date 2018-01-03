@@ -22,7 +22,7 @@ class Model:
     def __init__(self, datasets, X, y, keep_prob, pred, accuracy, loss, train_op, classes):
 
         self.datasets = datasets
-
+        self.name = "model"
 
         self.X = X
         self.y = y
@@ -53,9 +53,31 @@ class Model:
 
         self.normalisation_constants = None
 
+        self.every_step_summary = None
+
+    def eval_batch_summary(self, batch_X, batch_y, writer, merged_summary, step, include_run_meta=True):
+        if include_run_meta:
+            run_metadata = tf.RunMetadata()
+        else:
+            run_metadata = None
+        summary, acc, loss = self.sess.run(
+            [merged_summary, self.accuracy, self.loss],
+            feed_dict={self.X: batch_X, self.y: batch_y},
+            run_metadata=run_metadata
+        )
+        if include_run_meta:
+            writer.add_run_metadata(run_metadata, tag='step%d' % step, global_step=step)
+        writer.add_summary(summary, global_step=step)
+        return acc, loss
 
     def eval_batch(self, batch_X, batch_y, include_loss = False):
-        """ Evaluates the accuracy on a batch of frames.  If the batch is too large it will be broken into smaller parts. """
+        """
+        Evaluates the accuracy on a batch of frames.  If the batch is too large it will be broken into smaller parts.
+        :param batch_X:
+        :param batch_y:
+        :param include_loss:
+        :return:
+        """
 
         total_samples = batch_X.shape[0]
         batches = (total_samples // self.batch_size) + 1
@@ -136,9 +158,16 @@ class Model:
 
         writer_train = None
         writer_val = None
+
         if log_dir:
-            writer_train = tf.summary.FileWriter(os.path.join(log_dir,'train'), graph=tf.get_default_graph())
-            writer_val = tf.summary.FileWriter(os.path.join(log_dir,'val'), graph=tf.get_default_graph())
+
+            if tf.gfile.Exists(log_dir):
+                tf.gfile.DeleteRecursively(log_dir)
+            else:
+                os.makedirs(log_dir, exist_ok=True)
+
+            writer_train = tf.summary.FileWriter(os.path.join(log_dir,self.name+'-train'), graph=self.sess.graph)
+            writer_val = tf.summary.FileWriter(os.path.join(log_dir,self.name+'-val'), graph=self.sess.graph)
 
         # Run the initializer
         self.sess.run(init)
@@ -165,7 +194,10 @@ class Model:
         prev_ema_val_accuracy = 0
         best_step = 0
 
-        merged = tf.summary.merge_all()
+        if log_dir:
+            merged = tf.summary.merge_all()
+        else:
+            merged = None
 
         steps_since_print = 0
 
@@ -184,18 +216,16 @@ class Model:
                 val_batch = validation.next_batch(eval_samples)
                 train_batch = train.next_batch(eval_samples)
 
-                train_accuracy, train_loss = self.eval_batch(train_batch[0], train_batch[1], include_loss=True)
-                val_accuracy, val_loss = self.eval_batch(val_batch[0], val_batch[1], include_loss=True)
-
-                if writer_val:
-                    run_metadata = tf.RunMetadata()
-                    summary, _, _  = self.sess.run(
-                        [merged, val_accuracy, val_loss],
-                        feed_dict={self.X: val_batch[0], self.y: val_batch[1]},
-                        run_metadata=run_metadata
-                    )
-                    writer_val.add_run_metadata(run_metadata, 'step%d' % i)
-                    writer_val.add_summary(summary, i)
+                if writer_val is not None and writer_train is not None:
+                    train_accuracy, train_loss = self.eval_batch_summary(
+                        train_batch[0], train_batch[1],
+                        writer=writer_train, step=i, merged_summary=merged)
+                    val_accuracy, val_loss = self.eval_batch_summary(
+                        val_batch[0], val_batch[1],
+                        writer=writer_val, step=i, merged_summary=merged)
+                else:
+                    train_accuracy, train_loss = self.eval_batch(train_batch[0], train_batch[1], include_loss=True)
+                    val_accuracy, val_loss = self.eval_batch(val_batch[0], val_batch[1], include_loss=True)
 
                 ema_val_accuracy = val_accuracy if ema_val_accuracy == 0 else 0.9 * ema_val_accuracy + 0.1 * val_accuracy
 
@@ -247,9 +277,9 @@ class Model:
             # train on this batch
             start = time.time()
 
-            if writer_train:
+            if self.every_step_summary is not None:
                 summary, _ = self.sess.run(
-                    [merged, self.train_op],
+                    [self.every_step_summary, self.train_op],
                     feed_dict={self.X: batch[0], self.y: batch[1], self.keep_prob: keep_prob},
                 )
                 writer_train.add_summary(summary, i)
