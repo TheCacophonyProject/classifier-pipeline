@@ -326,7 +326,7 @@ class Dataset():
         :param segment: The segment header to fetch
         :param normalise: if true normalises the channels in the segment according to normalisation_constants
         :param augment: if true applies data augmentation
-        :return:
+        :return: segment of shape [frames, channels, height, width]
         """
 
         if augment:
@@ -341,6 +341,12 @@ class Dataset():
 
         if len(data) != 27:
             print("ERROR, invalid segment length",len(data))
+
+        # apply some thresholding.  This removes the noise from the background which helps a lot during training.
+        # it is possiable that with enough data this will no longer be necessary.
+        threshold = 20
+        if threshold:
+            data[:, 1, :, :] = np.max(data[:, 1, :, :] - threshold, 0)
 
         if augment:
             data = self.apply_augmentation(data)

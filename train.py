@@ -47,7 +47,7 @@ class Estimator():
 
     BATCH_SIZE = 32
     BATCH_NORM = True
-    LEARNING_RATE = 2e-4
+    LEARNING_RATE = 5e-4
     LEARNING_RATE_DECAY = 0.9
     L2_REG = 0.01
     LABEL_SMOOTHING = 0.1
@@ -91,6 +91,10 @@ class Estimator():
         logging.info("Training segments: {0:.1f}k".format(self.train.rows/1000))
         logging.info("Validation segments: {0:.1f}k".format(self.validation.rows/1000))
         logging.info("Test segments: {0:.1f}k".format(self.test.rows/1000))
+        logging.info("Labels: {}".format(self.train.labels))
+
+        label_strings = [",".join(self.train.labels), ",".join(self.test.labels), ",".join(self.validation.labels)]
+        assert len(set(label_strings)) == 1, 'dataset labels do not match.'
 
         if force_normalisation_constants:
             print("Using custom normalisation constants.")
@@ -295,7 +299,7 @@ def main():
 
     estimator.start_async_load()
     estimator.train_model(
-        max_epochs=4, stop_after_no_improvement=None, stop_after_decline=None)
+        max_epochs=10, stop_after_no_improvement=None, stop_after_decline=None)
     estimator.save_model()
     estimator.stop_async()
 

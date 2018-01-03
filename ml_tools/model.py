@@ -114,7 +114,7 @@ class Model:
         saver.restore(self.sess, os.path.join(CHECKPOINT_FOLDER,"training-best.sav"))
 
     def train_model(self, epochs=10, keep_prob=0.5, stop_after_no_improvement=None, stop_after_decline=None,
-                    log_dir = None):
+                    log_dir=None):
         """
         Trains model given number of epocs.  Uses session 'sess'
         :param epochs: maximum number of epochs to train for
@@ -167,6 +167,8 @@ class Model:
 
         merged = tf.summary.merge_all()
 
+        steps_since_print = 0
+
         for i in range(iterations):
 
             # get a new batch
@@ -174,8 +176,8 @@ class Model:
             batch = train.next_batch(self.batch_size)
             prep_time += time.time()-start
 
-            # evaluate every 100 steps
-            if i != 0 and i % print_every == 0 or (i == iterations - 1):
+            # evaluate every so often
+            if steps_since_print >= print_every or (i==iterations-1) or (i==50):
 
                 start = time.time()
 
@@ -201,12 +203,16 @@ class Model:
 
                 eval_time += time.time()-start
 
-                print('[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.1f} validation={4:.1f}%/{5:.1f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] (ema:{9:.3f})'.format(
+                steps_remaining = (iterations - i)
+                step_time = prep_time + train_time + eval_time
+                eta = (steps_remaining * step_time / steps_since_print) / 60
+
+                print('[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.1f} validation={4:.1f}%/{5:.1f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] (ema:{9:.3f}) eta {10:.1f} min'.format(
                     epoch, i, train_accuracy*100, train_loss, val_accuracy*100, val_loss,
-                    1000 * prep_time / print_every / self.batch_size,
-                    1000 * train_time / print_every / self.batch_size,
-                    1000 * eval_time / print_every / self.batch_size,
-                    ema_val_accuracy
+                    1000 * prep_time / steps_since_print  / self.batch_size,
+                    1000 * train_time / steps_since_print  / self.batch_size,
+                    1000 * eval_time / steps_since_print  / self.batch_size,
+                    ema_val_accuracy, eta
                 ))
 
                 # create a save point
@@ -236,10 +242,10 @@ class Model:
                 eval_time = 0
                 train_time = 0
                 prep_time = 0
+                steps_since_print = 0
 
             # train on this batch
             start = time.time()
-
 
             if writer_train:
                 summary, _ = self.sess.run(
@@ -252,6 +258,7 @@ class Model:
                                   session=self.sess)
 
             train_time += time.time()-start
+            steps_since_print += 1
 
         # restore previous best
         if self.use_best_weights:

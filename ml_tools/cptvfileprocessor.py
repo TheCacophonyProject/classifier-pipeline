@@ -7,7 +7,12 @@ def process_job(job):
     processor = job[0]
     path = job[1]
     params = job[2]
-    processor.process_file(path, **params)
+
+    try:
+        processor.process_file(path, **params)
+    except Exception as e:
+        print("Warning - error processing job:",e)
+
     time.sleep(0.001) # apparently gives me a chance to catch the control-c
 
 
@@ -93,6 +98,8 @@ class CPTVFileProcessor:
                 print("KeyboardInterrupt, terminating.")
                 pool.terminate()
                 exit()
+            except Exception as e:
+                print("Error processing file:", e)
             else:
                 pool.close()
 

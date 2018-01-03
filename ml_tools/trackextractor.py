@@ -463,7 +463,7 @@ class TrackExtractor:
         assert self.opt_flow is not None, "Optical flow not initialised."
         assert self.background is not None, "Background not initialised."
 
-        filtered = self._get_filtered(frame)
+        filtered = self.get_filtered(frame)
         regions, mask = self.get_regions_of_interest(filtered, self._prev_filtered)
 
         # save history
@@ -676,7 +676,7 @@ class TrackExtractor:
             print(" -using only {0} tracks out of {1}".format(self.max_tracks, len(self.tracks)))
             self.tracks = self.tracks[:self.max_tracks]
 
-    def _get_filtered(self, thermal):
+    def get_filtered(self, thermal):
         """
         Calculates the background removed, filtered frame.
         :param thermal: source thermal frame

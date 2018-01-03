@@ -18,9 +18,12 @@ import numpy as np
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.dataset import Dataset
 
-BANNED_CLIPS = set('20171207-114424-akaroa09.cptv')
+BANNED_CLIPS = {
+    '20171207-114424-akaroa09.cptv',
+    '20171123-040215-akaroa09.cptv'
+}
 
-EXCLUDED_LABELS = ['mouse','insect','rabbit']
+EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog','human']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
