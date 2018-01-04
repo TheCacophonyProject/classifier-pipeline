@@ -56,7 +56,7 @@ class Estimator():
     LSTM_UNITS = 256
     USE_PEEPHOLES = False # these don't really help.
     AUGMENTATION = True
-    NOTES = "fixed threshold (20)"
+    NOTES = "fixed threshold (10)"
 
     def get_hyper_parameter_string(self):
         """ Converts hyperparmeters into a string. """

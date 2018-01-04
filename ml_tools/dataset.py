@@ -60,7 +60,6 @@ class SegmentHeader():
         """ Unique name of this segments track. """
         return TrackHeader.get_name(self.clip_id, self.track_number)
 
-
     def __str__(self):
         return "offset:{0} weight:{1:.1f}".format(self.start_frame, self.weight)
 
@@ -345,7 +344,7 @@ class Dataset():
 
         # apply some thresholding.  This removes the noise from the background which helps a lot during training.
         # it is possiable that with enough data this will no longer be necessary.
-        threshold = 20
+        threshold = 10
         if threshold:
             data[:, 1, :, :] = np.clip(data[:, 1, :, :] - threshold, a_min=0, a_max=None)
 

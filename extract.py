@@ -33,6 +33,78 @@ def init_workers(lock):
     """ Initialise worker by setting the trackdatabase lock. """
     trackdatabase.hdf5_lock = lock
 
+class MPEGPreviewStreamer():
+    """ Generates MPEG preview frames from a tracker """
+
+    def __init__(self, tracker: TrackExtractor, colormap):
+        """
+        Initialise the MPEG streamer.  Requires tracker frame_buffer to be allocated, and will generate optical
+        flow if required.
+        :param tracker:
+        """
+        self.tracker = tracker
+        self.colormap = colormap
+        assert tracker.frame_buffer, 'tracker frame buffer must be allocated for MPEG previews'
+        if not self.tracker.frame_buffer.has_flow:
+            self.tracker.frame_buffer.generate_flow(self.tracker.opt_flow)
+        self.current_frame = 0
+        self.FRAME_SCALE = 3.0
+        self.track_colors = [(255, 0, 0), (0, 255, 0), (255, 255, 0), (128, 255, 255)]
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.current_frame >= len(self.tracker.frame_buffer):
+            raise StopIteration
+
+        thermal = self.tracker.frame_buffer.thermal[self.current_frame]
+        filtered = self.tracker.frame_buffer.filtered[self.current_frame]
+        mask = self.tracker.frame_buffer.mask[self.current_frame]
+        flow = self.tracker.frame_buffer.flow[self.current_frame]
+        regions = self.tracker.region_history[self.current_frame]
+
+        # marked is an image with each pixel's value being the label, 0...n for n objects
+        # I multiply it here, but really I should use a seperate color map for this.
+        # maybe I could multiply it modulo, and offset by some amount?
+
+        # This really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
+        # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
+        flow_magnitude = np.linalg.norm(np.float32(flow), ord=2, axis=2)
+
+        stacked = np.hstack((np.vstack((thermal, mask * 10000)),
+                             np.vstack((3 * filtered + tools.TEMPERATURE_MIN, flow_magnitude + tools.TEMPERATURE_MIN))))
+
+        img = tools.convert_heat_to_img(stacked, self.colormap, tools.TEMPERATURE_MIN, tools.TEMPERATURE_MAX)
+        img = img.resize((int(img.width * self.FRAME_SCALE), int(img.height * self.FRAME_SCALE)), Image.NEAREST)
+        draw = ImageDraw.Draw(img)
+
+        # look for any regions of interest that occur on this frame
+        for rect in regions:
+            rect_points = [int(p * self.FRAME_SCALE) for p in
+                           [rect.left, rect.top, rect.right, rect.top, rect.right, rect.bottom, rect.left, rect.bottom,
+                            rect.left, rect.top]]
+            draw.line(rect_points, (128, 128, 128))
+
+        # look for any tracks that occur on this frame
+        for id, track in enumerate(self.tracker.tracks):
+
+            frame_offset = self.current_frame - track.start_frame
+            if frame_offset >= 0 and frame_offset < len(track.bounds_history) - 1:
+                # display the track
+                rect = track.bounds_history[frame_offset]
+
+                rect_points = [int(p * self.FRAME_SCALE) for p in
+                               [rect.left, rect.top, rect.right, rect.top, rect.right, rect.bottom, rect.left,
+                                rect.bottom, rect.left, rect.top]]
+                draw.line(rect_points, self.track_colors[id % len(self.track_colors)])
+
+        self.current_frame += 1
+
+        return np.asarray(img)
+
+
+
 class CPTVTrackExtractor(CPTVFileProcessor):
     """
     Handles extracting tracks from CPTV files.
@@ -270,7 +342,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             else:
                 print("[PASS] {0}".format(test.source))
 
-    def export_track_mpeg_preview(self, filename_base, tracker: TrackExtractor):
+    def export_track_mpeg_previews(self, filename_base, tracker: TrackExtractor):
         """
         Exports preview MPEG for a specific track
         :param filename_base:
@@ -302,68 +374,11 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         Exports tracking information preview to MPEG file.
         """
 
-        # increased resolution of video file.
-        # videos look much better scaled up
-        FRAME_SCALE = 3.0
+        self.export_track_mpeg_previews(os.path.splitext(filename)[0], tracker)
 
-        video_frames = []
-        track_colors = [(255,0,0),(0,255,0),(255,255,0),(128,255,255)]
+        MPEGStreamer = MPEGPreviewStreamer(tracker, self.colormap)
 
-        if not tracker.frame_buffer.has_flow:
-            tracker.frame_buffer.generate_flow(tracker.opt_flow)
-
-        self.export_track_mpeg_preview(os.path.splitext(filename)[0], tracker)
-
-        for frame_number in range(len(tracker.frame_buffer.filtered)):
-            thermal = tracker.frame_buffer.thermal[frame_number]
-            filtered = tracker.frame_buffer.filtered[frame_number]
-            mask = tracker.frame_buffer.mask[frame_number]
-            flow = tracker.frame_buffer.flow[frame_number]
-            regions = tracker.region_history[frame_number]
-
-            # marked is an image with each pixel's value being the label, 0...n for n objects
-            # I multiply it here, but really I should use a seperate color map for this.
-            # maybe I could multiply it modulo, and offset by some amount?
-
-            # This really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
-            # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
-
-            flow_magnitude = np.linalg.norm(np.float32(flow), ord=2, axis=2)
-
-            stacked = np.hstack((np.vstack((thermal, mask*10000)),np.vstack((3 * filtered + tools.TEMPERATURE_MIN, flow_magnitude + tools.TEMPERATURE_MIN))))
-
-            img = tools.convert_heat_to_img(stacked, self.colormap, tools.TEMPERATURE_MIN, tools.TEMPERATURE_MAX)
-            img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
-            draw = ImageDraw.Draw(img)
-
-            # look for any regions of interest that occur on this frame
-            for rect in regions:
-                rect_points = [int(p * FRAME_SCALE) for p in [rect.left, rect.top, rect.right, rect.top, rect.right, rect.bottom, rect.left, rect.bottom, rect.left, rect.top]]
-                draw.line(rect_points, (128, 128, 128))
-
-            # look for any tracks that occur on this frame
-            for id, track in enumerate(tracker.tracks):
-
-                frame_offset = frame_number - track.start_frame
-                if frame_offset >= 0 and frame_offset < len(track.bounds_history)-1:
-                    # display the track
-                    rect = track.bounds_history[frame_offset]
-
-                    # stub: make sure frame numbers are correct
-                    if frame_number != rect.frame_index:
-                        print("[{}] desync, {} {} {}".format(id, frame_number, rect.frame_index, track.start_frame))
-
-                    rect_points = [int(p * FRAME_SCALE) for p in [rect.left, rect.top, rect.right, rect.top, rect.right, rect.bottom, rect.left, rect.bottom, rect.left, rect.top]]
-                    draw.line(rect_points, track_colors[id % len(track_colors)])
-
-            print(np.asarray(img).dtype)
-            video_frames.append(np.asarray(img))
-
-            # we store the entire video in memory so we need to cap the frame count at some point.
-            if frame_number > 9 * 60 * 10:
-                break
-
-        tools.write_mpeg(filename, video_frames)
+        tools.stream_mpeg(filename, MPEGStreamer)
 
     def run_tests(self, source_folder, tests_file):
         """ Processes file in test file and compares results to expected output. """

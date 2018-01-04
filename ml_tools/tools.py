@@ -110,18 +110,72 @@ def find_file(root, filename):
     return None
 
 
+def get_ffmpeg_command(filename, width, height, quality=21):
+    if os.name == 'nt':
+        FFMPEG_BIN = "ffmpeg.exe"  # on Windows
+    else:
+        FFMPEG_BIN = "ffmpeg"  # on Linux ans Mac OS
+
+    command = [
+        FFMPEG_BIN,
+        '-y',  # (optional) overwrite output file if it exists
+        '-f', 'rawvideo',
+        '-vcodec', 'rawvideo',
+        '-s', str(width) + 'x' + str(height),  # size of one frame
+        '-pix_fmt', 'rgb24',
+        '-r', '9',  # frames per second
+        '-i', '-',  # The imput comes from a pipe
+        '-an',  # Tells FFMPEG not to expect any audio
+        '-vcodec', 'libx264',
+        '-tune', 'grain',  # good for keepinn the grain in our videos
+        '-crf', str(quality),  # quality, lower is better
+        '-pix_fmt', 'yuv420p',  # window thumbnails require yuv420p for some reason
+        filename
+    ]
+    return command
+
+
+def stream_mpeg(filename, frame_generator):
+    """
+    Saves a
+    Saves a sequence of rgb image frames as an MPEG video.
+    :param filename: output filename
+    :param frame_generator: generator that produces numpy array of shape [height, width, 3] of type uint8
+    """
+
+    first_frame = next(frame_generator)
+    height, width, channels = first_frame.shape
+
+    command = get_ffmpeg_command(filename, width, height)
+
+    # write out the data.
+    process = None
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        for frame in frame_generator:
+            process.stdin.write(frame.tostring())
+            process.stdin.flush()
+
+        process.stdin.close()
+        process.stderr.close()
+        process.stdout.close()
+        return_code = process.wait(timeout=60)
+        if return_code != 0:
+            raise Exception("FFMPEG failed with error {}".format(return_code))
+    except Exception as e:
+        print("Failed to write MPEG:", e)
+        if process is not None:
+            print("out:", process.stdout)
+            print("error:", process.stderr)
+
+
 def write_mpeg(filename, frames):
     """
     Saves a sequence of rgb image frames as an MPEG video.
     :param filename: output filename
     :param frames: numpy array of shape [frame, height, width, 3] of type uint8
     """
-
-    # from http://zulko.github.io/blog/2013/09/27/read-and-write-video-frames-in-python-using-ffmpeg/
-    if os.name == 'nt':
-        FFMPEG_BIN = "ffmpeg.exe"  # on Windows
-    else:
-        FFMPEG_BIN = "ffmpeg"  # on Linux ans Mac OS
 
     # we may have passed a list of frames, if so convert to a 3d array.
     frames = np.asarray(frames, np.uint8)
@@ -132,21 +186,7 @@ def write_mpeg(filename, frames):
 
     frame_count, height, width, channels = frames.shape
 
-    command = [FFMPEG_BIN,
-               '-y',  # (optional) overwrite output file if it exists
-               '-f', 'rawvideo',
-               '-vcodec', 'rawvideo',
-               '-s', str(width) + 'x' + str(height),  # size of one frame
-               '-pix_fmt', 'rgb24',
-               '-r', '9',  # frames per second
-               '-i', '-',  # The imput comes from a pipe
-               '-an',  # Tells FFMPEG not to expect any audio
-               '-vcodec', 'libx264',
-               '-tune', 'grain',  # good for keepinn the grain in our videos
-               '-crf', '21',  # quality, lower is better
-               '-crf', '21',  # quality, lower is better
-               '-pix_fmt', 'yuv420p',  # window thumbnails require yuv420p for some reason
-               filename]
+    command = get_ffmpeg_command(filename, width, height)
 
     # write out the data.
     try:
