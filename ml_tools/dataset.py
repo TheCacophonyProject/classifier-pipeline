@@ -207,7 +207,9 @@ class Dataset():
             batch_X.append(data)
             batch_y.append(self.labels.index(segment.label))
 
-        batch_X = np.float32(batch_X)
+        # Half float should be fine here.  When using process based async loading we have to pickle the batch between
+        # processes, so having it half the size helps a lot.  Also it reduces the memory required for the read buffers
+        batch_X = np.float16(batch_X)
         batch_y = np.int32(batch_y)
 
         return(batch_X, batch_y)

@@ -7,7 +7,6 @@ import PIL as pillow
 import numpy as np
 import random
 import pickle
-import tensorflow as tf
 import math
 import matplotlib.pyplot as plt
 import itertools
@@ -121,6 +120,7 @@ def get_ffmpeg_command(filename, width, height, quality=21):
         '-y',  # (optional) overwrite output file if it exists
         '-f', 'rawvideo',
         '-vcodec', 'rawvideo',
+        '-loglevel', 'error', # no output
         '-s', str(width) + 'x' + str(height),  # size of one frame
         '-pix_fmt', 'rgb24',
         '-r', '9',  # frames per second
@@ -149,24 +149,31 @@ def stream_mpeg(filename, frame_generator):
     command = get_ffmpeg_command(filename, width, height)
 
     # write out the data.
+
+    # note:
+    # I don't consume stdout here, so if ffmpeg writes to stdout it will eventually fill up the buffer and cause
+    # ffmpeg to pause.  Because of this I have set ffmpeg into a quiet mode (the issue is that stats are peroidically
+    # printed.  Unfortunately I was not able to figure out how to consume stdout without blocking if there is no input.
+
     process = None
     try:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen(
+            command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=4096)
 
         for frame in frame_generator:
-            process.stdin.write(frame.tostring())
+            data = frame.tobytes()
+            process.stdin.write(data)
             process.stdin.flush()
 
         process.stdin.close()
         process.stderr.close()
-        process.stdout.close()
-        return_code = process.wait(timeout=60)
+
+        return_code = process.wait(timeout=30)
         if return_code != 0:
             raise Exception("FFMPEG failed with error {}".format(return_code))
     except Exception as e:
         print("Failed to write MPEG:", e)
         if process is not None:
-            print("out:", process.stdout)
             print("error:", process.stderr)
 
 
@@ -283,6 +290,10 @@ def load_track_stats(filename):
 def get_session():
     """Create a session that dynamically allocates memory."""
     # See: https://www.tensorflow.org/tutorials/using_gpu#allowing_gpu_memory_growth
+
+    global tf
+    import tensorflow as tf
+
     print("Creating new GPU session with memory growth enabled.")
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -307,6 +318,9 @@ def compute_saliency_map(X_in, y_in, model):
     :param model: the model to use classify the segment
     :return: the saliency map of shape [frames, height, width]
     """
+
+    global tf
+    import tensorflow as tf
 
     correct_scores = tf.gather_nd(model.pred,
                                   tf.stack((tf.range(X_in.shape[0], dtype="int64"), model.y), axis=1))
