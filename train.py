@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import itertools
 from importlib import reload
 from ml_tools import tools
+from tensorflow import contrib
 import json
 from ml_tools.model import Model
 
@@ -56,7 +57,7 @@ class Estimator():
     LSTM_UNITS = 256
     USE_PEEPHOLES = False # these don't really help.
     AUGMENTATION = True
-    NOTES = "fixed threshold (10)"
+    NOTES = "pool stride2"
 
     def get_hyper_parameter_string(self):
         """ Converts hyperparmeters into a string. """
@@ -112,14 +113,15 @@ class Estimator():
 
         self.test.load_all()
 
-    def _conv_layer(self, input_layer, filters, kernal_size, conv_stride=2, pool_stride=1):
+    def _conv_layer(self, input_layer, filters, kernal_size, conv_stride=1, pool_stride=1):
 
-        n, input_filters, h, w = input_layer.shape
+        n, h, w, input_filters = input_layer.shape
+
         layer = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
                                  strides=(conv_stride, conv_stride),
                                  padding="same", activation=None)
 
-        tf.summary.histogram('preactivations', layer)
+        #tf.summary.histogram('preactivations', layer)
         if self.BATCH_NORM: layer = tf.contrib.layers.batch_norm(
             layer, center=True, scale=True, fused=True,
             is_training=(self.keep_prob == 1.0)
@@ -153,15 +155,15 @@ class Estimator():
         X_reshaped = tf.reshape(self.Xt, [-1, 48, 48, 5])
 
         # next run the convolutions
-        c1 = self._conv_layer(X_reshaped[:, :, :, 1:2], 32, [8, 8], conv_stride=4)
-        c2 = self._conv_layer(c1, 48, [4, 4], conv_stride=2)
-        c3 = self._conv_layer(c2, 64, [3, 3], conv_stride=1)
+        c1 = self._conv_layer(X_reshaped[:, :, :, 1:2], 32, [8, 8], pool_stride=4)
+        c2 = self._conv_layer(c1, 48, [4, 4], pool_stride=2)
+        c3 = self._conv_layer(c2, 64, [3, 3], pool_stride=1)
 
         filtered_conv = c3
 
-        c1 = self._conv_layer(X_reshaped[:, :, :, 2:4], 32, [8, 8], conv_stride=4)
-        c2 = self._conv_layer(c1, 48, [4, 4], conv_stride=2)
-        c3 = self._conv_layer(c2, 64, [3, 3], conv_stride=1)
+        c1 = self._conv_layer(X_reshaped[:, :, :, 2:4], 32, [8, 8], pool_stride=4)
+        c2 = self._conv_layer(c1, 48, [4, 4], pool_stride=2)
+        c3 = self._conv_layer(c2, 64, [3, 3], pool_stride=1)
 
         motion_conv = c3
 
@@ -230,10 +232,7 @@ class Estimator():
 
         optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 
-        # record some stats
-        tf.summary.scalar('accuracy', accuracy)
-        loss_summary = tf.summary.scalar('loss', loss)
-        tf.summary.scalar('reg_loss', reg_loss)
+        loss_summary = tf.summary.scalar('metric_loss', loss)
 
         # make sure to update batch norms.
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -288,7 +287,7 @@ def main():
 
     normalisation_constants = [
         [3200, 200],
-        [8.6, 31.7],
+        [5, 20],
         [0, 1],
         [0, 1],
         [0, 1]

@@ -19,7 +19,7 @@ CHECKPOINT_FOLDER = "c:\cac\checkpoints"
 class Model:
     """ Defines a ML model """
 
-    def __init__(self, datasets, X, y, keep_prob, pred, accuracy, loss, train_op, classes):
+    def __init__(self, datasets, X, y, keep_prob, pred, accuracy, loss, train_op, classes, session=None):
 
         self.datasets = datasets
         self.name = "model"
@@ -46,8 +46,8 @@ class Model:
         # restore best weights found during training rather than the most recently one.
         self.use_best_weights = True
 
-        self.sess = tools.get_session()
-        self.batch_size = 16
+        self.sess = session or tools.get_session()
+        self.batch_size = 32
 
         self.eval_score = 0.0
 
@@ -55,27 +55,12 @@ class Model:
 
         self.every_step_summary = None
 
-    def eval_batch_summary(self, batch_X, batch_y, writer, merged_summary, step, include_run_meta=True):
-        if include_run_meta:
-            run_metadata = tf.RunMetadata()
-        else:
-            run_metadata = None
-        summary, acc, loss = self.sess.run(
-            [merged_summary, self.accuracy, self.loss],
-            feed_dict={self.X: batch_X, self.y: batch_y},
-            run_metadata=run_metadata
-        )
-        if include_run_meta:
-            writer.add_run_metadata(run_metadata, tag='step%d' % step, global_step=step)
-        writer.add_summary(summary, global_step=step)
-        return acc, loss
-
-    def eval_batch(self, batch_X, batch_y, include_loss = False):
+    def eval_batch(self, batch_X, batch_y, writer=None):
         """
         Evaluates the accuracy on a batch of frames.  If the batch is too large it will be broken into smaller parts.
         :param batch_X:
         :param batch_y:
-        :param include_loss:
+        :param writer:
         :return:
         """
 
@@ -83,6 +68,8 @@ class Model:
         batches = (total_samples // self.batch_size) + 1
         score = 0
         loss = 0
+        summary = None
+        print(self.batch_size, batches)
         for i in range(batches):
             Xm = batch_X[i*self.batch_size:(i+1)*self.batch_size]
             ym = batch_y[i*self.batch_size:(i+1)*self.batch_size]
@@ -90,15 +77,18 @@ class Model:
                 continue
             samples = Xm.shape[0]
 
-            acc, ls = self.sess.run([self.accuracy, self.loss], feed_dict={self.X: Xm, self.y: ym})
+            if writer is not None:
+                summary, acc, ls = self.sess.run([self.merged_summary, self.accuracy, self.loss], feed_dict={self.X: Xm, self.y: ym})
+            else:
+                 acc, ls = self.sess.run([self.accuracy, self.loss], feed_dict={self.X: Xm, self.y: ym})
 
             score += samples * acc
             loss += ls
 
-        if include_loss:
-            return score / total_samples, loss
-        else:
-            return score / total_samples
+        if writer is not None:
+            writer.add_summary(summary, global_step=self.step)
+
+        return score / total_samples, loss
 
     def classify_batch(self, batch_X):
         """
@@ -122,12 +112,12 @@ class Model:
 
         return predictions
 
-    def eval_model(self):
+    def eval_model(self, writer=None):
         """ Evaluates the model on the test set. """
         print("-"*60)
         train, validation, test = self.datasets
         test.load_all()
-        test_accuracy = self.eval_batch(test.X, test.y)
+        test_accuracy, _ = self.eval_batch(test.X, test.y, writer=writer)
         print("Test Accuracy {0:.2f}% (error {1:.2f}%)".format(test_accuracy*100,(1.0-test_accuracy)*100))
         return test_accuracy
 
@@ -194,9 +184,13 @@ class Model:
         else:
             merged = None
 
+        self.merged_summary = merged
+
         steps_since_print = 0
 
         for i in range(iterations):
+
+            self.step=i
 
             # get a new batch
             start = time.time()
@@ -212,15 +206,19 @@ class Model:
                 train_batch = train.next_batch(eval_samples)
 
                 if writer_val is not None and writer_train is not None:
-                    train_accuracy, train_loss = self.eval_batch_summary(
+                    train_accuracy, train_loss = self.eval_batch(
                         train_batch[0], train_batch[1],
-                        writer=writer_train, step=i, merged_summary=merged)
-                    val_accuracy, val_loss = self.eval_batch_summary(
+                        writer=writer_train)
+                    val_accuracy, val_loss = self.eval_batch(
                         val_batch[0], val_batch[1],
-                        writer=writer_val, step=i, merged_summary=merged)
+                        writer=writer_val)
+
+                    writer_train.add_summary(tf.Summary(value=[tf.Summary.Value(tag="metric_accuracy", simple_value=train_accuracy)]))
+                    writer_val.add_summary(tf.Summary(value=[tf.Summary.Value(tag="metric_accuracy", simple_value=val_accuracy)]))
+
                 else:
-                    train_accuracy, train_loss = self.eval_batch(train_batch[0], train_batch[1], include_loss=True)
-                    val_accuracy, val_loss = self.eval_batch(val_batch[0], val_batch[1], include_loss=True)
+                    train_accuracy, train_loss = self.eval_batch(train_batch[0], train_batch[1])
+                    val_accuracy, val_loss = self.eval_batch(val_batch[0], val_batch[1])
 
                 ema_val_accuracy = val_accuracy if ema_val_accuracy == 0 else 0.9 * ema_val_accuracy + 0.1 * val_accuracy
 

@@ -27,7 +27,7 @@ BANNED_CLIPS = {
     '20171114-094045-akaroa04.cptv'
 }
 
-EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog','human']
+EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog','human','stoat']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
@@ -162,6 +162,11 @@ def split_dataset():
 
         # we assign bins to the test and validation sets randomly until we have 100 segments in each
         # the remaining bins can be used for training
+
+        # todo: this is a problem we might only pick out 1 day, with a single track using this method.
+        # better to either take a few days or just assign cameras.  Probably best to assign cameras I think.
+        # this is more consistant with before, and gives us a better idea of true performance.
+        # will stick to just a single evaluation set though as new data can be the 'test' set.
 
         while validation.get_class_segments_count(label) < required_samples and len(available_bins) > 0:
             sample = random.sample(available_bins, 1)[0]

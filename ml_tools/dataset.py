@@ -12,6 +12,7 @@ import queue
 import threading
 import multiprocessing
 import logging
+import cv2
 
 import os
 import datetime
@@ -154,9 +155,6 @@ class Dataset():
         # number of frames segments are spaced apart
         self.segment_spacing = 9
         # minimum mass of a segment frame for it to be included
-        self.segment_min_mass = None
-        # minimum average frame mass for segment to be included
-        self.segment_avg_mass = None
 
         # constants used to normalise input
         self.normalisation_constants = None
@@ -263,9 +261,13 @@ class Dataset():
             self.tracks_by_bin[track_header.bin_id] = []
         self.tracks_by_bin[track_header.bin_id].append(track_header)
 
-        # scan through track looking for good segments to add to our datset
         mass_history = track_meta['mass_history']
-        for i in range(len(mass_history) // self.segment_spacing):
+        segment_count = len(mass_history) // self.segment_spacing
+        track_weight = math.sqrt(segment_count)
+
+        # scan through track looking for good segments to add to our datset
+
+        for i in range(segment_count):
             segment_start = i * self.segment_spacing
             mass_slice = mass_history[segment_start:segment_start + self.segment_width]
             segment_min_mass = np.min(mass_slice)
@@ -275,15 +277,9 @@ class Dataset():
             if segment_frames != self.segment_width:
                 continue
 
-            if self.segment_min_mass and segment_min_mass < self.segment_min_mass:
-                continue
-
-            if self.segment_avg_mass and segment_avg_mass < self.segment_avg_mass:
-                continue
-
             segment = SegmentHeader(
                 clip_id=clip_id, track_number=track_number, start_frame=segment_start, frames=self.segment_width,
-                weight=1.0, label=track_meta['tag'], avg_mass=segment_avg_mass)
+                weight=track_weight/segment_count, label=track_meta['tag'], avg_mass=segment_avg_mass)
 
             self.segments.append(segment)
             track_header.segments.append(segment)
@@ -344,11 +340,18 @@ class Dataset():
         if len(data) != 27:
             print("ERROR, invalid segment length",len(data))
 
+        data = np.float32(data)
+
         # apply some thresholding.  This removes the noise from the background which helps a lot during training.
         # it is possiable that with enough data this will no longer be necessary.
-        threshold = 10
+        threshold = 20
         if threshold:
             data[:, 1, :, :] = np.clip(data[:, 1, :, :] - threshold, a_min=0, a_max=None)
+
+        # blur optical flow and reduce level
+        for channel in [2, 3]:
+            img = data[:, channel, :, :]
+            data[:, channel, :, :] = cv2.blur(img,(3,3)) / 256
 
         if augment:
             data = self.apply_augmentation(data)
@@ -371,8 +374,8 @@ class Dataset():
         for channel in range(channels):
             mean, std = self.normalisation_constants[channel]
             segment_data[:, channel] -= mean
-            if channel in [2,3]:
-                segment_data[:, channel] = (np.sqrt(np.abs(segment_data[:, channel]))) * np.sign(segment_data[:, channel])
+            #if channel in [2,3]:
+            #    segment_data[:, channel] = np.abs(segment_data[:, channel]) * np.sign(segment_data[:, channel])
             segment_data[:, channel] *= (1.0/std)
 
         return segment_data
@@ -582,8 +585,8 @@ class Dataset():
         # this could be solved either by using linux (with forking, which is copy on write) or with a shared ctype
         # array.
 
-        WORKER_THREADS = 1
-        PROCESS_BASED = False
+        WORKER_THREADS = 2
+        PROCESS_BASED = True
 
         print("Starting async fetcher")
         if PROCESS_BASED:

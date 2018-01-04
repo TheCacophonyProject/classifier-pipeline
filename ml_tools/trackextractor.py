@@ -277,9 +277,11 @@ class FrameBuffer:
 
         current = None
         for next in self.filtered:
+            # make sure we don't clip, also remove a little background noise and squash the dynamic range a little.
+            next = np.uint8(np.clip((next - 20) / 2, 0, 255))
             if current is not None:
-                current_gray_frame = (current / 2).astype(np.uint8)
-                next_gray_frame = (next / 2).astype(np.uint8)
+                current_gray_frame = current
+                next_gray_frame = next
 
                 # for some reason openCV spins up lots of threads for this which really slows things down, so we
                 # cap the threads to 2
@@ -288,10 +290,9 @@ class FrameBuffer:
 
             current = next
 
-            # we work in int16 format so scale the numbers up (as they can be quite small)
-            if (np.max(np.abs(flow * 256))) >= 128 * 256:
-                print("warning, flow vectors too large for int16.")
-            scaled_flow = np.int16(flow * 256)
+            # scale up the motion vectors so that we get some additional precision
+            # but also make sure they fit within an int16
+            scaled_flow = np.clip(flow * 256, -16000, 16000)
             self.flow.append(scaled_flow)
 
     def reset(self):
