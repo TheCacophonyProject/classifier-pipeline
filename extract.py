@@ -328,8 +328,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             # This really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
             # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
 
-            flow_magnitude = (flow[:,:,0]**2 + flow[:,:,1]**2) ** 0.5
-            stacked = np.hstack((np.vstack((thermal, mask*10000)),np.vstack((3 * filtered + tools.TEMPERATURE_MIN, 200 * flow_magnitude + tools.TEMPERATURE_MIN))))
+            flow_magnitude = np.linalg.norm(np.float32(flow), ord=2, axis=2)
+
+            stacked = np.hstack((np.vstack((thermal, mask*10000)),np.vstack((3 * filtered + tools.TEMPERATURE_MIN, flow_magnitude + tools.TEMPERATURE_MIN))))
 
             img = tools.convert_heat_to_img(stacked, self.colormap, tools.TEMPERATURE_MIN, tools.TEMPERATURE_MAX)
             img = img.resize((int(img.width * FRAME_SCALE), int(img.height * FRAME_SCALE)), Image.NEAREST)
@@ -355,7 +356,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                     rect_points = [int(p * FRAME_SCALE) for p in [rect.left, rect.top, rect.right, rect.top, rect.right, rect.bottom, rect.left, rect.bottom, rect.left, rect.top]]
                     draw.line(rect_points, track_colors[id % len(track_colors)])
 
-
+            print(np.asarray(img).dtype)
             video_frames.append(np.asarray(img))
 
             # we store the entire video in memory so we need to cap the frame count at some point.

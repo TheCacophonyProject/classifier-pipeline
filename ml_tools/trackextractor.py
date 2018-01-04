@@ -273,7 +273,7 @@ class FrameBuffer:
         self.flow = []
 
         height, width = self.filtered[0].shape
-        flow = np.zeros([height, width, 2], dtype=np.uint8)
+        flow = np.zeros([height, width, 2], dtype=np.float32)
 
         current = None
         for next in self.filtered:
@@ -288,7 +288,11 @@ class FrameBuffer:
 
             current = next
 
-            self.flow.append(flow.copy())
+            # we work in int16 format so scale the numbers up (as they can be quite small)
+            if (np.max(np.abs(flow * 256))) >= 128 * 256:
+                print("warning, flow vectors too large for int16.")
+            scaled_flow = np.int16(flow * 256)
+            self.flow.append(scaled_flow)
 
     def reset(self):
         """

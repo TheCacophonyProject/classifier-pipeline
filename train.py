@@ -42,19 +42,28 @@ def prod(data):
 class Estimator():
 
     # todo: these should be in some settings file
-    MODEL_NAME = "Model_5a"
+    MODEL_NAME = "Model_5b"
     MODEL_DESCRIPTION = "CNN + LSTM"
+
+    MAX_EPOCHS = 6
 
     BATCH_SIZE = 32
     BATCH_NORM = True
     LEARNING_RATE = 1e-4
-    LEARNING_RATE_DECAY = 0.9
+    LEARNING_RATE_DECAY = 0.8
     L2_REG = 0.01
     LABEL_SMOOTHING = 0.1
     LSTM_UNITS = 256
     USE_PEEPHOLES = False # these don't really help.
     AUGMENTATION = True
+    NOTES = "fixed threshold (20)"
 
+    def get_hyper_parameter_string(self):
+        """ Converts hyperparmeters into a string. """
+        return "epoch={}_bs={}_bn={}_lr={}_lrd={}_l2reg={}_ls={}_h={}_aug={}_notes={}".format(
+            self.MAX_EPOCHS, self.BATCH_SIZE, self.BATCH_NORM, self.LEARNING_RATE, self.LEARNING_RATE_DECAY,
+            self.L2_REG, self.LABEL_SMOOTHING, self.LSTM_UNITS, self.AUGMENTATION, self.NOTES
+        )
 
     def __init__(self):
 
@@ -235,7 +244,7 @@ class Estimator():
         self.model = Model(self.datasets, self.X, self.y, self.keep_prob, pred, accuracy, loss, train_op, self.labels)
         self.model.batch_size = self.BATCH_SIZE
         self.model.every_step_summary = loss_summary
-        self.model.name = self.MODEL_NAME
+        self.model.name = self.MODEL_NAME + "_" + self.get_hyper_parameter_string()
 
     def start_async_load(self):
         self.train.start_async_load(256)
@@ -291,7 +300,7 @@ def main():
 
     estimator.start_async_load()
     estimator.train_model(
-        max_epochs=10, stop_after_no_improvement=None, stop_after_decline=None, log_dir='c:/cac/logs')
+        max_epochs=estimator.MAX_EPOCHS, stop_after_no_improvement=None, stop_after_decline=None, log_dir='c:/cac/logs')
     estimator.save_model()
     estimator.stop_async()
 

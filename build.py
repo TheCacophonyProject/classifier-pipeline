@@ -20,7 +20,11 @@ from ml_tools.dataset import Dataset
 
 BANNED_CLIPS = {
     '20171207-114424-akaroa09.cptv',
-    '20171123-040215-akaroa09.cptv'
+    '20171123-040215-akaroa09.cptv',
+    '20171130-193036-brent01.cptv',
+    '20171020-032802-Akaroa01.cptv',
+    '20171019-101525-Akaroa01.cptv',
+    '20171114-094045-akaroa04.cptv'
 }
 
 EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog','human']

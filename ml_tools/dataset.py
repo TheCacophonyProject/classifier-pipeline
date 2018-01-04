@@ -11,6 +11,7 @@ Tracks are broken into segments.  Filtered, and then passed to the trainer using
 import queue
 import threading
 import multiprocessing
+import logging
 
 import os
 import datetime
@@ -346,12 +347,13 @@ class Dataset():
         # it is possiable that with enough data this will no longer be necessary.
         threshold = 20
         if threshold:
-            data[:, 1, :, :] = np.max(data[:, 1, :, :] - threshold, 0)
+            data[:, 1, :, :] = np.clip(data[:, 1, :, :] - threshold, a_min=0, a_max=None)
 
         if augment:
             data = self.apply_augmentation(data)
         if normalise:
             data = self.apply_normalisation(data)
+
         return data
 
     def apply_normalisation(self, segment_data):
@@ -369,8 +371,8 @@ class Dataset():
             mean, std = self.normalisation_constants[channel]
             segment_data[:, channel] -= mean
             if channel in [2,3]:
-                segment_data[:, channel] = (np.abs(segment_data[:, channel]) ** 0.5) * np.sign(segment_data[:, channel])
-            segment_data[:, channel] *= (1/std)
+                segment_data[:, channel] = (np.sqrt(np.abs(segment_data[:, channel]))) * np.sign(segment_data[:, channel])
+            segment_data[:, channel] *= (1.0/std)
 
         return segment_data
 
@@ -614,7 +616,7 @@ def preloader(q, dataset, buffer_size):
             q.put(dataset.next_batch(1, disable_async=True))
             loads += 1
             if (time.time() - timer) > 1.0:
-                #print(dataset.name," segments per seconds {:.1f}".format(loads / (time.time() - timer)))
+                #logging.debug("{} segments per seconds {:.1f}".format(dataset.name, loads / (time.time() - timer)))
                 timer = time.time()
                 loads = 0
         else:
