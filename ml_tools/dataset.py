@@ -175,6 +175,19 @@ class Dataset():
     def rows(self):
         return len(self.segments)
 
+    def get_counts(self, label):
+        """
+        Gets number of examples for given label
+        :label: label to check
+        :return: (segments, tracks, bins, weight)
+        """
+        label_tracks = self.tracks_by_label.get(label, [])
+        segments = sum(len(track.segments) for track in label_tracks)
+        weight = self.get_class_weight(label)
+        tracks = len(label_tracks)
+        bins = len([bin for bin_name, bin in self.tracks_by_bin.items() if len(bin) > 0 and bin[0].label == label])
+        return segments, tracks, bins, weight
+
     def next_batch(self, n, disable_async=False):
         """
         Returns a batch of n segments (X, y) from dataset.

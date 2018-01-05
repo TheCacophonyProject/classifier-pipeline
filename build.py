@@ -37,7 +37,7 @@ EXCLUDE_TRAPPED = True
 # sets a maxmimum number of segments per bin, where the cap is this many standard deviations above the norm.
 # bins with more than this number of segments will be weighted lower so that their segments are not lost, but
 # will be sampled less frequently.
-CAP_BIN_WEIGHT = 2.0
+CAP_BIN_WEIGHT = 1.0
 
 # adjusts the weight for each animal class.  Setting this lower for animals that are less represented can help
 # with training, otherwise the few examples we have will be used excessively.  This also helps build a prior for
@@ -150,7 +150,7 @@ def split_dataset_predefined():
     raise Exception('not implemented yet.')
 
 
-def split_dataset_bins():
+def split_dataset_days():
     """
     Randomly selects tracks to be used as the train, validation, and test sets
     :return: tuple containing train, validation, and test datasets.
@@ -192,12 +192,13 @@ def split_dataset_bins():
     print()
 
     # assign bins to test and validation sets
+    label_bins = {}
     for label in dataset.labels:
 
         available_bins = set(bins_by_label[label])
 
         # heavy bins are bins with an unsually high number of examples on a day.  We exclude these from the test/validation
-        # set as a single one could dominate the set.
+        # set as they will be subfiltered down and there is no need to waste that much data.
         heavy_bins = set()
         for bin_id in available_bins:
             bin_segments = sum(len(track.segments) for track in dataset.tracks_by_bin[bin_id])
@@ -206,32 +207,37 @@ def split_dataset_bins():
 
         available_bins -= heavy_bins
 
+        # print bin statistics
+        print("{}: normal {} heavy {}".format(label, len(available_bins), len(heavy_bins)))
+
         required_samples = TEST_SET_COUNT * LABEL_WEIGHTS.get(label, 1.0)
+        required_bins = 10 # make sure there is some diversity
 
-        # we assign bins to the test and validation sets randomly until we have 100 segments in each
+        # we assign bins to the test and validation sets randomly until we have enough segments + bins
         # the remaining bins can be used for training
+        used_bins = []
+        while len(available_bins) > 0 and \
+                (validation.get_class_segments_count(label) < required_samples or len(used_bins) < required_bins):
 
-        # todo: this is a problem we might only pick out 1 day, with a single track using this method.
-        # better to either take a few days or just assign cameras.  Probably best to assign cameras I think.
-        # this is more consistant with before, and gives us a better idea of true performance.
-        # will stick to just a single evaluation set though as new data can be the 'test' set.
-
-        while validation.get_class_segments_count(label) < required_samples and len(available_bins) > 0:
             sample = random.sample(available_bins, 1)[0]
+
             validation.add_tracks(dataset.tracks_by_bin[sample])
-            validation.filter_segments(TEST_MIN_MASS, ['false-positive'])
-            available_bins.remove(sample)
-
-        while test.get_class_segments_count(label) < required_samples and len(available_bins) > 0:
-            sample = random.sample(available_bins, 1)[0]
             test.add_tracks(dataset.tracks_by_bin[sample])
+            validation.filter_segments(TEST_MIN_MASS, ['false-positive'])
             test.filter_segments(TEST_MIN_MASS, ['false-positive'])
+
             available_bins.remove(sample)
+            used_bins.append(sample)
 
         for bin_id in available_bins | heavy_bins :
             train.add_tracks(dataset.tracks_by_bin[bin_id])
+
         train.filter_segments(TEST_MIN_MASS, ['false-positive'])
 
+        label_bins[label] = used_bins
+
+    # write out bins used, just in case we want to repeat this split
+    pickle.dump(label_bins, open('test_split.dat','wb'))
 
     print("Segments per class:")
     print("-"*90)
@@ -251,19 +257,11 @@ def split_dataset_bins():
     # display the dataset summary
     for label in dataset.labels:
 
-        train_segments = sum(len(track.segments) for track in train.tracks_by_label.get(label,[]))
-        validation_segments = sum(len(track.segments) for track in validation.tracks_by_label.get(label,[]))
-        test_segments = sum(len(track.segments) for track in test.tracks_by_label.get(label,[]))
-
-        train_weight = train.get_class_weight(label)
-        validation_weight = validation.get_class_weight(label)
-        test_weight = test.get_class_weight(label)
-
-        print("{:<20} {:<10} {:<10.1f} {:<10} {:<10.1f} {:<10} {:<10.1f}".format(
+        print("{:<20} {:<20} {:<20} {:<20}".format(
             label,
-            train_segments, train_weight,
-            validation_segments,  validation_weight,
-            test_segments, test_weight
+            "{}/{}/{}/{:.1f}".format(*train.get_counts(label)),
+            "{}/{}/{}/{:.1f}".format(*validation.get_counts(label)),
+            "{}/{}/{}/{:.1f}".format(*test.get_counts(label)),
             ))
     print()
 
@@ -304,7 +302,7 @@ def main():
     print()
 
     print("Splitting data set into train / validation")
-    datasets = split_dataset()
+    datasets = split_dataset_days()
 
     pickle.dump(datasets,open('c:/cac/kea/datasets.dat','wb'))
 
