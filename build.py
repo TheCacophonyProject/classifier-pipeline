@@ -102,11 +102,60 @@ def show_segments_breakdown():
         count = sum([len(track.segments) for track in dataset.tracks_by_label[label]])
         print("  {:<20} {} segments".format(label, count))
 
+def split_dataset_predefined():
+    """
+    Splits dataset into train / test / validation using a predefined set of camerea-label allocations.
 
-def split_dataset():
+    This method puts all tracks into 'camera-label' bins and then assigns certian bins to the validation set.
+    In this case the 'test' set is simply a subsample of the validation set. (as there are not enough unique cameras
+    at this point for 3 sets).
+
+    The advantages of this method are
+
+    1/ The datasets are fixed, even as more footage comes through
+    2/ Learning an animal on one camera / enviroment and predicting it on another is a very good indicator that that
+        algorthim has generalised
+    3/ Some adjustment can be made to make sure that the cameras used in the test / validation sets contain 'resonable'
+        footage. (i.e. footage that is close to what we want to classify.
+
+    The disadvantages are that it requires seeing animals on multiple cameras, which we don't always have data for.
+    It can also be a bit wasteful as we sometimes dedicate a substantial portion of the data to some animal types.
+
+    A posiable solution would be to note when (or if) the model over-fits then run on the entire dataset.
+
+    Another option would be k-fold validation.
+
+    """
+
+    validation_bins = [
+        ('bird', 'akaroa03'),
+        ('hedgehog', 'akaroa09'),
+        ('hedgehog', 'akaroa03'),
+        ('hedgehog', 'brent01'),
+        ('possum', 'brent01'),
+        ('possum', 'akaroa13'),
+        ('cat', 'akaroa03'),
+        ('cat', 'akaroa13'),
+        ('cat', 'akaroa04'),
+        ('cat', 'zip02'),
+        ('stoat', 'akaroa09'),
+        ('stoat', 'zip03'),
+        ('human', 'akaroa09'),
+        ('rat', 'akaroa04'),
+        ('rat', 'akaroa10'),
+        ('rat', 'zip01'),
+        ('false-positive', 'akaroa09')
+    ]
+
+    raise Exception('not implemented yet.')
+
+
+def split_dataset_bins():
     """
     Randomly selects tracks to be used as the train, validation, and test sets
     :return: tuple containing train, validation, and test datasets.
+
+    This method assigns tracks into 'label-camera-day' bins and splits the bins across datasets.
     """
 
     # pick out groups to use for the various sets
@@ -132,8 +181,7 @@ def split_dataset():
         count = sum(len(track.segments) for track in tracks)
         bin_segments.append((count, bin))
     bin_segments.sort()
-    #for count, bin in bin_segments:
-    #    print("{:<20} {} segments".format(bin, count))
+
     counts = [count for count, bin in bin_segments]
     bin_segment_mean = np.mean(counts)
     bin_segment_std = np.std(counts)

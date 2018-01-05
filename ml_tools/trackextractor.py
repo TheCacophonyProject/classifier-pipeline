@@ -275,16 +275,22 @@ class FrameBuffer:
         height, width = self.filtered[0].shape
         flow = np.zeros([height, width, 2], dtype=np.float32)
 
+        # fake background to improve optical flow performance
+        bg = np.random.uniform(size = (height, width))
+
         current = None
         for frame in self.filtered:
-            # make sure we don't clip, also apply a blur to remove noise floor
-            frame = cv2.blur(frame, (3,3))
-            next = np.uint8(np.clip(frame - 10, 0, 255))
+
+            # add some background static noise to the frame so it can lock onto a fix background (rather than just
+            # black
+
+            next = np.uint8(np.clip(np.maximum(frame, bg * 25), 0, 255))
+
             if current is not None:
                 # for some reason openCV spins up lots of threads for this which really slows things down, so we
                 # cap the threads to 2
                 cv2.setNumThreads(2)
-                flow = opt_flow.calc(current, next, None)
+                flow = opt_flow.calc(current, next, flow)
 
             current = next
 
@@ -381,7 +387,7 @@ class TrackExtractor:
         # list of regions for each frame
         self.region_history = []
 
-        self.filter_mode = self.FM_DELTA
+        self.filter_mode = self.FM_BACKGROUND_SUBRTRACT
 
         # this buffers store the entire video in memory and are required for fast track exporting
         self.frame_buffer = FrameBuffer()
@@ -705,6 +711,7 @@ class TrackExtractor:
             filtered[filtered < 0] = 0
         elif self.filter_mode == self.FM_BACKGROUND_SUBRTRACT:
             filtered = filtered - self.background
+            filtered[filtered < 0] = 0
             filtered = filtered - np.median(filtered)
             filtered[filtered < 0] = 0
         else:

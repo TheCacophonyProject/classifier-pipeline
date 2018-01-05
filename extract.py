@@ -71,7 +71,7 @@ class MPEGPreviewStreamer():
 
         # This really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
         # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
-        flow_magnitude = np.linalg.norm(np.float32(flow), ord=2, axis=2)
+        flow_magnitude = np.linalg.norm(np.float32(flow), ord=2, axis=2) / 4.0
 
         stacked = np.hstack((np.vstack((thermal, mask * 10000)),
                              np.vstack((3 * filtered + tools.TEMPERATURE_MIN, flow_magnitude + tools.TEMPERATURE_MIN))))
