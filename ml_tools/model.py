@@ -55,6 +55,8 @@ class Model:
 
         self.every_step_summary = None
 
+        self.step = 0
+
     def eval_batch(self, batch_X, batch_y, writer=None):
         """
         Evaluates the accuracy on a batch of frames.  If the batch is too large it will be broken into smaller parts.
@@ -69,7 +71,6 @@ class Model:
         score = 0
         loss = 0
         summary = None
-        print(self.batch_size, batches)
         for i in range(batches):
             Xm = batch_X[i*self.batch_size:(i+1)*self.batch_size]
             ym = batch_y[i*self.batch_size:(i+1)*self.batch_size]
@@ -190,7 +191,7 @@ class Model:
 
         for i in range(iterations):
 
-            self.step=i
+            self.step = i
 
             # get a new batch
             start = time.time()
@@ -213,8 +214,8 @@ class Model:
                         val_batch[0], val_batch[1],
                         writer=writer_val)
 
-                    writer_train.add_summary(tf.Summary(value=[tf.Summary.Value(tag="metric_accuracy", simple_value=train_accuracy)]))
-                    writer_val.add_summary(tf.Summary(value=[tf.Summary.Value(tag="metric_accuracy", simple_value=val_accuracy)]))
+                    writer_train.add_summary(tf.Summary(value=[tf.Summary.Value(tag="metric_accuracy", simple_value=train_accuracy)]), global_step=i)
+                    writer_val.add_summary(tf.Summary(value=[tf.Summary.Value(tag="metric_accuracy", simple_value=val_accuracy)]), global_step=i)
 
                 else:
                     train_accuracy, train_loss = self.eval_batch(train_batch[0], train_batch[1])

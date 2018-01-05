@@ -276,17 +276,15 @@ class FrameBuffer:
         flow = np.zeros([height, width, 2], dtype=np.float32)
 
         current = None
-        for next in self.filtered:
-            # make sure we don't clip, also remove a little background noise and squash the dynamic range a little.
-            next = np.uint8(np.clip((next - 20) / 2, 0, 255))
+        for frame in self.filtered:
+            # make sure we don't clip, also apply a blur to remove noise floor
+            frame = cv2.blur(frame, (3,3))
+            next = np.uint8(np.clip(frame - 10, 0, 255))
             if current is not None:
-                current_gray_frame = current
-                next_gray_frame = next
-
                 # for some reason openCV spins up lots of threads for this which really slows things down, so we
                 # cap the threads to 2
                 cv2.setNumThreads(2)
-                flow = opt_flow.calc(current_gray_frame, next_gray_frame, flow)
+                flow = opt_flow.calc(current, next, None)
 
             current = next
 
@@ -333,6 +331,15 @@ class TrackExtractor:
     # number of frames to wait before deleting a lost track
     DELETE_LOST_TRACK_FRAMES = 9
 
+    # just threshold by median
+    FM_MEDIAN = 'median'
+
+    # subtrack out the background
+    FM_BACKGROUND_SUBRTRACT = 'subtract'
+
+    # masking is done on delta frames
+    FM_DELTA = 'delta'
+
     def __init__(self):
 
         # start time of video
@@ -374,11 +381,16 @@ class TrackExtractor:
         # list of regions for each frame
         self.region_history = []
 
+        self.filter_mode = self.FM_DELTA
+
         # this buffers store the entire video in memory and are required for fast track exporting
         self.frame_buffer = FrameBuffer()
 
         # the previous filtered frame
         self._prev_filtered = None
+
+        # accumulates frame changes for FM_DELTA algorithm
+        self.accumulator = None
 
     def load(self, filename):
         """
@@ -472,9 +484,9 @@ class TrackExtractor:
         regions, mask = self.get_regions_of_interest(filtered, self._prev_filtered)
 
         # save history
-        self.frame_buffer.thermal.append(frame)
-        self.frame_buffer.filtered.append(filtered)
-        self.frame_buffer.mask.append(mask)
+        self.frame_buffer.thermal.append(np.float32(frame))
+        self.frame_buffer.filtered.append(np.float32(filtered))
+        self.frame_buffer.mask.append(np.float32(mask))
 
         self.region_history.append(regions)
 
@@ -687,9 +699,17 @@ class TrackExtractor:
         :param thermal: source thermal frame
         :return: a filtered frame
         """
-        filtered = thermal - self.background
-        filtered = filtered - np.median(filtered)
-        filtered[filtered < 0] = 0
+        filtered = np.float32(thermal)
+        if self.filter_mode in [self.FM_MEDIAN, self.FM_DELTA]:
+            filtered = filtered - (np.median(filtered)+40)
+            filtered[filtered < 0] = 0
+        elif self.filter_mode == self.FM_BACKGROUND_SUBRTRACT:
+            filtered = filtered - self.background
+            filtered = filtered - np.median(filtered)
+            filtered[filtered < 0] = 0
+        else:
+            raise Exception('Invalid filter mode {}'.format(self.filter_mode))
+
         return filtered
 
     def get_regions_of_interest(self, filtered, prev_filtered=None):
@@ -701,7 +721,25 @@ class TrackExtractor:
         :return: regions of interest, mask frame
         """
 
-        thresh = np.asarray((apply_threshold(filtered, threshold=self.threshold)), dtype=np.uint8)
+        # get frames change
+        if prev_filtered is not None:
+            # we need a lot of precision because the values are squared.  Float32 should work.
+            delta_frame = np.abs(np.float32(filtered) - np.float32(prev_filtered))
+        else:
+            delta_frame = None
+
+        if self.filter_mode == self.FM_DELTA:
+
+            if self.accumulator is None:
+                self.accumulator = np.zeros_like(filtered)
+
+            if delta_frame is not None:
+                self.accumulator = 0.5 * self.accumulator + 0.5 * np.abs(delta_frame)
+
+            thresh = np.uint8(np.clip(np.abs(self.accumulator)-20, 0, 1))
+
+        else:
+            thresh = np.uint8(apply_threshold(filtered, threshold=self.threshold))
 
         # applies erosion
         erosion = 0
@@ -716,12 +754,6 @@ class TrackExtractor:
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.FRAME_PADDING
 
-        # get frames change
-        if prev_filtered is not None:
-            # we need a lot of precision because the values are squared.  Float32 should work.
-            delta_frame = np.abs(np.float32(filtered) - np.float32(prev_filtered))
-        else:
-            delta_frame = None
 
         # find regions of interest
         regions = []
@@ -781,6 +813,10 @@ class TrackExtractor:
         if threshold > 50.0:
             threshold = 50.0
 
+        # override threshold if we are using the median method
+        if self.filter_mode in [self.FM_MEDIAN, self.FM_DELTA]:
+            threshold = 10
+
         background_stats = BackgroundAnalysis()
         background_stats.threshold = float(threshold)
         background_stats.average_delta = float(average_delta)
@@ -797,7 +833,7 @@ def apply_threshold(frame, threshold):
     Any pixels more than the threshold are set 1, all others are set to 0.
     A blur is also applied as a filtering step
     """
-    thresh = cv2.GaussianBlur(frame.astype(np.float32), (5, 5), 0) - threshold
+    thresh = cv2.GaussianBlur(np.float32(frame), (5, 5), 0) - threshold
     thresh[thresh < 0] = 0
     thresh[thresh > 0] = 1
     return thresh

@@ -131,7 +131,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         # normally poor quality tracks are filtered out, enabling this will let them through.
         self.disable_track_filters = False
 
-        self.reduced_quality_optical_flow = False
+        self.high_quality_optical_flow = False
 
         self.database = TrackDatabase(os.path.join(self.out_folder, 'dataset.hdf5'))
 
@@ -213,7 +213,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         tracker.max_tracks = max_tracks
         tracker.tag = tag
         tracker.verbose = self.verbose >= 2
-        tracker.reduced_quality_optical_flow = self.reduced_quality_optical_flow
+        tracker.high_quality_optical_flow = self.high_quality_optical_flow
 
         if self.disable_track_filters:
             tracker.track_min_delta = 0.0
@@ -454,7 +454,7 @@ def parse_params():
     extractor.overwrite_mode = args.force_overwrite.lower()
 
     # set optical flow
-    extractor.reduced_quality_optical_flow = not args.high_quality_optical_flow
+    extractor.high_quality_optical_flow = args.high_quality_optical_flow
 
     # set verbose
     extractor.verbose = args.verbose
