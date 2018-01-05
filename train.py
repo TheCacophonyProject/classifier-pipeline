@@ -57,13 +57,13 @@ class Estimator():
     LSTM_UNITS = 256
     USE_PEEPHOLES = False # these don't really help.
     AUGMENTATION = True
-    NOTES = "pool stride2"
+    NOTES = "no mass filter"
 
     def get_hyper_parameter_string(self):
         """ Converts hyperparmeters into a string. """
-        return "epoch={}_bs={}_bn={}_lr={}_lrd={}_l2reg={}_ls={}_h={}_aug={}_notes={}".format(
-            self.MAX_EPOCHS, self.BATCH_SIZE, self.BATCH_NORM, self.LEARNING_RATE, self.LEARNING_RATE_DECAY,
-            self.L2_REG, self.LABEL_SMOOTHING, self.LSTM_UNITS, self.AUGMENTATION, self.NOTES
+        return "{}_epoch={}_bs={}_bn={}_lr={}_lrd={}_l2reg={}_ls={}_h={}_aug={}".format(
+            self.NOTES, self.MAX_EPOCHS, self.BATCH_SIZE, self.BATCH_NORM, self.LEARNING_RATE, self.LEARNING_RATE_DECAY,
+            self.L2_REG, self.LABEL_SMOOTHING, self.LSTM_UNITS, self.AUGMENTATION
         )
 
     def __init__(self):

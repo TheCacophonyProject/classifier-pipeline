@@ -284,15 +284,23 @@ class Dataset():
             segment_start = i * self.segment_spacing
             mass_slice = mass_history[segment_start:segment_start + self.segment_width]
             segment_min_mass = np.min(mass_slice)
-            segment_avg_mass = np.median(mass_slice)
+            segment_avg_mass = np.mean(mass_slice)
             segment_frames = len(mass_slice)
 
             if segment_frames != self.segment_width:
                 continue
 
+            # try to sample the better segments more often
+            if segment_avg_mass < 30:
+                segment_weight_factor = 0.5
+            elif segment_avg_mass > 60:
+                segment_weight_factor = 2.0
+            else:
+                segment_weight_factor = 1
+
             segment = SegmentHeader(
                 clip_id=clip_id, track_number=track_number, start_frame=segment_start, frames=self.segment_width,
-                weight=track_weight/segment_count, label=track_meta['tag'], avg_mass=segment_avg_mass)
+                weight=track_weight/segment_count*segment_weight_factor, label=track_meta['tag'], avg_mass=segment_avg_mass)
 
             self.segments.append(segment)
             track_header.segments.append(segment)

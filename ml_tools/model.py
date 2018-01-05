@@ -81,7 +81,7 @@ class Model:
             if writer is not None:
                 summary, acc, ls = self.sess.run([self.merged_summary, self.accuracy, self.loss], feed_dict={self.X: Xm, self.y: ym})
             else:
-                 acc, ls = self.sess.run([self.accuracy, self.loss], feed_dict={self.X: Xm, self.y: ym})
+                acc, ls = self.sess.run([self.accuracy, self.loss], feed_dict={self.X: Xm, self.y: ym})
 
             score += samples * acc
             loss += ls
@@ -166,7 +166,7 @@ class Model:
 
         # number of samples to use when evaluating the model, 1000 works well but is a bit slow,
         # 100 should give results to within a few percent.
-        eval_samples = 500
+        eval_samples = 1000
 
         best_val_accuracy = 0
 
@@ -292,6 +292,6 @@ class Model:
         self.eval_score = self.eval_model()
 
         if writer_val:
-            summary_op = tf.summary.text('final score', tf.convert_to_tensor(str(self.eval_score)))
+            summary_op = tf.summary.text('metric_finalscore', tf.convert_to_tensor(str(self.eval_score)))
             summary = self.sess.run(summary_op)
             writer_val.add_summary(summary)
