@@ -43,21 +43,21 @@ def prod(data):
 class Estimator():
 
     # todo: these should be in some settings file
-    MODEL_NAME = "Model_5b"
+    MODEL_NAME = "DEEP"
     MODEL_DESCRIPTION = "CNN + LSTM"
 
-    MAX_EPOCHS = 6
+    MAX_EPOCHS = 5
 
     BATCH_SIZE = 16
     BATCH_NORM = True
-    LEARNING_RATE = 1e-4
+    LEARNING_RATE = 1e-5
     LEARNING_RATE_DECAY = 1.0
     L2_REG = 0.01
     LABEL_SMOOTHING = 0.1
     LSTM_UNITS = 512
     USE_PEEPHOLES = False # these don't really help.
     AUGMENTATION = True
-    NOTES = "deeper2"
+    NOTES = "#search-lr-1e5#"
 
     def get_hyper_parameter_string(self):
         """ Converts hyperparmeters into a string. """
@@ -115,20 +115,18 @@ class Estimator():
 
     def _conv_layer(self, input_layer, filters, kernal_size, conv_stride=1, pool_stride=1):
 
-        n, h, w, input_filters = input_layer.shape
-
         layer = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
                                  strides=(conv_stride, conv_stride),
-                                 padding="same", activation=None)
+                                 padding="same", activation=None, data_format='channels_first')
 
-        #tf.summary.histogram('preactivations', layer)
-        if self.BATCH_NORM: layer = tf.contrib.layers.batch_norm(
-            layer, center=True, scale=True, fused=True,
-            is_training=(self.keep_prob == 1.0)
+        if self.BATCH_NORM: layer = tf.layers.batch_normalization(
+            layer, axis=1, fused=True,
+            training=self.training
         )
         layer = tf.nn.relu(layer)
         if pool_stride != 1:
-            layer = tf.layers.max_pooling2d(inputs=layer, pool_size=[pool_stride, pool_stride], strides=pool_stride)
+            layer = tf.layers.max_pooling2d(inputs=layer, pool_size=[pool_stride, pool_stride],
+                                            strides=pool_stride, data_format='channels_first')
         return layer
 
     def build_model(self):
@@ -142,7 +140,7 @@ class Estimator():
         # Define our model
 
         self.X = tf.placeholder(tf.float32, [None, 27, 5, 48, 48], name='X')
-        self.Xt = tf.transpose(self.X, perm=[0, 1, 3, 4, 2])
+        #self.Xt = tf.transpose(self.X, perm=[0, 1, 3, 4, 2])
 
         self.y = tf.placeholder(tf.int64, [None], name='y')
 
@@ -150,23 +148,24 @@ class Estimator():
 
         # default keep_probability to 1.0 if not specified
         self.keep_prob = tf.placeholder_with_default(tf.constant(1.0, tf.float32), [], name='keep_prob')
+        self.training = tf.placeholder_with_default(tf.constant(False, tf.bool), [], name='training')
 
         # first put all frames in batch into one line sequence
-        X_reshaped = tf.reshape(self.Xt, [-1, 48, 48, 5])
+        X_reshaped = tf.reshape(self.X, [-1, 5, 48, 48])
 
-        layer = self._conv_layer(X_reshaped[:, :, :, 1:2], 64, [3, 3], pool_stride=1)
-        layer = self._conv_layer(layer, 64, [3, 3], pool_stride=2)
-        layer = self._conv_layer(layer, 96, [3, 3], pool_stride=2)
-        layer = self._conv_layer(layer, 128, [3, 3], pool_stride=2)
-        layer = self._conv_layer(layer, 128, [3, 3], pool_stride=2)
+        layer = self._conv_layer(X_reshaped[:, 1:2, :, :], 64, [3, 3], conv_stride=1)
+        layer = self._conv_layer(layer, 64, [3, 3], conv_stride=2)
+        layer = self._conv_layer(layer, 96, [3, 3], conv_stride=2)
+        layer = self._conv_layer(layer, 128, [3, 3], conv_stride=2)
+        layer = self._conv_layer(layer, 128, [3, 3], conv_stride=2)
 
         filtered_conv = layer
 
-        layer = self._conv_layer(X_reshaped[:, :, :, 2:4], 64, [3, 3], pool_stride=1)
-        layer = self._conv_layer(layer, 64, [3, 3], pool_stride=2)
-        layer = self._conv_layer(layer, 96, [3, 3], pool_stride=2)
-        layer = self._conv_layer(layer, 128, [3, 3], pool_stride=2)
-        layer = self._conv_layer(layer, 128, [3, 3], pool_stride=2)
+        layer = self._conv_layer(X_reshaped[:, 2:4, :, :], 64, [3, 3], conv_stride=1)
+        layer = self._conv_layer(layer, 64, [3, 3], conv_stride=2)
+        layer = self._conv_layer(layer, 96, [3, 3], conv_stride=2)
+        layer = self._conv_layer(layer, 128, [3, 3], conv_stride=2)
+        layer = self._conv_layer(layer, 128, [3, 3], conv_stride=2)
 
         motion_conv = layer
 
@@ -263,6 +262,7 @@ class Estimator():
         self.model.batch_size = self.BATCH_SIZE
         self.model.every_step_summary = loss_summary
         self.model.name = self.MODEL_NAME + "_" + self.get_hyper_parameter_string()
+        self.model.training = self.training
 
     def start_async_load(self):
         self.train.start_async_load(256)
@@ -272,7 +272,7 @@ class Estimator():
         self.train.stop_async_load()
         self.validation.stop_async_load()
 
-    def train_model(self, max_epochs=10, stop_after_no_improvement=None, stop_after_decline=None, log_dir = None):
+    def train_model(self, max_epochs=10.0, stop_after_no_improvement=None, stop_after_decline=None, log_dir = None):
         print("{0:.1f}K training examples".format(self.train.rows / 1000))
         self.model.train_model(max_epochs, keep_prob=0.4, stop_after_no_improvement=stop_after_no_improvement,
                                stop_after_decline=stop_after_decline, log_dir=log_dir)
@@ -299,10 +299,11 @@ class Estimator():
 
         json.dump(model_stats, open(save_filename + ".txt", 'w'), indent=4)
 
+
 def main():
+
     logging.basicConfig(level=0)
     tf.logging.set_verbosity(3)
-    estimator = Estimator()
 
     normalisation_constants = [
         [3200, 200],
@@ -312,15 +313,47 @@ def main():
         [0, 1]
     ]
 
-    estimator.import_dataset("c://cac//kea", force_normalisation_constants=normalisation_constants)
+    # try learning rates for 10 epochs
+    #learning_rates = [
+    #    1e-2,1e-3,3e-4,1e-4,3e-5,1e-5,3e-6,1e-6
+    #]
 
-    estimator.build_model()
+    learning_rates = [1e-4]
 
-    estimator.start_async_load()
-    estimator.train_model(
-        max_epochs=estimator.MAX_EPOCHS, stop_after_no_improvement=None, stop_after_decline=None, log_dir='c:/cac/logs')
-    estimator.save_model()
-    estimator.stop_async()
+    log_folder = 'c:/cac/search_lr/'
+
+    for learning_rate in learning_rates:
+
+        print("-"*60)
+        print("STARTING JOB learning_rate="+str(learning_rate))
+        print("-" * 60)
+
+        sess = tools.get_session()
+
+        estimator = Estimator()
+        estimator.import_dataset("c://cac//kea", force_normalisation_constants=normalisation_constants)
+
+        estimator.MODEL_NAME = "FINDLR10"
+        estimator.LEARNING_RATE = learning_rate
+        estimator.LEARNING_RATE_DECAY = 1.0
+        estimator.NOTES = str(learning_rate)
+
+        estimator.MAX_EPOCHS = 15
+
+        estimator.build_model()
+
+        try:
+
+            estimator.start_async_load()
+            estimator.train_model(
+                max_epochs=estimator.MAX_EPOCHS, stop_after_no_improvement=None, stop_after_decline=None,
+                log_dir=log_folder)
+            estimator.save_model()
+        finally:
+            estimator.stop_async()
+            estimator.model.sess.close()
+            sess.close()
+
 
 
 if __name__ == "__main__":

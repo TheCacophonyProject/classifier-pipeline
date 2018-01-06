@@ -621,14 +621,18 @@ class Dataset():
         for thread in self.preloader_threads:
             thread.start()
 
-    def stop_async_load(self, buffer_size = 64):
+    def stop_async_load(self):
         """
         Stops async worker thread.
         """
         if self.preloader_threads is not None:
-            self.preloader_stop_flag = True
             for thread in self.preloader_threads:
-                thread.join()
+                if hasattr(thread, 'terminate'):
+                    # note this will corrupt the queue, so reset it
+                    thread.terminate()
+                    self.preloader_queue = multiprocessing.Queue(64)
+                else:
+                    thread.exit()
 
 # continue to read examples until queue is full
 def preloader(q, dataset, buffer_size):

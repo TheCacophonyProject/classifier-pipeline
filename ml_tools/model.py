@@ -19,7 +19,7 @@ CHECKPOINT_FOLDER = "c:\cac\checkpoints"
 class Model:
     """ Defines a ML model """
 
-    def __init__(self, datasets, X, y, keep_prob, pred, accuracy, loss, train_op, classes, session=None):
+    def __init__(self, datasets, X, y, keep_prob, pred, accuracy, loss, train_op, classes):
 
         self.datasets = datasets
         self.name = "model"
@@ -46,7 +46,7 @@ class Model:
         # restore best weights found during training rather than the most recently one.
         self.use_best_weights = True
 
-        self.sess = session or tools.get_session()
+        self.sess = tools.get_session()
         self.batch_size = 32
 
         self.eval_score = 0.0
@@ -54,6 +54,8 @@ class Model:
         self.normalisation_constants = None
 
         self.every_step_summary = None
+
+        self.training = None
 
         self.step = 0
 
@@ -126,7 +128,7 @@ class Model:
         saver = tf.train.Saver()
         saver.restore(self.sess, os.path.join(CHECKPOINT_FOLDER,"training-best.sav"))
 
-    def train_model(self, epochs=10, keep_prob=0.5, stop_after_no_improvement=None, stop_after_decline=None,
+    def train_model(self, epochs=10.0, keep_prob=0.5, stop_after_no_improvement=None, stop_after_decline=None,
                     log_dir=None):
         """
         Trains model given number of epocs.  Uses session 'sess'
@@ -245,10 +247,12 @@ class Model:
 
                 # save at epochs
                 if int(epoch) > last_epoch_save:
+                    print('save epoch')
                     saver.save(self.sess, os.path.join(CHECKPOINT_FOLDER, "training-epoch-{:02d}.sav".format(int(epoch))))
                     last_epoch_save = int(epoch)
 
                 if val_accuracy > best_val_accuracy:
+                    print('save best')
                     saver.save(self.sess, os.path.join(CHECKPOINT_FOLDER,"training-best.sav"))
                     best_val_accuracy = val_accuracy
                     best_step = i
@@ -277,16 +281,8 @@ class Model:
 
             # train on this batch
             start = time.time()
-
-            if self.every_step_summary is not None:
-                summary, _ = self.sess.run(
-                    [self.every_step_summary, self.train_op],
-                    feed_dict={self.X: batch[0], self.y: batch[1], self.keep_prob: keep_prob},
-                )
-                writer_train.add_summary(summary, i)
-            else:
-                self.train_op.run(feed_dict={self.X: batch[0], self.y: batch[1], self.keep_prob: keep_prob},
-                                  session=self.sess)
+            feed_dict = {self.X: batch[0], self.y: batch[1], self.keep_prob: keep_prob, self.training: True}
+            _ = self.sess.run([self.train_op],feed_dict=feed_dict)
 
             train_time += time.time()-start
             steps_since_print += 1
