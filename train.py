@@ -48,16 +48,16 @@ class Estimator():
 
     MAX_EPOCHS = 6
 
-    BATCH_SIZE = 32
+    BATCH_SIZE = 16
     BATCH_NORM = True
     LEARNING_RATE = 1e-4
-    LEARNING_RATE_DECAY = 0.8
+    LEARNING_RATE_DECAY = 1.0
     L2_REG = 0.01
     LABEL_SMOOTHING = 0.1
-    LSTM_UNITS = 256
+    LSTM_UNITS = 512
     USE_PEEPHOLES = False # these don't really help.
     AUGMENTATION = True
-    NOTES = "no mass filter"
+    NOTES = "deeper2"
 
     def get_hyper_parameter_string(self):
         """ Converts hyperparmeters into a string. """
@@ -154,7 +154,23 @@ class Estimator():
         # first put all frames in batch into one line sequence
         X_reshaped = tf.reshape(self.Xt, [-1, 48, 48, 5])
 
-        # next run the convolutions
+        layer = self._conv_layer(X_reshaped[:, :, :, 1:2], 64, [3, 3], pool_stride=1)
+        layer = self._conv_layer(layer, 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer(layer, 96, [3, 3], pool_stride=2)
+        layer = self._conv_layer(layer, 128, [3, 3], pool_stride=2)
+        layer = self._conv_layer(layer, 128, [3, 3], pool_stride=2)
+
+        filtered_conv = layer
+
+        layer = self._conv_layer(X_reshaped[:, :, :, 2:4], 64, [3, 3], pool_stride=1)
+        layer = self._conv_layer(layer, 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer(layer, 96, [3, 3], pool_stride=2)
+        layer = self._conv_layer(layer, 128, [3, 3], pool_stride=2)
+        layer = self._conv_layer(layer, 128, [3, 3], pool_stride=2)
+
+        motion_conv = layer
+
+        """
         c1 = self._conv_layer(X_reshaped[:, :, :, 1:2], 32, [8, 8], pool_stride=4)
         c2 = self._conv_layer(c1, 48, [4, 4], pool_stride=2)
         c3 = self._conv_layer(c2, 64, [3, 3], pool_stride=1)
@@ -164,8 +180,11 @@ class Estimator():
         c1 = self._conv_layer(X_reshaped[:, :, :, 2:4], 32, [8, 8], pool_stride=4)
         c2 = self._conv_layer(c1, 48, [4, 4], pool_stride=2)
         c3 = self._conv_layer(c2, 64, [3, 3], pool_stride=1)
+        
 
         motion_conv = c3
+        
+        """
 
         print("convolution output shape: ", filtered_conv.shape, motion_conv.shape)
 

@@ -89,7 +89,7 @@ class Model:
         if writer is not None:
             writer.add_summary(summary, global_step=self.step)
 
-        return score / total_samples, loss
+        return score / total_samples, loss / total_samples
 
     def classify_batch(self, batch_X):
         """
@@ -188,6 +188,7 @@ class Model:
         self.merged_summary = merged
 
         steps_since_print = 0
+        last_epoch_save = 0
 
         for i in range(iterations):
 
@@ -232,7 +233,7 @@ class Model:
                 eta = (steps_remaining * step_time / steps_since_print) / 60
 
                 print('[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.1f} validation={4:.1f}%/{5:.1f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] (ema:{9:.3f}) eta {10:.1f} min'.format(
-                    epoch, i, train_accuracy*100, train_loss, val_accuracy*100, val_loss,
+                    epoch, i, train_accuracy*100, train_loss * 100, val_accuracy*100, val_loss * 100,
                     1000 * prep_time / steps_since_print  / self.batch_size,
                     1000 * train_time / steps_since_print  / self.batch_size,
                     1000 * eval_time / steps_since_print  / self.batch_size,
@@ -241,6 +242,12 @@ class Model:
 
                 # create a save point
                 saver.save(self.sess, os.path.join(CHECKPOINT_FOLDER,"training-most-recent.sav"))
+
+                # save at epochs
+                if int(epoch) > last_epoch_save:
+                    saver.save(self.sess, os.path.join(CHECKPOINT_FOLDER, "training-epoch-{:02d}.sav".format(int(epoch))))
+                    last_epoch_save = int(epoch)
+
                 if val_accuracy > best_val_accuracy:
                     saver.save(self.sess, os.path.join(CHECKPOINT_FOLDER,"training-best.sav"))
                     best_val_accuracy = val_accuracy
