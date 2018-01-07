@@ -53,8 +53,6 @@ class Model:
 
         self.normalisation_constants = None
 
-        self.every_step_summary = None
-
         self.training = None
 
         self.step = 0
@@ -80,7 +78,9 @@ class Model:
                 continue
             samples = Xm.shape[0]
 
-            if writer is not None:
+            # only calculate summary on first batch, as otherwise we could get many summaries for a single timestep.
+            # a better solution would be to accumulate and average the summaries which tensorflow sort of has support for.
+            if writer is not None and i == 0:
                 summary, acc, ls = self.sess.run([self.merged_summary, self.accuracy, self.loss], feed_dict={self.X: Xm, self.y: ym})
             else:
                 acc, ls = self.sess.run([self.accuracy, self.loss], feed_dict={self.X: Xm, self.y: ym})
@@ -91,7 +91,9 @@ class Model:
         if writer is not None:
             writer.add_summary(summary, global_step=self.step)
 
-        return score / total_samples, loss / total_samples
+        # find per sample loss, but expected loss is per batch for some reason.... change this around later on to per
+        # sample
+        return score / total_samples, loss / total_samples * self.batch_size
 
     def classify_batch(self, batch_X):
         """
@@ -217,8 +219,19 @@ class Model:
                         val_batch[0], val_batch[1],
                         writer=writer_val)
 
-                    writer_train.add_summary(tf.Summary(value=[tf.Summary.Value(tag="metric_accuracy", simple_value=train_accuracy)]), global_step=i)
-                    writer_val.add_summary(tf.Summary(value=[tf.Summary.Value(tag="metric_accuracy", simple_value=val_accuracy)]), global_step=i)
+                    writer_train.add_summary(
+                        tf.Summary(value=[tf.Summary.Value(tag="metric_accuracy", simple_value=train_accuracy)]),
+                        global_step=i)
+                    writer_val.add_summary(
+                        tf.Summary(value=[tf.Summary.Value(tag="metric_accuracy", simple_value=val_accuracy)]),
+                        global_step=i)
+
+                    writer_train.add_summary(
+                        tf.Summary(value=[tf.Summary.Value(tag="metric_loss", simple_value=train_loss)]),
+                        global_step=i)
+                    writer_val.add_summary(
+                        tf.Summary(value=[tf.Summary.Value(tag="metric_loss", simple_value=val_loss)]),
+                        global_step=i)
 
                 else:
                     train_accuracy, train_loss = self.eval_batch(train_batch[0], train_batch[1])
@@ -234,8 +247,8 @@ class Model:
                 step_time = prep_time + train_time + eval_time
                 eta = (steps_remaining * step_time / steps_since_print) / 60
 
-                print('[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.1f} validation={4:.1f}%/{5:.1f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] (ema:{9:.3f}) eta {10:.1f} min'.format(
-                    epoch, i, train_accuracy*100, train_loss * 100, val_accuracy*100, val_loss * 100,
+                print('[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] (ema:{9:.3f}) eta {10:.1f} min'.format(
+                    epoch, i, train_accuracy*100, train_loss * 10, val_accuracy*100, val_loss * 10,
                     1000 * prep_time / steps_since_print  / self.batch_size,
                     1000 * train_time / steps_since_print  / self.batch_size,
                     1000 * eval_time / steps_since_print  / self.batch_size,

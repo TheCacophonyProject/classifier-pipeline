@@ -369,13 +369,20 @@ class Dataset():
         if threshold:
             data[:, 1, :, :] = np.clip(data[:, 1, :, :] - threshold, a_min=0, a_max=None)
 
-        # blur optical flow and reduce level
+        # map optical flow down to right level, and blur
+        # note: we probably don't have to blur when better optical comes through.
         for channel in [2, 3]:
             img = data[:, channel, :, :]
-            data[:, channel, :, :] = cv2.blur(img,(3,3)) / 256
+            #data[:, channel, :, :] = cv2.blur(img, (3, 3))
+            data[:, channel, :, :] = data[:, channel, :, :] / 256
 
         if augment:
             data = self.apply_augmentation(data)
+
+        # stub: add a little noise floor, even when augmentation is off
+        #data[:, 2:3+1] += np.random.normal(loc=0, scale=0.005, size=data[:, 2:3+1].shape)
+
+
         if normalise:
             data = self.apply_normalisation(data)
 
@@ -395,13 +402,11 @@ class Dataset():
         for channel in range(channels):
             mean, std = self.normalisation_constants[channel]
             segment_data[:, channel] -= mean
-            #if channel in [2,3]:
-            #    segment_data[:, channel] = np.abs(segment_data[:, channel]) * np.sign(segment_data[:, channel])
             segment_data[:, channel] *= (1.0/std)
 
         return segment_data
 
-    def apply_augmentation(self, segment_data):
+    def apply_augmentation(self, segment_data, force_scale=None):
         """
         Applies a random augmentation to the segment_data.
         :param segment_data: array of shape [frames, channels, height, width]
@@ -412,29 +417,35 @@ class Dataset():
 
         segment_data = np.float32(segment_data)
 
-        # apply scaling
-        if random.randint(0, 1) == 0:
+        # apply scaling 50% of time
+        if random.randint(0, 100) >= 50 or force_scale is not None:
             mask = segment_data[:, 4, :, :]
             av_mass = np.sum(mask) / len(mask)
-            scale_options = []
-            if av_mass > 50: scale_options.append('down')
-            if av_mass < 100: scale_options.append('up')
-            scale_method = np.random.choice(scale_options)
+            size = math.sqrt(av_mass+4)
 
-            up_scale = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5]
-            down_scale = [0.25, 0.33, 0.5, 0.75]
+            # work out aproriate bounds so we don't scale too much
+            max_scale_up = np.clip(36 / size, 1.0, 2.0)
+            min_scale_down = np.clip(8 / size, 0.1, 1.0)
 
-            if scale_method == 'up':
-                scale = np.random.choice(up_scale)
+            if force_scale is not None:
+                scale = force_scale
             else:
-                scale = np.random.choice(down_scale)
+                scale = tools.random_log(min_scale_down, max_scale_up)
 
-            for i in range(frames):
-                # the image is expected to be in hwc format so we convert it here.
-                segment_data[i] = tools.zoom_image(segment_data[i], scale=scale, channels_first=True)
+            if scale != 1.0:
+                for i in range(frames):
+                    xofs = random.normalvariate(0,5)
+                    yofs = random.normalvariate(0,5)
+                    segment_data[i] = tools.zoom_image(segment_data[i], scale=scale, channels_first=True,
+                                                       offset_x=xofs, offset_y=yofs)
+
+                    # make sure to scale optical flow as well
+                    segment_data[i,2:3+1] *= scale
 
         if random.randint(0,1) == 0:
+            # when we flip the frame remember to flip the horizontal velocity as well
             segment_data = np.flip(segment_data, axis = 3)
+            segment_data[:,2] = -segment_data[:,2]
 
         return segment_data
 
@@ -609,13 +620,12 @@ class Dataset():
         WORKER_THREADS = 2
         PROCESS_BASED = True
 
-        print("Starting async fetcher")
         if PROCESS_BASED:
             self.preloader_queue = multiprocessing.Queue(buffer_size)
-            self.preloader_threads = [multiprocessing.Process(target=preloader, args=(self.preloader_queue, self, buffer_size)) for _ in range(WORKER_THREADS)]
+            self.preloader_threads = [multiprocessing.Process(target=preloader, args=(self.preloader_queue, self)) for _ in range(WORKER_THREADS)]
         else:
             self.preloader_queue = queue.Queue(buffer_size)
-            self.preloader_threads = [threading.Thread(target=preloader, args=(self.preloader_queue, self, buffer_size)) for _ in range(WORKER_THREADS)]
+            self.preloader_threads = [threading.Thread(target=preloader, args=(self.preloader_queue, self)) for _ in range(WORKER_THREADS)]
 
         self.preloader_stop_flag = False
         for thread in self.preloader_threads:
@@ -635,9 +645,9 @@ class Dataset():
                     thread.exit()
 
 # continue to read examples until queue is full
-def preloader(q, dataset, buffer_size):
+def preloader(q, dataset):
     """ add a segment into buffer """
-    print("Async loader pool starting")
+    print("Started async fetcher for {} with augment={}".format(dataset.name, dataset.enable_augmentation))
     loads = 0
     timer = time.time()
     while not dataset.preloader_stop_flag:

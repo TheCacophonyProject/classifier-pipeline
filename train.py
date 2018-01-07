@@ -50,11 +50,11 @@ class Estimator():
 
     BATCH_SIZE = 16
     BATCH_NORM = True
-    LEARNING_RATE = 1e-5
+    LEARNING_RATE = 1e-4
     LEARNING_RATE_DECAY = 1.0
     L2_REG = 0.01
     LABEL_SMOOTHING = 0.1
-    LSTM_UNITS = 512
+    LSTM_UNITS = 128
     USE_PEEPHOLES = False # these don't really help.
     AUGMENTATION = True
     NOTES = "#search-lr-1e5#"
@@ -113,20 +113,37 @@ class Estimator():
 
         self.test.load_all()
 
-    def _conv_layer(self, input_layer, filters, kernal_size, conv_stride=1, pool_stride=1):
+    def _conv_layer(self, name, input_layer, filters, kernal_size, conv_stride=1, pool_stride=1):
 
         layer = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
                                  strides=(conv_stride, conv_stride),
-                                 padding="same", activation=None, data_format='channels_first')
+                                 padding="same", activation=None, data_format='channels_first',
+                                 name=name+"_conv")
 
-        if self.BATCH_NORM: layer = tf.layers.batch_normalization(
-            layer, axis=1, fused=True,
-            training=self.training
-        )
+        tf.summary.histogram('metric_layeractivations_' + name, layer)
+
+        if self.BATCH_NORM:
+            layer = tf.layers.batch_normalization(
+                layer, axis=1, fused=True,
+                training=self.training,
+                # we have a lot of input with 0 values so we need to make sure we don't scale up
+                # the channels to much.  If we leave this at 0.001 then most channels will be scaled
+                # up ~100x which means when something appears in the channel it'll blow things out.
+                #epsilon=0.1,
+                name=name + "_batchnorm"
+            )
+            moving_mean = tf.contrib.framework.get_variables(name + '_batchnorm/moving_mean')[0]
+            moving_variance = tf.contrib.framework.get_variables(name + '_batchnorm/moving_variance')[0]
+
+            tf.summary.histogram('metric_bn_mean_' + name, moving_mean)
+            tf.summary.histogram('metric_bn_var_' + name, moving_variance)
+
         layer = tf.nn.relu(layer)
         if pool_stride != 1:
             layer = tf.layers.max_pooling2d(inputs=layer, pool_size=[pool_stride, pool_stride],
-                                            strides=pool_stride, data_format='channels_first')
+                                            strides=pool_stride, data_format='channels_first',
+                                            name=name + "_max_pool"
+                                            )
         return layer
 
     def build_model(self):
@@ -140,7 +157,6 @@ class Estimator():
         # Define our model
 
         self.X = tf.placeholder(tf.float32, [None, 27, 5, 48, 48], name='X')
-        #self.Xt = tf.transpose(self.X, perm=[0, 1, 3, 4, 2])
 
         self.y = tf.placeholder(tf.int64, [None], name='y')
 
@@ -153,21 +169,27 @@ class Estimator():
         # first put all frames in batch into one line sequence
         X_reshaped = tf.reshape(self.X, [-1, 5, 48, 48])
 
-        layer = self._conv_layer(X_reshaped[:, 1:2, :, :], 64, [3, 3], conv_stride=1)
-        layer = self._conv_layer(layer, 64, [3, 3], conv_stride=2)
-        layer = self._conv_layer(layer, 96, [3, 3], conv_stride=2)
-        layer = self._conv_layer(layer, 128, [3, 3], conv_stride=2)
-        layer = self._conv_layer(layer, 128, [3, 3], conv_stride=2)
+        # save distribution of inputs
+        for channel in range(5):
+            tf.summary.histogram('metric_inputs_'+str(channel), X_reshaped[:, channel])
+
+        layer = self._conv_layer('filtered_1',X_reshaped[:, 2:4, :, :], 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer('filtered_2',layer, 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer('filtered_3',layer, 96, [3, 3], pool_stride=2)
+        layer = self._conv_layer('filtered_4',layer, 128, [3, 3], pool_stride=2)
+        layer = self._conv_layer('filtered_5',layer, 128, [3, 3], pool_stride=1)
 
         filtered_conv = layer
 
-        layer = self._conv_layer(X_reshaped[:, 2:4, :, :], 64, [3, 3], conv_stride=1)
-        layer = self._conv_layer(layer, 64, [3, 3], conv_stride=2)
-        layer = self._conv_layer(layer, 96, [3, 3], conv_stride=2)
-        layer = self._conv_layer(layer, 128, [3, 3], conv_stride=2)
-        layer = self._conv_layer(layer, 128, [3, 3], conv_stride=2)
+        """
+        layer = self._conv_layer('motion_1',X_reshaped[:, 2:4, :, :], 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer('motion_2',layer, 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer('motion_3',layer, 96, [3, 3], pool_stride=2)
+        layer = self._conv_layer('motion_4',layer, 128, [3, 3], pool_stride=2)
+        layer = self._conv_layer('motion_5',layer, 128, [3, 3], pool_stride=1)
 
         motion_conv = layer
+        """
 
         """
         c1 = self._conv_layer(X_reshaped[:, :, :, 1:2], 32, [8, 8], pool_stride=4)
@@ -185,16 +207,17 @@ class Estimator():
         
         """
 
-        print("convolution output shape: ", filtered_conv.shape, motion_conv.shape)
+        #print("convolution output shape: ", filtered_conv.shape, motion_conv.shape)
 
         # reshape back into segments
 
         flat1 = tf.reshape(filtered_conv, [-1, 27, prod(filtered_conv.shape[1:])])
-        flat2 = tf.reshape(motion_conv, [-1, 27, prod(motion_conv.shape[1:])])
+        #flat2 = tf.reshape(motion_conv, [-1, 27, prod(motion_conv.shape[1:])])
 
-        flat = tf.concat((flat1, flat2), axis=2)
+        # no motion
+        flat = tf.concat((flat1,), axis=2)
 
-        print('Flat', flat.shape, 'from', flat1.shape, ',', flat2.shape)
+        #print('Flat', flat.shape, 'from', flat1.shape, ',', flat2.shape)
 
         # the LSTM expects an array of 27 examples
         sequences = tf.unstack(flat, 27, 1)
@@ -203,9 +226,9 @@ class Estimator():
 
         # run the LSTM
         lstm_cell_fw = tf.contrib.rnn.LSTMCell(
-            num_units=self.LSTM_UNITS, use_peepholes=self.USE_PEEPHOLES, cell_clip=10.0)
+            num_units=self.LSTM_UNITS, use_peepholes=self.USE_PEEPHOLES)
         lstm_cell_bk = tf.contrib.rnn.LSTMCell(
-            num_units=self.LSTM_UNITS, use_peepholes=self.USE_PEEPHOLES, cell_clip=10.0)
+            num_units=self.LSTM_UNITS, use_peepholes=self.USE_PEEPHOLES)
 
         # lstm_outputs, lstm_states = tf.contrib.rnn.static_rnn(lstm_cell, sequences, dtype = 'float32')
         lstm_outputs, _, _ = tf.contrib.rnn.static_bidirectional_rnn(
@@ -214,7 +237,7 @@ class Estimator():
 
         print("LSTM outputs:", len(lstm_outputs))
 
-        # probably just need the final output, but concatinating the hidden state might help?
+        # just need the last output
         lstm_output = lstm_outputs[-1]
 
         # print("Final output shape:",lstm_output.shape)
@@ -250,8 +273,6 @@ class Estimator():
 
         optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 
-        loss_summary = tf.summary.scalar('metric_loss', loss)
-
         # make sure to update batch norms.
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
@@ -260,7 +281,6 @@ class Estimator():
         # define our model
         self.model = Model(self.datasets, self.X, self.y, self.keep_prob, pred, accuracy, loss, train_op, self.labels)
         self.model.batch_size = self.BATCH_SIZE
-        self.model.every_step_summary = loss_summary
         self.model.name = self.MODEL_NAME + "_" + self.get_hyper_parameter_string()
         self.model.training = self.training
 
@@ -333,17 +353,16 @@ def main():
         estimator = Estimator()
         estimator.import_dataset("c://cac//kea", force_normalisation_constants=normalisation_constants)
 
-        estimator.MODEL_NAME = "FINDLR10"
+        estimator.MODEL_NAME = "augmentation_flip and scale constrict"
         estimator.LEARNING_RATE = learning_rate
         estimator.LEARNING_RATE_DECAY = 1.0
         estimator.NOTES = str(learning_rate)
 
-        estimator.MAX_EPOCHS = 15
+        estimator.MAX_EPOCHS = 10
 
         estimator.build_model()
 
         try:
-
             estimator.start_async_load()
             estimator.train_model(
                 max_epochs=estimator.MAX_EPOCHS, stop_after_no_improvement=None, stop_after_decline=None,
@@ -359,3 +378,13 @@ def main():
 if __name__ == "__main__":
     # execute only if run as a script
     main()
+
+
+"""
+Notes
+
+noise = 0.01, 
+looks like noise was unit norm?? how did this happen
+Also overfitted badly, why?
+
+"""

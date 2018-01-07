@@ -433,7 +433,7 @@ def parse_params():
     parser.add_argument('-w', '--workers', default='0', help='Number of worker threads to use.  0 disables worker pool and forces a single thread.')
     parser.add_argument('-f', '--force-overwrite', default='old', help='Overwrite mode.  Options are all, old, or none.')
     parser.add_argument('-i', '--show-build-information', action='count', help='Show openCV build information and exit.')
-    parser.add_argument('--disable-track-filters', action='count', help='Disables filtering of poor quality tracks.')
+    parser.add_argument('-d','--disable-track-filters', default=False, action='store_true', help='Disables filtering of poor quality tracks.')
 
     args = parser.parse_args()
 

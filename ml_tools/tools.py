@@ -360,7 +360,15 @@ def to_CHW(data):
     return np.transpose(data, axes=(2, 0, 1))
 
 
-def zoom_image(img, scale, pad_with_min=False, channels_first=False):
+def random_log(a,b):
+    """ Returns a random number between a and b, but on a log scale"""
+    a = math.log(a)
+    b = math.log(b)
+    x = random.random() * (b-a) + a
+    return math.exp(x)
+
+def zoom_image(img, scale, pad_with_min=False, channels_first=False, interpolation=cv2.INTER_LINEAR,
+               offset_x=0, offset_y=0):
     """
     Zooms into or out of the center of the image.  The dimensions are left unchanged, and either padding is added, or
     cropping is performed.
@@ -368,6 +376,8 @@ def zoom_image(img, scale, pad_with_min=False, channels_first=False):
     :param scale: how much to scale image
     :param pad_with_min: if true shrunk images will pad with the channels min value (otherwise 0 is used)
     :param channels_first: if true uses [channels, height, width] format
+    :param offset_x: how many pixels to place image off center
+    :param offset_y: how many pixels to place image off center
     :return: the new image
     """
 
@@ -383,23 +393,31 @@ def zoom_image(img, scale, pad_with_min=False, channels_first=False):
 
         # note:
         # cv2.INTER_AREA would be better, but sometimes bugs out for certian scales, not sure why.
-        res = cv2.resize(np.float32(img), (new_height, new_width), interpolation=cv2.INTER_LINEAR)
-        pad_width = (width - new_width) / 2
-        pad_height = (height - new_height) / 2
+        res = cv2.resize(np.float32(img), (new_height, new_width), interpolation=interpolation)
+
+        extra_width = (width - new_width)
+        extra_height = (height - new_height)
+
+        insert_x = int(np.clip(extra_width / 2 + offset_x, 0, extra_width))
+        insert_y = int(np.clip(extra_height / 2 + offset_y, 0, extra_height))
         if pad_with_min:
             min_values = [np.min(res[:, :, i]) for i in range(channels)]
             img = np.ones([width, height, channels], dtype=np.float32) * min_values
         else:
             img = np.zeros([width, height, channels], dtype=np.float32)
 
-        img[int(pad_height):int(pad_height) + new_height, int(pad_width):int(pad_width) + new_width, :] = res
+        img[insert_y:insert_y + new_height, insert_x:insert_x + new_width, :] = res
     else:
         # crop and scale up
         crop_height, crop_width = int(height / scale), int(width / scale)
-        inset_width = int((width - crop_width) / 2)
-        inset_height = int((height - crop_height) / 2)
-        crop = img[inset_height:inset_height + crop_height, inset_width:inset_width + crop_width]
-        img = cv2.resize(np.float32(crop), dsize=(height, width), interpolation=cv2.INTER_CUBIC)
+        extra_width = (width - crop_width)
+        extra_height = (height - crop_height)
+
+        insert_x = int(np.clip(extra_width / 2 + offset_x, 0, extra_width))
+        insert_y = int(np.clip(extra_height / 2 + offset_y, 0, extra_height))
+
+        crop = img[insert_y:insert_y + crop_height, insert_x:insert_x + crop_width]
+        img = cv2.resize(np.float32(crop), dsize=(height, width), interpolation=interpolation)
 
     if channels_first:
         img = to_CHW(img)
