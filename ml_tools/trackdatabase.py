@@ -125,6 +125,7 @@ class TrackDatabase:
             result = {}
             for key, value in f['clips'][clip_id].attrs.items():
                 result[key] = value
+            result['tracks'] = len(f['clips'][clip_id])
         return result
 
     def get_track(self, clip_id, track_number, start_frame=None, end_frame=None):
@@ -140,6 +141,23 @@ class TrackDatabase:
             clips = f['clips']
             dset = clips[clip_id][str(track_number)]
             return dset[start_frame:end_frame]
+
+    def remove_clip(self, clip_id):
+        """
+        Deletes clip from database.
+        Note, as per hdf5 the space will not be recovered.  If many files are deleted repacking the dataset might
+        be a good idea.
+        :param clip_id: id of clip to remove
+        :returns: true if clip was deleted, false if it could not be found.
+        """
+        with HDF5Manager(self.database, 'a') as f:
+            clips = f['clips']
+            if clip_id in clips:
+                del clips[clip_id]
+                return True
+            else:
+                return False
+
 
     def add_track(self, clip_id, track_number, track_data, track=None, opts=None):
         """

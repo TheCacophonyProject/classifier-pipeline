@@ -163,6 +163,23 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                 if folder not in EXCLUDED_FOLDERS:
                     self.process_folder(os.path.join(root,folder), tag=folder.lower(), worker_pool_args=(trackdatabase.hdf5_lock,))
 
+    def clean_all(self):
+        """
+        Checks if there are any clips in the database that are on the banned list.  Also makes sure no track has more
+        tracks than specified in hints file.
+        """
+        for clip_id, max_tracks in self.hints.items():
+            if self.database.has_clip(clip_id):
+                if max_tracks == 0:
+                    print(" - removing banned clip {}".format(clip_id))
+                    self.database.remove_clip(clip_id)
+                else:
+                    meta = self.database.get_clip_meta(clip_id)
+                    if meta['tracks'] > max_tracks:
+                        print(" - removing out of date clip {}".format(clip_id))
+                        self.database.remove_clip(clip_id)
+
+
     def process_file(self, full_path, **kwargs):
         """
         Extract tracks from specific file, and assign given tag.
@@ -421,7 +438,7 @@ def parse_params():
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('target', default='all', help='Target to process, "all" processes all folders, "test" runs test cases, or a "cptv" file to run a single source.')
+    parser.add_argument('target', default='all', help='Target to process, "all" processes all folders, "test" runs test cases, "clean" to remove banned clips from db, or a "cptv" file to run a single source.')
 
     parser.add_argument('-o', '--output-folder', default=os.path.join(DEFAULT_BASE_PATH,"tracks"), help='Folder to output tracks to')
     parser.add_argument('-s', '--source-folder', default=os.path.join(DEFAULT_BASE_PATH,"clips"), help='Source folder root with class folders containing CPTV files')
@@ -493,6 +510,9 @@ def parse_params():
 
     if args.target.lower() == 'all':
         extractor.process_all(args.source_folder)
+        return
+    if args.target.lower() == 'clean':
+        extractor.clean_all()
         return
     else:
         extractor.process_folder(os.path.join(args.source_folder, args.target), tag=args.target, worker_pool_args=(trackdatabase.hdf5_lock,))

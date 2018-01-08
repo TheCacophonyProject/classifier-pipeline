@@ -19,7 +19,7 @@ import numpy as np
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.dataset import Dataset
 
-DATASET_NAME = 'c:/cac/kea/dataset.hdf5'
+DATASET_NAME = 'c:/cac/robin/dataset.hdf5'
 
 # todo: move into a text file
 BANNED_CLIPS = {
