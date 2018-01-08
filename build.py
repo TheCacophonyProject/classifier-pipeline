@@ -19,6 +19,9 @@ import numpy as np
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.dataset import Dataset
 
+DATASET_NAME = 'c:/cac/kea/dataset.hdf5'
+
+# todo: move into a text file
 BANNED_CLIPS = {
     '20171207-114424-akaroa09.cptv',
     '20171123-040215-akaroa09.cptv',
@@ -47,9 +50,25 @@ BANNED_CLIPS = {
     '20171219-102910-akaroa12.cptv',
     '20171219-102910-akaroa12.cptv',
     '20171219-102910-akaroa12.cptv',
-    '20171219-105919-akaroa12.cptv'
-
-}
+    '20171219-105919-akaroa12.cptv',
+    # here are some more
+    '20171020-042703-Akaroa01.cptv',
+    '20171025-023733-akaroa03.cptv',
+    '20171025-025114-akaroa03.cptv',
+    '20171025-025130-akaroa03.cptv',
+    '20171025-050511-akaroa03.cptv',
+    '20171025-200149-akaroa04.cptv',
+    '20171214-112056-brent01.cptv',
+    '20171228-072037-brent01.cptv',
+    '20171231-074825-akaroa03.cptv',
+    '20171231-164015-akaroa10.cptv',
+    '20171231-164122-akaroa10.cptv',
+    '20171231-164227-akaroa10.cptv',
+    '20171231-165906-akaroa10.cptv',
+    '20180101-070700-akaroa10.cptv',
+    '20180103-075552-akaroa09.cptv',
+    '20180106-072456-akaroa03.cptv',
+]
 
 EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog','human','stoat']
 
@@ -93,6 +112,8 @@ def track_filter(clip_meta, track_meta):
 
     if track_meta['tag'] in EXCLUDED_LABELS:
         return True
+
+    # this camera gets a lot of obscured footage so we filter out to just the best ones.
 
     # always let the false-positives through as we need them even though they would normally
     # be filtered out.
@@ -324,7 +345,7 @@ def main():
     global dataset
     global db
 
-    db = TrackDatabase('c:/cac/kea/dataset.hdf5')
+    db = TrackDatabase(DATASET_NAME)
     dataset = Dataset(db, 'dataset')
 
     total_tracks = len(db.get_all_track_ids())

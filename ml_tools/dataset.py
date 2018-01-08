@@ -68,7 +68,7 @@ class SegmentHeader():
 class TrackHeader():
     """ Header for track. """
 
-    def __init__(self, clip_id, track_number, label, start_time, duration, camera):
+    def __init__(self, clip_id, track_number, label, start_time, duration, camera, score):
         # reference to clip this segment came from
         self.clip_id = clip_id
         # reference to track this segment came from
@@ -83,6 +83,8 @@ class TrackHeader():
         self.duration = duration
         # camera this track came from
         self.camera = camera
+        # score of track
+        self.score = score
 
     @property
     def track_id(self):
@@ -111,13 +113,14 @@ class TrackHeader():
     @staticmethod
     def from_meta(clip_id, track_meta):
         """ Creates a track header from given metadata. """
-        # kind of chacky way to get camera name from clip_id, in the future camera will be included in the metadata.
+        # kind of checky way to get camera name from clip_id, in the future camera will be included in the metadata.
         camera = os.path.splitext(os.path.basename(clip_id))[0].split('-')[-1]
         result = TrackHeader(
             clip_id=clip_id, track_number=track_meta['id'], label=track_meta['tag'],
             start_time=parser.parse(track_meta['start_time']),
-            duration=track_meta['duration'],
-            camera=camera
+            duration=float(track_meta['duration']),
+            camera=camera,
+            score=float(track_meta['score'])
         )
         return result
 
@@ -369,12 +372,19 @@ class Dataset():
         if threshold:
             data[:, 1, :, :] = np.clip(data[:, 1, :, :] - threshold, a_min=0, a_max=None)
 
-        # map optical flow down to right level, and blur
-        # note: we probably don't have to blur when better optical comes through.
-        for channel in [2, 3]:
-            img = data[:, channel, :, :]
-            #data[:, channel, :, :] = cv2.blur(img, (3, 3))
-            data[:, channel, :, :] = data[:, channel, :, :] / 256
+        # map optical flow down to right level,
+        if True:
+            flow = data[:, 2:3+1, :, :]
+
+            # we pre-multiplied by 256 to fit into a 16bit int
+            flow = flow / 256
+
+            # blur, not really a good idea
+            #flow = cv2.blur(flow, (3, 3))
+
+            # try to get optical flow a little closer to normal looking (it's got long tails)
+            flow = (np.abs(flow) ** (1/2)) * np.sign(flow)
+            data[:, 2:3+1, :, :] = flow
 
         if augment:
             data = self.apply_augmentation(data)
@@ -401,6 +411,7 @@ class Dataset():
 
         for channel in range(channels):
             mean, std = self.normalisation_constants[channel]
+
             segment_data[:, channel] -= mean
             segment_data[:, channel] *= (1.0/std)
 
@@ -417,8 +428,8 @@ class Dataset():
 
         segment_data = np.float32(segment_data)
 
-        # apply scaling 50% of time
-        if random.randint(0, 100) >= 50 or force_scale is not None:
+        # apply scaling 25% of time
+        if random.randint(0, 100) >= 25 or force_scale is not None:
             mask = segment_data[:, 4, :, :]
             av_mass = np.sum(mask) / len(mask)
             size = math.sqrt(av_mass+4)
@@ -433,14 +444,15 @@ class Dataset():
                 scale = tools.random_log(min_scale_down, max_scale_up)
 
             if scale != 1.0:
+                position_jitter = 10
+                xofs = random.normalvariate(0, position_jitter)
+                yofs = random.normalvariate(0, position_jitter)
                 for i in range(frames):
-                    xofs = random.normalvariate(0,5)
-                    yofs = random.normalvariate(0,5)
                     segment_data[i] = tools.zoom_image(segment_data[i], scale=scale, channels_first=True,
                                                        offset_x=xofs, offset_y=yofs)
-
-                    # make sure to scale optical flow as well
-                    segment_data[i,2:3+1] *= scale
+                # make sure to scale optical flow as well
+                # note: this might not be a good idea
+                #segment_data[:,2:3+1] *= scale
 
         if random.randint(0,1) == 0:
             # when we flip the frame remember to flip the horizontal velocity as well

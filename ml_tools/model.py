@@ -308,6 +308,6 @@ class Model:
         self.eval_score = self.eval_model()
 
         if writer_val:
-            summary_op = tf.summary.text('metric_finalscore', tf.convert_to_tensor(str(self.eval_score)))
+            summary_op = tf.summary.text('metric/finalscore', tf.convert_to_tensor(str(self.eval_score)))
             summary = self.sess.run(summary_op)
             writer_val.add_summary(summary)

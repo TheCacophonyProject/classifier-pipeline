@@ -120,25 +120,25 @@ class Estimator():
                                  padding="same", activation=None, data_format='channels_first',
                                  name=name+"_conv")
 
-        tf.summary.histogram('metric_layeractivations_' + name, layer)
+        tf.summary.histogram(name+'/layeractivations', layer)
+
+        layer = tf.nn.relu(layer)
 
         if self.BATCH_NORM:
             layer = tf.layers.batch_normalization(
                 layer, axis=1, fused=True,
                 training=self.training,
-                # we have a lot of input with 0 values so we need to make sure we don't scale up
-                # the channels to much.  If we leave this at 0.001 then most channels will be scaled
-                # up ~100x which means when something appears in the channel it'll blow things out.
-                #epsilon=0.1,
-                name=name + "_batchnorm"
+                #renorm=True,
+                name=name + "/batchnorm"
+
             )
-            moving_mean = tf.contrib.framework.get_variables(name + '_batchnorm/moving_mean')[0]
-            moving_variance = tf.contrib.framework.get_variables(name + '_batchnorm/moving_variance')[0]
+            moving_mean = tf.contrib.framework.get_variables(name + '/batchnorm/moving_mean')[0]
+            moving_variance = tf.contrib.framework.get_variables(name + '/batchnorm/moving_variance')[0]
 
-            tf.summary.histogram('metric_bn_mean_' + name, moving_mean)
-            tf.summary.histogram('metric_bn_var_' + name, moving_variance)
+            tf.summary.histogram(name+'/batchnorm/mean', moving_mean)
+            tf.summary.histogram(name+'/batchnorm/var', moving_variance)
 
-        layer = tf.nn.relu(layer)
+
         if pool_stride != 1:
             layer = tf.layers.max_pooling2d(inputs=layer, pool_size=[pool_stride, pool_stride],
                                             strides=pool_stride, data_format='channels_first',
@@ -171,22 +171,22 @@ class Estimator():
 
         # save distribution of inputs
         for channel in range(5):
-            tf.summary.histogram('metric_inputs_'+str(channel), X_reshaped[:, channel])
+            tf.summary.histogram('inputs/'+str(channel), X_reshaped[:, channel])
 
-        layer = self._conv_layer('filtered_1',X_reshaped[:, 2:4, :, :], 64, [3, 3], pool_stride=2)
-        layer = self._conv_layer('filtered_2',layer, 64, [3, 3], pool_stride=2)
-        layer = self._conv_layer('filtered_3',layer, 96, [3, 3], pool_stride=2)
-        layer = self._conv_layer('filtered_4',layer, 128, [3, 3], pool_stride=2)
-        layer = self._conv_layer('filtered_5',layer, 128, [3, 3], pool_stride=1)
+        layer = self._conv_layer('filtered/1',X_reshaped[:, 2:4, :, :], 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer('filtered/2',layer, 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer('filtered/3',layer, 96, [3, 3], pool_stride=2)
+        layer = self._conv_layer('filtered/4',layer, 128, [3, 3], pool_stride=2)
+        layer = self._conv_layer('filtered/5',layer, 128, [3, 3], pool_stride=1)
 
         filtered_conv = layer
 
         """
-        layer = self._conv_layer('motion_1',X_reshaped[:, 2:4, :, :], 64, [3, 3], pool_stride=2)
-        layer = self._conv_layer('motion_2',layer, 64, [3, 3], pool_stride=2)
-        layer = self._conv_layer('motion_3',layer, 96, [3, 3], pool_stride=2)
-        layer = self._conv_layer('motion_4',layer, 128, [3, 3], pool_stride=2)
-        layer = self._conv_layer('motion_5',layer, 128, [3, 3], pool_stride=1)
+        layer = self._conv_layer('motion/1',X_reshaped[:, 2:4, :, :], 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer('motion/2',layer, 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer('motion/3',layer, 96, [3, 3], pool_stride=2)
+        layer = self._conv_layer('motion/4',layer, 128, [3, 3], pool_stride=2)
+        layer = self._conv_layer('motion/5',layer, 128, [3, 3], pool_stride=1)
 
         motion_conv = layer
         """
@@ -226,7 +226,7 @@ class Estimator():
 
         # run the LSTM
         lstm_cell_fw = tf.contrib.rnn.LSTMCell(
-            num_units=self.LSTM_UNITS, use_peepholes=self.USE_PEEPHOLES)
+            num_units=self.LSTM_UNITS, use_peepholes=self.USE_PEEPHOLES, )
         lstm_cell_bk = tf.contrib.rnn.LSTMCell(
             num_units=self.LSTM_UNITS, use_peepholes=self.USE_PEEPHOLES)
 
@@ -272,11 +272,37 @@ class Estimator():
                                                    staircase=True)
 
         optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-
-        # make sure to update batch norms.
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
-            train_op = optimizer.minimize(loss=loss, name='train_op')
+            train_op = optimizer.minimize(loss, name='train_op')
+
+        """
+        # clip grads
+        grad_vars = optimizer.compute_gradients(loss=loss)
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        capped_grads = [(tf.clip_by_value(grad, -5.0, 5.0), var) for grad, var in grad_vars]
+        with tf.control_dependencies(update_ops):
+            train_op = optimizer.apply_gradients(capped_grads, name='train_op')
+            
+        # show grads
+        for grad, var in grad_vars:
+            tf.summary.histogram(var.name + '/gradient', grad)
+        for grad, var in capped_grads:
+            tf.summary.histogram(var.name + '/clipped_gradient', grad)
+        """
+
+        """
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        gradients, variables = zip(*optimizer.compute_gradients(loss))
+        clipped_gradients, _ = tf.clip_by_global_norm(gradients, 1.0)
+        with tf.control_dependencies(update_ops):
+            train_op = optimizer.apply_gradients(zip(clipped_gradients, variables), name='train_op')
+
+        # show grads
+        for grad, clipped, var in zip(gradients, clipped_gradients, variables):
+            tf.summary.histogram(var.name + '/gradient', grad)
+            tf.summary.histogram(var.name + '/clipped_gradient', clipped)
+        """
 
         # define our model
         self.model = Model(self.datasets, self.X, self.y, self.keep_prob, pred, accuracy, loss, train_op, self.labels)
@@ -353,7 +379,7 @@ def main():
         estimator = Estimator()
         estimator.import_dataset("c://cac//kea", force_normalisation_constants=normalisation_constants)
 
-        estimator.MODEL_NAME = "augmentation_flip and scale constrict"
+        estimator.MODEL_NAME = "flow/squareroot more jitter no flow scale/"
         estimator.LEARNING_RATE = learning_rate
         estimator.LEARNING_RATE_DECAY = 1.0
         estimator.NOTES = str(learning_rate)
@@ -378,13 +404,3 @@ def main():
 if __name__ == "__main__":
     # execute only if run as a script
     main()
-
-
-"""
-Notes
-
-noise = 0.01, 
-looks like noise was unit norm?? how did this happen
-Also overfitted badly, why?
-
-"""
