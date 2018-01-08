@@ -168,6 +168,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         Checks if there are any clips in the database that are on the banned list.  Also makes sure no track has more
         tracks than specified in hints file.
         """
+
         for clip_id, max_tracks in self.hints.items():
             if self.database.has_clip(clip_id):
                 if max_tracks == 0:

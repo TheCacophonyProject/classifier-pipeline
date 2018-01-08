@@ -19,56 +19,18 @@ import numpy as np
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.dataset import Dataset
 
-DATASET_NAME = 'c:/cac/robin/dataset.hdf5'
+DATASET_FOLDER = 'c:/cac/robin/'
 
 # todo: move into a text file
 BANNED_CLIPS = {
+    '20171025-020827-akaroa03.cptv',
+    '20171025-020827-akaroa03.cptv',
     '20171207-114424-akaroa09.cptv',
-    '20171123-040215-akaroa09.cptv',
-    '20171130-193036-brent01.cptv',
-    '20171020-032802-Akaroa01.cptv',
-    '20171019-101525-Akaroa01.cptv',
-    '20171114-094045-akaroa04.cptv',
-    '20171025-044524-akaroa03.cptv',
-    '20171025-025114-akaroa03.cptv',
-    '20171020-042703-Akaroa01.cptv',
-    '20171025-025114-akaroa03.cptv',
-    '20171025-023733-akaroa03.cptv',
-    '20171025-025130-akaroa03.cptv',
-    '20171228-072037-brent01.cptv',
-    '20171025-200149-akaroa04.cptv',
-    # these are false positives that are actually birds (I think)
-    '0171219-102910-akaroa12.cptv',
-    '20171025-020827-akaroa03.cptv',
+    '20171207-114424-akaroa09.cptv',
+    '20171207-114424-akaroa09.cptv',
     '20171219-102910-akaroa12.cptv',
-    '20171025-050511-akaroa03.cptv',
-    '20171219-102910-akaroa12.cptv',
-    '20171025-020827-akaroa03.cptv',
-    '20171219-102910-akaroa12.cptv',
-    '20171219-102910-akaroa12.cptv',
-    '20171025-020827-akaroa03.cptv',
-    '20171219-102910-akaroa12.cptv',
-    '20171219-102910-akaroa12.cptv',
-    '20171219-102910-akaroa12.cptv',
-    '20171219-105919-akaroa12.cptv',
-    # here are some more
-    '20171020-042703-Akaroa01.cptv',
-    '20171025-023733-akaroa03.cptv',
-    '20171025-025114-akaroa03.cptv',
-    '20171025-025130-akaroa03.cptv',
-    '20171025-050511-akaroa03.cptv',
-    '20171025-200149-akaroa04.cptv',
-    '20171214-112056-brent01.cptv',
-    '20171228-072037-brent01.cptv',
-    '20171231-074825-akaroa03.cptv',
-    '20171231-164015-akaroa10.cptv',
-    '20171231-164122-akaroa10.cptv',
-    '20171231-164227-akaroa10.cptv',
-    '20171231-165906-akaroa10.cptv',
-    '20180101-070700-akaroa10.cptv',
-    '20180103-075552-akaroa09.cptv',
-    '20180106-072456-akaroa03.cptv',
-]
+    '20171219-105919-akaroa12.cptv'
+}
 
 EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog','human','stoat']
 
@@ -80,7 +42,7 @@ EXCLUDE_TRAPPED = True
 # sets a maxmimum number of segments per bin, where the cap is this many standard deviations above the norm.
 # bins with more than this number of segments will be weighted lower so that their segments are not lost, but
 # will be sampled less frequently.
-CAP_BIN_WEIGHT = 1.0
+CAP_BIN_WEIGHT = 1.5
 
 # adjusts the weight for each animal class.  Setting this lower for animals that are less represented can help
 # with training, otherwise the few examples we have will be used excessively.  This also helps build a prior for
@@ -96,9 +58,10 @@ LABEL_WEIGHTS = {
 TEST_MIN_MASS = 40
 
 # number of segments to include in test set for each class (multiplied by label weights)
-TEST_SET_COUNT = 200
+TEST_SET_COUNT = 400
 
-
+# minimum number of bins used for test set
+TEST_SET_BINS = 15
 
 filtered_stats = {'confidence':0,'trap':0,'banned':0}
 
@@ -130,7 +93,6 @@ def track_filter(clip_meta, track_meta):
         filtered_stats['trap'] += 1
         return True
 
-
     return False
 
 
@@ -140,6 +102,17 @@ def show_tracks_breakdown():
         count = len([track for track in dataset.tracks_by_label[label]])
         print("  {:<20} {} tracks".format(label, count))
 
+
+def show_cameras_breakdown():
+    print("Cameras breakdown")
+    tracks_by_camera = {}
+    for track in dataset.tracks:
+        if track.camera not in tracks_by_camera:
+            tracks_by_camera[track.camera] = []
+        tracks_by_camera[track.camera].append(track)
+
+    for camera, tracks in tracks_by_camera.items():
+        print("{:<20} {}".format(camera, len(tracks)))
 
 def show_segments_breakdown():
     print("Segments breakdown:")
@@ -259,7 +232,7 @@ def split_dataset_days(test_bins=None):
             print("{}: normal {} heavy {}".format(label, len(available_bins), len(heavy_bins)))
 
             required_samples = TEST_SET_COUNT * LABEL_WEIGHTS.get(label, 1.0)
-            required_bins = 10 # make sure there is some diversity
+            required_bins = TEST_SET_BINS * LABEL_WEIGHTS.get(label, 1.0) # make sure there is some diversity
 
             # we assign bins to the test and validation sets randomly until we have enough segments + bins
             # the remaining bins can be used for training
@@ -331,7 +304,7 @@ def split_dataset_days(test_bins=None):
     print()
 
     # normalisation constants
-    normalisation_constants = train.get_normalisation_constants(1000)
+    normalisation_constants = train.get_normalisation_constants(5000)
     print('Normalisation constants:')
     for i in range(len(normalisation_constants)):
         print("  {:.4f} {:.4f}".format(normalisation_constants[i][0], normalisation_constants[i][1]))
@@ -345,7 +318,7 @@ def main():
     global dataset
     global db
 
-    db = TrackDatabase(DATASET_NAME)
+    db = TrackDatabase(os.path.join(DATASET_FOLDER,'dataset.hdf5'))
     dataset = Dataset(db, 'dataset')
 
     total_tracks = len(db.get_all_track_ids())
@@ -365,12 +338,14 @@ def main():
     print()
     show_segments_breakdown()
     print()
+    show_cameras_breakdown()
+    print()
 
     print("Splitting data set into train / validation")
-    split = pickle.load(open('test_split.dat','rb'))
-    datasets = split_dataset_days(split)
+    #split = pickle.load(open('test_split.dat','rb'))
+    datasets = split_dataset_days()
 
-    pickle.dump(datasets,open('c:/cac/kea/datasets.dat','wb'))
+    pickle.dump(datasets,open(os.path.join(DATASET_FOLDER,'datasets.dat'),'wb'))
 
 
 if __name__ == "__main__":
