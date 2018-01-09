@@ -32,7 +32,7 @@ BANNED_CLIPS = {
     '20171219-105919-akaroa12.cptv'
 }
 
-EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog','human','stoat']
+EXCLUDED_LABELS = ['insect','rabbit','cat','dog','human','stoat']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
@@ -50,12 +50,16 @@ CAP_BIN_WEIGHT = 1.5
 # the classifier learn towards guessing human when it is not sure.
 LABEL_WEIGHTS = {
     'human':0.8,
+    'rat':0.8,
+    'false-positive':0.8,
     'cat':0.2,
     'dog':0.2,
 }
 
 # minimum average mass for test segment
 TEST_MIN_MASS = 40
+
+TRAIN_MIN_MASS = 30
 
 # number of segments to include in test set for each class (multiplied by label weights)
 TEST_SET_COUNT = 300
@@ -255,6 +259,7 @@ def split_dataset_days(test_bins=None):
 
             for bin_id in available_bins:
                 train.add_tracks(dataset.tracks_by_bin[bin_id])
+                train.filter_segments(TRAIN_MIN_MASS, ['false-positive'])
 
             test_bins[label] = used_bins
 
@@ -323,6 +328,7 @@ def main():
 
     db = TrackDatabase(os.path.join(DATASET_FOLDER,'dataset.hdf5'))
     dataset = Dataset(db, 'dataset')
+    dataset.label_mapping = {'mouse':'rat'}
 
     total_tracks = len(db.get_all_track_ids())
 
@@ -345,8 +351,8 @@ def main():
     print()
 
     print("Splitting data set into train / validation")
-    #split = pickle.load(open('test_split.dat','rb'))
-    datasets = split_dataset_days()
+    split = pickle.load(open('dataset_split.dat','rb'))
+    datasets = split_dataset_days(split)
 
     pickle.dump(datasets,open(os.path.join(DATASET_FOLDER,'datasets.dat'),'wb'))
 

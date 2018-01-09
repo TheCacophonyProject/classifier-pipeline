@@ -166,6 +166,9 @@ class Dataset():
         # constants used to normalise input
         self.normalisation_constants = None
 
+        # dictionary used to apply label remapping during track load
+        self.label_mapping = None
+
         # this allows manipulation of data (such as scaling) during the sampling stage.
         self.enable_augmentation = False
         # how often to scale during augmentation
@@ -278,6 +281,8 @@ class Dataset():
             return False
 
         track_header = TrackHeader.from_meta(clip_id, track_meta)
+        if self.label_mapping and track_header.label in self.label_mapping:
+            track_header.label = self.label_mapping[track_header.label]
 
         self.tracks.append(track_header)
         self.track_by_id[track_header.track_id] = track_header
