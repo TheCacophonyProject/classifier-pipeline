@@ -44,6 +44,7 @@ class SegmentHeader():
         self.weight = weight
         # our label
         self.label = label.lower()
+
         self.avg_mass = avg_mass
 
     @property
@@ -124,6 +125,9 @@ class TrackHeader():
         )
         return result
 
+    def __repr__(self):
+        return self.track_id
+
 class Dataset():
     """
     Stores visit, clip, track, and segment information headers in memory, and allows track / segment streaming from
@@ -164,6 +168,8 @@ class Dataset():
 
         # this allows manipulation of data (such as scaling) during the sampling stage.
         self.enable_augmentation = False
+        # how often to scale during augmentation
+        self.scale_frequency = 0.25
 
         self.preloader_queue = None
         self.preloader_threads = None
@@ -245,8 +251,11 @@ class Dataset():
         :param tracks: list of TrackHeader
         :param track_filter: optional filter
         """
+        result = 0
         for track in tracks:
-            self.add_track(track.clip_id, track.track_number, track_filter)
+            if self.add_track(track.clip_id, track.track_number, track_filter):
+                result += 1
+        return result
 
     def add_track(self, clip_id, track_number, track_filter=None):
         """
@@ -256,8 +265,8 @@ class Dataset():
         """
 
         # make sure we don't already have this track
-        if TrackHeader.get_name(clip_id, track_number) in self.tracks:
-            return
+        if TrackHeader.get_name(clip_id, track_number) in self.track_by_id:
+            return False
 
         clip_meta = self.db.get_clip_meta(clip_id)
         track_meta = self.db.get_track_meta(clip_id, track_number)
@@ -275,11 +284,11 @@ class Dataset():
 
         if track_header.bin_id not in self.tracks_by_bin:
             self.tracks_by_bin[track_header.bin_id] = []
+
         self.tracks_by_bin[track_header.bin_id].append(track_header)
 
         mass_history = track_meta['mass_history']
         segment_count = len(mass_history) // self.segment_spacing
-        track_weight = math.sqrt(segment_count)
 
         # scan through track looking for good segments to add to our datset
 
@@ -294,16 +303,14 @@ class Dataset():
                 continue
 
             # try to sample the better segments more often
-            if segment_avg_mass < 30:
-                segment_weight_factor = 0.5
-            elif segment_avg_mass > 60:
-                segment_weight_factor = 2.0
+            if segment_avg_mass < 50:
+                segment_weight_factor = 0.75
             else:
                 segment_weight_factor = 1
 
             segment = SegmentHeader(
                 clip_id=clip_id, track_number=track_number, start_frame=segment_start, frames=self.segment_width,
-                weight=track_weight/segment_count*segment_weight_factor, label=track_meta['tag'], avg_mass=segment_avg_mass)
+                weight=segment_weight_factor, label=track_meta['tag'], avg_mass=segment_avg_mass)
 
             self.segments.append(segment)
             track_header.segments.append(segment)
@@ -368,7 +375,7 @@ class Dataset():
 
         # apply some thresholding.  This removes the noise from the background which helps a lot during training.
         # it is possiable that with enough data this will no longer be necessary.
-        threshold = 20
+        threshold = 15
         if threshold:
             data[:, 1, :, :] = np.clip(data[:, 1, :, :] - threshold, a_min=0, a_max=None)
 
@@ -379,19 +386,19 @@ class Dataset():
             # we pre-multiplied by 256 to fit into a 16bit int
             flow = flow / 256
 
-            # blur, not really a good idea
-            #flow = cv2.blur(flow, (3, 3))
-
             # try to get optical flow a little closer to normal looking (it's got long tails)
-            flow = (np.abs(flow) ** (1/2)) * np.sign(flow)
+            abs_flow = np.abs(flow)
+
+            # just a check
+            max_flow = np.max(abs_flow)
+            abs_flow = np.clip(abs_flow, 0, 10)
+
+            flow = (np.minimum(abs_flow, np.abs(flow) ** (1/2))) * np.sign(flow)
+
             data[:, 2:3+1, :, :] = flow
 
         if augment:
             data = self.apply_augmentation(data)
-
-        # stub: add a little noise floor, even when augmentation is off
-        #data[:, 2:3+1] += np.random.normal(loc=0, scale=0.005, size=data[:, 2:3+1].shape)
-
 
         if normalise:
             data = self.apply_normalisation(data)
@@ -428,8 +435,8 @@ class Dataset():
 
         segment_data = np.float32(segment_data)
 
-        # apply scaling 25% of time
-        if random.randint(0, 100) >= 25 or force_scale is not None:
+        # apply scaling only some of time
+        if random.random() <= self.scale_frequency or force_scale is not None:
             mask = segment_data[:, 4, :, :]
             av_mass = np.sum(mask) / len(mask)
             size = math.sqrt(av_mass+4)
@@ -444,15 +451,13 @@ class Dataset():
                 scale = tools.random_log(min_scale_down, max_scale_up)
 
             if scale != 1.0:
-                position_jitter = 10
+                position_jitter = 5
                 xofs = random.normalvariate(0, position_jitter)
                 yofs = random.normalvariate(0, position_jitter)
                 for i in range(frames):
                     segment_data[i] = tools.zoom_image(segment_data[i], scale=scale, channels_first=True,
-                                                       offset_x=xofs, offset_y=yofs)
-                # make sure to scale optical flow as well
-                # note: this might not be a good idea
-                #segment_data[:,2:3+1] *= scale
+                                                       offset_x=xofs, offset_y=yofs,
+                                                       interpolation=cv2.INTER_LANCZOS4)
 
         if random.randint(0,1) == 0:
             # when we flip the frame remember to flip the horizontal velocity as well
@@ -509,7 +514,7 @@ class Dataset():
         for bin_name, tracks in self.tracks_by_bin.items():
             bin_weight = sum(track.weight for track in tracks)
             if bin_weight > max_bin_weight:
-                scale_factor =  max_bin_weight / bin_weight
+                scale_factor = max_bin_weight / bin_weight
                 for track in tracks:
                     for segment in track.segments:
                         segment.weight *= scale_factor
@@ -652,7 +657,7 @@ class Dataset():
                 if hasattr(thread, 'terminate'):
                     # note this will corrupt the queue, so reset it
                     thread.terminate()
-                    self.preloader_queue = multiprocessing.Queue(64)
+                    self.preloader_queue = None
                 else:
                     thread.exit()
 

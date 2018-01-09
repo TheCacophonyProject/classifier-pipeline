@@ -58,10 +58,10 @@ LABEL_WEIGHTS = {
 TEST_MIN_MASS = 40
 
 # number of segments to include in test set for each class (multiplied by label weights)
-TEST_SET_COUNT = 400
+TEST_SET_COUNT = 300
 
 # minimum number of bins used for test set
-TEST_SET_BINS = 15
+TEST_SET_BINS = 10
 
 filtered_stats = {'confidence':0,'trap':0,'banned':0}
 
@@ -244,13 +244,16 @@ def split_dataset_days(test_bins=None):
 
                 validation.add_tracks(dataset.tracks_by_bin[sample])
                 test.add_tracks(dataset.tracks_by_bin[sample])
+
                 validation.filter_segments(TEST_MIN_MASS, ['false-positive'])
                 test.filter_segments(TEST_MIN_MASS, ['false-positive'])
 
                 available_bins.remove(sample)
                 used_bins.append(sample)
 
-            for bin_id in available_bins | heavy_bins :
+            available_bins.update(heavy_bins)
+
+            for bin_id in available_bins:
                 train.add_tracks(dataset.tracks_by_bin[bin_id])
 
             test_bins[label] = used_bins

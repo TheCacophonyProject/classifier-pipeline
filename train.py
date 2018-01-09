@@ -54,10 +54,11 @@ class Estimator():
     LEARNING_RATE_DECAY = 1.0
     L2_REG = 0.01
     LABEL_SMOOTHING = 0.1
-    LSTM_UNITS = 128
+    LSTM_UNITS = 256
     USE_PEEPHOLES = False # these don't really help.
     AUGMENTATION = True
-    NOTES = "#search-lr-1e5#"
+    SCALE_FREQUENCY = 0.5
+    NOTES = ""
 
     def get_hyper_parameter_string(self):
         """ Converts hyperparmeters into a string. """
@@ -95,6 +96,7 @@ class Estimator():
 
         # augmentation really helps with reducing over-fitting, but test set should be fixed so we don't apply it there.
         self.train.enable_augmentation = self.AUGMENTATION
+        self.train.scale_frequency = self.SCALE_FREQUENCY
         self.validation.enable_augmentation = False
         self.test.enable_augmentation = False
 
@@ -115,20 +117,22 @@ class Estimator():
 
     def _conv_layer(self, name, input_layer, filters, kernal_size, conv_stride=1, pool_stride=1):
 
+        tf.summary.histogram(name + '/input', input_layer)
         layer = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
                                  strides=(conv_stride, conv_stride),
                                  padding="same", activation=None, data_format='channels_first',
                                  name=name+"_conv")
 
-        tf.summary.histogram(name+'/layeractivations', layer)
+        tf.summary.histogram(name+'/conv_output', layer)
 
         layer = tf.nn.relu(layer)
+
+        tf.summary.histogram(name + '/activations', layer)
 
         if self.BATCH_NORM:
             layer = tf.layers.batch_normalization(
                 layer, axis=1, fused=True,
                 training=self.training,
-                #renorm=True,
                 name=name + "/batchnorm"
 
             )
@@ -173,7 +177,7 @@ class Estimator():
         for channel in range(5):
             tf.summary.histogram('inputs/'+str(channel), X_reshaped[:, channel])
 
-        layer = self._conv_layer('filtered/1',X_reshaped[:, 2:4, :, :], 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer('filtered/1',X_reshaped[:, 1:2, :, :], 64, [3, 3], pool_stride=2)
         layer = self._conv_layer('filtered/2',layer, 64, [3, 3], pool_stride=2)
         layer = self._conv_layer('filtered/3',layer, 96, [3, 3], pool_stride=2)
         layer = self._conv_layer('filtered/4',layer, 128, [3, 3], pool_stride=2)
@@ -181,7 +185,6 @@ class Estimator():
 
         filtered_conv = layer
 
-        """
         layer = self._conv_layer('motion/1',X_reshaped[:, 2:4, :, :], 64, [3, 3], pool_stride=2)
         layer = self._conv_layer('motion/2',layer, 64, [3, 3], pool_stride=2)
         layer = self._conv_layer('motion/3',layer, 96, [3, 3], pool_stride=2)
@@ -189,33 +192,16 @@ class Estimator():
         layer = self._conv_layer('motion/5',layer, 128, [3, 3], pool_stride=1)
 
         motion_conv = layer
-        """
 
-        """
-        c1 = self._conv_layer(X_reshaped[:, :, :, 1:2], 32, [8, 8], pool_stride=4)
-        c2 = self._conv_layer(c1, 48, [4, 4], pool_stride=2)
-        c3 = self._conv_layer(c2, 64, [3, 3], pool_stride=1)
-
-        filtered_conv = c3
-
-        c1 = self._conv_layer(X_reshaped[:, :, :, 2:4], 32, [8, 8], pool_stride=4)
-        c2 = self._conv_layer(c1, 48, [4, 4], pool_stride=2)
-        c3 = self._conv_layer(c2, 64, [3, 3], pool_stride=1)
-        
-
-        motion_conv = c3
-        
-        """
-
-        #print("convolution output shape: ", filtered_conv.shape, motion_conv.shape)
+        print("convolution output shape: ", filtered_conv.shape, motion_conv.shape)
 
         # reshape back into segments
 
         flat1 = tf.reshape(filtered_conv, [-1, 27, prod(filtered_conv.shape[1:])])
-        #flat2 = tf.reshape(motion_conv, [-1, 27, prod(motion_conv.shape[1:])])
+        flat2 = tf.reshape(motion_conv, [-1, 27, prod(motion_conv.shape[1:])])
 
         # no motion
-        flat = tf.concat((flat1,), axis=2)
+        flat = tf.concat((flat1,flat2), axis=2)
 
         #print('Flat', flat.shape, 'from', flat1.shape, ',', flat2.shape)
 
@@ -226,7 +212,7 @@ class Estimator():
 
         # run the LSTM
         lstm_cell_fw = tf.contrib.rnn.LSTMCell(
-            num_units=self.LSTM_UNITS, use_peepholes=self.USE_PEEPHOLES, )
+            num_units=self.LSTM_UNITS, use_peepholes=self.USE_PEEPHOLES)
         lstm_cell_bk = tf.contrib.rnn.LSTMCell(
             num_units=self.LSTM_UNITS, use_peepholes=self.USE_PEEPHOLES)
 
@@ -311,8 +297,8 @@ class Estimator():
         self.model.training = self.training
 
     def start_async_load(self):
-        self.train.start_async_load(256)
-        self.validation.start_async_load(256)
+        self.train.start_async_load(512)
+        self.validation.start_async_load(512)
 
     def stop_async(self):
         self.train.stop_async_load()
@@ -352,10 +338,10 @@ def main():
     tf.logging.set_verbosity(3)
 
     normalisation_constants = [
-        [3200, 200],
-        [5, 20],
-        [0, 1],
-        [0, 1],
+        [3200, 180],
+        [3.5, 20],
+        [0, 0.1],
+        [0, 0.1],
         [0, 1]
     ]
 
@@ -364,9 +350,9 @@ def main():
     #    1e-2,1e-3,3e-4,1e-4,3e-5,1e-5,3e-6,1e-6
     #]
 
-    learning_rates = [1e-4]
+    learning_rates = [1]
 
-    log_folder = 'c:/cac/search_lr/'
+    log_folder = 'c:/cac/test_robin/'
 
     for learning_rate in learning_rates:
 
@@ -377,10 +363,10 @@ def main():
         sess = tools.get_session()
 
         estimator = Estimator()
-        estimator.import_dataset("c://cac//kea", force_normalisation_constants=normalisation_constants)
+        estimator.import_dataset("c://cac//robin", force_normalisation_constants=normalisation_constants)
 
-        estimator.MODEL_NAME = "flow/squareroot more jitter no flow scale/"
-        estimator.LEARNING_RATE = learning_rate
+        estimator.MODEL_NAME = "baseline/v2 5x5 on final layer"
+        estimator.LEARNING_RATE = estimator.LEARNING_RATE
         estimator.LEARNING_RATE_DECAY = 1.0
         estimator.NOTES = str(learning_rate)
 

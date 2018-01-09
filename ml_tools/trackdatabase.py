@@ -113,6 +113,8 @@ class TrackDatabase:
             result = {}
             for key, value in f['clips'][str(clip_id)][str(track_number)].attrs.items():
                 result[key] = value
+            # track number (id) is broken in the file (always 1) so we just read it off the node number
+            result['id'] = track_number
         return result
 
     def get_clip_meta(self, clip_id):

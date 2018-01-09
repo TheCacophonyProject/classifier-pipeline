@@ -170,9 +170,9 @@ class Model:
 
         # number of samples to use when evaluating the model, 1000 works well but is a bit slow,
         # 100 should give results to within a few percent.
-        eval_samples = 1000
+        eval_samples = 500
 
-        best_val_accuracy = 0
+        best_val_loss = float('inf')
 
         # counts cycles since last best weights
         cycles_since_last_best = 0
@@ -260,14 +260,14 @@ class Model:
 
                 # save at epochs
                 if int(epoch) > last_epoch_save:
-                    print('save epoch')
+                    print('Save epoch reference')
                     saver.save(self.sess, os.path.join(CHECKPOINT_FOLDER, "training-epoch-{:02d}.sav".format(int(epoch))))
                     last_epoch_save = int(epoch)
 
-                if val_accuracy > best_val_accuracy:
-                    print('save best')
+                if val_loss < best_val_loss:
+                    print('Save best model')
                     saver.save(self.sess, os.path.join(CHECKPOINT_FOLDER,"training-best.sav"))
-                    best_val_accuracy = val_accuracy
+                    best_val_loss = val_loss
                     best_step = i
                     cycles_since_last_best = 0
                 else:
