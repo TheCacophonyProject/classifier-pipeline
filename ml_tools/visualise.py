@@ -41,7 +41,7 @@ def show_saliency_map(model, X_in, y_in):
         for channel in range(4):
 
             plt.subplot(rows, cols, (cols * channel) + frame + 1)
-            frame_data = X[frame, channel, :, :].astype('float32')
+            frame_data = np.float32(X[frame, channel, :, :])
             if channel in [2, 3]:
                 # for motion vectors it's better to use magnitude when drawing them
                 frame_data = np.abs(frame_data)
@@ -50,7 +50,7 @@ def show_saliency_map(model, X_in, y_in):
             plt.axis('off')
 
             plt.subplot(rows, cols, (cols * (channel + 4)) + frame + 1)
-            plt.imshow(saliency[frame, channel, :, :], vmin=0.0, vmax=0.7, cmap=plt.cm.hot, aspect='auto')
+            plt.imshow(saliency[frame, channel, :, :], vmin=0.0, vmax=1.0, cmap=plt.cm.hot, aspect='auto')
             plt.axis('off')
 
     plt.subplots_adjust(wspace=0, hspace=0)
@@ -77,7 +77,7 @@ def show_segment(X_in):
         for channel in range(4):
 
             plt.subplot(rows, cols, (cols * channel) + frame + 1)
-            frame_data = X[frame, :, :, channel].astype('float32')
+            frame_data = np.float32(X[frame, channel, :, :])
             if channel in [2, 3]:
                 # for motion vectors it's better to use magnitude when drawing them
                 frame_data = np.abs(frame_data) * 5
@@ -94,7 +94,7 @@ def show_segment(X_in):
 def compute_saliency_map(X_in, y_in, model):
     """
     Compute a class saliency map for segment using the model for image X and label y.
-    :param X_in: segment of shape [frames, height, width, channels]
+    :param X_in: segment of shape [batch, frames, channels, height, width]
     :param y_in: label index
     :param model: the model to use classify the segment
     :return: the saliency map of shape [frames, height, width]
@@ -106,13 +106,9 @@ def compute_saliency_map(X_in, y_in, model):
     correct_scores = tf.gather_nd(model.pred,
                                   tf.stack((tf.range(X_in.shape[0], dtype="int64"), model.y), axis=1))
 
-    # normalise thermal and filtered channels
-    for i in [0, 1]:
-        X_in[:, :, i, :, :] = tools.normalise(X_in[:, :, i, :, :])
-
     feed_dict = {
         model.X: X_in,
-        model.y: y_in,
+        model.y: y_in
     }
 
     grads = tf.abs(tf.gradients(correct_scores, model.X)[0])

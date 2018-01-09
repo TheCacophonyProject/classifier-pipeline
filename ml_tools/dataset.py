@@ -170,6 +170,10 @@ class Dataset():
         self.enable_augmentation = False
         # how often to scale during augmentation
         self.scale_frequency = 0.25
+        # how much to threshold the filtered channel
+        self.filter_threshold = 20
+        # adds a little noise to thermal channel
+        self.thermal_noise = 1.0
 
         self.preloader_queue = None
         self.preloader_threads = None
@@ -375,9 +379,12 @@ class Dataset():
 
         # apply some thresholding.  This removes the noise from the background which helps a lot during training.
         # it is possiable that with enough data this will no longer be necessary.
-        threshold = 15
-        if threshold:
-            data[:, 1, :, :] = np.clip(data[:, 1, :, :] - threshold, a_min=0, a_max=None)
+        if self.filter_threshold:
+            data[:, 1, :, :] = np.clip(data[:, 1, :, :] - self.filter_threshold, a_min=0, a_max=None) + self.filter_threshold
+
+        #add very small amount of noise to filtered layer
+        if self.thermal_noise:
+            data[:,1,:,:] += np.random.uniform(-self.thermal_noise, +self.thermal_noise,size=data[:,1,:,:].shape)
 
         # map optical flow down to right level,
         if True:

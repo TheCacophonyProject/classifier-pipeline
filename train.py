@@ -52,11 +52,12 @@ class Estimator():
     BATCH_NORM = True
     LEARNING_RATE = 1e-4
     LEARNING_RATE_DECAY = 1.0
-    L2_REG = 0.01
+    L2_REG = 1e-8
     LABEL_SMOOTHING = 0.1
     LSTM_UNITS = 256
     USE_PEEPHOLES = False # these don't really help.
     AUGMENTATION = True
+    FILTER_THRESHOLD = 20
     SCALE_FREQUENCY = 0.5
     NOTES = ""
 
@@ -99,6 +100,9 @@ class Estimator():
         self.train.scale_frequency = self.SCALE_FREQUENCY
         self.validation.enable_augmentation = False
         self.test.enable_augmentation = False
+        for dataset in [self.train, self.validation, self.test]:
+            dataset.filter_threshold = self.FILTER_THRESHOLD
+            dataset.thermal_noise = 1.0
 
         logging.info("Training segments: {0:.1f}k".format(self.train.rows/1000))
         logging.info("Validation segments: {0:.1f}k".format(self.validation.rows/1000))
@@ -115,21 +119,21 @@ class Estimator():
 
         self.test.load_all()
 
-    def _conv_layer(self, name, input_layer, filters, kernal_size, conv_stride=1, pool_stride=1):
+    def _conv_layer(self, name, input_layer, filters, kernal_size, conv_stride=1, pool_stride=1, disable_norm=False):
 
         tf.summary.histogram(name + '/input', input_layer)
         layer = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
                                  strides=(conv_stride, conv_stride),
                                  padding="same", activation=None, data_format='channels_first',
-                                 name=name+"_conv")
+                                 name=name+'/conv')
 
         tf.summary.histogram(name+'/conv_output', layer)
 
-        layer = tf.nn.relu(layer)
+        layer = tf.nn.relu(layer,name=name+'/relu')
 
         tf.summary.histogram(name + '/activations', layer)
 
-        if self.BATCH_NORM:
+        if self.BATCH_NORM and not disable_norm:
             layer = tf.layers.batch_normalization(
                 layer, axis=1, fused=True,
                 training=self.training,
@@ -142,11 +146,10 @@ class Estimator():
             tf.summary.histogram(name+'/batchnorm/mean', moving_mean)
             tf.summary.histogram(name+'/batchnorm/var', moving_variance)
 
-
         if pool_stride != 1:
             layer = tf.layers.max_pooling2d(inputs=layer, pool_size=[pool_stride, pool_stride],
                                             strides=pool_stride, data_format='channels_first',
-                                            name=name + "_max_pool"
+                                            name=name + "/max_pool"
                                             )
         return layer
 
@@ -177,7 +180,7 @@ class Estimator():
         for channel in range(5):
             tf.summary.histogram('inputs/'+str(channel), X_reshaped[:, channel])
 
-        layer = self._conv_layer('filtered/1',X_reshaped[:, 1:2, :, :], 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer('filtered/1',X_reshaped[:, 1:2, :, :], 64, [3, 3], pool_stride=2, disable_norm=True)
         layer = self._conv_layer('filtered/2',layer, 64, [3, 3], pool_stride=2)
         layer = self._conv_layer('filtered/3',layer, 96, [3, 3], pool_stride=2)
         layer = self._conv_layer('filtered/4',layer, 128, [3, 3], pool_stride=2)
@@ -185,7 +188,7 @@ class Estimator():
 
         filtered_conv = layer
 
-        layer = self._conv_layer('motion/1',X_reshaped[:, 2:4, :, :], 64, [3, 3], pool_stride=2)
+        layer = self._conv_layer('motion/1',X_reshaped[:, 2:4, :, :], 64, [3, 3], pool_stride=2, disable_norm=True)
         layer = self._conv_layer('motion/2',layer, 64, [3, 3], pool_stride=2)
         layer = self._conv_layer('motion/3',layer, 96, [3, 3], pool_stride=2)
         layer = self._conv_layer('motion/4',layer, 128, [3, 3], pool_stride=2)
@@ -200,10 +203,9 @@ class Estimator():
         flat1 = tf.reshape(filtered_conv, [-1, 27, prod(filtered_conv.shape[1:])])
         flat2 = tf.reshape(motion_conv, [-1, 27, prod(motion_conv.shape[1:])])
 
-        # no motion
         flat = tf.concat((flat1,flat2), axis=2)
 
-        #print('Flat', flat.shape, 'from', flat1.shape, ',', flat2.shape)
+        print('Flat', flat.shape, 'from', flat1.shape, ',', flat2.shape)
 
         # the LSTM expects an array of 27 examples
         sequences = tf.unstack(flat, 27, 1)
@@ -245,7 +247,7 @@ class Estimator():
         with tf.variable_scope('logits', reuse=True):
             h2_weights = tf.get_variable('kernel')
 
-        reg_loss = (tf.nn.l2_loss(h2_weights) * self.L2_REG)
+        reg_loss = (tf.nn.l2_loss(h2_weights, name='loss/reg') * self.L2_REG)
         loss = tf.add(
             tf.losses.softmax_cross_entropy(onehot_labels=tf.one_hot(self.y, len(self.labels)), logits=logits,
                                             label_smoothing=self.LABEL_SMOOTHING), reg_loss,
@@ -261,34 +263,6 @@ class Estimator():
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
             train_op = optimizer.minimize(loss, name='train_op')
-
-        """
-        # clip grads
-        grad_vars = optimizer.compute_gradients(loss=loss)
-        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        capped_grads = [(tf.clip_by_value(grad, -5.0, 5.0), var) for grad, var in grad_vars]
-        with tf.control_dependencies(update_ops):
-            train_op = optimizer.apply_gradients(capped_grads, name='train_op')
-            
-        # show grads
-        for grad, var in grad_vars:
-            tf.summary.histogram(var.name + '/gradient', grad)
-        for grad, var in capped_grads:
-            tf.summary.histogram(var.name + '/clipped_gradient', grad)
-        """
-
-        """
-        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        gradients, variables = zip(*optimizer.compute_gradients(loss))
-        clipped_gradients, _ = tf.clip_by_global_norm(gradients, 1.0)
-        with tf.control_dependencies(update_ops):
-            train_op = optimizer.apply_gradients(zip(clipped_gradients, variables), name='train_op')
-
-        # show grads
-        for grad, clipped, var in zip(gradients, clipped_gradients, variables):
-            tf.summary.histogram(var.name + '/gradient', grad)
-            tf.summary.histogram(var.name + '/clipped_gradient', clipped)
-        """
 
         # define our model
         self.model = Model(self.datasets, self.X, self.y, self.keep_prob, pred, accuracy, loss, train_op, self.labels)
@@ -365,7 +339,7 @@ def main():
         estimator = Estimator()
         estimator.import_dataset("c://cac//robin", force_normalisation_constants=normalisation_constants)
 
-        estimator.MODEL_NAME = "baseline/v2 5x5 on final layer"
+        estimator.MODEL_NAME = "baseline/v7 set l2 reg very low"
         estimator.LEARNING_RATE = estimator.LEARNING_RATE
         estimator.LEARNING_RATE_DECAY = 1.0
         estimator.NOTES = str(learning_rate)

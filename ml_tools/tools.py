@@ -287,19 +287,24 @@ def load_track_stats(filename):
     return stats
 
 
-def get_session():
+def get_session(disable_gpu=False):
     """Create a session that dynamically allocates memory."""
     # See: https://www.tensorflow.org/tutorials/using_gpu#allowing_gpu_memory_growth
 
     global tf
     import tensorflow as tf
+    
+    session = None
 
-    print("Creating new GPU session with memory growth enabled.")
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
-    config.gpu_options.per_process_gpu_memory_fraction = 0.8 # save some ram for other applications.
-
-    session = tf.Session(config=config)
+    if disable_gpu:
+        print("Creating new CPU session.")
+        session = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}))
+    else:
+        print("Creating new GPU session with memory growth enabled.")
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        config.gpu_options.per_process_gpu_memory_fraction = 0.8 # save some ram for other applications.
+        session = tf.Session(config=config)
 
     return session
 

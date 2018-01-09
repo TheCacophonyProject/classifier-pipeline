@@ -510,6 +510,7 @@ def parse_params():
     print('Processing tag "{0}"'.format(args.target))
 
     if args.target.lower() == 'all':
+        extractor.clean_all()
         extractor.process_all(args.source_folder)
         return
     if args.target.lower() == 'clean':
