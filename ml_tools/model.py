@@ -259,16 +259,20 @@ class Model:
         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
 
+        # first run takes a while, so run this just to build the graph, then run again to get real performance.
+        _, _ = self.session.run([self.accuracy, self.loss], feed_dict=feed_dict)
+
         _, _ = self.session.run([self.accuracy, self.loss], feed_dict=feed_dict,
                                             options=run_options,
                                             run_metadata=run_metadata)
 
         # write out hyper-params
-        summary_op = tf.summary.text('hyperparams', tf.convert_to_tensor(str(self.hyperparams_string)))
-        summary = self.session.run(summary_op)
+        hp_summary_op = tf.summary.text('hyperparams', tf.convert_to_tensor(str(self.hyperparams_string)))
+        hp_summary = self.session.run(hp_summary_op)
         for writer in [self.writer_train, self.writer_val]:
-            writer.add_summary(summary)
-            writer.add_run_metadata(run_metadata,'benchmark')
+            writer.add_run_metadata(run_metadata, 'benchmark')
+            writer.add_summary(hp_summary)
+
 
     def setup_summary_writers(self, run_name):
         """
@@ -295,7 +299,6 @@ class Model:
         if self.enable_async_loading:
             self.start_async_load()
 
-        print("Training...")
 
         iterations = int(math.ceil(epochs * self.rows / self.batch_size))
         if run_name is None:
@@ -316,8 +319,11 @@ class Model:
         self.session.run(init)
 
         # setup writers and run a quick benchmark
+        print("Initialising summary writers at {}.".format(os.path.join(self.log_dir, run_name)))
         self.setup_summary_writers(run_name)
+        print("Starting benchmark.")
         self.benchmark_model()
+        print("Training...")
 
         for i in range(iterations):
 

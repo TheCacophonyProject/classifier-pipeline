@@ -26,7 +26,7 @@ class Model_CRNN(Model):
         'batch_size': 32,
         'learning_rate': 1e-4,
         'learning_rate_decay': 1.0,
-        'l2_reg': 1e-8,
+        'l2_reg': 0,
         'label_smoothing': 0.1,
         'keep_prob': 0.5,
 
@@ -55,7 +55,7 @@ class Model_CRNN(Model):
         tf.summary.histogram(name + '/input', input_layer)
         layer = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
                                  strides=(conv_stride, conv_stride),
-                                 padding="same", activation=None, data_format='channels_first',
+                                 padding="same", activation=None,
                                  name=name + '/conv')
 
         tf.summary.histogram(name + '/conv_output', layer)
@@ -66,7 +66,7 @@ class Model_CRNN(Model):
 
         if self.params['batch_norm'] and not disable_norm:
             layer = tf.layers.batch_normalization(
-                layer, axis=1, fused=True,
+                layer, fused=True,
                 training=self.is_training,
                 name=name + "/batchnorm"
 
@@ -79,7 +79,7 @@ class Model_CRNN(Model):
 
         if pool_stride != 1:
             layer = tf.layers.max_pooling2d(inputs=layer, pool_size=[pool_stride, pool_stride],
-                                            strides=pool_stride, data_format='channels_first',
+                                            strides=pool_stride,
                                             name=name + "/max_pool"
                                             )
         return layer
@@ -100,13 +100,15 @@ class Model_CRNN(Model):
         self.global_step = tf.placeholder_with_default(tf.constant(0, tf.int32), [], name='global_step')
 
         # First put all frames in batch into one line sequence, this is required for convolutions.
-        X = tf.reshape(self.X, [-1, 5, 48, 48])
+        # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
+        X = tf.transpose(self.X,(0, 1, 3, 4, 2))
+        X = tf.reshape(self.X, [-1, 48, 48, 5])
 
         # save distribution of inputs
         for channel in range(5):
-            tf.summary.histogram('inputs/'+str(channel), X[:, channel])
+            tf.summary.histogram('inputs/'+str(channel), X[:, :, :, channel])
 
-        layer = self.conv_layer('filtered/1',X[:, 1:2, :, :], 64, [3, 3], pool_stride=2, disable_norm=True)
+        layer = self.conv_layer('filtered/1',X[:, :, :, 1:1+1], 48, [3, 3], pool_stride=2, disable_norm=True)
         layer = self.conv_layer('filtered/2',layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('filtered/3',layer, 96, [3, 3], pool_stride=2)
         layer = self.conv_layer('filtered/4',layer, 128, [3, 3], pool_stride=2)
@@ -114,7 +116,7 @@ class Model_CRNN(Model):
 
         filtered_conv = layer
 
-        layer = self.conv_layer('motion/1',X[:, 2:4, :, :], 64, [3, 3], pool_stride=2, disable_norm=True)
+        layer = self.conv_layer('motion/1',X[:, :, :, 2:3+1], 48, [3, 3], pool_stride=2, disable_norm=True)
         layer = self.conv_layer('motion/2',layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('motion/3',layer, 96, [3, 3], pool_stride=2)
         layer = self.conv_layer('motion/4',layer, 128, [3, 3], pool_stride=2)
@@ -156,29 +158,36 @@ class Model_CRNN(Model):
         # dense layer on top of convolutional output mapping to class labels.
         logits = tf.layers.dense(inputs=lstm_output, units=label_count, activation=None, name='logits')
 
+        softmax_loss = tf.losses.softmax_cross_entropy(
+                    onehot_labels=tf.one_hot(self.y, label_count),
+                    logits=logits, label_smoothing=self.params['label_smoothing'],
+                    scope='loss/softmax')
+
         # loss
-        with tf.variable_scope('logits', reuse=True):
-            logit_weights = tf.get_variable('kernel')
-        reg_loss = (tf.nn.l2_loss(logit_weights, name='loss/reg') * self.params['l2_reg'])
-        loss = tf.add(
-            tf.losses.softmax_cross_entropy(
-                onehot_labels=tf.one_hot(self.y, label_count),
-                logits=logits, label_smoothing=self.params['label_smoothing']),
-            reg_loss, name='loss'
-        )
+        if self.params['l2_reg'] != 0:
+            with tf.variable_scope('logits', reuse=True):
+                logit_weights = tf.get_variable('kernel')
+
+            reg_loss = (tf.nn.l2_loss(logit_weights, name='loss/reg') * self.params['l2_reg'])
+            loss = tf.add(
+                softmax_loss, reg_loss, name='loss'
+            )
+        else:
+            loss = softmax_loss
 
         class_out = tf.argmax(logits, axis=1, name='class_out')
         correct_prediction = tf.equal(class_out, self.y)
-
         pred = tf.nn.softmax(logits, name='prediction')
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, dtype=tf.float32), name='accuracy')
 
         # setup our training loss
-        learning_rate = tf.train.exponential_decay(self.params['learning_rate'], self.global_step, 1000,
+        if self.params['learning_rate_decay'] != 1.0:
+            learning_rate = tf.train.exponential_decay(self.params['learning_rate'], self.global_step, 1000,
                                                    self.params['learning_rate_decay'],
                                                    staircase=True)
-
-        tf.summary.scalar('params/learning_rate', learning_rate)
+            tf.summary.scalar('params/learning_rate', learning_rate)
+        else:
+            learning_rate = 1.0
 
         optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
