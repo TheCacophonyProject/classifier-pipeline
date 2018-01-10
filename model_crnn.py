@@ -71,11 +71,13 @@ class Model_CRNN(Model):
                 name=name + "/batchnorm"
 
             )
+            tf.summary.histogram('weights/' + name, layer)
             moving_mean = tf.contrib.framework.get_variables(name + '/batchnorm/moving_mean')[0]
             moving_variance = tf.contrib.framework.get_variables(name + '/batchnorm/moving_variance')[0]
 
             tf.summary.histogram(name + '/batchnorm/mean', moving_mean)
             tf.summary.histogram(name + '/batchnorm/var', moving_variance)
+
 
         if pool_stride != 1:
             layer = tf.layers.max_pooling2d(inputs=layer, pool_size=[pool_stride, pool_stride],
@@ -157,10 +159,9 @@ class Model_CRNN(Model):
 
         # dense layer on top of convolutional output mapping to class labels.
         logits = tf.layers.dense(inputs=lstm_output, units=label_count, activation=None, name='logits')
-
+        tf.summary.histogram('weights/logits',logits)
 
         # loss
-
         softmax_loss = tf.losses.softmax_cross_entropy(
                     onehot_labels=tf.one_hot(self.y, label_count),
                     logits=logits, label_smoothing=self.params['label_smoothing'],
@@ -189,12 +190,15 @@ class Model_CRNN(Model):
                                                    staircase=True)
             tf.summary.scalar('params/learning_rate', learning_rate)
         else:
-            learning_rate = 1.0
+            learning_rate = self.params['learning_rate']
 
-        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='Adam')
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
             train_op = optimizer.minimize(loss, name='train_op')
+            # get gradients
+            grads = optimizer.compute_gradients(loss)
+            tf.summary.histogram('grads',grads)
 
         # attach nodes
         self.set_ops(pred=pred,accuracy=accuracy, loss=loss, train_op=train_op)
