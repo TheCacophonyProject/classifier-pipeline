@@ -3,16 +3,16 @@ Author: Matthew Aitchison
 Date: Jan 2018
 """
 
-import tensorflow as tf
-import numpy as np
-
 import logging
 
-from ml_tools.model import Model
+import numpy as np
+import tensorflow as tf
+
 from ml_tools import tools
+from ml_tools.model import Model
 
 
-class Model_CRNN(Model):
+class ModelCRNN(Model):
     """
     Convolutional neural net model feeding into an LSTM
     """
@@ -31,7 +31,7 @@ class Model_CRNN(Model):
         'keep_prob': 0.5,
 
         # model params
-        'batch_norm': True,
+        'batch_norm': False,
         'lstm_units': 384,
 
         # augmentation
@@ -53,38 +53,57 @@ class Model_CRNN(Model):
     def conv_layer(self, name, input_layer, filters, kernal_size, conv_stride=1, pool_stride=1, disable_norm=False):
         """ Adds a convolutional layer to the model. """
         tf.summary.histogram(name + '/input', input_layer)
-        layer = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
+        conv = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
                                  strides=(conv_stride, conv_stride),
                                  padding="same", activation=None,
                                  name=name + '/conv')
 
-        tf.summary.histogram(name + '/conv_output', layer)
+        conv_weights = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, name + '/conv/kernel')[0]
 
-        layer = tf.nn.relu(layer, name=name + '/relu')
+        tf.summary.histogram(name + '/conv_output', conv)
+        tf.summary.histogram(name + '/weights', conv_weights)
 
-        tf.summary.histogram(name + '/activations', layer)
+        activation = tf.nn.relu(conv, name=name + '/relu')
+        tf.summary.histogram(name + '/activations', activation)
 
         if self.params['batch_norm'] and not disable_norm:
-            layer = tf.layers.batch_normalization(
-                layer, fused=True,
+            out = tf.layers.batch_normalization(
+                activation, fused=True,
                 training=self.is_training,
                 name=name + "/batchnorm"
-
             )
-            #tf.summary.histogram('weights/' + name, layer)
+
             moving_mean = tf.contrib.framework.get_variables(name + '/batchnorm/moving_mean')[0]
             moving_variance = tf.contrib.framework.get_variables(name + '/batchnorm/moving_variance')[0]
 
             tf.summary.histogram(name + '/batchnorm/mean', moving_mean)
             tf.summary.histogram(name + '/batchnorm/var', moving_variance)
-
+            tf.summary.histogram(name + '/norm_output', out)
+        else:
+            out = activation
 
         if pool_stride != 1:
-            layer = tf.layers.max_pooling2d(inputs=layer, pool_size=[pool_stride, pool_stride],
+            out = tf.layers.max_pooling2d(inputs=out, pool_size=[pool_stride, pool_stride],
                                             strides=pool_stride,
                                             name=name + "/max_pool"
                                             )
-        return layer
+        return out
+
+    def create_summaries(self, name, var):
+        """
+        Creates TensorFlow summaries for given tensor
+        :param name: the namespace for the summaries
+        :param var: the tensor
+        """
+        with tf.name_scope(name):
+            mean = tf.reduce_mean(var)
+            tf.summary.scalar('mean', mean)
+            with tf.name_scope('stddev'):
+                stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+            tf.summary.scalar('stddev', stddev)
+            tf.summary.scalar('max', tf.reduce_max(var))
+            tf.summary.scalar('min', tf.reduce_min(var))
+            tf.summary.histogram('histogram', var)
 
     def _build_model(self, label_count):
         ####################################
@@ -103,29 +122,31 @@ class Model_CRNN(Model):
 
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
-        X = self.X
-        X = tf.transpose(X,(0, 1, 3, 4, 2)) #[B, 27, 48, 48, 5]
-        X = tf.reshape(self.X, [-1, 48, 48, 5]) #[B*27, 48, 48, 5]
-
-
+        X = self.X                              #[B, F, C, H, W]
+        X = tf.transpose(X, (0, 1, 3, 4, 2))    #[B, F, H, W, C]
+        X = tf.reshape(X, [-1, 48, 48, 5])      #[B*27, 48, 48, 5]
 
         # save distribution of inputs
         for channel in range(5):
-            tf.summary.histogram('inputs/'+str(channel), X[:, :, :, channel])
+            tf.summary.histogram('inputs/' + str(channel), X[:, :, :, channel])
+            # just record the final frame, as that is often the most important.
+            tf.summary.image('input/' + str(channel), X[26:27, :, :, channel:channel+1], max_outputs=1)
 
-        layer = self.conv_layer('filtered/1',X[:, :, :, 1:1+1], 48, [3, 3], pool_stride=2, disable_norm=True)
-        layer = self.conv_layer('filtered/2',layer, 64, [3, 3], pool_stride=2)
-        layer = self.conv_layer('filtered/3',layer, 96, [3, 3], pool_stride=2)
-        layer = self.conv_layer('filtered/4',layer, 128, [3, 3], pool_stride=2)
-        layer = self.conv_layer('filtered/5',layer, 128, [3, 3], pool_stride=1)
+        layer = X[:, :, :, 1:1 + 1]
+        layer = self.conv_layer('filtered/1', layer, 64, [3, 3], pool_stride=2, disable_norm=True)
+        layer = self.conv_layer('filtered/2', layer, 64, [3, 3], pool_stride=2)
+        layer = self.conv_layer('filtered/3', layer, 96, [3, 3], pool_stride=2)
+        layer = self.conv_layer('filtered/4', layer, 128, [3, 3], pool_stride=2)
+        layer = self.conv_layer('filtered/5', layer, 128, [3, 3], pool_stride=1)
 
         filtered_conv = layer
 
-        layer = self.conv_layer('motion/1',X[:, :, :, 2:3+1], 48, [3, 3], pool_stride=2, disable_norm=True)
-        layer = self.conv_layer('motion/2',layer, 64, [3, 3], pool_stride=2)
-        layer = self.conv_layer('motion/3',layer, 96, [3, 3], pool_stride=2)
-        layer = self.conv_layer('motion/4',layer, 128, [3, 3], pool_stride=2)
-        layer = self.conv_layer('motion/5',layer, 128, [3, 3], pool_stride=1)
+        layer = X[:, :, :, 2:3 + 1]
+        layer = self.conv_layer('motion/1', layer, 64, [3, 3], pool_stride=2, disable_norm=True)
+        layer = self.conv_layer('motion/2', layer, 64, [3, 3], pool_stride=2)
+        layer = self.conv_layer('motion/3', layer, 96, [3, 3], pool_stride=2)
+        layer = self.conv_layer('motion/4', layer, 128, [3, 3], pool_stride=2)
+        layer = self.conv_layer('motion/5', layer, 128, [3, 3], pool_stride=1)
 
         motion_conv = layer
 
@@ -151,24 +172,24 @@ class Model_CRNN(Model):
         dropout = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32)
 
         lstm_outputs, lstm_state = tf.nn.static_rnn(
-            cell=dropout, inputs=sequences, sequence_length=[len(sequences)]*self.params['batch_size'],
+            cell=dropout, inputs=sequences, sequence_length=[len(sequences)] * self.params['batch_size'],
             dtype=tf.float32, scope='lstm')
 
         # just need the last output
         lstm_output = lstm_outputs[-1]
 
         # print("Final output shape:",lstm_output.shape)
-        logging.info("lstm output shape: {} x {}".format(len(lstm_outputs),lstm_output.shape))
+        logging.info("lstm output shape: {} x {}".format(len(lstm_outputs), lstm_output.shape))
 
         # dense layer on top of convolutional output mapping to class labels.
         logits = tf.layers.dense(inputs=lstm_output, units=label_count, activation=None, name='logits')
-        tf.summary.histogram('weights/logits',logits)
+        tf.summary.histogram('weights/logits', logits)
 
         # loss
         softmax_loss = tf.losses.softmax_cross_entropy(
-                    onehot_labels=tf.one_hot(self.y, label_count),
-                    logits=logits, label_smoothing=self.params['label_smoothing'],
-                    scope='loss')
+            onehot_labels=tf.one_hot(self.y, label_count),
+            logits=logits, label_smoothing=self.params['label_smoothing'],
+            scope='loss')
 
         if self.params['l2_reg'] != 0:
             with tf.variable_scope('logits', reuse=True):
@@ -179,7 +200,8 @@ class Model_CRNN(Model):
                 softmax_loss, reg_loss, name='loss'
             )
         else:
-            loss = softmax_loss
+            # just relabel the loss node
+            loss = tf.identity(softmax_loss, 'loss')
 
         class_out = tf.argmax(logits, axis=1, name='class_out')
         correct_prediction = tf.equal(class_out, self.y)
@@ -189,23 +211,24 @@ class Model_CRNN(Model):
         # setup our training loss
         if self.params['learning_rate_decay'] != 1.0:
             learning_rate = tf.train.exponential_decay(self.params['learning_rate'], self.global_step, 1000,
-                                                   self.params['learning_rate_decay'],
-                                                   staircase=True)
+                                                       self.params['learning_rate_decay'],
+                                                       staircase=True)
             tf.summary.scalar('params/learning_rate', learning_rate)
         else:
             learning_rate = self.params['learning_rate']
 
         # 1e-6 because our data is a bit non normal.
-        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='Adam', epsilon=1e-6)
+        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='Adam')
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
             train_op = optimizer.minimize(loss, name='train_op')
             # get gradients
+            # note: I can't write out the grads because of problems with NaN
+            # his is very concerning as it implies we have a critical problem with training.  Maybe I should try
+            # clipping gradients at something very high, say 100?
             #grads = optimizer.compute_gradients(loss)
             #for index, grad in enumerate(grads):
-            #    tf.summary.histogram("grads/{}".format(grads[index][1].name), grads[index])
+            #    self.create_summaries("grads/{}".format(grads[index][1].name.split(':')[0]), grads[index])
 
         # attach nodes
-        self.set_ops(pred=pred,accuracy=accuracy, loss=loss, train_op=train_op)
-
-
+        self.set_ops(pred=pred, accuracy=accuracy, loss=loss, train_op=train_op)

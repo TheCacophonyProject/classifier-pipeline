@@ -9,7 +9,7 @@ import logging
 
 import tensorflow as tf
 
-from model_crnn import Model_CRNN
+from model_crnn import ModelCRNN
 
 # folder to put tensorboard logs into
 LOG_FOLDER = "c:/cac/test_robin/"
@@ -32,7 +32,7 @@ def main():
         [0, 1]
     ]
 
-    model = Model_CRNN(labels=5)
+    model = ModelCRNN(labels=5)
     model.import_dataset(DATASET_FOLDER, force_normalisation_constants=normalisation_constants)
     model.log_dir = LOG_FOLDER
 
@@ -43,7 +43,7 @@ def main():
         print(model.hyperparams_string)
         print()
         print("{0:.1f}K training examples".format(model.rows / 1000))
-        model.train_model(epochs=30, run_name='refactor/test2')
+        model.train_model(epochs=30, run_name='refactor/no batchnorm 2')
         model.save_model()
     finally:
         model.close()

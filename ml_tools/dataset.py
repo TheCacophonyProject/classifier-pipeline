@@ -191,6 +191,9 @@ class Dataset:
 
         self.preloader_stop_flag = False
 
+        # encodes the label into the frames, used for debuging.
+        self.encode_solution = False
+
         # a copy of our entire dataset, if loaded.
         self.X = None
         self.y = None
@@ -441,6 +444,21 @@ class Dataset:
 
         if normalise:
             data = self.apply_normalisation(data)
+
+        if hasattr(self, 'encode_solution') and self.encode_solution:
+            # we encode the answer into the image to perform sanity checks
+            data = data * 0.1
+            data[26, 1, 24, 25] = 10
+            data[26, 1, 24, 23] = 10
+            data[26, 1, 24, 24] = 10
+            data[26, 1, 23, 24] = 10
+            data[26, 1, 25, 24] = 10
+            data[26, 1, 0, 0] = 5
+            data[26, 1, 47, 47] = 5
+            data[26, 1, 0, 47] = 5
+            data[26, 1, 47, 0] = 5
+            data[26, 1, 12, 12] = 5 + self.labels.index(segment.label)
+            data[26, 1, 36, 36] = np.random.randint(0,10)
 
         return data
 

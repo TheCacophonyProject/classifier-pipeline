@@ -103,6 +103,6 @@ def compute_saliency_map(X_in, y_in, model):
     }
 
     grads = tf.abs(tf.gradients(correct_scores, model.X)[0])
-    saliency = model.sess.run([grads], feed_dict=feed_dict)[0]
+    saliency = model.session.run([grads], feed_dict=feed_dict)[0]
 
     return saliency

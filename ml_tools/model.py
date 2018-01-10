@@ -84,6 +84,8 @@ class Model:
             'scale_frequency': 0.5,
             # dropout
             'keep_prob': 0.5,
+            # training
+            'batch_size': 32
         }
 
         # used for tensorboard
@@ -402,7 +404,7 @@ class Model:
 
         self.eval_score = self.eval_model()
 
-        summary_op = tf.summary.text('metric/finalscore', tf.convert_to_tensor(str(self.eval_score)))
+        summary_op = tf.summary.text('metric/final_score', tf.convert_to_tensor(str(self.eval_score)))
         summary = self.session.run(summary_op)
         self.writer_val.add_summary(summary)
 
