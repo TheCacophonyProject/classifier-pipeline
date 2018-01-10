@@ -175,8 +175,8 @@ class Dataset():
         self.scale_frequency = 0.25
         # how much to threshold the filtered channel
         self.filter_threshold = 20
-        # adds a little noise to thermal channel
-        self.thermal_noise = 1.0
+        # adds a little noise to filtered channel
+        self.filtered_noise = 1.0
 
         self.preloader_queue = None
         self.preloader_threads = None
@@ -311,15 +311,19 @@ class Dataset():
             if segment_frames != self.segment_width:
                 continue
 
+            # todo:
+            # very small segments get sampled half the time, larger ones more often.
+            # use segment_weight_factor = mathsqrt(segment_avg_mass+10)/math.sqrt(50)
+
             # try to sample the better segments more often
             if segment_avg_mass < 50:
                 segment_weight_factor = 0.75
-            else:
+            elif segment_avg_mass < 100:
                 segment_weight_factor = 1
 
             segment = SegmentHeader(
                 clip_id=clip_id, track_number=track_number, start_frame=segment_start, frames=self.segment_width,
-                weight=segment_weight_factor, label=track_meta['tag'], avg_mass=segment_avg_mass)
+                weight=segment_weight_factor, label=track_header.label, avg_mass=segment_avg_mass)
 
             self.segments.append(segment)
             track_header.segments.append(segment)
@@ -385,11 +389,13 @@ class Dataset():
         # apply some thresholding.  This removes the noise from the background which helps a lot during training.
         # it is possiable that with enough data this will no longer be necessary.
         if self.filter_threshold:
-            data[:, 1, :, :] = np.clip(data[:, 1, :, :] - self.filter_threshold, a_min=0, a_max=None) + self.filter_threshold
+            filtered = data[:, 1, :, :]
+            filtered = data[:, 1, :, :]
+            filtered[filtered < self.filter_threshold] = 0
 
         #add very small amount of noise to filtered layer
-        if self.thermal_noise:
-            data[:,1,:,:] += np.random.uniform(-self.thermal_noise, +self.thermal_noise,size=data[:,1,:,:].shape)
+        if self.filtered_noise:
+            data[:,1,:,:] += np.random.uniform(-self.filtered_noise, +self.filtered_noise, size=data[:, 1, :, :].shape)
 
         # map optical flow down to right level,
         if True:
@@ -469,7 +475,7 @@ class Dataset():
                 for i in range(frames):
                     segment_data[i] = tools.zoom_image(segment_data[i], scale=scale, channels_first=True,
                                                        offset_x=xofs, offset_y=yofs,
-                                                       interpolation=cv2.INTER_LANCZOS4)
+                                                       interpolation=cv2.INTER_LINEAR)
 
         if random.randint(0,1) == 0:
             # when we flip the frame remember to flip the horizontal velocity as well
@@ -676,7 +682,7 @@ class Dataset():
 # continue to read examples until queue is full
 def preloader(q, dataset):
     """ add a segment into buffer """
-    print("Started async fetcher for {} with augment={}".format(dataset.name, dataset.enable_augmentation))
+    print(" -started async fetcher for {} with augment={}".format(dataset.name, dataset.enable_augmentation))
     loads = 0
     timer = time.time()
     while not dataset.preloader_stop_flag:

@@ -32,7 +32,7 @@ BANNED_CLIPS = {
     '20171219-105919-akaroa12.cptv'
 }
 
-EXCLUDED_LABELS = ['insect','rabbit','cat','dog','human','stoat']
+EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog','human','stoat']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
@@ -59,7 +59,7 @@ LABEL_WEIGHTS = {
 # minimum average mass for test segment
 TEST_MIN_MASS = 40
 
-TRAIN_MIN_MASS = 30
+TRAIN_MIN_MASS = 25
 
 # number of segments to include in test set for each class (multiplied by label weights)
 TEST_SET_COUNT = 300
@@ -284,6 +284,7 @@ def split_dataset_days(test_bins=None):
 
             for bin_id in available_bins:
                 train.add_tracks(dataset.tracks_by_bin[bin_id])
+                train.filter_segments(TRAIN_MIN_MASS, ['false-positive'])
 
     print("Segments per class:")
     print("-"*90)
@@ -328,7 +329,6 @@ def main():
 
     db = TrackDatabase(os.path.join(DATASET_FOLDER,'dataset.hdf5'))
     dataset = Dataset(db, 'dataset')
-    dataset.label_mapping = {'mouse':'rat'}
 
     total_tracks = len(db.get_all_track_ids())
 

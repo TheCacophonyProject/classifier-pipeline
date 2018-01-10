@@ -595,6 +595,19 @@ def blosc_opts(complevel=9, complib='blosc:lz4', shuffle=True):
         args['shuffle'] = False
     return args
 
+def product(numbers):
+    """
+    Returns the product of given list of numbers.
+    :param numbers: list of numbers to compute product on
+    :return: the product
+    """
+
+    x = 1
+    for value in numbers:
+        x *= int(value)
+    return x
+
+
 
 blosc_zstd = blosc_opts(complevel=9, complib='blosc:zstd', shuffle=True)
 

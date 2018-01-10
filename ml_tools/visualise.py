@@ -3,17 +3,8 @@ Tools for visualising ML models.
 
 """
 
-import os.path
 import numpy as np
-import random
-import pickle
-import tensorflow as tf
-import math
 import matplotlib.pyplot as plt
-import itertools
-from importlib import reload
-from ml_tools import tools, virtualDataset
-from ml_tools.model import Model
 
 def show_saliency_map(model, X_in, y_in):
     """

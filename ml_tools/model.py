@@ -1,61 +1,156 @@
-import os.path
-import numpy as np
-import random
-import pickle
 import tensorflow as tf
+
+import os.path
+import pickle
 import math
-import matplotlib.pyplot as plt
-import itertools
-import gzip
-import json
-import dateutil
-import binascii
+import logging
 import time
+import json
+from collections import namedtuple
+
 from ml_tools import tools
 
 # folder to save model while it's training.  Make sure this isn't on a dropbox folder and it will cause a crash.
 CHECKPOINT_FOLDER = "c:\cac\checkpoints"
 
 class Model:
-    """ Defines a ML model """
+    """ Defines a deep learning model """
 
-    def __init__(self, datasets, X, y, keep_prob, pred, accuracy, loss, train_op, classes):
+    MODEL_NAME = "abstract model"
+    MODEL_DESCRIPTION = ""
 
-        self.datasets = datasets
+    def __init__(self):
+
         self.name = "model"
+        self.session = tools.get_session()
 
-        self.X = X
-        self.y = y
-        self.keep_prob = keep_prob
+        # datasets
+        self.datasets = namedtuple('Datasets', 'train, validation, test')
 
-        # tensorflow node returning softmax prediction for each class
-        self.pred = pred
+        # ------------------------------------------------------
+        # placeholders, used to feed data to the model
+        # ------------------------------------------------------
 
-        # tensorflow node returning accuracy of batch
-        self.accuracy = accuracy
+        self.X = None
+        self.y = None
+        self.keep_prob = None
+        self.is_training = None
+        self.global_step = None
 
-        # tensorflow node returning total loss of batch
-        self.loss = loss
+        # ------------------------------------------------------
+        # tensflow nodes used to evaluate
+        # ------------------------------------------------------
 
+        # prediction for each class(probability distribution)
+        self.pred = None
+        # accuracy of batch
+        self.accuracy = None
+        # total loss of batch
+        self.loss = None
         # training operation
-        self.train_op = train_op
+        self.train_op = None
 
-        # list of classes this model can classify
-        self.classes = classes
+        # number of samples to use when evaluating the model, 1000 works well but is a bit slow,
+        # 100 should give results to within a few percent.
+        self.eval_samples = 500
+
+        # how often to do an evaluation + print
+        self.print_every = 200
 
         # restore best weights found during training rather than the most recently one.
         self.use_best_weights = True
 
-        self.sess = tools.get_session()
-        self.batch_size = 32
-
-        self.eval_score = 0.0
-
+        # list of (mean, standard deviation) for each channel
         self.normalisation_constants = None
 
-        self.training = None
+        # the score this model got on it's final evaluation
+        self.eval_score = None
 
+        # our current global step
         self.step = 0
+
+        # enabled parallel loading and training on data (much faster)
+        self.enable_async_loading = True
+
+        # folder to write tensorboard logs to
+        self.log_dir = './logs'
+
+        # dictionary containing current hyper parameters
+        self.params = {
+            # augmentation
+            'augmentation': True,
+            'filter_threshold': 20,
+            'filter_noise': 1.0,
+            'scale_frequency': 0.5,
+            # dropout
+            'keep_prob': 0.5,
+        }
+
+    def import_dataset(self, base_path, force_normalisation_constants=None):
+        """
+        Import dataset from basepath.
+        :param base_path:
+        :param force_normalisation_constants: If defined uses these normalisation constants rather than those
+            saved with the dataset.
+        :return:
+        """
+        datasets = pickle.load(open(os.path.join(base_path, "datasets.dat"),'rb'))
+        self.datasets.train, self.datasets.validation, self.datasets.test = datasets
+
+        # augmentation really helps with reducing over-fitting, but test set should be fixed so we don't apply it there.
+        self.datasets.train.enable_augmentation = self.params['augmentation']
+        self.datasets.train.scale_frequency = self.params['scale_frequency']
+        self.datasets.validation.enable_augmentation = False
+        self.datasets.test.enable_augmentation = False
+        for dataset in datasets:
+            dataset.filter_threshold = self.params['filter_threshold']
+            dataset.filtered_noise = self.params['filter_noise']
+
+        logging.info("Training segments: {0:.1f}k".format(self.datasets.train.rows/1000))
+        logging.info("Validation segments: {0:.1f}k".format(self.datasets.validation.rows/1000))
+        logging.info("Test segments: {0:.1f}k".format(self.datasets.test.rows/1000))
+        logging.info("Labels: {}".format(self.datasets.train.labels))
+
+        label_strings = [",".join(self.datasets.train.labels),
+                         ",".join(self.datasets.validation.labels),
+                         ",".join(self.datasets.test.labels)]
+        assert len(set(label_strings)) == 1, 'dataset labels do not match.'
+
+        if force_normalisation_constants:
+            print("Using custom normalisation constants.")
+            for dataset in datasets:
+                dataset.normalisation_constants = force_normalisation_constants
+
+    def set_ops(self, pred, accuracy, loss, train_op):
+        """ Sets nodes to be used for various operations. """
+        self.pred = pred
+        self.accuracy = accuracy
+        self.loss = loss
+        self.train_op = train_op
+
+    @property
+    def batch_size(self):
+        return self.params['batch_size']
+
+    @property
+    def steps_per_epoch(self):
+        """ Number of steps per epoch"""
+        return self.rows // self.batch_size
+
+    @property
+    def rows(self):
+        """ Number of examples in training sest"""
+        return self.datasets.train.rows
+
+    @property
+    def hyperparams_string(self):
+        """ Returns list of hyperparameters as a string. """
+        return "\n".join(["{}={}".format(param, value) for param, value in self.params.items()])
+
+    @property
+    def labels(self):
+        """ List of labels this model can classifiy. """
+        return self.datasets.train.labels
 
     def eval_batch(self, batch_X, batch_y, writer=None):
         """
@@ -80,10 +175,11 @@ class Model:
 
             # only calculate summary on first batch, as otherwise we could get many summaries for a single timestep.
             # a better solution would be to accumulate and average the summaries which tensorflow sort of has support for.
+            feed_dict = self.get_feed_dict(Xm, ym)
             if writer is not None and i == 0:
-                summary, acc, ls = self.sess.run([self.merged_summary, self.accuracy, self.loss], feed_dict={self.X: Xm, self.y: ym})
+                summary, acc, ls = self.session.run([self.merged_summary, self.accuracy, self.loss], feed_dict=feed_dict)
             else:
-                acc, ls = self.sess.run([self.accuracy, self.loss], feed_dict={self.X: Xm, self.y: ym})
+                acc, ls = self.session.run([self.accuracy, self.loss], feed_dict=feed_dict)
 
             score += samples * acc
             loss += ls
@@ -94,6 +190,11 @@ class Model:
         # find per sample loss, but expected loss is per batch for some reason.... change this around later on to per
         # sample
         return score / total_samples, loss / total_samples * self.batch_size
+
+    def get_feed_dict(self, X, y, is_training=False):
+        """ returns a feed dictionary for TensorFlow placeholders. """
+        return {self.X: X, self.y: y, self.keep_prob: self.params['keep_prob'] if is_training else 1.0,
+                self.is_training: is_training, self.global_step: self.step}
 
     def classify_batch(self, batch_X):
         """
@@ -111,7 +212,7 @@ class Model:
             Xm = batch_X[i*self.batch_size:(i+1)*self.batch_size]
             if len(Xm) == 0:
                 continue
-            probs = self.sess.run([self.pred], feed_dict={self.X: Xm})[0]
+            probs = self.session.run([self.pred], feed_dict={self.X: Xm})[0]
             for j in range(len(Xm)):
                 predictions.append(probs[j,:])
 
@@ -120,79 +221,62 @@ class Model:
     def eval_model(self, writer=None):
         """ Evaluates the model on the test set. """
         print("-"*60)
-        train, validation, test = self.datasets
-        test.load_all()
-        test_accuracy, _ = self.eval_batch(test.X, test.y, writer=writer)
+        self.datasets.test.load_all()
+        test_accuracy, _ = self.eval_batch(self.datasets.test.X, self.datasets.test.y, writer=writer)
         print("Test Accuracy {0:.2f}% (error {1:.2f}%)".format(test_accuracy*100,(1.0-test_accuracy)*100))
         return test_accuracy
 
     def load_prev_best(self):
         saver = tf.train.Saver()
-        saver.restore(self.sess, os.path.join(CHECKPOINT_FOLDER,"training-best.sav"))
+        saver.restore(self.session, os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
 
-    def train_model(self, epochs=10.0, keep_prob=0.5, stop_after_no_improvement=None, stop_after_decline=None,
-                    log_dir=None):
+    def benchmark_model(self):
+        """
+        Runs a benchmark on the model, saving performance statistics to tensorboard log folder.
+        """
+        #todo
+        pass
+
+    def train_model(self, epochs=10.0, run_name=None):
         """
         Trains model given number of epocs.  Uses session 'sess'
-        :param epochs: maximum number of epochs to train for
-        :param keep_prob: dropout keep probability
-        :param stop_after_no_improvement: if best validation score was this many print statements back stop
-        :param stop_after_decline: if validation ema declines for this many print statements in a row stop
+        :param epochs: number of epochs to train for
+        :param run_name: name of this run, used to create logging folder.
         :return:
         """
+
+        assert self.datasets.train, 'Training dataset found, must call import_dataset before training.'
+        assert self.train_op, 'Training operation has not been assigned.'
+
+        if self.enable_async_loading:
+            self.start_async_load()
 
         print("Training...")
 
         init = tf.global_variables_initializer()
-
-        train, validation, test = self.datasets
-
-        iterations = int(math.ceil(epochs * train.rows / self.batch_size))
-
-        saver = tf.train.Saver()
-
-        writer_train = None
-        writer_val = None
-
-        if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
-            writer_train = tf.summary.FileWriter(os.path.join(log_dir,self.name+'_train'), graph=self.sess.graph)
-            writer_val = tf.summary.FileWriter(os.path.join(log_dir,self.name+'_val'), graph=self.sess.graph)
-
-        # Run the initializer
-        self.sess.run(init)
-
+        iterations = int(math.ceil(epochs * self.rows / self.batch_size))
+        if run_name is None:
+            run_name = self.MODEL_NAME
         eval_time = 0
         train_time = 0
         prep_time = 0
-
-        print_every = 200
-
-        # number of samples to use when evaluating the model, 1000 works well but is a bit slow,
-        # 100 should give results to within a few percent.
-        eval_samples = 500
-
-        best_val_loss = float('inf')
-
-        # counts cycles since last best weights
-        cycles_since_last_best = 0
-
-        # counts number of cycles in a row the the exponentialy smoothed validation accuracy has declined.
-        depression_cycles = 0
-
-        ema_val_accuracy = 0
-        prev_ema_val_accuracy = 0
         best_step = 0
-
-        if log_dir:
-            merged = tf.summary.merge_all()
-        else:
-            merged = None
-
-        self.merged_summary = merged
-
         steps_since_print = 0
         last_epoch_save = 0
+        best_val_loss = float('inf')
+
+        # setup saver
+        saver = tf.train.Saver()
+
+        # setup tensorboard
+        os.makedirs(self.log_dir, exist_ok=True)
+        writer_train = tf.summary.FileWriter(os.path.join(self.log_dir,run_name+'/train'), graph=self.session.graph)
+        writer_val = tf.summary.FileWriter(os.path.join(self.log_dir,run_name+'/val'), graph=self.session.graph)
+        merged = tf.summary.merge_all()
+        self.merged_summary = merged
+
+        # Run the initializer
+        self.session.run(init)
 
         for i in range(iterations):
 
@@ -200,16 +284,16 @@ class Model:
 
             # get a new batch
             start = time.time()
-            batch = train.next_batch(self.batch_size)
+            batch = self.datasets.train.next_batch(self.batch_size)
             prep_time += time.time()-start
 
             # evaluate every so often
-            if steps_since_print >= print_every or (i==iterations-1) or (i==50):
+            if steps_since_print >= self.print_every or (i==iterations-1):
 
                 start = time.time()
 
-                val_batch = validation.next_batch(eval_samples)
-                train_batch = train.next_batch(eval_samples)
+                val_batch = self.datasets.validation.next_batch(self.eval_samples)
+                train_batch = self.datasets.train.next_batch(self.eval_samples)
 
                 if writer_val is not None and writer_train is not None:
                     train_accuracy, train_loss = self.eval_batch(
@@ -237,9 +321,7 @@ class Model:
                     train_accuracy, train_loss = self.eval_batch(train_batch[0], train_batch[1])
                     val_accuracy, val_loss = self.eval_batch(val_batch[0], val_batch[1])
 
-                ema_val_accuracy = val_accuracy if ema_val_accuracy == 0 else 0.9 * ema_val_accuracy + 0.1 * val_accuracy
-
-                epoch = (self.batch_size * i) / train.rows
+                epoch = (self.batch_size * i) / self.rows
 
                 eval_time += time.time()-start
 
@@ -247,45 +329,28 @@ class Model:
                 step_time = prep_time + train_time + eval_time
                 eta = (steps_remaining * step_time / steps_since_print) / 60
 
-                print('[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] (ema:{9:.3f}) eta {10:.1f} min'.format(
+                print('[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] eta {9:.1f} min'.format(
                     epoch, i, train_accuracy*100, train_loss * 10, val_accuracy*100, val_loss * 10,
                     1000 * prep_time / steps_since_print  / self.batch_size,
                     1000 * train_time / steps_since_print  / self.batch_size,
                     1000 * eval_time / steps_since_print  / self.batch_size,
-                    ema_val_accuracy, eta
+                    eta
                 ))
 
                 # create a save point
-                saver.save(self.sess, os.path.join(CHECKPOINT_FOLDER,"training-most-recent.sav"))
+                saver.save(self.session, os.path.join(CHECKPOINT_FOLDER, "training-most-recent.sav"))
 
                 # save at epochs
                 if int(epoch) > last_epoch_save:
                     print('Save epoch reference')
-                    saver.save(self.sess, os.path.join(CHECKPOINT_FOLDER, "training-epoch-{:02d}.sav".format(int(epoch))))
+                    saver.save(self.session, os.path.join(CHECKPOINT_FOLDER, "training-epoch-{:02d}.sav".format(int(epoch))))
                     last_epoch_save = int(epoch)
 
                 if val_loss < best_val_loss:
                     print('Save best model')
-                    saver.save(self.sess, os.path.join(CHECKPOINT_FOLDER,"training-best.sav"))
+                    saver.save(self.session, os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
                     best_val_loss = val_loss
                     best_step = i
-                    cycles_since_last_best = 0
-                else:
-                    cycles_since_last_best += 1
-
-                if ema_val_accuracy < prev_ema_val_accuracy:
-                    depression_cycles += 1
-                else:
-                    depression_cycles = 0
-
-                prev_ema_val_accuracy = ema_val_accuracy
-
-                if stop_after_no_improvement is not None and cycles_since_last_best >= stop_after_no_improvement:
-                    print("Best validation score was too long ago, stopping.")
-                    break
-                if stop_after_decline is not None and depression_cycles >= stop_after_decline:
-                    print("Validation scores are in decline.  Stopping.")
-                    break
 
                 eval_time = 0
                 train_time = 0
@@ -294,10 +359,10 @@ class Model:
 
             # train on this batch
             start = time.time()
-            feed_dict = {self.X: batch[0], self.y: batch[1], self.keep_prob: keep_prob, self.training: True}
-            _ = self.sess.run([self.train_op],feed_dict=feed_dict)
-
+            feed_dict = self.get_feed_dict(batch[0], batch[1], is_training=True)
+            _ = self.session.run([self.train_op], feed_dict=feed_dict)
             train_time += time.time()-start
+
             steps_since_print += 1
 
         # restore previous best
@@ -309,5 +374,46 @@ class Model:
 
         if writer_val:
             summary_op = tf.summary.text('metric/finalscore', tf.convert_to_tensor(str(self.eval_score)))
-            summary = self.sess.run(summary_op)
+            summary = self.session.run(summary_op)
             writer_val.add_summary(summary)
+
+        if self.enable_async_loading:
+            self.stop_async()
+
+    def start_async_load(self):
+        self.datasets.train.start_async_load(self.eval_samples+32)
+        self.datasets.validation.start_async_load(self.eval_samples+32)
+
+    def stop_async(self):
+        self.datasets.train.stop_async_load()
+        self.datasets.validation.stop_async_load()
+
+    def close(self):
+        """ 
+        Cleans up memory used by model by closing any open sessions or aync loaders.
+        :return: 
+        """
+        self.session.close()
+        self.stop_async()
+
+    def save_model(self):
+        """ Saves a copy of the current model. """
+        score_part = "{:.3f}".format(self.eval_score)
+        while len(score_part) < 3:
+            score_part = score_part + "0"
+
+        saver = tf.train.Saver()
+        save_filename = os.path.join("./models/", self.MODEL_NAME + '-' + score_part)
+        print("Saving", save_filename)
+        saver.save(self.session, save_filename)
+
+        # save some additional data
+        model_stats = {}
+        model_stats['name'] = self.MODEL_NAME
+        model_stats['description'] = self.MODEL_DESCRIPTION
+        model_stats['notes'] = ""
+        model_stats['classes'] = self.labels
+        model_stats['score'] = self.eval_score
+        model_stats['normalisation'] = self.datasets.train.normalisation_constants
+
+        json.dump(model_stats, open(save_filename + ".txt", 'w'), indent=4)
