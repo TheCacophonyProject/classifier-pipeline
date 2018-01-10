@@ -157,12 +157,13 @@ class Model:
         """ List of labels this model can classifiy. """
         return self.datasets.train.labels
 
-    def eval_batch(self, batch_X, batch_y, writer=None):
+    def eval_batch(self, batch_X, batch_y, writer=None, include_detailed_summary=False):
         """
         Evaluates the accuracy on a batch of frames.  If the batch is too large it will be broken into smaller parts.
         :param batch_X:
         :param batch_y:
         :param writer: (optional) if given a summary will be written to this summary writer
+        :param include_detailed_summary: (optional) includes detailed information on weights, paremeters etc
         :return:
         """
 
@@ -181,7 +182,7 @@ class Model:
             # only calculate summary on first batch, as otherwise we could get many summaries for a single timestep.
             # a better solution would be to accumulate and average the summaries which tensorflow sort of has support for.
             feed_dict = self.get_feed_dict(Xm, ym)
-            if writer is not None and i == 0:
+            if include_detailed_summary and writer is not None and i == 0:
                 summary, acc, ls = self.session.run([self.merged_summary, self.accuracy, self.loss], feed_dict=feed_dict)
             else:
                 acc, ls = self.session.run([self.accuracy, self.loss], feed_dict=feed_dict)
@@ -193,7 +194,8 @@ class Model:
         batch_loss = loss / total_samples
 
         if writer is not None:
-            writer.add_summary(summary, global_step=self.step)
+            if include_detailed_summary:
+                writer.add_summary(summary, global_step=self.step)
             # we manually write out the aggretated values as we want to know the total score, not just the per batch
             # scores.
             writer.add_summary(
@@ -344,7 +346,7 @@ class Model:
 
                 train_accuracy, train_loss = self.eval_batch(
                     train_batch[0], train_batch[1],
-                    writer=self.writer_train)
+                    writer=self.writer_train, include_detailed_summary=True)
                 val_accuracy, val_loss = self.eval_batch(
                     val_batch[0], val_batch[1],
                     writer=self.writer_val)

@@ -11,11 +11,9 @@ Tracks are broken into segments.  Filtered, and then passed to the trainer using
 import queue
 import threading
 import multiprocessing
-import logging
 import cv2
 
 import os
-import datetime
 import math
 import random
 import time
@@ -23,12 +21,12 @@ from dateutil import parser
 from bisect import bisect
 
 import numpy as np
-import tensorflow as tf
 
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 
-class SegmentHeader():
+
+class SegmentHeader:
     """ Header for segment. """
 
     def __init__(self, clip_id, track_number, start_frame, frames, weight, label, avg_mass):
@@ -55,7 +53,7 @@ class SegmentHeader():
     @property
     def end_frame(self):
         """ end frame of sgement"""
-        return self.start_frame+self.frames
+        return self.start_frame + self.frames
 
     @property
     def track_id(self):
@@ -66,7 +64,7 @@ class SegmentHeader():
         return "offset:{0} weight:{1:.1f}".format(self.start_frame, self.weight)
 
 
-class TrackHeader():
+class TrackHeader:
     """ Header for track. """
 
     def __init__(self, clip_id, track_number, label, start_time, duration, camera, score):
@@ -95,7 +93,7 @@ class TrackHeader():
     @property
     def bin_id(self):
         # name of the bin to assign this track to.
-        return str(self.start_time.date())+'-'+str(self.camera)+'-'+self.label
+        return str(self.start_time.date()) + '-' + str(self.camera) + '-' + self.label
 
     @property
     def weight(self):
@@ -128,11 +126,21 @@ class TrackHeader():
     def __repr__(self):
         return self.track_id
 
-class Dataset():
+
+class Dataset:
     """
     Stores visit, clip, track, and segment information headers in memory, and allows track / segment streaming from
     disk.
     """
+
+    # Number of threads to use for async loading
+    WORKER_THREADS = 2
+
+    # If true uses processes instead of threads.  Threads do not scale as well due to the GIL, however there is no
+    # transfer time required per segment.  Processes scale much better but require ~1ms to pickling the segments
+    # across processes.
+    # In general if worker threads is one set this to False, if it is two or more set it to True.
+    PROCESS_BASED = True
 
     def __init__(self, track_db: TrackDatabase, name="Dataset"):
 
@@ -201,7 +209,8 @@ class Dataset():
         segments = sum(len(track.segments) for track in label_tracks)
         weight = self.get_class_weight(label)
         tracks = len(label_tracks)
-        bins = len([bin for bin_name, bin in self.tracks_by_bin.items() if len(bin) > 0 and bin[0].label == label])
+        bins = len([tracks for bin_name, tracks in self.tracks_by_bin.items()
+                    if len(tracks) > 0 and tracks[0].label == label])
         return segments, tracks, bins, weight
 
     def next_batch(self, n, disable_async=False):
@@ -209,6 +218,8 @@ class Dataset():
         Returns a batch of n segments (X, y) from dataset.
         Applies augmentation and normalisation automatically.
         :param n: number of segments
+        :param disable_async: forces fetching of segment in this thread / process rather than collecting from
+            an aync reader queue (if one exists)
         :return: X shape [n, channels, height, width], labels of shape [n]
         """
 
@@ -230,16 +241,22 @@ class Dataset():
         batch_y = []
 
         for segment in segments:
+
             data = self.fetch_segment(segment, normalise=True, augment=self.enable_augmentation)
             batch_X.append(data)
             batch_y.append(self.labels.index(segment.label))
+
+            # I've been getting some NaN's come through so I check here to make sure input is reasonable.
+            if np.max(np.abs(batch_X)) > 100:
+                print("Extreme values found in batch from source {} with value {}".format(segment.clip_id,
+                                                                                          np.max(batch_X)))
 
         # Half float should be fine here.  When using process based async loading we have to pickle the batch between
         # processes, so having it half the size helps a lot.  Also it reduces the memory required for the read buffers
         batch_X = np.float16(batch_X)
         batch_y = np.int32(batch_y)
 
-        return(batch_X, batch_y)
+        return batch_X, batch_y
 
     def load_tracks(self, track_filter=None):
         """
@@ -267,8 +284,12 @@ class Dataset():
     def add_track(self, clip_id, track_number, track_filter=None):
         """
         Creates segments for track and adds them to the dataset
-        :param track_filter: if provided a function filter(clip_meta, track_meta) that returns true when a track should be ignored)
+        :param clip_id: id of tracks clip
+        :param track_number: track number
+        :param track_filter: if provided a function filter(clip_meta, track_meta) that returns true when a track should
+                be ignored)
         :return: True if track was added, false if it was filtered out.
+        :return:
         """
 
         # make sure we don't already have this track
@@ -304,7 +325,6 @@ class Dataset():
         for i in range(segment_count):
             segment_start = i * self.segment_spacing
             mass_slice = mass_history[segment_start:segment_start + self.segment_width]
-            segment_min_mass = np.min(mass_slice)
             segment_avg_mass = np.mean(mass_slice)
             segment_frames = len(mass_slice)
 
@@ -320,6 +340,8 @@ class Dataset():
                 segment_weight_factor = 0.75
             elif segment_avg_mass < 100:
                 segment_weight_factor = 1
+            else:
+                segment_weight_factor = 1.2
 
             segment = SegmentHeader(
                 clip_id=clip_id, track_number=track_number, start_frame=segment_start, frames=self.segment_width,
@@ -334,7 +356,7 @@ class Dataset():
         """
         Removes any segments with an average mass less than the given avg_mass
         :param avg_mass: segments with less avarage mass per frame than this will be removed from the dataset.
-        :ignore_labels: these labels will not be filtered
+        :param ignore_labels: these labels will not be filtered
         :return: number of segments removed
         """
 
@@ -360,7 +382,7 @@ class Dataset():
         """
         X = np.float32([self.fetch_segment(segment, normalise=normalise) for segment in self.segments])
         y = np.int32([self.labels.index(segment.label) for segment in self.segments])
-        return X,y
+        return X, y
 
     def fetch_segment(self, segment: SegmentHeader, normalise=False, augment=False):
         """
@@ -375,31 +397,32 @@ class Dataset():
             # jitter first frame
             prev_frames = segment.start_frame
             post_frames = self.track_by_id[segment.track_id].frames - segment.end_frame
-            jitter = np.clip(np.random.randint(-5,5), -prev_frames, post_frames)
+            jitter = np.clip(np.random.randint(-5, 5), -prev_frames, post_frames)
         else:
             jitter = 0
 
-        data = self.db.get_track(segment.clip_id, segment.track_number, segment.start_frame + jitter, segment.end_frame + jitter)
+        data = self.db.get_track(segment.clip_id, segment.track_number, segment.start_frame + jitter,
+                                 segment.end_frame + jitter)
 
         if len(data) != 27:
-            print("ERROR, invalid segment length",len(data))
+            print("ERROR, invalid segment length", len(data))
 
-        data = np.float32(data)
+        data = np.asarray(data, dtype=np.float32)
 
         # apply some thresholding.  This removes the noise from the background which helps a lot during training.
         # it is possiable that with enough data this will no longer be necessary.
         if self.filter_threshold:
             filtered = data[:, 1, :, :]
-            filtered = data[:, 1, :, :]
             filtered[filtered < self.filter_threshold] = 0
 
-        #add very small amount of noise to filtered layer
+        # add very small amount of noise to filtered layer
         if self.filtered_noise:
-            data[:,1,:,:] += np.random.uniform(-self.filtered_noise, +self.filtered_noise, size=data[:, 1, :, :].shape)
+            data[:, 1, :, :] += np.random.uniform(-self.filtered_noise, +self.filtered_noise,
+                                                  size=data[:, 1, :, :].shape)
 
         # map optical flow down to right level,
         if True:
-            flow = data[:, 2:3+1, :, :]
+            flow = data[:, 2:3 + 1, :, :]
 
             # we pre-multiplied by 256 to fit into a 16bit int
             flow = flow / 256
@@ -407,13 +430,11 @@ class Dataset():
             # try to get optical flow a little closer to normal looking (it's got long tails)
             abs_flow = np.abs(flow)
 
-            # just a check
-            max_flow = np.max(abs_flow)
+            # apply square root to flow, this helps to deal with the fact that flow is very long tailed.
             abs_flow = np.clip(abs_flow, 0, 10)
+            flow = (np.minimum(abs_flow, np.abs(flow) ** (1 / 2))) * np.sign(flow)
 
-            flow = (np.minimum(abs_flow, np.abs(flow) ** (1/2))) * np.sign(flow)
-
-            data[:, 2:3+1, :, :] = flow
+            data[:, 2:3 + 1, :, :] = flow
 
         if augment:
             data = self.apply_augmentation(data)
@@ -438,7 +459,7 @@ class Dataset():
             mean, std = self.normalisation_constants[channel]
 
             segment_data[:, channel] -= mean
-            segment_data[:, channel] *= (1.0/std)
+            segment_data[:, channel] *= (1.0 / std)
 
         return segment_data
 
@@ -446,6 +467,7 @@ class Dataset():
         """
         Applies a random augmentation to the segment_data.
         :param segment_data: array of shape [frames, channels, height, width]
+        :param force_scale: (optional) force a specific scaling amount
         :return: augmented array
         """
 
@@ -457,7 +479,7 @@ class Dataset():
         if random.random() <= self.scale_frequency or force_scale is not None:
             mask = segment_data[:, 4, :, :]
             av_mass = np.sum(mask) / len(mask)
-            size = math.sqrt(av_mass+4)
+            size = math.sqrt(av_mass + 4)
 
             # work out aproriate bounds so we don't scale too much
             max_scale_up = np.clip(36 / size, 1.0, 2.0)
@@ -477,10 +499,10 @@ class Dataset():
                                                        offset_x=xofs, offset_y=yofs,
                                                        interpolation=cv2.INTER_LINEAR)
 
-        if random.randint(0,1) == 0:
+        if random.randint(0, 1) == 0:
             # when we flip the frame remember to flip the horizontal velocity as well
-            segment_data = np.flip(segment_data, axis = 3)
-            segment_data[:,2] = -segment_data[:,2]
+            segment_data = np.flip(segment_data, axis=3)
+            segment_data[:, 2] = -segment_data[:, 2]
 
         return segment_data
 
@@ -538,7 +560,6 @@ class Dataset():
                         segment.weight *= scale_factor
 
         self.rebuild_cdf()
-
 
     def balance_resample(self, required_samples, weight_modifiers=None):
         """ Removes segments until all classes have given number of samples (or less)"""
@@ -603,11 +624,11 @@ class Dataset():
             second_moment += np.mean(np.square(data), axis=0)
 
         # reduce down to channel only moments, in the future per pixel normalisation would be a good idea.
-        first_moment = np.sum(first_moment, axis=(1,2)) / (len(sample) * width * height)
-        second_moment = np.sum(second_moment, axis=(1,2)) / (len(sample) * width * height)
+        first_moment = np.sum(first_moment, axis=(1, 2)) / (len(sample) * width * height)
+        second_moment = np.sum(second_moment, axis=(1, 2)) / (len(sample) * width * height)
 
         mu = first_moment
-        var = second_moment + (mu ** 2) - (2*mu*first_moment)
+        var = second_moment + (mu ** 2) - (2 * mu * first_moment)
 
         normalisation_constants = [(mu[i], math.sqrt(var[i])) for i in range(channels)]
 
@@ -630,18 +651,18 @@ class Dataset():
     def get_class_segments_count(self, label):
         """ Returns the total weight for all segments of given class. """
         result = 0
-        for track in self.tracks_by_label.get(label,[]):
+        for track in self.tracks_by_label.get(label, []):
             result += len(track.segments)
         return result
 
     def get_class_segments(self, label):
         """ Returns the total weight for all segments of given class. """
         result = []
-        for track in self.tracks_by_label.get(label,[]):
+        for track in self.tracks_by_label.get(label, []):
             result.extend(track.segments)
         return result
 
-    def start_async_load(self, buffer_size = 64):
+    def start_async_load(self, buffer_size=64):
         """
         Starts async load process.
         """
@@ -652,15 +673,14 @@ class Dataset():
         # this could be solved either by using linux (with forking, which is copy on write) or with a shared ctype
         # array.
 
-        WORKER_THREADS = 2
-        PROCESS_BASED = True
-
-        if PROCESS_BASED:
+        if self.PROCESS_BASED:
             self.preloader_queue = multiprocessing.Queue(buffer_size)
-            self.preloader_threads = [multiprocessing.Process(target=preloader, args=(self.preloader_queue, self)) for _ in range(WORKER_THREADS)]
+            self.preloader_threads = [multiprocessing.Process(target=preloader, args=(self.preloader_queue, self)) for _
+                                      in range(self.WORKER_THREADS)]
         else:
             self.preloader_queue = queue.Queue(buffer_size)
-            self.preloader_threads = [threading.Thread(target=preloader, args=(self.preloader_queue, self)) for _ in range(WORKER_THREADS)]
+            self.preloader_threads = [threading.Thread(target=preloader, args=(self.preloader_queue, self)) for _ in
+                                      range(self.WORKER_THREADS)]
 
         self.preloader_stop_flag = False
         for thread in self.preloader_threads:
@@ -679,6 +699,7 @@ class Dataset():
                 else:
                     thread.exit()
 
+
 # continue to read examples until queue is full
 def preloader(q, dataset):
     """ add a segment into buffer """
@@ -690,9 +711,8 @@ def preloader(q, dataset):
             q.put(dataset.next_batch(1, disable_async=True))
             loads += 1
             if (time.time() - timer) > 1.0:
-                #logging.debug("{} segments per seconds {:.1f}".format(dataset.name, loads / (time.time() - timer)))
+                # logging.debug("{} segments per seconds {:.1f}".format(dataset.name, loads / (time.time() - timer)))
                 timer = time.time()
                 loads = 0
         else:
             time.sleep(0.01)
-

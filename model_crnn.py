@@ -71,7 +71,7 @@ class Model_CRNN(Model):
                 name=name + "/batchnorm"
 
             )
-            tf.summary.histogram('weights/' + name, layer)
+            #tf.summary.histogram('weights/' + name, layer)
             moving_mean = tf.contrib.framework.get_variables(name + '/batchnorm/moving_mean')[0]
             moving_variance = tf.contrib.framework.get_variables(name + '/batchnorm/moving_variance')[0]
 
@@ -192,13 +192,15 @@ class Model_CRNN(Model):
         else:
             learning_rate = self.params['learning_rate']
 
-        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='Adam')
+        # 1e-6 because our data is a bit non normal.
+        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='Adam', epsilon=1e-6)
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
             train_op = optimizer.minimize(loss, name='train_op')
             # get gradients
-            grads = optimizer.compute_gradients(loss)
-            tf.summary.histogram('grads',grads)
+            #grads = optimizer.compute_gradients(loss)
+            #for index, grad in enumerate(grads):
+            #    tf.summary.histogram("grads/{}".format(grads[index][1].name), grads[index])
 
         # attach nodes
         self.set_ops(pred=pred,accuracy=accuracy, loss=loss, train_op=train_op)

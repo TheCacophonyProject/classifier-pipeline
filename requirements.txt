@@ -5,3 +5,4 @@ cptv
 opencv-python
 numpy
 scipy
+python-dateutil
