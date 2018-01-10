@@ -43,7 +43,7 @@ def main():
         print(model.hyperparams_string)
         print()
         print("{0:.1f}K training examples".format(model.rows / 1000))
-        model.train_model(epochs=30, run_name='refactor/test1')
+        model.train_model(epochs=30, run_name='refactor/test2')
         model.save_model()
     finally:
         model.close()

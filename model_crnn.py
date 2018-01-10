@@ -103,8 +103,11 @@ class Model_CRNN(Model):
 
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
-        X = tf.transpose(self.X,(0, 1, 3, 4, 2))
-        X = tf.reshape(self.X, [-1, 48, 48, 5])
+        X = self.X
+        X = tf.transpose(X,(0, 1, 3, 4, 2)) #[B, 27, 48, 48, 5]
+        X = tf.reshape(self.X, [-1, 48, 48, 5]) #[B*27, 48, 48, 5]
+
+
 
         # save distribution of inputs
         for channel in range(5):
