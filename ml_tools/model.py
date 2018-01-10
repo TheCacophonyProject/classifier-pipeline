@@ -86,6 +86,11 @@ class Model:
             'keep_prob': 0.5,
         }
 
+        # used for tensorboard
+        self.writer_train = None
+        self.writer_val = None
+        self.merged_summary = None
+
     def import_dataset(self, base_path, force_normalisation_constants=None):
         """
         Import dataset from basepath.
@@ -157,7 +162,7 @@ class Model:
         Evaluates the accuracy on a batch of frames.  If the batch is too large it will be broken into smaller parts.
         :param batch_X:
         :param batch_y:
-        :param writer:
+        :param writer: (optional) if given a summary will be written to this summary writer
         :return:
         """
 
@@ -184,12 +189,21 @@ class Model:
             score += samples * acc
             loss += ls
 
+        batch_accuracy = score / total_samples
+        batch_loss = loss / total_samples
+
         if writer is not None:
             writer.add_summary(summary, global_step=self.step)
+            # we manually write out the aggretated values as we want to know the total score, not just the per batch
+            # scores.
+            writer.add_summary(
+                tf.Summary(value=[tf.Summary.Value(tag="metric/accuracy", simple_value=batch_accuracy)]),
+                global_step=self.step)
+            writer.add_summary(
+                tf.Summary(value=[tf.Summary.Value(tag="metric/loss", simple_value=batch_loss)]),
+                global_step=self.step)
 
-        # find per sample loss, but expected loss is per batch for some reason.... change this around later on to per
-        # sample
-        return score / total_samples, loss / total_samples * self.batch_size
+        return batch_accuracy, batch_loss
 
     def get_feed_dict(self, X, y, is_training=False):
         """ returns a feed dictionary for TensorFlow placeholders. """
@@ -232,10 +246,40 @@ class Model:
 
     def benchmark_model(self):
         """
-        Runs a benchmark on the model, saving performance statistics to tensorboard log folder.
+        Runs a benchmark on the model, getting runtime statistics and saving them to the tensorboard log folder.
         """
-        #todo
-        pass
+
+        assert self.writer_train, 'Must init tensorboard writers before benchmarking.'
+
+        # we actually train on this batch, which shouldn't hurt.
+        # the reason this is necessary is we need to get the true performance cost of the back-prob.
+        X, y = self.datasets.train.next_batch(self.batch_size)
+        feed_dict = self.get_feed_dict(X, y, True)
+
+        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+
+        _, _ = self.session.run([self.accuracy, self.loss], feed_dict=feed_dict,
+                                            options=run_options,
+                                            run_metadata=run_metadata)
+
+        # write out hyper-params
+        summary_op = tf.summary.text('hyperparams', tf.convert_to_tensor(str(self.hyperparams_string)))
+        summary = self.session.run(summary_op)
+        for writer in [self.writer_train, self.writer_val]:
+            writer.add_summary(summary)
+            writer.add_run_metadata(run_metadata,'benchmark')
+
+    def setup_summary_writers(self, run_name):
+        """
+        Initialises tensorboard log writers
+        :return:
+        """
+        os.makedirs(self.log_dir, exist_ok=True)
+        self.writer_train = tf.summary.FileWriter(os.path.join(self.log_dir, run_name + '/train'), graph=self.session.graph)
+        self.writer_val = tf.summary.FileWriter(os.path.join(self.log_dir, run_name + '/val'), graph=self.session.graph)
+        merged = tf.summary.merge_all()
+        self.merged_summary = merged
 
     def train_model(self, epochs=10.0, run_name=None):
         """
@@ -253,7 +297,6 @@ class Model:
 
         print("Training...")
 
-        init = tf.global_variables_initializer()
         iterations = int(math.ceil(epochs * self.rows / self.batch_size))
         if run_name is None:
             run_name = self.MODEL_NAME
@@ -268,15 +311,13 @@ class Model:
         # setup saver
         saver = tf.train.Saver()
 
-        # setup tensorboard
-        os.makedirs(self.log_dir, exist_ok=True)
-        writer_train = tf.summary.FileWriter(os.path.join(self.log_dir,run_name+'/train'), graph=self.session.graph)
-        writer_val = tf.summary.FileWriter(os.path.join(self.log_dir,run_name+'/val'), graph=self.session.graph)
-        merged = tf.summary.merge_all()
-        self.merged_summary = merged
-
         # Run the initializer
+        init = tf.global_variables_initializer()
         self.session.run(init)
+
+        # setup writers and run a quick benchmark
+        self.setup_summary_writers(run_name)
+        self.benchmark_model()
 
         for i in range(iterations):
 
@@ -295,31 +336,12 @@ class Model:
                 val_batch = self.datasets.validation.next_batch(self.eval_samples)
                 train_batch = self.datasets.train.next_batch(self.eval_samples)
 
-                if writer_val is not None and writer_train is not None:
-                    train_accuracy, train_loss = self.eval_batch(
-                        train_batch[0], train_batch[1],
-                        writer=writer_train)
-                    val_accuracy, val_loss = self.eval_batch(
-                        val_batch[0], val_batch[1],
-                        writer=writer_val)
-
-                    writer_train.add_summary(
-                        tf.Summary(value=[tf.Summary.Value(tag="metric_accuracy", simple_value=train_accuracy)]),
-                        global_step=i)
-                    writer_val.add_summary(
-                        tf.Summary(value=[tf.Summary.Value(tag="metric_accuracy", simple_value=val_accuracy)]),
-                        global_step=i)
-
-                    writer_train.add_summary(
-                        tf.Summary(value=[tf.Summary.Value(tag="metric_loss", simple_value=train_loss)]),
-                        global_step=i)
-                    writer_val.add_summary(
-                        tf.Summary(value=[tf.Summary.Value(tag="metric_loss", simple_value=val_loss)]),
-                        global_step=i)
-
-                else:
-                    train_accuracy, train_loss = self.eval_batch(train_batch[0], train_batch[1])
-                    val_accuracy, val_loss = self.eval_batch(val_batch[0], val_batch[1])
+                train_accuracy, train_loss = self.eval_batch(
+                    train_batch[0], train_batch[1],
+                    writer=self.writer_train)
+                val_accuracy, val_loss = self.eval_batch(
+                    val_batch[0], val_batch[1],
+                    writer=self.writer_val)
 
                 epoch = (self.batch_size * i) / self.rows
 
@@ -372,10 +394,9 @@ class Model:
 
         self.eval_score = self.eval_model()
 
-        if writer_val:
-            summary_op = tf.summary.text('metric/finalscore', tf.convert_to_tensor(str(self.eval_score)))
-            summary = self.session.run(summary_op)
-            writer_val.add_summary(summary)
+        summary_op = tf.summary.text('metric/finalscore', tf.convert_to_tensor(str(self.eval_score)))
+        summary = self.session.run(summary_op)
+        self.writer_val.add_summary(summary)
 
         if self.enable_async_loading:
             self.stop_async()
