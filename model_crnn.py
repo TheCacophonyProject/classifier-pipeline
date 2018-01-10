@@ -158,12 +158,14 @@ class Model_CRNN(Model):
         # dense layer on top of convolutional output mapping to class labels.
         logits = tf.layers.dense(inputs=lstm_output, units=label_count, activation=None, name='logits')
 
+
+        # loss
+
         softmax_loss = tf.losses.softmax_cross_entropy(
                     onehot_labels=tf.one_hot(self.y, label_count),
                     logits=logits, label_smoothing=self.params['label_smoothing'],
-                    scope='loss/softmax')
+                    scope='loss')
 
-        # loss
         if self.params['l2_reg'] != 0:
             with tf.variable_scope('logits', reuse=True):
                 logit_weights = tf.get_variable('kernel')
