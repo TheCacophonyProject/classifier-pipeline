@@ -42,6 +42,8 @@ class SegmentHeader:
         self.weight = weight
         # our label
         self.label = label.lower()
+        # referece thermal temperature
+        self.thermal_reference = None
 
         self.avg_mass = avg_mass
 
@@ -142,6 +144,17 @@ class Dataset:
     # In general if worker threads is one set this to False, if it is two or more set it to True.
     PROCESS_BASED = True
 
+    # thermal is normalised by standard normalisation constants
+    THERM_NORM_STANDARD = 'standard'
+    # thermal is normalised by offsetting by the average temp of the video it came from
+    THERM_NORM_CENTER = 'center'
+    # thermal is normalised by offsetting by the average temp of the video it came from and then setting negative values
+    # to 0
+    THERM_NORM_THRESHOLD = 'threshold'
+    # normalise eac segment to unit gausian
+    THERM_NORM_UNIT = 'unit'
+
+
     def __init__(self, track_db: TrackDatabase, name="Dataset"):
 
         # database holding track data
@@ -173,6 +186,9 @@ class Dataset:
 
         # constants used to normalise input
         self.normalisation_constants = None
+
+        # if true will center thermal according to mean video temp
+        self.thermal_normalisation_mode = self.THERM_NORM_THRESHOLD
 
         # dictionary used to apply label remapping during track load
         self.label_mapping = None
@@ -349,6 +365,7 @@ class Dataset:
             segment = SegmentHeader(
                 clip_id=clip_id, track_number=track_number, start_frame=segment_start, frames=self.segment_width,
                 weight=segment_weight_factor, label=track_header.label, avg_mass=segment_avg_mass)
+            segment.thermal_reference = clip_meta['mean_temp']
 
             self.segments.append(segment)
             track_header.segments.append(segment)
@@ -418,11 +435,6 @@ class Dataset:
             filtered = data[:, 1, :, :]
             filtered[filtered < self.filter_threshold] = 0
 
-        # add very small amount of noise to filtered layer
-        if self.filtered_noise:
-            data[:, 1, :, :] += np.random.uniform(-self.filtered_noise, +self.filtered_noise,
-                                                  size=data[:, 1, :, :].shape)
-
         # map optical flow down to right level,
         if True:
             flow = data[:, 2:3 + 1, :, :]
@@ -441,6 +453,11 @@ class Dataset:
 
         if augment:
             data = self.apply_augmentation(data)
+
+        # add very small amount of noise to filtered layer
+        if self.filtered_noise:
+            data[:, 1, :, :] += np.random.uniform(-self.filtered_noise, +self.filtered_noise,
+                                                  size=data[:, 1, :, :].shape)
 
         if normalise:
             data = self.apply_normalisation(data)
@@ -462,10 +479,12 @@ class Dataset:
 
         return data
 
-    def apply_normalisation(self, segment_data):
+    def apply_normalisation(self, segment_data, thermal_reference=None):
         """
         Applies a random augmentation to the segment_data.
         :param segment_data: array of shape [frames, channels, height, width]
+        :param thermal_reference: required for some normalisation modes.  Used as the center for thermal channel.
+            usually just the mean temp of the source video.
         :return: normalised array
         """
 
@@ -476,8 +495,28 @@ class Dataset:
         for channel in range(channels):
             mean, std = self.normalisation_constants[channel]
 
-            segment_data[:, channel] -= mean
-            segment_data[:, channel] *= (1.0 / std)
+            if channel == 0:
+                if self.thermal_normalisation_mode == self.THERM_NORM_STANDARD:
+                    segment_data[:, channel] -= mean
+                    segment_data[:, channel] *= (1.0 / std)
+                elif self.thermal_normalisation_mode == self.THERM_NORM_UNIT:
+                    segment_data[:, 0] = tools.normalise(segment_data[:, 0])
+                elif self.thermal_normalisation_mode == self.THERM_NORM_CENTER:
+                    assert  thermal_reference, '{} normalisation mode requires thermal_center parameter'.format(
+                        self.thermal_normalisation_mode)
+                    segment_data[:, channel] -= thermal_reference
+                elif self.thermal_normalisation_mode == self.THERM_NORM_THRESHOLD:
+                    assert thermal_reference, '{} normalisation mode requires thermal_center parameter'.format(
+                        self.thermal_normalisation_mode)
+                    segment_data[:, channel] -= thermal_reference
+                    thermal =  segment_data[:, channel]
+                    thermal[thermal < 0] = 0
+                    segment_data[:, channel] = thermal
+                else:
+                    raise Exception("invalid thermal normalisation mode {}".format(self.thermal_normalisation_mode))
+            else:
+                segment_data[:, channel] -= mean
+                segment_data[:, channel] *= (1.0 / std)
 
         return segment_data
 

@@ -97,10 +97,9 @@ def compute_saliency_map(X_in, y_in, model):
     correct_scores = tf.gather_nd(model.pred,
                                   tf.stack((tf.range(X_in.shape[0], dtype="int64"), model.y), axis=1))
 
-    feed_dict = {
-        model.X: X_in,
-        model.y: y_in
-    }
+    feed_dict = model.get_feed_dict(X_in, y_in)
+
+    print(correct_scores.shape, model.X.shape)
 
     grads = tf.abs(tf.gradients(correct_scores, model.X)[0])
     saliency = model.session.run([grads], feed_dict=feed_dict)[0]

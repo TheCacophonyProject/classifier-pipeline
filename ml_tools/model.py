@@ -19,10 +19,10 @@ class Model:
     MODEL_NAME = "abstract model"
     MODEL_DESCRIPTION = ""
 
-    def __init__(self):
+    def __init__(self, session=None):
 
         self.name = "model"
-        self.session = tools.get_session()
+        self.session = session or tools.get_session()
 
         # datasets
         self.datasets = namedtuple('Datasets', 'train, validation, test')

@@ -132,7 +132,7 @@ class ModelCRNN(Model):
             # just record the final frame, as that is often the most important.
             tf.summary.image('input/' + str(channel), X[26:27, :, :, channel:channel+1], max_outputs=1)
 
-        layer = X[:, :, :, 1:1 + 1]
+        layer = X[:, :, :, 0:0 + 1]
         layer = self.conv_layer('filtered/1', layer, 64, [3, 3], pool_stride=2, disable_norm=True)
         layer = self.conv_layer('filtered/2', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('filtered/3', layer, 96, [3, 3], pool_stride=2)
