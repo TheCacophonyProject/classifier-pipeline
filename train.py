@@ -6,6 +6,8 @@ Script to train models for classifying animals from thermal footage.
 """
 
 import logging
+import pickle
+import os
 
 import tensorflow as tf
 
@@ -15,6 +17,8 @@ from model_crnn import ModelCRNN
 LOG_FOLDER = "c:/cac/test_robin/"
 # dataset folder to use
 DATASET_FOLDER = "c:/cac/robin"
+
+EXCLUDE_LABELS = ['human']
 
 def main():
 
@@ -32,9 +36,25 @@ def main():
         [0, 1]
     ]
 
-    model = ModelCRNN(labels=5)
-    model.import_dataset(DATASET_FOLDER, force_normalisation_constants=normalisation_constants)
+    dsets = pickle.load(open(os.path.join(DATASET_FOLDER, 'datasets.dat'),'rb'))
+    labels = dsets[0].labels
+
+    model = ModelCRNN(labels=len(labels))
+    model.import_dataset(DATASET_FOLDER, force_normalisation_constants=normalisation_constants, ignore_labels=EXCLUDE_LABELS)
     model.log_dir = LOG_FOLDER
+
+    labels = [label for label in labels if label not in EXCLUDE_LABELS]
+
+    # display the dataset summary
+    print("Training on labels: ",labels)
+    for label in labels:
+        print("{:<20} {:<20} {:<20} {:<20}".format(
+            label,
+            "{}/{}/{}/{:.1f}".format(*model.datasets.train.get_counts(label)),
+            "{}/{}/{}/{:.1f}".format(*model.datasets.validation.get_counts(label)),
+            "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
+        ))
+    print()
 
     try:
         print("Training started")
@@ -43,7 +63,7 @@ def main():
         print(model.hyperparams_string)
         print()
         print("{0:.1f}K training examples".format(model.rows / 1000))
-        model.train_model(epochs=30, run_name='refactor/thermal autonorm')
+        model.train_model(epochs=30, run_name='thermal/stoatv3')
         model.save_model()
     finally:
         model.close()

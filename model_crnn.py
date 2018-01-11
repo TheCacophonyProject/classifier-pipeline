@@ -132,6 +132,16 @@ class ModelCRNN(Model):
             # just record the final frame, as that is often the most important.
             tf.summary.image('input/' + str(channel), X[26:27, :, :, channel:channel+1], max_outputs=1)
 
+        # FLOPS analysis
+        # layer1 = 64*9*24*24 = 0.3 MFLOPS
+        # layer2 = 64*9*12*12 = 0.1 MFLOPS
+        # ...
+        # so about 1 MFLOP for convolutions... this is very small
+        # then LSTM which is 384 * 3*3*128 = 0.4 MFLOPS
+        # then we have softmax layer which is 384*7  = 0.0 MFLOPS
+        # so total cost is very low per frame, about 1.5 MFLOPS
+        # oh.. batchnorm might double that? But I don't run it on first layer. so maybe just a small amount
+
         layer = X[:, :, :, 0:0 + 1]
         layer = self.conv_layer('filtered/1', layer, 64, [3, 3], pool_stride=2, disable_norm=True)
         layer = self.conv_layer('filtered/2', layer, 64, [3, 3], pool_stride=2)

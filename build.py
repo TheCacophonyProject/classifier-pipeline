@@ -21,6 +21,9 @@ from ml_tools.dataset import Dataset
 
 DATASET_FOLDER = 'c:/cac/robin/'
 
+# uses split from previous run
+USE_PREVIOUS_SPLIT = False
+
 # todo: move into a text file
 BANNED_CLIPS = {
     '20171025-020827-akaroa03.cptv',
@@ -32,7 +35,7 @@ BANNED_CLIPS = {
     '20171219-105919-akaroa12.cptv'
 }
 
-EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog','human','stoat']
+EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
@@ -194,9 +197,9 @@ def split_dataset_days(test_bins=None):
     validation = Dataset(db, 'validation')
     test = Dataset(db, 'test')
 
-    train.labels = dataset.labels
-    validation.labels = dataset.labels
-    test.labels = dataset.labels
+    train.labels = dataset.labels.copy()
+    validation.labels = dataset.labels.copy()
+    test.labels = dataset.labels.copy()
 
     # check bins distribution
     bin_segments = []
@@ -303,7 +306,6 @@ def split_dataset_days(test_bins=None):
 
     # display the dataset summary
     for label in dataset.labels:
-
         print("{:<20} {:<20} {:<20} {:<20}".format(
             label,
             "{}/{}/{}/{:.1f}".format(*train.get_counts(label)),
@@ -351,8 +353,11 @@ def main():
     print()
 
     print("Splitting data set into train / validation")
-    split = pickle.load(open('dataset_split.dat','rb'))
-    datasets = split_dataset_days(split)
+    if USE_PREVIOUS_SPLIT:
+        split = pickle.load(open('dataset_split.dat','rb'))
+        datasets = split_dataset_days(split)
+    else:
+        datasets = split_dataset_days()
 
     pickle.dump(datasets,open(os.path.join(DATASET_FOLDER,'datasets.dat'),'wb'))
 

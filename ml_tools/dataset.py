@@ -145,7 +145,7 @@ class Dataset:
     PROCESS_BASED = True
 
     # thermal is normalised by standard normalisation constants
-    THERM_NORM_STANDARD = 'standard'
+    THERM_NORM_CONSTANT = 'standard'
     # thermal is normalised by offsetting by the average temp of the video it came from
     THERM_NORM_CENTER = 'center'
     # thermal is normalised by offsetting by the average temp of the video it came from and then setting negative values
@@ -196,7 +196,7 @@ class Dataset:
         # this allows manipulation of data (such as scaling) during the sampling stage.
         self.enable_augmentation = False
         # how often to scale during augmentation
-        self.scale_frequency = 0.25
+        self.scale_frequency = 0.50
         # how much to threshold the filtered channel
         self.filter_threshold = 20
         # adds a little noise to filtered channel
@@ -460,7 +460,7 @@ class Dataset:
                                                   size=data[:, 1, :, :].shape)
 
         if normalise:
-            data = self.apply_normalisation(data)
+            data = self.apply_normalisation(data, segment.thermal_reference)
 
         if hasattr(self, 'encode_solution') and self.encode_solution:
             # we encode the answer into the image to perform sanity checks
@@ -496,22 +496,23 @@ class Dataset:
             mean, std = self.normalisation_constants[channel]
 
             if channel == 0:
-                if self.thermal_normalisation_mode == self.THERM_NORM_STANDARD:
-                    segment_data[:, channel] -= mean
-                    segment_data[:, channel] *= (1.0 / std)
+                if self.thermal_normalisation_mode == self.THERM_NORM_CONSTANT:
+                    segment_data[:, 0] -= mean
+                    segment_data[:, 0] *= (1.0 / std)
                 elif self.thermal_normalisation_mode == self.THERM_NORM_UNIT:
                     segment_data[:, 0] = tools.normalise(segment_data[:, 0])
                 elif self.thermal_normalisation_mode == self.THERM_NORM_CENTER:
                     assert  thermal_reference, '{} normalisation mode requires thermal_center parameter'.format(
                         self.thermal_normalisation_mode)
-                    segment_data[:, channel] -= thermal_reference
+                    segment_data[:, 0] = (segment_data[:, 0] - thermal_reference) / 32
                 elif self.thermal_normalisation_mode == self.THERM_NORM_THRESHOLD:
                     assert thermal_reference, '{} normalisation mode requires thermal_center parameter'.format(
                         self.thermal_normalisation_mode)
-                    segment_data[:, channel] -= thermal_reference
-                    thermal =  segment_data[:, channel]
+                    segment_data[:, 0] = (segment_data[:, 0] - thermal_reference) / 32
+
+                    thermal =  segment_data[:, 0]
                     thermal[thermal < 0] = 0
-                    segment_data[:, channel] = thermal
+                    segment_data[:, 0] = thermal
                 else:
                     raise Exception("invalid thermal normalisation mode {}".format(self.thermal_normalisation_mode))
             else:
@@ -637,6 +638,14 @@ class Dataset:
 
         self._purge_track_segments()
 
+        self.rebuild_cdf()
+
+    def remove_label(self, label_to_remove):
+        """ Removes all instances of given label from dataset. """
+        if label_to_remove not in self.labels:
+            return
+        self.segments = [segment for segment in self.segments if segment.label != label_to_remove]
+        self._purge_track_segments()
         self.rebuild_cdf()
 
     def _purge_track_segments(self):

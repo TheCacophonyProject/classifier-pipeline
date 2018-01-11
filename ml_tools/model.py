@@ -93,12 +93,13 @@ class Model:
         self.writer_val = None
         self.merged_summary = None
 
-    def import_dataset(self, base_path, force_normalisation_constants=None):
+    def import_dataset(self, base_path, force_normalisation_constants=None, ignore_labels=None):
         """
         Import dataset from basepath.
         :param base_path:
         :param force_normalisation_constants: If defined uses these normalisation constants rather than those
             saved with the dataset.
+        :param ignore_labels: (optional) these labels will be removed from the dataset.
         :return:
         """
         datasets = pickle.load(open(os.path.join(base_path, "datasets.dat"),'rb'))
@@ -112,6 +113,9 @@ class Model:
         for dataset in datasets:
             dataset.filter_threshold = self.params['filter_threshold']
             dataset.filtered_noise = self.params['filter_noise']
+            if ignore_labels:
+                for label in ignore_labels:
+                    dataset.remove_label(label)
 
         logging.info("Training segments: {0:.1f}k".format(self.datasets.train.rows/1000))
         logging.info("Validation segments: {0:.1f}k".format(self.datasets.validation.rows/1000))
@@ -348,10 +352,10 @@ class Model:
 
                 train_accuracy, train_loss = self.eval_batch(
                     train_batch[0], train_batch[1],
-                    writer=self.writer_train, include_detailed_summary=True)
+                    writer=self.writer_train)
                 val_accuracy, val_loss = self.eval_batch(
                     val_batch[0], val_batch[1],
-                    writer=self.writer_val)
+                    writer=self.writer_val, include_detailed_summary=True)
 
                 epoch = (self.batch_size * i) / self.rows
 
