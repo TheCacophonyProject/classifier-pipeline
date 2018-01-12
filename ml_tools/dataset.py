@@ -641,7 +641,10 @@ class Dataset:
         self.rebuild_cdf()
 
     def remove_label(self, label_to_remove):
-        """ Removes all instances of given label from dataset. """
+        """
+        Removes all segments of given label from dataset. Label remains in dataset.labels however, so as to not
+        change the ordinal value of the labels.
+        """
         if label_to_remove not in self.labels:
             return
         self.segments = [segment for segment in self.segments if segment.label != label_to_remove]

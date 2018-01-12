@@ -5,9 +5,14 @@ Date Jan 2018
 Script to train models for classifying animals from thermal footage.
 """
 
+import matplotlib
+matplotlib.use('Agg') # enable canvas drawing
+
+
 import logging
 import pickle
 import os
+import datetime
 
 import tensorflow as tf
 
@@ -36,14 +41,12 @@ def main():
         [0, 1]
     ]
 
-    dsets = pickle.load(open(os.path.join(DATASET_FOLDER, 'datasets.dat'),'rb'))
+    dsets = pickle.load(open(os.path.join(DATASET_FOLDER, 'datasets6.dat'),'rb'))
     labels = dsets[0].labels
 
     model = ModelCRNN(labels=len(labels))
     model.import_dataset(DATASET_FOLDER, force_normalisation_constants=normalisation_constants, ignore_labels=EXCLUDE_LABELS)
     model.log_dir = LOG_FOLDER
-
-    labels = [label for label in labels if label not in EXCLUDE_LABELS]
 
     # display the dataset summary
     print("Training on labels: ",labels)
@@ -56,6 +59,9 @@ def main():
         ))
     print()
 
+    for dataset in dsets:
+        print(dataset.labels)
+
     try:
         print("Training started")
         print()
@@ -63,7 +69,7 @@ def main():
         print(model.hyperparams_string)
         print()
         print("{0:.1f}K training examples".format(model.rows / 1000))
-        model.train_model(epochs=30, run_name='thermal/stoatv3')
+        model.train_model(epochs=30, run_name='experiment/stoat original split/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         model.save_model()
     finally:
         model.close()

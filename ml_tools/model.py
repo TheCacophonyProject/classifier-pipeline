@@ -1,4 +1,6 @@
 import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
 
 import os.path
 import pickle
@@ -6,9 +8,12 @@ import math
 import logging
 import time
 import json
+import io
 from collections import namedtuple
+from sklearn import metrics
 
 from ml_tools import tools
+from ml_tools import visualise
 
 # folder to save model while it's training.  Make sure this isn't on a dropbox folder and it will cause a crash.
 CHECKPOINT_FOLDER = "c:\cac\checkpoints"
@@ -293,6 +298,104 @@ class Model:
         merged = tf.summary.merge_all()
         self.merged_summary = merged
 
+
+    def log_scalar(self, tag, value, writer=None):
+        """
+        Writes a scalar to summary writer.
+        :param tag: tag to use
+        :param value: value to write
+        :param writer: (optional) summary writer.  Defaults to writer_val
+        """
+        if writer is None:
+            writer = self.writer_val
+        writer.add_summary(
+            tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)]),
+            global_step=self.step)
+
+    def log_image(self, tag, image, writer=None):
+        """
+        :param tag: tag to use
+        :param image: image to write
+        :param writer: (optional) summary writer.  Defaults to writer_val
+        :return:
+        """
+        """Logs a list of images."""
+        if writer is None:
+            writer = self.writer_val
+
+        # Write the image to a string
+        s = io.BytesIO()
+        plt.imsave(s, image, format='png')
+
+        # Create an Image object
+        img_summary = tf.Summary.Image(encoded_image_string=s.getvalue(),
+                                   height=image.shape[0],
+                                   width=image.shape[1])
+        # Create a Summary value
+        im_summary = tf.Summary.Value(tag=tag, image=img_summary)
+
+        # Create and write Summary
+        summary = tf.Summary(value=[im_summary])
+        writer.add_summary(summary, self.step)
+
+    def log_image_png(self, tag, image_data, height, width, writer=None):
+        """
+        :param tag: tag to use
+        :param image: image to write
+        :param writer: (optional) summary writer.  Defaults to writer_val
+        :return:
+        """
+        """Logs a list of images."""
+        if writer is None:
+            writer = self.writer_val
+
+        # Create an Image object
+        img_summary = tf.Summary.Image(encoded_image_string=image_data.getvalue(),
+                                   height=height,
+                                   width=width)
+        # Create a Summary value
+        im_summary = tf.Summary.Value(tag=tag, image=np.expand_dims(img_summary, 0))
+
+        # Create and write Summary
+        summary = tf.Summary(value=im_summary)
+        writer.add_summary(summary, self.step)
+
+    def generate_report(self):
+        """
+        Logs some important information to the tensorflow summary writer, such as confusion matrix, and f1 scores.
+        :return:
+        """
+
+        examples, true_classess = self.datasets.validation.next_batch(self.eval_samples)
+        predictions = self.classify_batch(examples)
+        predictions = [np.argmax(prediction) for prediction in predictions]
+
+        pred_label = [self.labels[x] for x in predictions]
+        true_label = [self.labels[x] for x in true_classess]
+
+        cm = tools.get_confusion_matrix(pred_class=predictions, true_class=true_classess, classes=self.labels)
+        f1_scores = metrics.f1_score(y_true=true_label, y_pred=pred_label, labels=self.labels, average=None)
+
+        fig = visualise.plot_confusion_matrix(cm, self.labels)
+        fig.canvas.draw()
+        data = fig.canvas.tostring_rgb()
+        ncols, nrows = fig.canvas.get_width_height()
+        img = np.fromstring(data, dtype=np.uint8).reshape(nrows, ncols, 3)
+        self.log_image("confusion_matrix", img)
+        plt.close()
+
+        for label_number, label in enumerate(self.labels):
+            self.log_scalar("f1/" + label, f1_scores[label_number])
+
+        errors = correct = 0
+        for pred, true in zip(pred_label, true_label):
+            if pred != true:
+                errors += 1
+            else:
+                correct += 1
+
+        return correct / (correct + errors), f1_scores
+
     def train_model(self, epochs=10.0, run_name=None):
         """
         Trains model given number of epocs.  Uses session 'sess'
@@ -343,7 +446,7 @@ class Model:
             prep_time += time.time()-start
 
             # evaluate every so often
-            if steps_since_print >= self.print_every or (i==iterations-1):
+            if steps_since_print >= self.print_every or (i == iterations-1):
 
                 start = time.time()
 
@@ -378,6 +481,9 @@ class Model:
 
                 # save at epochs
                 if int(epoch) > last_epoch_save:
+                    print("Epoch report")
+                    acc, f1 = self.generate_report()
+                    print("results: {:.1f} {}".format(acc*100,["{:.1f}".format(x*100) for x in f1]))
                     print('Save epoch reference')
                     saver.save(self.session, os.path.join(CHECKPOINT_FOLDER, "training-epoch-{:02d}.sav".format(int(epoch))))
                     last_epoch_save = int(epoch)

@@ -5,6 +5,7 @@ Tools for visualising ML models.
 
 import numpy as np
 import matplotlib.pyplot as plt
+import itertools
 
 def show_saliency_map(model, X_in, y_in):
     """
@@ -80,7 +81,23 @@ def show_segment(X_in):
     plt.gcf().set_size_inches(cols * 3, rows * 3)
     plt.show()
 
+def plot_confusion_matrix(confusion_matrix, classes):
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111)
+    ax.matshow(confusion_matrix, cmap=plt.cm.Blues)
 
+    plt.title("Classification Confusion Matrix")
+
+    thresh = confusion_matrix.max() / 2.
+    for i, j in itertools.product(range(confusion_matrix.shape[0]), range(confusion_matrix.shape[1])):
+        plt.text(j, i, "{:.2f}".format(confusion_matrix[i, j]),
+                 horizontalalignment="center",
+                 color="white" if confusion_matrix[i, j] > thresh else "black")
+
+    ax.set_xticklabels([''] + classes, rotation=45)
+    ax.set_yticklabels([''] + classes)
+    ax.xaxis.set_tick_params(labeltop='off', labelbottom='on')
+    return fig
 
 def compute_saliency_map(X_in, y_in, model):
     """

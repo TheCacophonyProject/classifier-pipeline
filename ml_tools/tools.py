@@ -9,8 +9,10 @@ import random
 import pickle
 import math
 import matplotlib.pyplot as plt
+import io
 import itertools
 import gzip
+from sklearn import metrics
 import json
 import dateutil
 import binascii
@@ -18,10 +20,8 @@ import time
 import datetime
 import glob
 import cv2
-from sklearn.metrics import confusion_matrix
 from matplotlib.colors import LinearSegmentedColormap
 import subprocess
-import scipy
 
 EPISON = 1e-5
 
@@ -514,34 +514,6 @@ def get_classification_info(model, batch_X, batch_y):
 
     return incorrectly_classified_segments, pred_class, true_class, confidences
 
-def show_confusion_matrix(pred_class, true_class, classes, normalize = True):
-    """ Display a confusion matrix from list of results. """
-
-    cm = confusion_matrix([classes[class_num] for class_num in pred_class],
-                          [classes[class_num] for class_num in true_class], labels=classes)
-
-    # normalise matrix
-    if normalize:
-        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-
-    fig = plt.figure(figsize=(8, 8))
-    ax = fig.add_subplot(111)
-    cax = ax.matshow(cm, cmap=plt.cm.Blues)
-
-    plt.title("Classification Confusion Matrix")
-
-    fmt = '.2f' if normalize else 'd'
-    thresh = cm.max() / 2.
-    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        plt.text(j, i, format(cm[i, j], fmt),
-                 horizontalalignment="center",
-                 color="white" if cm[i, j] > thresh else "black")
-
-    ax.set_xticklabels([''] + classes, rotation=45)
-    ax.set_yticklabels([''] + classes)
-    ax.xaxis.set_tick_params(labeltop='off', labelbottom='on')
-    plt.show()
-
 
 # todo: change this to classify track.
 def classify_segment(model, segment, verbose = False):
@@ -608,6 +580,17 @@ def product(numbers):
     return x
 
 
+def get_confusion_matrix(pred_class, true_class, classes, normalize=True):
+    """ get a confusion matrix figure from list of results with optional normalisation. """
+
+    cm = metrics.confusion_matrix([classes[class_num] for class_num in pred_class],
+                          [classes[class_num] for class_num in true_class], labels=classes)
+
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        cm = np.nan_to_num(cm)
+
+    return cm
 
 blosc_zstd = blosc_opts(complevel=9, complib='blosc:zstd', shuffle=True)
 
