@@ -31,7 +31,7 @@ class ModelCRNN(Model):
         'keep_prob': 0.5,
 
         # model params
-        'batch_norm': False,
+        'batch_norm': True,
         'lstm_units': 384,
 
         # augmentation
@@ -143,7 +143,7 @@ class ModelCRNN(Model):
         # oh.. batchnorm might double that? But I don't run it on first layer. so maybe just a small amount
 
         layer = X[:, :, :, 0:0 + 1]
-        layer = self.conv_layer('filtered/1', layer, 64, [3, 3], pool_stride=2, disable_norm=True)
+        layer = self.conv_layer('filtered/1', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('filtered/2', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('filtered/3', layer, 96, [3, 3], pool_stride=2)
         layer = self.conv_layer('filtered/4', layer, 128, [3, 3], pool_stride=2)
@@ -152,7 +152,7 @@ class ModelCRNN(Model):
         filtered_conv = layer
 
         layer = X[:, :, :, 2:3 + 1]
-        layer = self.conv_layer('motion/1', layer, 64, [3, 3], pool_stride=2, disable_norm=True)
+        layer = self.conv_layer('motion/1', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('motion/2', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('motion/3', layer, 96, [3, 3], pool_stride=2)
         layer = self.conv_layer('motion/4', layer, 128, [3, 3], pool_stride=2)

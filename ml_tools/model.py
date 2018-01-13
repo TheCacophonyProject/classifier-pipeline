@@ -98,16 +98,16 @@ class Model:
         self.writer_val = None
         self.merged_summary = None
 
-    def import_dataset(self, base_path, force_normalisation_constants=None, ignore_labels=None):
+    def import_dataset(self, dataset_filename, force_normalisation_constants=None, ignore_labels=None):
         """
-        Import dataset from basepath.
-        :param base_path:
+        Import dataset.
+        :param dataset_filename: path and filename of the dataset
         :param force_normalisation_constants: If defined uses these normalisation constants rather than those
             saved with the dataset.
         :param ignore_labels: (optional) these labels will be removed from the dataset.
         :return:
         """
-        datasets = pickle.load(open(os.path.join(base_path, "datasets.dat"),'rb'))
+        datasets = pickle.load(open(dataset_filename,'rb'))
         self.datasets.train, self.datasets.validation, self.datasets.test = datasets
 
         # augmentation really helps with reducing over-fitting, but test set should be fixed so we don't apply it there.

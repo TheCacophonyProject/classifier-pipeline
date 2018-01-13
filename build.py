@@ -22,7 +22,7 @@ from ml_tools.dataset import Dataset
 DATASET_FOLDER = 'c:/cac/robin/'
 
 # uses split from previous run
-USE_PREVIOUS_SPLIT = False
+USE_PREVIOUS_SPLIT = True
 
 # todo: move into a text file
 BANNED_CLIPS = {
@@ -35,7 +35,7 @@ BANNED_CLIPS = {
     '20171219-105919-akaroa12.cptv'
 }
 
-EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog']
+EXCLUDED_LABELS = ['mouse','insect','rabbit']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
@@ -52,12 +52,13 @@ CAP_BIN_WEIGHT = 1.5
 # the class suggesting that the class is more or less likely.  For example bumping up the human weighting will cause
 # the classifier learn towards guessing human when it is not sure.
 LABEL_WEIGHTS = {
-    'human':0.8,
-    'rat':0.8,
-    'false-positive':0.8,
-    'cat':0.2,
-    'dog':0.2,
+    'rat':0.8,              # rats and false-positive are fine, it's just we don't have much footage so I make sure that
+    'false-positive':0.8,   # a little less is used in the test set.
+    'human':0.8,            # these classes do very poorly, so put them in, but weight them very lowly
+    'cat':0.8,
+    'dog':0.8,
 }
+
 
 # minimum average mass for test segment
 TEST_MIN_MASS = 40
@@ -175,10 +176,10 @@ def split_dataset_predefined():
     raise Exception('not implemented yet.')
 
 
-def split_dataset_days(test_bins=None):
+def split_dataset_days(prefill_bins=None):
     """
     Randomly selects tracks to be used as the train, validation, and test sets
-    :param test_bins: if given will use these bins for the test set
+    :param prefill_bins: if given will use these bins for the test set
     :return: tuple containing train, validation, and test datasets.
 
     This method assigns tracks into 'label-camera-day' bins and splits the bins across datasets.
@@ -217,77 +218,83 @@ def split_dataset_days(test_bins=None):
     print("Bin segment mean:{:.1f} std:{:.1f} auto max segments:{:.1f}".format(bin_segment_mean, bin_segment_std, max_bin_segments))
     print()
 
-    if test_bins is None:
+    used_bins = {}
 
-        # assign bins to test and validation sets
-        test_bins = {}
-        for label in dataset.labels:
+    for label in dataset.labels:
+        used_bins[label] = []
 
-            available_bins = set(bins_by_label[label])
-
-            # heavy bins are bins with an unsually high number of examples on a day.  We exclude these from the test/validation
-            # set as they will be subfiltered down and there is no need to waste that much data.
-            heavy_bins = set()
-            for bin_id in available_bins:
-                bin_segments = sum(len(track.segments) for track in dataset.tracks_by_bin[bin_id])
-                if bin_segments > max_bin_segments:
-                    heavy_bins.add(bin_id)
-
-            available_bins -= heavy_bins
-
-            # print bin statistics
-            print("{}: normal {} heavy {}".format(label, len(available_bins), len(heavy_bins)))
-
-            required_samples = TEST_SET_COUNT * LABEL_WEIGHTS.get(label, 1.0)
-            required_bins = TEST_SET_BINS * LABEL_WEIGHTS.get(label, 1.0) # make sure there is some diversity
-
-            # we assign bins to the test and validation sets randomly until we have enough segments + bins
-            # the remaining bins can be used for training
-            used_bins = []
-            while len(available_bins) > 0 and \
-                    (validation.get_class_segments_count(label) < required_samples or len(used_bins) < required_bins):
-
-                sample = random.sample(available_bins, 1)[0]
-
-                validation.add_tracks(dataset.tracks_by_bin[sample])
-                test.add_tracks(dataset.tracks_by_bin[sample])
-
-                validation.filter_segments(TEST_MIN_MASS, ['false-positive'])
-                test.filter_segments(TEST_MIN_MASS, ['false-positive'])
-
-                available_bins.remove(sample)
-                used_bins.append(sample)
-
-            available_bins.update(heavy_bins)
-
-            for bin_id in available_bins:
-                train.add_tracks(dataset.tracks_by_bin[bin_id])
-                train.filter_segments(TRAIN_MIN_MASS, ['false-positive'])
-
-            test_bins[label] = used_bins
-
-        # write out bins used, just in case we want to repeat this split
-        pickle.dump(test_bins, open('dataset_split-{}.dat'.format(str(time.time())),'wb'))
-    else:
-        print("Using existing split:")
+    if prefill_bins is not None:
+        print("Reusing bins from previous split:")
         for label in dataset.labels:
             available_bins = set(bins_by_label[label])
-            for sample in test_bins[label]:
-
+            if label not in prefill_bins:
+                continue
+            for sample in prefill_bins[label]:
                 # this happens if we have banned/deleted the clip, but it was previously used.
                 if sample not in dataset.tracks_by_bin:
                     continue
-
                 validation.add_tracks(dataset.tracks_by_bin[sample])
                 test.add_tracks(dataset.tracks_by_bin[sample])
                 validation.filter_segments(TEST_MIN_MASS, ['false-positive'])
                 test.filter_segments(TEST_MIN_MASS, ['false-positive'])
 
                 available_bins.remove(sample)
+                used_bins[label].append(sample)
+
 
             for bin_id in available_bins:
                 train.add_tracks(dataset.tracks_by_bin[bin_id])
                 train.filter_segments(TRAIN_MIN_MASS, ['false-positive'])
+
+    # assign bins to test and validation sets
+    # if we previously added bins from another dataset we are simply filling in the gaps here.
+    for label in dataset.labels:
+
+        available_bins = set(bins_by_label[label])
+
+        # heavy bins are bins with an unsually high number of examples on a day.  We exclude these from the test/validation
+        # set as they will be subfiltered down and there is no need to waste that much data.
+        heavy_bins = set()
+        for bin_id in available_bins:
+            bin_segments = sum(len(track.segments) for track in dataset.tracks_by_bin[bin_id])
+            if bin_segments > max_bin_segments:
+                heavy_bins.add(bin_id)
+
+        available_bins -= heavy_bins
+        available_bins -= set(used_bins[label])
+
+        # print bin statistics
+        print("{}: normal {} heavy {} pre-filled {}".format(label, len(available_bins), len(heavy_bins), len(used_bins[label])))
+
+        required_samples = TEST_SET_COUNT * LABEL_WEIGHTS.get(label, 1.0)
+        required_bins = TEST_SET_BINS * LABEL_WEIGHTS.get(label, 1.0) # make sure there is some diversity
+        required_bins = max(4, required_bins)
+
+        # we assign bins to the test and validation sets randomly until we have enough segments + bins
+        # the remaining bins can be used for training
+        while len(available_bins) > 0 and \
+                (validation.get_class_segments_count(label) < required_samples or len(used_bins[label]) < required_bins):
+
+            sample = random.sample(available_bins, 1)[0]
+
+            validation.add_tracks(dataset.tracks_by_bin[sample])
+            test.add_tracks(dataset.tracks_by_bin[sample])
+
+            validation.filter_segments(TEST_MIN_MASS, ['false-positive'])
+            test.filter_segments(TEST_MIN_MASS, ['false-positive'])
+
+            available_bins.remove(sample)
+            used_bins[label].append(sample)
+
+            if prefill_bins is not None:
+                print(" - required added adddtional sample ", sample)
+
+        available_bins.update(heavy_bins)
+
+        for bin_id in available_bins:
+            train.add_tracks(dataset.tracks_by_bin[bin_id])
+            train.filter_segments(TRAIN_MIN_MASS, ['false-positive'])
+
 
     print("Segments per class:")
     print("-"*90)
@@ -324,6 +331,17 @@ def split_dataset_days(test_bins=None):
 
     return train, validation, test
 
+def get_bin_split(filename):
+    """ Loads bin splits from previous databse. """
+    train, validation, text = pickle.load(open(filename, 'rb'))
+    test_bins = {}
+    for label in validation.labels:
+        test_bins[label] = set()
+        for track in validation.tracks_by_label[label]:
+            test_bins[label].add(track.bin_id)
+        test_bins[label] = list(test_bins[label])
+    return test_bins
+
 def main():
 
     global dataset
@@ -354,7 +372,7 @@ def main():
 
     print("Splitting data set into train / validation")
     if USE_PREVIOUS_SPLIT:
-        split = pickle.load(open('dataset_split.dat','rb'))
+        split = get_bin_split('template.dat')
         datasets = split_dataset_days(split)
     else:
         datasets = split_dataset_days()

@@ -8,7 +8,6 @@ Script to train models for classifying animals from thermal footage.
 import matplotlib
 matplotlib.use('Agg') # enable canvas drawing
 
-
 import logging
 import pickle
 import os
@@ -23,7 +22,7 @@ LOG_FOLDER = "c:/cac/test_robin/"
 # dataset folder to use
 DATASET_FOLDER = "c:/cac/robin"
 
-EXCLUDE_LABELS = ['human']
+EXCLUDE_LABELS = []
 
 def main():
 
@@ -36,16 +35,17 @@ def main():
     normalisation_constants = [
         [3200, 180],
         [5.5, 25],
-        [0, 0.11],
+        [0, 0.10],
         [0, 0.10],
         [0, 1]
     ]
 
-    dsets = pickle.load(open(os.path.join(DATASET_FOLDER, 'datasets6.dat'),'rb'))
+    dataset_name = os.path.join(DATASET_FOLDER, 'datasets6.dat')
+    dsets = pickle.load(open(dataset_name,'rb'))
     labels = dsets[0].labels
 
     model = ModelCRNN(labels=len(labels))
-    model.import_dataset(DATASET_FOLDER, force_normalisation_constants=normalisation_constants, ignore_labels=EXCLUDE_LABELS)
+    model.import_dataset(dataset_name, force_normalisation_constants=normalisation_constants)
     model.log_dir = LOG_FOLDER
 
     # display the dataset summary
@@ -69,7 +69,7 @@ def main():
         print(model.hyperparams_string)
         print()
         print("{0:.1f}K training examples".format(model.rows / 1000))
-        model.train_model(epochs=30, run_name='experiment/stoat original split/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        model.train_model(epochs=30, run_name='finetune/batchnorm/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         model.save_model()
     finally:
         model.close()
