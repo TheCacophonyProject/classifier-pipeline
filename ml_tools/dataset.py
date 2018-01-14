@@ -87,11 +87,6 @@ class TrackHeader:
         # score of track
         self.score = score
 
-    def get_track_segment(self):
-        """ Returns a segment containing the entire track. """
-        segment = SegmentHeader(self.clip_id, self.track_number, 0, self.frames, self.weight, self.label, 0)
-        return segment
-
     @property
     def track_id(self):
         """ Unique name of this track. """
@@ -416,10 +411,23 @@ class Dataset:
         :param normalise: if we should normalise the track data or not
         :return: segment data of shape [frames, channels, height, width]
         """
-        segment = track.get_track_segment()
-        clip_meta = self.db.get_clip_meta(track.clip_id)
-        segment.thermal_reference = clip_meta['mean_temp']
-        return self.fetch_segment(segment, normalise, augment)
+        data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
+
+        data = np.asarray(data, dtype=np.float32)
+    
+        data = self.apply_preprocessing(data)
+
+        # add very small amount of noise to filtered layer
+        if self.filtered_noise:
+            data[:, 1, :, :] += np.random.uniform(-self.filtered_noise, +self.filtered_noise,
+                                                  size=data[:, 1, :, :].shape)
+
+        if normalise:
+            clip_meta = self.db.get_clip_meta(track.clip_id)
+            thermal_reference = clip_meta['mean_temp']
+            data = self.apply_normalisation(data, thermal_reference)
+    
+        return data
 
     def fetch_segment(self, segment: SegmentHeader, normalise=False, augment=False):
         """
