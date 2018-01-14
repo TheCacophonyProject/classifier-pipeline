@@ -80,6 +80,9 @@ class Model:
         # folder to write tensorboard logs to
         self.log_dir = './logs'
 
+        # number of frames per segment
+        self.segment_frames = 27
+
         # dictionary containing current hyper parameters
         self.params = {
             # augmentation
@@ -220,8 +223,13 @@ class Model:
 
     def get_feed_dict(self, X, y, is_training=False):
         """ returns a feed dictionary for TensorFlow placeholders. """
-        return {self.X: X, self.y: y, self.keep_prob: self.params['keep_prob'] if is_training else 1.0,
-                self.is_training: is_training, self.global_step: self.step}
+        return {
+            self.X: X[:, 0:self.segment_frames+1],          # limit number of frames per segment passed to trainer
+            self.y: y,
+            self.keep_prob: self.params['keep_prob'] if is_training else 1.0,
+            self.is_training: is_training,
+            self.global_step: self.step
+        }
 
     def classify_batch(self, batch_X):
         """
@@ -500,6 +508,9 @@ class Model:
             self.stop_async()
 
     def start_async_load(self):
+        # make sure the workers load the correct number of frames.
+        self.datasets.train.segment_width = self.segment_frames
+        self.datasets.validation.segment_width = self.segment_frames
         self.datasets.train.start_async_load(64)
         self.datasets.validation.start_async_load(64)
 

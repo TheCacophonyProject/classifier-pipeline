@@ -158,7 +158,6 @@ class Dataset:
     # in general it seems it's better to leave this off and leave the motion vectors as is.
     SQUARE_ROOT_OPTICAL_FLOW = False
 
-
     def __init__(self, track_db: TrackDatabase, name="Dataset"):
 
         # database holding track data
@@ -210,11 +209,7 @@ class Dataset:
 
         self.preloader_queue = None
         self.preloader_threads = None
-
         self.preloader_stop_flag = False
-
-        # encodes the label into the frames, used for debuging.
-        self.encode_solution = False
 
         # a copy of our entire dataset, if loaded.
         self.X = None
@@ -407,7 +402,7 @@ class Dataset:
     def fetch_all(self, normalise=True):
         """
         Fetches all segments
-        :return: X of shape [n,27,channels,height,width], y of shape [n]
+        :return: X of shape [n,f,channels,height,width], y of shape [n]
         """
         X = np.float32([self.fetch_segment(segment, normalise=normalise) for segment in self.segments])
         y = np.int32([self.labels.index(segment.label) for segment in self.segments])
@@ -425,16 +420,16 @@ class Dataset:
         if augment:
             # jitter first frame
             prev_frames = segment.start_frame
-            post_frames = self.track_by_id[segment.track_id].frames - segment.end_frame
+            post_frames = self.track_by_id[segment.track_id].frames - (segment.start_frame + self.segment_width)
             jitter = np.clip(np.random.randint(-5, 5), -prev_frames, post_frames)
         else:
             jitter = 0
 
         data = self.db.get_track(segment.clip_id, segment.track_number, segment.start_frame + jitter,
-                                 segment.end_frame + jitter)
+                                 segment.start_frame + self.segment_width + jitter)
 
-        if len(data) != 27:
-            print("ERROR, invalid segment length", len(data))
+        if len(data) != self.segment_width:
+            print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)
 
         data = np.asarray(data, dtype=np.float32)
 
@@ -471,21 +466,6 @@ class Dataset:
 
         if normalise:
             data = self.apply_normalisation(data, segment.thermal_reference)
-
-        if self.encode_solution:
-            # we encode the answer into the image to perform sanity checks
-            data = data * 0.1
-            data[26, 1, 24, 25] = 10
-            data[26, 1, 24, 23] = 10
-            data[26, 1, 24, 24] = 10
-            data[26, 1, 23, 24] = 10
-            data[26, 1, 25, 24] = 10
-            data[26, 1, 0, 0] = 5
-            data[26, 1, 47, 47] = 5
-            data[26, 1, 0, 47] = 5
-            data[26, 1, 47, 0] = 5
-            data[26, 1, 12, 12] = 5 + self.labels.index(segment.label)
-            data[26, 1, 36, 36] = np.random.randint(0,10)
 
         return data
 
