@@ -154,6 +154,10 @@ class Dataset:
     # normalise eac segment to unit gausian
     THERM_NORM_UNIT = 'unit'
 
+    # optical flow is very long tailed, square rooting it make it more normal.  Clipping is also applied.
+    # in general it seems it's better to leave this off and leave the motion vectors as is.
+    SQUARE_ROOT_OPTICAL_FLOW = False
+
 
     def __init__(self, track_db: TrackDatabase, name="Dataset"):
 
@@ -201,6 +205,8 @@ class Dataset:
         self.filter_threshold = 20
         # adds a little noise to filtered channel
         self.filtered_noise = 1.0
+        # added to thermal before doing filtering
+        self.thermal_threshold = 0.0
 
         self.preloader_queue = None
         self.preloader_threads = None
@@ -265,10 +271,13 @@ class Dataset:
             batch_X.append(data)
             batch_y.append(self.labels.index(segment.label))
 
+            if np.isnan(data).any():
+                print("Warning NaN found in data from source {}".format(segment.clip_id))
+
             # I've been getting some NaN's come through so I check here to make sure input is reasonable.
-            if np.max(np.abs(batch_X)) > 100:
+            if np.max(np.abs(data)) > 2000:
                 print("Extreme values found in batch from source {} with value {}".format(segment.clip_id,
-                                                                                          np.max(batch_X)))
+                                                                                          np.max(data)))
 
         # Half float should be fine here.  When using process based async loading we have to pickle the batch between
         # processes, so having it half the size helps a lot.  Also it reduces the memory required for the read buffers
@@ -442,12 +451,13 @@ class Dataset:
             # we pre-multiplied by 256 to fit into a 16bit int
             flow = flow / 256
 
-            # try to get optical flow a little closer to normal looking (it's got long tails)
-            abs_flow = np.abs(flow)
-
-            # apply square root to flow, this helps to deal with the fact that flow is very long tailed.
-            abs_flow = np.clip(abs_flow, 0, 10)
-            flow = (np.minimum(abs_flow, np.abs(flow) ** (1 / 2))) * np.sign(flow)
+            # disable squareroot optical flow
+            if self.SQUARE_ROOT_OPTICAL_FLOW:
+                # try to get optical flow a little closer to normal looking (it's got long tails)
+                abs_flow = np.abs(flow)
+                # apply square root to flow, this helps to deal with the fact that flow is very long tailed.
+                abs_flow = np.clip(abs_flow, 0, 10)
+                flow = (np.minimum(abs_flow, np.abs(flow) ** (1 / 2))) * np.sign(flow)
 
             data[:, 2:3 + 1, :, :] = flow
 
@@ -462,7 +472,7 @@ class Dataset:
         if normalise:
             data = self.apply_normalisation(data, segment.thermal_reference)
 
-        if hasattr(self, 'encode_solution') and self.encode_solution:
+        if self.encode_solution:
             # we encode the answer into the image to perform sanity checks
             data = data * 0.1
             data[26, 1, 24, 25] = 10
@@ -508,11 +518,10 @@ class Dataset:
                 elif self.thermal_normalisation_mode == self.THERM_NORM_THRESHOLD:
                     assert thermal_reference, '{} normalisation mode requires thermal_center parameter'.format(
                         self.thermal_normalisation_mode)
-                    segment_data[:, 0] = (segment_data[:, 0] - thermal_reference) / 32
-
-                    thermal =  segment_data[:, 0]
-                    thermal[thermal < 0] = 0
-                    segment_data[:, 0] = thermal
+                    thermal = segment_data[:, 0]
+                    thermal = thermal - thermal_reference
+                    thermal[thermal < self.thermal_threshold] = self.thermal_threshold
+                    segment_data[:, 0] = thermal / 32
                 else:
                     raise Exception("invalid thermal normalisation mode {}".format(self.thermal_normalisation_mode))
             else:

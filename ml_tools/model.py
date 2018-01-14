@@ -86,6 +86,7 @@ class Model:
             'augmentation': True,
             'filter_threshold': 20,
             'filter_noise': 1.0,
+            'thermal_threshold': 0,
             'scale_frequency': 0.5,
             # dropout
             'keep_prob': 0.5,
@@ -118,6 +119,8 @@ class Model:
         for dataset in datasets:
             dataset.filter_threshold = self.params['filter_threshold']
             dataset.filtered_noise = self.params['filter_noise']
+            dataset.thermal_threshold = self.params['thermal_threshold']
+
             if ignore_labels:
                 for label in ignore_labels:
                     dataset.remove_label(label)
@@ -209,12 +212,9 @@ class Model:
                 writer.add_summary(summary, global_step=self.step)
             # we manually write out the aggretated values as we want to know the total score, not just the per batch
             # scores.
-            writer.add_summary(
-                tf.Summary(value=[tf.Summary.Value(tag="metric/accuracy", simple_value=batch_accuracy)]),
-                global_step=self.step)
-            writer.add_summary(
-                tf.Summary(value=[tf.Summary.Value(tag="metric/loss", simple_value=batch_loss)]),
-                global_step=self.step)
+            self.log_scalar('metric/accuracy', batch_accuracy, writer=writer)
+            self.log_scalar('metric/error', 1-batch_accuracy, writer=writer)
+            self.log_scalar('metric/loss', batch_loss, writer=writer)
 
         return batch_accuracy, batch_loss
 
@@ -336,28 +336,6 @@ class Model:
 
         # Create and write Summary
         summary = tf.Summary(value=[im_summary])
-        writer.add_summary(summary, self.step)
-
-    def log_image_png(self, tag, image_data, height, width, writer=None):
-        """
-        :param tag: tag to use
-        :param image: image to write
-        :param writer: (optional) summary writer.  Defaults to writer_val
-        :return:
-        """
-        """Logs a list of images."""
-        if writer is None:
-            writer = self.writer_val
-
-        # Create an Image object
-        img_summary = tf.Summary.Image(encoded_image_string=image_data.getvalue(),
-                                   height=height,
-                                   width=width)
-        # Create a Summary value
-        im_summary = tf.Summary.Value(tag=tag, image=np.expand_dims(img_summary, 0))
-
-        # Create and write Summary
-        summary = tf.Summary(value=im_summary)
         writer.add_summary(summary, self.step)
 
     def generate_report(self):
@@ -522,8 +500,8 @@ class Model:
             self.stop_async()
 
     def start_async_load(self):
-        self.datasets.train.start_async_load(self.eval_samples+32)
-        self.datasets.validation.start_async_load(self.eval_samples+32)
+        self.datasets.train.start_async_load(64)
+        self.datasets.validation.start_async_load(64)
 
     def stop_async(self):
         self.datasets.train.stop_async_load()

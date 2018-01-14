@@ -243,7 +243,6 @@ class Track:
 class BackgroundAnalysis:
     """ Stores background analysis statistics. """
     def __init__(self):
-
         self.threshold = None
         self.average_delta = None
         self.max_temp = None
