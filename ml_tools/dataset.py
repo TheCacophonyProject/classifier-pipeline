@@ -417,16 +417,25 @@ class Dataset:
         :return: segment of shape [frames, channels, height, width]
         """
 
+        # if we are requesting a segment smaller than the default segment size take it from the middle.
+        unused_frames = (segment.frames - self.segment_width)
+        if unused_frames < 0:
+            raise Exception("Maximum segment size for the dataset is {} frames, but requested {}".format(
+                segment.frames, self.segment_width))
+        first_frame = segment.start_frame + (unused_frames // 2)
+        last_frame = segment.start_frame + (unused_frames // 2) + self.segment_width
+
         if augment:
             # jitter first frame
-            prev_frames = segment.start_frame
-            post_frames = self.track_by_id[segment.track_id].frames - (segment.start_frame + self.segment_width)
-            jitter = np.clip(np.random.randint(-5, 5), -prev_frames, post_frames)
+            prev_frames = first_frame
+            post_frames = self.track_by_id[segment.track_id].frames - last_frame
+            max_jitter = max(5, unused_frames)
+            jitter = np.clip(np.random.randint(-max_jitter, max_jitter), -prev_frames, post_frames)
         else:
             jitter = 0
 
-        data = self.db.get_track(segment.clip_id, segment.track_number, segment.start_frame + jitter,
-                                 segment.start_frame + self.segment_width + jitter)
+        data = self.db.get_track(segment.clip_id, segment.track_number, first_frame + jitter,
+                                 last_frame + jitter)
 
         if len(data) != self.segment_width:
             print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)

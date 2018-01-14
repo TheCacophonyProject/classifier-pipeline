@@ -89,7 +89,7 @@ class Model:
             'augmentation': True,
             'filter_threshold': 20,
             'filter_noise': 1.0,
-            'thermal_threshold': 0,
+            'thermal_threshold': 10,
             'scale_frequency': 0.5,
             # dropout
             'keep_prob': 0.5,
