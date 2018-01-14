@@ -42,7 +42,7 @@ class SegmentHeader:
         self.weight = weight
         # our label
         self.label = label.lower()
-        # referece thermal temperature
+        # thermal referece temperature (i.e. which temp is 0)
         self.thermal_reference = None
 
         self.avg_mass = avg_mass
@@ -86,6 +86,11 @@ class TrackHeader:
         self.camera = camera
         # score of track
         self.score = score
+
+    def get_track_segment(self):
+        """ Returns a segment containing the entire track. """
+        segment = SegmentHeader(self.clip_id, self.track_number, 0, self.frames, self.weight, self.label, 0)
+        return segment
 
     @property
     def track_id(self):
@@ -354,10 +359,6 @@ class Dataset:
             if segment_frames != self.segment_width:
                 continue
 
-            # todo:
-            # very small segments get sampled half the time, larger ones more often.
-            # use segment_weight_factor = mathsqrt(segment_avg_mass+10)/math.sqrt(50)
-
             # try to sample the better segments more often
             if segment_avg_mass < 50:
                 segment_weight_factor = 0.75
@@ -408,13 +409,25 @@ class Dataset:
         y = np.int32([self.labels.index(segment.label) for segment in self.segments])
         return X, y
 
+    def fetch_track(self, track: TrackHeader, normalise=False):
+        """
+        Fetches data for an entire strack
+        :param track: the track to fetch
+        :param normalise: if we should normalise the track data or not
+        :return: segment data of shape [frames, channels, height, width]
+        """
+        segment = track.get_track_segment()
+        clip_meta = self.db.get_clip_meta(track.clip_id)
+        segment.thermal_reference = clip_meta['mean_temp']
+        return self.fetch_segment(segment, normalise, augment)
+
     def fetch_segment(self, segment: SegmentHeader, normalise=False, augment=False):
         """
         Fetches data for segment.
         :param segment: The segment header to fetch
         :param normalise: if true normalises the channels in the segment according to normalisation_constants
         :param augment: if true applies data augmentation
-        :return: segment of shape [frames, channels, height, width]
+        :return: segment data of shape [frames, channels, height, width]
         """
 
         # if we are requesting a segment smaller than the default segment size take it from the middle.
@@ -442,28 +455,7 @@ class Dataset:
 
         data = np.asarray(data, dtype=np.float32)
 
-        # apply some thresholding.  This removes the noise from the background which helps a lot during training.
-        # it is possiable that with enough data this will no longer be necessary.
-        if self.filter_threshold:
-            filtered = data[:, 1, :, :]
-            filtered[filtered < self.filter_threshold] = 0
-
-        # map optical flow down to right level,
-        if True:
-            flow = data[:, 2:3 + 1, :, :]
-
-            # we pre-multiplied by 256 to fit into a 16bit int
-            flow = flow / 256
-
-            # disable squareroot optical flow
-            if self.SQUARE_ROOT_OPTICAL_FLOW:
-                # try to get optical flow a little closer to normal looking (it's got long tails)
-                abs_flow = np.abs(flow)
-                # apply square root to flow, this helps to deal with the fact that flow is very long tailed.
-                abs_flow = np.clip(abs_flow, 0, 10)
-                flow = (np.minimum(abs_flow, np.abs(flow) ** (1 / 2))) * np.sign(flow)
-
-            data[:, 2:3 + 1, :, :] = flow
+        data = self.apply_preprocessing(data)
 
         if augment:
             data = self.apply_augmentation(data)
@@ -477,6 +469,37 @@ class Dataset:
             data = self.apply_normalisation(data, segment.thermal_reference)
 
         return data
+
+    def apply_preprocessing(self, data):
+        """
+        Applies preprocessing to segment data.  For example mapping optical flow down to the right level.
+        :param data:
+        :return:
+        """
+
+        # apply some thresholding.  This removes the noise from the background which helps a lot during training.
+        # it is posiable that with enough data this will no longer be necessary.
+        if self.filter_threshold:
+            filtered = data[:, 1, :, :]
+            filtered[filtered < self.filter_threshold] = 0
+
+        # map optical flow down to right level,
+        flow = data[:, 2:3 + 1, :, :]
+
+        # we pre-multiplied by 256 to fit into a 16bit int
+        flow = flow / 256
+
+        # apply sqrt to optical flow to get it more normal looking
+        if self.SQUARE_ROOT_OPTICAL_FLOW:
+            # try to get optical flow a little closer to normal looking (it's got long tails)
+            abs_flow = np.abs(flow)
+            # apply square root to flow, this helps to deal with the fact that flow is very long tailed.
+            abs_flow = np.clip(abs_flow, 0, 10)
+            flow = (np.minimum(abs_flow, np.abs(flow) ** (1 / 2))) * np.sign(flow)
+            data[:, 2:3 + 1, :, :] = flow
+
+        return data
+
 
     def apply_normalisation(self, segment_data, thermal_reference=None):
         """
