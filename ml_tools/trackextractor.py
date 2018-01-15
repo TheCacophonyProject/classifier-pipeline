@@ -217,8 +217,6 @@ class Track:
 
         return frames_overlapped / len(self)
 
-
-
     @property
     def mass(self):
         return self.bounds_history[-1].mass

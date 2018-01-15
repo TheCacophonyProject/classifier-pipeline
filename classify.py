@@ -18,8 +18,7 @@ from ml_tools import tools
 from ml_tools import trackclassifier
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools.mpeg_creator import MPEGCreator
-from ml_tools.tools import load_colormap, convert_heat_to_img
-from ml_tools.trackextractor import TrackExtractor, Track, TrackingFrame
+from ml_tools.trackextractor import TrackExtractor, Track, Region
 
 
 DEFAULT_BASE_PATH = "c:\\cac"
@@ -198,7 +197,7 @@ class ClipClassifier(CPTVFileProcessor):
         if not _classifier_font_title: _classifier_font_title = ImageFont.truetype(resource_path("Ubuntu-B.ttf"), 14)
         return _classifier_font_title
 
-    def identify_track(self, track: Track):
+    def identify_track(self, tracker:TrackExtractor, track: Track):
         """
         Runs through track identifying segments, and then returns it's prediction of what kind of animal this is.
         One prediction will be made for every frame.
@@ -213,14 +212,15 @@ class ClipClassifier(CPTVFileProcessor):
         num_labels = len(self.classifier.classes)
 
         # preload the 27 frame buffer with the first frame
-        for _ in range(min(27, track.frames)):
-            frame = track.get_frame(0)
+        for _ in range(min(27, len(track))):
+
+            frame = tracker.get_track_channels(track, 0)
             segment.append_frame(frame)
 
         # go through making classifications at each frame
         # note: we should probably be doing this every 9 frames or so.
-        for i in range(track.frames):
-            frame = track.get_frame(i)
+        for i in range(len(track)):
+            frame = tracker.get_track_channels(track, i)
             segment.append_frame(frame)
 
             # segments with small mass are weighted less as we can assume the error is higher here.
@@ -246,7 +246,6 @@ class ClipClassifier(CPTVFileProcessor):
         """
         Exports a clip showing tracking of one specific track with point in time predictions.
         """
-
         preview_scale = 4.0
         predictions = self.track_prediction[track].prediction_history
         mpeg = MPEGCreator(filename)
@@ -255,7 +254,7 @@ class ClipClassifier(CPTVFileProcessor):
             # export a MPEG preview of the track
             frame = track.get_frame(i)
             draw_frame = np.float16(frame[:, :, 1])
-            img = convert_heat_to_img(draw_frame, self.colormap, 0, 300)
+            img = tools.convert_heat_to_img(draw_frame, self.colormap, 0, 300)
             img = img.resize((int(img.width * preview_scale), int(img.height * preview_scale)), Image.NEAREST)
 
             # just in case we don't have as many predictions as frames.
@@ -316,7 +315,7 @@ class ClipClassifier(CPTVFileProcessor):
 
         return results
 
-    def fit_to_screen(self, rect:TrackingFrame, screen_bounds:TrackingFrame):
+    def fit_to_screen(self, rect:Region, screen_bounds:Region):
         """ Modifies rect so that rect is visible within bounds. """
         if rect.left < screen_bounds.left:
             rect.x = screen_bounds.left
@@ -340,21 +339,24 @@ class ClipClassifier(CPTVFileProcessor):
 
         NORMALISATION_SMOOTH = 0.95
 
-        auto_min = np.min(tracker.frames[0])
-        auto_max = np.max(tracker.frames[0])
+        print(len(tracker.frame_buffer.thermal))
+        print(len(tracker.frame_buffer.filtered))
+
+        auto_min = np.min(tracker.frame_buffer.thermal[0])
+        auto_max = np.max(tracker.frame_buffer.thermal[0])
 
         # setting quality to 30 gives files approximately the same size as the original CPTV MPEG previews
         # (but they look quite compressed)
         mpeg = MPEGCreator(filename)
 
-        for frame_number, thermal in enumerate(tracker.frames):
+        for frame_number, thermal in enumerate(tracker.frame_buffer.thermal):
             auto_min = NORMALISATION_SMOOTH * auto_min + (1 - NORMALISATION_SMOOTH) * np.min(thermal)
             auto_max = NORMALISATION_SMOOTH * auto_max + (1 - NORMALISATION_SMOOTH) * np.max(thermal)
 
-            thermal_image = convert_heat_to_img(thermal, self.colormap, auto_min, auto_max)
+            thermal_image = tools.convert_heat_to_img(thermal, self.colormap, auto_min, auto_max)
             thermal_image = thermal_image.resize((int(thermal_image.width * FRAME_SCALE), int(thermal_image.height * FRAME_SCALE)), Image.BILINEAR)
 
-            if tracker.filtered_frames:
+            if tracker.frame_buffer.filtered:
                 if self.enable_side_by_side:
                     # put thermal & tracking images side by side
                     tracking_image = self.export_tracking_frame(tracker, frame_number, FRAME_SCALE)
@@ -379,11 +381,9 @@ class ClipClassifier(CPTVFileProcessor):
 
         mpeg.close()
 
-    def export_tracking_frame(self, tracker, frame_number, frame_scale):
-        filtered = tracker.filtered_frames[frame_number]
-        filtered = 3 * filtered + TrackExtractor.TEMPERATURE_MIN
-
-        tracking_image = convert_heat_to_img(filtered, self.colormap, tracker.TEMPERATURE_MIN, tracker.TEMPERATURE_MAX)
+    def export_tracking_frame(self, tracker: TrackExtractor, frame_number:int, frame_scale:float):
+        filtered = tracker.frame_buffer.filtered[frame_number]
+        tracking_image = tools.convert_heat_to_img(filtered * 3)
         tracking_image = tracking_image.resize((int(tracking_image.width * frame_scale), int(tracking_image.height * frame_scale)), Image.NEAREST)
         return self.draw_track_rectangles(tracker, frame_number, frame_scale, tracking_image)
 
@@ -428,11 +428,11 @@ class ClipClassifier(CPTVFileProcessor):
                 footer_size = self.font.getsize(current_prediction_string)
 
                 # figure out where to draw everything
-                header_rect = TrackingFrame(rect.left * frame_scale, rect.top * frame_scale - header_size[1], header_size[0], header_size[1])
+                header_rect = Region(rect.left * frame_scale, rect.top * frame_scale - header_size[1], header_size[0], header_size[1])
                 footer_center = ((rect.width * frame_scale) - footer_size[0]) / 2
-                footer_rect = TrackingFrame(rect.left * frame_scale + footer_center, rect.bottom * frame_scale, footer_size[0], footer_size[1])
+                footer_rect = Region(rect.left * frame_scale + footer_center, rect.bottom * frame_scale, footer_size[0], footer_size[1])
 
-                screen_bounds = TrackingFrame(0, 0, image.width, image.height)
+                screen_bounds = Region(0, 0, image.width, image.height)
 
                 self.fit_to_screen(header_rect, screen_bounds)
                 self.fit_to_screen(footer_rect, screen_bounds)
@@ -497,7 +497,13 @@ class ClipClassifier(CPTVFileProcessor):
             tag_part = ''
         return os.path.splitext(os.path.join(self.output_folder, tag_part + os.path.basename(input_filename)))[0]
 
-    def process_file(self, filename):
+    def process_all(self, root):
+        for root, folders, files in os.walk(root):
+            for folder in folders:
+                if folder not in ['untagged']:
+                    self.process_folder(os.path.join(root,folder), tag=folder.lower())
+
+    def process_file(self, filename, **kwargs):
         """
         Process a file extracting tracks and identifying them.
         :param filename: filename to process
@@ -510,12 +516,12 @@ class ClipClassifier(CPTVFileProcessor):
         start = time.time()
 
         # extract tracks from file
-        tracker = TrackExtractor(filename)
+        tracker = TrackExtractor()
+        tracker.load(filename)
 
         tracker.reduced_quality_optical_flow = not self.high_quality_optical_flow
-        tracker.colormap = load_colormap(resource_path("custom_colormap.dat"))
 
-        tracker.extract()
+        tracker.extract_tracks()
 
         if len(tracker.tracks) > 10:
             logging.warning(" -warning, found too many tracks.  Using {} of {}".format(10, len(tracker.tracks)))
@@ -540,7 +546,7 @@ class ClipClassifier(CPTVFileProcessor):
         # identify each track
         for i, track in enumerate(tracker.tracks):
 
-            prediction = self.identify_track(track)
+            prediction = self.identify_track(tracker, track)
 
             self.track_prediction[track] = prediction
 
@@ -567,7 +573,7 @@ class ClipClassifier(CPTVFileProcessor):
         save_file = {}
         save_file['source'] = filename
         save_file['start_time'] = tracker.video_start_time.isoformat()
-        save_file['end_time'] = (tracker.video_start_time + timedelta(seconds=len(tracker.frames) / 9.0)).isoformat()
+        save_file['end_time'] = (tracker.video_start_time + timedelta(seconds=len(tracker.frame_buffer.thermal) / 9.0)).isoformat()
 
         if meta_data:
             save_file['camera'] = meta_data['Device']['devicename']
@@ -591,7 +597,7 @@ class ClipClassifier(CPTVFileProcessor):
             f = open(meta_filename, 'w')
             json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
 
-        ms_per_frame = (time.time() - start) * 1000 / max(1, len(tracker.frames))
+        ms_per_frame = (time.time() - start) * 1000 / max(1, len(tracker.frame_buffer.thermal))
         if self.verbose:
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
 
@@ -669,7 +675,7 @@ def main():
     _ = clip_classifier.classifier
 
     # apply the colormap
-    clip_classifier.colormap = load_colormap(resource_path("custom_colormap.dat"))
+    clip_classifier.colormap = tools.load_colormap(resource_path("custom_colormap.dat"))
 
     clip_classifier.workers_threads = int(args.workers)
     if clip_classifier.workers_threads >= 1:
@@ -684,7 +690,7 @@ def main():
     clip_classifier.verbose = args.verbose
 
     if args.source == "all":
-        clip_classifier.process_root(args.source_folder)
+        clip_classifier.process_all(args.source_folder)
     elif os.path.splitext(args.source)[-1].lower() == '.cptv':
         clip_classifier.process_file(os.path.join(args.source_folder, args.source))
     else:

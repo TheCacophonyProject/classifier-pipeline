@@ -2,10 +2,11 @@
 Module classify a tracking window based on a 3 second segment.
 """
 
+
 import os
 import math
 
-# disable logging
+# disable tensorflow logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import numpy as np
@@ -100,8 +101,13 @@ class TrackClassifier:
         # copy data, and make sure it's in a high enough precision to perform normalisation
         data = np.float32(data)
 
-        for channel, (offset, scale) in enumerate(self.normalisation_constants):
-            data[:, :, :, channel] = (data[:, :, :, channel] + offset) / scale
+        for channel, (offset, scale, power) in enumerate(self.normalisation_constants):
+            slice = data[:, :, :, channel]
+            slice = slice + offset
+            if power != 1:
+                slice = np.power(np.abs(slice), power) * np.sign(slice)
+            slice = slice / scale
+            data[:, :, :, channel] = slice
 
         return data
 
@@ -112,20 +118,14 @@ class TrackClassifier:
         saver.restore(self.sess, model_path)
 
         # get prediction node
-        self.prediction = tf.get_collection('predict_op')[0]
+        graph = tf.get_default_graph()
+        self.prediction = graph.get_tensor_by_name('prediction:0')
 
         # get additonal stats
         stats = json.load(open(model_path+".txt",'r'))
         self.classes = stats['classes']
 
-        # todo: get normalisation from a file
-        self.normalisation_constants = [
-            (-3200, 160),
-            (+13, 27),
-            (0, 1),
-            (0, 1),
-            (0, 1)
-        ]
+        self.normalisation_constants = stats['normalisation']
 
     def predict(self, segment):
         """
