@@ -184,8 +184,6 @@ class ClipClassifier(CPTVFileProcessor):
         # writes metadata to standard out instead of a file.
         self.write_meta_to_stdout = False
 
-        self.excluded_folders.add('untaggged')
-
     @property
     def font(self):
         """ gets default font. """

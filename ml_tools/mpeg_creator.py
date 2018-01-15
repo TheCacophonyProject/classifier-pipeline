@@ -1,4 +1,3 @@
-import fcntl
 import locale
 import os
 import subprocess
@@ -29,11 +28,9 @@ class MPEGCreator:
             height, width, _ = frame.shape
             self._ffmpeg = self._start(width, height)
 
-        self._collect_output()
         self._ffmpeg.stdin.write(frame.tobytes())
 
     def close(self):
-        self._collect_output()
         self._ffmpeg.stdin.close()
 
         return_code = self._ffmpeg.wait(timeout=60)
@@ -55,8 +52,7 @@ class MPEGCreator:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            bufsize=4096)
-        make_non_blocking(proc.stdout)
+            bufsize=8092)
         return proc
 
     def _collect_output(self):
@@ -89,8 +85,3 @@ def get_ffmpeg_command(filename, width, height, quality=21):
         filename
     ]
     return command
-
-
-def make_non_blocking(f):
-    fl = fcntl.fcntl(f, fcntl.F_GETFL)
-    fcntl.fcntl(f, fcntl.F_SETFL, fl | os.O_NONBLOCK)
