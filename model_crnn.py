@@ -38,7 +38,7 @@ class ModelCRNN(Model):
         'augmentation': True,
         'filter_threshold': 20,
         'filter_noise': 1.0,
-        'thermal_threshold': 0,
+        'thermal_threshold': 10,
         'scale_frequency': 0.5
     }
 
@@ -126,7 +126,8 @@ class ModelCRNN(Model):
         batch_size = tf.shape(self.X)[0]
 
         # State input allows for processing longer sequences
-        self.state_in = tf.placeholder(tf.float32, [None, 2, 384], name='state_in')
+        zero_state = tf.zeros(shape=[batch_size, 384, 2], dtype=tf.float32)
+        self.state_in = tf.placeholder_with_default(input=zero_state, shape=[None, 384, 2], name='state_in')
 
         # Create some placeholder varaibles with defaults if not specified
         self.keep_prob = tf.placeholder_with_default(tf.constant(1.0, tf.float32), [], name='keep_prob')
@@ -178,8 +179,11 @@ class ModelCRNN(Model):
 
         dropout = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32)
 
+        init_state = tf.nn.rnn_cell.LSTMStateTuple(self.state_in[:,:,0], self.state_in[:,:,1])
+
         lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
             cell=dropout, inputs=out,
+            initial_state=init_state,
             swap_memory=True,
             dtype=tf.float32,
             scope='lstm'

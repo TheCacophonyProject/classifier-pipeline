@@ -154,10 +154,6 @@ class Dataset:
     # normalise eac segment to unit gausian
     THERM_NORM_UNIT = 'unit'
 
-    # optical flow is very long tailed, square rooting it make it more normal.  Clipping is also applied.
-    # in general it seems it's better to leave this off and leave the motion vectors as is.
-    SQUARE_ROOT_OPTICAL_FLOW = False
-
     def __init__(self, track_db: TrackDatabase, name="Dataset"):
 
         # database holding track data
@@ -413,14 +409,9 @@ class Dataset:
         """
         data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
 
-        data = np.asarray(data, dtype=np.float32)
+        data = np.float32(data)
     
         data = self.apply_preprocessing(data)
-
-        # add very small amount of noise to filtered layer
-        if self.filtered_noise:
-            data[:, 1, :, :] += np.random.uniform(-self.filtered_noise, +self.filtered_noise,
-                                                  size=data[:, 1, :, :].shape)
 
         if normalise:
             clip_meta = self.db.get_clip_meta(track.clip_id)
@@ -468,11 +459,6 @@ class Dataset:
         if augment:
             data = self.apply_augmentation(data)
 
-        # add very small amount of noise to filtered layer
-        if self.filtered_noise:
-            data[:, 1, :, :] += np.random.uniform(-self.filtered_noise, +self.filtered_noise,
-                                                  size=data[:, 1, :, :].shape)
-
         if normalise:
             data = self.apply_normalisation(data, segment.thermal_reference)
 
@@ -490,21 +476,16 @@ class Dataset:
         if self.filter_threshold:
             filtered = data[:, 1, :, :]
             filtered[filtered < self.filter_threshold] = 0
+            data[:, 1, :, :] = filtered
 
         # map optical flow down to right level,
-        flow = data[:, 2:3 + 1, :, :]
-
         # we pre-multiplied by 256 to fit into a 16bit int
-        flow = flow / 256
+        data[:, 2:3 + 1, :, :] *= (1/256)
 
-        # apply sqrt to optical flow to get it more normal looking
-        if self.SQUARE_ROOT_OPTICAL_FLOW:
-            # try to get optical flow a little closer to normal looking (it's got long tails)
-            abs_flow = np.abs(flow)
-            # apply square root to flow, this helps to deal with the fact that flow is very long tailed.
-            abs_flow = np.clip(abs_flow, 0, 10)
-            flow = (np.minimum(abs_flow, np.abs(flow) ** (1 / 2))) * np.sign(flow)
-            data[:, 2:3 + 1, :, :] = flow
+        # add very small amount of noise to filtered layer
+        if self.filtered_noise:
+            data[:, 1, :, :] += np.random.uniform(-self.filtered_noise, +self.filtered_noise,
+                                                  size=data[:, 1, :, :].shape)
 
         return data
 
@@ -801,7 +782,8 @@ class Dataset:
 # continue to read examples until queue is full
 def preloader(q, dataset):
     """ add a segment into buffer """
-    print(" -started async fetcher for {} with augment={}".format(dataset.name, dataset.enable_augmentation))
+    print(" -started async fetcher for {} with augment={} segment_width={}".format(
+        dataset.name, dataset.enable_augmentation, dataset.segment_width))
     loads = 0
     timer = time.time()
     while not dataset.preloader_stop_flag:
