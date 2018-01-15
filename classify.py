@@ -242,46 +242,6 @@ class ClipClassifier(CPTVFileProcessor):
 
         return TrackPrediction(predictions, weights)
 
-    def export_track_preview(self, filename, track):
-        """
-        Exports a clip showing tracking of one specific track with point in time predictions.
-        """
-        preview_scale = 4.0
-        predictions = self.track_prediction[track].prediction_history
-        mpeg = MPEGCreator(filename)
-
-        for i in range(track.frames):
-            # export a MPEG preview of the track
-            frame = track.get_frame(i)
-            draw_frame = np.float16(frame[:, :, 1])
-            img = tools.convert_heat_to_img(draw_frame, self.colormap, 0, 300)
-            img = img.resize((int(img.width * preview_scale), int(img.height * preview_scale)), Image.NEAREST)
-
-            # just in case we don't have as many predictions as frames.
-            if i >= len(predictions):
-                continue
-
-            # draw predictions
-            prediction = predictions[i]
-
-            best_labels = np.argsort(-prediction)[:3]
-
-            width, height = img.width, img.height
-
-            for i, label in enumerate(best_labels):
-                draw = ImageDraw.Draw(img)
-                score = prediction[label]
-                x = 10
-                y = height - 100 + 10 + i * 30
-                draw.rectangle([x, y + 16, width - 10, y + 26], outline=(0, 0, 0), fill=(0, 64, 0, 64))
-                draw.rectangle([x, y + 16, 10 + score * (width - 20), y + 26], outline=(0, 0, 0),
-                               fill=(64, 255, 0, 250))
-                draw.text([x, y], self.classifier.classes[label], font=self.font)
-
-            mpeg.next_frame(np.asarray(img))
-
-        mpeg.close()
-
     @property
     def classifier(self):
         """
@@ -339,9 +299,6 @@ class ClipClassifier(CPTVFileProcessor):
 
         NORMALISATION_SMOOTH = 0.95
 
-        print(len(tracker.frame_buffer.thermal))
-        print(len(tracker.frame_buffer.filtered))
-
         auto_min = np.min(tracker.frame_buffer.thermal[0])
         auto_max = np.max(tracker.frame_buffer.thermal[0])
 
@@ -350,6 +307,9 @@ class ClipClassifier(CPTVFileProcessor):
         mpeg = MPEGCreator(filename)
 
         for frame_number, thermal in enumerate(tracker.frame_buffer.thermal):
+            #stub
+            print(thermal.shape)
+
             auto_min = NORMALISATION_SMOOTH * auto_min + (1 - NORMALISATION_SMOOTH) * np.min(thermal)
             auto_max = NORMALISATION_SMOOTH * auto_max + (1 - NORMALISATION_SMOOTH) * np.max(thermal)
 
@@ -554,11 +514,6 @@ class ClipClassifier(CPTVFileProcessor):
 
             logging.info(" - [{}/{}] prediction: {}".format(i + 1, len(tracker.tracks), description))
 
-            if self.enable_per_track_information:
-                prediction.save(track_meta_filename.format(i+1))
-                if self.enable_previews:
-                    self.export_track_preview(track_mpeg_filename.format(i + 1, description), track)
-
         if self.enable_previews:
             prediction_string = ""
             for label, score in self.get_clip_prediction():
@@ -622,7 +577,6 @@ def main():
 
     parser.add_argument('-p', '--enable-preview', default=False, action='store_true', help='Enables preview MPEG files (can be slow)')
     parser.add_argument('-b', '--side-by-side', default=False, action='store_true', help='Output processed footage next to original output in preview MPEG')
-    parser.add_argument('-t', '--enable-track-info', default=False, action='store_true', help='Enables output of per track information')
     parser.add_argument('-q', '--high-quality-optical-flow', default=False, action='store_true', help='Enabled higher quality optical flow (slow)')
     parser.add_argument('-v', '--verbose', default=0, action='count', help='Display additional information.')
     parser.add_argument('-w', '--workers', default=0, help='Number of worker threads to use.  0 disables worker pool and forces a single thread.')
@@ -650,7 +604,6 @@ def main():
     clip_classifier.output_folder = args.output_folder
     clip_classifier.source_folder = args.source_folder
     clip_classifier.model_path = args.model
-    clip_classifier.enable_per_track_information = args.enable_track_info
     clip_classifier.high_quality_optical_flow = args.high_quality_optical_flow
     clip_classifier.include_prediction_in_filename = args.include_prediction_in_filename
     clip_classifier.write_meta_to_stdout = args.meta_to_stdout

@@ -418,9 +418,10 @@ class TrackExtractor:
 
         # we need to load the entire video so we can analyse the background.
         frames = [frame for frame, offset in self.reader]
+        self.frame_buffer.thermal = frames
 
         # first we get the background.  This requires reading the entire source into memory.
-        self.background, background_stats= self.analyse_background(frames)
+        self.background, background_stats = self.analyse_background(frames)
 
         self.stats['threshold'] = background_stats.threshold
         self.stats['average_background_delta'] = background_stats.average_delta
@@ -487,7 +488,6 @@ class TrackExtractor:
         regions, mask = self.get_regions_of_interest(filtered, self._prev_filtered)
 
         # save history
-        self.frame_buffer.thermal.append(np.float32(frame))
         self.frame_buffer.filtered.append(np.float32(filtered))
         self.frame_buffer.mask.append(np.float32(mask))
 
