@@ -307,8 +307,6 @@ class ClipClassifier(CPTVFileProcessor):
         mpeg = MPEGCreator(filename)
 
         for frame_number, thermal in enumerate(tracker.frame_buffer.thermal):
-            #stub
-            print(thermal.shape)
 
             auto_min = NORMALISATION_SMOOTH * auto_min + (1 - NORMALISATION_SMOOTH) * np.min(thermal)
             auto_max = NORMALISATION_SMOOTH * auto_max + (1 - NORMALISATION_SMOOTH) * np.max(thermal)
