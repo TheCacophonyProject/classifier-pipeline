@@ -134,9 +134,22 @@ class ModelCRNN(Model):
         self.is_training = tf.placeholder_with_default(tf.constant(False, tf.bool), [], name='training')
         self.global_step = tf.placeholder_with_default(tf.constant(0, tf.int32), [], name='global_step')
 
+        # Apply preprocessing
+        X = self.X  # [B, F, C, H, W]
+
+        # normalise the thermal
+        thermal = X[:, :, 0]
+        thermal = tf.nn.relu(thermal - self.params['thermal_threshold']) + self.params['thermal_threshold']
+        X[:, :, 0] = thermal * (1/32)
+
+        # normalise the optical flow
+        X[:, :, 2:3+1] *= 0.1
+
+        # save a reference to the normalised node (useful for inspection)
+        tf.identity(X, name='normalised')
+
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
-        X = self.X                              #[B, F, C, H, W]
         X = tf.transpose(X, (0, 1, 3, 4, 2))    #[B, F, H, W, C]
         X = tf.reshape(X, [-1, 48, 48, 5])      #[B*F, 48, 48, 5]
 

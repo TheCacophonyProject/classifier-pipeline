@@ -144,16 +144,6 @@ class Dataset:
     # In general if worker threads is one set this to False, if it is two or more set it to True.
     PROCESS_BASED = True
 
-    # thermal is normalised by standard normalisation constants
-    THERM_NORM_CONSTANT = 'standard'
-    # thermal is normalised by offsetting by the average temp of the video it came from
-    THERM_NORM_CENTER = 'center'
-    # thermal is normalised by offsetting by the average temp of the video it came from and then setting negative values
-    # to 0
-    THERM_NORM_THRESHOLD = 'threshold'
-    # normalise eac segment to unit gausian
-    THERM_NORM_UNIT = 'unit'
-
     def __init__(self, track_db: TrackDatabase, name="Dataset"):
 
         # database holding track data
@@ -183,12 +173,6 @@ class Dataset:
         self.segment_spacing = 9
         # minimum mass of a segment frame for it to be included
 
-        # constants used to normalise input
-        self.normalisation_constants = None
-
-        # if true will center thermal according to mean video temp
-        self.thermal_normalisation_mode = self.THERM_NORM_THRESHOLD
-
         # dictionary used to apply label remapping during track load
         self.label_mapping = None
 
@@ -196,12 +180,6 @@ class Dataset:
         self.enable_augmentation = False
         # how often to scale during augmentation
         self.scale_frequency = 0.50
-        # how much to threshold the filtered channel
-        self.filter_threshold = 20
-        # adds a little noise to filtered channel
-        self.filtered_noise = 1.0
-        # added to thermal before doing filtering
-        self.thermal_threshold = 0.0
 
         self.preloader_queue = None
         self.preloader_threads = None
@@ -232,7 +210,7 @@ class Dataset:
     def next_batch(self, n, disable_async=False):
         """
         Returns a batch of n segments (X, y) from dataset.
-        Applies augmentation and normalisation automatically.
+        Applies augmentation and preprocessing automatically.
         :param n: number of segments
         :param disable_async: forces fetching of segment in this thread / process rather than collecting from
             an aync reader queue (if one exists)
@@ -258,7 +236,7 @@ class Dataset:
 
         for segment in segments:
 
-            data = self.fetch_segment(segment, normalise=True, augment=self.enable_augmentation)
+            data = self.fetch_segment(segment, augment=self.enable_augmentation)
             batch_X.append(data)
             batch_y.append(self.labels.index(segment.label))
 
@@ -392,40 +370,29 @@ class Dataset:
 
         return filtered
 
-    def fetch_all(self, normalise=True):
+    def fetch_all(self):
         """
         Fetches all segments
         :return: X of shape [n,f,channels,height,width], y of shape [n]
         """
-        X = np.float32([self.fetch_segment(segment, normalise=normalise) for segment in self.segments])
+        X = np.float32([self.fetch_segment(segment) for segment in self.segments])
         y = np.int32([self.labels.index(segment.label) for segment in self.segments])
         return X, y
 
-    def fetch_track(self, track: TrackHeader, normalise=False):
+    def fetch_track(self, track: TrackHeader):
         """
-        Fetches data for an entire strack
+        Fetches data for an entire track
         :param track: the track to fetch
-        :param normalise: if we should normalise the track data or not
         :return: segment data of shape [frames, channels, height, width]
         """
         data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
-
-        data = np.float32(data)
-    
         data = self.apply_preprocessing(data)
-
-        if normalise:
-            clip_meta = self.db.get_clip_meta(track.clip_id)
-            thermal_reference = float(clip_meta['mean_temp'])
-            data = self.apply_normalisation(data, thermal_reference)
-    
         return data
 
-    def fetch_segment(self, segment: SegmentHeader, normalise=False, augment=False):
+    def fetch_segment(self, segment: SegmentHeader, augment=False):
         """
         Fetches data for segment.
         :param segment: The segment header to fetch
-        :param normalise: if true normalises the channels in the segment according to normalisation_constants
         :param augment: if true applies data augmentation
         :return: segment data of shape [frames, channels, height, width]
         """
@@ -453,15 +420,10 @@ class Dataset:
         if len(data) != self.segment_width:
             print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)
 
-        data = np.float32(data)
-
         data = self.apply_preprocessing(data)
 
         if augment:
             data = self.apply_augmentation(data)
-
-        if normalise:
-            data = self.apply_normalisation(data, segment.thermal_reference)
 
         return data
 
@@ -472,67 +434,16 @@ class Dataset:
         :return:
         """
 
-        # apply some thresholding.  This removes the noise from the background which helps a lot during training.
-        # it is posiable that with enough data this will no longer be necessary.
-        if self.filter_threshold:
-            filtered = data[:, 1, :, :]
-            filtered[filtered < self.filter_threshold] = 0
-            data[:, 1, :, :] = filtered
+        # the segment will be processed in float32 so we may aswell convert it here.
+        # also optical flow is stored as a scaled integer, but we want it in float32 format.
+        data = np.asarray(data, dtype=np.float32)
 
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
         data[:, 2:3 + 1, :, :] *= (1/256)
 
-        # add very small amount of noise to filtered layer
-        if self.filtered_noise:
-            data[:, 1, :, :] += np.random.uniform(-self.filtered_noise, +self.filtered_noise,
-                                                  size=data[:, 1, :, :].shape)
-
         return data
 
-
-    def apply_normalisation(self, segment_data, thermal_reference=None):
-        """
-        Applies a random augmentation to the segment_data.
-        :param segment_data: array of shape [frames, channels, height, width]
-        :param thermal_reference: required for some normalisation modes.  Used as the center for thermal channel.
-            usually just the mean temp of the source video.  Can be either a single number or an array with an entry
-            for each frame.
-        :return: normalised array
-        """
-
-        frames, channels, height, width = segment_data.shape
-
-        for channel in range(channels):
-            mean, std = self.normalisation_constants[channel]
-
-            if channel == 0:
-                if self.thermal_normalisation_mode == self.THERM_NORM_CONSTANT:
-                    segment_data[:, 0] -= mean
-                    segment_data[:, 0] *= (1.0 / std)
-                elif self.thermal_normalisation_mode == self.THERM_NORM_UNIT:
-                    segment_data[:, 0] = tools.normalise(segment_data[:, 0])
-                elif self.thermal_normalisation_mode == self.THERM_NORM_CENTER:
-                    assert  thermal_reference, '{} normalisation mode requires thermal_center parameter'.format(
-                        self.thermal_normalisation_mode)
-                    segment_data[:, 0] = (segment_data[:, 0] - thermal_reference) / 32
-                elif self.thermal_normalisation_mode == self.THERM_NORM_THRESHOLD:
-                    assert thermal_reference is not None, '{} normalisation mode requires thermal_center parameter'.format(
-                        self.thermal_normalisation_mode)
-                    thermal = segment_data[:, 0] # F, H, W
-                    if thermal_reference is float:
-                        thermal = thermal - thermal_reference
-                    else:
-                        thermal = thermal - np.asarray(thermal_reference, dtype=np.float32)[:,np.newaxis, np.newaxis]
-                    thermal[thermal < self.thermal_threshold] = self.thermal_threshold
-                    segment_data[:, 0] = thermal / 32
-                else:
-                    raise Exception("invalid thermal normalisation mode {}".format(self.thermal_normalisation_mode))
-            else:
-                segment_data[:, channel] -= mean
-                segment_data[:, channel] *= (1.0 / std)
-
-        return segment_data
 
     def apply_augmentation(self, segment_data, force_scale=None):
         """

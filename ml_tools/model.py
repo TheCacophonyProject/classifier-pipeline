@@ -55,6 +55,10 @@ class Model:
         # training operation
         self.train_op = None
 
+        self.state_in = None
+        self.state_out = None
+        self.normalise = None
+
         # number of samples to use when evaluating the model, 1000 works well but is a bit slow,
         # 100 should give results to within a few percent.
         self.eval_samples = 500
@@ -441,7 +445,7 @@ class Model:
 
                 steps_remaining = (iterations - i)
                 step_time = prep_time + train_time + eval_time
-                eta = (steps_remaining * step_time / examples_since_print) / 60
+                eta = (steps_remaining * step_time / (examples_since_print / self.batch_size)) / 60
 
                 print('[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] eta {9:.1f} min'.format(
                     epoch, i, train_accuracy*100, train_loss * 10, val_accuracy*100, val_loss * 10,
@@ -590,6 +594,7 @@ class Model:
         self.global_step = graph.get_tensor_by_name("global_step:0")
         self.state_out = graph.get_tensor_by_name("state_out:0")
         self.state_in = graph.get_tensor_by_name("state_in:0")
+        self.normalise = graph.get_tensor_by_name("normalise:0")
 
     def classify_frame(self, frame, state=None):
         """

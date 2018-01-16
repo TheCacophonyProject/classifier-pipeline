@@ -69,7 +69,7 @@ def main():
         print(model.hyperparams_string)
         print()
         print("{0:.1f}K training examples".format(model.rows / 1000))
-        model.train_model(epochs=30, run_name='new_robin/v3 per frame reference only 2017/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        model.train_model(epochs=30, run_name='new_robin/v4 normalisation built into model/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         model.save()
     finally:
         model.close()
