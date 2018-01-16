@@ -13,7 +13,6 @@ from multiprocessing import Lock
 import h5py
 import tables           # required for blosc compression to work
 import numpy as np
-from ml_tools.trackextractor import TrackExtractor
 
 class HDF5Manager:
     """ Class to handle locking of HDF5 files. """
@@ -32,6 +31,7 @@ class HDF5Manager:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.f.close()
         hdf5_lock.release()
+
 
 class TrackDatabase:
 
@@ -61,7 +61,7 @@ class TrackDatabase:
 
         return has_record
 
-    def create_clip(self, clip_id, tracker:TrackExtractor=None, overwrite=True):
+    def create_clip(self, clip_id, tracker=None, overwrite=True):
         """
         Creates a clip entry in database.
         :param clip_id: id of the clip

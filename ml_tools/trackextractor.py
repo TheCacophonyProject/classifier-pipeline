@@ -459,7 +459,6 @@ class TrackExtractor:
         self.opt_flow = cv2.createOptFlow_DualTVL1()
         if not self.high_quality_optical_flow:
             # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
-            print("using lq flow")
             self.opt_flow.setTau(1 / 4)
             self.opt_flow.setScalesNumber(3)
             self.opt_flow.setWarpingsNumber(3)
