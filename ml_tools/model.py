@@ -199,8 +199,6 @@ class Model:
             else:
                 acc, ls = self.session.run([self.accuracy, self.loss], feed_dict=feed_dict)
 
-            print(samples, acc, ls)
-
             score += samples * acc
             loss += ls
 
@@ -606,6 +604,6 @@ class Model:
         feed_dict = self.get_feed_dict(batch_X, [0])
         feed_dict[self.state_in] = state
         pred, state = self.session.run([self.prediction, self.state_out], feed_dict=feed_dict)
-        pred = pred[0][0]
+        pred = pred[0]
         return pred, state
 
