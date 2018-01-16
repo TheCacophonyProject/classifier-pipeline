@@ -204,6 +204,7 @@ class TrackDatabase:
                 stats = dset.attrs
                 stats['id'] = track.id
                 stats['tag'] = track.tag
+                stats['start_frame'] = track.start_frame
                 stats['start_time'] = track.start_time.isoformat()
                 stats['end_time'] = track.end_time.isoformat()
 
