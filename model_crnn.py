@@ -106,6 +106,14 @@ class ModelCRNN(Model):
             tf.summary.scalar('min', tf.reduce_min(var))
             tf.summary.histogram('histogram', var)
 
+    def save_input_summary(self, input, name):
+        """
+        :param input: tensor of shape [B*F, H, W]
+        :param name: name of summary
+        """
+        tf.summary.histogram(name, input)
+        tf.summary.image(name+'/image', input[-2:-1], max_outputs=1)
+
     def _build_model(self, label_count):
         ####################################
         # CNN + LSTM
@@ -134,32 +142,38 @@ class ModelCRNN(Model):
         self.is_training = tf.placeholder_with_default(tf.constant(False, tf.bool), [], name='training')
         self.global_step = tf.placeholder_with_default(tf.constant(0, tf.int32), [], name='global_step')
 
-        # Apply preprocessing
+        # Apply pre-processing
         X = self.X  # [B, F, C, H, W]
 
         # normalise the thermal
-        thermal = X[:, :, 0]
+        thermal = X[:, :, 0:0+1]
         thermal = tf.nn.relu(thermal - self.params['thermal_threshold']) + self.params['thermal_threshold']
-        X[:, :, 0] = thermal * (1/32)
+        thermal = thermal * (1/32)
 
-        # normalise the optical flow
-        X[:, :, 2:3+1] *= 0.1
+        # normalise the flow
+        flow = X[:, :, 2:3 + 1]
+        flow = flow * 10
 
-        # save a reference to the normalised node (useful for inspection)
-        tf.identity(X, name='normalised')
+        # grab the mask
+        mask = X[:,:,4:4+1]
 
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
-        X = tf.transpose(X, (0, 1, 3, 4, 2))    #[B, F, H, W, C]
-        X = tf.reshape(X, [-1, 48, 48, 5])      #[B*F, 48, 48, 5]
+        thermal = tf.transpose(thermal, (0, 1, 3, 4, 2))    #[B, F, H, W, 1]
+        flow = tf.transpose(flow, (0, 1, 3, 4, 2))          # [B, F, H, W, 2]
+
+        thermal = tf.reshape(thermal, [-1, 48, 48, 1])      # [B*F, 48, 48, 1]
+        flow = tf.reshape(flow, [-1, 48, 48, 2])            # [B*F, 48, 48, 2]
+
+        mask = tf.reshape(mask, [-1, 48, 48, 1])            # [B*F, 48, 48, 1]
 
         # save distribution of inputs
-        for channel in range(5):
-            tf.summary.histogram('inputs/' + str(channel), X[:, :, :, channel])
-            # just record the final frame, as that is often the most important.
-            tf.summary.image('input/' + str(channel), X[-2:-1, :, :, channel:channel+1], max_outputs=1)
+        self.save_input_summary(thermal, 'inputs/thermal')
+        self.save_input_summary(flow[:, :, :, 0:0+1], 'inputs/flow/h')
+        self.save_input_summary(flow[:, :, :, 1:1+1], 'inputs/flow/v')
+        self.save_input_summary(mask, 'inputs/mask')
 
-        layer = X[:, :, :, 0:0 + 1]
+        layer = thermal
         layer = self.conv_layer('filtered/1', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('filtered/2', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('filtered/3', layer, 96, [3, 3], pool_stride=2)
@@ -168,7 +182,7 @@ class ModelCRNN(Model):
 
         filtered_conv = layer
 
-        layer = X[:, :, :, 2:3 + 1]
+        layer = flow
         layer = self.conv_layer('motion/1', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('motion/2', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('motion/3', layer, 96, [3, 3], pool_stride=2)

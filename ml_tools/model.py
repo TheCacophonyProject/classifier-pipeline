@@ -594,7 +594,6 @@ class Model:
         self.global_step = graph.get_tensor_by_name("global_step:0")
         self.state_out = graph.get_tensor_by_name("state_out:0")
         self.state_in = graph.get_tensor_by_name("state_in:0")
-        self.normalise = graph.get_tensor_by_name("normalise:0")
 
     def classify_frame(self, frame, state=None):
         """

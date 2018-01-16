@@ -25,51 +25,10 @@ import numpy as np
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 
-
-class SegmentHeader:
-    """ Header for segment. """
-
-    def __init__(self, clip_id, track_number, start_frame, frames, weight, label, avg_mass):
-        # reference to clip this segment came from
-        self.clip_id = clip_id
-        # reference to track this segment came from
-        self.track_number = track_number
-        # first frame of this segment
-        self.start_frame = start_frame
-        # length of segment in frames
-        self.frames = frames
-        # relative weight of the segment (higher is sampled more often)
-        self.weight = weight
-        # our label
-        self.label = label.lower()
-        # thermal referece temperature for each frame (i.e. which temp is 0)
-        self.thermal_reference = None
-
-        self.avg_mass = avg_mass
-
-    @property
-    def name(self):
-        """ Unique name of this segment. """
-        return self.clip_id + '-' + str(self.track_number) + '-' + str(self.start_frame)
-
-    @property
-    def end_frame(self):
-        """ end frame of sgement"""
-        return self.start_frame + self.frames
-
-    @property
-    def track_id(self):
-        """ Unique name of this segments track. """
-        return TrackHeader.get_name(self.clip_id, self.track_number)
-
-    def __str__(self):
-        return "offset:{0} weight:{1:.1f}".format(self.start_frame, self.weight)
-
-
 class TrackHeader:
     """ Header for track. """
 
-    def __init__(self, clip_id, track_number, label, start_time, duration, camera, score):
+    def __init__(self, clip_id, track_number, label, start_time, duration, camera, score, thermal_reference_level):
         # reference to clip this segment came from
         self.clip_id = clip_id
         # reference to track this segment came from
@@ -86,6 +45,8 @@ class TrackHeader:
         self.camera = camera
         # score of track
         self.score = score
+        # thermal reference point for each frame.
+        self.thermal_reference_level = thermal_reference_level
 
     @property
     def track_id(self):
@@ -112,22 +73,82 @@ class TrackHeader:
         return str(clip_id) + '-' + str(track_number)
 
     @staticmethod
-    def from_meta(clip_id, track_meta):
+    def from_meta(clip_id, clip_meta, track_meta):
         """ Creates a track header from given metadata. """
+
         # kind of checky way to get camera name from clip_id, in the future camera will be included in the metadata.
         camera = os.path.splitext(os.path.basename(clip_id))[0].split('-')[-1]
+
+        # get the reference levels from clip_meta and load them into the track.
+        track_start_frame = track_meta['start_frame']
+        track_end_frame = track_meta['start_frame'] + int(round(track_meta['duration']*9))
+        thermal_reference_level = np.float32(clip_meta['frame_temp_median'][track_start_frame:track_end_frame+1])
+
         result = TrackHeader(
             clip_id=clip_id, track_number=track_meta['id'], label=track_meta['tag'],
             start_time=parser.parse(track_meta['start_time']),
             duration=float(track_meta['duration']),
             camera=camera,
-            score=float(track_meta['score'])
+            score=float(track_meta['score']),
+            thermal_reference_level=thermal_reference_level
         )
         return result
 
     def __repr__(self):
         return self.track_id
 
+class SegmentHeader:
+    """ Header for segment. """
+
+    def __init__(self, track: TrackHeader, start_frame, frames, weight, avg_mass):
+        # reference to track this segment came from
+        self.track = track
+        # first frame of this segment referenced by start of track
+        self.start_frame = start_frame
+        # length of segment in frames
+        self.frames = frames
+        # relative weight of the segment (higher is sampled more often)
+        self.weight = weight
+        # average mass of the segment
+        self.avg_mass = avg_mass
+
+    @property
+    def clip_id(self):
+        # reference to clip this segment came from
+        return self.track.clip_id
+
+    @property
+    def track_number(self):
+        # reference to track this segment came from
+        return self.track.track_number
+
+    @property
+    def label(self):
+        # label for this segment
+        return self.track.label
+
+    @property
+    def name(self):
+        """ Unique name of this segment. """
+        return self.clip_id + '-' + str(self.track_number) + '-' + str(self.start_frame)
+
+    @property
+    def thermal_reference_level(self):
+        # thermal reference temperature for each frame (i.e. which temp is 0)
+        return self.track.thermal_reference_level[self.start_frame:self.start_frame+self.frames]
+
+    @property
+    def end_frame(self):
+        """ end frame of segment"""
+        return self.start_frame + self.frames
+
+    @property
+    def track_id(self):
+        """ Unique name of this segments track. """
+        return TrackHeader.get_name(self.clip_id, self.track_number)
+
+    def __str__(self):
+        return "offset:{0} weight:{1:.1f}".format(self.start_frame, self.weight)
 
 class Dataset:
     """
@@ -244,9 +265,11 @@ class Dataset:
                 print("Warning NaN found in data from source {}".format(segment.clip_id))
 
             # I've been getting some NaN's come through so I check here to make sure input is reasonable.
-            if np.max(np.abs(data)) > 2000:
-                print("Extreme values found in batch from source {} with value {}".format(segment.clip_id,
-                                                                                          np.max(data)))
+            # note: this is a really good idea, however my data has some '0' values in the thermal data which come
+            # through as -reference level (i.e. -3000) so I've disabled this for now.
+            #if np.max(np.abs(data)) > 2000:
+            #    print("Extreme values found in batch from source {} with value +-{:.1f}".format(segment.clip_id,
+            #                                                                              np.max(np.abs(data))))
 
         # Half float should be fine here.  When using process based async loading we have to pickle the batch between
         # processes, so having it half the size helps a lot.  Also it reduces the memory required for the read buffers
@@ -298,7 +321,7 @@ class Dataset:
         if track_filter and track_filter(clip_meta, track_meta):
             return False
 
-        track_header = TrackHeader.from_meta(clip_id, track_meta)
+        track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
         if self.label_mapping and track_header.label in self.label_mapping:
             track_header.label = self.label_mapping[track_header.label]
 
@@ -337,8 +360,10 @@ class Dataset:
                 segment_weight_factor = 1.2
 
             segment = SegmentHeader(
-                clip_id=clip_id, track_number=track_number, start_frame=segment_start, frames=self.segment_width,
-                weight=segment_weight_factor, label=track_header.label, avg_mass=segment_avg_mass)
+                track=track_header,
+                start_frame=segment_start, frames=self.segment_width,
+                weight=segment_weight_factor, avg_mass=segment_avg_mass
+            )
 
             segment.thermal_reference = np.float32(clip_meta['frame_temp_median'][segment.start_frame:segment.end_frame])
 
@@ -386,7 +411,7 @@ class Dataset:
         :return: segment data of shape [frames, channels, height, width]
         """
         data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
-        data = self.apply_preprocessing(data)
+        data = self.apply_preprocessing(data, track.thermal_reference_level)
         return data
 
     def fetch_segment(self, segment: SegmentHeader, augment=False):
@@ -420,23 +445,28 @@ class Dataset:
         if len(data) != self.segment_width:
             print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)
 
-        data = self.apply_preprocessing(data)
+        data = self.apply_preprocessing(data, segment.thermal_reference_level)
 
         if augment:
             data = self.apply_augmentation(data)
 
         return data
 
-    def apply_preprocessing(self, data):
+    def apply_preprocessing(self, data, reference_level):
         """
-        Applies preprocessing to segment data.  For example mapping optical flow down to the right level.
-        :param data:
-        :return:
+        Applies pre-processing to segment data.  For example mapping optical flow down to the right level.
+        :param data: np array of shape [F, C, H, W]
+        :param reference_level: thermal reference level for each frame in data
         """
 
         # the segment will be processed in float32 so we may aswell convert it here.
         # also optical flow is stored as a scaled integer, but we want it in float32 format.
         data = np.asarray(data, dtype=np.float32)
+
+        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
+
+        # get reference level for thermal channel
+        assert len(data) == len(reference_level), "Reference level shape and data shape not match."
 
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
