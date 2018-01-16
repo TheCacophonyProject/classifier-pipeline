@@ -20,6 +20,8 @@ import glob
 import argparse
 import time
 
+__version__ = '1.1.0'
+
 # default base path to use if no source or destination folder are given.
 DEFAULT_BASE_PATH = "c:\\cac"
 
