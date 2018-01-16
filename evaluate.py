@@ -32,7 +32,7 @@ import seaborn as sns
 # number of seconds between clips required to trigger a a new visit
 NEW_VISIT_THRESHOLD = 3*60
 
-DEFAULT_SOURCE_FOLDER = "c:\\cac\\autotagged"
+DEFAULT_SOURCE_FOLDER = "c:\\cac\\run1"
 
 # false positive's and 'none' can be mapped to the same label as they represent the same idea.
 NULL_TAGS = ['false-positive', 'none', 'no-tag']
