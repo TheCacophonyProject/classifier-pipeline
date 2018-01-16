@@ -361,6 +361,12 @@ class TrackExtractor:
         # maximum number of tracks to extract from a clip.  Takes the n best tracks.  Set to None for unlimited.
         self.max_tracks = 10
 
+        # per frame temperature statistics for thermal channel
+        self.frame_stats_min = []
+        self.frame_stats_max = []
+        self.frame_stats_median = []
+        self.frame_stats_mean = []
+
         # filters for tracks
         self.track_min_duration = 3.0
         self.track_min_offset = 4.0
@@ -480,6 +486,12 @@ class TrackExtractor:
 
         filtered = self.get_filtered(frame)
         regions, mask = self.get_regions_of_interest(filtered, self._prev_filtered)
+
+        # save frame stats
+        self.frame_stats_min.append(np.min(frame))
+        self.frame_stats_max.append(np.max(frame))
+        self.frame_stats_median.append(np.median(frame))
+        self.frame_stats_mean.append(np.mean(frame))
 
         # save history
         self.frame_buffer.filtered.append(np.float32(filtered))
