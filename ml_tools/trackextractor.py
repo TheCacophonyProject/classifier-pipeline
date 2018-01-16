@@ -273,7 +273,7 @@ class FrameBuffer:
         flow = np.zeros([height, width, 2], dtype=np.float32)
 
         current = None
-        for frame in self.filtered:
+        for frame in self.thermal:
             threshold = np.median(frame)
             next = np.uint8(np.clip(frame - threshold, 0, 255))
 

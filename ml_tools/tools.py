@@ -319,7 +319,7 @@ def softmax(x):
 def get_image_subsection(image, bounds, window_size, boundary_value=None):
     """
     Returns a subsection of the original image bounded by bounds.
-    Area outside of frame will be filled with boundary_value.  If None the median value will be used.
+    Area outside of frame will be filled with boundary_value.  If None the 10th percentile value will be used.
     """
 
     # todo: rewrite this using opencv's built in method
@@ -339,7 +339,7 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
     midx = int(bounds.mid_x + padding)
     midy = int(bounds.mid_y + padding)
 
-    if boundary_value is None: boundary_value = np.median(image)
+    if boundary_value is None: boundary_value = np.percentile(image, q=10)
 
     # note, we take the median of all channels, should really be on a per channel basis.
     enlarged_frame = np.ones([image_height + padding*2, image_width + padding*2, channels], dtype=np.float16) * boundary_value
