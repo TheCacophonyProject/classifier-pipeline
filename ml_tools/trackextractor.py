@@ -272,16 +272,10 @@ class FrameBuffer:
         height, width = self.filtered[0].shape
         flow = np.zeros([height, width, 2], dtype=np.float32)
 
-        # fake background to improve optical flow performance
-        bg = np.random.uniform(size = (height, width))
-
         current = None
         for frame in self.filtered:
-
-            # add some background static noise to the frame so it can lock onto a fix background (rather than just
-            # black
-
-            next = np.uint8(np.clip(np.maximum(frame, bg * 5), 0, 255))
+            threshold = np.median(frame)
+            next = np.uint8(np.clip(frame - threshold, 0, 255))
 
             if current is not None:
                 # for some reason openCV spins up lots of threads for this which really slows things down, so we
@@ -295,7 +289,6 @@ class FrameBuffer:
             # but also make sure they fit within an int16
             scaled_flow = np.clip(flow * 256, -16000, 16000)
             self.flow.append(scaled_flow)
-
     def reset(self):
         """
         Empties buffer
