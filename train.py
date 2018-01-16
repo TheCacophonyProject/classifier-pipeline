@@ -40,7 +40,7 @@ def main():
         [0, 1]
     ]
 
-    dataset_name = os.path.join(DATASET_FOLDER, 'datasets6.dat')
+    dataset_name = os.path.join(DATASET_FOLDER, 'datasets.dat')
     dsets = pickle.load(open(dataset_name,'rb'))
     labels = dsets[0].labels
 
@@ -69,7 +69,7 @@ def main():
         print(model.hyperparams_string)
         print()
         print("{0:.1f}K training examples".format(model.rows / 1000))
-        model.train_model(epochs=30, run_name='dynamic_rnn/full model/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        model.train_model(epochs=30, run_name='new_robin/v1 baseline/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         model.save()
     finally:
         model.close()

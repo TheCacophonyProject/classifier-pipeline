@@ -429,6 +429,13 @@ class ClipClassifier(CPTVFileProcessor):
         tracker.WINDOW_SIZE = 48
         tracker.load(filename)
 
+        # turn up sensitivity on tracking so we can catch more animals.  The classifier will sort out the false
+        # positives.
+        tracker.track_min_duration = 1.0
+        tracker.track_min_offset = 0.0
+        tracker.track_min_delta = 0.0
+        tracker.track_min_mass = 1.0
+
         tracker.high_quality_optical_flow = self.high_quality_optical_flow
 
         tracker.extract_tracks()

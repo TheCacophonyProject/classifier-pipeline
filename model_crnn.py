@@ -248,5 +248,5 @@ class ModelCRNN(Model):
             #    self.create_summaries("grads/{}".format(grads[index][1].name.split(':')[0]), grads[index])
 
         # attach nodes
-        self.set_ops(pred=pred, accuracy=accuracy, loss=loss, train_op=train_op)
-        self.state_out = tf.identity(lstm_state, 'state_out')
+        tf.identity(lstm_state, 'state_out')
+        self._attach_nodes()

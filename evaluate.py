@@ -32,12 +32,12 @@ import seaborn as sns
 # number of seconds between clips required to trigger a a new visit
 NEW_VISIT_THRESHOLD = 3*60
 
-DEFAULT_SOURCE_FOLDER = "c:\\cac\\run1"
+DEFAULT_SOURCE_FOLDER = "c:\\cac\\autotagged"
 
 # false positive's and 'none' can be mapped to the same label as they represent the same idea.
 NULL_TAGS = ['false-positive', 'none', 'no-tag']
 
-classes = ['bird', 'possum', 'rat', 'hedgehog', 'none']
+classes = ['bird', 'possum', 'rat', 'hedgehog', 'stoat', 'none']
 
 class TrackResult:
 
@@ -93,6 +93,9 @@ class ClipResult:
         class_confidences = {}
         best_confidence = 0
         best_label = "none"
+
+        print("getting best guess for",self.source)
+
         for track in self.tracks:
             label = track.label
 
@@ -102,6 +105,8 @@ class ClipResult:
             # across
             if label == 'none': confidence *= 0.5
 
+            print(label, confidence)
+
             class_confidences[label] = max(class_confidences.get(label, 0.0), confidence)
 
             confidence = class_confidences[label]
@@ -109,6 +114,8 @@ class ClipResult:
             if confidence > best_confidence:
                 best_label = label
                 best_confidence = confidence
+
+        print('-->',best_label, best_confidence)
 
         return best_label, best_confidence
 
@@ -248,7 +255,7 @@ def show_breakdown(true_class, pred_class, title="Confusion Matrix"):
     print()
 
     print("Correctly classified {0} / {1} = {2:.2f}%".format(correct, len(true_class), 100 * correct / len(true_class)))
-    print("Final score: {:.1f}".format(100 * np.mean(f1_scores)))
+    print("Final score: {:.1f}".format(100 * np.sum(f1_scores) / np.count_nonzero(f1_scores)))
 
 
 def breakdown_tracks(visits):

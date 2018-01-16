@@ -47,7 +47,7 @@ class Model:
         # ------------------------------------------------------
 
         # prediction for each class(probability distribution)
-        self.pred = None
+        self.prediction = None
         # accuracy of batch
         self.accuracy = None
         # total loss of batch
@@ -199,6 +199,8 @@ class Model:
             else:
                 acc, ls = self.session.run([self.accuracy, self.loss], feed_dict=feed_dict)
 
+            print(samples, acc, ls)
+
             score += samples * acc
             loss += ls
 
@@ -242,7 +244,7 @@ class Model:
             Xm = batch_X[i*self.batch_size:(i+1)*self.batch_size]
             if len(Xm) == 0:
                 continue
-            probs = self.session.run([self.pred], feed_dict={self.X: Xm})[0]
+            probs = self.session.run([self.prediction], feed_dict={self.X: Xm})[0]
             for j in range(len(Xm)):
                 predictions.append(probs[j,:])
 
@@ -399,9 +401,6 @@ class Model:
         last_epoch_save = 0
         best_val_loss = float('inf')
 
-        # setup saver
-        saver = tf.train.Saver()
-
         # Run the initializer
         init = tf.global_variables_initializer()
         self.session.run(init)
@@ -454,7 +453,7 @@ class Model:
                 ))
 
                 # create a save point
-                saver.save(self.session, os.path.join(CHECKPOINT_FOLDER, "training-most-recent.sav"))
+                self.save(os.path.join(CHECKPOINT_FOLDER, "training-most-recent.sav"))
 
                 # save at epochs
                 if int(epoch) > last_epoch_save:
@@ -462,12 +461,12 @@ class Model:
                     acc, f1 = self.generate_report()
                     print("results: {:.1f} {}".format(acc*100,["{:.1f}".format(x*100) for x in f1]))
                     print('Save epoch reference')
-                    saver.save(self.session, os.path.join(CHECKPOINT_FOLDER, "training-epoch-{:02d}.sav".format(int(epoch))))
+                    self.save(os.path.join(CHECKPOINT_FOLDER, "training-epoch-{:02d}.sav".format(int(epoch))))
                     last_epoch_save = int(epoch)
 
                 if val_loss < best_val_loss:
                     print('Save best model')
-                    saver.save(self.session, os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
+                    self.save(os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
                     best_val_loss = val_loss
                     best_step = i
 
@@ -487,7 +486,7 @@ class Model:
         # restore previous best
         if self.use_best_weights:
             print("Using model from step", best_step)
-            self.restore_params(os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
+            self.load(os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
 
         self.eval_score = self.eval_model()
 
@@ -579,9 +578,9 @@ class Model:
         graph = self.session.graph
 
         # attach operations
-        self.pred = graph.get_tensor_by_name("prediction:0"),
-        self.accuracy = graph.get_tensor_by_name("accuracy:0"),
-        self.loss=graph.get_tensor_by_name("loss_1:0"),
+        self.prediction = graph.get_tensor_by_name("prediction:0")
+        self.accuracy = graph.get_tensor_by_name("accuracy:0")
+        self.loss=graph.get_tensor_by_name("loss_1:0")
         self.train_op=graph.get_operation_by_name("train_op")
 
         # attach to IO tensors
@@ -606,7 +605,7 @@ class Model:
         batch_X = frame[np.newaxis,np.newaxis,:]
         feed_dict = self.get_feed_dict(batch_X, [0])
         feed_dict[self.state_in] = state
-        pred, state = self.session.run([self.pred, self.state_out], feed_dict=feed_dict)
+        pred, state = self.session.run([self.prediction, self.state_out], feed_dict=feed_dict)
         pred = pred[0][0]
         return pred, state
 
