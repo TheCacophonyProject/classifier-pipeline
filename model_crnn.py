@@ -23,7 +23,7 @@ class ModelCRNN(Model):
     DEFAULT_PARAMS = {
 
         # training params
-        'batch_size': 32,
+        'batch_size': 16,
         'learning_rate': 1e-4,
         'learning_rate_decay': 1.0,
         'l2_reg': 0,
@@ -184,7 +184,6 @@ class ModelCRNN(Model):
         lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
             cell=dropout, inputs=out,
             initial_state=init_state,
-            swap_memory=True,
             dtype=tf.float32,
             scope='lstm'
         )
@@ -206,7 +205,7 @@ class ModelCRNN(Model):
         softmax_loss = tf.losses.softmax_cross_entropy(
             onehot_labels=tf.one_hot(self.y, label_count),
             logits=logits, label_smoothing=self.params['label_smoothing'],
-            scope='loss')
+            scope='softmax_loss')
 
         if self.params['l2_reg'] != 0:
             with tf.variable_scope('logits', reuse=True):

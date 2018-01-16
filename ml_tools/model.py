@@ -60,7 +60,7 @@ class Model:
         self.eval_samples = 500
 
         # how often to do an evaluation + print
-        self.print_every = 200
+        self.print_every = 6000
 
         # restore best weights found during training rather than the most recently one.
         self.use_best_weights = True
@@ -96,7 +96,7 @@ class Model:
             # dropout
             'keep_prob': 0.5,
             # training
-            'batch_size': 32
+            'batch_size': 16
         }
 
         """ List of labels this model can classifiy. """
@@ -184,6 +184,7 @@ class Model:
         score = 0
         loss = 0
         summary = None
+
         for i in range(batches):
             Xm = batch_X[i*self.batch_size:(i+1)*self.batch_size]
             ym = batch_y[i*self.batch_size:(i+1)*self.batch_size]
@@ -200,7 +201,7 @@ class Model:
                 acc, ls = self.session.run([self.accuracy, self.loss], feed_dict=feed_dict)
 
             score += samples * acc
-            loss += ls
+            loss += samples * ls
 
         batch_accuracy = score / total_samples
         batch_loss = loss / total_samples
@@ -395,7 +396,7 @@ class Model:
         train_time = 0
         prep_time = 0
         best_step = 0
-        steps_since_print = 0
+        examples_since_print = 0
         last_epoch_save = 0
         best_val_loss = float('inf')
 
@@ -420,7 +421,7 @@ class Model:
             prep_time += time.time()-start
 
             # evaluate every so often
-            if steps_since_print >= self.print_every or (i == iterations-1):
+            if examples_since_print >= self.print_every or (i == iterations-1):
 
                 start = time.time()
 
@@ -440,13 +441,13 @@ class Model:
 
                 steps_remaining = (iterations - i)
                 step_time = prep_time + train_time + eval_time
-                eta = (steps_remaining * step_time / steps_since_print) / 60
+                eta = (steps_remaining * step_time / examples_since_print) / 60
 
                 print('[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] eta {9:.1f} min'.format(
                     epoch, i, train_accuracy*100, train_loss * 10, val_accuracy*100, val_loss * 10,
-                    1000 * prep_time / steps_since_print  / self.batch_size,
-                    1000 * train_time / steps_since_print  / self.batch_size,
-                    1000 * eval_time / steps_since_print  / self.batch_size,
+                    1000 * prep_time / examples_since_print,
+                    1000 * train_time / examples_since_print,
+                    1000 * eval_time / examples_since_print,
                     eta
                 ))
 
@@ -471,7 +472,7 @@ class Model:
                 eval_time = 0
                 train_time = 0
                 prep_time = 0
-                steps_since_print = 0
+                examples_since_print = 0
 
             # train on this batch
             start = time.time()
@@ -479,7 +480,7 @@ class Model:
             _ = self.session.run([self.train_op], feed_dict=feed_dict)
             train_time += time.time()-start
 
-            steps_since_print += 1
+            examples_since_print += self.batch_size
 
         # restore previous best
         if self.use_best_weights:
@@ -578,7 +579,7 @@ class Model:
         # attach operations
         self.prediction = graph.get_tensor_by_name("prediction:0")
         self.accuracy = graph.get_tensor_by_name("accuracy:0")
-        self.loss=graph.get_tensor_by_name("loss_1:0")
+        self.loss=graph.get_tensor_by_name("loss:0")
         self.train_op=graph.get_operation_by_name("train_op")
 
         # attach to IO tensors

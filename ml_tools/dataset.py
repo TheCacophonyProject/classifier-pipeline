@@ -42,7 +42,7 @@ class SegmentHeader:
         self.weight = weight
         # our label
         self.label = label.lower()
-        # thermal referece temperature (i.e. which temp is 0)
+        # thermal referece temperature for each frame (i.e. which temp is 0)
         self.thermal_reference = None
 
         self.avg_mass = avg_mass
@@ -361,6 +361,7 @@ class Dataset:
             segment = SegmentHeader(
                 clip_id=clip_id, track_number=track_number, start_frame=segment_start, frames=self.segment_width,
                 weight=segment_weight_factor, label=track_header.label, avg_mass=segment_avg_mass)
+
             segment.thermal_reference = clip_meta['mean_temp']
 
             self.segments.append(segment)
@@ -517,8 +518,12 @@ class Dataset:
                 elif self.thermal_normalisation_mode == self.THERM_NORM_THRESHOLD:
                     assert thermal_reference, '{} normalisation mode requires thermal_center parameter'.format(
                         self.thermal_normalisation_mode)
-                    thermal = segment_data[:, 0]
-                    thermal = thermal - thermal_reference
+                    thermal = segment_data[:, 0] # F, H, W
+                    if thermal_reference is int:
+                        thermal = thermal - thermal_reference
+                    else:
+                        # per frame reference
+                        thermal = thermal - np.asarray(thermal_reference, dtype=np.float32)[:,np.newaxis, np.newaxis]
                     thermal[thermal < self.thermal_threshold] = self.thermal_threshold
                     segment_data[:, 0] = thermal / 32
                 else:

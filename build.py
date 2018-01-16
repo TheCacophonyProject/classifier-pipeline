@@ -13,6 +13,7 @@ import random
 import math
 import pickle
 import time
+import dateutil
 
 import numpy as np
 
@@ -24,7 +25,7 @@ DATASET_FOLDER = 'c:/cac/robin/'
 # uses split from previous run
 USE_PREVIOUS_SPLIT = True
 
-# todo: move into a text file
+# note: these should really be in a text file or something, or excluded during extraction
 BANNED_CLIPS = {
     '20171025-020827-akaroa03.cptv',
     '20171025-020827-akaroa03.cptv',
@@ -35,7 +36,7 @@ BANNED_CLIPS = {
     '20171219-105919-akaroa12.cptv'
 }
 
-EXCLUDED_LABELS = ['mouse','insect','rabbit']
+EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog','human']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
@@ -59,11 +60,14 @@ LABEL_WEIGHTS = {
     'dog':0.8,
 }
 
+# clips after this date will be ignored.
+# note: this is based on the UTC date.
+END_DATE = dateutil.parser.parse("2017-12-31")
 
 # minimum average mass for test segment
-TEST_MIN_MASS = 40
+TEST_MIN_MASS = 30
 
-TRAIN_MIN_MASS = 25
+TRAIN_MIN_MASS = 10
 
 # number of segments to include in test set for each class (multiplied by label weights)
 TEST_SET_COUNT = 300
@@ -71,7 +75,7 @@ TEST_SET_COUNT = 300
 # minimum number of bins used for test set
 TEST_SET_BINS = 10
 
-filtered_stats = {'confidence':0,'trap':0,'banned':0}
+filtered_stats = {'confidence':0,'trap':0,'banned':0,'date':0}
 
 def track_filter(clip_meta, track_meta):
 
@@ -84,7 +88,10 @@ def track_filter(clip_meta, track_meta):
     if track_meta['tag'] in EXCLUDED_LABELS:
         return True
 
-    # this camera gets a lot of obscured footage so we filter out to just the best ones.
+    # filter by date
+    if dateutil.parser.parse(clip_meta['start_time']).date() > END_DATE.date():
+        filtered_stats['date'] += 1
+        return True
 
     # always let the false-positives through as we need them even though they would normally
     # be filtered out.
@@ -322,7 +329,7 @@ def split_dataset_days(prefill_bins=None):
     print()
 
     # normalisation constants
-    normalisation_constants = train.get_normalisation_constants(5000)
+    normalisation_constants = train.get_normalisation_constants(1000)
     print('Normalisation constants:')
     for i in range(len(normalisation_constants)):
         print("  {:.4f} {:.4f}".format(normalisation_constants[i][0], normalisation_constants[i][1]))
