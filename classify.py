@@ -2,9 +2,10 @@
 Script to classify animals within a CPTV video file.
 """
 
+from typing import Dict
+
 import argparse
 import json
-import math
 import os
 import time
 import logging
@@ -15,7 +16,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from ml_tools import tools
-from ml_tools import trackclassifier
+from ml_tools.model import Model
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools.mpeg_creator import MPEGCreator
 from ml_tools.trackextractor import TrackExtractor, Track, Region
@@ -36,49 +37,41 @@ _classifier_font = None
 _classifier_font_title = None
 
 
-class TrackPrediction():
+class TrackPrediction:
     """
     Class to hold the information about the predicted class of a track.
-    A list of predictions are transformed into 'confidences' by applying a bayesian update algorithim.
-    The probabilities are also optionally weighted per example.  This can be useful if it is known that some
-    of the examples are likely to be unhelpful (for example the track has minimal mass at that point).
+    Predictions are recorded for every frame, and methods provided for extracting the final predicted class of the
+    track.
     """
 
-    def __init__(self, prediction_history, weights = None):
-
-        # the highest confidence rating for each class
-        self.class_best_confidence = None
-
-        # history of raw probability for each class at every frame
+    def __init__(self, prediction_history):
+        """
+        Setup track prediction with given prediction history
+        :param prediction_history: list of predictions for each frame of this track.
+        """
         self.prediction_history = prediction_history.copy()
-
-        # history of confidence over time for each class at every frame
-        self.confidence_history = []
-
-        self.weights = weights
-
-        self._apply_bayesian_update()
+        self.class_best_score = np.max(np.float32(prediction_history), axis=0).tolist()
 
     def label(self, n = 1):
         """ class label of nth best guess. """
-        return int(np.argsort(self.class_best_confidence)[-n])
+        return int(np.argsort(self.class_best_score)[-n])
 
-    def confidence(self, n = 1):
-        """ class label of nth best guess. """
-        return float(sorted(self.class_best_confidence)[-n])
+    def score(self, n = 1):
+        """ class score of nth best guess. """
+        return float(sorted(self.class_best_score)[-n])
 
     def label_at_time(self, frame_number, n = 1):
         """ class label of nth best guess at a point in time."""
-        return int(np.argsort(self.confidence_history[frame_number])[-n])
+        return int(np.argsort(self.prediction_history[frame_number])[-n])
 
-    def confidence_at_time(self, frame_number, n = 1):
+    def score_at_time(self, frame_number, n = 1):
         """ class label of nth best guess at a point in time."""
-        return float(sorted(self.confidence_history[frame_number])[-n])
+        return float(sorted(self.prediction_history[frame_number])[-n])
 
     @property
     def clarity(self):
         """ The distance between our highest scoring class and second highest scoring class. """
-        return self.confidence(1) - self.confidence(2)
+        return self.score(1) - self.score(2)
 
     def description(self, classes):
         """
@@ -87,67 +80,20 @@ class TrackPrediction():
         :return:
         """
 
-        if self.confidence() > 0.5:
+        if self.score() > 0.5:
             first_guess = "{} {:.1f} (clarity {:.1f})".format(
-                classes[self.label()], self.confidence() * 10, self.clarity * 10)
+                classes[self.label()], self.score() * 10, self.clarity * 10)
         else:
             first_guess = "[nothing]"
 
-        if self.confidence(2) > 0.5:
+        if self.score(2) > 0.5:
             second_guess = "[second guess - {} {:.1f}]".format(
-                classes[self.label(2)], self.confidence(2) * 10)
+                classes[self.label(2)], self.score(2) * 10)
         else:
             second_guess = ""
 
         return (first_guess+" "+second_guess).strip()
 
-    def save(self, filename):
-        """ Saves prediction history to file. """
-        save_file = {}
-        save_file['label'] = int(self.label())
-        save_file['confidence'] = float(self.confidence())
-        save_file['clarity'] = float(self.clarity)
-        save_file['predictions'] = list(self.class_best_confidence)
-        save_file['prediction_history'] = [x.tolist() for x in self.prediction_history]
-        save_file['confidence_history'] = [x.tolist() for x in self.confidence_history]
-        if self.weights is not None: save_file['weights'] = [float(x) for x in self.weights]
-
-        json.dump(save_file, open(filename, 'w'), indent=True)
-
-    def _apply_bayesian_update(self):
-        """
-        Processes classifier predictions and builds a belief over time about the true class of the tracked object.
-        """
-
-        if len(self.prediction_history) == 0:
-            return
-
-        self.confidence_history = []
-
-        # start with a uniform prior, could bias this if we want encourage certian classes.
-        classes = len(self.prediction_history[0])
-        confidence = np.asarray(np.float32([1/classes for _ in range(classes)]))
-
-        # per class best confidence
-        best = [float(0) for _ in range(classes)]
-
-        # apply a bayesian update for each prediction.
-        for i, prediction in enumerate(self.prediction_history):
-            # too much confidence can make updates slow, even with very strong evidence.
-            prediction = np.clip(prediction, 0.02, 0.98)
-
-            # we scale down the predictions based on the weighting.  This will cause the algorithm to
-            # give very low scores when the weight is low.
-            if self.weights is not None:
-                prediction *= self.weights[i]
-
-            confidence = (confidence * prediction) / (confidence * prediction + (confidence * (1.0 - prediction)))
-
-            self.confidence_history.append(confidence.copy())
-
-            best = [float(max(best[i], confidence[i])) for i in range(classes)]
-
-        self.class_best_confidence = best
 
 class ClipClassifier(CPTVFileProcessor):
     """ Classifies tracks within CPTV files. """
@@ -158,7 +104,7 @@ class ClipClassifier(CPTVFileProcessor):
         super(ClipClassifier, self).__init__()
 
         # prediction record for each track
-        self.track_prediction = {}
+        self.track_prediction: Dict[Track, TrackPrediction] = {}
 
         # mpeg preview output
         self.enable_previews = False
@@ -172,7 +118,7 @@ class ClipClassifier(CPTVFileProcessor):
         self.model_path = None
 
         # uses a higher quality version of the optical flow algorithm.
-        self.high_quality_optical_flow = True
+        self.high_quality_optical_flow = False
 
         # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
         self.enable_per_track_information = False
@@ -197,6 +143,24 @@ class ClipClassifier(CPTVFileProcessor):
         if not _classifier_font_title: _classifier_font_title = ImageFont.truetype(resource_path("Ubuntu-B.ttf"), 14)
         return _classifier_font_title
 
+    def preprocess(self, frame, thermal_reference):
+        """
+        Applies preprocessing to frame required by the model.
+        :param frame: numpy array of shape [C, H, W]
+        :return: preprocessed numpy array
+        """
+
+        # note, would be much better if the model did this, as only the model knows how preprocessing occured during
+        # training
+        frame = np.float32(frame)
+        frame[2:3+1] *= 10 / 256
+        thermal = frame[0]
+        thermal -= thermal_reference
+        thermal[thermal < 10] = 10
+        frame[0] = thermal / 32
+        return frame
+
+
     def identify_track(self, tracker:TrackExtractor, track: Track):
         """
         Runs through track identifying segments, and then returns it's prediction of what kind of animal this is.
@@ -205,54 +169,41 @@ class ClipClassifier(CPTVFileProcessor):
         :return: TrackPrediction object
         """
 
-        segment = trackclassifier.TrackSegment()
         predictions = []
-        weights = []
 
-        num_labels = len(self.classifier.classes)
+        num_labels = len(self.classifier.labels)
+        prediction_smooth = 0.1
 
-        # preload the 27 frame buffer with the first frame
-        for _ in range(min(27, len(track))):
-
-            frame = tracker.get_track_channels(track, 0)
-            segment.append_frame(frame)
+        # start with a uniform prior.  I.e. all classes are equally likely.
+        smooth_prediction = np.ones([num_labels]) * (1/num_labels)
 
         # go through making classifications at each frame
         # note: we should probably be doing this every 9 frames or so.
+        state = None
         for i in range(len(track)):
+            # note: would be much better for the tracker to store the thermal references as it goes.
+            thermal_reference = np.mean(tracker.frame_buffer.thermal[track.start_frame + i])
+
             frame = tracker.get_track_channels(track, i)
-            segment.append_frame(frame)
+            frame = self.preprocess(frame, thermal_reference)
+            prediction, state = self.classifier.classify_frame(frame, state)
+            smooth_prediction = (1-prediction_smooth) * smooth_prediction + prediction_smooth * prediction
+            predictions.append(smooth_prediction)
 
-            # segments with small mass are weighted less as we can assume the error is higher here.
-            mass = np.float32(np.sum(segment.data[:, :, :, 4])) / 27
-
-            # we use the square-root here as the mass is in units squared.
-            # this effectively means we are giving weight based on the diameter
-            # of the object rather than the mass.
-            mass_weight = math.sqrt(np.clip(mass/20, 0.02, 1.0))
-
-            # reduce confidence when buffer hasn't been filled
-            buffer_weight = math.sqrt(np.clip(i / 27, 0.25, 1.0))
-
-            weight = buffer_weight * mass_weight
-
-            predictions.append(self.classifier.predict(segment))
-
-            weights.append(weight)
-
-        return TrackPrediction(predictions, weights)
+        return TrackPrediction(predictions)
 
     @property
     def classifier(self):
         """
-        Returns a classifier object, which is creeated on demand.
+        Returns a classifier object, which is created on demand.
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
         """
         global _classifier
         if _classifier is None:
             t0 = datetime.now()
             logging.info("classifier loading")
-            _classifier = trackclassifier.TrackClassifier(self.model_path, disable_GPU=not self.enable_gpu)
+            _classifier = Model(tools.get_session(disable_gpu=not self.enable_gpu))
+            _classifier.load(self.model_path)
             logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
         return _classifier
@@ -260,18 +211,18 @@ class ClipClassifier(CPTVFileProcessor):
     def get_clip_prediction(self):
         """ Returns list of class predictions for all tracks in this clip. """
 
-        class_best_score = [0 for _ in range(len(self.classifier.classes))]
+        class_best_score = [0 for _ in range(len(self.classifier.labels))]
 
         # keep track of our highest confidence over every track for each class
         for track, prediction in self.track_prediction.items():
-            for i in range(len(self.classifier.classes)):
-                class_best_score[i] = max(class_best_score[i], prediction.class_best_confidence[i])
+            for i in range(len(self.classifier.labels)):
+                class_best_score[i] = max(class_best_score[i], prediction.class_best_score[i])
 
         results = []
-        for n in range(1, 1+len(self.classifier.classes)):
+        for n in range(1, 1+len(self.classifier.labels)):
             nth_label = int(np.argsort(class_best_score)[-n])
             nth_score = float(np.sort(class_best_score)[-n])
-            results.append((self.classifier.classes[nth_label], nth_score))
+            results.append((self.classifier.labels[nth_label], nth_score))
 
         return results
 
@@ -341,7 +292,7 @@ class ClipClassifier(CPTVFileProcessor):
 
     def export_tracking_frame(self, tracker: TrackExtractor, frame_number:int, frame_scale:float):
         filtered = tracker.frame_buffer.filtered[frame_number]
-        tracking_image = tools.convert_heat_to_img(filtered * 3)
+        tracking_image = tools.convert_heat_to_img(filtered * 3, self.colormap)
         tracking_image = tracking_image.resize((int(tracking_image.width * frame_scale), int(tracking_image.height * frame_scale)), Image.NEAREST)
         return self.draw_track_rectangles(tracker, frame_number, frame_scale, tracking_image)
 
@@ -355,13 +306,13 @@ class ClipClassifier(CPTVFileProcessor):
 
             # find a track description, which is the final guess of what this class is.
             guesses = ["{} ({:.1f})".format(
-                self.classifier.classes[prediction.label(i)], prediction.confidence(i) * 10) for i in range(1, 4)
-                if prediction.confidence(i) > 0.5]
+                self.classifier.labels[prediction.label(i)], prediction.score(i) * 10) for i in range(1, 4)
+                if prediction.score(i) > 0.5]
 
             track_description = "\n".join(guesses)
             track_description.strip()
 
-            frame_offset = frame_number - track.first_frame
+            frame_offset = frame_number - track.start_frame
             if 0 < frame_offset < len(track.bounds_history) - 1:
                 # display the track
                 rect = track.bounds_history[frame_offset]
@@ -374,13 +325,13 @@ class ClipClassifier(CPTVFileProcessor):
                     # no information for this track just ignore
                     current_prediction_string = ''
                 else:
-                    label = self.classifier.classes[prediction.label_at_time(frame_offset)]
-                    confidence = prediction.confidence_at_time(frame_offset)
-                    if confidence >= 0.7:
+                    label = self.classifier.labels[prediction.label_at_time(frame_offset)]
+                    score = prediction.score_at_time(frame_offset)
+                    if score >= 0.7:
                         prediction_format = "({:.1f} {})"
                     else:
                         prediction_format = "({:.1f} {})?"
-                    current_prediction_string = prediction_format.format(confidence * 10, label)
+                    current_prediction_string = prediction_format.format(score * 10, label)
 
                 header_size = self.font_title.getsize(track_description)
                 footer_size = self.font.getsize(current_prediction_string)
@@ -475,9 +426,10 @@ class ClipClassifier(CPTVFileProcessor):
 
         # extract tracks from file
         tracker = TrackExtractor()
+        tracker.WINDOW_SIZE = 48
         tracker.load(filename)
 
-        tracker.reduced_quality_optical_flow = not self.high_quality_optical_flow
+        tracker.high_quality_optical_flow = self.high_quality_optical_flow
 
         tracker.extract_tracks()
 
@@ -485,7 +437,7 @@ class ClipClassifier(CPTVFileProcessor):
             logging.warning(" -warning, found too many tracks.  Using {} of {}".format(10, len(tracker.tracks)))
             tracker.tracks = tracker.tracks[:10]
 
-        if tracker.tracks > 0:
+        if len(tracker.tracks) > 0:
             # optical flow is not generated by default, if we have atleast one track we will need to generate it here.
             if not tracker.frame_buffer.has_flow:
                 tracker.frame_buffer.generate_flow(tracker.opt_flow)
@@ -511,7 +463,7 @@ class ClipClassifier(CPTVFileProcessor):
 
             self.track_prediction[track] = prediction
 
-            description = prediction.description(self.classifier.classes)
+            description = prediction.description(self.classifier.labels)
 
             logging.info(" - [{}/{}] prediction: {}".format(i + 1, len(tracker.tracks), description))
 
@@ -541,10 +493,10 @@ class ClipClassifier(CPTVFileProcessor):
             save_file['tracks'].append(track_info)
             track_info['start_time'] = track.start_time.isoformat()
             track_info['end_time'] = track.end_time.isoformat()
-            track_info['label'] = self.classifier.classes[prediction.label()]
-            track_info['confidence'] = prediction.confidence()
+            track_info['label'] = self.classifier.labels[prediction.label()]
+            track_info['confidence'] = prediction.score()
             track_info['clarity'] = prediction.clarity
-            track_info['class_confidence'] = prediction.class_best_confidence
+            track_info['class_confidence'] = prediction.class_best_score
 
         if self.write_meta_to_stdout:
             output = json.dumps(save_file, indent=4, cls=tools.CustomJSONEncoder)
@@ -559,7 +511,6 @@ class ClipClassifier(CPTVFileProcessor):
 
 def log_to_stdout():
     """ Outputs all log entries to standard out. """
-
     # taken from https://stackoverflow.com/questions/14058453/making-python-loggers-output-all-messages-to-stdout-in-addition-to-log
     root = logging.getLogger()
     root.setLevel(logging.INFO)
@@ -585,7 +536,7 @@ def main():
     parser.add_argument('-o', '--output-folder', default=os.path.join(DEFAULT_BASE_PATH, "autotagged"),help='Folder to output tracks to')
     parser.add_argument('-s', '--source-folder', default=os.path.join(DEFAULT_BASE_PATH, "clips"),help='Source folder root with class folders containing CPTV files')
 
-    parser.add_argument('-m', '--model', default=os.path.join(HERE, "models", "Model-4f-0.904"), help='Model to use for classification')
+    parser.add_argument('-m', '--model', default=os.path.join(HERE, "models", "model-0942"), help='Model to use for classification')
     parser.add_argument('-i', '--include-prediction-in-filename', default=False, action='store_true', help='Adds class scores to output files')
     parser.add_argument('--meta-to-stdout', default=False, action='store_true', help='Writes metadata to standard out instead of a file')
 

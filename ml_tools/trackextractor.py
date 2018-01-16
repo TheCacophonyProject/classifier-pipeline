@@ -259,7 +259,7 @@ class FrameBuffer:
 
     @property
     def has_flow(self):
-        return self.flow and len(self.flow) != 0
+        return self.flow is not None and len(self.flow) != 0
 
     def generate_flow(self, opt_flow):
         """
@@ -281,7 +281,7 @@ class FrameBuffer:
             # add some background static noise to the frame so it can lock onto a fix background (rather than just
             # black
 
-            next = np.uint8(np.clip(np.maximum(frame, bg * 25), 0, 255))
+            next = np.uint8(np.clip(np.maximum(frame, bg * 5), 0, 255))
 
             if current is not None:
                 # for some reason openCV spins up lots of threads for this which really slows things down, so we
@@ -460,6 +460,7 @@ class TrackExtractor:
         self.opt_flow = cv2.createOptFlow_DualTVL1()
         if not self.high_quality_optical_flow:
             # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
+            print("using lq flow")
             self.opt_flow.setTau(1 / 4)
             self.opt_flow.setScalesNumber(3)
             self.opt_flow.setWarpingsNumber(3)

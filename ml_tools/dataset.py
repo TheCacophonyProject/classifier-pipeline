@@ -452,7 +452,7 @@ class Dataset:
         if len(data) != self.segment_width:
             print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)
 
-        data = np.asarray(data, dtype=np.float32)
+        data = np.float32(data)
 
         data = self.apply_preprocessing(data)
 
@@ -501,8 +501,6 @@ class Dataset:
 
         frames, channels, height, width = segment_data.shape
 
-        segment_data = np.float32(segment_data)
-
         for channel in range(channels):
             mean, std = self.normalisation_constants[channel]
 
@@ -541,15 +539,13 @@ class Dataset:
 
         frames, channels, height, width = segment_data.shape
 
-        segment_data = np.float32(segment_data)
-
         # apply scaling only some of time
         if random.random() <= self.scale_frequency or force_scale is not None:
-            mask = segment_data[:, 4, :, :]
+            mask = segment_data[:, 4,]
             av_mass = np.sum(mask) / len(mask)
             size = math.sqrt(av_mass + 4)
 
-            # work out aproriate bounds so we don't scale too much
+            # work out approriate bounds so we don't scale too much
             max_scale_up = np.clip(36 / size, 1.0, 2.0)
             min_scale_down = np.clip(8 / size, 0.1, 1.0)
 

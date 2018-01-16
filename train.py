@@ -69,9 +69,8 @@ def main():
         print(model.hyperparams_string)
         print()
         print("{0:.1f}K training examples".format(model.rows / 1000))
-        model.training_segment_frames = 27
-        model.train_model(epochs=30, run_name='dynamic_rnn/train on 27 test on 27/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-        model.save_model()
+        model.train_model(epochs=30, run_name='dynamic_rnn/full model/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        model.save()
     finally:
         model.close()
 
