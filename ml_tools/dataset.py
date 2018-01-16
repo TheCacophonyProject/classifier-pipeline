@@ -362,7 +362,7 @@ class Dataset:
                 clip_id=clip_id, track_number=track_number, start_frame=segment_start, frames=self.segment_width,
                 weight=segment_weight_factor, label=track_header.label, avg_mass=segment_avg_mass)
 
-            segment.thermal_reference = clip_meta['mean_temp']
+            segment.thermal_reference = np.float32(clip_meta['frame_temp_median'][segment.start_frame:segment.end_frame])
 
             self.segments.append(segment)
             track_header.segments.append(segment)
@@ -416,7 +416,7 @@ class Dataset:
 
         if normalise:
             clip_meta = self.db.get_clip_meta(track.clip_id)
-            thermal_reference = clip_meta['mean_temp']
+            thermal_reference = float(clip_meta['mean_temp'])
             data = self.apply_normalisation(data, thermal_reference)
     
         return data
@@ -496,7 +496,8 @@ class Dataset:
         Applies a random augmentation to the segment_data.
         :param segment_data: array of shape [frames, channels, height, width]
         :param thermal_reference: required for some normalisation modes.  Used as the center for thermal channel.
-            usually just the mean temp of the source video.
+            usually just the mean temp of the source video.  Can be either a single number or an array with an entry
+            for each frame.
         :return: normalised array
         """
 
@@ -516,13 +517,12 @@ class Dataset:
                         self.thermal_normalisation_mode)
                     segment_data[:, 0] = (segment_data[:, 0] - thermal_reference) / 32
                 elif self.thermal_normalisation_mode == self.THERM_NORM_THRESHOLD:
-                    assert thermal_reference, '{} normalisation mode requires thermal_center parameter'.format(
+                    assert thermal_reference is not None, '{} normalisation mode requires thermal_center parameter'.format(
                         self.thermal_normalisation_mode)
                     thermal = segment_data[:, 0] # F, H, W
-                    if thermal_reference is int:
+                    if thermal_reference is float:
                         thermal = thermal - thermal_reference
                     else:
-                        # per frame reference
                         thermal = thermal - np.asarray(thermal_reference, dtype=np.float32)[:,np.newaxis, np.newaxis]
                     thermal[thermal < self.thermal_threshold] = self.thermal_threshold
                     segment_data[:, 0] = thermal / 32
