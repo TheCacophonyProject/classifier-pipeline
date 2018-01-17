@@ -29,23 +29,12 @@ def main():
     logging.basicConfig(level=0)
     tf.logging.set_verbosity(3)
 
-    # normalisation constants are generated during the dataset build step, however i've found it convenient
-    # to set them by hand which means overwriting them here.  Mostly so that they don't change every time I rebuild
-    # the dataset.
-    normalisation_constants = [
-        [3200, 180],
-        [5.5, 25],
-        [0, 0.10],
-        [0, 0.10],
-        [0, 1]
-    ]
-
     dataset_name = os.path.join(DATASET_FOLDER, 'datasets.dat')
     dsets = pickle.load(open(dataset_name,'rb'))
     labels = dsets[0].labels
 
     model = ModelCRNN(labels=len(labels))
-    model.import_dataset(dataset_name, force_normalisation_constants=normalisation_constants)
+    model.import_dataset(dataset_name)
     model.log_dir = LOG_FOLDER
 
     # display the dataset summary

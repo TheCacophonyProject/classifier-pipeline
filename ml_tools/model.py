@@ -69,9 +69,6 @@ class Model:
         # restore best weights found during training rather than the most recently one.
         self.use_best_weights = True
 
-        # list of (mean, standard deviation) for each channel
-        self.normalisation_constants = None
-
         # the score this model got on it's final evaluation
         self.eval_score = None
 
@@ -111,12 +108,10 @@ class Model:
         self.writer_val = None
         self.merged_summary = None
 
-    def import_dataset(self, dataset_filename, force_normalisation_constants=None, ignore_labels=None):
+    def import_dataset(self, dataset_filename, ignore_labels=None):
         """
         Import dataset.
         :param dataset_filename: path and filename of the dataset
-        :param force_normalisation_constants: If defined uses these normalisation constants rather than those
-            saved with the dataset.
         :param ignore_labels: (optional) these labels will be removed from the dataset.
         :return:
         """
@@ -148,11 +143,6 @@ class Model:
                          ",".join(self.datasets.validation.labels),
                          ",".join(self.datasets.test.labels)]
         assert len(set(label_strings)) == 1, 'dataset labels do not match.'
-
-        if force_normalisation_constants:
-            print("Using custom normalisation constants.")
-            for dataset in datasets:
-                dataset.normalisation_constants = force_normalisation_constants
 
     @property
     def batch_size(self):
@@ -542,7 +532,6 @@ class Model:
         model_stats['labels'] = self.labels
         model_stats['score'] = self.eval_score
         model_stats['hyperparams'] = self.params
-        model_stats['normalisation'] = self.datasets.train.normalisation_constants
 
         json.dump(model_stats, open(filename+ ".txt", 'w'), indent=4)
 
@@ -560,7 +549,6 @@ class Model:
         self.labels = stats['labels']
         self.eval_score = stats['score']
         self.params = stats['hyperparams']
-        self.normalisation_constants = stats['normalisation']
 
         # connect up nodes.
         self._attach_nodes()
