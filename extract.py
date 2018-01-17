@@ -25,7 +25,7 @@ __version__ = '1.1.0'
 # default base path to use if no source or destination folder are given.
 DEFAULT_BASE_PATH = "c:\\cac"
 
-EXCLUDED_FOLDERS = ['false-positive', 'other', 'unidentified', 'untagged']
+EXCLUDED_FOLDERS = ['other', 'unidentified', 'untagged']
 
 class TrackerTestCase():
     def __init__(self):
@@ -160,10 +160,19 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             self.hints[filename] = int(file_max_tracks)
 
     def process_all(self, root):
+
+        previous_filter_setting = self.disable_track_filters
+
         for root, folders, files in os.walk(root):
             for folder in folders:
                 if folder not in EXCLUDED_FOLDERS:
+                    if folder.lower == "false-positive":
+                        self.disable_track_filters = True
                     self.process_folder(os.path.join(root,folder), tag=folder.lower(), worker_pool_args=(trackdatabase.hdf5_lock,))
+                    if folder.lower == "false-positive":
+                        self.disable_track_filters = previous_filter_setting
+
+
 
     def clean_all(self):
         """
