@@ -599,7 +599,8 @@ class Model:
         :return: tuple (prediction, state).  Where prediction is score for each class
         """
         if state is None:
-            state = np.zeros([1, 384, 2], dtype=np.float32)
+            state_shape = self.state_in.shape
+            state = np.zeros([1, state_shape[1], state_shape[2]], dtype=np.float32)
 
         batch_X = frame[np.newaxis,np.newaxis,:]
         feed_dict = self.get_feed_dict(batch_X, [0])

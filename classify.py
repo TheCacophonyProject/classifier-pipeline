@@ -25,6 +25,7 @@ from ml_tools.trackextractor import TrackExtractor, Track, Region
 DEFAULT_BASE_PATH = "c:\\cac"
 HERE = os.path.dirname(__file__)
 RESOURCES_PATH = os.path.join(HERE, "resources")
+MODEL_NAME = "model_lq"
 
 
 def resource_path(name):
@@ -153,13 +154,9 @@ class ClipClassifier(CPTVFileProcessor):
         # note, would be much better if the model did this, as only the model knows how preprocessing occured during
         # training
         frame = np.float32(frame)
-        frame[2:3+1] *= 10 / 256
-        thermal = frame[0]
-        thermal -= thermal_reference
-        thermal[thermal < 10] = 10
-        frame[0] = thermal / 32
+        frame[2:3+1] *= (1 / 256)
+        frame[0] -= thermal_reference
         return frame
-
 
     def identify_track(self, tracker:TrackExtractor, track: Track):
         """
@@ -182,7 +179,7 @@ class ClipClassifier(CPTVFileProcessor):
         state = None
         for i in range(len(track)):
             # note: would be much better for the tracker to store the thermal references as it goes.
-            thermal_reference = np.mean(tracker.frame_buffer.thermal[track.start_frame + i])
+            thermal_reference = np.median(tracker.frame_buffer.thermal[track.start_frame + i])
 
             frame = tracker.get_track_channels(track, i)
             frame = self.preprocess(frame, thermal_reference)
@@ -543,7 +540,7 @@ def main():
     parser.add_argument('-o', '--output-folder', default=os.path.join(DEFAULT_BASE_PATH, "autotagged"),help='Folder to output tracks to')
     parser.add_argument('-s', '--source-folder', default=os.path.join(DEFAULT_BASE_PATH, "clips"),help='Source folder root with class folders containing CPTV files')
 
-    parser.add_argument('-m', '--model', default=os.path.join(HERE, "models", "model-0942"), help='Model to use for classification')
+    parser.add_argument('-m', '--model', default=os.path.join(HERE, "models", MODEL_NAME), help='Model to use for classification')
     parser.add_argument('-i', '--include-prediction-in-filename', default=False, action='store_true', help='Adds class scores to output files')
     parser.add_argument('--meta-to-stdout', default=False, action='store_true', help='Writes metadata to standard out instead of a file')
 
