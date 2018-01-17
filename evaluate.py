@@ -239,7 +239,7 @@ def show_confusion_matrix(true_class, pred_class, labels, normalize=True, title=
 def show_breakdown(true_class, pred_class, title="Confusion Matrix"):
 
     # confusion matrix
-    show_confusion_matrix(true_class, pred_class, classes, normalize=True, title=title)
+    show_confusion_matrix(true_class, pred_class, classes, normalize=False, title=title)
 
     # get f1 scores
     f1_scores = metrics.f1_score(true_class, pred_class, classes, average=None)
@@ -302,7 +302,8 @@ def breakdown_clips(visits):
         for clip in visit.clips:
             i += 1
             clips.append(clip)
-            #print(i + 1, clip.true_tag, clip.classifier_best_guess, clip.classifier_best_score, clip.start_time)
+            if clip.true_tag != clip.classifier_best_guess:
+                print("{} {} {} {:.2f} {}".format(i + 1, clip.true_tag, clip.classifier_best_guess, clip.classifier_best_score, clip.source))
             if clip.true_tag == clip.classifier_best_guess:
                 correct += 1
             else:

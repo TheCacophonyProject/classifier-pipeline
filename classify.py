@@ -171,8 +171,7 @@ class ClipClassifier(CPTVFileProcessor):
         num_labels = len(self.classifier.labels)
         prediction_smooth = 0.1
 
-        # start with a uniform prior.  I.e. all classes are equally likely.
-        smooth_prediction = np.ones([num_labels]) * (1/num_labels)
+        smooth_prediction = None
 
         # go through making classifications at each frame
         # note: we should probably be doing this every 9 frames or so.
@@ -184,7 +183,13 @@ class ClipClassifier(CPTVFileProcessor):
             frame = tracker.get_track_channels(track, i)
             frame = self.preprocess(frame, thermal_reference)
             prediction, state = self.classifier.classify_frame(frame, state)
-            smooth_prediction = (1-prediction_smooth) * smooth_prediction + prediction_smooth * prediction
+            if smooth_prediction is None:
+                # start with uniform distributoin.  This is the safest best.
+                #smooth_prediction = np.ones([num_labels]) * (1 / num_labels)
+                # start with initial prediction, less safe but faster predictions
+                smooth_prediction = prediction
+            else:
+                smooth_prediction = (1-prediction_smooth) * smooth_prediction + prediction_smooth * prediction
             predictions.append(smooth_prediction)
 
         return TrackPrediction(predictions)
@@ -428,10 +433,15 @@ class ClipClassifier(CPTVFileProcessor):
 
         # turn up sensitivity on tracking so we can catch more animals.  The classifier will sort out the false
         # positives.
-        tracker.track_min_duration = 1.0
-        tracker.track_min_offset = 0.0
-        tracker.track_min_delta = 0.0
+        tracker.track_min_duration = 0.0
+        tracker.track_min_offset = 4.0
+        tracker.track_min_delta = 1.0
         tracker.track_min_mass = 1.0
+
+        # turn off more tracking filters
+        tracker.STATIC_BACKGROUND_THRESHOLD = None
+        tracker.MAX_MEAN_TEMPERATURE_THRESHOLD = None
+        tracker.MAX_TEMPERATURE_RANGE_THRESHOLD = None
 
         tracker.high_quality_optical_flow = self.high_quality_optical_flow
 

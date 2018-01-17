@@ -435,17 +435,17 @@ class TrackExtractor:
             return False
 
         # exclude clips with moving backgrounds
-        if background_stats.average_delta > self.STATIC_BACKGROUND_THRESHOLD:
+        if self.STATIC_BACKGROUND_THRESHOLD and background_stats.average_delta > self.STATIC_BACKGROUND_THRESHOLD:
             self.reject_reason = "Moving background"
             return False
 
         # don't process clips that are too hot.
-        if background_stats.mean_temp > self.MAX_MEAN_TEMPERATURE_THRESHOLD:
+        if self.MAX_MEAN_TEMPERATURE_THRESHOLD and background_stats.mean_temp > self.MAX_MEAN_TEMPERATURE_THRESHOLD:
             self.reject_reason = "Mean temp too high {}".format(background_stats.mean_temp)
             return False
 
         # don't process clips with too large of a temperature difference
-        if background_stats.max_temp - background_stats.min_temp > self.MAX_TEMPERATURE_RANGE_THRESHOLD:
+        if self.MAX_TEMPERATURE_RANGE_THRESHOLD and (background_stats.max_temp - background_stats.min_temp > self.MAX_TEMPERATURE_RANGE_THRESHOLD):
             self.reject_reason = "Temp delta too high {}".format(background_stats.max_temp - background_stats.min_temp)
             return False
 
