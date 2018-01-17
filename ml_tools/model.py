@@ -63,6 +63,10 @@ class Model:
         # 100 should give results to within a few percent.
         self.eval_samples = 500
 
+        # number of samples to use when generating the model report,
+        # atleast 1000 is recommended for a good representation
+        self.report_samples = 2000
+
         # how often to do an evaluation + print
         self.print_every = 6000
 
@@ -338,7 +342,8 @@ class Model:
         :return:
         """
 
-        examples, true_classess = self.datasets.validation.next_batch(self.eval_samples)
+        # get some examples for evaluation
+        examples, true_classess = self.datasets.validation.next_batch(self.report_samples)
         predictions = self.classify_batch(examples)
         predictions = [np.argmax(prediction) for prediction in predictions]
 
@@ -366,7 +371,9 @@ class Model:
             else:
                 correct += 1
 
-        return correct / (correct + errors), f1_scores
+        accuracy = correct / (correct + errors)
+
+        return accuracy, f1_scores
 
     def train_model(self, epochs=10.0, run_name=None):
         """
@@ -392,7 +399,7 @@ class Model:
         best_step = 0
         examples_since_print = 0
         last_epoch_save = 0
-        best_val_loss = float('inf')
+        best_report_acc = 0
 
         # Run the initializer
         init = tf.global_variables_initializer()
@@ -454,14 +461,15 @@ class Model:
                     acc, f1 = self.generate_report()
                     print("results: {:.1f} {}".format(acc*100,["{:.1f}".format(x*100) for x in f1]))
                     print('Save epoch reference')
+                    self.eval_score = acc
                     self.save(os.path.join(CHECKPOINT_FOLDER, "training-epoch-{:02d}.sav".format(int(epoch))))
                     last_epoch_save = int(epoch)
 
-                if val_loss < best_val_loss:
-                    print('Save best model')
-                    self.save(os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
-                    best_val_loss = val_loss
-                    best_step = i
+                    if acc > best_report_acc:
+                        print('Save best model')
+                        self.save(os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
+                        best_report_acc = acc
+                        best_step = i
 
                 eval_time = 0
                 train_time = 0

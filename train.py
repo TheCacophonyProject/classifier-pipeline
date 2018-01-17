@@ -16,8 +16,9 @@ import datetime
 import tensorflow as tf
 
 from model_crnn import ModelCRNN
+from model_crnn_lq import ModelCRNN_LQ
 
-# folder to put tensorboard logs into
+# folder to put tensor board logs into
 LOG_FOLDER = "c:/cac/test_robin/"
 # dataset folder to use
 DATASET_FOLDER = "c:/cac/robin"
@@ -33,11 +34,11 @@ def main():
     dsets = pickle.load(open(dataset_name,'rb'))
     labels = dsets[0].labels
 
-    model = ModelCRNN(labels=len(labels))
+    model = ModelCRNN_LQ(labels=len(labels))
     model.import_dataset(dataset_name)
     model.log_dir = LOG_FOLDER
 
-    # display the dataset summary
+    # display the data set summary
     print("Training on labels: ",labels)
     for label in labels:
         print("{:<20} {:<20} {:<20} {:<20}".format(
@@ -58,7 +59,7 @@ def main():
         print(model.hyperparams_string)
         print()
         print("{0:.1f}K training examples".format(model.rows / 1000))
-        model.train_model(epochs=30, run_name='new_robin/v4 normalisation built into model (fixed)/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        model.train_model(epochs=30, run_name='new_robin/LQ V1/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         model.save()
     finally:
         model.close()
