@@ -28,6 +28,7 @@ class Model:
 
         self.name = "model"
         self.session = session or tools.get_session()
+        self.saver = None
 
         # datasets
         self.datasets = namedtuple('Datasets', 'train, validation, test')
@@ -278,11 +279,9 @@ class Model:
                                             run_metadata=run_metadata)
 
         # write out hyper-params
-        hp_summary_op = tf.summary.text('hyperparams', tf.convert_to_tensor(str(self.hyperparams_string)))
-        hp_summary = self.session.run(hp_summary_op)
+        self.log_text('hyperparams', self.hyperparams_string)
         for writer in [self.writer_train, self.writer_val]:
             writer.add_run_metadata(run_metadata, 'benchmark')
-            writer.add_summary(hp_summary)
 
 
     def setup_summary_writers(self, run_name):
@@ -309,6 +308,23 @@ class Model:
         writer.add_summary(
             tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)]),
             global_step=self.step)
+
+    def log_text(self, tag, value, writer=None):
+        """
+        Writes a scalar to summary writer.
+        :param tag: tag to use
+        :param value: value to write
+        :param writer: (optional) summary writer.  Defaults to writer_val
+        """
+        if writer is None:
+            writer = self.writer_val
+
+        text_tensor = tf.make_tensor_proto(str(value), dtype=tf.string)
+        meta = tf.SummaryMetadata()
+        meta.plugin_data.plugin_name = "text"
+        summary = tf.Summary()
+        summary.value.add(tag=tag, metadata=meta, tensor=text_tensor)
+        writer.add_summary(summary)
 
     def log_image(self, tag, image, writer=None):
         """
@@ -408,6 +424,13 @@ class Model:
         # setup writers and run a quick benchmark
         print("Initialising summary writers at {}.".format(os.path.join(self.log_dir, run_name)))
         self.setup_summary_writers(run_name)
+
+        # setup a saver
+        self.saver = tf.train.Saver()
+
+        # freeze graph so no modifications can be mode
+        self.freeze()
+
         print("Starting benchmark.")
         self.benchmark_model()
         print("Training...")
@@ -491,9 +514,7 @@ class Model:
 
         self.eval_score = self.eval_model()
 
-        summary_op = tf.summary.text('metric/final_score', tf.convert_to_tensor(str(self.eval_score)))
-        summary = self.session.run(summary_op)
-        self.writer_val.add_summary(summary)
+        self.log_text('metric/final_score', self.eval_score)
 
         if self.enable_async_loading:
             self.stop_async()
@@ -529,8 +550,7 @@ class Model:
                 score_part = score_part + "0"
             filename = os.path.join("./models/", self.MODEL_NAME + '-' + score_part)
 
-        saver = tf.train.Saver()
-        saver.save(self.session, filename)
+        self.saver.save(self.session, filename)
 
         # save some additional data
         model_stats = {}
@@ -545,6 +565,8 @@ class Model:
 
     def load(self, filename):
         """ Loads model and parameters from file. """
+
+        print("Loading model {}".format(filename))
 
         saver = tf.train.import_meta_graph(filename+'.meta', clear_devices=True)
         saver.restore(self.session, filename)
@@ -563,13 +585,11 @@ class Model:
 
     def save_params(self, filename):
         """ Saves model parameters. """
-        saver = tf.train.Saver()
-        saver.save(self.session, filename)
+        self.saver.save(self.session, filename)
 
     def restore_params(self, filename):
         """ Restores model parameters. """
-        saver = tf.train.Saver()
-        saver.restore(self.session, filename)
+        self.saver.restore(self.session, filename)
 
     def _attach_nodes(self):
         """ Gets references to key nodes in graph. """
@@ -590,6 +610,10 @@ class Model:
         self.global_step = graph.get_tensor_by_name("global_step:0")
         self.state_out = graph.get_tensor_by_name("state_out:0")
         self.state_in = graph.get_tensor_by_name("state_in:0")
+
+    def freeze(self):
+        """ Freezes graph so that no additional changes can be made. """
+        self.session.graph.finalize()
 
     def classify_frame(self, frame, state=None):
         """

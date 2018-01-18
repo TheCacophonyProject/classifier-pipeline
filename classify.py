@@ -434,9 +434,9 @@ class ClipClassifier(CPTVFileProcessor):
         # turn up sensitivity on tracking so we can catch more animals.  The classifier will sort out the false
         # positives.
         tracker.track_min_duration = 0.0
-        tracker.track_min_offset = 4.0
+        tracker.track_min_offset = 0.0
         tracker.track_min_delta = 1.0
-        tracker.track_min_mass = 1.0
+        tracker.track_min_mass = 0.0
 
         # turn off more tracking filters
         tracker.STATIC_BACKGROUND_THRESHOLD = None

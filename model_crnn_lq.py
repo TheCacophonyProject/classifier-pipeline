@@ -38,7 +38,7 @@ class ModelCRNN_LQ(Model):
 
         # model params
         'batch_norm': True,
-        'lstm_units': 128,
+        'lstm_units': 256,
 
         # augmentation
         'augmentation': True,
@@ -116,7 +116,7 @@ class ModelCRNN_LQ(Model):
         :param name: name of summary
         """
         tf.summary.histogram(name, input)
-        tf.summary.image(name+'/image', input[-2:-1], max_outputs=1)
+        tf.summary.image(name, input[-2:-1], max_outputs=1)
 
     def _build_model(self, label_count):
         ####################################
@@ -150,8 +150,8 @@ class ModelCRNN_LQ(Model):
         X = self.X  # [B, F, C, H, W]
 
         # normalise the thermal
-        thermal = X[:, :, 0:0+1]
-        thermal = tf.nn.relu(thermal - self.params['thermal_threshold']) + self.params['thermal_threshold']
+        raw_thermal = X[:, :, 0:0+1]
+        thermal = tf.nn.relu(raw_thermal - self.params['thermal_threshold']) + self.params['thermal_threshold']
         thermal = thermal * (1/32)
 
         # normalise the flow
@@ -163,19 +163,23 @@ class ModelCRNN_LQ(Model):
 
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
-        thermal = tf.transpose(thermal, (0, 1, 3, 4, 2))    #[B, F, H, W, 1]
-        flow = tf.transpose(flow, (0, 1, 3, 4, 2))          # [B, F, H, W, 2]
+        raw_thermal = tf.transpose(raw_thermal, (0, 1, 3, 4, 2))  # [B, F, H, W, 1]
+        raw_thermal = tf.reshape(raw_thermal, [-1, 48, 48, 1])  # [B*F, 48, 48, 1]
 
+        thermal = tf.transpose(thermal, (0, 1, 3, 4, 2))    #[B, F, H, W, 1]
         thermal = tf.reshape(thermal, [-1, 48, 48, 1])      # [B*F, 48, 48, 1]
+
+        flow = tf.transpose(flow, (0, 1, 3, 4, 2))  # [B, F, H, W, 2]
         flow = tf.reshape(flow, [-1, 48, 48, 2])            # [B*F, 48, 48, 2]
 
         mask = tf.reshape(mask, [-1, 48, 48, 1])            # [B*F, 48, 48, 1]
 
         # save distribution of inputs
-        self.save_input_summary(thermal, 'inputs/thermal')
-        self.save_input_summary(flow[:, :, :, 0:0+1], 'inputs/flow/h')
-        self.save_input_summary(flow[:, :, :, 1:1+1], 'inputs/flow/v')
-        self.save_input_summary(mask, 'inputs/mask')
+        self.save_input_summary(raw_thermal, 'inputs/01-raw')
+        self.save_input_summary(thermal, 'inputs/02-thermal')
+        self.save_input_summary(flow[:, :, :, 0:0+1], 'inputs/flow/03-flow-h')
+        self.save_input_summary(flow[:, :, :, 1:1+1], 'inputs/flow/04-flow-v')
+        self.save_input_summary(mask, 'inputs/05-mask')
 
         layer = thermal
         layer = self.conv_layer('filtered/1', layer, 32, [3, 3], conv_stride=2)
