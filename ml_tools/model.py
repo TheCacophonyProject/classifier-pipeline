@@ -361,12 +361,12 @@ class Model:
         # get some examples for evaluation
         examples, true_classess = self.datasets.validation.next_batch(self.report_samples)
         predictions = self.classify_batch(examples)
-        predictions = [np.argmax(prediction) for prediction in predictions]
+        predicted_classes = [np.argmax(prediction) for prediction in predictions]
 
-        pred_label = [self.labels[x] for x in predictions]
+        pred_label = [self.labels[x] for x in predicted_classes]
         true_label = [self.labels[x] for x in true_classess]
 
-        cm = tools.get_confusion_matrix(pred_class=predictions, true_class=true_classess, classes=self.labels)
+        cm = tools.get_confusion_matrix(pred_class=predicted_classes, true_class=true_classess, classes=self.labels)
         f1_scores = metrics.f1_score(y_true=true_label, y_pred=pred_label, labels=self.labels, average=None)
 
         fig = visualise.plot_confusion_matrix(cm, self.labels)

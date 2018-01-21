@@ -115,7 +115,7 @@ class ModelCRNN_LQ(Model):
         :param input: tensor of shape [B*F, H, W]
         :param name: name of summary
         """
-        tf.summary.histogram(name, input)
+        tf.summary.histogram(name+"/hist", input)
         tf.summary.image(name, input[-2:-1], max_outputs=1)
 
     def _build_model(self, label_count):

@@ -28,7 +28,7 @@ from ml_tools.trackdatabase import TrackDatabase
 class TrackHeader:
     """ Header for track. """
 
-    def __init__(self, clip_id, track_number, label, start_time, duration, camera, score, thermal_reference_level):
+    def __init__(self, clip_id, track_number, label, start_time, duration, camera, score):
         # reference to clip this segment came from
         self.clip_id = clip_id
         # reference to track this segment came from
@@ -46,7 +46,10 @@ class TrackHeader:
         # score of track
         self.score = score
         # thermal reference point for each frame.
-        self.thermal_reference_level = thermal_reference_level
+        self.thermal_reference_level = None
+        # tracking frame movements for each frame, array of tuples (x-vel, y-vel)
+        self.frame_velocity = None
+
 
     @property
     def track_id(self):
@@ -82,16 +85,30 @@ class TrackHeader:
         # get the reference levels from clip_meta and load them into the track.
         track_start_frame = track_meta['start_frame']
         track_end_frame = track_meta['start_frame'] + int(round(track_meta['duration']*9))
-        thermal_reference_level = np.float32(clip_meta['frame_temp_median'][track_start_frame:track_end_frame+1])
+        thermal_reference_level = np.float32(clip_meta['frame_temp_median'][track_start_frame:track_end_frame])
+
+        # calculate the frame velocities
+        bounds_history = track_meta['bounds_history']
+        frame_center = [((left + right)/2, (top + bottom)/2) for left, top, right, bottom in bounds_history]
+        frame_velocity = []
+        prev = None
+        for x, y in frame_center:
+            if prev is None:
+                frame_velocity.append((0.0,0.0))
+            else:
+                frame_velocity.append((x-prev[0], y-prev[1]))
+            prev = (x, y)
 
         result = TrackHeader(
             clip_id=clip_id, track_number=track_meta['id'], label=track_meta['tag'],
             start_time=parser.parse(track_meta['start_time']),
             duration=float(track_meta['duration']),
             camera=camera,
-            score=float(track_meta['score']),
-            thermal_reference_level=thermal_reference_level
+            score=float(track_meta['score'])
         )
+        result.thermal_reference_level = thermal_reference_level
+        result.frame_velocity = frame_velocity
+
         return result
 
     def __repr__(self):
@@ -131,6 +148,11 @@ class SegmentHeader:
     def name(self):
         """ Unique name of this segment. """
         return self.clip_id + '-' + str(self.track_number) + '-' + str(self.start_frame)
+
+    @property
+    def frame_velocity(self):
+        # tracking frame velocity for each frame.
+        return self.track.frame_velocity[self.start_frame:self.start_frame + self.frames]
 
     @property
     def thermal_reference_level(self):

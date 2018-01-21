@@ -384,7 +384,7 @@ def main():
     else:
         datasets = split_dataset_days()
 
-    pickle.dump(datasets,open(os.path.join(DATASET_FOLDER,'datasets.dat'),'wb'))
+    pickle.dump(datasets,open(os.path.join(DATASET_FOLDER,'datasets_with_motion_vectors.dat'),'wb'))
 
 
 if __name__ == "__main__":

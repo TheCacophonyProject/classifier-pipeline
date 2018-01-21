@@ -289,6 +289,7 @@ class FrameBuffer:
             # but also make sure they fit within an int16
             scaled_flow = np.clip(flow * 256, -16000, 16000)
             self.flow.append(scaled_flow)
+
     def reset(self):
         """
         Empties buffer
