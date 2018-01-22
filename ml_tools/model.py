@@ -380,15 +380,12 @@ class Model:
         f1_scores = metrics.f1_score(y_true=true_label, y_pred=pred_label, labels=self.labels, average=None)
 
         fig = visualise.plot_confusion_matrix(cm, self.labels)
-        fig.canvas.draw()
-        data = fig.canvas.tostring_rgb()
-        ncols, nrows = fig.canvas.get_width_height()
-        img = np.fromstring(data, dtype=np.uint8).reshape(nrows, ncols, 3)
-        self.log_image("confusion_matrix", img)
+        self.log_image("confusion_matrix", visualise.fig_to_numpy(fig))
         plt.close()
 
         for label_number, label in enumerate(self.labels):
             self.log_scalar("f1/" + label, f1_scores[label_number])
+        self.log_scalar("f1/score", np.mean(f1_scores))
 
         errors = correct = 0
         for pred, true in zip(pred_label, true_label):
@@ -396,6 +393,10 @@ class Model:
                 errors += 1
             else:
                 correct += 1
+
+        # generate a graph to show confidence levels
+        fig = visualise.plot_confidence_by_class(predictions, true_label, self.labels)
+        self.log_image("confidence_scores", visualise.fig_to_numpy(fig))
 
         accuracy = correct / (correct + errors)
 
