@@ -216,15 +216,25 @@ class Model:
 
         return batch_accuracy, batch_loss
 
-    def get_feed_dict(self, X, y, is_training=False):
-        """ returns a feed dictionary for TensorFlow placeholders. """
-        return {
-            self.X: X[:, 0:self.training_segment_frames + 1],          # limit number of frames per segment passed to trainer
+    def get_feed_dict(self, X, y=None, is_training=False, state_in=None):
+        """
+        Returns a feed dictionary for TensorFlow placeholders.
+        :param X: The examples to classify
+        :param y: (optional) the labels for each example
+        :param is_training: (optional) boolean indicating if we are training or not.
+        :param state_in: (optional) states from previous classification.  Used to maintain internal state across runs
+        :return:
+        """
+        result = {
+            self.X: X[:, 0:self.training_segment_frames],        # limit number of frames per segment passed to trainer
             self.y: y,
             self.keep_prob: self.params['keep_prob'] if is_training else 1.0,
             self.is_training: is_training,
             self.global_step: self.step
         }
+        if state_in is not None:
+            result[self.state_in] = state_in
+        return result
 
     def classify_batch(self, batch_X):
         """
@@ -266,7 +276,7 @@ class Model:
         # we actually train on this batch, which shouldn't hurt.
         # the reason this is necessary is we need to get the true performance cost of the back-prob.
         X, y = self.datasets.train.next_batch(self.batch_size)
-        feed_dict = self.get_feed_dict(X, y, True)
+        feed_dict = self.get_feed_dict(X, y, is_training=True)
 
         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
@@ -591,6 +601,21 @@ class Model:
         """ Restores model parameters. """
         self.saver.restore(self.session, filename)
 
+    def get_tensor(self, name, none_if_not_found=False):
+        """
+        Returns a reference to tensor by given name.
+        :param name: name of tensor
+        :param none_if_not_found: if true none is returned if tensor is not found otherwise an exception is thrown.
+        :return: the tensor
+        """
+        try:
+            return self.session.graph.get_tensor_by_name(name+":0")
+        except KeyError as e:
+            if none_if_not_found:
+                return None
+            else:
+                raise e
+
     def _attach_nodes(self):
         """ Gets references to key nodes in graph. """
 
@@ -603,13 +628,13 @@ class Model:
         self.train_op=graph.get_operation_by_name("train_op")
 
         # attach to IO tensors
-        self.X = graph.get_tensor_by_name("X:0")
-        self.y = graph.get_tensor_by_name("y:0")
-        self.keep_prob = graph.get_tensor_by_name("keep_prob:0")
-        self.is_training = graph.get_tensor_by_name("training:0")
-        self.global_step = graph.get_tensor_by_name("global_step:0")
-        self.state_out = graph.get_tensor_by_name("state_out:0")
-        self.state_in = graph.get_tensor_by_name("state_in:0")
+        self.X = self.get_tensor('X')
+        self.y = self.get_tensor('y')
+        self.keep_prob = self.get_tensor('keep_prob')
+        self.is_training = self.get_tensor('training')
+        self.global_step = self.get_tensor('global_step')
+        self.state_out = self.get_tensor('state_out')
+        self.state_in = self.get_tensor('state_in')
 
     def freeze(self):
         """ Freezes graph so that no additional changes can be made. """
@@ -620,6 +645,7 @@ class Model:
         Classify a single frame.
         :param frame: numpy array of dims [C, H, W]
         :param state: the previous state, or none for initial frame.
+        :param frame_motion: the movement of the tracking frame as a tuple (dx, dy)
         :return: tuple (prediction, state).  Where prediction is score for each class
         """
         if state is None:
@@ -627,8 +653,7 @@ class Model:
             state = np.zeros([1, state_shape[1], state_shape[2]], dtype=np.float32)
 
         batch_X = frame[np.newaxis,np.newaxis,:]
-        feed_dict = self.get_feed_dict(batch_X, [0])
-        feed_dict[self.state_in] = state
+        feed_dict = self.get_feed_dict(batch_X, state_in=state)
         pred, state = self.session.run([self.prediction, self.state_out], feed_dict=feed_dict)
         pred = pred[0]
         return pred, state

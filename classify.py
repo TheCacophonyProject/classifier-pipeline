@@ -27,6 +27,9 @@ HERE = os.path.dirname(__file__)
 RESOURCES_PATH = os.path.join(HERE, "resources")
 MODEL_NAME = "model_lq"
 
+# folders that are not processed when run with 'all'
+IGNORE_FOLDERS = ['untagged']
+
 
 def resource_path(name):
     return os.path.join(RESOURCES_PATH, name)
@@ -411,7 +414,7 @@ class ClipClassifier(CPTVFileProcessor):
     def process_all(self, root):
         for root, folders, files in os.walk(root):
             for folder in folders:
-                if folder not in ['untagged']:
+                if folder not in IGNORE_FOLDERS:
                     self.process_folder(os.path.join(root,folder), tag=folder.lower())
 
     def process_file(self, filename, **kwargs):

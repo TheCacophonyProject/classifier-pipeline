@@ -30,7 +30,7 @@ def main():
     logging.basicConfig(level=0)
     tf.logging.set_verbosity(3)
 
-    dataset_name = os.path.join(DATASET_FOLDER, 'datasets.dat')
+    dataset_name = os.path.join(DATASET_FOLDER, 'datasets_with_motion_vectors.dat')
     dsets = pickle.load(open(dataset_name,'rb'))
     labels = dsets[0].labels
 
@@ -59,7 +59,7 @@ def main():
         print(model.hyperparams_string)
         print()
         print("{0:.1f}K training examples".format(model.rows / 1000))
-        model.train_model(epochs=30, run_name='production runs/HQ v1'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        model.train_model(epochs=30, run_name='optical flow/Thermal Only/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         model.save()
     finally:
         model.close()

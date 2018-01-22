@@ -137,7 +137,7 @@ class ModelCRNN(Model):
         zero_state = tf.zeros(shape=[batch_size, 384, 2], dtype=tf.float32)
         self.state_in = tf.placeholder_with_default(input=zero_state, shape=[None, 384, 2], name='state_in')
 
-        # Create some placeholder varaibles with defaults if not specified
+        # Create some placeholder variables with defaults if not specified
         self.keep_prob = tf.placeholder_with_default(tf.constant(1.0, tf.float32), [], name='keep_prob')
         self.is_training = tf.placeholder_with_default(tf.constant(False, tf.bool), [], name='training')
         self.global_step = tf.placeholder_with_default(tf.constant(0, tf.int32), [], name='global_step')
@@ -198,8 +198,7 @@ class ModelCRNN(Model):
         motion_out = tf.reshape(motion_conv, [-1, frame_count, tools.product(motion_conv.shape[1:])], name='motion/out')
 
         out = tf.concat((filtered_out, motion_out), axis=2, name='out')
-
-        logging.info('Output shape {} from {}, {}'.format(out.shape, filtered_out.shape, motion_out.shape))
+        logging.info('Output shape {}'.format(out.shape))
 
         # run the LSTM
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params['lstm_units'])
