@@ -426,7 +426,7 @@ class Model:
         self.setup_summary_writers(run_name)
 
         # setup a saver
-        self.saver = tf.train.Saver()
+        self.saver = tf.train.Saver(max_to_keep=1000)
 
         # freeze graph so no modifications can be mode
         self.freeze()
