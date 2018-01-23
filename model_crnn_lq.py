@@ -59,9 +59,9 @@ class ModelCRNN_LQ(Model):
         """ Adds a convolutional layer to the model. """
         tf.summary.histogram(name + '/input', input_layer)
         conv = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
-                                 strides=(conv_stride, conv_stride),
-                                 padding="same", activation=None,
-                                 name=name + '/conv')
+                                strides=(conv_stride, conv_stride),
+                                padding="same", activation=None,
+                                name=name + '/conv')
 
         conv_weights = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, name + '/conv/kernel')[0]
 
@@ -89,9 +89,9 @@ class ModelCRNN_LQ(Model):
 
         if pool_stride != 1:
             out = tf.layers.max_pooling2d(inputs=out, pool_size=[pool_stride, pool_stride],
-                                            strides=pool_stride,
-                                            name=name + "/max_pool"
-                                            )
+                                          strides=pool_stride,
+                                          name=name + "/max_pool"
+                                          )
         return out
 
     def create_summaries(self, name, var):
@@ -115,33 +115,34 @@ class ModelCRNN_LQ(Model):
         :param input: tensor of shape [B*F, H, W]
         :param name: name of summary
         """
-        tf.summary.histogram(name+"/hist", input)
-        tf.summary.image(name, input[-2:-1], max_outputs=1)
+        tf.summary.histogram(name, input)
+        tf.summary.image(name + '/image', input[-2:-1], max_outputs=1)
 
     def _build_model(self, label_count):
         ####################################
         # CNN + LSTM
         # based on https://arxiv.org/pdf/1507.06527.pdf
         ####################################
-        
+
         # dimensions are documents as follows
         # B batch size
         # F frames per segment
-        # C channels 
+        # C channels
         # H frame height
         # W frame width
 
         # Setup placeholders
-        self.X = tf.placeholder(tf.float32, [None, None, 5, 48, 48], name='X')          # [B, F, C, H, W]
+        self.X = tf.placeholder(tf.float32, [None, None, 5, 48, 48], name='X')  # [B, F, C, H, W]
         self.y = tf.placeholder(tf.int64, [None], name='y')
         frame_count = tf.shape(self.X)[1]
         batch_size = tf.shape(self.X)[0]
 
         # State input allows for processing longer sequences
         zero_state = tf.zeros(shape=[batch_size, self.params['lstm_units'], 2], dtype=tf.float32)
-        self.state_in = tf.placeholder_with_default(input=zero_state, shape=[None, self.params['lstm_units'], 2], name='state_in')
+        self.state_in = tf.placeholder_with_default(input=zero_state, shape=[None, self.params['lstm_units'], 2],
+                                                    name='state_in')
 
-        # Create some placeholder varaibles with defaults if not specified
+        # Create some placeholder variables with defaults if not specified
         self.keep_prob = tf.placeholder_with_default(tf.constant(1.0, tf.float32), [], name='keep_prob')
         self.is_training = tf.placeholder_with_default(tf.constant(False, tf.bool), [], name='training')
         self.global_step = tf.placeholder_with_default(tf.constant(0, tf.int32), [], name='global_step')
@@ -150,36 +151,32 @@ class ModelCRNN_LQ(Model):
         X = self.X  # [B, F, C, H, W]
 
         # normalise the thermal
-        raw_thermal = X[:, :, 0:0+1]
-        thermal = tf.nn.relu(raw_thermal - self.params['thermal_threshold']) + self.params['thermal_threshold']
-        thermal = thermal * (1/32)
+        thermal = X[:, :, 0:0 + 1]
+        thermal = tf.nn.relu(thermal - self.params['thermal_threshold']) + self.params['thermal_threshold']
+        thermal = thermal * (1 / 32)
 
         # normalise the flow
         flow = X[:, :, 2:3 + 1]
-        flow = flow * 10
+        flow = flow * 5
 
         # grab the mask
-        mask = X[:,:,4:4+1]
+        mask = X[:, :, 4:4 + 1]
 
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
-        raw_thermal = tf.transpose(raw_thermal, (0, 1, 3, 4, 2))  # [B, F, H, W, 1]
-        raw_thermal = tf.reshape(raw_thermal, [-1, 48, 48, 1])  # [B*F, 48, 48, 1]
-
-        thermal = tf.transpose(thermal, (0, 1, 3, 4, 2))    #[B, F, H, W, 1]
-        thermal = tf.reshape(thermal, [-1, 48, 48, 1])      # [B*F, 48, 48, 1]
-
+        thermal = tf.transpose(thermal, (0, 1, 3, 4, 2))  # [B, F, H, W, 1]
         flow = tf.transpose(flow, (0, 1, 3, 4, 2))  # [B, F, H, W, 2]
-        flow = tf.reshape(flow, [-1, 48, 48, 2])            # [B*F, 48, 48, 2]
 
-        mask = tf.reshape(mask, [-1, 48, 48, 1])            # [B*F, 48, 48, 1]
+        thermal = tf.reshape(thermal, [-1, 48, 48, 1])  # [B*F, 48, 48, 1]
+        flow = tf.reshape(flow, [-1, 48, 48, 2])  # [B*F, 48, 48, 2]
+
+        mask = tf.reshape(mask, [-1, 48, 48, 1])  # [B*F, 48, 48, 1]
 
         # save distribution of inputs
-        self.save_input_summary(raw_thermal, 'inputs/01-raw')
-        self.save_input_summary(thermal, 'inputs/02-thermal')
-        self.save_input_summary(flow[:, :, :, 0:0+1], 'inputs/flow/03-flow-h')
-        self.save_input_summary(flow[:, :, :, 1:1+1], 'inputs/flow/04-flow-v')
-        self.save_input_summary(mask, 'inputs/05-mask')
+        self.save_input_summary(thermal, 'inputs/thermal')
+        self.save_input_summary(flow[:, :, :, 0:0 + 1], 'inputs/flow/h')
+        self.save_input_summary(flow[:, :, :, 1:1 + 1], 'inputs/flow/v')
+        self.save_input_summary(mask, 'inputs/mask')
 
         layer = thermal
         layer = self.conv_layer('filtered/1', layer, 32, [3, 3], conv_stride=2)
@@ -202,19 +199,19 @@ class ModelCRNN_LQ(Model):
         logging.info("Convolution output shape: {} {}".format(filtered_conv.shape, motion_conv.shape))
 
         # reshape back into segments
-        filtered_out = tf.reshape(filtered_conv, [-1, frame_count, tools.product(filtered_conv.shape[1:])], name='filtered/out')
+        filtered_out = tf.reshape(filtered_conv, [-1, frame_count, tools.product(filtered_conv.shape[1:])],
+                                  name='filtered/out')
         motion_out = tf.reshape(motion_conv, [-1, frame_count, tools.product(motion_conv.shape[1:])], name='motion/out')
 
         out = tf.concat((filtered_out, motion_out), axis=2, name='out')
-
-        logging.info('Output shape {} from {}, {}'.format(out.shape, filtered_out.shape, motion_out.shape))
+        logging.info('Output shape {}'.format(out.shape))
 
         # run the LSTM
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params['lstm_units'])
 
         dropout = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32)
 
-        init_state = tf.nn.rnn_cell.LSTMStateTuple(self.state_in[:,:,0], self.state_in[:,:,1])
+        init_state = tf.nn.rnn_cell.LSTMStateTuple(self.state_in[:, :, 0], self.state_in[:, :, 1])
 
         lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
             cell=dropout, inputs=out,
@@ -226,7 +223,7 @@ class ModelCRNN_LQ(Model):
         lstm_state_1, lstm_state_2 = lstm_states
 
         # just need the last output
-        lstm_output = lstm_outputs[:,-1]
+        lstm_output = lstm_outputs[:, -1]
         lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
 
         logging.info("lstm output shape: {} x {}".format(lstm_outputs.shape[1], lstm_output.shape))
@@ -268,7 +265,7 @@ class ModelCRNN_LQ(Model):
         else:
             learning_rate = self.params['learning_rate']
 
-        # 1e-6 because our data is a bit non normal.
+        # setup optimizer
         optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='Adam')
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
@@ -277,8 +274,8 @@ class ModelCRNN_LQ(Model):
             # note: I can't write out the grads because of problems with NaN
             # his is very concerning as it implies we have a critical problem with training.  Maybe I should try
             # clipping gradients at something very high, say 100?
-            #grads = optimizer.compute_gradients(loss)
-            #for index, grad in enumerate(grads):
+            # grads = optimizer.compute_gradients(loss)
+            # for index, grad in enumerate(grads):
             #    self.create_summaries("grads/{}".format(grads[index][1].name.split(':')[0]), grads[index])
 
         # attach nodes

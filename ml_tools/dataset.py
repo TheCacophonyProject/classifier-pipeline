@@ -187,12 +187,6 @@ class Dataset:
     # In general if worker threads is one set this to False, if it is two or more set it to True.
     PROCESS_BASED = True
 
-    # Flow modes:
-    FM_NONE = 'none'            # No motion information
-    FM_MOTION_VECTORS = 'mv'    # Frame motion vectors only
-    FM_OPTICAL_FLOW = 'flow'    # Optical flow only
-    FM_FLOW_AND_MV = 'both'     # Optical flow + frame motion vectors
-
     def __init__(self, track_db: TrackDatabase, name="Dataset"):
 
         # database holding track data
@@ -207,8 +201,8 @@ class Dataset:
         self.tracks_by_label = {}
         self.tracks_by_bin = {}
 
-        # the type of motion to pass to the classifier.
-        self.flow_mode = self.FM_OPTICAL_FLOW
+        # writes the frame motion into the center of the optical flow channels
+        self.encode_frame_offsets_in_flow = False
 
         # cumulative distribution function for segments.  Allows for super fast weighted random sampling.
         self.segment_cdf = []
@@ -442,7 +436,7 @@ class Dataset:
         :return: segment data of shape [frames, channels, height, width]
         """
         data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
-        data = self.apply_preprocessing(data, track.thermal_reference_level)
+        data = self.apply_preprocessing(data, track.thermal_reference_level, track.frame_velocity)
         return data
 
     def fetch_segment(self, segment: SegmentHeader, augment=False):
@@ -476,50 +470,19 @@ class Dataset:
         if len(data) != self.segment_width:
             print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)
 
-        data = self.apply_preprocessing(data, segment.thermal_reference_level)
+        data = self.apply_preprocessing(data, segment.thermal_reference_level, segment.frame_velocity)
 
         if augment:
             data = self.apply_augmentation(data)
 
-        data = self.apply_flow_mode(data, segment.frame_velocity)
-
         return data
 
-    def apply_flow_mode(self, data, motion_vectors):
-        """
-        Applies the current flow mode to given data.
-        :param data: the frame data, numpy array of dims [F, C, H, W]
-        :param motion_vectors: motion_vector data of dims [F, 2]
-        :return:
-        """
-        if self.flow_mode == self.FM_NONE:
-            # zero the motion data
-            data[:, 2:3+1] = 0
-        elif self.flow_mode == self.FM_MOTION_VECTORS:
-            # write the motion vectors out over the optical flow data
-            motion_vectors = np.asarray(motion_vectors)
-            data[:, 2:3+1, :, :] = motion_vectors[:, :, np.newaxis, np.newaxis]
-        elif self.flow_mode == self.FM_OPTICAL_FLOW:
-            # this is the default so nothing to do.
-            pass
-        elif self.flow_mode == self.FM_FLOW_AND_MV:
-            # encode the motion vectors in the corners of the optical flow data.
-            motion_vectors = np.asarray(motion_vectors)
-            for x in range(4):
-                for y in range(4):
-                    data[:, 2:3 + 1, x, y] = motion_vectors[:, :]
-                    data[:, 2:3 + 1, -x, -y] = motion_vectors[:, :]
-        else:
-            raise Exception("Invalid optical flow mode {}".format(self.flow_mode))
-
-        return data
-
-
-    def apply_preprocessing(self, data, reference_level):
+    def apply_preprocessing(self, data, reference_level, frame_velocity=None):
         """
         Applies pre-processing to segment data.  For example mapping optical flow down to the right level.
         :param data: np array of shape [F, C, H, W]
         :param reference_level: thermal reference level for each frame in data
+        :param frame_velocity: veloctiy (x,y) for each frame.
         """
 
         # the segment will be processed in float32 so we may aswell convert it here.
@@ -534,6 +497,13 @@ class Dataset:
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
         data[:, 2:3 + 1, :, :] *= (1/256)
+
+        # write frame motion into center of frame
+        if self.encode_frame_offsets_in_flow:
+            F, C, H, W = data.shape
+            for x in range(-2,2+1):
+                for y in range(-2,2+1):
+                    data[:, 2:3 + 1, H//2+y, W//2+x] = frame_velocity[:, :]
 
         return data
 

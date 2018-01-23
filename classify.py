@@ -25,7 +25,7 @@ from ml_tools.trackextractor import TrackExtractor, Track, Region
 DEFAULT_BASE_PATH = "c:\\cac"
 HERE = os.path.dirname(__file__)
 RESOURCES_PATH = os.path.join(HERE, "resources")
-MODEL_NAME = "model_lq"
+MODEL_NAME = "model_hq"
 
 # folders that are not processed when run with 'all'
 IGNORE_FOLDERS = ['untagged']
@@ -101,6 +101,8 @@ class TrackPrediction:
 
 class ClipClassifier(CPTVFileProcessor):
     """ Classifies tracks within CPTV files. """
+
+    FRAME_SKIP = 2
 
     def __init__(self):
         """ Create an instance of a clip classifier"""
@@ -184,8 +186,13 @@ class ClipClassifier(CPTVFileProcessor):
             thermal_reference = np.median(tracker.frame_buffer.thermal[track.start_frame + i])
 
             frame = tracker.get_track_channels(track, i)
-            frame = self.preprocess(frame, thermal_reference)
-            prediction, state = self.classifier.classify_frame(frame, state)
+            if i % self.FRAME_SKIP == 0:
+                frame = self.preprocess(frame, thermal_reference)
+                prediction, state = self.classifier.classify_frame(frame, state)
+            else:
+                # just continue prediction and state along.
+                pass
+
             if smooth_prediction is None:
                 # start with uniform distributoin.  This is the safest best.
                 #smooth_prediction = np.ones([num_labels]) * (1 / num_labels)

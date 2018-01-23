@@ -166,12 +166,31 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         for root, folders, files in os.walk(root):
             for folder in folders:
                 if folder not in EXCLUDED_FOLDERS:
-                    if folder.lower == "false-positive":
+                    if folder.lower() == "false-positive":
                         self.disable_track_filters = True
-                    self.process_folder(os.path.join(root,folder), tag=folder.lower(), worker_pool_args=(trackdatabase.hdf5_lock,))
-                    if folder.lower == "false-positive":
+                        print("Turning Track filters OFF.")
+                    self.process_folder(os.path.join(root, folder), tag=folder.lower(), worker_pool_args=(trackdatabase.hdf5_lock,))
+                    if folder.lower() == "false-positive":
+                        print("Restoring Track filters.")
                         self.disable_track_filters = previous_filter_setting
 
+
+
+    def clean_tag(self, tag):
+        """
+        Removes all clips with given tag.
+        :param tag: label to remove
+        """
+        print("removing tag {}".format(tag))
+
+        ids = self.database.get_all_track_ids()
+        for (clip_id, track_number) in ids:
+            if not self.database.has_clip(clip_id):
+                continue
+            meta = self.database.get_track_meta(clip_id, track_number)
+            if meta['tag'] == tag:
+                print("removing", clip_id)
+                self.database.remove_clip(clip_id)
 
 
     def clean_all(self):
@@ -180,7 +199,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         tracks than specified in hints file.
         """
 
-        for clip_id, max_tracks in self.hints.items():
+        for clip_id, max_tracks in self.hints.items( ):
             if self.database.has_clip(clip_id):
                 if max_tracks == 0:
                     print(" - removing banned clip {}".format(clip_id))

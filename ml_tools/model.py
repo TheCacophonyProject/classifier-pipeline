@@ -95,8 +95,6 @@ class Model:
         self.params = {
             # augmentation
             'augmentation': True,
-            'filter_threshold': 20,
-            'filter_noise': 1.0,
             'thermal_threshold': 10,
             'scale_frequency': 0.5,
             # dropout
@@ -129,10 +127,6 @@ class Model:
         self.datasets.validation.enable_augmentation = False
         self.datasets.test.enable_augmentation = False
         for dataset in datasets:
-            dataset.filter_threshold = self.params['filter_threshold']
-            dataset.filtered_noise = self.params['filter_noise']
-            dataset.thermal_threshold = self.params['thermal_threshold']
-
             if ignore_labels:
                 for label in ignore_labels:
                     dataset.remove_label(label)
@@ -440,9 +434,6 @@ class Model:
 
         # setup a saver
         self.saver = tf.train.Saver(max_to_keep=1000)
-
-        # freeze graph so no modifications can be mode
-        self.freeze()
 
         print("Starting benchmark.")
         self.benchmark_model()

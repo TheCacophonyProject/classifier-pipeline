@@ -32,12 +32,10 @@ class ModelCRNN(Model):
 
         # model params
         'batch_norm': True,
-        'lstm_units': 384,
+        'lstm_units': 768,
 
         # augmentation
         'augmentation': True,
-        'filter_threshold': 20,
-        'filter_noise': 1.0,
         'thermal_threshold': 10,
         'scale_frequency': 0.5
     }
@@ -134,8 +132,8 @@ class ModelCRNN(Model):
         batch_size = tf.shape(self.X)[0]
 
         # State input allows for processing longer sequences
-        zero_state = tf.zeros(shape=[batch_size, 384, 2], dtype=tf.float32)
-        self.state_in = tf.placeholder_with_default(input=zero_state, shape=[None, 384, 2], name='state_in')
+        zero_state = tf.zeros(shape=[batch_size, self.params['lstm_units'], 2], dtype=tf.float32)
+        self.state_in = tf.placeholder_with_default(input=zero_state, shape=[None, self.params['lstm_units'], 2], name='state_in')
 
         # Create some placeholder variables with defaults if not specified
         self.keep_prob = tf.placeholder_with_default(tf.constant(1.0, tf.float32), [], name='keep_prob')
@@ -153,6 +151,7 @@ class ModelCRNN(Model):
         # normalise the flow
         flow = X[:, :, 2:3 + 1]
         flow = flow * 10
+        flow = tf.sqrt(tf.abs(flow)) * tf.sign(flow)
 
         # grab the mask
         mask = X[:,:,4:4+1]
@@ -259,7 +258,7 @@ class ModelCRNN(Model):
         else:
             learning_rate = self.params['learning_rate']
 
-        # 1e-6 because our data is a bit non normal.
+        # setup optimizer
         optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='Adam')
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):

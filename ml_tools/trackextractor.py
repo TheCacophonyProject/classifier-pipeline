@@ -234,6 +234,9 @@ class Track:
     def end_time(self):
         return self.start_time + datetime.timedelta(seconds=self.duration)
 
+    def __repr__(self):
+        return "Track:{} frames".format(len(self))
+
     def __len__(self):
         return len(self.bounds_history)
 

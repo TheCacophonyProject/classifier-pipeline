@@ -31,16 +31,16 @@ def main():
     logging.basicConfig(level=0)
     tf.logging.set_verbosity(3)
 
-    dataset_name = os.path.join(DATASET_FOLDER, 'datasets_with_motion_vectors.dat')
+    dataset_name = os.path.join(DATASET_FOLDER, 'datasets.dat')
     dsets = pickle.load(open(dataset_name,'rb'))
     labels = dsets[0].labels
 
-    model = ModelCRNN(labels=len(labels))
+    model = ModelCRNN_LQ(labels=len(labels))
     model.import_dataset(dataset_name)
     model.log_dir = LOG_FOLDER
 
     for dataset in [model.datasets.train, model.datasets.validation, model.datasets.test]:
-        dataset.flow_mode = Dataset.FM_FLOW_AND_MV
+        dataset.flow_mode = Dataset.FM_NONE
 
     # display the data set summary
     print("Training on labels: ",labels)
@@ -63,7 +63,7 @@ def main():
         print(model.hyperparams_string)
         print()
         print("{0:.1f}K training examples".format(model.rows / 1000))
-        model.train_model(epochs=30, run_name='optical flow/thermal + flow + mv/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        model.train_model(epochs=30, run_name='optical flow/LQ/thermal/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         model.save()
     finally:
         model.close()
