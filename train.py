@@ -17,6 +17,7 @@ import tensorflow as tf
 
 from model_crnn import ModelCRNN
 from model_crnn_lq import ModelCRNN_LQ
+from ml_tools.dataset import Dataset
 
 # folder to put tensor board logs into
 LOG_FOLDER = "c:/cac/test_robin/"
@@ -37,6 +38,9 @@ def main():
     model = ModelCRNN(labels=len(labels))
     model.import_dataset(dataset_name)
     model.log_dir = LOG_FOLDER
+
+    for dataset in [model.datasets.train, model.datasets.validation, model.datasets.test]:
+        dataset.flow_mode = Dataset.FM_FLOW_AND_MV
 
     # display the data set summary
     print("Training on labels: ",labels)
@@ -59,7 +63,7 @@ def main():
         print(model.hyperparams_string)
         print()
         print("{0:.1f}K training examples".format(model.rows / 1000))
-        model.train_model(epochs=30, run_name='optical flow/Thermal Only/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        model.train_model(epochs=30, run_name='optical flow/thermal + flow + mv/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         model.save()
     finally:
         model.close()

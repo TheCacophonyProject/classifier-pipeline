@@ -227,11 +227,12 @@ class Model:
         """
         result = {
             self.X: X[:, 0:self.training_segment_frames],        # limit number of frames per segment passed to trainer
-            self.y: y,
             self.keep_prob: self.params['keep_prob'] if is_training else 1.0,
             self.is_training: is_training,
             self.global_step: self.step
         }
+        if y is not None:
+            result[self.y] = y
         if state_in is not None:
             result[self.state_in] = state_in
         return result
@@ -395,8 +396,9 @@ class Model:
                 correct += 1
 
         # generate a graph to show confidence levels
-        fig = visualise.plot_confidence_by_class(predictions, true_label, self.labels)
+        fig = visualise.plot_confidence_by_class(predictions, true_classess, self.labels)
         self.log_image("confidence_scores", visualise.fig_to_numpy(fig))
+        plt.close()
 
         accuracy = correct / (correct + errors)
 

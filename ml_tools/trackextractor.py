@@ -274,7 +274,9 @@ class FrameBuffer:
 
         current = None
         for frame in self.thermal:
-            threshold = np.median(frame)
+            frame = np.float32(frame)
+            # strong filtering helps with the optical flow.
+            threshold = np.median(frame) + 50
             next = np.uint8(np.clip(frame - threshold, 0, 255))
 
             if current is not None:
@@ -458,6 +460,7 @@ class TrackExtractor:
 
         # create optical flow
         self.opt_flow = cv2.createOptFlow_DualTVL1()
+        self.opt_flow.setUseInitialFlow(True)
         if not self.high_quality_optical_flow:
             # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
             self.opt_flow.setTau(1 / 4)

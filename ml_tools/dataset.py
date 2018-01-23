@@ -497,12 +497,14 @@ class Dataset:
             data[:, 2:3+1] = 0
         elif self.flow_mode == self.FM_MOTION_VECTORS:
             # write the motion vectors out over the optical flow data
+            motion_vectors = np.asarray(motion_vectors)
             data[:, 2:3+1, :, :] = motion_vectors[:, :, np.newaxis, np.newaxis]
         elif self.flow_mode == self.FM_OPTICAL_FLOW:
             # this is the default so nothing to do.
             pass
         elif self.flow_mode == self.FM_FLOW_AND_MV:
             # encode the motion vectors in the corners of the optical flow data.
+            motion_vectors = np.asarray(motion_vectors)
             for x in range(4):
                 for y in range(4):
                     data[:, 2:3 + 1, x, y] = motion_vectors[:, :]

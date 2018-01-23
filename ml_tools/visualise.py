@@ -96,8 +96,9 @@ def plot_confidence_by_class(predictions, true_class, labels):
         class_conf_incorrect.append([])
 
     pred_class = [np.argmax(prediction) for prediction in predictions]
+    pred_conf = [predictions[i][x] for i,x in enumerate(pred_class)]
 
-    for conf in predictions:
+    for i, conf in enumerate(pred_conf):
         if true_class[i] == pred_class[i]:
             class_conf_correct[true_class[i]].append(conf)
         else:
