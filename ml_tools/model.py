@@ -652,3 +652,27 @@ class Model:
         pred = pred[0]
         return pred, state
 
+    def create_summaries(self, name, var):
+        """
+        Creates TensorFlow summaries for given tensor
+        :param name: the namespace for the summaries
+        :param var: the tensor
+        """
+        with tf.name_scope(name):
+            mean = tf.reduce_mean(var)
+            tf.summary.scalar('mean', mean)
+            with tf.name_scope('stddev'):
+                stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+            tf.summary.scalar('stddev', stddev)
+            tf.summary.scalar('max', tf.reduce_max(var))
+            tf.summary.scalar('min', tf.reduce_min(var))
+            tf.summary.histogram('histogram', var)
+
+    def save_input_summary(self, input, name):
+        """
+        :param input: tensor of shape [B*F, H, W]
+        :param name: name of summary
+        """
+        tf.summary.histogram(name, input)
+        tf.summary.image(name + '/image', input[-2:-1], max_outputs=1)
+

@@ -15,8 +15,7 @@ import datetime
 
 import tensorflow as tf
 
-from model_crnn import ModelCRNN
-from model_crnn_lq import ModelCRNN_LQ
+from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
 from ml_tools.dataset import Dataset
 
 # folder to put tensor board logs into
@@ -38,9 +37,6 @@ def main():
     model = ModelCRNN_LQ(labels=len(labels))
     model.import_dataset(dataset_name)
     model.log_dir = LOG_FOLDER
-
-    for dataset in [model.datasets.train, model.datasets.validation, model.datasets.test]:
-        dataset.flow_mode = Dataset.FM_NONE
 
     # display the data set summary
     print("Training on labels: ",labels)
