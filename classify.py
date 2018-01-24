@@ -25,7 +25,7 @@ from ml_tools.trackextractor import TrackExtractor, Track, Region
 DEFAULT_BASE_PATH = "c:/cac"
 HERE = os.path.dirname(__file__)
 RESOURCES_PATH = os.path.join(HERE, "resources")
-MODEL_NAME = "default"
+MODEL_NAME = "model_lq_flow"
 
 # folders that are not processed when run with 'all'
 IGNORE_FOLDERS = ['untagged']
@@ -320,8 +320,13 @@ class ClipClassifier(CPTVFileProcessor):
         mpeg.close()
 
     def export_tracking_frame(self, tracker: TrackExtractor, frame_number:int, frame_scale:float):
+        mask = tracker.frame_buffer.mask[frame_number]
+
         filtered = tracker.frame_buffer.filtered[frame_number]
-        tracking_image = tools.convert_heat_to_img(filtered * 3, self.colormap)
+
+        # compose mask with filtered
+        tracking_image = tools.convert_heat_to_img(filtered / 200 + mask, self.colormap, temp_min=0, temp_max=1)
+
         tracking_image = tracking_image.resize((int(tracking_image.width * frame_scale), int(tracking_image.height * frame_scale)), Image.NEAREST)
         return self.draw_track_rectangles(tracker, frame_number, frame_scale, tracking_image)
 
@@ -464,11 +469,6 @@ class ClipClassifier(CPTVFileProcessor):
         tracker.track_min_offset = 0.0
         tracker.track_min_delta = 1.0
         tracker.track_min_mass = 0.0
-
-        # turn off more tracking filters
-        tracker.STATIC_BACKGROUND_THRESHOLD = None
-        tracker.MAX_MEAN_TEMPERATURE_THRESHOLD = None
-        tracker.MAX_TEMPERATURE_RANGE_THRESHOLD = None
 
         tracker.high_quality_optical_flow = self.high_quality_optical_flow
 

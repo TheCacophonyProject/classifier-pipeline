@@ -16,7 +16,6 @@ import datetime
 import tensorflow as tf
 
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
-from ml_tools.dataset import Dataset
 
 # folder to put tensor board logs into
 LOG_FOLDER = "c:/cac/logs/"
@@ -36,7 +35,7 @@ def main():
     dsets = pickle.load(open(dataset_name,'rb'))
     labels = dsets[0].labels
 
-    model = ModelCRNN_LQ(labels=len(labels), enable_flow=False)
+    model = ModelCRNN_HQ(labels=len(labels), enable_flow=False)
     model.import_dataset(dataset_name)
     model.log_dir = LOG_FOLDER
 
@@ -60,7 +59,7 @@ def main():
     print(model.hyperparams_string)
     print()
     print("{0:.1f}K training examples".format(model.rows / 1000))
-    model.train_model(epochs=30, run_name='production/LQ Thermal/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    model.train_model(epochs=30, run_name='production/HQ Thermal/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     model.save()
     model.close()
 

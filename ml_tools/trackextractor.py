@@ -17,6 +17,7 @@ import numpy as np
 import cv2
 import h5py
 import scipy.ndimage
+import logging
 
 from ml_tools.tools import get_image_subsection, blosc_zstd
 from ml_tools.tools import Rectangle
@@ -249,6 +250,7 @@ class BackgroundAnalysis:
         self.max_temp = None
         self.min_temp = None
         self.mean_temp = None
+        self.background_deviation = None
 
 class FrameBuffer:
     """ Stores entire clip in memory, required for some operations such as track exporting. """
@@ -279,7 +281,7 @@ class FrameBuffer:
         for frame in self.thermal:
             frame = np.float32(frame)
             # strong filtering helps with the optical flow.
-            threshold = np.median(frame) + 50
+            threshold = np.median(frame) + 40
             next = np.uint8(np.clip(frame - threshold, 0, 255))
 
             if current is not None:
@@ -318,29 +320,21 @@ class TrackExtractor:
     # the dimensions of the tracks in pixels (width and height)
     WINDOW_SIZE = 48
 
-    # if the mean pixel change is below this threshold then classify the video as having a static background
-    STATIC_BACKGROUND_THRESHOLD = 5.0
+    # measures how different pixels are from estimated background, if they are on average less different than this then
+    # video is considered to be static.
+    STATIC_BACKGROUND_THRESHOLD = 20.0
 
     # any clips with a mean temperature hotter than this will be excluded
-    MAX_MEAN_TEMPERATURE_THRESHOLD = 3800
+    MAX_MEAN_TEMPERATURE_THRESHOLD = 10000
 
     # any clips with a temperature dynamic range greater than this will be excluded
-    MAX_TEMPERATURE_RANGE_THRESHOLD = 2000
+    MAX_TEMPERATURE_RANGE_THRESHOLD = 10000
 
     # number of pixels around object to pad.
     FRAME_PADDING = 6
 
     # number of frames to wait before deleting a lost track
     DELETE_LOST_TRACK_FRAMES = 9
-
-    # just threshold by median
-    FM_MEDIAN = 'median'
-
-    # subtrack out the background
-    FM_BACKGROUND_SUBRTRACT = 'subtract'
-
-    # masking is done on delta frames
-    FM_DELTA = 'delta'
 
     def __init__(self):
 
@@ -356,12 +350,10 @@ class TrackExtractor:
         self.high_quality_optical_flow = False
         # used to calculate optical flow
         self.opt_flow = None
-        # the background to use during background subtraction
-        self.background = None
         # how much hotter target must be from background to trigger a region of interest.
-        self.threshold = None
+        self.threshold = 0
         # the current frame number
-        self.frame_on = None
+        self.frame_on = 0
         # enables verbose mode
         self.verbose = False
         # maximum number of tracks to extract from a clip.  Takes the n best tracks.  Set to None for unlimited.
@@ -389,7 +381,8 @@ class TrackExtractor:
         # list of regions for each frame
         self.region_history = []
 
-        self.filter_mode = self.FM_BACKGROUND_SUBRTRACT
+        # if enabled will force the background subtraction algorithm off.
+        self.disable_background_subtraction = False
 
         # this buffers store the entire video in memory and are required for fast track exporting
         self.frame_buffer = FrameBuffer()
@@ -426,23 +419,24 @@ class TrackExtractor:
         self.frame_buffer.thermal = frames
 
         # first we get the background.  This requires reading the entire source into memory.
-        self.background, background_stats = self.analyse_background(frames)
+        background, background_stats = self.analyse_background(frames)
+        is_static_background = background_stats.background_deviation < self.STATIC_BACKGROUND_THRESHOLD
 
         self.stats['threshold'] = background_stats.threshold
-        self.stats['average_background_delta'] = background_stats.average_delta
+        self.stats['average_background_delta'] = background_stats.background_deviation
         self.stats['mean_temp'] = background_stats.mean_temp
         self.stats['max_temp'] = background_stats.max_temp
         self.stats['min_temp'] = background_stats.min_temp
+        self.stats['is_static'] = is_static_background
 
         self.threshold = background_stats.threshold
 
+        # if the clip is moving then remove the estimated background and just use a threshold.
+        if not is_static_background or self.disable_background_subtraction:
+            background = None
+
         if len(frames) <= 9:
             self.reject_reason = "Clip too short {} frames".format(len(frames))
-            return False
-
-        # exclude clips with moving backgrounds
-        if self.STATIC_BACKGROUND_THRESHOLD and background_stats.average_delta > self.STATIC_BACKGROUND_THRESHOLD:
-            self.reject_reason = "Moving background"
             return False
 
         # don't process clips that are too hot.
@@ -474,23 +468,32 @@ class TrackExtractor:
         # process each frame
         self.frame_on = 0
         for frame in frames:
-            self.track_next_frame(frame)
+            self.track_next_frame(frame, background)
 
         # filter out tracks that do not move, or look like noise
         self.filter_tracks()
 
         return True
 
-    def track_next_frame(self, frame):
+    def track_next_frame(self, thermal, background=None):
         """
         Tracks objects through frame
-        :param frame: A numpy array of shape (height, width) and type uint16
+        :param thermal: A numpy array of shape (height, width) and type uint16
+        :param background: (optional) Background image, a numpy array of shape (height, width) and type uint16
+            If specified background subtraction algorithm will be used.
         """
 
-        assert self.opt_flow is not None, "Optical flow not initialised."
-        assert self.background is not None, "Background not initialised."
+        frame = np.float32(thermal)
 
-        filtered = self.get_filtered(frame)
+        if background is None:
+            filtered = thermal - np.median(thermal) - 40
+            filtered[filtered < 0] = 0
+        else:
+            filtered = thermal - background
+            filtered[filtered < 0] = 0
+            filtered = filtered - np.median(filtered)
+            filtered[filtered < 0] = 0
+
         regions, mask = self.get_regions_of_interest(filtered, self._prev_filtered)
 
         # save frame stats
@@ -705,28 +708,8 @@ class TrackExtractor:
         # apply max_tracks filter
         # note, we take the n best tracks.
         if self.max_tracks is not None and self.max_tracks < len(self.tracks):
-            print(" -using only {0} tracks out of {1}".format(self.max_tracks, len(self.tracks)))
+            logging.warning(" -using only {0} tracks out of {1}".format(self.max_tracks, len(self.tracks)))
             self.tracks = self.tracks[:self.max_tracks]
-
-    def get_filtered(self, thermal):
-        """
-        Calculates the background removed, filtered frame.
-        :param thermal: source thermal frame
-        :return: a filtered frame
-        """
-        filtered = np.float32(thermal)
-        if self.filter_mode in [self.FM_MEDIAN, self.FM_DELTA]:
-            filtered = filtered - (np.median(filtered)+40)
-            filtered[filtered < 0] = 0
-        elif self.filter_mode == self.FM_BACKGROUND_SUBRTRACT:
-            filtered = filtered - self.background
-            filtered[filtered < 0] = 0
-            filtered = filtered - np.median(filtered)
-            filtered[filtered < 0] = 0
-        else:
-            raise Exception('Invalid filter mode {}'.format(self.filter_mode))
-
-        return filtered
 
     def get_regions_of_interest(self, filtered, prev_filtered=None):
         """
@@ -744,18 +727,7 @@ class TrackExtractor:
         else:
             delta_frame = None
 
-        if self.filter_mode == self.FM_DELTA:
-
-            if self.accumulator is None:
-                self.accumulator = np.zeros_like(filtered)
-
-            if delta_frame is not None:
-                self.accumulator = 0.5 * self.accumulator + 0.5 * np.abs(delta_frame)
-
-            thresh = np.uint8(np.clip(np.abs(self.accumulator)-20, 0, 1))
-
-        else:
-            thresh = np.uint8(apply_threshold(filtered, threshold=self.threshold))
+        thresh = np.uint8(apply_threshold(filtered, threshold=self.threshold))
 
         # applies erosion
         erosion = 0
@@ -815,7 +787,7 @@ class TrackExtractor:
         # for this reason we must return all the frames so they can be reused
         frames = np.asarray(frames, dtype=np.float32)
 
-        background = np.percentile(np.asarray(frames), q=10.0, axis=0)
+        background = np.percentile(np.asarray(frames), q=10, axis=0)
         filtered = np.reshape(frames - background, [-1])
 
         delta = np.asarray(frames[1:], dtype=np.float32) - np.asarray(frames[:-1], dtype=np.float32)
@@ -829,16 +801,13 @@ class TrackExtractor:
         if threshold > 50.0:
             threshold = 50.0
 
-        # override threshold if we are using the median method
-        if self.filter_mode in [self.FM_MEDIAN, self.FM_DELTA]:
-            threshold = 10
-
         background_stats = BackgroundAnalysis()
         background_stats.threshold = float(threshold)
         background_stats.average_delta = float(average_delta)
         background_stats.min_temp = float(np.min(frames))
         background_stats.max_temp = float(np.max(frames))
         background_stats.mean_temp = float(np.mean(frames))
+        background_stats.background_deviation = float(np.mean(np.abs(filtered)))
 
         return background, background_stats
 

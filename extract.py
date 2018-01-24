@@ -132,6 +132,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         # normally poor quality tracks are filtered out, enabling this will let them through.
         self.disable_track_filters = False
+        # disables background subtraction
+        self.disable_background_subtraction = False
 
         self.high_quality_optical_flow = False
 
@@ -162,17 +164,20 @@ class CPTVTrackExtractor(CPTVFileProcessor):
     def process_all(self, root):
 
         previous_filter_setting = self.disable_track_filters
+        previous_background_setting = self.disable_background_subtraction
 
         for root, folders, files in os.walk(root):
             for folder in folders:
                 if folder not in EXCLUDED_FOLDERS:
                     if folder.lower() == "false-positive":
                         self.disable_track_filters = True
+                        self.disable_background_subtraction = True
                         print("Turning Track filters OFF.")
                     self.process_folder(os.path.join(root, folder), tag=folder.lower(), worker_pool_args=(trackdatabase.hdf5_lock,))
                     if folder.lower() == "false-positive":
                         print("Restoring Track filters.")
                         self.disable_track_filters = previous_filter_setting
+                        self.disable_background_subtraction = previous_background_setting
 
 
 
@@ -268,25 +273,26 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             tracker.track_min_mass = 0.0
             tracker.track_min_offset = 0.0
 
+        if self.disable_background_subtraction:
+            tracker.disable_background_subtraction = True
+
         # read metadata
         meta_data_filename = os.path.splitext(full_path)[0] + ".txt"
         if os.path.exists(meta_data_filename):
 
             meta_data = tools.load_clip_metadata(meta_data_filename)
 
-            tag_count = len(meta_data['Tags'])
+            tags = set([tag['animal'] for tag in meta_data['Tags'] if 'automatic' not in tag or not tag['automatic']])
 
             # we can only handle one tagged animal at a time here.
-            if tag_count == 0:
+            if len(tags) == 0:
                 print(" - Warning, no tags in cptv files, ignoring.")
                 return
 
-            if tag_count >= 2:
+            if len(tags)>= 2:
                 # make sure all tags are the same
-                tags = set([x['animal'] for x in meta_data['Tags']])
-                if len(tags) >= 2:
-                    print(" - Warning, mixed tags, can not process.",tags)
-                    return
+                print(" - Warning, mixed tags, can not process.",tags)
+                return
 
             tracker.stats['confidence'] = meta_data['Tags'][0].get('confidence',0.0)
             tracker.stats['trap'] = meta_data['Tags'][0].get('trap','none')

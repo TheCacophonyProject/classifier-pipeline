@@ -85,6 +85,7 @@ class Model:
 
         # folder to write tensorboard logs to
         self.log_dir = './logs'
+        self.log_id = ''
 
         # number of frames per segment during training
         self.training_segment_frames = 27
@@ -412,6 +413,7 @@ class Model:
         if self.enable_async_loading:
             self.start_async_load()
 
+        self.log_id = run_name
 
         iterations = int(math.ceil(epochs * self.rows / self.batch_size))
         if run_name is None:
@@ -564,6 +566,8 @@ class Model:
         model_stats['labels'] = self.labels
         model_stats['score'] = self.eval_score
         model_stats['hyperparams'] = self.params
+        model_stats['log_id'] = self.log_id
+        model_stats['training_date'] = str(time.time())
 
         json.dump(model_stats, open(filename+ ".txt", 'w'), indent=4)
 

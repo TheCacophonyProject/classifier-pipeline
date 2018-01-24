@@ -167,7 +167,7 @@ def compute_saliency_map(X_in, y_in, model):
     global tf
     import tensorflow as tf
 
-    correct_scores = tf.gather_nd(model.pred,
+    correct_scores = tf.gather_nd(model.prediction,
                                   tf.stack((tf.range(X_in.shape[0], dtype="int64"), model.y), axis=1))
 
     feed_dict = model.get_feed_dict(X_in, y_in)

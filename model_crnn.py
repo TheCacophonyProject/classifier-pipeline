@@ -61,7 +61,7 @@ class ModelCRNN_HQ(ConvModel):
     Convolutional neural net model feeding into an LSTM
     """
 
-    MODEL_NAME = "CRNN_HQ"
+    MODEL_NAME = "model_hq"
     MODEL_DESCRIPTION = "CNN + LSTM"
 
     DEFAULT_PARAMS = {
@@ -70,7 +70,7 @@ class ModelCRNN_HQ(ConvModel):
         'batch_size': 16,
         'learning_rate': 1e-4,
         'learning_rate_decay': 1.0,
-        'l2_reg': 0.01,
+        'l2_reg': 0,
         'label_smoothing': 0.1,
         'keep_prob': 0.5,
 
@@ -170,7 +170,8 @@ class ModelCRNN_HQ(ConvModel):
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
 
         if self.params['enable_flow']:
-            layer = flow
+            # integrate thermal and flow into a 3 channel layer
+            layer = tf.concat((thermal, flow), axis=3)
             layer = self.conv_layer('motion/1', layer, 64, [3, 3], pool_stride=2)
             layer = self.conv_layer('motion/2', layer, 64, [3, 3], pool_stride=2)
             layer = self.conv_layer('motion/3', layer, 96, [3, 3], pool_stride=2)
@@ -274,7 +275,7 @@ class ModelCRNN_LQ(ConvModel):
     Trains on GPU at around 5ms / segment as apposed to 16ms for the high quality model.
     """
 
-    MODEL_NAME = "CRNN_LQ"
+    MODEL_NAME = "model_lq"
     MODEL_DESCRIPTION = "CNN + LSTM"
 
     DEFAULT_PARAMS = {
@@ -283,7 +284,7 @@ class ModelCRNN_LQ(ConvModel):
         'batch_size': 16,
         'learning_rate': 1e-4,
         'learning_rate_decay': 1.0,
-        'l2_reg': 0.01,
+        'l2_reg': 0,
         'label_smoothing': 0.1,
         'keep_prob': 0.5,
 
@@ -347,7 +348,7 @@ class ModelCRNN_LQ(ConvModel):
 
         # normalise the flow
         flow = X[:, :, 2:3 + 1]
-        flow = flow * 5
+        flow = flow * 10
 
         # grab the mask
         mask = X[:, :, 4:4 + 1]
@@ -381,7 +382,8 @@ class ModelCRNN_LQ(ConvModel):
                                   name='filtered/out')
 
         if self.params['enable_flow']:
-            layer = flow
+            # integrate thermal and flow into a 3 channel layer
+            layer = tf.concat((thermal, flow), axis=3)
             layer = self.conv_layer('motion/1', layer, 32, [3, 3], conv_stride=2)
             layer = self.conv_layer('motion/2', layer, 48, [3, 3], conv_stride=2)
             layer = self.conv_layer('motion/3', layer, 64, [3, 3], conv_stride=2)
@@ -402,8 +404,7 @@ class ModelCRNN_LQ(ConvModel):
         # run the LSTM
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params['lstm_units'])
 
-        dropout = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, input_keep_prob=self.keep_prob,
-                                                output_keep_prob=self.keep_prob, dtype=np.float32)
+        dropout = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32)
 
         init_state = tf.nn.rnn_cell.LSTMStateTuple(self.state_in[:, :, 0], self.state_in[:, :, 1])
 
