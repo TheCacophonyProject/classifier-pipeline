@@ -20,7 +20,7 @@ import numpy as np
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.dataset import Dataset
 
-DATASET_FOLDER = 'c:/cac/robin/'
+DATASET_FOLDER = 'c:/cac/datasets/robin/'
 
 # uses split from previous run
 USE_PREVIOUS_SPLIT = True
@@ -181,7 +181,6 @@ def split_dataset_predefined():
     ]
 
     raise Exception('not implemented yet.')
-
 
 def split_dataset_days(prefill_bins=None):
     """

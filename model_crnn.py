@@ -76,7 +76,7 @@ class ModelCRNN_HQ(ConvModel):
 
         # model params
         'batch_norm': True,
-        'lstm_units': 768,
+        'lstm_units': 512,
         'enable_flow': True,
 
         # augmentation
@@ -85,14 +85,16 @@ class ModelCRNN_HQ(ConvModel):
         'scale_frequency': 0.5
     }
 
-    def __init__(self, labels):
+    def __init__(self, labels, **kwargs):
         """
         Initialise the model
         :param labels: number of labels for model to predict
         """
         super().__init__()
         self.params.update(self.DEFAULT_PARAMS)
+        self.params.update(kwargs)
         self._build_model(labels)
+
 
     def _build_model(self, label_count):
         ####################################
@@ -163,26 +165,25 @@ class ModelCRNN_HQ(ConvModel):
         layer = self.conv_layer('filtered/5', layer, 128, [3, 3], pool_stride=1)
 
         filtered_conv = layer
-
-        layer = flow
-        layer = self.conv_layer('motion/1', layer, 64, [3, 3], pool_stride=2)
-        layer = self.conv_layer('motion/2', layer, 64, [3, 3], pool_stride=2)
-        layer = self.conv_layer('motion/3', layer, 96, [3, 3], pool_stride=2)
-        layer = self.conv_layer('motion/4', layer, 128, [3, 3], pool_stride=2)
-        layer = self.conv_layer('motion/5', layer, 128, [3, 3], pool_stride=1)
-
-        motion_conv = layer
-
-        logging.info("Convolution output shape: {} {}".format(filtered_conv.shape, motion_conv.shape))
-
-        # reshape back into segments
-        filtered_out = tf.reshape(filtered_conv, [-1, frame_count, tools.product(filtered_conv.shape[1:])], name='filtered/out')
-        motion_out = tf.reshape(motion_conv, [-1, frame_count, tools.product(motion_conv.shape[1:])], name='motion/out')
+        filtered_out = tf.reshape(filtered_conv, [-1, frame_count, tools.product(filtered_conv.shape[1:])],
+                                  name='filtered/out')
+        logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
 
         if self.params['enable_flow']:
+            layer = flow
+            layer = self.conv_layer('motion/1', layer, 64, [3, 3], pool_stride=2)
+            layer = self.conv_layer('motion/2', layer, 64, [3, 3], pool_stride=2)
+            layer = self.conv_layer('motion/3', layer, 96, [3, 3], pool_stride=2)
+            layer = self.conv_layer('motion/4', layer, 128, [3, 3], pool_stride=2)
+            layer = self.conv_layer('motion/5', layer, 128, [3, 3], pool_stride=1)
+
+            motion_conv = layer
+            motion_out = tf.reshape(motion_conv, [-1, frame_count, tools.product(motion_conv.shape[1:])], name='motion/out')
+            logging.info("Motion convolution output shape: {}".format(motion_conv.shape))
+
             out = tf.concat((filtered_out, motion_out), axis=2, name='out')
         else:
-            out = tf.concat((filtered_out, ), axis=2, name='out')
+            out = tf.concat((filtered_out,), axis=2, name='out')
 
         logging.info('Output shape {}'.format(out.shape))
 
@@ -282,7 +283,7 @@ class ModelCRNN_LQ(ConvModel):
         'batch_size': 16,
         'learning_rate': 1e-4,
         'learning_rate_decay': 1.0,
-        'l2_reg': 0,
+        'l2_reg': 0.01,
         'label_smoothing': 0.1,
         'keep_prob': 0.5,
 
@@ -297,13 +298,14 @@ class ModelCRNN_LQ(ConvModel):
         'scale_frequency': 0.5
     }
 
-    def __init__(self, labels):
+    def __init__(self, labels, **kwargs):
         """
         Initialise the model
         :param labels: number of labels for model to predict
         """
         super().__init__()
         self.params.update(self.DEFAULT_PARAMS)
+        self.params.update(kwargs)
         self._build_model(labels)
 
     def _build_model(self, label_count):
@@ -374,24 +376,23 @@ class ModelCRNN_LQ(ConvModel):
         layer = self.conv_layer('filtered/5', layer, 64, [3, 3], conv_stride=1)
 
         filtered_conv = layer
-
-        layer = flow
-        layer = self.conv_layer('motion/1', layer, 32, [3, 3], conv_stride=2)
-        layer = self.conv_layer('motion/2', layer, 48, [3, 3], conv_stride=2)
-        layer = self.conv_layer('motion/3', layer, 64, [3, 3], conv_stride=2)
-        layer = self.conv_layer('motion/4', layer, 64, [3, 3], conv_stride=2)
-        layer = self.conv_layer('motion/5', layer, 64, [3, 3], conv_stride=1)
-
-        motion_conv = layer
-
-        logging.info("Convolution output shape: {} {}".format(filtered_conv.shape, motion_conv.shape))
-
-        # reshape back into segments
+        logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
         filtered_out = tf.reshape(filtered_conv, [-1, frame_count, tools.product(filtered_conv.shape[1:])],
                                   name='filtered/out')
-        motion_out = tf.reshape(motion_conv, [-1, frame_count, tools.product(motion_conv.shape[1:])], name='motion/out')
 
         if self.params['enable_flow']:
+            layer = flow
+            layer = self.conv_layer('motion/1', layer, 32, [3, 3], conv_stride=2)
+            layer = self.conv_layer('motion/2', layer, 48, [3, 3], conv_stride=2)
+            layer = self.conv_layer('motion/3', layer, 64, [3, 3], conv_stride=2)
+            layer = self.conv_layer('motion/4', layer, 64, [3, 3], conv_stride=2)
+            layer = self.conv_layer('motion/5', layer, 64, [3, 3], conv_stride=1)
+
+            motion_conv = layer
+            logging.info("Motion convolution output shape: {}".format(motion_conv.shape))
+            motion_out = tf.reshape(motion_conv, [-1, frame_count, tools.product(motion_conv.shape[1:])],
+                                    name='motion/out')
+
             out = tf.concat((filtered_out, motion_out), axis=2, name='out')
         else:
             out = tf.concat((filtered_out, ), axis=2, name='out')
@@ -401,7 +402,8 @@ class ModelCRNN_LQ(ConvModel):
         # run the LSTM
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params['lstm_units'])
 
-        dropout = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32)
+        dropout = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, input_keep_prob=self.keep_prob,
+                                                output_keep_prob=self.keep_prob, dtype=np.float32)
 
         init_state = tf.nn.rnn_cell.LSTMStateTuple(self.state_in[:, :, 0], self.state_in[:, :, 1])
 
