@@ -222,6 +222,7 @@ def convert_heat_to_img(frame, colormap, temp_min = 2800, temp_max = 4200):
     :return: a pillow Image containing a colorised heatmap
     """
     # normalise
+    frame = np.float32(frame)
     frame = (frame - temp_min) / (temp_max - temp_min)
     colorized = np.uint8(255.0*colormap(frame))
     img = pillow.Image.fromarray(colorized[:,:,:3]) #ignore alpha

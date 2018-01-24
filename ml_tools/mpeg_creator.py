@@ -52,7 +52,7 @@ class MPEGCreator:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            bufsize=8092)
+            bufsize=8*1024)
         return proc
 
     def _collect_output(self):

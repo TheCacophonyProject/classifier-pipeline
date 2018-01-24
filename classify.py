@@ -22,10 +22,10 @@ from ml_tools.mpeg_creator import MPEGCreator
 from ml_tools.trackextractor import TrackExtractor, Track, Region
 
 
-DEFAULT_BASE_PATH = "c:\\cac"
+DEFAULT_BASE_PATH = "c:/cac"
 HERE = os.path.dirname(__file__)
 RESOURCES_PATH = os.path.join(HERE, "resources")
-MODEL_NAME = "model_hq"
+MODEL_NAME = "default"
 
 # folders that are not processed when run with 'all'
 IGNORE_FOLDERS = ['untagged']
@@ -39,7 +39,6 @@ def resource_path(name):
 _classifier = None
 _classifier_font = None
 _classifier_font_title = None
-
 
 class TrackPrediction:
     """
@@ -102,7 +101,8 @@ class TrackPrediction:
 class ClipClassifier(CPTVFileProcessor):
     """ Classifies tracks within CPTV files. """
 
-    FRAME_SKIP = 2
+    # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
+    FRAME_SKIP = 1
 
     def __init__(self):
         """ Create an instance of a clip classifier"""
@@ -171,6 +171,11 @@ class ClipClassifier(CPTVFileProcessor):
         :return: TrackPrediction object
         """
 
+        # uniform prior stats start with uniform distribution.  This is the safest bet, but means that
+        # it takes a while to make predictions.  When off the first prediction is used instead causing
+        # faster, but potentially more unstable predictions.
+        UNIFORM_PRIOR = False
+
         predictions = []
 
         num_labels = len(self.classifier.labels)
@@ -194,10 +199,10 @@ class ClipClassifier(CPTVFileProcessor):
                 pass
 
             if smooth_prediction is None:
-                # start with uniform distributoin.  This is the safest best.
-                #smooth_prediction = np.ones([num_labels]) * (1 / num_labels)
-                # start with initial prediction, less safe but faster predictions
-                smooth_prediction = prediction
+                if UNIFORM_PRIOR:
+                    smooth_prediction = np.ones([num_labels]) * (1 / num_labels)
+                else:
+                    smooth_prediction = prediction
             else:
                 smooth_prediction = (1-prediction_smooth) * smooth_prediction + prediction_smooth * prediction
             predictions.append(smooth_prediction)
@@ -262,6 +267,9 @@ class ClipClassifier(CPTVFileProcessor):
 
         NORMALISATION_SMOOTH = 0.95
 
+        # amount pad at ends of thermal range
+        HEAD_ROOM = 25
+
         auto_min = np.min(tracker.frame_buffer.thermal[0])
         auto_max = np.max(tracker.frame_buffer.thermal[0])
 
@@ -271,8 +279,17 @@ class ClipClassifier(CPTVFileProcessor):
 
         for frame_number, thermal in enumerate(tracker.frame_buffer.thermal):
 
-            auto_min = NORMALISATION_SMOOTH * auto_min + (1 - NORMALISATION_SMOOTH) * np.min(thermal)
-            auto_max = NORMALISATION_SMOOTH * auto_max + (1 - NORMALISATION_SMOOTH) * np.max(thermal)
+            thermal_min = np.min(thermal)
+            thermal_max = np.max(thermal)
+
+            auto_min = NORMALISATION_SMOOTH * auto_min + (1 - NORMALISATION_SMOOTH) * (thermal_min-HEAD_ROOM)
+            auto_max = NORMALISATION_SMOOTH * auto_max + (1 - NORMALISATION_SMOOTH) * (thermal_max+HEAD_ROOM)
+
+            # sometimes we get an extreme value that throws off the autonormalisation, so if there are values outside
+            # of the expected range just instantly switch levels
+            if thermal_min < auto_min or thermal_max > auto_max:
+                auto_min = thermal_min
+                auto_max = thermal_max
 
             thermal_image = tools.convert_heat_to_img(thermal, self.colormap, auto_min, auto_max)
             thermal_image = thermal_image.resize((int(thermal_image.width * FRAME_SCALE), int(thermal_image.height * FRAME_SCALE)), Image.BILINEAR)
@@ -467,6 +484,11 @@ class ClipClassifier(CPTVFileProcessor):
                 tracker.frame_buffer.generate_flow(tracker.opt_flow)
 
         base_name = self.get_base_name(filename)
+        destination_folder = os.path.dirname(base_name)
+
+        if not os.path.exists(destination_folder):
+            logging.info("Creating folder {}".format(destination_folder))
+            os.makedirs(destination_folder)
 
         if self.include_prediction_in_filename:
             mpeg_filename = base_name + "{}" + '.mp4'
@@ -557,7 +579,7 @@ def main():
     parser.add_argument('-v', '--verbose', default=0, action='count', help='Display additional information.')
     parser.add_argument('-w', '--workers', default=0, help='Number of worker threads to use.  0 disables worker pool and forces a single thread.')
     parser.add_argument('-f', '--force-overwrite', default='none',help='Overwrite mode.  Options are all, old, or none.')
-    parser.add_argument('-o', '--output-folder', default=os.path.join(DEFAULT_BASE_PATH, "autotagged"),help='Folder to output tracks to')
+    parser.add_argument('-o', '--output-folder', default=os.path.join(DEFAULT_BASE_PATH, "runs"),help='Folder to output tracks to')
     parser.add_argument('-s', '--source-folder', default=os.path.join(DEFAULT_BASE_PATH, "clips"),help='Source folder root with class folders containing CPTV files')
 
     parser.add_argument('-m', '--model', default=os.path.join(HERE, "models", MODEL_NAME), help='Model to use for classification')
