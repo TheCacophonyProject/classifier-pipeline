@@ -70,7 +70,7 @@ class ModelCRNN_HQ(ConvModel):
         'batch_size': 16,
         'learning_rate': 1e-4,
         'learning_rate_decay': 1.0,
-        'l2_reg': 0,
+        'l2_reg': 0.01,
         'label_smoothing': 0.1,
         'keep_prob': 0.5,
 

@@ -524,9 +524,11 @@ class Dataset:
             av_mass = np.sum(mask) / len(mask)
             size = math.sqrt(av_mass + 4)
 
-            # work out approriate bounds so we don't scale too much
-            max_scale_up = np.clip(36 / size, 1.0, 2.0)
-            min_scale_down = np.clip(8 / size, 0.1, 1.0)
+            # work out aproriate bounds so we don't scale too much
+            #max_scale_up = np.clip(36 / size, 1.0, 2.0)
+            #min_scale_down = np.clip(8 / size, 0.1, 1.0)
+            max_scale_up = 3.0
+            min_scale_down = 0.33
 
             if force_scale is not None:
                 scale = force_scale
