@@ -281,7 +281,7 @@ class FrameBuffer:
         for frame in self.thermal:
             frame = np.float32(frame)
             # strong filtering helps with the optical flow.
-            threshold = np.median(frame) + 40
+            threshold = np.median(frame) + 50
             next = np.uint8(np.clip(frame - threshold, 0, 255))
 
             if current is not None:
@@ -322,7 +322,8 @@ class TrackExtractor:
 
     # measures how different pixels are from estimated background, if they are on average less different than this then
     # video is considered to be static.
-    STATIC_BACKGROUND_THRESHOLD = 20.0
+    STATIC_BACKGROUND_THRESHOLD = 6.0   # 4.0 is probably better, but 6.0 is safer for the moment, once I have updated
+                                        # the false-positive training we can set this to 4.0 again I think?
 
     # any clips with a mean temperature hotter than this will be excluded
     MAX_MEAN_TEMPERATURE_THRESHOLD = 10000
@@ -383,6 +384,8 @@ class TrackExtractor:
 
         # if enabled will force the background subtraction algorithm off.
         self.disable_background_subtraction = False
+        # rejects any videos that have non static backgrounds
+        self.reject_non_static_clips = False
 
         # this buffers store the entire video in memory and are required for fast track exporting
         self.frame_buffer = FrameBuffer()
@@ -424,6 +427,7 @@ class TrackExtractor:
 
         self.stats['threshold'] = background_stats.threshold
         self.stats['average_background_delta'] = background_stats.background_deviation
+        self.stats['average_delta'] = background_stats.average_delta
         self.stats['mean_temp'] = background_stats.mean_temp
         self.stats['max_temp'] = background_stats.max_temp
         self.stats['min_temp'] = background_stats.min_temp
@@ -437,6 +441,10 @@ class TrackExtractor:
 
         if len(frames) <= 9:
             self.reject_reason = "Clip too short {} frames".format(len(frames))
+            return False
+
+        if self.reject_non_static_clips and not is_static_background:
+            self.reject_reason = "Non static background deviation={:1.f}".format(background_stats.background_deviation)
             return False
 
         # don't process clips that are too hot.
@@ -475,6 +483,28 @@ class TrackExtractor:
 
         return True
 
+    def get_filtered(self, thermal, background=None):
+        """
+        Calculates filtered frame from thermal
+        :param thermal: the thermal frame
+        :param background: (optional) used for background subtraction
+        :return: the filtered frame
+        """
+
+        thermal = np.float32(thermal)
+
+        if background is None:
+            filtered = thermal - np.median(thermal) - 40
+            filtered[filtered < 0] = 0
+        else:
+            background = np.float32(background)
+            filtered = thermal - background
+            filtered[filtered < 0] = 0
+            filtered = filtered - np.median(filtered)
+            filtered[filtered < 0] = 0
+
+        return filtered
+
     def track_next_frame(self, thermal, background=None):
         """
         Tracks objects through frame
@@ -483,24 +513,16 @@ class TrackExtractor:
             If specified background subtraction algorithm will be used.
         """
 
-        frame = np.float32(thermal)
-
-        if background is None:
-            filtered = thermal - np.median(thermal) - 40
-            filtered[filtered < 0] = 0
-        else:
-            filtered = thermal - background
-            filtered[filtered < 0] = 0
-            filtered = filtered - np.median(filtered)
-            filtered[filtered < 0] = 0
+        thermal = np.float32(thermal)
+        filtered = self.get_filtered(thermal, background)
 
         regions, mask = self.get_regions_of_interest(filtered, self._prev_filtered)
 
         # save frame stats
-        self.frame_stats_min.append(np.min(frame))
-        self.frame_stats_max.append(np.max(frame))
-        self.frame_stats_median.append(np.median(frame))
-        self.frame_stats_mean.append(np.mean(frame))
+        self.frame_stats_min.append(np.min(thermal))
+        self.frame_stats_max.append(np.max(thermal))
+        self.frame_stats_median.append(np.median(thermal))
+        self.frame_stats_mean.append(np.mean(thermal))
 
         # save history
         self.frame_buffer.filtered.append(np.float32(filtered))
@@ -776,24 +798,25 @@ class TrackExtractor:
 
         return result
 
-    def analyse_background(self, frames):
+    def analyse_background(self, frames_list):
         """
         Runs through all provided frames and estimates the background, consuming all the source frames.
-        :param frames: a list of numpy array frames
+        :param frames_list: a list of numpy array frames
         :return: background, background_stats
         """
 
         # note: unfortunately this must be done before any other processing, which breaks the streaming architecture
         # for this reason we must return all the frames so they can be reused
-        frames = np.asarray(frames, dtype=np.float32)
 
-        background = np.percentile(np.asarray(frames), q=10, axis=0)
-        filtered = np.reshape(frames - background, [-1])
+        frames = np.float32(frames_list)
+        background = np.percentile(frames, q=10, axis=0)
+        filtered = np.float32([self.get_filtered(frame, background) for frame in frames_list])
 
         delta = np.asarray(frames[1:], dtype=np.float32) - np.asarray(frames[:-1], dtype=np.float32)
         average_delta = float(np.mean(np.abs(delta)))
 
-        threshold = float(np.percentile(filtered, q=TrackExtractor.THRESHOLD_PERCENTILE) / 2)
+        # take half the max filtered value as a threshold
+        threshold = float(np.percentile(np.reshape(filtered, [-1]), q=TrackExtractor.THRESHOLD_PERCENTILE) / 2)
 
         # cap the threshold to something reasonable
         if threshold < 15.0:

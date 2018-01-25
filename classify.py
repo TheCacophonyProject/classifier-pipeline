@@ -25,7 +25,7 @@ from ml_tools.trackextractor import TrackExtractor, Track, Region
 DEFAULT_BASE_PATH = "c:/cac"
 HERE = os.path.dirname(__file__)
 RESOURCES_PATH = os.path.join(HERE, "resources")
-MODEL_NAME = "model_lq_flow"
+MODEL_NAME = "model_hq_joint"
 
 # folders that are not processed when run with 'all'
 IGNORE_FOLDERS = ['untagged']
@@ -183,6 +183,8 @@ class ClipClassifier(CPTVFileProcessor):
 
         smooth_prediction = None
 
+        fp_index = self.classifier.labels.index('false-positive')
+
         # go through making classifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         state = None
@@ -194,6 +196,22 @@ class ClipClassifier(CPTVFileProcessor):
             if i % self.FRAME_SKIP == 0:
                 frame = self.preprocess(frame, thermal_reference)
                 prediction, state = self.classifier.classify_frame(frame, state)
+
+                # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
+                # score
+                prediction[fp_index] *= 0.8
+
+                # precondition on weight,  segments with small mass are weighted less as we can assume the error is
+                # higher here.
+                mass = np.float32(np.sum(frame[4]))
+
+                # we use the square-root here as the mass is in units squared.
+                # this effectively means we are giving weight based on the diameter
+                # of the object rather than the mass.
+                mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
+
+                prediction *= mass_weight
+
             else:
                 # just continue prediction and state along.
                 pass

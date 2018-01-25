@@ -20,10 +20,10 @@ import numpy as np
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.dataset import Dataset
 
-DATASET_FOLDER = 'c:/cac/datasets/robin/'
+DATASET_FOLDER = 'c:/cac/datasets/fantail/'
 
 # uses split from previous run
-USE_PREVIOUS_SPLIT = True
+USE_PREVIOUS_SPLIT = False
 
 # note: these should really be in a text file or something, or excluded during extraction
 BANNED_CLIPS = {
@@ -36,7 +36,7 @@ BANNED_CLIPS = {
     '20171219-105919-akaroa12.cptv'
 }
 
-EXCLUDED_LABELS = ['mouse','insect','rabbit','cat','dog','human']
+EXCLUDED_LABELS = ['mouse','insect','rabbit','bird-kiwi']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
@@ -53,16 +53,11 @@ CAP_BIN_WEIGHT = 1.5
 # the class suggesting that the class is more or less likely.  For example bumping up the human weighting will cause
 # the classifier learn towards guessing human when it is not sure.
 LABEL_WEIGHTS = {
-    'rat':0.8,              # rats and false-positive are fine, it's just we don't have much footage so I make sure that
-    'false-positive':0.8,   # a little less is used in the test set.
-    'human':0.8,            # these classes do very poorly, so put them in, but weight them very lowly
-    'cat':0.8,
-    'dog':0.8,
 }
 
 # clips after this date will be ignored.
 # note: this is based on the UTC date.
-END_DATE = dateutil.parser.parse("2017-12-31")
+END_DATE = dateutil.parser.parse("2018-12-31")
 
 # minimum average mass for test segment
 TEST_MIN_MASS = 30

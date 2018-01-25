@@ -25,7 +25,7 @@ __version__ = '1.1.0'
 # default base path to use if no source or destination folder are given.
 DEFAULT_BASE_PATH = "c:\\cac"
 
-EXCLUDED_FOLDERS = ['other', 'unidentified', 'untagged']
+EXCLUDED_FOLDERS = ['other', 'unidentified', 'untagged', 'moving', 'multi','missclassified']
 
 class TrackerTestCase():
     def __init__(self):
@@ -268,10 +268,16 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         tracker.verbose = self.verbose >= 2
         tracker.high_quality_optical_flow = self.high_quality_optical_flow
 
+        # by default we don't want to process the moving background images as it's too hard to get good tracks
+        # without false-positives.
+        tracker.reject_non_static_clips = True
+
+
         if self.disable_track_filters:
             tracker.track_min_delta = 0.0
             tracker.track_min_mass = 0.0
             tracker.track_min_offset = 0.0
+            tracker.reject_non_static_clips = False
 
         if self.disable_background_subtraction:
             tracker.disable_background_subtraction = True
