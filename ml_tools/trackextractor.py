@@ -266,7 +266,7 @@ class FrameBuffer:
     def has_flow(self):
         return self.flow is not None and len(self.flow) != 0
 
-    def generate_flow(self, opt_flow):
+    def generate_flow(self, opt_flow, flow_threshold=40):
         """
         Generate optical flow from thermal frames
         :param opt_flow: An optical flow algorithm
@@ -281,7 +281,7 @@ class FrameBuffer:
         for frame in self.thermal:
             frame = np.float32(frame)
             # strong filtering helps with the optical flow.
-            threshold = np.median(frame) + 20
+            threshold = np.median(frame) + flow_threshold
             next = np.uint8(np.clip(frame - threshold, 0, 255))
 
             if current is not None:
@@ -370,6 +370,12 @@ class TrackExtractor:
         self.track_min_offset = 4.0
         self.track_min_delta = 1.0
         self.track_min_mass = 2.0
+
+        # minimum allowed threshold for mask, smaller values detect more objects, but bring up additional false positives
+        self.min_threshold = 30
+
+        # how much to threshold thermal before calculating optical flow.
+        self.flow_threshold = 40
 
         # reason qwhy clip was rejected, or none if clip was accepted
         self.reject_reason = None
@@ -550,7 +556,7 @@ class TrackExtractor:
             return
 
         if not self.frame_buffer.has_flow:
-            self.frame_buffer.generate_flow(self.opt_flow)
+            self.frame_buffer.generate_flow(self.opt_flow, self.flow_threshold)
 
         # get track data
         for track_number, track in enumerate(self.tracks):
@@ -597,6 +603,9 @@ class TrackExtractor:
             filtered = scipy.ndimage.zoom(np.float32(filtered), (scale, scale), order=1)
             flow = scipy.ndimage.zoom(np.float32(flow), (scale, scale, 1), order=1)
             mask = scipy.ndimage.zoom(np.float32(mask), (scale, scale), order=0)
+
+            # flow values should be scaled down as well.
+            flow *= scale
 
         # make sure only our pixels are included in the mask.
         mask[mask != bounds.id] = 0
@@ -818,8 +827,8 @@ class TrackExtractor:
         threshold = float(np.percentile(np.reshape(filtered, [-1]), q=TrackExtractor.THRESHOLD_PERCENTILE) / 2)
 
         # cap the threshold to something reasonable
-        if threshold < 30.0:
-            threshold = 30.0
+        if threshold < self.min_threshold:
+            threshold = self.min_threshold
         if threshold > 50.0:
             threshold = 50.0
 

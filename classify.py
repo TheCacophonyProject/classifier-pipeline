@@ -488,6 +488,8 @@ class ClipClassifier(CPTVFileProcessor):
         tracker.track_min_delta = 1.0
         tracker.track_min_mass = 0.0
 
+        tracker.min_threshold = 15
+
         tracker.high_quality_optical_flow = self.high_quality_optical_flow
 
         tracker.extract_tracks()
