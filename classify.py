@@ -28,7 +28,7 @@ RESOURCES_PATH = os.path.join(HERE, "resources")
 MODEL_NAME = "model_hq_joint"
 
 # folders that are not processed when run with 'all'
-IGNORE_FOLDERS = ['untagged']
+IGNORE_FOLDERS = ['untagged','cat','dog','insect','unidentified','rabbit','hard','multi','moving','mouse']
 
 
 def resource_path(name):
@@ -572,6 +572,7 @@ class ClipClassifier(CPTVFileProcessor):
         ms_per_frame = (time.time() - start) * 1000 / max(1, len(tracker.frame_buffer.thermal))
         if self.verbose:
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
+
 
 def log_to_stdout():
     """ Outputs all log entries to standard out. """

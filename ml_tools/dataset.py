@@ -520,13 +520,14 @@ class Dataset:
 
         # apply scaling only some of time
         if random.random() <= self.scale_frequency or force_scale is not None:
-            mask = segment_data[:, 4,]
+            mask = segment_data[:, 4]
             av_mass = np.sum(mask) / len(mask)
             size = math.sqrt(av_mass + 4)
 
-            # work out aproriate bounds so we don't scale too much
+            # work out reasonable bounds so we don't scale too much
+            # general idea is scale to a width of between 4 and 36 pixels
             max_scale_up = np.clip(36 / size, 1.0, 2.0)
-            min_scale_down = np.clip(8 / size, 0.1, 1.0)
+            min_scale_down = np.clip(4 / size, 0.25, 1.0)
 
             if force_scale is not None:
                 scale = force_scale

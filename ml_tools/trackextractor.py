@@ -281,7 +281,7 @@ class FrameBuffer:
         for frame in self.thermal:
             frame = np.float32(frame)
             # strong filtering helps with the optical flow.
-            threshold = np.median(frame) + 50
+            threshold = np.median(frame) + 20
             next = np.uint8(np.clip(frame - threshold, 0, 255))
 
             if current is not None:
@@ -322,8 +322,7 @@ class TrackExtractor:
 
     # measures how different pixels are from estimated background, if they are on average less different than this then
     # video is considered to be static.
-    STATIC_BACKGROUND_THRESHOLD = 6.0   # 4.0 is probably better, but 6.0 is safer for the moment, once I have updated
-                                        # the false-positive training we can set this to 4.0 again I think?
+    STATIC_BACKGROUND_THRESHOLD = 4.0
 
     # any clips with a mean temperature hotter than this will be excluded
     MAX_MEAN_TEMPERATURE_THRESHOLD = 10000
@@ -444,7 +443,7 @@ class TrackExtractor:
             return False
 
         if self.reject_non_static_clips and not is_static_background:
-            self.reject_reason = "Non static background deviation={:1.f}".format(background_stats.background_deviation)
+            self.reject_reason = "Non static background deviation={:.1f}".format(background_stats.background_deviation)
             return False
 
         # don't process clips that are too hot.
@@ -819,8 +818,8 @@ class TrackExtractor:
         threshold = float(np.percentile(np.reshape(filtered, [-1]), q=TrackExtractor.THRESHOLD_PERCENTILE) / 2)
 
         # cap the threshold to something reasonable
-        if threshold < 15.0:
-            threshold = 15.0
+        if threshold < 30.0:
+            threshold = 30.0
         if threshold > 50.0:
             threshold = 50.0
 

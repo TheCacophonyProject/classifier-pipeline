@@ -272,7 +272,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         # without false-positives.
         tracker.reject_non_static_clips = True
 
-
         if self.disable_track_filters:
             tracker.track_min_delta = 0.0
             tracker.track_min_mass = 0.0

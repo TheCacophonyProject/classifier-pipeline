@@ -81,8 +81,8 @@ class ClipResult:
         self.source = os.path.basename(full_path)
         self.start_time = dateutil.parser.parse(self.stats['start_time']) + timedelta(hours=13)
         self.end_time = dateutil.parser.parse(self.stats['end_time']) + timedelta(hours=13)
-        self.camera = self.stats['camera']
-        self.true_tag = self.stats['original_tag']
+        self.camera = self.stats.get('camera', 'none')
+        self.true_tag = self.stats.get('original_tag', 'unknown')
 
         if self.true_tag in NULL_TAGS: self.true_tag = 'none'
 
@@ -93,8 +93,6 @@ class ClipResult:
         class_confidences = {}
         best_confidence = 0
         best_label = "none"
-
-        print("getting best guess for",self.source)
 
         for track in self.tracks:
             label = track.label
@@ -114,8 +112,6 @@ class ClipResult:
             if confidence > best_confidence:
                 best_label = label
                 best_confidence = confidence
-
-        print('-->',best_label, best_confidence)
 
         return best_label, best_confidence
 
