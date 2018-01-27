@@ -20,10 +20,10 @@ import numpy as np
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.dataset import Dataset
 
-DATASET_FOLDER = 'c:/cac/datasets/robin/'
+DATASET_FOLDER = 'c:/cac/datasets/fantail/'
 
 # uses split from previous run
-USE_PREVIOUS_SPLIT = True
+USE_PREVIOUS_SPLIT = False
 
 # note: these should really be in a text file or something, or excluded during extraction
 BANNED_CLIPS = {
@@ -37,7 +37,7 @@ BANNED_CLIPS = {
     '20171219-105919-akaroa12.cptv'
 }
 
-EXCLUDED_LABELS = ['mouse','insect','rabbit','bird-kiwi','cat','dog','human']
+EXCLUDED_LABELS = ['insect','dog','human','mouse','bird-kiwi','rabbit']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
@@ -58,12 +58,12 @@ LABEL_WEIGHTS = {
 
 # clips after this date will be ignored.
 # note: this is based on the UTC date.
-END_DATE = dateutil.parser.parse("2017-12-31")
+END_DATE = dateutil.parser.parse("2018-01-31")
 
 # minimum average mass for test segment
 TEST_MIN_MASS = 30
 
-TRAIN_MIN_MASS = 30
+TRAIN_MIN_MASS = 20
 
 # number of segments to include in test set for each class (multiplied by label weights)
 TEST_SET_COUNT = 300

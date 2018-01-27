@@ -70,7 +70,7 @@ class ModelCRNN_HQ(ConvModel):
         'batch_size': 16,
         'learning_rate': 1e-4,
         'learning_rate_decay': 1.0,
-        'l2_reg': 0,
+        'l2_reg': 0.002,
         'label_smoothing': 0.1,
         'keep_prob': 0.5,
 
@@ -81,7 +81,7 @@ class ModelCRNN_HQ(ConvModel):
 
         # augmentation
         'augmentation': True,
-        'thermal_threshold': 10,
+        'thermal_threshold': 0,
         'scale_frequency': 0.5
     }
 
@@ -190,9 +190,8 @@ class ModelCRNN_HQ(ConvModel):
 
         # run the LSTM
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params['lstm_units'])
-
-        dropout = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32)
-
+        dropout = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, input_keep_prob=self.keep_prob,
+                                                output_keep_prob=self.keep_prob, dtype=np.float32)
         init_state = tf.nn.rnn_cell.LSTMStateTuple(self.state_in[:,:,0], self.state_in[:,:,1])
 
         lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
@@ -211,9 +210,21 @@ class ModelCRNN_HQ(ConvModel):
         logging.info("lstm output shape: {} x {}".format(lstm_outputs.shape[1], lstm_output.shape))
         logging.info("lstm state shape: {}".format(lstm_state.shape))
 
+        if self.params['l2_reg'] != 0:
+            regularizer = tf.contrib.layers.l2_regularizer(scale=self.params['l2_reg'])
+        else:
+            regularizer = False
+
+
+        # dense hidden layer
+        dense = tf.layers.dense(inputs=lstm_output, units=256, activation=tf.nn.relu, name='hidden',
+                                kernel_regularizer= regularizer)
+
         # dense layer on top of convolutional output mapping to class labels.
-        logits = tf.layers.dense(inputs=lstm_output, units=label_count, activation=None, name='logits')
-        tf.identity(logits, 'logits_out')
+        logits = tf.layers.dense(inputs=dense, units=label_count, activation=None, name='logits',
+                                 kernel_regularizer= regularizer)
+
+        tf.summary.histogram('weights/dense', dense)
         tf.summary.histogram('weights/logits', logits)
 
         # loss
@@ -223,16 +234,13 @@ class ModelCRNN_HQ(ConvModel):
             scope='softmax_loss')
 
         if self.params['l2_reg'] != 0:
-            with tf.variable_scope('logits', reuse=True):
-                logit_weights = tf.get_variable('kernel')
-
-            reg_loss = (tf.nn.l2_loss(logit_weights, name='loss/reg') * self.params['l2_reg'])
-            loss = tf.add(
-                softmax_loss, reg_loss, name='loss'
-            )
+            reg_loss = tf.losses.get_regularization_loss()
+            loss = tf.add(softmax_loss, reg_loss, name='loss')
+            tf.summary.scalar('loss/reg', reg_loss)
+            tf.summary.scalar('loss/softmax', softmax_loss)
         else:
             # just relabel the loss node
-            loss = tf.identity(softmax_loss, 'loss')
+            loss = tf.identity(softmax_loss, name='loss')
 
         class_out = tf.argmax(logits, axis=1, name='class_out')
         correct_prediction = tf.equal(class_out, self.y)
@@ -263,6 +271,9 @@ class ModelCRNN_HQ(ConvModel):
 
         # attach nodes
         tf.identity(lstm_state, 'state_out')
+        tf.identity(dense, 'hidden_out')
+        tf.identity(logits, 'logits_out')
+
         self._attach_nodes()
 
 class ModelCRNN_LQ(ConvModel):
