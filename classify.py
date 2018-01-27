@@ -185,7 +185,7 @@ class ClipClassifier(CPTVFileProcessor):
 
         fp_index = self.classifier.labels.index('false-positive')
 
-        # go through making classifications at each frame
+        # go through making clas sifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         state = None
         for i in range(len(track)):

@@ -205,7 +205,7 @@ class ModelCRNN_HQ(ConvModel):
         lstm_state_1, lstm_state_2 = lstm_states
 
         # just need the last output
-        lstm_output = lstm_outputs[:,-1]
+        lstm_output = tf.identity(lstm_outputs[:, -1], 'lstm_out')
         lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
 
         logging.info("lstm output shape: {} x {}".format(lstm_outputs.shape[1], lstm_output.shape))
@@ -213,6 +213,7 @@ class ModelCRNN_HQ(ConvModel):
 
         # dense layer on top of convolutional output mapping to class labels.
         logits = tf.layers.dense(inputs=lstm_output, units=label_count, activation=None, name='logits')
+        tf.identity(logits, 'logits_out')
         tf.summary.histogram('weights/logits', logits)
 
         # loss
@@ -403,9 +404,7 @@ class ModelCRNN_LQ(ConvModel):
 
         # run the LSTM
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params['lstm_units'])
-
         dropout = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32)
-
         init_state = tf.nn.rnn_cell.LSTMStateTuple(self.state_in[:, :, 0], self.state_in[:, :, 1])
 
         lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
@@ -418,7 +417,7 @@ class ModelCRNN_LQ(ConvModel):
         lstm_state_1, lstm_state_2 = lstm_states
 
         # just need the last output
-        lstm_output = lstm_outputs[:, -1]
+        lstm_output = tf.identity(lstm_outputs[:, -1], 'lstm_out')
         lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
 
         logging.info("lstm output shape: {} x {}".format(lstm_outputs.shape[1], lstm_output.shape))
@@ -426,6 +425,7 @@ class ModelCRNN_LQ(ConvModel):
 
         # dense layer on top of convolutional output mapping to class labels.
         logits = tf.layers.dense(inputs=lstm_output, units=label_count, activation=None, name='logits')
+        tf.identity(logits, 'logits_out')
         tf.summary.histogram('weights/logits', logits)
 
         # loss
