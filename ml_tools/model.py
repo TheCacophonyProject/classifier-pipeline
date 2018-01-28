@@ -63,6 +63,10 @@ class Model:
         self.hidden_out = None
         self.lstm_out = None
 
+        # we store 1000 samples and use these to plot projections during training
+        self.train_samples = None
+        self.val_samples = None
+
         # number of samples to use when evaluating the model, 1000 works well but is a bit slow,
         # 100 should give results to within a few percent.
         self.eval_samples = 500
@@ -278,17 +282,29 @@ class Model:
             if len(Xm) == 0:
                 continue
 
-            _prob, _logit, _hidden, _lstm = self.session.run(
-                [self.prediction, self.logits_out, self.hidden_out, self.lstm_out],
-                feed_dict={self.X: Xm})
+            if self.hidden_out is not None:
+                _prob, _logit, _hidden, _lstm = self.session.run(
+                    [self.prediction, self.logits_out, self.hidden_out, self.lstm_out],
+                    feed_dict={self.X: Xm})
+                for j in range(len(Xm)):
+                    probs.append(_prob[j])
+                    logits.append(_logit[j])
+                    hidden.append(_hidden[j])
+                    lstm.append(_lstm[j])
+            else:
+                _prob, _logit, _lstm = self.session.run(
+                    [self.prediction, self.logits_out, self.lstm_out],
+                    feed_dict={self.X: Xm})
+                for j in range(len(Xm)):
+                    probs.append(_prob[j])
+                    logits.append(_logit[j])
+                    lstm.append(_lstm[j])
 
-            for j in range(len(Xm)):
-                probs.append(_prob[j])
-                logits.append(_logit[j])
-                hidden.append(_hidden[j])
-                lstm.append(_lstm[j])
 
-        return {'prediction':probs, 'logits_out':logits, 'hidden_out':hidden, 'lstm_out':lstm}
+        if self.hidden_out is not None:
+            return {'prediction':probs, 'logits_out':logits, 'hidden_out':hidden, 'lstm_out':lstm}
+        else:
+            return {'prediction': probs, 'logits_out': logits, 'lstm_out': lstm}
 
 
     def eval_model(self, writer=None):
@@ -394,34 +410,45 @@ class Model:
         summary = tf.Summary(value=[im_summary])
         writer.add_summary(summary, self.step)
 
-    def create_training_data_variables(self, n = 1000):
-        # we actually try classifying 1000 segments here, then just zero out their data.
-        # this gives us the names and shapes of the data returned by classify_batch_endeded, but has 2 problems
-        # 1. it's a little slow as we classify 1000 segments needlessly
-        # 2. it locks us into n segments for the training data variables.
-        batch_X, batch_y = self.datasets.train.next_batch(n)
-        data = self.classify_batch_extended(batch_X)
-        with tf.variable_scope('training_data'):
+    def _create_training_data_variables(self, scope, dataset, n=1000):
+
+        # grab some example segments
+        sample_segments = [dataset.sample_segment() for _ in range(n)]
+        sample_X  = []
+        sample_y = []
+        for segment in sample_segments:
+
+            data = dataset.fetch_segment(segment, augment=False)
+            sample_X.append(data)
+            sample_y.append(self.labels.index(segment.label))
+
+        sample_X = np.asarray(sample_X, dtype=np.float32)
+        sample_y = np.asarray(sample_y, dtype=np.int32)
+
+        data = self.classify_batch_extended(sample_X)
+        vars = []
+        with tf.variable_scope(scope, reuse=False):
             for k, v in data.items():
                 v = np.float32(v) * 0
                 # create a variable and assign it the data.
-                tf.Variable(initial_value=v, dtype=tf.float32, trainable=False, name=k)
-            tf.Variable(initial_value=batch_y, dtype=tf.int32, trainable=False, name='labels')
+                vars.append(tf.get_variable(name=k, initializer=tf.initializers.zeros, dtype=tf.float32, trainable=False,
+                                shape=v.shape))
+
+        return vars, (sample_X, sample_y, sample_segments)
         
-    def add_training_data_example(self, batch_X, batch_y):
+    def update_training_data_example(self, scope, sample_X):
         """ Classifies given data and stores it in model.  This can be used to visualise the logit layout, or to
             help identify examples that different significantly from that seen during training.
             A batch of 1000 examples samples from all classes is recommended.
          """
-        data = self.classify_batch_extended(batch_X)
-        with tf.variable_scope('training_data', reuse=False):
+        data = self.classify_batch_extended(sample_X)
+        with tf.variable_scope(scope, reuse=True):
             for k, v in data.items():
                 v = np.float32(v)
                 # find variable and assign it the data.
                 var = tf.get_variable(k, shape=v.shape, dtype=tf.float32)
-                self.session.run(var, feed_dict={var: v})
-            labels = tf.get_variable('labels', shape=batch_y.shape, dtype=tf.int32)
-            self.session.run(labels, feed_dict={labels: batch_y})
+                assign = var.assign(v)
+                self.session.run(assign)
 
     def generate_report(self):
         """
@@ -464,6 +491,70 @@ class Model:
 
         return accuracy, f1_scores
 
+    def _create_sprite_image(self, images):
+        """Returns a sprite image consisting of images passed as argument. Images should be [n,h,w]"""
+
+        print(np.min(images), np.max(images), np.mean(images))
+
+        # clip out the negative values
+        images[images < 0] = 0
+
+        # looks much better as a negative.
+        images = -images
+
+        if isinstance(images, list):
+            images = np.array(images)
+        img_h = images.shape[1]
+        img_w = images.shape[2]
+        n_plots = int(np.ceil(np.sqrt(images.shape[0])))
+
+        spriteimage = np.ones((img_h * n_plots, img_w * n_plots))
+
+        for i in range(n_plots):
+            for j in range(n_plots):
+                this_filter = i * n_plots + j
+                if this_filter < images.shape[0]:
+                    this_img = images[this_filter]
+                    spriteimage[i * img_h:(i + 1) * img_h,
+                    j * img_w:(j + 1) * img_w] = this_img
+
+        return spriteimage
+
+    def _setup_example_training_data(self, log_dir, dataset, writer):
+
+        # create variables to store training data samples
+        vars, data = self._create_training_data_variables('samples_'+dataset.name, dataset=dataset, n=1000)
+        X, y, segs = data
+
+        init = tf.global_variables_initializer()
+        self.session.run(init)
+
+        sprite_path = os.path.join(log_dir, dataset.name+"_examples.png")
+        meta_path = os.path.join(log_dir, dataset.name+"_metadata.tsv")
+
+        config = projector.ProjectorConfig()
+        for var in vars[:-1]:
+            embedding = config.embeddings.add()
+            embedding.tensor_name = var.name
+            embedding.metadata_path = meta_path
+            embedding.sprite.image_path = sprite_path
+            embedding.sprite.single_image_dim.extend([48, 48])
+
+        projector.visualize_embeddings(writer, config)
+
+        # save tsv file containing labels"
+        with open(meta_path, 'w') as f:
+            f.write("Index\tLabel\tSource\n")
+            for index, segment in enumerate(segs):
+                f.write("{}\t{}\t{}\n".format(index, segment.label, segment.clip_id))
+
+        # save out image previews
+        to_vis = X[:, self.training_segment_frames // 2, 0]
+        sprite_image = self._create_sprite_image(to_vis)
+        plt.imsave(sprite_path, sprite_image, cmap='gray')
+
+        return data
+
     def train_model(self, epochs=10.0, run_name=None):
         """
         Trains model given number of epocs.  Uses session 'sess'
@@ -480,6 +571,8 @@ class Model:
 
         self.log_id = run_name
 
+        LOG_DIR = os.path.join(self.log_dir, run_name)
+
         iterations = int(math.ceil(epochs * self.rows / self.batch_size))
         if run_name is None:
             run_name = self.MODEL_NAME
@@ -491,18 +584,16 @@ class Model:
         last_epoch_save = -1
         best_report_acc = 0
 
+        # setup writers and run a quick benchmark
+        print("Initialising summary writers at {}.".format(LOG_DIR))
+        self.setup_summary_writers(run_name)
+
         # Run the initializer
         init = tf.global_variables_initializer()
         self.session.run(init)
 
-        # create variables to store training data samples
-        self.create_training_data_variables(1000)
-        init = tf.global_variables_initializer()
-        self.session.run(init)
-
-        # setup writers and run a quick benchmark
-        print("Initialising summary writers at {}.".format(os.path.join(self.log_dir, run_name)))
-        self.setup_summary_writers(run_name)
+        self.train_samples = self._setup_example_training_data(LOG_DIR, self.datasets.train, self.writer_train)
+        self.val_samples = self._setup_example_training_data(LOG_DIR, self.datasets.validation, self.writer_val)
 
         # setup a saver
         self.saver = tf.train.Saver(max_to_keep=1000)
@@ -558,9 +649,9 @@ class Model:
                 if int(epoch) > last_epoch_save:
 
                     # create a training reference set
-                    print("Saving example training data")
-                    train_X, train_y = self.datasets.train.next_batch(1000, force_no_augmentation=True)
-                    self.add_training_data_example(train_X, train_y)
+                    print("Updating example training data")
+                    self.update_training_data_example('samples_'+self.datasets.train.name, self.train_samples[0])
+                    self.update_training_data_example('samples_'+self.datasets.validation.name, self.val_samples[0])
 
                     print("Epoch report")
                     acc, f1 = self.generate_report()
@@ -576,10 +667,9 @@ class Model:
                         # as the current training data varaibles.
                         self.save(os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
                         try:
-                            self.save(os.path.join(self.log_dir, run_name, "training.sav"))
+                            self.save(os.path.join(LOG_DIR, "training-epoch-{:02d}.sav".format(int(epoch))))
                         except Exception as e:
                             logging.warning("Could not write training checkpoint, probably TensorBoard is open.")
-                            print(e)
                         best_report_acc = acc
                         best_step = i
 
@@ -691,7 +781,7 @@ class Model:
         """
         try:
             return self.session.graph.get_tensor_by_name(name+":0")
-        except KeyError as e:
+        except Exception as e:
             if none_if_not_found:
                 return None
             else:
@@ -719,7 +809,7 @@ class Model:
         self.state_in = self.get_tensor('state_in')
 
         self.logits_out = self.get_tensor('logits_out')
-        self.hidden_out = self.get_tensor('hidden_out')
+        self.hidden_out = self.get_tensor('hidden_out', none_if_not_found=True)
         self.lstm_out = self.get_tensor('lstm_out')
 
     def freeze(self):

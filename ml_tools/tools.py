@@ -343,7 +343,7 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
     if boundary_value is None: boundary_value = np.percentile(image, q=10)
 
     # note, we take the median of all channels, should really be on a per channel basis.
-    enlarged_frame = np.ones([image_height + padding*2, image_width + padding*2, channels], dtype=np.float16) * boundary_value
+    enlarged_frame = np.ones([image_height + padding*2, image_width + padding*2, channels], dtype=np.float32) * boundary_value
     enlarged_frame[padding:-padding,padding:-padding] = image
 
     sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_height:midx+window_half_height]

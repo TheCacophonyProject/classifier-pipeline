@@ -261,7 +261,7 @@ class Dataset:
         :param disable_async: forces fetching of segment in this thread / process rather than collecting from
             an aync reader queue (if one exists)
         :param force_no_augmentation: forces augmentation off, may disable asyc loading.
-        :return: X shape [n, channels, height, width], labels of shape [n]
+        :return: X of shape [n, channels, height, width], y (labels) of shape [n]
         """
 
         # if async is enabled use it.
@@ -490,7 +490,20 @@ class Dataset:
         # also optical flow is stored as a scaled integer, but we want it in float32 format.
         data = np.asarray(data, dtype=np.float32)
 
-        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
+        AUTO_CENTER = False
+
+        if AUTO_CENTER:
+            # apply centering so mean of each frame is 0
+
+            # there must be some problem with the extraction process as we get very strong pos + neg values come through
+            # so we clip them here
+            levels = reference_level[:, np.newaxis, np.newaxis]
+            data[:, 0, :, :] = np.clip(data[:, 0, :, :], levels - 200, levels + 400)
+            data[:, 0, :, :] -= np.mean(data[:, 0, :, :], axis = (1,2), keepdims=True)
+        else:
+            # use the frame median as reference poitn.
+            # this should be the better way to go, but sometimes doesn't work for strange reasons.
+            data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
 
         # get reference level for thermal channel
         assert len(data) == len(reference_level), "Reference level shape and data shape not match."
@@ -507,8 +520,9 @@ class Dataset:
                     data[:, 2:3 + 1, H//2+y, W//2+x] = frame_velocity[:, :]
 
         # set filtered track to delta frames
+        reference = np.clip(data[:, 0], 20, 999)
         data[0, 1] = 0
-        data[1:, 1] = data[1:, 1] - data[:-1, 1]
+        data[1:, 1] = reference[1:] - reference[:-1]
 
         return data
 

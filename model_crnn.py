@@ -81,7 +81,7 @@ class ModelCRNN_HQ(ConvModel):
 
         # augmentation
         'augmentation': True,
-        'thermal_threshold': 15,
+        'thermal_threshold': 0,
         'scale_frequency': 0.5
     }
 
@@ -130,11 +130,12 @@ class ModelCRNN_HQ(ConvModel):
 
         # normalise the thermal
         thermal = X[:, :, 0:0+1]
-        thermal = tf.nn.relu(thermal - self.params['thermal_threshold']) + self.params['thermal_threshold']
-        thermal = thermal * (1/32)
+        thermal = tf.nn.relu(thermal - self.params['thermal_threshold'])
+        thermal = (thermal - 10) * (1/32)
 
         delta = X[:,:, 1:1+1]
         delta = tf.sqrt(tf.abs(delta))
+        delta = (delta - 1) / 3
 
         # normalise the flow
         flow = X[:, :, 2:3 + 1]
@@ -177,7 +178,7 @@ class ModelCRNN_HQ(ConvModel):
 
         if self.params['enable_flow']:
             # integrate delta and flow into a 3 channel layer
-            layer = tf.concat((delta, flow), axis=3)
+            layer = tf.concat((thermal, flow), axis=3)
             layer = self.conv_layer('motion/1', layer, 64, [3, 3], pool_stride=2)
             layer = self.conv_layer('motion/2', layer, 64, [3, 3], pool_stride=2)
             layer = self.conv_layer('motion/3', layer, 96, [3, 3], pool_stride=2)
@@ -442,7 +443,6 @@ class ModelCRNN_LQ(ConvModel):
 
         # dense layer on top of convolutional output mapping to class labels.
         logits = tf.layers.dense(inputs=lstm_output, units=label_count, activation=None, name='logits')
-        tf.identity(logits, 'logits_out')
         tf.summary.histogram('weights/logits', logits)
 
         # loss
@@ -492,4 +492,5 @@ class ModelCRNN_LQ(ConvModel):
 
         # attach nodes
         tf.identity(lstm_state, 'state_out')
+        tf.identity(logits, 'logits_out')
         self._attach_nodes()
