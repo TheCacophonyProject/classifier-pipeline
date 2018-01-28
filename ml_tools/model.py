@@ -280,11 +280,13 @@ class Model:
 
             _prob, _logit, _hidden, _lstm = self.session.run(
                 [self.prediction, self.logits_out, self.hidden_out, self.lstm_out],
-                feed_dict={self.X: Xm})[0]
-            probs.append(_prob)
-            logits.append(_logit)
-            hidden.append(_hidden)
-            lstm.append(_lstm)
+                feed_dict={self.X: Xm})
+
+            for j in range(len(Xm)):
+                probs.append(_prob[j])
+                logits.append(_logit[j])
+                hidden.append(_hidden[j])
+                lstm.append(_lstm[j])
 
         return {'prediction':probs, 'logits_out':logits, 'hidden_out':hidden, 'lstm_out':lstm}
 
@@ -335,10 +337,6 @@ class Model:
         self.writer_val = tf.summary.FileWriter(os.path.join(self.log_dir, run_name + '/val'), graph=self.session.graph)
         merged = tf.summary.merge_all()
         self.merged_summary = merged
-
-        # make sure projector knows where to find data.
-        config = projector.ProjectorConfig()
-        config.model_checkpoint_path = os.path.join(CHECKPOINT_FOLDER, "training-most-recent.sav")
 
     def log_scalar(self, tag, value, writer=None):
         """
@@ -395,6 +393,20 @@ class Model:
         # Create and write Summary
         summary = tf.Summary(value=[im_summary])
         writer.add_summary(summary, self.step)
+
+    def create_training_data_variables(self, n = 1000):
+        # we actually try classifying 1000 segments here, then just zero out their data.
+        # this gives us the names and shapes of the data returned by classify_batch_endeded, but has 2 problems
+        # 1. it's a little slow as we classify 1000 segments needlessly
+        # 2. it locks us into n segments for the training data variables.
+        batch_X, batch_y = self.datasets.train.next_batch(n)
+        data = self.classify_batch_extended(batch_X)
+        with tf.variable_scope('training_data'):
+            for k, v in data.items():
+                v = np.float32(v) * 0
+                # create a variable and assign it the data.
+                tf.Variable(initial_value=v, dtype=tf.float32, trainable=False, name=k)
+            tf.Variable(initial_value=batch_y, dtype=tf.int32, trainable=False, name='labels')
         
     def add_training_data_example(self, batch_X, batch_y):
         """ Classifies given data and stores it in model.  This can be used to visualise the logit layout, or to
@@ -402,12 +414,13 @@ class Model:
             A batch of 1000 examples samples from all classes is recommended.
          """
         data = self.classify_batch_extended(batch_X)
-        with tf.variable_scope('training_data', reuse=True):
-            for k, v in data:
-                # create a variable and assign it the data.
-                var = tf.get_variable(v, dtype=tf.float32, trainable=False, shape=v.shape, initializer=tf.zeros_initializer)
+        with tf.variable_scope('training_data', reuse=False):
+            for k, v in data.items():
+                v = np.float32(v)
+                # find variable and assign it the data.
+                var = tf.get_variable(k, shape=v.shape, dtype=tf.float32)
                 self.session.run(var, feed_dict={var: v})
-            labels = tf.get_variable('labels', dtype=tf.int32, trainable=False, shape=batch_y.shape, initializer=tf.zeros_initializer)
+            labels = tf.get_variable('labels', shape=batch_y.shape, dtype=tf.int32)
             self.session.run(labels, feed_dict={labels: batch_y})
 
     def generate_report(self):
@@ -479,6 +492,11 @@ class Model:
         best_report_acc = 0
 
         # Run the initializer
+        init = tf.global_variables_initializer()
+        self.session.run(init)
+
+        # create variables to store training data samples
+        self.create_training_data_variables(1000)
         init = tf.global_variables_initializer()
         self.session.run(init)
 
@@ -554,7 +572,14 @@ class Model:
 
                     if acc > best_report_acc:
                         print('Save best model')
+                        # saving a copy in the log dir allows tensorboard to access some additional information such
+                        # as the current training data varaibles.
                         self.save(os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
+                        try:
+                            self.save(os.path.join(self.log_dir, run_name, "training.sav"))
+                        except Exception as e:
+                            logging.warning("Could not write training checkpoint, probably TensorBoard is open.")
+                            print(e)
                         best_report_acc = acc
                         best_step = i
 
@@ -706,7 +731,6 @@ class Model:
         Classify a single frame.
         :param frame: numpy array of dims [C, H, W]
         :param state: the previous state, or none for initial frame.
-        :param frame_motion: the movement of the tracking frame as a tuple (dx, dy)
         :return: tuple (prediction, state).  Where prediction is score for each class
         """
         if state is None:
