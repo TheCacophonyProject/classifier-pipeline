@@ -253,18 +253,19 @@ class Dataset:
                     if len(tracks) > 0 and tracks[0].label == label])
         return segments, tracks, bins, weight
 
-    def next_batch(self, n, disable_async=False):
+    def next_batch(self, n, disable_async=False, force_no_augmentation=False):
         """
         Returns a batch of n segments (X, y) from dataset.
         Applies augmentation and preprocessing automatically.
         :param n: number of segments
         :param disable_async: forces fetching of segment in this thread / process rather than collecting from
             an aync reader queue (if one exists)
+        :param force_no_augmentation: forces augmentation off, may disable asyc loading.
         :return: X shape [n, channels, height, width], labels of shape [n]
         """
 
         # if async is enabled use it.
-        if not disable_async and self.preloader_queue is not None:
+        if (not disable_async and self.preloader_queue is not None) or force_no_augmentation:
             # get samples from queue
             batch_X = []
             batch_y = []
@@ -282,7 +283,7 @@ class Dataset:
 
         for segment in segments:
 
-            data = self.fetch_segment(segment, augment=self.enable_augmentation)
+            data = self.fetch_segment(segment, augment=self.enable_augmentation and not force_no_augmentation)
             batch_X.append(data)
             batch_y.append(self.labels.index(segment.label))
 
@@ -504,6 +505,10 @@ class Dataset:
             for x in range(-2,2+1):
                 for y in range(-2,2+1):
                     data[:, 2:3 + 1, H//2+y, W//2+x] = frame_velocity[:, :]
+
+        # set filtered track to delta frames
+        data[0, 1] = 0
+        data[1:, 1] = data[1:, 1] - data[:-1, 1]
 
         return data
 

@@ -81,7 +81,7 @@ class ModelCRNN_HQ(ConvModel):
 
         # augmentation
         'augmentation': True,
-        'thermal_threshold': 0,
+        'thermal_threshold': 15,
         'scale_frequency': 0.5
     }
 
@@ -133,6 +133,9 @@ class ModelCRNN_HQ(ConvModel):
         thermal = tf.nn.relu(thermal - self.params['thermal_threshold']) + self.params['thermal_threshold']
         thermal = thermal * (1/32)
 
+        delta = X[:,:, 1:1+1]
+        delta = tf.sqrt(tf.abs(delta))
+
         # normalise the flow
         flow = X[:, :, 2:3 + 1]
         flow = flow * 10
@@ -145,9 +148,11 @@ class ModelCRNN_HQ(ConvModel):
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
         thermal = tf.transpose(thermal, (0, 1, 3, 4, 2))    #[B, F, H, W, 1]
         flow = tf.transpose(flow, (0, 1, 3, 4, 2))          # [B, F, H, W, 2]
+        delta = tf.transpose(delta, (0, 1, 3, 4, 2))  # [B, F, H, W, 2]
 
         thermal = tf.reshape(thermal, [-1, 48, 48, 1])      # [B*F, 48, 48, 1]
         flow = tf.reshape(flow, [-1, 48, 48, 2])            # [B*F, 48, 48, 2]
+        delta = tf.reshape(delta, [-1, 48, 48, 1])  # [B*F, 48, 48, 1]
 
         mask = tf.reshape(mask, [-1, 48, 48, 1])            # [B*F, 48, 48, 1]
 
@@ -155,6 +160,7 @@ class ModelCRNN_HQ(ConvModel):
         self.save_input_summary(thermal, 'inputs/thermal')
         self.save_input_summary(flow[:, :, :, 0:0+1], 'inputs/flow/h')
         self.save_input_summary(flow[:, :, :, 1:1+1], 'inputs/flow/v')
+        self.save_input_summary(delta[:, :, :, 0:0+1], 'inputs/delta')
         self.save_input_summary(mask, 'inputs/mask')
 
         layer = thermal
@@ -170,8 +176,8 @@ class ModelCRNN_HQ(ConvModel):
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
 
         if self.params['enable_flow']:
-            # integrate thermal and flow into a 3 channel layer
-            layer = tf.concat((thermal, flow), axis=3)
+            # integrate delta and flow into a 3 channel layer
+            layer = tf.concat((delta, flow), axis=3)
             layer = self.conv_layer('motion/1', layer, 64, [3, 3], pool_stride=2)
             layer = self.conv_layer('motion/2', layer, 64, [3, 3], pool_stride=2)
             layer = self.conv_layer('motion/3', layer, 96, [3, 3], pool_stride=2)
@@ -217,7 +223,7 @@ class ModelCRNN_HQ(ConvModel):
 
 
         # dense hidden layer
-        dense = tf.layers.dense(inputs=lstm_output, units=256, activation=tf.nn.relu, name='hidden',
+        dense = tf.layers.dense(inputs=lstm_output, units=384, activation=tf.nn.relu, name='hidden',
                                 kernel_regularizer= regularizer)
 
         # dense layer on top of convolutional output mapping to class labels.

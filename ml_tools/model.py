@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.contrib.tensorboard.plugins import projector
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -58,7 +59,9 @@ class Model:
 
         self.state_in = None
         self.state_out = None
-        self.normalise = None
+        self.logits_out = None
+        self.hidden_out = None
+        self.lstm_out = None
 
         # number of samples to use when evaluating the model, 1000 works well but is a bit slow,
         # 100 should give results to within a few percent.
@@ -234,25 +237,57 @@ class Model:
 
     def classify_batch(self, batch_X):
         """
+        Classifies all segments in the given batch.
         :param batch_X: input batch of shape [n,frames,h,w,channels]
         :return: list of probs for each examples
         """
-        """ Classifies all segments in the given batch. """
 
         total_samples = batch_X.shape[0]
         batches = (total_samples // self.batch_size) + 1
 
-        predictions = []
+        results = []
 
         for i in range(batches):
             Xm = batch_X[i*self.batch_size:(i+1)*self.batch_size]
             if len(Xm) == 0:
                 continue
+
             probs = self.session.run([self.prediction], feed_dict={self.X: Xm})[0]
             for j in range(len(Xm)):
-                predictions.append(probs[j,:])
+                results.append(probs[j])
 
-        return predictions
+        return results
+
+    def classify_batch_extended(self, batch_X):
+        """
+        Classifies all segments in the given batch and returns extended info
+        :param batch_X: input batch of shape [n,frames,h,w,channels]
+        :return: dictionary mapping output node to data
+        """
+
+        total_samples = batch_X.shape[0]
+        batches = (total_samples // self.batch_size) + 1
+
+        probs = []
+        logits = []
+        hidden = []
+        lstm = []
+
+        for i in range(batches):
+            Xm = batch_X[i*self.batch_size:(i+1)*self.batch_size]
+            if len(Xm) == 0:
+                continue
+
+            _prob, _logit, _hidden, _lstm = self.session.run(
+                [self.prediction, self.logits_out, self.hidden_out, self.lstm_out],
+                feed_dict={self.X: Xm})[0]
+            probs.append(_prob)
+            logits.append(_logit)
+            hidden.append(_hidden)
+            lstm.append(_lstm)
+
+        return {'prediction':probs, 'logits_out':logits, 'hidden_out':hidden, 'lstm_out':lstm}
+
 
     def eval_model(self, writer=None):
         """ Evaluates the model on the test set. """
@@ -301,6 +336,9 @@ class Model:
         merged = tf.summary.merge_all()
         self.merged_summary = merged
 
+        # make sure projector knows where to find data.
+        config = projector.ProjectorConfig()
+        config.model_checkpoint_path = os.path.join(CHECKPOINT_FOLDER, "training-most-recent.sav")
 
     def log_scalar(self, tag, value, writer=None):
         """
@@ -357,6 +395,20 @@ class Model:
         # Create and write Summary
         summary = tf.Summary(value=[im_summary])
         writer.add_summary(summary, self.step)
+        
+    def add_training_data_example(self, batch_X, batch_y):
+        """ Classifies given data and stores it in model.  This can be used to visualise the logit layout, or to
+            help identify examples that different significantly from that seen during training.
+            A batch of 1000 examples samples from all classes is recommended.
+         """
+        data = self.classify_batch_extended(batch_X)
+        with tf.variable_scope('training_data', reuse=True):
+            for k, v in data:
+                # create a variable and assign it the data.
+                var = tf.get_variable(v, dtype=tf.float32, trainable=False, shape=v.shape, initializer=tf.zeros_initializer)
+                self.session.run(var, feed_dict={var: v})
+            labels = tf.get_variable('labels', dtype=tf.int32, trainable=False, shape=batch_y.shape, initializer=tf.zeros_initializer)
+            self.session.run(labels, feed_dict={labels: batch_y})
 
     def generate_report(self):
         """
@@ -423,7 +475,7 @@ class Model:
         prep_time = 0
         best_step = 0
         examples_since_print = 0
-        last_epoch_save = 0
+        last_epoch_save = -1
         best_report_acc = 0
 
         # Run the initializer
@@ -486,6 +538,12 @@ class Model:
 
                 # save at epochs
                 if int(epoch) > last_epoch_save:
+
+                    # create a training reference set
+                    print("Saving example training data")
+                    train_X, train_y = self.datasets.train.next_batch(1000, force_no_augmentation=True)
+                    self.add_training_data_example(train_X, train_y)
+
                     print("Epoch report")
                     acc, f1 = self.generate_report()
                     print("results: {:.1f} {}".format(acc*100,["{:.1f}".format(x*100) for x in f1]))
@@ -631,8 +689,13 @@ class Model:
         self.keep_prob = self.get_tensor('keep_prob')
         self.is_training = self.get_tensor('training')
         self.global_step = self.get_tensor('global_step')
+
         self.state_out = self.get_tensor('state_out')
         self.state_in = self.get_tensor('state_in')
+
+        self.logits_out = self.get_tensor('logits_out')
+        self.hidden_out = self.get_tensor('hidden_out')
+        self.lstm_out = self.get_tensor('lstm_out')
 
     def freeze(self):
         """ Freezes graph so that no additional changes can be made. """
