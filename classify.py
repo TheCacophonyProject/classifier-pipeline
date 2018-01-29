@@ -25,7 +25,7 @@ from ml_tools.trackextractor import TrackExtractor, Track, Region
 DEFAULT_BASE_PATH = "c:/cac"
 HERE = os.path.dirname(__file__)
 RESOURCES_PATH = os.path.join(HERE, "resources")
-MODEL_NAME = "model_hq_joint"
+MODEL_NAME = "model_021_hq_flow"
 
 # folders that are not processed when run with 'all'
 IGNORE_FOLDERS = ['untagged','cat','dog','insect','unidentified','rabbit','hard','multi','moving','mouse']
