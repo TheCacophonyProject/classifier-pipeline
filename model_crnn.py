@@ -70,7 +70,7 @@ class ModelCRNN_HQ(ConvModel):
         'batch_size': 16,
         'learning_rate': 1e-4,
         'learning_rate_decay': 1.0,
-        'l2_reg': 0.002,
+        'l2_reg': 0.0,
         'label_smoothing': 0.1,
         'keep_prob': 0.5,
 
@@ -81,7 +81,7 @@ class ModelCRNN_HQ(ConvModel):
 
         # augmentation
         'augmentation': True,
-        'thermal_threshold': 0,
+        'thermal_threshold': 10,
         'scale_frequency': 0.5
     }
 
@@ -131,11 +131,11 @@ class ModelCRNN_HQ(ConvModel):
         # normalise the thermal
         thermal = X[:, :, 0:0+1]
         thermal = tf.nn.relu(thermal - self.params['thermal_threshold'])
-        thermal = (thermal - 10) * (1/32)
+        thermal = thermal * (1/32)
 
         delta = X[:,:, 1:1+1]
         delta = tf.sqrt(tf.abs(delta))
-        delta = (delta - 1) / 3
+        delta = (delta) / 3
 
         # normalise the flow
         flow = X[:, :, 2:3 + 1]

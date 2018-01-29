@@ -505,6 +505,10 @@ class Dataset:
             # this should be the better way to go, but sometimes doesn't work for strange reasons.
             data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
 
+        # apply clipping
+        # sometimes we get extreme values, better to clip them out here.
+        data[:, 0, :, :] = np.clip(data[:, 0, :, :], -200, +300)
+
         # get reference level for thermal channel
         assert len(data) == len(reference_level), "Reference level shape and data shape not match."
 
@@ -537,6 +541,28 @@ class Dataset:
 
         frames, channels, height, width = segment_data.shape
 
+        if random.random() <= self.scale_frequency:
+            # we will adjust contrast and levels, but only within these bounds.
+            # that is a bright input may have brightness reduced, but not increased.
+            MAX_LEVEL_OFFSET = 5
+            MIN_STD = 10
+            MAX_STD = 25
+
+            # apply level and contrast shift
+            mean = np.mean(segment_data[:,0])
+            std = np.std(segment_data[:,0])
+
+            min_level = np.clip(-MAX_LEVEL_OFFSET - mean, -MAX_LEVEL_OFFSET, 0)
+            max_level = np.clip(MAX_LEVEL_OFFSET - mean, 0, +MAX_LEVEL_OFFSET)
+            min_contrast = np.clip(MIN_STD / std, 0.75, 1)
+            max_contrast = np.clip(MAX_STD / std, 1, 1.5)
+
+            level_adjust = min_level + (random.random() * (max_level - min_level))
+            contrast_adjust = tools.random_log(min_contrast, max_contrast)
+
+            segment_data[:,0] += level_adjust
+            segment_data[:,0] *= contrast_adjust
+
         # apply scaling only some of time
         if random.random() <= self.scale_frequency or force_scale is not None:
             mask = segment_data[:, 4]
@@ -544,17 +570,18 @@ class Dataset:
             size = math.sqrt(av_mass + 4)
 
             # work out reasonable bounds so we don't scale too much
-            # general idea is scale to a width of between 4 and 36 pixels
-            max_scale_up = np.clip(36 / size, 1.0, 2.0)
-            min_scale_down = np.clip(4 / size, 0.25, 1.0)
+            # general idea is scale to a width of between 6 and 48 pixels
+            max_scale_up = np.clip(36 / size, 1.0, 3.0)
+            min_scale_down = np.clip(4 / size, 0.85, 1.0)
 
             if force_scale is not None:
                 scale = force_scale
             else:
                 scale = tools.random_log(min_scale_down, max_scale_up)
 
+            # don't apply scaling if it's just a very small scale amount
             if scale != 1.0:
-                position_jitter = 5
+                position_jitter = 5 / scale
                 xofs = random.normalvariate(0, position_jitter)
                 yofs = random.normalvariate(0, position_jitter)
                 for i in range(frames):
