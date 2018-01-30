@@ -490,24 +490,9 @@ class Dataset:
         # also optical flow is stored as a scaled integer, but we want it in float32 format.
         data = np.asarray(data, dtype=np.float32)
 
-        AUTO_CENTER = False
-
-        if AUTO_CENTER:
-            # apply centering so mean of each frame is 0
-
-            # there must be some problem with the extraction process as we get very strong pos + neg values come through
-            # so we clip them here
-            levels = reference_level[:, np.newaxis, np.newaxis]
-            data[:, 0, :, :] = np.clip(data[:, 0, :, :], levels - 200, levels + 400)
-            data[:, 0, :, :] -= np.mean(data[:, 0, :, :], axis = (1,2), keepdims=True)
-        else:
-            # use the frame median as reference poitn.
-            # this should be the better way to go, but sometimes doesn't work for strange reasons.
-            data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
-
-        # apply clipping
-        # sometimes we get extreme values, better to clip them out here.
-        data[:, 0, :, :] = np.clip(data[:, 0, :, :], -200, +300)
+        # use the frame median as reference poitn.
+        # this should be the better way to go, but sometimes doesn't work for strange reasons.
+        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
 
         # get reference level for thermal channel
         assert len(data) == len(reference_level), "Reference level shape and data shape not match."

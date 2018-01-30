@@ -651,6 +651,7 @@ class Model:
                 if val_loss < best_val_loss:
                     print("Saving best validation model.")
                     self.save(os.path.join(CHECKPOINT_FOLDER, "training-best-val.sav"))
+                    best_val_loss = val_loss
 
                 # save at epochs
                 if int(epoch) > last_epoch_save:
@@ -863,5 +864,11 @@ class Model:
         :param name: name of summary
         """
         tf.summary.histogram(name, input)
-        tf.summary.image(name + '/image', input[-2:-1], max_outputs=1)
+        mean = tf.reduce_mean(input)
+        tf.summary.image('/inputs/' + name, input[-2:-1], max_outputs=1)
+        tf.summary.scalar('/inputs/' + name + "/max", tf.reduce_max(input))
+        tf.summary.scalar('/inputs/' + name + "/min", tf.reduce_min(input))
+        tf.summary.scalar('/inputs/' + name + "/mean", mean)
+        tf.summary.scalar('/inputs/' + name + "/std", tf.sqrt(tf.reduce_mean(tf.square(input - mean))))
+
 

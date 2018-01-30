@@ -220,7 +220,6 @@ class ModelCRNN_HQ(ConvModel):
         else:
             regularizer = False
 
-
         # dense hidden layer
         dense = tf.layers.dense(inputs=lstm_output, units=384, activation=tf.nn.relu, name='hidden',
                                 kernel_regularizer= regularizer)
@@ -359,13 +358,17 @@ class ModelCRNN_LQ(ConvModel):
         X = self.X  # [B, F, C, H, W]
 
         # normalise the thermal
+        # the idea here is to apply sqrt to any values over 100 so that we reduce the effect of very strong values.
         thermal = X[:, :, 0:0 + 1]
         thermal = tf.nn.relu(thermal - self.params['thermal_threshold']) + self.params['thermal_threshold']
+        signs = tf.sign(thermal)
+        abs = tf.abs(thermal)
+        thermal = tf.minimum(tf.sqrt(abs / 200) * 200, abs) * signs
         thermal = thermal * (1 / 32)
 
         # normalise the flow
         flow = X[:, :, 2:3 + 1]
-        flow = flow * 10
+        flow = flow * 5
 
         # grab the mask
         mask = X[:, :, 4:4 + 1]
@@ -387,11 +390,11 @@ class ModelCRNN_LQ(ConvModel):
         self.save_input_summary(mask, 'inputs/mask')
 
         layer = thermal
-        layer = self.conv_layer('filtered/1', layer, 32, [3, 3], conv_stride=2)
-        layer = self.conv_layer('filtered/2', layer, 48, [3, 3], conv_stride=2)
-        layer = self.conv_layer('filtered/3', layer, 64, [3, 3], conv_stride=2)
-        layer = self.conv_layer('filtered/4', layer, 64, [3, 3], conv_stride=2)
-        layer = self.conv_layer('filtered/5', layer, 64, [3, 3], conv_stride=1)
+        layer = self.conv_layer('thermal/1', layer, 32, [3, 3], conv_stride=2)
+        layer = self.conv_layer('thermal/2', layer, 48, [3, 3], conv_stride=2)
+        layer = self.conv_layer('thermal/3', layer, 64, [3, 3], conv_stride=2)
+        layer = self.conv_layer('thermal/4', layer, 64, [3, 3], conv_stride=2)
+        layer = self.conv_layer('thermal/5', layer, 64, [3, 3], conv_stride=1)
 
         filtered_conv = layer
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
