@@ -4,7 +4,7 @@
 These scripts handle the data pre-processing, training, and execution of a Convolutional Neural Network based classifier 
 for thermal vision.
 
-The output is a TensorFlow model that can identify 3 second 64x64 video clips centered on the object of interest.
+The output is a TensorFlow model that can identify 48x48 video clips centered on the object of interest.
 
 # Scripts
 
@@ -19,6 +19,9 @@ Trains a neural net using a provided test / train / validation dataset.
 
 ### classify.py
 Uses a pre-trained model to identifying and classifying any animals in a CPTV file.
+
+### evaluate.py
+Evaluates the performance of a classify.py run and generates reports.
 
 # Notebooks
 
@@ -69,4 +72,3 @@ A pre-trained model can be used to classify objects within a CPTV video
 `python classify.py [cptv filename] -p`
 
 This will generate a text file listing the animals identified, and create an MPEG preview file.   `
-
