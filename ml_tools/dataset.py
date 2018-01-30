@@ -544,24 +544,14 @@ class Dataset:
         if random.random() <= self.scale_frequency:
             # we will adjust contrast and levels, but only within these bounds.
             # that is a bright input may have brightness reduced, but not increased.
-            MAX_LEVEL_OFFSET = 5
-            MIN_STD = 10
-            MAX_STD = 25
+            MAX_LEVEL_OFFSET = 10
 
             # apply level and contrast shift
-            mean = np.mean(segment_data[:,0])
-            std = np.std(segment_data[:,0])
+            level_adjust = (random.random() - 0.5) * MAX_LEVEL_OFFSET
+            contrast_adjust = tools.random_log(0.8, 1.2)
 
-            min_level = np.clip(-MAX_LEVEL_OFFSET - mean, -MAX_LEVEL_OFFSET, 0)
-            max_level = np.clip(MAX_LEVEL_OFFSET - mean, 0, +MAX_LEVEL_OFFSET)
-            min_contrast = np.clip(MIN_STD / std, 0.75, 1)
-            max_contrast = np.clip(MAX_STD / std, 1, 1.5)
-
-            level_adjust = min_level + (random.random() * (max_level - min_level))
-            contrast_adjust = tools.random_log(min_contrast, max_contrast)
-
-            segment_data[:,0] += level_adjust
             segment_data[:,0] *= contrast_adjust
+            segment_data[:, 0] += level_adjust
 
         # apply scaling only some of time
         if random.random() <= self.scale_frequency or force_scale is not None:

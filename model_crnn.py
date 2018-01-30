@@ -197,12 +197,10 @@ class ModelCRNN_HQ(ConvModel):
 
         # run the LSTM
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params['lstm_units'])
-        dropout = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, input_keep_prob=self.keep_prob,
-                                                output_keep_prob=self.keep_prob, dtype=np.float32)
         init_state = tf.nn.rnn_cell.LSTMStateTuple(self.state_in[:,:,0], self.state_in[:,:,1])
 
         lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
-            cell=dropout, inputs=out,
+            cell=lstm_cell, inputs=out,
             initial_state=init_state,
             dtype=tf.float32,
             scope='lstm'

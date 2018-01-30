@@ -24,6 +24,7 @@ class Model:
 
     MODEL_NAME = "abstract model"
     MODEL_DESCRIPTION = ""
+    VERSION = "0.3.0"
 
     def __init__(self, session=None):
 
@@ -583,6 +584,7 @@ class Model:
         examples_since_print = 0
         last_epoch_save = -1
         best_report_acc = 0
+        best_val_loss = float('inf')
 
         # setup writers and run a quick benchmark
         print("Initialising summary writers at {}.".format(LOG_DIR))
@@ -645,6 +647,11 @@ class Model:
                 # create a save point
                 self.save(os.path.join(CHECKPOINT_FOLDER, "training-most-recent.sav"))
 
+                # save the best model if validation score was good
+                if val_loss < best_val_loss:
+                    print("Saving best validation model.")
+                    self.save(os.path.join(CHECKPOINT_FOLDER, "training-best-val.sav"))
+
                 # save at epochs
                 if int(epoch) > last_epoch_save:
 
@@ -662,7 +669,7 @@ class Model:
                     last_epoch_save = int(epoch)
 
                     if acc > best_report_acc:
-                        print('Save best model')
+                        print('Save best epoch tested model.')
                         # saving a copy in the log dir allows tensorboard to access some additional information such
                         # as the current training data varaibles.
                         self.save(os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
@@ -741,6 +748,7 @@ class Model:
         model_stats['hyperparams'] = self.params
         model_stats['log_id'] = self.log_id
         model_stats['training_date'] = str(time.time())
+        model_stats['version'] = self.VERSION
 
         json.dump(model_stats, open(filename+ ".txt", 'w'), indent=4)
 
