@@ -21,6 +21,7 @@ from dateutil import parser
 from bisect import bisect
 
 import numpy as np
+import scipy.ndimage
 
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
@@ -49,7 +50,8 @@ class TrackHeader:
         self.thermal_reference_level = None
         # tracking frame movements for each frame, array of tuples (x-vel, y-vel)
         self.frame_velocity = None
-
+        # original tracking bounds
+        self.track_bounds = []
 
     @property
     def track_id(self):
@@ -108,6 +110,7 @@ class TrackHeader:
         )
         result.thermal_reference_level = thermal_reference_level
         result.frame_velocity = frame_velocity
+        result.track_bounds = bounds_history.copy()
 
         return result
 
@@ -153,6 +156,11 @@ class SegmentHeader:
     def frame_velocity(self):
         # tracking frame velocity for each frame.
         return self.track.frame_velocity[self.start_frame:self.start_frame + self.frames]
+
+    @property
+    def track_bounds(self):
+        # original location of this tracks bounds.
+        return self.track.track_bounds[self.start_frame:self.start_frame + self.frames]
 
     @property
     def thermal_reference_level(self):
@@ -438,6 +446,7 @@ class Dataset:
         """
         data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
         data = self.apply_preprocessing(data, track.thermal_reference_level, track.frame_velocity)
+        data = self.apply_auto_scale(data, track.track_bounds)
         return data
 
     def fetch_segment(self, segment: SegmentHeader, augment=False):
@@ -471,10 +480,85 @@ class Dataset:
         if len(data) != self.segment_width:
             print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)
 
-        data = self.apply_preprocessing(data, segment.thermal_reference_level, segment.frame_velocity)
+        # due to some bug in the extractor thermal data sometimes has 0 values (probably near the edges of the frame)
+        # for this reason we identify these values and them them to the second highest value
+        thermal_min = np.min(data[:, 0, :, :])
+        if thermal_min == 0:
+            thermal = data[:, 0, :, :]
+            thermal_fixed = thermal.copy()
+            thermal_fixed[thermal_fixed == 0] = 999
+            thermal_real_min = np.min(thermal_fixed, axis=(1,2), keepdims=True)
+            #print("Warning, very low thermal values found in segment {} with min {}, but now setting to {}".format(
+            #    segment.track_id, thermal_min, thermal_real_min.tolist()))
+            for i in range(len(thermal)):
+                thermal[i][thermal[i] == 0] = thermal_real_min[i,0,0]
+            data[:, 0, :, :] = thermal
+
+
+        data = self.apply_auto_scale(data, segment.track.track_bounds[first_frame:last_frame], augment=augment)
+
+        data = self.apply_preprocessing(data, segment.track.thermal_reference_level[first_frame:last_frame],
+                                        segment.track.frame_velocity[first_frame:last_frame])
 
         if augment:
             data = self.apply_augmentation(data)
+
+        return data
+
+    def apply_auto_scale(self, data, frame_bounds, augment=False):
+        """
+        Checks the original framing is smaller than the frame and zooms in if this is the case.
+        :param data: np array of shape [F, C, H, W]
+        :param frame_bounds: list of frame locations of length F
+        :param augment: if true applies a slightly random crop / scale
+        :return: new scaled data, or reference to data if no scaling was required.
+        """
+
+        F,C,H,W = data.shape
+
+        # required size of frame
+        WINDOW_SIZE = H
+
+        data = np.float32(data)
+
+        scale_shift = 1.0
+        x_shift = 0
+        y_shift = 0
+
+        scale_shift = tools.random_log(0.8, (1/0.8))
+        x_shift = random.normalvariate(0, 2)
+        y_shift = random.normalvariate(0, 2)
+
+        for i, bounds_data in enumerate(frame_bounds):
+
+            l,t,r,b = bounds_data
+
+            window_size = max(r-l, b-t)
+
+            # windows where padded a bit so we remove the padding here for a tight zoom.
+            scale = WINDOW_SIZE / (window_size-8)
+
+            scale = np.clip(scale * scale_shift, 1, 4)
+
+            xofs = x_shift / scale
+            yofs = y_shift / scale
+
+            if scale > 1:
+
+                data[i, 0:0 + 1] = tools.zoom_image(
+                    data[i, 0:0 + 1], scale=scale, channels_first=True, interpolation=cv2.INTER_LINEAR,
+                    offset_x=xofs, offset_y=yofs, pad_with_min=True
+                )
+
+                data[i, 1:3 + 1] = tools.zoom_image(
+                    data[i, 1:3 + 1], scale=scale, channels_first=True, interpolation=cv2.INTER_LINEAR,
+                    offset_x=xofs, offset_y=yofs, pad_with_min=False
+                    )
+
+                data[i, 4:4 + 1] = tools.zoom_image(
+                    data[i, 4:4 + 1], scale=scale, channels_first=True, interpolation=cv2.INTER_NEAREST,
+                    offset_x=xofs, offset_y=yofs
+                )
 
         return data
 
@@ -483,7 +567,7 @@ class Dataset:
         Applies pre-processing to segment data.  For example mapping optical flow down to the right level.
         :param data: np array of shape [F, C, H, W]
         :param reference_level: thermal reference level for each frame in data
-        :param frame_velocity: veloctiy (x,y) for each frame.
+        :param frame_velocity: velocity (x,y) for each frame.
         """
 
         # the segment will be processed in float32 so we may aswell convert it here.
@@ -526,18 +610,21 @@ class Dataset:
 
         frames, channels, height, width = segment_data.shape
 
+        """
         if random.random() <= self.scale_frequency:
             # we will adjust contrast and levels, but only within these bounds.
             # that is a bright input may have brightness reduced, but not increased.
-            MAX_LEVEL_OFFSET = 10
+            LEVEL_OFFSET = 4
 
             # apply level and contrast shift
-            level_adjust = (random.random() - 0.5) * MAX_LEVEL_OFFSET
-            contrast_adjust = tools.random_log(0.8, 1.2)
+            level_adjust = random.normalvariate(0, LEVEL_OFFSET)
+            contrast_adjust = tools.random_log(0.9, (1/0.9))
 
             segment_data[:,0] *= contrast_adjust
             segment_data[:, 0] += level_adjust
+        """
 
+        """
         # apply scaling only some of time
         if random.random() <= self.scale_frequency or force_scale is not None:
             mask = segment_data[:, 4]
@@ -563,6 +650,7 @@ class Dataset:
                     segment_data[i] = tools.zoom_image(segment_data[i], scale=scale, channels_first=True,
                                                        offset_x=xofs, offset_y=yofs,
                                                        interpolation=cv2.INTER_LINEAR)
+        """
 
         if random.randint(0, 1) == 0:
             # when we flip the frame remember to flip the horizontal velocity as well

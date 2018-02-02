@@ -23,10 +23,12 @@ from ml_tools.dataset import Dataset
 DATASET_FOLDER = 'c:/cac/datasets/fantail/'
 
 # uses split from previous run
-USE_PREVIOUS_SPLIT = False
+USE_PREVIOUS_SPLIT = True
 
 # note: these should really be in a text file or something, or excluded during extraction
 BANNED_CLIPS = {
+    '20171130-113732-akaroa10.cptv', # this is a trapped clip, but metadata hasn't been updated.
+    '20180103-075552-akaroa09.cptv',
     '20180103-075552-akaroa09.cptv',
     '20171025-020827-akaroa03.cptv',
     '20171025-020827-akaroa03.cptv',
@@ -64,6 +66,11 @@ END_DATE = dateutil.parser.parse("2018-01-31")
 TEST_MIN_MASS = 30
 
 TRAIN_MIN_MASS = 20
+
+# any day with a track this number of second or longer will be excluded from the validation set.
+# this is because it would be more useful to train on the long track, and we don't want the track to dominate the
+# validation set (otherwise a single track could end up being 50% of the data)
+MAX_VALIDATION_SET_TRACK_DURATION = 120
 
 # number of segments to include in test set for each class (multiplied by label weights)
 TEST_SET_COUNT = 300
@@ -178,6 +185,12 @@ def split_dataset_predefined():
 
     raise Exception('not implemented yet.')
 
+def is_heavy_bin(bin_id, max_bin_segments):
+    bin_segments = sum(len(track.segments) for track in dataset.tracks_by_bin[bin_id])
+    max_track_duration = max(track.duration for track in dataset.tracks_by_bin[bin_id])
+    return bin_segments > max_bin_segments or max_track_duration > MAX_VALIDATION_SET_TRACK_DURATION
+
+
 def split_dataset_days(prefill_bins=None):
     """
     Randomly selects tracks to be used as the train, validation, and test sets
@@ -235,6 +248,10 @@ def split_dataset_days(prefill_bins=None):
                 # this happens if we have banned/deleted the clip, but it was previously used.
                 if sample not in dataset.tracks_by_bin:
                     continue
+                # this happens if we changed what a 'heavy' bin is.
+                if is_heavy_bin(sample, max_bin_segments):
+                    continue
+
                 validation.add_tracks(dataset.tracks_by_bin[sample])
                 test.add_tracks(dataset.tracks_by_bin[sample])
                 validation.filter_segments(TEST_MIN_MASS, ['false-positive'])
@@ -258,8 +275,7 @@ def split_dataset_days(prefill_bins=None):
         # set as they will be subfiltered down and there is no need to waste that much data.
         heavy_bins = set()
         for bin_id in available_bins:
-            bin_segments = sum(len(track.segments) for track in dataset.tracks_by_bin[bin_id])
-            if bin_segments > max_bin_segments:
+            if is_heavy_bin(bin_id, max_bin_segments):
                 heavy_bins.add(bin_id)
 
         available_bins -= heavy_bins
@@ -322,14 +338,6 @@ def split_dataset_days(prefill_bins=None):
             "{}/{}/{}/{:.1f}".format(*test.get_counts(label)),
             ))
     print()
-
-    # normalisation constants
-    normalisation_constants = train.get_normalisation_constants(1000)
-    print('Normalisation constants:')
-    for i in range(len(normalisation_constants)):
-        print("  {:.4f} {:.4f}".format(normalisation_constants[i][0], normalisation_constants[i][1]))
-
-    train.normalisation_constants = validation.normalisation_constants = test.normalisation_constants = normalisation_constants
 
     return train, validation, test
 

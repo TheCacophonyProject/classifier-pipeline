@@ -426,7 +426,10 @@ def zoom_image(img, scale, pad_with_min=False, channels_first=False, interpolati
         img = cv2.resize(np.float32(crop), dsize=(height, width), interpolation=interpolation)
 
     if channels_first:
-        img = to_CHW(img)
+        if len(img.shape) == 2:
+            img = img[np.newaxis,:,:]
+        else:
+            img = to_CHW(img)
 
     return img
 

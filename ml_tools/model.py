@@ -246,67 +246,35 @@ class Model:
         :param batch_X: input batch of shape [n,frames,h,w,channels]
         :return: list of probs for each examples
         """
+        result = self.classify_batch_extended(batch_X, [self.prediction])
+        return result[self.prediction]
 
-        total_samples = batch_X.shape[0]
-        batches = (total_samples // self.batch_size) + 1
-
-        results = []
-
-        for i in range(batches):
-            Xm = batch_X[i*self.batch_size:(i+1)*self.batch_size]
-            if len(Xm) == 0:
-                continue
-
-            probs = self.session.run([self.prediction], feed_dict={self.X: Xm})[0]
-            for j in range(len(Xm)):
-                results.append(probs[j])
-
-        return results
-
-    def classify_batch_extended(self, batch_X):
+    def classify_batch_extended(self, batch_X, nodes):
         """
         Classifies all segments in the given batch and returns extended info
         :param batch_X: input batch of shape [n,frames,h,w,channels]
+        :parram nodes: a list of node name to evaluate
         :return: dictionary mapping output node to data
         """
 
         total_samples = batch_X.shape[0]
         batches = (total_samples // self.batch_size) + 1
 
-        probs = []
-        logits = []
-        hidden = []
-        lstm = []
+        output_lists = {}
+        for node in nodes:
+            output_lists[node] = []
 
         for i in range(batches):
             Xm = batch_X[i*self.batch_size:(i+1)*self.batch_size]
             if len(Xm) == 0:
                 continue
 
-            if self.hidden_out is not None:
-                _prob, _logit, _hidden, _lstm = self.session.run(
-                    [self.prediction, self.logits_out, self.hidden_out, self.lstm_out],
-                    feed_dict={self.X: Xm})
-                for j in range(len(Xm)):
-                    probs.append(_prob[j])
-                    logits.append(_logit[j])
-                    hidden.append(_hidden[j])
-                    lstm.append(_lstm[j])
-            else:
-                _prob, _logit, _lstm = self.session.run(
-                    [self.prediction, self.logits_out, self.lstm_out],
-                    feed_dict={self.X: Xm})
-                for j in range(len(Xm)):
-                    probs.append(_prob[j])
-                    logits.append(_logit[j])
-                    lstm.append(_lstm[j])
+            outputs = self.session.run(nodes, feed_dict={self.X: Xm})
+            for node, output in zip(nodes, outputs):
+                for i in range(len(output)):
+                    output_lists[node].append(output[i])
 
-
-        if self.hidden_out is not None:
-            return {'prediction':probs, 'logits_out':logits, 'hidden_out':hidden, 'lstm_out':lstm}
-        else:
-            return {'prediction': probs, 'logits_out': logits, 'lstm_out': lstm}
-
+        return output_lists
 
     def eval_model(self, writer=None):
         """ Evaluates the model on the test set. """
@@ -411,45 +379,18 @@ class Model:
         summary = tf.Summary(value=[im_summary])
         writer.add_summary(summary, self.step)
 
-    def _create_training_data_variables(self, scope, dataset, n=1000):
-
-        # grab some example segments
-        sample_segments = [dataset.sample_segment() for _ in range(n)]
-        sample_X  = []
-        sample_y = []
-        for segment in sample_segments:
-
-            data = dataset.fetch_segment(segment, augment=False)
-            sample_X.append(data)
-            sample_y.append(self.labels.index(segment.label))
-
-        sample_X = np.asarray(sample_X, dtype=np.float32)
-        sample_y = np.asarray(sample_y, dtype=np.int32)
-
-        data = self.classify_batch_extended(sample_X)
-        vars = []
-        with tf.variable_scope(scope, reuse=False):
-            for k, v in data.items():
-                v = np.float32(v) * 0
-                # create a variable and assign it the data.
-                vars.append(tf.get_variable(name=k, initializer=tf.initializers.zeros, dtype=tf.float32, trainable=False,
-                                shape=v.shape))
-
-        return vars, (sample_X, sample_y, sample_segments)
-        
-    def update_training_data_example(self, scope, sample_X):
+    def update_training_data_examples(self, sample_X):
         """ Classifies given data and stores it in model.  This can be used to visualise the logit layout, or to
             help identify examples that different significantly from that seen during training.
             A batch of 1000 examples samples from all classes is recommended.
          """
-        data = self.classify_batch_extended(sample_X)
-        with tf.variable_scope(scope, reuse=True):
-            for k, v in data.items():
-                v = np.float32(v)
-                # find variable and assign it the data.
-                var = tf.get_variable(k, shape=v.shape, dtype=tf.float32)
-                assign = var.assign(v)
-                self.session.run(assign)
+
+        data = self.classify_batch_extended(sample_X, [self.logits_out, self.hidden_out])
+
+        for var_name, node in zip(['sample_logits', 'sample_hidden'], [self.logits_out, self.hidden_out]):
+            assign_op = self.session.graph.get_operation_by_name(var_name + "_assign_op")
+            var_input = self.session.graph.get_tensor_by_name(var_name + "_in:0")
+            self.session.run(assign_op, feed_dict={var_input:data[node]})
 
     def generate_report(self):
         """
@@ -521,22 +462,29 @@ class Model:
 
         return spriteimage
 
-    def _setup_example_training_data(self, log_dir, dataset, writer):
+    def setup_sample_training_data(self, log_dir, writer):
 
-        # create variables to store training data samples
-        vars, data = self._create_training_data_variables('samples_'+dataset.name, dataset=dataset, n=1000)
-        X, y, segs = data
+        # get some samples
+        segs = [self.datasets.train.sample_segment() for _ in range(1000)]
+        sample_X = []
+        sample_y = []
+        for segment in segs:
+            data = self.datasets.train.fetch_segment(segment, augment=False)
+            sample_X.append(data)
+            sample_y.append(self.labels.index(segment.label))
 
-        init = tf.global_variables_initializer()
-        self.session.run(init)
+        X = np.asarray(sample_X, dtype=np.float32)
+        y = np.asarray(sample_y, dtype=np.int32)
 
-        sprite_path = os.path.join(log_dir, dataset.name+"_examples.png")
-        meta_path = os.path.join(log_dir, dataset.name+"_metadata.tsv")
+        data = (X, y, segs)
+
+        sprite_path = os.path.join(log_dir, "examples.png")
+        meta_path = os.path.join(log_dir, "examples.tsv")
 
         config = projector.ProjectorConfig()
-        for var in vars[:-1]:
+        for var_name in ['sample_logits', 'sample_hidden']:
             embedding = config.embeddings.add()
-            embedding.tensor_name = var.name
+            embedding.tensor_name = var_name
             embedding.metadata_path = meta_path
             embedding.sprite.image_path = sprite_path
             embedding.sprite.single_image_dim.extend([48, 48])
@@ -594,8 +542,7 @@ class Model:
         init = tf.global_variables_initializer()
         self.session.run(init)
 
-        self.train_samples = self._setup_example_training_data(LOG_DIR, self.datasets.train, self.writer_train)
-        self.val_samples = self._setup_example_training_data(LOG_DIR, self.datasets.validation, self.writer_val)
+        self.train_samples = self.setup_sample_training_data(LOG_DIR, self.writer_train)
 
         # setup a saver
         self.saver = tf.train.Saver(max_to_keep=1000)
@@ -658,8 +605,7 @@ class Model:
 
                     # create a training reference set
                     print("Updating example training data")
-                    self.update_training_data_example('samples_'+self.datasets.train.name, self.train_samples[0])
-                    self.update_training_data_example('samples_'+self.datasets.validation.name, self.val_samples[0])
+                    self.update_training_data_examples(self.train_samples[0])
 
                     print("Epoch report")
                     acc, f1 = self.generate_report()
@@ -817,7 +763,7 @@ class Model:
         self.state_out = self.get_tensor('state_out')
         self.state_in = self.get_tensor('state_in')
 
-        self.logits_out = self.get_tensor('logits_out')
+        self.logits_out = self.get_tensor('logits_out', none_if_not_found=True)
         self.hidden_out = self.get_tensor('hidden_out', none_if_not_found=True)
         self.lstm_out = self.get_tensor('lstm_out')
 
@@ -858,17 +804,36 @@ class Model:
             tf.summary.scalar('min', tf.reduce_min(var))
             tf.summary.histogram('histogram', var)
 
-    def save_input_summary(self, input, name):
+    def save_input_summary(self, input, name, reference_level=None):
         """
-        :param input: tensor of shape [B*F, H, W]
+        :param input: tensor of shape [B*F, H, W, 1]
         :param name: name of summary
+        :param reference_level: if given will add pixels in corners of image to set vmin to 0 and vmax to this level.
         """
-        tf.summary.histogram(name, input)
+
+        # hard code dims
+        W, H = 48, 48
+
         mean = tf.reduce_mean(input)
-        tf.summary.image('/inputs/' + name, input[-2:-1], max_outputs=1)
-        tf.summary.scalar('/inputs/' + name + "/max", tf.reduce_max(input))
-        tf.summary.scalar('/inputs/' + name + "/min", tf.reduce_min(input))
-        tf.summary.scalar('/inputs/' + name + "/mean", mean)
-        tf.summary.scalar('/inputs/' + name + "/std", tf.sqrt(tf.reduce_mean(tf.square(input - mean))))
+        tf.summary.histogram(name, input)
+        tf.summary.scalar(name + "/max", tf.reduce_max(input))
+        tf.summary.scalar(name + "/min", tf.reduce_min(input))
+        tf.summary.scalar(name + "/mean", mean)
+        tf.summary.scalar(name + "/std", tf.sqrt(tf.reduce_mean(tf.square(input - mean))))
+
+        if reference_level is not None:
+            # this is so silly, we need to create a mask and do some tricks just to modify two pixels...
+            # seems to be because tf doesn't really allow for direct updates to tensors.
+            levels = np.zeros([1, H, W, 1], dtype=np.float32)
+            mask = np.ones([1, H, W, 1], dtype=np.float32)
+            for i in range(W):
+                levels[0, 0, i, 0] = reference_level * (i/(W-1))
+                mask[0, 0, i, 0] = 0
+
+            input = input * mask + levels
+            input = tf.abs(input)
+
+        tf.summary.image(name, input[-2:-1], max_outputs=1)
+
 
 
