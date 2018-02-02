@@ -9,6 +9,7 @@ import random
 import pickle
 import math
 import matplotlib.pyplot as plt
+import logging
 import io
 import itertools
 import gzip
@@ -172,9 +173,9 @@ def stream_mpeg(filename, frame_generator):
         if return_code != 0:
             raise Exception("FFMPEG failed with error {}".format(return_code))
     except Exception as e:
-        print("Failed to write MPEG:", e)
+        logging.error("Failed to write MPEG: %s", e)
         if process is not None:
-            print("error:", process.stderr)
+            logging.error(process.stderr.read())
 
 
 def write_mpeg(filename, frames):
@@ -201,10 +202,10 @@ def write_mpeg(filename, frames):
         process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=frames.tostring())
         process.check_returncode()
     except Exception as e:
-        print("Failed to write MPEG:", e)
+        logging.error("Failed to write MPEG: %s", e)
         if process is not None:
-            print("out:", process.stdout)
-            print("error:", process.stderr)
+            logging.info("out:  %s", process.stdout.decode('ascii'))
+            logging.info("error: %s", process.stderr.decode('ascii'))
 
 def load_colormap(filename):
     """ Loads a custom colormap used for creating MPEG previews of tracks. """
@@ -298,10 +299,10 @@ def get_session(disable_gpu=False):
     session = None
 
     if disable_gpu:
-        print("Creating new CPU session.")
+        logging.info("Creating new CPU session.")
         session = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}))
     else:
-        print("Creating new GPU session with memory growth enabled.")
+        logging.info("Creating new GPU session with memory growth enabled.")
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         config.gpu_options.per_process_gpu_memory_fraction = 0.8 # save some ram for other applications.
@@ -350,7 +351,7 @@ def get_image_subsection(image, bounds, window_size, boundary_value=None):
 
     width, height, channels = sub_section.shape
     if int(width) != window_size[0] or int(height) != window_size[1]:
-        print("Warning: subsection wrong size. Expected {} but found {}".format(window_size,(width, height)))
+        logging.warning("Warning: subsection wrong size. Expected {} but found {}".format(window_size, (width, height)))
 
     if channels == 1:
         sub_section = sub_section[:,:,0]
@@ -479,7 +480,7 @@ def read_track_files(track_folder, min_tracks = 50, ignore_classes = ['false-pos
         num_filtered[class_name] = len(trk_files) - len(filtered_files)
 
         if len(filtered_files) < min_tracks:
-            print("Warning, too few tracks ({1}) to process for class {0}".format(class_name, len(filtered_files)))
+            logging.warning("Warning, too few tracks ({1}) to process for class {0}".format(class_name, len(filtered_files)))
             continue
 
         class_tracks[class_name] = filtered_files
@@ -487,7 +488,7 @@ def read_track_files(track_folder, min_tracks = 50, ignore_classes = ['false-pos
 
     for class_name in classes:
         filter_string = "" if num_filtered[class_name] == 0 else "({0} filtered)".format(num_filtered[class_name])
-        print("{0:<10} {1} tracks {2}".format(class_name, len(class_tracks[class_name]), filter_string))
+        logging.info("{0:<10} {1} tracks {2}".format(class_name, len(class_tracks[class_name]), filter_string))
 
     return classes, class_tracks
 
@@ -546,8 +547,8 @@ def classify_segment(model, segment, verbose = False):
     image = np.asarray(confidence_history)
     image[image < 0.5] = 0
     if verbose:
-        print(image.min(), image.max())
-        print(prediction)
+        logging.info("%d %d", image.min(), image.max())
+        logging.info("%r", prediction)
         plt.imshow(image, aspect = "auto", vmin=0, vmax = 1.0)
         plt.show()
     # divide by temperature to smooth out confidence (i.e. decrease confidence when there are competing categories)
