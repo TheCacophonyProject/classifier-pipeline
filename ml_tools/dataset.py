@@ -494,11 +494,10 @@ class Dataset:
                 thermal[i][thermal[i] == 0] = thermal_real_min[i,0,0]
             data[:, 0, :, :] = thermal
 
-
-        data = self.apply_auto_scale(data, segment.track.track_bounds[first_frame:last_frame], augment=augment)
-
         data = self.apply_preprocessing(data, segment.track.thermal_reference_level[first_frame:last_frame],
                                         segment.track.frame_velocity[first_frame:last_frame])
+
+        data = self.apply_auto_scale(data, segment.track.track_bounds[first_frame:last_frame], augment=augment)
 
         if augment:
             data = self.apply_augmentation(data)
@@ -525,9 +524,10 @@ class Dataset:
         x_shift = 0
         y_shift = 0
 
-        scale_shift = tools.random_log(0.8, (1/0.8))
-        x_shift = random.normalvariate(0, 2)
-        y_shift = random.normalvariate(0, 2)
+        if augment:
+            scale_shift = tools.random_log(0.8, (1/0.8))
+            x_shift = random.normalvariate(0, 2)
+            y_shift = random.normalvariate(0, 2)
 
         for i, bounds_data in enumerate(frame_bounds):
 
@@ -610,7 +610,6 @@ class Dataset:
 
         frames, channels, height, width = segment_data.shape
 
-        """
         if random.random() <= self.scale_frequency:
             # we will adjust contrast and levels, but only within these bounds.
             # that is a bright input may have brightness reduced, but not increased.
@@ -622,7 +621,6 @@ class Dataset:
 
             segment_data[:,0] *= contrast_adjust
             segment_data[:, 0] += level_adjust
-        """
 
         """
         # apply scaling only some of time

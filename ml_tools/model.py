@@ -58,6 +58,9 @@ class Model:
         # training operation
         self.train_op = None
 
+        self.novelty = None
+        self.novelty_distance = None
+
         self.state_in = None
         self.state_out = None
         self.logits_out = None
@@ -257,6 +260,8 @@ class Model:
         :return: dictionary mapping output node to data
         """
 
+        assert None not in nodes, "Requests output of 'None' node."
+
         total_samples = batch_X.shape[0]
         batches = (total_samples // self.batch_size) + 1
 
@@ -336,6 +341,42 @@ class Model:
             tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)]),
             global_step=self.step)
 
+    def log_histogram(self, tag, values, bins=1000, writer=None):
+        """Logs the histogram of a list/vector of values."""
+
+        if writer is None:
+            writer = self.writer_val
+
+        # Convert to a numpy array
+        values = np.array(values)
+
+        # Create histogram using numpy
+        counts, bin_edges = np.histogram(values, bins=bins)
+
+        # Fill fields of histogram proto
+        hist = tf.HistogramProto()
+        hist.min = float(np.min(values))
+        hist.max = float(np.max(values))
+        hist.num = int(np.prod(values.shape))
+        hist.sum = float(np.sum(values))
+        hist.sum_squares = float(np.sum(values ** 2))
+
+        # Requires equal number as bins, where the first goes from -DBL_MAX to bin_edges[1]
+        # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/summary.proto#L30
+        # Thus, we drop the start of the first bin
+        bin_edges = bin_edges[1:]
+
+        # Add bin edges and counts
+        for edge in bin_edges:
+            hist.bucket_limit.append(edge)
+        for c in counts:
+            hist.bucket.append(c)
+
+        # Create and write Summary
+        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, histo=hist)])
+        writer.add_summary(summary, self.step)
+        writer.flush()
+
     def log_text(self, tag, value, writer=None):
         """
         Writes a scalar to summary writer.
@@ -379,18 +420,46 @@ class Model:
         summary = tf.Summary(value=[im_summary])
         writer.add_summary(summary, self.step)
 
-    def update_training_data_examples(self, sample_X):
+    def tune_novelty_detection(self):
+
+        # first take 1000 samples from the validation set.  These samples have not been seen by the model so their
+        # distances should be reprentative
+        seen_examples, _ = self.datasets.validation.next_batch(1000)
+
+        # next classify the examples and check their distances
+        data = self.classify_batch_extended(seen_examples, [self.novelty_distance])
+        seen_distances = data[self.novelty_distance]
+
+        # we can take a guess at a good threshold by looking at the examples from seen classes.  A threshold
+        # that includes 75% of these examples seems to work well.
+        threshold_distance = np.percentile(seen_distances , q=75)
+        threshold_scale = np.std(seen_distances)
+
+        # write these values to the model
+        self.update_writeable_variable('novelty_threshold', threshold_distance)
+        self.update_writeable_variable('novelty_scale', threshold_scale)
+
+        self.log_scalar('novelty/threshold', threshold_distance)
+        self.log_scalar('novelty/scale', threshold_scale)
+        self.log_histogram('novelty/distances', seen_distances, bins=40)
+
+        return threshold_distance, threshold_scale
+
+
+    def update_training_data_examples(self):
         """ Classifies given data and stores it in model.  This can be used to visualise the logit layout, or to
             help identify examples that different significantly from that seen during training.
             A batch of 1000 examples samples from all classes is recommended.
          """
 
+        sample_X = self.train_samples[0]
+
+        # evaluate the stored samples and fetch the logits and hidden states
         data = self.classify_batch_extended(sample_X, [self.logits_out, self.hidden_out])
 
+        # run the 'assign' operations that update the models stored varaibles
         for var_name, node in zip(['sample_logits', 'sample_hidden'], [self.logits_out, self.hidden_out]):
-            assign_op = self.session.graph.get_operation_by_name(var_name + "_assign_op")
-            var_input = self.session.graph.get_tensor_by_name(var_name + "_in:0")
-            self.session.run(assign_op, feed_dict={var_input:data[node]})
+            self.update_writeable_variable(var_name, data[node])
 
     def generate_report(self):
         """
@@ -566,7 +635,7 @@ class Model:
                 start = time.time()
 
                 val_batch = self.datasets.validation.next_batch(self.eval_samples)
-                train_batch = self.datasets.train.next_batch(self.eval_samples)
+                train_batch = self.datasets.train.next_batch(self.eval_samples, force_no_augmentation=True)
 
                 train_accuracy, train_loss = self.eval_batch(
                     train_batch[0], train_batch[1],
@@ -605,7 +674,8 @@ class Model:
 
                     # create a training reference set
                     print("Updating example training data")
-                    self.update_training_data_examples(self.train_samples[0])
+                    self.update_training_data_examples()
+                    self.tune_novelty_detection()
 
                     print("Epoch report")
                     acc, f1 = self.generate_report()
@@ -717,7 +787,7 @@ class Model:
         self.params = stats['hyperparams']
 
         # connect up nodes.
-        self._attach_nodes()
+        self.attach_nodes()
 
     def save_params(self, filename):
         """ Saves model parameters. """
@@ -742,16 +812,20 @@ class Model:
             else:
                 raise e
 
-    def _attach_nodes(self):
+    def attach_nodes(self):
         """ Gets references to key nodes in graph. """
 
         graph = self.session.graph
 
         # attach operations
-        self.prediction = graph.get_tensor_by_name("prediction:0")
-        self.accuracy = graph.get_tensor_by_name("accuracy:0")
-        self.loss=graph.get_tensor_by_name("loss:0")
-        self.train_op=graph.get_operation_by_name("train_op")
+        self.prediction = self.get_tensor("prediction")
+        self.accuracy = self.get_tensor("accuracy")
+        self.loss = self.get_tensor("loss")
+        self.train_op = graph.get_operation_by_name("train_op")
+
+        # novelty
+        self.novelty = self.get_tensor('novelty', none_if_not_found=True)
+        self.novelty_distance = self.get_tensor('novelty_distance', none_if_not_found=True)
 
         # attach to IO tensors
         self.X = self.get_tensor('X')
@@ -834,6 +908,20 @@ class Model:
             input = tf.abs(input)
 
         tf.summary.image(name, input[-2:-1], max_outputs=1)
+
+    def create_writable_variable(self, name, shape):
+        """ Creates a variable in the model that can be written to. """
+        var = tf.get_variable(name=name, initializer=tf.initializers.zeros, dtype=tf.float32, trainable=False,
+                              shape=shape)
+        input = tf.placeholder(name=name + "_in", dtype=tf.float32, shape=shape)
+        assign_op = tf.assign(var, input, name=name + "_assign_op")
+        return var
+
+    def update_writeable_variable(self, name, data):
+        """ Updates the contents of a writeable variable in the model. """
+        assign_op = self.session.graph.get_operation_by_name(name + "_assign_op")
+        var_input = self.session.graph.get_tensor_by_name(name + "_in:0")
+        self.session.run(assign_op, feed_dict={var_input:data})
 
 
 

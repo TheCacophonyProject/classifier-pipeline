@@ -105,6 +105,11 @@ class ConvModel(Model):
         # grab the mask
         mask = X[:, :, 4:4 + 1]
 
+        # tap the outputs
+        tf.identity(thermal, 'thermal_out')
+        tf.identity(flow, 'flow_out')
+        tf.identity(mask, 'mask_out')
+
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
         thermal = tf.transpose(thermal, (0, 1, 3, 4, 2))  # [B, F, H, W, 1]
@@ -122,6 +127,27 @@ class ConvModel(Model):
         self.save_input_summary(mask, 'inputs/mask', 1)
 
         return thermal, flow, mask
+
+    def setup_novelty(self, logits):
+        """ Creates nodes required for novelty"""
+
+        # samples is [1000, C]
+        # logits is [N, C]
+        # delta is [N, 1000, C]
+        # distances is [N, 1000]
+
+        _, label_count = logits.shape
+
+        sample_logits = self.create_writable_variable("sample_logits", [1000, label_count])
+        self.create_writable_variable("sample_hidden", [1000, self.params['lstm_units']])
+
+        novelty_threshold = self.create_writable_variable("novelty_threshold", [])
+        novelty_scale = self.create_writable_variable("novelty_scale", [])
+
+        delta = tf.expand_dims(logits, axis=1) - tf.expand_dims(sample_logits, axis=0)
+        squared_distances = tf.reduce_sum(tf.square(delta), axis=2)
+        min_distance = tf.sqrt(tf.reduce_min(squared_distances, axis = 1), name='novelty_distance')
+        novelty = tf.sigmoid((min_distance - novelty_threshold) / novelty_scale,'novelty')
 
     def setup_optimizer(self, loss):
         # setup our training loss
@@ -310,24 +336,15 @@ class ModelCRNN_HQ(ConvModel):
         # delta is [N, 1000, C]
         # distances is [N, 1000]
 
-        sample_logits = create_writable_variable("sample_logits", [1000, label_count])
-        create_writable_variable("sample_hidden", [1000, 384])
-
-        novelty_threshold = create_writable_variable("novelty_threshold", [])
-        novelty_scale = create_writable_variable("novelty_scale", [])
-
-        delta = tf.expand_dims(logits, axis=1) - tf.expand_dims(sample_logits, axis=0)
-        squared_distances = tf.reduce_sum(tf.square(delta), axis=2)
-        min_distance = tf.sqrt(tf.reduce_min(squared_distances, axis=1), name='novelty_min_distance')
-        novelty = tf.sigmoid(min_distance - novelty_threshold / novelty_scale, 'novelty')
-
+        self.setup_novelty(logits)
         self.setup_optimizer(loss)
 
         # make reference to special nodes
         tf.identity(lstm_state, 'state_out')
         tf.identity(dense, 'hidden_out')
         tf.identity(logits, 'logits_out')
-        self._attach_nodes()
+
+        self.attach_nodes()
 
 class ModelCRNN_LQ(ConvModel):
     """
@@ -479,38 +496,11 @@ class ModelCRNN_LQ(ConvModel):
         pred = tf.nn.softmax(logits, name='prediction')
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, dtype=tf.float32), name='accuracy')
 
-        # -------------------------------------
-        # novelty
-
-        # samples is [1000, C]
-        # logits is [N, C]
-        # delta is [N, 1000, C]
-        # distances is [N, 1000]
-
-        sample_logits = create_writable_variable("sample_logits", [1000, label_count])
-        create_writable_variable("sample_hidden", [1000, self.params['lstm_units']])
-
-        novelty_threshold = create_writable_variable("novelty_threshold", [])
-        novelty_scale = create_writable_variable("novelty_scale", [])
-
-        delta = tf.expand_dims(logits, axis=1) - tf.expand_dims(sample_logits, axis=0)
-        squared_distances = tf.reduce_sum(tf.square(delta), axis=2)
-        min_distance = tf.sqrt(tf.reduce_min(squared_distances, axis = 1), name='novelty_min_distance')
-        novelty = tf.sigmoid(min_distance - novelty_threshold / novelty_scale,'novelty')
-
-        # -------------------------------------
-
+        self.setup_novelty(logits)
         self.setup_optimizer(loss)
 
         # make reference to special nodes
         tf.identity(lstm_state, 'state_out')
         tf.identity(lstm_output, 'hidden_out')
         tf.identity(logits, 'logits_out')
-        self._attach_nodes()
-
-
-def create_writable_variable(name, shape):
-    var = tf.get_variable(name=name, initializer=tf.initializers.zeros, dtype=tf.float32, trainable=False, shape=shape)
-    input = tf.placeholder(name=name+"_in", dtype=tf.float32, shape=shape)
-    assign_op = tf.assign(var, input, name=name+"_assign_op")
-    return var
+        self.attach_nodes()
