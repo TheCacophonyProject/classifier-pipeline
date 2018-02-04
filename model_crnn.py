@@ -81,19 +81,22 @@ class ConvModel(Model):
         thermal = X[:, :, 0:0 + 1]
 
         AUTO_NORM_THERMAL = True
+        THERMAL_ROLLOFF = 400
 
         if AUTO_NORM_THERMAL:
             thermal = thermal - tf.reduce_mean(thermal, axis=(3, 4), keepdims=True)  # center data
             signs = tf.sign(thermal)
             abs = tf.abs(thermal)
-            thermal = tf.minimum(tf.sqrt(abs / 200) * 200, abs) * signs  # curve off the really strong values
+            thermal = tf.minimum(tf.sqrt(abs / THERMAL_ROLLOFF) * THERMAL_ROLLOFF, abs) * signs  # curve off the really strong values
             thermal = thermal - tf.reduce_mean(thermal, axis=(3, 4), keepdims=True)  # center data
             thermal = thermal / tf.sqrt(tf.reduce_mean(tf.square(thermal), axis=(3, 4), keepdims=True))
-            #thermal = tf.nn.relu(thermal)* 2.0
+            # theshold out the background, not sure this is a great idea.  1.5 keeps std approx 1.
+            # relu_threshold = +0.1
+            # thermal = (tf.nn.relu(thermal - relu_threshold) + relu_threshold) * 1.5
         else:
             signs = tf.sign(thermal)
             abs = tf.abs(thermal)
-            thermal = tf.minimum(tf.sqrt(abs / 200) * 200, abs) * signs  # curve off the really strong values
+            thermal = tf.minimum(tf.sqrt(abs / THERMAL_ROLLOFF) * THERMAL_ROLLOFF, abs) * signs  # curve off the really strong values
             thermal = tf.nn.relu(thermal - self.params['thermal_threshold']) + self.params['thermal_threshold']
             thermal = thermal / 40
 
@@ -128,7 +131,7 @@ class ConvModel(Model):
 
         return thermal, flow, mask
 
-    def setup_novelty(self, logits):
+    def setup_novelty(self, logits, hidden):
         """ Creates nodes required for novelty"""
 
         # samples is [1000, C]
@@ -137,9 +140,10 @@ class ConvModel(Model):
         # distances is [N, 1000]
 
         _, label_count = logits.shape
+        _, hidden_count = hidden.shape
 
         sample_logits = self.create_writable_variable("sample_logits", [1000, label_count])
-        self.create_writable_variable("sample_hidden", [1000, self.params['lstm_units']])
+        self.create_writable_variable("sample_hidden", [1000, hidden_count])
 
         novelty_threshold = self.create_writable_variable("novelty_threshold", [])
         novelty_scale = self.create_writable_variable("novelty_scale", [])
@@ -187,7 +191,7 @@ class ModelCRNN_HQ(ConvModel):
         'batch_size': 16,
         'learning_rate': 1e-4,
         'learning_rate_decay': 1.0,
-        'l2_reg': 0.02,
+        'l2_reg': 0.0,
         'label_smoothing': 0.1,
         'keep_prob': 0.5,
 
@@ -268,7 +272,6 @@ class ModelCRNN_HQ(ConvModel):
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params['lstm_units'])
         dropout = tf.nn.rnn_cell.DropoutWrapper(
             lstm_cell,
-            input_keep_prob=self.keep_prob,
             output_keep_prob=self.keep_prob,
             dtype=np.float32)
         init_state = tf.nn.rnn_cell.LSTMStateTuple(self.state_in[:,:,0], self.state_in[:,:,1])
@@ -289,7 +292,7 @@ class ModelCRNN_HQ(ConvModel):
         logging.info("lstm output shape: {} x {}".format(lstm_outputs.shape[1], lstm_output.shape))
         logging.info("lstm state shape: {}".format(lstm_state.shape))
 
-        if self.params['l2_reg'] != 0:
+        if self.params['l2_reg'] > 0:
             regularizer = tf.contrib.layers.l2_regularizer(scale=self.params['l2_reg'])
         else:
             regularizer = None
@@ -331,12 +334,7 @@ class ModelCRNN_HQ(ConvModel):
         # -------------------------------------
         # novelty
 
-        # samples is [1000, C]
-        # logits is [N, C]
-        # delta is [N, 1000, C]
-        # distances is [N, 1000]
-
-        self.setup_novelty(logits)
+        self.setup_novelty(logits, dense)
         self.setup_optimizer(loss)
 
         # make reference to special nodes
@@ -496,7 +494,7 @@ class ModelCRNN_LQ(ConvModel):
         pred = tf.nn.softmax(logits, name='prediction')
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, dtype=tf.float32), name='accuracy')
 
-        self.setup_novelty(logits)
+        self.setup_novelty(logits, lstm_output)
         self.setup_optimizer(loss)
 
         # make reference to special nodes

@@ -58,6 +58,10 @@ CAP_BIN_WEIGHT = 1.5
 LABEL_WEIGHTS = {
 }
 
+# any segments with frames cropped more than this amount will be filtered out.
+# Set to 0 to remove any cropped segments, set to None to disable cropping filter
+CROP_THRESHOLD = 0.10
+
 # clips after this date will be ignored.
 # note: this is based on the UTC date.
 END_DATE = dateutil.parser.parse("2018-01-31")
@@ -190,7 +194,6 @@ def is_heavy_bin(bin_id, max_bin_segments):
     max_track_duration = max(track.duration for track in dataset.tracks_by_bin[bin_id])
     return bin_segments > max_bin_segments or max_track_duration > MAX_VALIDATION_SET_TRACK_DURATION
 
-
 def split_dataset_days(prefill_bins=None):
     """
     Randomly selects tracks to be used as the train, validation, and test sets
@@ -254,8 +257,8 @@ def split_dataset_days(prefill_bins=None):
 
                 validation.add_tracks(dataset.tracks_by_bin[sample])
                 test.add_tracks(dataset.tracks_by_bin[sample])
-                validation.filter_segments(TEST_MIN_MASS, ['false-positive'])
-                test.filter_segments(TEST_MIN_MASS, ['false-positive'])
+                validation.filter_segments(TEST_MIN_MASS, remove_cropped=CROP_THRESHOLD, ignore_labels=['false-positive'])
+                test.filter_segments(TEST_MIN_MASS, remove_cropped=CROP_THRESHOLD, ignore_labels=['false-positive'])
 
                 available_bins.remove(sample)
                 used_bins[label].append(sample)
@@ -263,7 +266,7 @@ def split_dataset_days(prefill_bins=None):
 
             for bin_id in available_bins:
                 train.add_tracks(dataset.tracks_by_bin[bin_id])
-                train.filter_segments(TRAIN_MIN_MASS, ['false-positive'])
+                train.filter_segments(TRAIN_MIN_MASS, remove_cropped=CROP_THRESHOLD, ignore_labels=['false-positive'])
 
     # assign bins to test and validation sets
     # if we previously added bins from another dataset we are simply filling in the gaps here.
@@ -298,8 +301,8 @@ def split_dataset_days(prefill_bins=None):
             validation.add_tracks(dataset.tracks_by_bin[sample])
             test.add_tracks(dataset.tracks_by_bin[sample])
 
-            validation.filter_segments(TEST_MIN_MASS, ['false-positive'])
-            test.filter_segments(TEST_MIN_MASS, ['false-positive'])
+            validation.filter_segments(TEST_MIN_MASS, remove_cropped=CROP_THRESHOLD, ignore_labels=['false-positive'])
+            test.filter_segments(TEST_MIN_MASS, remove_cropped=CROP_THRESHOLD, ignore_labels=['false-positive'])
 
             available_bins.remove(sample)
             used_bins[label].append(sample)
@@ -311,7 +314,7 @@ def split_dataset_days(prefill_bins=None):
 
         for bin_id in available_bins:
             train.add_tracks(dataset.tracks_by_bin[bin_id])
-            train.filter_segments(TRAIN_MIN_MASS, ['false-positive'])
+            train.filter_segments(TRAIN_MIN_MASS, remove_cropped=CROP_THRESHOLD, ignore_labels=['false-positive'])
 
 
     print("Segments per class:")

@@ -26,6 +26,9 @@ import scipy.ndimage
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 
+CPTV_FILE_WIDTH = 160
+CPTV_FILE_HEIGHT = 120
+
 class TrackHeader:
     """ Header for track. """
 
@@ -52,6 +55,8 @@ class TrackHeader:
         self.frame_velocity = None
         # original tracking bounds
         self.track_bounds = []
+        # what fraction of pixels are from out of bounds
+        self.frame_crop = []
 
     @property
     def track_id(self):
@@ -110,7 +115,17 @@ class TrackHeader:
         )
         result.thermal_reference_level = thermal_reference_level
         result.frame_velocity = frame_velocity
-        result.track_bounds = bounds_history.copy()
+        result.track_bounds = np.asarray(bounds_history)
+
+        # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
+        # bounded rect and check it against frame size.
+        result.frame_crop = []
+        for rect in result.track_bounds:
+            rect = tools.Rectangle.from_ltrb(*rect)
+            rx, ry = rect.mid_x, rect.mid_y
+            size = max(rect.width, rect.height)
+            adjusted_rect = tools.Rectangle(rx-size/2, ry-size/2, size, size)
+            result.frame_crop.append(get_cropped_fraction(adjusted_rect, CPTV_FILE_WIDTH, CPTV_FILE_HEIGHT))
 
         return result
 
@@ -161,6 +176,11 @@ class SegmentHeader:
     def track_bounds(self):
         # original location of this tracks bounds.
         return self.track.track_bounds[self.start_frame:self.start_frame + self.frames]
+
+    @property
+    def frame_crop(self):
+        # how much each frame has been cropped.
+        return self.track.frame_crop[self.start_frame:self.start_frame + self.frames]
 
     @property
     def thermal_reference_level(self):
@@ -399,35 +419,42 @@ class Dataset:
                 weight=segment_weight_factor, avg_mass=segment_avg_mass
             )
 
-            segment.thermal_reference = np.float32(clip_meta['frame_temp_median'][segment.start_frame:segment.end_frame])
-
             self.segments.append(segment)
             track_header.segments.append(segment)
 
         return True
 
-    def filter_segments(self, avg_mass, ignore_labels=None):
+    def filter_segments(self, avg_mass, remove_cropped=0.25, ignore_labels=None):
         """
         Removes any segments with an average mass less than the given avg_mass
         :param avg_mass: segments with less avarage mass per frame than this will be removed from the dataset.
         :param ignore_labels: these labels will not be filtered
+        :param remove_cropped: if not none any segment with any frame with a cropped pixels ratio higher than this will
+            be removed
         :return: number of segments removed
         """
 
-        filtered = 0
+        num_filtered = 0
         new_segments = []
 
         for segment in self.segments:
-            if (ignore_labels and segment.label in ignore_labels) or segment.avg_mass >= avg_mass:
+
+            pass_mass = segment.avg_mass >= avg_mass
+            pass_cropped = (remove_cropped is None or remove_cropped is False) or \
+                max(segment.frame_crop) <= remove_cropped
+
+            if (ignore_labels and segment.label in ignore_labels) or (pass_mass and pass_cropped):
                 new_segments.append(segment)
             else:
-                filtered += 1
+                num_filtered += 1
 
         self.segments = new_segments
 
         self._purge_track_segments()
 
-        return filtered
+        self.rebuild_cdf()
+
+        return num_filtered
 
     def fetch_all(self):
         """
@@ -474,8 +501,11 @@ class Dataset:
         else:
             jitter = 0
 
-        data = self.db.get_track(segment.clip_id, segment.track_number, first_frame + jitter,
-                                 last_frame + jitter)
+        first_frame += jitter
+        last_frame += jitter
+
+        data = self.db.get_track(segment.clip_id, segment.track_number, first_frame,
+                                 last_frame)
 
         if len(data) != self.segment_width:
             print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)
@@ -487,7 +517,7 @@ class Dataset:
             thermal = data[:, 0, :, :]
             thermal_fixed = thermal.copy()
             thermal_fixed[thermal_fixed == 0] = 999
-            thermal_real_min = np.min(thermal_fixed, axis=(1,2), keepdims=True)
+            thermal_real_min = np.percentile(thermal_fixed, q=10, axis=(1,2), keepdims=True)
             #print("Warning, very low thermal values found in segment {} with min {}, but now setting to {}".format(
             #    segment.track_id, thermal_min, thermal_real_min.tolist()))
             for i in range(len(thermal)):
@@ -525,7 +555,7 @@ class Dataset:
         y_shift = 0
 
         if augment:
-            scale_shift = tools.random_log(0.8, (1/0.8))
+            scale_shift = tools.random_log(0.95, (1/0.95))
             x_shift = random.normalvariate(0, 2)
             y_shift = random.normalvariate(0, 2)
 
@@ -536,13 +566,15 @@ class Dataset:
             window_size = max(r-l, b-t)
 
             # windows where padded a bit so we remove the padding here for a tight zoom.
-            scale = WINDOW_SIZE / (window_size-8)
+            requested_scale = WINDOW_SIZE / (window_size-8)
+            requested_scale *= scale_shift
 
-            scale = np.clip(scale * scale_shift, 1, 4)
+            scale = np.clip(requested_scale, 1.0, 4.0)
 
             xofs = x_shift / scale
             yofs = y_shift / scale
 
+            # we only scale in, not out.
             if scale > 1:
 
                 data[i, 0:0 + 1] = tools.zoom_image(
@@ -552,7 +584,7 @@ class Dataset:
 
                 data[i, 1:3 + 1] = tools.zoom_image(
                     data[i, 1:3 + 1], scale=scale, channels_first=True, interpolation=cv2.INTER_LINEAR,
-                    offset_x=xofs, offset_y=yofs, pad_with_min=False
+                    offset_x=xofs, offset_y=yofs,
                     )
 
                 data[i, 4:4 + 1] = tools.zoom_image(
@@ -610,7 +642,7 @@ class Dataset:
 
         frames, channels, height, width = segment_data.shape
 
-        if random.random() <= self.scale_frequency:
+        if random.random() <= 0.75:
             # we will adjust contrast and levels, but only within these bounds.
             # that is a bright input may have brightness reduced, but not increased.
             LEVEL_OFFSET = 4
@@ -621,34 +653,6 @@ class Dataset:
 
             segment_data[:,0] *= contrast_adjust
             segment_data[:, 0] += level_adjust
-
-        """
-        # apply scaling only some of time
-        if random.random() <= self.scale_frequency or force_scale is not None:
-            mask = segment_data[:, 4]
-            av_mass = np.sum(mask) / len(mask)
-            size = math.sqrt(av_mass + 4)
-
-            # work out reasonable bounds so we don't scale too much
-            # general idea is scale to a width of between 6 and 48 pixels
-            max_scale_up = np.clip(36 / size, 1.0, 3.0)
-            min_scale_down = np.clip(4 / size, 0.85, 1.0)
-
-            if force_scale is not None:
-                scale = force_scale
-            else:
-                scale = tools.random_log(min_scale_down, max_scale_up)
-
-            # don't apply scaling if it's just a very small scale amount
-            if scale != 1.0:
-                position_jitter = 5 / scale
-                xofs = random.normalvariate(0, position_jitter)
-                yofs = random.normalvariate(0, position_jitter)
-                for i in range(frames):
-                    segment_data[i] = tools.zoom_image(segment_data[i], scale=scale, channels_first=True,
-                                                       offset_x=xofs, offset_y=yofs,
-                                                       interpolation=cv2.INTER_LINEAR)
-        """
 
         if random.randint(0, 1) == 0:
             # when we flip the frame remember to flip the horizontal velocity as well
@@ -803,8 +807,9 @@ class Dataset:
         for segment in self.segments:
             prob += segment.weight
             self.segment_cdf.append(prob)
-        normalizer = self.segment_cdf[-1]
-        self.segment_cdf = [x / normalizer for x in self.segment_cdf]
+        if len(self.segment_cdf) > 0:
+            normalizer = self.segment_cdf[-1]
+            self.segment_cdf = [x / normalizer for x in self.segment_cdf]
 
     def get_class_weight(self, label):
         """ Returns the total weight for all segments of given label. """
@@ -879,3 +884,8 @@ def preloader(q, dataset):
                 loads = 0
         else:
             time.sleep(0.01)
+
+def get_cropped_fraction(region: tools.Rectangle, width, height):
+    """ Returns the fraction regions mass outside the rect ((0,0), (width, height)"""
+    bounds = tools.Rectangle(0, 0, width-1, height-1)
+    return 1 - (bounds.overlap_area(region) / region.area)

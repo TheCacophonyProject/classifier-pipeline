@@ -39,6 +39,11 @@ class Rectangle:
         self.width = width
         self.height = height
 
+    @staticmethod
+    def from_ltrb(left, top, right, bottom):
+        """ Construct a rectangle from left, top, right, bottom co-ords. """
+        return Rectangle(left, top, right-left, bottom-top)
+
     def copy(self):
         return Rectangle(self.x, self.y, self.width, self.height)
 

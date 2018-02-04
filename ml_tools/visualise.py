@@ -128,8 +128,6 @@ def plot_confidence_by_class(predictions, true_class, labels):
     plt.tight_layout()
     return fig
 
-
-
 def fig_to_numpy(figure):
     """ Converts a matplotlib figure to a numpy array. """
     figure.canvas.draw()
