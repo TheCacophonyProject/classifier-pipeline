@@ -14,6 +14,7 @@ import math
 import pickle
 import time
 import dateutil
+from datetime import datetime
 
 import numpy as np
 
@@ -39,14 +40,14 @@ BANNED_CLIPS = {
     '20171219-105919-akaroa12.cptv'
 }
 
-EXCLUDED_LABELS = ['insect','dog','human','mouse','bird-kiwi','rabbit']
+EXCLUDED_LABELS = ['insect','dog','human','mouse','rabbit']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
 # however, bin weighting will generally take care of the excessive footage problem.
 EXCLUDE_TRAPPED = True
 
-# sets a maxmimum number of segments per bin, where the cap is this many standard deviations above the norm.
+# sets a maximum number of segments per bin, where the cap is this many standard deviations above the norm.
 # bins with more than this number of segments will be weighted lower so that their segments are not lost, but
 # will be sampled less frequently.
 CAP_BIN_WEIGHT = 1.5
@@ -54,9 +55,13 @@ CAP_BIN_WEIGHT = 1.5
 # adjusts the weight for each animal class.  Setting this lower for animals that are less represented can help
 # with training, otherwise the few examples we have will be used excessively.  This also helps build a prior for
 # the class suggesting that the class is more or less likely.  For example bumping up the human weighting will cause
-# the classifier learn towards guessing human when it is not sure.
+# the classifier lean towards guessing human when it is not sure.
+
+# xxx this doesn't actually work, and should be removed.
 LABEL_WEIGHTS = {
+    'bird-kiwi': 0.1
 }
+
 
 # any segments with frames cropped more than this amount will be filtered out.
 # Set to 0 to remove any cropped segments, set to None to disable cropping filter
@@ -64,7 +69,7 @@ CROP_THRESHOLD = 0.10
 
 # clips after this date will be ignored.
 # note: this is based on the UTC date.
-END_DATE = dateutil.parser.parse("2018-01-31")
+END_DATE = datetime(2018, 1, 31)
 
 # minimum average mass for test segment
 TEST_MIN_MASS = 30

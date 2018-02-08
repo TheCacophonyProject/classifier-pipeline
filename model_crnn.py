@@ -18,6 +18,7 @@ class ConvModel(Model):
 
     def conv_layer(self, name, input_layer, filters, kernal_size, conv_stride=1, pool_stride=1, disable_norm=False):
         """ Adds a convolutional layer to the model. """
+
         tf.summary.histogram(name + '/input', input_layer)
         conv = tf.layers.conv2d(inputs=input_layer, filters=filters, kernel_size=kernal_size,
                                 strides=(conv_stride, conv_stride),
@@ -237,6 +238,14 @@ class ModelCRNN_HQ(ConvModel):
         # run the Convolutions
 
         layer = thermal
+
+        # thermal 48x48x1
+        # layer1 23x23x64
+        # layer2 11x11x64
+        # layer3 5x5x96
+        # layer4 3x3x128
+        # layer5 3x3x128
+
         layer = self.conv_layer('filtered/1', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('filtered/2', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('filtered/3', layer, 96, [3, 3], pool_stride=2)
