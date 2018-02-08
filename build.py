@@ -40,7 +40,7 @@ BANNED_CLIPS = {
     '20171219-105919-akaroa12.cptv'
 }
 
-EXCLUDED_LABELS = ['insect','dog','human','mouse','rabbit']
+EXCLUDED_LABELS = ['insect','dog','human','mouse','rabbit', 'bird-kiwi']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.

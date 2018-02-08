@@ -857,9 +857,11 @@ class Model:
             state = np.zeros([1, state_shape[1], state_shape[2]], dtype=np.float32)
 
         batch_X = frame[np.newaxis,np.newaxis,:]
+
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
         pred, state = self.session.run([self.prediction, self.state_out], feed_dict=feed_dict)
         pred = pred[0]
+
         return pred, state
 
     def create_summaries(self, name, var):
