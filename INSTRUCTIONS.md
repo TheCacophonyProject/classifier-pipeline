@@ -205,7 +205,7 @@ When ready to train model simply run.
 python train.py
 ```
 
-#5.1 Using Tensorboard to monitor training
+# 5.1 Using Tensorboard to monitor training
 
 To view a model while training you can run Tensorboard from the command prompt.  By default logs are placed in the folder 'c:/cac/logs'.
 It is often a good idea to group logs from related runs together in a folder.  For example 'c:/cac/logs/v030/optical flow test/' 
@@ -220,7 +220,7 @@ The most useful information are the metrics 'accuracy' and 'loss'.  The f1 score
 
 Tensorboard will list all runs found in the provided log folder.  It can be therefore quite helpful to copy and paste a reference model from a previous set of tests, rename it to 'v0 reference' and use it to compare results against.  This can give an early indication of the performance of the model. 
 
-#5.2 Testing a model
+# 5.2 Testing a model
 
 To test the performance of a model run the Model Test Notebook
 
