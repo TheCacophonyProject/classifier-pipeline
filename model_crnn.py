@@ -239,13 +239,6 @@ class ModelCRNN_HQ(ConvModel):
 
         layer = thermal
 
-        # thermal 48x48x1
-        # layer1 23x23x64
-        # layer2 11x11x64
-        # layer3 5x5x96
-        # layer4 3x3x128
-        # layer5 3x3x128
-
         layer = self.conv_layer('filtered/1', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('filtered/2', layer, 64, [3, 3], pool_stride=2)
         layer = self.conv_layer('filtered/3', layer, 96, [3, 3], pool_stride=2)
