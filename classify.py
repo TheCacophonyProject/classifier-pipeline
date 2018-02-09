@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+import cv2
 
 from ml_tools import tools
 from ml_tools.model import Model
@@ -25,7 +26,7 @@ from ml_tools.trackextractor import TrackExtractor, Track, Region
 DEFAULT_BASE_PATH = "c:/cac"
 HERE = os.path.dirname(__file__)
 RESOURCES_PATH = os.path.join(HERE, "resources")
-MODEL_NAME = "model_hq_joint"
+MODEL_NAME = "model_hq_v030"
 
 # folders that are not processed when run with 'all'
 IGNORE_FOLDERS = ['untagged','cat','dog','insect','unidentified','rabbit','hard','multi','moving','mouse']
@@ -161,6 +162,7 @@ class ClipClassifier(CPTVFileProcessor):
         frame = np.float32(frame)
         frame[2:3+1] *= (1 / 256)
         frame[0] -= thermal_reference
+
         return frame
 
     def identify_track(self, tracker:TrackExtractor, track: Track):
@@ -487,6 +489,12 @@ class ClipClassifier(CPTVFileProcessor):
         tracker.track_min_offset = 0.0
         tracker.track_min_delta = 1.0
         tracker.track_min_mass = 0.0
+
+        # make sure to not track animals when they go off the frame.
+        tracker.crop_threshold = 0.10
+
+        # enable the tight zoom mode on the tracker, which is required for v0.3.0 of the model
+        tracker.tight_zoom = True
 
         tracker.min_threshold = 15
 

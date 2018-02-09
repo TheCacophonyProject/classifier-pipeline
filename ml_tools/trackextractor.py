@@ -371,6 +371,13 @@ class TrackExtractor:
         self.track_min_delta = 1.0
         self.track_min_mass = 2.0
 
+        # by default only scale down is performed, not scaling up, however enabling tight zoom causes tracks to
+        # the scaled up so that they fill most of the track bounds.
+        self.tight_zoom = False
+
+        # if enabled removes any parts of tracks that have more than this amount of cropping (as a fraction of their pixels)
+        self.crop_threshold = None
+
         # minimum allowed threshold for mask, smaller values detect more objects, but bring up additional false positives
         self.min_threshold = 30
 
@@ -586,7 +593,10 @@ class TrackExtractor:
         tracker_frame = track.start_frame + frame_number
 
         # window size must be even for get_image_subsection to work.
-        window_size = (max(self.WINDOW_SIZE, bounds.width, bounds.height) // 2) * 2
+        if self.tight_zoom:
+            window_size = (max(bounds.width, bounds.height) // 2) * 2
+        else:
+            window_size = (max(self.WINDOW_SIZE, bounds.width, bounds.height) // 2) * 2
 
         if tracker_frame < 0 or tracker_frame >= len(self.frame_buffer.thermal):
             raise Exception("Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
@@ -599,7 +609,7 @@ class TrackExtractor:
 
         if window_size != self.WINDOW_SIZE:
             scale = self.WINDOW_SIZE / window_size
-            thermal = scipy.ndimage.zoom(np.float32(thermal), (scale, scale), order=1)
+            thermal = scipy.ndimage.zoom(np.float32(thermal), (scale, scale), order=1, cval=np.min(thermal))
             filtered = scipy.ndimage.zoom(np.float32(filtered), (scale, scale), order=1)
             flow = scipy.ndimage.zoom(np.float32(flow), (scale, scale, 1), order=1)
             mask = scipy.ndimage.zoom(np.float32(mask), (scale, scale), order=0)
@@ -617,6 +627,12 @@ class TrackExtractor:
 
         return frame
 
+    def get_cropped_fraction(self, region: Rectangle):
+        """ Returns the fraction regions mass outside the rect ((0,0), (width, height)"""
+        height, width = self.frame_buffer.thermal[0].shape
+        bounds = Rectangle(0, 0, width - 1, height - 1)
+        return 1 - (bounds.overlap_area(region) / region.area)
+
     def apply_matchings(self, regions):
         """
         Work out the best matchings between tracks and regions of interest for the current frame.
@@ -630,6 +646,11 @@ class TrackExtractor:
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
                 max_distance = np.clip(7 * (track.mass ** 0.5), 30, 95)
                 size_change = np.clip(track.mass, 50, 500)
+
+                # make sure not to link up regions that are too cropped
+                if self.crop_threshold is not None:
+                    if self.get_cropped_fraction(region) > self.crop_threshold:
+                        continue
 
                 if distance > max_distance:
                     continue
