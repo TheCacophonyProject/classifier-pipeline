@@ -191,21 +191,27 @@ class ClipClassifier(CPTVFileProcessor):
         # note: we should probably be doing this every 9 frames or so.
         state = None
         for i in range(len(track)):
+
             # note: would be much better for the tracker to store the thermal references as it goes.
             thermal_reference = np.median(tracker.frame_buffer.thermal[track.start_frame + i])
 
             frame = tracker.get_track_channels(track, i)
             if i % self.FRAME_SKIP == 0:
                 frame = self.preprocess(frame, thermal_reference)
+
                 prediction, state = self.classifier.classify_frame(frame, state)
 
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
                 prediction[fp_index] *= 0.8
 
+                # a little weight decay helps the model not lock into an initial impression.
+                # 0.98 represents a half life of around 3 seconds.
+                state *= 0.98
+
                 # precondition on weight,  segments with small mass are weighted less as we can assume the error is
                 # higher here.
-                mass = np.float32(np.sum(frame[4]))
+                mass = track.bounds_history[i].mass
 
                 # we use the square-root here as the mass is in units squared.
                 # this effectively means we are giving weight based on the diameter
@@ -340,14 +346,14 @@ class ClipClassifier(CPTVFileProcessor):
         mpeg.close()
 
     def export_tracking_frame(self, tracker: TrackExtractor, frame_number:int, frame_scale:float):
+
         mask = tracker.frame_buffer.mask[frame_number]
 
         filtered = tracker.frame_buffer.filtered[frame_number]
-
-        # compose mask with filtered
-        tracking_image = tools.convert_heat_to_img(filtered / 200 + mask, self.colormap, temp_min=0, temp_max=1)
+        tracking_image = tools.convert_heat_to_img(filtered / 200, self.colormap, temp_min=0, temp_max=1)
 
         tracking_image = tracking_image.resize((int(tracking_image.width * frame_scale), int(tracking_image.height * frame_scale)), Image.NEAREST)
+
         return self.draw_track_rectangles(tracker, frame_number, frame_scale, tracking_image)
 
     def draw_track_rectangles(self, tracker, frame_number, frame_scale, image):
@@ -491,10 +497,13 @@ class ClipClassifier(CPTVFileProcessor):
         tracker.track_min_mass = 0.0
 
         # make sure to not track animals when they go off the frame.
-        tracker.crop_threshold = 0.10
+        # stub: relaxed crop threshold
+        tracker.crop_threshold = 0.50
 
         # enable the tight zoom mode on the tracker, which is required for v0.3.0 of the model
+        # we also adjust the padding as during training we use a tighter bounding box.
         tracker.tight_zoom = True
+        tracker.FRAME_PADDING = 3
 
         tracker.min_threshold = 15
 

@@ -606,12 +606,11 @@ class Dataset:
         # also optical flow is stored as a scaled integer, but we want it in float32 format.
         data = np.asarray(data, dtype=np.float32)
 
-        # use the frame median as reference poitn.
-        # this should be the better way to go, but sometimes doesn't work for strange reasons.
-        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
-
         # get reference level for thermal channel
         assert len(data) == len(reference_level), "Reference level shape and data shape not match."
+
+        # reference thermal levels to the reference level
+        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
 
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int

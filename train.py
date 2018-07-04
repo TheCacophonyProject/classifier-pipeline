@@ -35,7 +35,7 @@ def main():
     dsets = pickle.load(open(dataset_name,'rb'))
     labels = dsets[0].labels
 
-    model = ModelCRNN_HQ(labels=len(labels), enable_flow=True, l2_reg=0, keep_prob=0.2)
+    model = ModelCRNN_LQ(labels=len(labels), enable_flow=False, l2_reg=0, keep_prob=0.2)
     model.import_dataset(dataset_name)
     model.log_dir = LOG_FOLDER
 
@@ -59,7 +59,7 @@ def main():
     print(model.hyperparams_string)
     print()
     print("{0:.1f}K training examples".format(model.rows / 1000))
-    model.train_model(epochs=30, run_name='HQ Novelty/V7 zeroed flow/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    model.train_model(epochs=10, run_name='Cropping Update/Baseline Small'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     model.save()
     model.close()
 

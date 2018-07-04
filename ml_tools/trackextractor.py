@@ -22,6 +22,7 @@ import logging
 from ml_tools.tools import get_image_subsection, blosc_zstd
 from ml_tools.tools import Rectangle
 from ml_tools.trackdatabase import TrackDatabase
+from ml_tools import tools
 
 from cptv import CPTVReader
 
@@ -609,20 +610,23 @@ class TrackExtractor:
 
         if window_size != self.WINDOW_SIZE:
             scale = self.WINDOW_SIZE / window_size
-            thermal = scipy.ndimage.zoom(np.float32(thermal), (scale, scale), order=1, cval=np.min(thermal))
+
+            thermal = scipy.ndimage.zoom(np.float32(thermal), (scale, scale), order=1)
             filtered = scipy.ndimage.zoom(np.float32(filtered), (scale, scale), order=1)
             flow = scipy.ndimage.zoom(np.float32(flow), (scale, scale, 1), order=1)
             mask = scipy.ndimage.zoom(np.float32(mask), (scale, scale), order=0)
-
             # flow values should be scaled down as well.
-            flow *= scale
+            # note: it seems scaling up motion flow when scaling up images doesn't work very well.  Perhaps because
+            # this leads to strong, but noisy data.  For this reason we scale down with the track, but not up.
+            if scale < 1:
+                flow *= scale
 
         # make sure only our pixels are included in the mask.
         mask[mask != bounds.id] = 0
         mask[mask > 0] = 1
 
         # stack together into a numpy array.
-        # by using int16 we loose a little precision on the filtered frames, but not much (only 1 unit)
+        # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
         frame = np.int16(np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0))
 
         return frame
@@ -792,7 +796,6 @@ class TrackExtractor:
 
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.FRAME_PADDING
-
 
         # find regions of interest
         regions = []
