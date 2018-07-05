@@ -40,7 +40,7 @@ BANNED_CLIPS = {
     '20171219-105919-akaroa12.cptv'
 }
 
-EXCLUDED_LABELS = ['insect','dog','human','mouse','rabbit', 'bird-kiwi']
+INCLUDED_LABELS = ['bird','false-positive','hedgehog','possum', 'rat', 'stoat']
 
 # if true removes any trapped animal footage from dataset.
 # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
@@ -61,11 +61,6 @@ CAP_BIN_WEIGHT = 1.5
 LABEL_WEIGHTS = {
     'bird-kiwi': 0.1
 }
-
-
-# any segments with frames cropped more than this amount will be filtered out.
-# Set to 0 to remove any cropped segments, set to None to disable cropping filter
-CROP_THRESHOLD = 0.10
 
 # clips after this date will be ignored.
 # note: this is based on the UTC date.
@@ -97,7 +92,7 @@ def track_filter(clip_meta, track_meta):
         filtered_stats['banned'] += 1
         return True
 
-    if track_meta['tag'] in EXCLUDED_LABELS:
+    if track_meta['tag'] not in INCLUDED_LABELS:
         return True
 
     # filter by date
@@ -262,8 +257,8 @@ def split_dataset_days(prefill_bins=None):
 
                 validation.add_tracks(dataset.tracks_by_bin[sample])
                 test.add_tracks(dataset.tracks_by_bin[sample])
-                validation.filter_segments(TEST_MIN_MASS, remove_cropped=CROP_THRESHOLD, ignore_labels=['false-positive'])
-                test.filter_segments(TEST_MIN_MASS, remove_cropped=CROP_THRESHOLD, ignore_labels=['false-positive'])
+                validation.filter_segments(TEST_MIN_MASS, ignore_labels=['false-positive'])
+                test.filter_segments(TEST_MIN_MASS, ignore_labels=['false-positive'])
 
                 available_bins.remove(sample)
                 used_bins[label].append(sample)
@@ -271,7 +266,7 @@ def split_dataset_days(prefill_bins=None):
 
             for bin_id in available_bins:
                 train.add_tracks(dataset.tracks_by_bin[bin_id])
-                train.filter_segments(TRAIN_MIN_MASS, remove_cropped=CROP_THRESHOLD, ignore_labels=['false-positive'])
+                train.filter_segments(TRAIN_MIN_MASS, ignore_labels=['false-positive'])
 
     # assign bins to test and validation sets
     # if we previously added bins from another dataset we are simply filling in the gaps here.
@@ -306,8 +301,8 @@ def split_dataset_days(prefill_bins=None):
             validation.add_tracks(dataset.tracks_by_bin[sample])
             test.add_tracks(dataset.tracks_by_bin[sample])
 
-            validation.filter_segments(TEST_MIN_MASS, remove_cropped=CROP_THRESHOLD, ignore_labels=['false-positive'])
-            test.filter_segments(TEST_MIN_MASS, remove_cropped=CROP_THRESHOLD, ignore_labels=['false-positive'])
+            validation.filter_segments(TEST_MIN_MASS, ignore_labels=['false-positive'])
+            test.filter_segments(TEST_MIN_MASS, ignore_labels=['false-positive'])
 
             available_bins.remove(sample)
             used_bins[label].append(sample)
@@ -319,7 +314,7 @@ def split_dataset_days(prefill_bins=None):
 
         for bin_id in available_bins:
             train.add_tracks(dataset.tracks_by_bin[bin_id])
-            train.filter_segments(TRAIN_MIN_MASS, remove_cropped=CROP_THRESHOLD, ignore_labels=['false-positive'])
+            train.filter_segments(TRAIN_MIN_MASS, ignore_labels=['false-positive'])
 
 
     print("Segments per class:")

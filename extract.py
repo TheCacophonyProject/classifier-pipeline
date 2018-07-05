@@ -341,7 +341,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         time_per_frame = (time.time() - start) / len(tracker.frame_buffer)
 
         # time_stats = tracker.stats['time_per_frame']
-        self.log_message(" -tracks: {} {:.1f}sec - Time per frame: {:.1f}ms]".format(
+        self.log_message(" -tracks: {} {:.1f}sec - Time per frame: {:.1f}ms".format(
              len(tracker.tracks),
              sum(track.duration for track in tracker.tracks),
              time_per_frame * 1000

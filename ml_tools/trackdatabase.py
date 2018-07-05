@@ -141,12 +141,22 @@ class TrackDatabase:
         :param track_number: id of the track
         :param start_frame: first frame of slice to return (inclusive).
         :param end_frame: last frame of slice to return (exclusive).
-        :return: a numpy array of shape [frames, channels, height, width] and of type np.int16
+        :return: a list of numpy arrays of shape [channels, height, width] and of type np.int16
         """
         with HDF5Manager(self.database) as f:
             clips = f['clips']
-            dset = clips[clip_id][str(track_number)]
-            return dset[start_frame:end_frame]
+            track_node = clips[clip_id][str(track_number)]
+
+            if start_frame is None: start_frame = 0
+            if end_frame is None: end_frame = track_node['frames']
+
+            result = []
+
+            for frame_number in range(start_frame, end_frame):
+                # we use [:,:,:] to force loading of all data.
+                result.append(track_node[str(frame_number)][:,:,:])
+
+            return result
 
     def remove_clip(self, clip_id):
         """
@@ -164,46 +174,52 @@ class TrackDatabase:
             else:
                 return False
 
-
     def add_track(self, clip_id, track_number, track_data, track=None, opts=None):
         """
         Adds track to database.
         :param clip_id: id of the clip to add track to write
         :param track_number: the tracks id
-        :param track_data: data for track, numpy of shape [frames, channels, height, width, channels]
+        :param track_data: data for track, list of numpy arrays of shape [channels, height, width]
         :param track: the original track record, used to get stats for track
         :param opts: additional parameters used when creating dataset, if not provided defaults to lzf compression.
         """
 
         track_number = str(track_number)
 
-        frames, channels, height, width = track_data.shape
+        frames = len(track_data)
 
         with HDF5Manager(self.database, 'a') as f:
             clips = f['clips']
             clip_node = clips[clip_id]
 
-            # using 9 frames (1 second) and seperating out the channels seems to work best.
-            # Using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
-            chunks = (9, 1, height, width)
+            track_node = clip_node.create_group(track_number)
 
-            dims = (frames, channels, height, width)
+            # write each frame out individually, as they will probably be different sizes.
 
-            # chunk the frames by channel
-            if opts:
-                dset = clip_node.create_dataset(track_number, dims, chunks=chunks, **opts, dtype=np.int16)
-            else:
-                dset = clip_node.create_dataset(track_number, dims, chunks=chunks, compression='lzf', shuffle=False, dtype=np.int16)
+            for frame_number in range(frames):
 
-            dset[:,:,:,:] = track_data
+                channels, height, width = track_data[frame_number].shape
+
+                # using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
+                chunks = (1, height, width)
+
+                dims = (channels, height, width)
+
+                if opts:
+                    frame_node = track_node.create_dataset(str(frame_number), dims, chunks=chunks, **opts, dtype=np.int16)
+                else:
+                    frame_node = track_node.create_dataset(str(frame_number), dims, chunks=chunks, compression='lzf', shuffle=False, dtype=np.int16)
+
+                frame_node[:,:,:] = track_data[frame_number]
 
             # write out attributes
             if track:
                 track_stats = track.get_stats()
 
-                stats = dset.attrs
+                stats = track_node.attrs
                 stats['id'] = track.id
                 stats['tag'] = track.tag
+                stats['frames'] = frames
                 stats['start_frame'] = track.start_frame
                 stats['start_time'] = track.start_time.isoformat()
                 stats['end_time'] = track.end_time.isoformat()

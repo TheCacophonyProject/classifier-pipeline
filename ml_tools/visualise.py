@@ -150,7 +150,7 @@ def plot_confusion_matrix(confusion_matrix, classes):
 
     ax.set_xticklabels([''] + classes, rotation=45)
     ax.set_yticklabels([''] + classes)
-    ax.xaxis.set_tick_params(labeltop='off', labelbottom='on')
+    ax.xaxis.set_tick_params(labeltop=False, labelbottom=True)
     return fig
 
 def compute_saliency_map(X_in, y_in, model):

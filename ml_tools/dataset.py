@@ -215,6 +215,9 @@ class Dataset:
     # In general if worker threads is one set this to False, if it is two or more set it to True.
     PROCESS_BASED = True
 
+    # size to scale each frame to when loaded.
+    FRAME_SIZE = 48
+
     def __init__(self, track_db: TrackDatabase, name="Dataset"):
 
         # database holding track data
@@ -424,13 +427,11 @@ class Dataset:
 
         return True
 
-    def filter_segments(self, avg_mass, remove_cropped=0.25, ignore_labels=None):
+    def filter_segments(self, avg_mass, ignore_labels=None):
         """
         Removes any segments with an average mass less than the given avg_mass
         :param avg_mass: segments with less avarage mass per frame than this will be removed from the dataset.
         :param ignore_labels: these labels will not be filtered
-        :param remove_cropped: if not none any segment with any frame with a cropped pixels ratio higher than this will
-            be removed
         :return: number of segments removed
         """
 
@@ -440,10 +441,8 @@ class Dataset:
         for segment in self.segments:
 
             pass_mass = segment.avg_mass >= avg_mass
-            pass_cropped = (remove_cropped is None or remove_cropped is False) or \
-                max(segment.frame_crop) <= remove_cropped
 
-            if (ignore_labels and segment.label in ignore_labels) or (pass_mass and pass_cropped):
+            if (ignore_labels and segment.label in ignore_labels) or (pass_mass):
                 new_segments.append(segment)
             else:
                 num_filtered += 1
@@ -473,7 +472,6 @@ class Dataset:
         """
         data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
         data = self.apply_preprocessing(data, track.thermal_reference_level, track.frame_velocity)
-        data = self.apply_auto_scale(data, track.track_bounds)
         return data
 
     def fetch_segment(self, segment: SegmentHeader, augment=False):
@@ -510,101 +508,55 @@ class Dataset:
         if len(data) != self.segment_width:
             print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)
 
-        # due to some bug in the extractor thermal data sometimes has 0 values (probably near the edges of the frame)
-        # for this reason we identify these values and them them to the second highest value
-        thermal_min = np.min(data[:, 0, :, :])
-        if thermal_min == 0:
-            thermal = data[:, 0, :, :]
-            thermal_fixed = thermal.copy()
-            thermal_fixed[thermal_fixed == 0] = 999
-            thermal_real_min = np.percentile(thermal_fixed, q=10, axis=(1,2), keepdims=True)
-            #print("Warning, very low thermal values found in segment {} with min {}, but now setting to {}".format(
-            #    segment.track_id, thermal_min, thermal_real_min.tolist()))
-            for i in range(len(thermal)):
-                thermal[i][thermal[i] == 0] = thermal_real_min[i,0,0]
-            data[:, 0, :, :] = thermal
-
         data = self.apply_preprocessing(data, segment.track.thermal_reference_level[first_frame:last_frame],
-                                        segment.track.frame_velocity[first_frame:last_frame])
-
-        data = self.apply_auto_scale(data, segment.track.track_bounds[first_frame:last_frame], augment=augment)
-
-        if augment:
-            data = self.apply_augmentation(data)
+                                        segment.track.frame_velocity[first_frame:last_frame],augment=augment)
 
         return data
 
-    def apply_auto_scale(self, data, frame_bounds, augment=False):
+
+    def apply_preprocessing(self, data, reference_level, frame_velocity=None, augment=False):
         """
-        Checks the original framing is smaller than the frame and zooms in if this is the case.
-        :param data: np array of shape [F, C, H, W]
-        :param frame_bounds: list of frame locations of length F
-        :param augment: if true applies a slightly random crop / scale
-        :return: new scaled data, or reference to data if no scaling was required.
-        """
-
-        F,C,H,W = data.shape
-
-        # required size of frame
-        WINDOW_SIZE = H
-
-        data = np.float32(data)
-
-        scale_shift = 1.0
-        x_shift = 0
-        y_shift = 0
-
-        if augment:
-            scale_shift = tools.random_log(0.95, (1/0.95))
-            x_shift = random.normalvariate(0, 2)
-            y_shift = random.normalvariate(0, 2)
-
-        for i, bounds_data in enumerate(frame_bounds):
-
-            l,t,r,b = bounds_data
-
-            window_size = max(r-l, b-t)
-
-            # windows where padded a bit so we remove the padding here for a tight zoom.
-            requested_scale = WINDOW_SIZE / (window_size-8)
-            requested_scale *= scale_shift
-
-            scale = np.clip(requested_scale, 1.0, 4.0)
-
-            xofs = x_shift / scale
-            yofs = y_shift / scale
-
-            # we only scale in, not out.
-            if scale > 1:
-
-                data[i, 0:0 + 1] = tools.zoom_image(
-                    data[i, 0:0 + 1], scale=scale, channels_first=True, interpolation=cv2.INTER_LINEAR,
-                    offset_x=xofs, offset_y=yofs, pad_with_min=True
-                )
-
-                data[i, 1:3 + 1] = tools.zoom_image(
-                    data[i, 1:3 + 1], scale=scale, channels_first=True, interpolation=cv2.INTER_LINEAR,
-                    offset_x=xofs, offset_y=yofs,
-                    )
-
-                data[i, 4:4 + 1] = tools.zoom_image(
-                    data[i, 4:4 + 1], scale=scale, channels_first=True, interpolation=cv2.INTER_NEAREST,
-                    offset_x=xofs, offset_y=yofs
-                )
-
-        return data
-
-    def apply_preprocessing(self, data, reference_level, frame_velocity=None):
-        """
-        Applies pre-processing to segment data.  For example mapping optical flow down to the right level.
+        Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
         :param data: np array of shape [F, C, H, W]
         :param reference_level: thermal reference level for each frame in data
         :param frame_velocity: velocity (x,y) for each frame.
+        :param augment: if true applies a slightly random crop / scale
         """
 
-        # the segment will be processed in float32 so we may aswell convert it here.
+        # -------------------------------------------
+        # first we scale to the standard size
+
+        # adjusting the corners makes the algorithm robust to tracking differences.
+        top_offset = random.randint(0, 5) if augment else 2
+        bottom_offset = random.randint(0, 5) if augment else 2
+        left_offset = random.randint(0, 5) if augment else 2
+        right_offset = random.randint(0, 5) if augment else 2
+
+        scaled_frames = []
+
+        for frame in data:
+
+            channels, frame_width, frame_height = frame.shape
+
+            # crop the frame
+            cropped_frame = frame[:, top_offset: frame_height - bottom_offset,
+                            left_offset: frame_width - right_offset]
+
+            scaled_frame = [cv2.resize(np.float32(cropped_frame[channel]), dsize=(self.FRAME_SIZE, self.FRAME_SIZE),
+                                       interpolation=cv2.INTER_LINEAR) for channel in range(channels)]
+            scaled_frame = np.float32(scaled_frame)
+
+            scaled_frames.append(scaled_frame)
+
+        # convert back into [F,C,H,W] array.
+        data = np.float32(scaled_frames)
+
+        # the segment will be processed in float32 so we may as well convert it here.
         # also optical flow is stored as a scaled integer, but we want it in float32 format.
         data = np.asarray(data, dtype=np.float32)
+
+        # -------------------------------------------
+        # next adjust temperature and flow levels
 
         # get reference level for thermal channel
         assert len(data) == len(reference_level), "Reference level shape and data shape not match."
@@ -614,7 +566,7 @@ class Dataset:
 
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
-        data[:, 2:3 + 1, :, :] *= (1/256)
+        data[:, 2:3 + 1, :, :] *= (1.0/256.0)
 
         # write frame motion into center of frame
         if self.encode_frame_offsets_in_flow:
@@ -628,20 +580,10 @@ class Dataset:
         data[0, 1] = 0
         data[1:, 1] = reference[1:] - reference[:-1]
 
-        return data
+        # -------------------------------------------
+        # finally apply and additional augmentation
 
-
-    def apply_augmentation(self, segment_data, force_scale=None):
-        """
-        Applies a random augmentation to the segment_data.
-        :param segment_data: array of shape [frames, channels, height, width]
-        :param force_scale: (optional) force a specific scaling amount
-        :return: augmented array
-        """
-
-        frames, channels, height, width = segment_data.shape
-
-        if random.random() <= 0.75:
+        if augment and (random.random() <= 0.5):
             # we will adjust contrast and levels, but only within these bounds.
             # that is a bright input may have brightness reduced, but not increased.
             LEVEL_OFFSET = 4
@@ -650,15 +592,16 @@ class Dataset:
             level_adjust = random.normalvariate(0, LEVEL_OFFSET)
             contrast_adjust = tools.random_log(0.9, (1/0.9))
 
-            segment_data[:,0] *= contrast_adjust
-            segment_data[:, 0] += level_adjust
+            data[:,0] *= contrast_adjust
+            data[:, 0] += level_adjust
 
-        if random.randint(0, 1) == 0:
-            # when we flip the frame remember to flip the horizontal velocity as well
-            segment_data = np.flip(segment_data, axis=3)
-            segment_data[:, 2] = -segment_data[:, 2]
+            if random.randint(0, 2) == 0:
+                # when we flip the frame remember to flip the horizontal velocity as well
+                segment_data = np.flip(data, axis=3)
+                segment_data[:, 2] = -data[:, 2]
 
-        return segment_data
+        return data
+
 
     def sample_segment(self):
         """ Returns a random segment from weighted list. """
