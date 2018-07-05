@@ -218,6 +218,14 @@ class Dataset:
     # size to scale each frame to when loaded.
     FRAME_SIZE = 48
 
+    # channel indexes
+    THERMAL = 0
+    FILTERED = 1
+    FLOW_H = 2
+    FLOW_V = 3
+    MASK = 4
+
+
     def __init__(self, track_db: TrackDatabase, name="Dataset"):
 
         # database holding track data
@@ -539,11 +547,19 @@ class Dataset:
             channels, frame_width, frame_height = frame.shape
 
             # crop the frame
-            cropped_frame = frame[:, top_offset: frame_height - bottom_offset,
+
+            if (frame_height - top_offset - bottom_offset <= 8 or frame_width - left_offset - right_offset):
+                # if the frame will be too small turn off cropping.
+                # note, it would be best to do this smoothly, so we don't get sudden jumps in cropping changs.
+                cropped_frame = frame
+            else:
+                cropped_frame = frame[:, top_offset: frame_height - bottom_offset,
                             left_offset: frame_width - right_offset]
 
+
             scaled_frame = [cv2.resize(np.float32(cropped_frame[channel]), dsize=(self.FRAME_SIZE, self.FRAME_SIZE),
-                                       interpolation=cv2.INTER_LINEAR) for channel in range(channels)]
+                                       interpolation=cv2.INTER_LINEAR if channel != self.MASK else cv2.INTER_NEAREST)
+                            for channel in range(channels)]
             scaled_frame = np.float32(scaled_frame)
 
             scaled_frames.append(scaled_frame)

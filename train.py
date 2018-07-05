@@ -31,7 +31,7 @@ def main():
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
     # but we don't load the dataset till after that, so we load it here just to count the number of labels...
-    dataset_name = os.path.join(DATASET_FOLDER, 'datasets_nocats.dat')
+    dataset_name = os.path.join(DATASET_FOLDER, 'datasets.dat')
     dsets = pickle.load(open(dataset_name,'rb'))
     labels = dsets[0].labels
 
@@ -59,7 +59,7 @@ def main():
     print(model.hyperparams_string)
     print()
     print("{0:.1f}K training examples".format(model.rows / 1000))
-    model.train_model(epochs=10, run_name='Cropping Update/V2 (nocat) '+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    model.train_model(epochs=30, run_name='Cropping Update/V3 (fixed cropping) '+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     model.save()
     model.close()
 
