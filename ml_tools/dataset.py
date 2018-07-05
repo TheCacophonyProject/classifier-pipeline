@@ -548,7 +548,7 @@ class Dataset:
 
             # crop the frame
 
-            if (frame_height - top_offset - bottom_offset <= 8 or frame_width - left_offset - right_offset):
+            if (frame_height - top_offset - bottom_offset <= 8 or frame_width - left_offset - right_offset <= 8):
                 # if the frame will be too small turn off cropping.
                 # note, it would be best to do this smoothly, so we don't get sudden jumps in cropping changs.
                 cropped_frame = frame
@@ -599,22 +599,23 @@ class Dataset:
         # -------------------------------------------
         # finally apply and additional augmentation
 
-        if augment and (random.random() <= 0.5):
-            # we will adjust contrast and levels, but only within these bounds.
-            # that is a bright input may have brightness reduced, but not increased.
-            LEVEL_OFFSET = 4
+        if augment:
+            if (random.random() <= 0.75):
+                # we will adjust contrast and levels, but only within these bounds.
+                # that is a bright input may have brightness reduced, but not increased.
+                LEVEL_OFFSET = 4
 
-            # apply level and contrast shift
-            level_adjust = random.normalvariate(0, LEVEL_OFFSET)
-            contrast_adjust = tools.random_log(0.9, (1/0.9))
+                # apply level and contrast shift
+                level_adjust = random.normalvariate(0, LEVEL_OFFSET)
+                contrast_adjust = tools.random_log(0.9, (1/0.9))
 
-            data[:,0] *= contrast_adjust
-            data[:, 0] += level_adjust
+                data[:, 0] *= contrast_adjust
+                data[:, 0] += level_adjust
 
-            if random.randint(0, 2) == 0:
+            if random.random() <= 0.50:
                 # when we flip the frame remember to flip the horizontal velocity as well
-                segment_data = np.flip(data, axis=3)
-                segment_data[:, 2] = -data[:, 2]
+                data = np.flip(data, axis=3)
+                data[:, 2] = -data[:, 2]
 
         return data
 

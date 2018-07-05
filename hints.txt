@@ -574,3 +574,5 @@
 20171025-044524-akaroa03.cptv 0 "this is a bird"
 20171229-163200-akaroa03.cptv 0 "probably a a bird"
 20171025-032358-akaroa04.cptv 0 "this is a bird"
+
+20180111-171723-akaroa10.cptv 0 "this is a bird"

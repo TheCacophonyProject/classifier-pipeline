@@ -745,7 +745,7 @@ class TrackExtractor:
         :return: regions of interest, mask frame
         """
 
-        frame_height, frame_width = filtered.shape;
+        frame_height, frame_width = filtered.shape
 
         # get frames change
         if prev_filtered is not None:

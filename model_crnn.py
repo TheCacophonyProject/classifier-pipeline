@@ -368,7 +368,7 @@ class ModelCRNN_LQ(ConvModel):
         'learning_rate_decay': 1.0,
         'l2_reg': 0,
         'label_smoothing': 0.1,
-        'keep_prob': 0.5,
+        'keep_prob': 0.2,
 
         # model params
         'batch_norm': True,
