@@ -870,6 +870,24 @@ class Model:
 
         return pred, state
 
+    def classify_frame_with_novelty(self, frame, state=None):
+        """
+        Classify a single frame with novelty output.
+        :param frame: numpy array of dims [C, H, W]
+        :param state: the previous state, or none for initial frame.
+        :return: tuple (prediction, novelty, state).  Where prediction is score for each class, and novelty is a scalar
+        """
+        if state is None:
+            state_shape = self.state_in.shape
+            state = np.zeros([1, state_shape[1], state_shape[2]], dtype=np.float32)
+
+        batch_X = frame[np.newaxis,np.newaxis,:]
+
+        feed_dict = self.get_feed_dict(batch_X, state_in=state)
+        pred, novelty, state = self.session.run([self.prediction, self.novelty, self.state_out], feed_dict=feed_dict)
+
+        return pred[0], novelty[0], state
+
     def create_summaries(self, name, var):
         """
         Creates TensorFlow summaries for given tensor

@@ -100,9 +100,9 @@ class Rectangle:
     def crop(self, bounds):
         """ Crops rectangle so that it fits within given bounds"""
         self.left = max(self.left, bounds.left)
-        self.top= max(self.top, bounds.top)
+        self.top = max(self.top, bounds.top)
         self.right = min(self.right, bounds.right)
-        self.bottom = max(self.bottom, bounds.bottom)
+        self.bottom = min(self.bottom, bounds.bottom)
 
     @property
     def area(self):

@@ -50,17 +50,23 @@ class TrackPrediction:
     track.
     """
 
-    def __init__(self, prediction_history):
+    def __init__(self, prediction_history, novelty_history):
         """
         Setup track prediction with given prediction history
         :param prediction_history: list of predictions for each frame of this track.
+        :param novelty_history: list of novelty scores for each frame of this track.
         """
         self.prediction_history = prediction_history.copy()
+        self.novelty_history = novelty_history.copy()
         self.class_best_score = np.max(np.float32(prediction_history), axis=0).tolist()
 
     def label(self, n = 1):
         """ class label of nth best guess. """
         return int(np.argsort(self.class_best_score)[-n])
+
+    def novelty(self):
+        """ maximum novelty for this track """
+        return max(self.novelty_history)
 
     def score(self, n = 1):
         """ class score of nth best guess. """
@@ -181,11 +187,16 @@ class ClipClassifier(CPTVFileProcessor):
         UNIFORM_PRIOR = False
 
         predictions = []
+        novelties = []
 
         num_labels = len(self.classifier.labels)
         prediction_smooth = 0.1
 
         smooth_prediction = None
+        smooth_novelty = None
+
+        prediction = 0.0
+        novelty = 0.0
 
         fp_index = self.classifier.labels.index('false-positive')
 
@@ -200,9 +211,10 @@ class ClipClassifier(CPTVFileProcessor):
             frame = tracker.get_track_channels(track, i)
             if i % self.FRAME_SKIP == 0:
 
-                frame = Preprocessor.apply([frame], [thermal_reference])[0]
+                # we use a tigher cropping here so we disable the default 2 pixel inset
+                frame = Preprocessor.apply([frame], [thermal_reference], default_inset=0)[0]
 
-                prediction, state = self.classifier.classify_frame(frame, state)
+                prediction, novelty, state = self.classifier.classify_frame_with_novelty(frame, state)
 
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
@@ -235,11 +247,15 @@ class ClipClassifier(CPTVFileProcessor):
                     smooth_prediction = np.ones([num_labels]) * (1 / num_labels)
                 else:
                     smooth_prediction = prediction
+                smooth_novelty = 0.5
             else:
                 smooth_prediction = (1-prediction_smooth) * smooth_prediction + prediction_smooth * prediction
-            predictions.append(smooth_prediction)
+                smooth_novelty = (1-prediction_smooth) * smooth_novelty + prediction_smooth * novelty
 
-        return TrackPrediction(predictions)
+            predictions.append(smooth_prediction)
+            novelties.append(smooth_novelty)
+
+        return TrackPrediction(predictions, novelties)
 
     @property
     def classifier(self):
@@ -383,12 +399,6 @@ class ClipClassifier(CPTVFileProcessor):
                 # display the track
                 rect = track.bounds_history[frame_offset].copy()
 
-                # bounding rects have some extra padding on them, we can remove some of that here for a cleaner image
-                rect.top += 2
-                rect.left += 2
-                rect.right -= 2
-                rect.bottom -= 2
-
                 rect_points = [int(p * frame_scale) for p in [rect.left, rect.top, rect.right, rect.top, rect.right,
                                                               rect.bottom, rect.left, rect.bottom, rect.left,
                                                               rect.top]]
@@ -405,6 +415,8 @@ class ClipClassifier(CPTVFileProcessor):
                     else:
                         prediction_format = "({:.1f} {})?"
                     current_prediction_string = prediction_format.format(score * 10, label)
+
+                    current_prediction_string += "\nnovelty={:.2f}".format(prediction.novelty_history[frame_offset])
 
                 header_size = self.font_title.getsize(track_description)
                 footer_size = self.font.getsize(current_prediction_string)
@@ -513,6 +525,7 @@ class ClipClassifier(CPTVFileProcessor):
         tracker = TrackExtractor()
         tracker.WINDOW_SIZE = 48
         tracker.MAX_REGION_SIZE = 256 # enable larger regions
+        tracker.FRAME_PADDING = 4 #when classifiying we can use a tighter padding as we do not need extra for augmentation.
         tracker.load(filename)
 
         # turn up sensitivity on tracking so we can catch more animals.  The classifier will sort out the false

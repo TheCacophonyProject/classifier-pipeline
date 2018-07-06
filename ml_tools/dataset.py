@@ -216,29 +216,30 @@ class Preprocessor:
     FRAME_SIZE = 48
 
     @staticmethod
-    def apply(frames, reference_level, frame_velocity=None, augment=False, encode_frame_offsets_in_flow=False):
+    def apply(frames, reference_level, frame_velocity=None, augment=False, encode_frame_offsets_in_flow=False, default_inset=2):
         """
         Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
         :param frames: a list of np array of shape [C, H, W]
         :param reference_level: thermal reference level for each frame in data
         :param frame_velocity: velocity (x,y) for each frame.
         :param augment: if true applies a slightly random crop / scale
+        :param default_inset: the default number of pixels to inset when no augmentation is applied.
         """
 
         # -------------------------------------------
         # first we scale to the standard size
 
         # adjusting the corners makes the algorithm robust to tracking differences.
-        top_offset = random.randint(0, 5) if augment else 2
-        bottom_offset = random.randint(0, 5) if augment else 2
-        left_offset = random.randint(0, 5) if augment else 2
-        right_offset = random.randint(0, 5) if augment else 2
+        top_offset = random.randint(0, 5) if augment else default_inset
+        bottom_offset = random.randint(0, 5) if augment else default_inset
+        left_offset = random.randint(0, 5) if augment else default_inset
+        right_offset = random.randint(0, 5) if augment else default_inset
 
         scaled_frames = []
 
         for frame in frames:
 
-            channels, frame_width, frame_height = frame.shape
+            channels, frame_height, frame_width = frame.shape
 
             frame_bounds = tools.Rectangle(0, 0, frame_width, frame_height)
 
@@ -247,10 +248,12 @@ class Preprocessor:
 
             # if the frame is too small we make it a little larger
             while crop_region.width < 4:
+                print("extend width")
                 crop_region.left -=1
                 crop_region.right += 1
                 crop_region.crop(frame_bounds)
             while crop_region.height < 4:
+                print("extend height")
                 crop_region.top -=1
                 crop_region.bottom += 1
                 crop_region.crop(frame_bounds)
