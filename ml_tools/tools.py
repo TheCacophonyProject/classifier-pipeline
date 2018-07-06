@@ -93,6 +93,13 @@ class Rectangle:
         y_overlap = max(0, min(self.bottom, other.bottom) - max(self.top, other.top))
         return x_overlap * y_overlap
 
+    def crop(self, bounds):
+        """ Crops rectangle so that it fits within given bounds"""
+        self.left = max(self.left, bounds.left)
+        self.top= max(self.top, bounds.top)
+        self.right = min(self.right, bounds.right)
+        self.bottom = max(self.bottom, bounds.bottom)
+
     @property
     def area(self):
         return self.width * self.height

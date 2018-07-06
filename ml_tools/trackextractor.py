@@ -31,7 +31,7 @@ __import__('tables')  # <-- import PyTables; __import__ so that linters don't co
 
 class Region(Rectangle):
     """ Region is a rectangle extended to support mass. """
-    def __init__(self, topleft_x, topleft_y, width, height, mass=0, pixel_variance=0, id=0, frame_index=0):
+    def __init__(self, topleft_x, topleft_y, width, height, mass=0, pixel_variance=0, id=0, frame_index=0, was_cropped=False):
         super().__init__(topleft_x, topleft_y, width, height)
         # number of active pixels in region
         self.mass = mass
@@ -41,10 +41,13 @@ class Region(Rectangle):
         self.id = id
         # frame index from clip
         self.frame_index = frame_index
+        # if this region was cropped or not
+        self.was_cropped = was_cropped
 
     def copy(self):
         return Region(
-            self.x, self.y, self.width, self.height, self.mass, self.pixel_variance, self.id, self.frame_index
+            self.x, self.y, self.width, self.height, self.mass, self.pixel_variance, self.id, self.frame_index,
+            self.was_cropped
         )
 
 TrackMovementStatistics = namedtuple(
@@ -375,9 +378,8 @@ class TrackExtractor:
         self.track_min_delta = 1.0
         self.track_min_mass = 2.0
 
-        # by default only scale down is performed, not scaling up, however enabling tight zoom causes tracks to
-        # the scaled up so that they fill most of the track bounds.
-        self.tight_zoom = False
+        # normally animals on the edge of the screen are ignored, however this can be turned on by enabling this setting.
+        self.include_cropped_regions = False
 
         # minimum allowed threshold for mask, smaller values detect more objects, but bring up additional false positives
         self.min_threshold = 30
@@ -408,6 +410,7 @@ class TrackExtractor:
 
         # accumulates frame changes for FM_DELTA algorithm
         self.accumulator = None
+
 
     def load(self, filename):
         """
@@ -781,9 +784,19 @@ class TrackExtractor:
                 stats[i, 4], 0, i, self.frame_on
             )
 
-            # if region went outside if bounds ignore it.
-            if (region.left < 0) or (region.right > frame_width) or (region.top < 0) or (region.top < 0) or (region.bottom > frame_height):
-                continue
+
+            if self.include_cropped_regions:
+                # in this case we just clip the region to the edges of the screen
+                old_region = str(region)
+                region.left = max(region.left, 0)
+                region.top = max(region.top, 0)
+                region.right = min(region.right, frame_width-1)
+                region.bottom = min(region.bottom, frame_height-1)
+                region.was_cropped = old_region != str(region)
+            else:
+                # if region went outside if bounds ignore it.
+                if (region.left < 0) or (region.right > frame_width) or (region.top < 0) or (region.top < 0) or (region.bottom > frame_height):
+                    continue
 
             # if region is too large ignore it.  this is mostly because very large objects do not track well,
             # and take up a lot of space.

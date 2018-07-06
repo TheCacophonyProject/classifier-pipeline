@@ -29,6 +29,14 @@ from ml_tools.trackdatabase import TrackDatabase
 CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
 
+class TrackChannels:
+    """ Indexes to channels in track. """
+    thermal = 0
+    filtered = 1
+    flow_h = 2
+    flow_v = 3
+    mask = 4
+
 class TrackHeader:
     """ Header for track. """
 
@@ -200,6 +208,119 @@ class SegmentHeader:
     def __str__(self):
         return "offset:{0} weight:{1:.1f}".format(self.start_frame, self.weight)
 
+
+class Preprocessor:
+    """ Handles preprocessing of track data. """
+
+    # size to scale each frame to when loaded.
+    FRAME_SIZE = 48
+
+    @staticmethod
+    def apply(frames, reference_level, frame_velocity=None, augment=False, encode_frame_offsets_in_flow=False):
+        """
+        Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
+        :param frames: a list of np array of shape [C, H, W]
+        :param reference_level: thermal reference level for each frame in data
+        :param frame_velocity: velocity (x,y) for each frame.
+        :param augment: if true applies a slightly random crop / scale
+        """
+
+        # -------------------------------------------
+        # first we scale to the standard size
+
+        # adjusting the corners makes the algorithm robust to tracking differences.
+        top_offset = random.randint(0, 5) if augment else 2
+        bottom_offset = random.randint(0, 5) if augment else 2
+        left_offset = random.randint(0, 5) if augment else 2
+        right_offset = random.randint(0, 5) if augment else 2
+
+        scaled_frames = []
+
+        for frame in frames:
+
+            channels, frame_width, frame_height = frame.shape
+
+            frame_bounds = tools.Rectangle(0, 0, frame_width, frame_height)
+
+            # set up a cropping frame
+            crop_region = tools.Rectangle.from_ltrb(left_offset, top_offset, frame_width - right_offset, frame_height - bottom_offset)
+
+            # if the frame is too small we make it a little larger
+            while crop_region.width < 4:
+                crop_region.left -=1
+                crop_region.right += 1
+                crop_region.crop(frame_bounds)
+            while crop_region.height < 4:
+                crop_region.top -=1
+                crop_region.bottom += 1
+                crop_region.crop(frame_bounds)
+
+            cropped_frame = frame[:,
+                            crop_region.top: crop_region.bottom,
+                            crop_region.left: crop_region.right]
+
+            scaled_frame = [cv2.resize(np.float32(cropped_frame[channel]), dsize=(Preprocessor.FRAME_SIZE, Preprocessor.FRAME_SIZE),
+                                       interpolation=cv2.INTER_LINEAR if channel != TrackChannels.mask else cv2.INTER_NEAREST)
+                            for channel in range(channels)]
+            scaled_frame = np.float32(scaled_frame)
+
+            scaled_frames.append(scaled_frame)
+
+        # convert back into [F,C,H,W] array.
+        data = np.float32(scaled_frames)
+
+        # the segment will be processed in float32 so we may as well convert it here.
+        # also optical flow is stored as a scaled integer, but we want it in float32 format.
+        data = np.asarray(data, dtype=np.float32)
+
+        # -------------------------------------------
+        # next adjust temperature and flow levels
+
+        # get reference level for thermal channel
+        assert len(data) == len(reference_level), "Reference level shape and data shape not match."
+
+        # reference thermal levels to the reference level
+        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
+
+        # map optical flow down to right level,
+        # we pre-multiplied by 256 to fit into a 16bit int
+        data[:, 2:3 + 1, :, :] *= (1.0/256.0)
+
+        # write frame motion into center of frame
+        if encode_frame_offsets_in_flow:
+            F, C, H, W = data.shape
+            for x in range(-2,2+1):
+                for y in range(-2,2+1):
+                    data[:, 2:3 + 1, H//2+y, W//2+x] = frame_velocity[:, :]
+
+        # set filtered track to delta frames
+        reference = np.clip(data[:, 0], 20, 999)
+        data[0, 1] = 0
+        data[1:, 1] = reference[1:] - reference[:-1]
+
+        # -------------------------------------------
+        # finally apply and additional augmentation
+
+        if augment:
+            if (random.random() <= 0.75):
+                # we will adjust contrast and levels, but only within these bounds.
+                # that is a bright input may have brightness reduced, but not increased.
+                LEVEL_OFFSET = 4
+
+                # apply level and contrast shift
+                level_adjust = random.normalvariate(0, LEVEL_OFFSET)
+                contrast_adjust = tools.random_log(0.9, (1/0.9))
+
+                data[:, 0] *= contrast_adjust
+                data[:, 0] += level_adjust
+
+            if random.random() <= 0.50:
+                # when we flip the frame remember to flip the horizontal velocity as well
+                data = np.flip(data, axis=3)
+                data[:, 2] = -data[:, 2]
+
+        return data
+
 class Dataset:
     """
     Stores visit, clip, track, and segment information headers in memory, and allows track / segment streaming from
@@ -214,17 +335,6 @@ class Dataset:
     # across processes.
     # In general if worker threads is one set this to False, if it is two or more set it to True.
     PROCESS_BASED = True
-
-    # size to scale each frame to when loaded.
-    FRAME_SIZE = 48
-
-    # channel indexes
-    THERMAL = 0
-    FILTERED = 1
-    FLOW_H = 2
-    FLOW_V = 3
-    MASK = 4
-
 
     def __init__(self, track_db: TrackDatabase, name="Dataset"):
 
@@ -479,7 +589,10 @@ class Dataset:
         :return: segment data of shape [frames, channels, height, width]
         """
         data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
-        data = self.apply_preprocessing(data, track.thermal_reference_level, track.frame_velocity)
+        data = Preprocessor.apply(
+            data, reference_level=track.thermal_reference_level, frame_velocity=track.frame_velocity,
+            encode_frame_offsets_in_flow=self.encode_frame_offsets_in_flow
+        )
         return data
 
     def fetch_segment(self, segment: SegmentHeader, augment=False):
@@ -516,109 +629,10 @@ class Dataset:
         if len(data) != self.segment_width:
             print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)
 
-        data = self.apply_preprocessing(data, segment.track.thermal_reference_level[first_frame:last_frame],
+        data = Preprocessor.apply(data, segment.track.thermal_reference_level[first_frame:last_frame],
                                         segment.track.frame_velocity[first_frame:last_frame],augment=augment)
 
         return data
-
-
-    def apply_preprocessing(self, data, reference_level, frame_velocity=None, augment=False):
-        """
-        Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
-        :param data: np array of shape [F, C, H, W]
-        :param reference_level: thermal reference level for each frame in data
-        :param frame_velocity: velocity (x,y) for each frame.
-        :param augment: if true applies a slightly random crop / scale
-        """
-
-        # -------------------------------------------
-        # first we scale to the standard size
-
-        # adjusting the corners makes the algorithm robust to tracking differences.
-        top_offset = random.randint(0, 5) if augment else 2
-        bottom_offset = random.randint(0, 5) if augment else 2
-        left_offset = random.randint(0, 5) if augment else 2
-        right_offset = random.randint(0, 5) if augment else 2
-
-        scaled_frames = []
-
-        for frame in data:
-
-            channels, frame_width, frame_height = frame.shape
-
-            # crop the frame
-
-            if (frame_height - top_offset - bottom_offset <= 8 or frame_width - left_offset - right_offset <= 8):
-                # if the frame will be too small turn off cropping.
-                # note, it would be best to do this smoothly, so we don't get sudden jumps in cropping changs.
-                cropped_frame = frame
-            else:
-                cropped_frame = frame[:, top_offset: frame_height - bottom_offset,
-                            left_offset: frame_width - right_offset]
-
-
-            scaled_frame = [cv2.resize(np.float32(cropped_frame[channel]), dsize=(self.FRAME_SIZE, self.FRAME_SIZE),
-                                       interpolation=cv2.INTER_LINEAR if channel != self.MASK else cv2.INTER_NEAREST)
-                            for channel in range(channels)]
-            scaled_frame = np.float32(scaled_frame)
-
-            scaled_frames.append(scaled_frame)
-
-        # convert back into [F,C,H,W] array.
-        data = np.float32(scaled_frames)
-
-        # the segment will be processed in float32 so we may as well convert it here.
-        # also optical flow is stored as a scaled integer, but we want it in float32 format.
-        data = np.asarray(data, dtype=np.float32)
-
-        # -------------------------------------------
-        # next adjust temperature and flow levels
-
-        # get reference level for thermal channel
-        assert len(data) == len(reference_level), "Reference level shape and data shape not match."
-
-        # reference thermal levels to the reference level
-        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
-
-        # map optical flow down to right level,
-        # we pre-multiplied by 256 to fit into a 16bit int
-        data[:, 2:3 + 1, :, :] *= (1.0/256.0)
-
-        # write frame motion into center of frame
-        if self.encode_frame_offsets_in_flow:
-            F, C, H, W = data.shape
-            for x in range(-2,2+1):
-                for y in range(-2,2+1):
-                    data[:, 2:3 + 1, H//2+y, W//2+x] = frame_velocity[:, :]
-
-        # set filtered track to delta frames
-        reference = np.clip(data[:, 0], 20, 999)
-        data[0, 1] = 0
-        data[1:, 1] = reference[1:] - reference[:-1]
-
-        # -------------------------------------------
-        # finally apply and additional augmentation
-
-        if augment:
-            if (random.random() <= 0.75):
-                # we will adjust contrast and levels, but only within these bounds.
-                # that is a bright input may have brightness reduced, but not increased.
-                LEVEL_OFFSET = 4
-
-                # apply level and contrast shift
-                level_adjust = random.normalvariate(0, LEVEL_OFFSET)
-                contrast_adjust = tools.random_log(0.9, (1/0.9))
-
-                data[:, 0] *= contrast_adjust
-                data[:, 0] += level_adjust
-
-            if random.random() <= 0.50:
-                # when we flip the frame remember to flip the horizontal velocity as well
-                data = np.flip(data, axis=3)
-                data[:, 2] = -data[:, 2]
-
-        return data
-
 
     def sample_segment(self):
         """ Returns a random segment from weighted list. """

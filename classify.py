@@ -18,6 +18,7 @@ import cv2
 
 from ml_tools import tools
 from ml_tools.model import Model
+from ml_tools.dataset import Preprocessor
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools.mpeg_creator import MPEGCreator
 from ml_tools.trackextractor import TrackExtractor, Track, Region
@@ -26,10 +27,11 @@ from ml_tools.trackextractor import TrackExtractor, Track, Region
 DEFAULT_BASE_PATH = "c:/cac"
 HERE = os.path.dirname(__file__)
 RESOURCES_PATH = os.path.join(HERE, "resources")
-MODEL_NAME = "model_hq_v030"
+MODEL_NAME = "model_lq-0.929"
 
 # folders that are not processed when run with 'all'
-IGNORE_FOLDERS = ['untagged','cat','dog','insect','unidentified','rabbit','hard','multi','moving','mouse']
+IGNORE_FOLDERS = ['untagged','cat','dog','insect','unidentified','rabbit','hard','multi','moving','mouse',
+                  'bird-kiwi','for_grant']
 
 
 def resource_path(name):
@@ -197,7 +199,8 @@ class ClipClassifier(CPTVFileProcessor):
 
             frame = tracker.get_track_channels(track, i)
             if i % self.FRAME_SKIP == 0:
-                frame = self.preprocess(frame, thermal_reference)
+
+                frame = Preprocessor.apply([frame], [thermal_reference])[0]
 
                 prediction, state = self.classifier.classify_frame(frame, state)
 
@@ -218,7 +221,10 @@ class ClipClassifier(CPTVFileProcessor):
                 # of the object rather than the mass.
                 mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
 
-                prediction *= mass_weight
+                # cropped frames don't do so well so restrict their score
+                cropped_weight = 0.7 if track.bounds_history[i].was_cropped else 1.0
+
+                prediction *= mass_weight * cropped_weight
 
             else:
                 # just continue prediction and state along.
@@ -444,13 +450,25 @@ class ClipClassifier(CPTVFileProcessor):
         """ Reads meta-data for a given cptv file. """
         source_meta_filename = os.path.splitext(filename)[0] + ".txt"
         if os.path.exists(source_meta_filename):
+
             meta_data = tools.load_clip_metadata(source_meta_filename)
-            tags = list(set(record['animal'] for record in meta_data['Tags']))
+
+            tags = set()
+            for record in meta_data["Tags"]:
+                # skip automatic tags
+                if record.get("automatic", False):
+                    continue
+                else:
+                    tags.add(record['animal'])
+
+            tags = list(tags)
+
             if len(tags) == 0:
                 tag = 'no tag'
             elif len(tags) == 1:
                 tag = tags[0] if tags[0] else "none"
             else:
+                print(tags)
                 tag = 'multi'
             meta_data["primary_tag"] = tag
             return meta_data
@@ -487,6 +505,7 @@ class ClipClassifier(CPTVFileProcessor):
         # extract tracks from file
         tracker = TrackExtractor()
         tracker.WINDOW_SIZE = 48
+        tracker.MAX_REGION_SIZE = 256 # enable larger regions
         tracker.load(filename)
 
         # turn up sensitivity on tracking so we can catch more animals.  The classifier will sort out the false
@@ -496,16 +515,8 @@ class ClipClassifier(CPTVFileProcessor):
         tracker.track_min_delta = 1.0
         tracker.track_min_mass = 0.0
 
-        # make sure to not track animals when they go off the frame.
-        # stub: relaxed crop threshold
-        tracker.crop_threshold = 0.50
-
-        # enable the tight zoom mode on the tracker, which is required for v0.3.0 of the model
-        # we also adjust the padding as during training we use a tighter bounding box.
-        tracker.tight_zoom = True
-        tracker.FRAME_PADDING = 3
-
         tracker.min_threshold = 15
+        tracker.include_cropped_regions = True # we can handle some cropping during classification.
 
         tracker.high_quality_optical_flow = self.high_quality_optical_flow
 
@@ -557,14 +568,14 @@ class ClipClassifier(CPTVFileProcessor):
                     prediction_string = prediction_string + " {} {:.1f}".format(label, score * 10)
             self.export_clip_preview(mpeg_filename.format(prediction_string), tracker)
 
-        # read in original metadata
-        meta_data = self.get_meta_data(filename)
-
         # record results in text file.
         save_file = {}
         save_file['source'] = filename
         save_file['start_time'] = tracker.video_start_time.isoformat()
         save_file['end_time'] = (tracker.video_start_time + timedelta(seconds=len(tracker.frame_buffer.thermal) / 9.0)).isoformat()
+
+        # read in original metadata
+        meta_data = self.get_meta_data(filename)
 
         if meta_data:
             save_file['camera'] = meta_data['Device']['devicename']
