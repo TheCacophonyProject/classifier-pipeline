@@ -381,7 +381,14 @@ class ClipClassifier(CPTVFileProcessor):
             frame_offset = frame_number - track.start_frame
             if 0 < frame_offset < len(track.bounds_history) - 1:
                 # display the track
-                rect = track.bounds_history[frame_offset]
+                rect = track.bounds_history[frame_offset].copy()
+
+                # bounding rects have some extra padding on them, we can remove some of that here for a cleaner image
+                rect.top += 2
+                rect.left += 2
+                rect.right -= 2
+                rect.bottom -= 2
+
                 rect_points = [int(p * frame_scale) for p in [rect.left, rect.top, rect.right, rect.top, rect.right,
                                                               rect.bottom, rect.left, rect.bottom, rect.left,
                                                               rect.top]]

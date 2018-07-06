@@ -88,7 +88,7 @@ def train_model(rum_name, epochs=30.0, **kwargs):
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
     # but we don't load the dataset till after that, so we load it here just to count the number of labels...
-    dataset_name = os.path.join(DATASET_FOLDER, 'datasets_nocats.dat')
+    dataset_name = os.path.join(DATASET_FOLDER, 'datasets.dat')
     dsets = pickle.load(open(dataset_name,'rb'))
     labels = dsets[0].labels
 

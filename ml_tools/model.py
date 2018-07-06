@@ -753,7 +753,13 @@ class Model:
                 score_part = score_part + "0"
             filename = os.path.join("./models/", self.MODEL_NAME + '-' + score_part)
 
-        self.saver.save(self.session, filename)
+        try:
+            self.saver.save(self.session, filename)
+        except Exception as e:
+            print("*"*60)
+            print("Warning, fail saved.  This is usally because the file was open (maybe dropbox was running?)")
+            print("*" * 60)
+            print(e)
 
         # save some additional data
         model_stats = {}

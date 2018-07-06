@@ -73,19 +73,23 @@ class Rectangle:
 
     @left.setter
     def left(self, value):
+        old_right = self.right
         self.x = value
+        self.right = old_right
 
     @top.setter
     def top(self, value):
+        old_bottom = self.bottom
         self.y = value
+        self.bottom = old_bottom
 
     @right.setter
     def right(self, value):
-        self.width = value - self.x;
+        self.width = value - self.x
 
     @bottom.setter
     def bottom(self, value):
-        self.height = value - self.y;
+        self.height = value - self.y
 
     def overlap_area(self, other):
         """ Compute the area overlap between this rectangle and another. """
