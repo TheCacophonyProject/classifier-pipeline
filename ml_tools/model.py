@@ -46,7 +46,7 @@ class Model:
         self.global_step = None
 
         # ------------------------------------------------------
-        # tensflow nodes used to evaluate
+        # tensorflow nodes used to evaluate
         # ------------------------------------------------------
 
         # prediction for each class(probability distribution)

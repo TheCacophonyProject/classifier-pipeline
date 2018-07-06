@@ -98,7 +98,9 @@ def train_model(rum_name, epochs=30.0, **kwargs):
     model.log_dir = LOG_FOLDER
 
     # display the data set summary
-    print("Training on labels: ",labels)
+    print("Training on labels",labels)
+    print()
+    print("{:<20} {:<20} {:<20} {:<20} (segments/tracks/bins/weight)".format("label","train","validation","test"))
     for label in labels:
         print("{:<20} {:<20} {:<20} {:<20}".format(
             label,
@@ -112,11 +114,13 @@ def train_model(rum_name, epochs=30.0, **kwargs):
         print(dataset.labels)
 
     print("Training started")
-    print()
+    print("---------------------")
     print('Hyper parameters')
+    print("---------------------")
     print(model.hyperparams_string)
     print()
-    print("{0:.1f}K training examples".format(model.rows / 1000))
+    print("Found {0:.1f}K training examples".format(model.rows / 1000))
+    print()
     model.train_model(epochs=epochs, run_name=rum_name+" "+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     model.save()
     model.close()
