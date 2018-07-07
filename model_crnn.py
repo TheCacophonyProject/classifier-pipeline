@@ -154,6 +154,8 @@ class ConvModel(Model):
         min_distance = tf.sqrt(tf.reduce_min(squared_distances, axis = 1), name='novelty_distance')
         novelty = tf.sigmoid((min_distance - novelty_threshold) / novelty_scale,'novelty')
 
+        return novelty
+
     def setup_optimizer(self, loss):
         # setup our training loss
         if self.params['learning_rate_decay'] != 1.0:
@@ -336,7 +338,7 @@ class ModelCRNN_HQ(ConvModel):
         # -------------------------------------
         # novelty
 
-        self.setup_novelty(logits, dense)
+        self.setup_novelty(logits, lstm_output)
         self.setup_optimizer(loss)
 
         # make reference to special nodes

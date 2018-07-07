@@ -181,7 +181,7 @@ class TrackDatabase:
         :param track_number: the tracks id
         :param track_data: data for track, list of numpy arrays of shape [channels, height, width]
         :param track: the original track record, used to get stats for track
-        :param opts: additional parameters used when creating dataset, if not provided defaults to lzf compression.
+        :param opts: additional parameters used when creating dataset, if not provided defaults to no compression.
         """
 
         track_number = str(track_number)
@@ -205,10 +205,10 @@ class TrackDatabase:
 
                 dims = (channels, height, width)
 
-                if opts:
+                if opts is not None:
                     frame_node = track_node.create_dataset(str(frame_number), dims, chunks=chunks, **opts, dtype=np.int16)
                 else:
-                    frame_node = track_node.create_dataset(str(frame_number), dims, chunks=chunks, compression='lzf', shuffle=False, dtype=np.int16)
+                    frame_node = track_node.create_dataset(str(frame_number), dims, chunks=chunks, dtype=np.int16)
 
                 frame_node[:,:,:] = track_data[frame_number]
 

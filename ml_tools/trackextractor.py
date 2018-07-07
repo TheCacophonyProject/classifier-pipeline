@@ -23,6 +23,7 @@ from ml_tools.tools import get_image_subsection, blosc_zstd
 from ml_tools.tools import Rectangle
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
+from ml_tools.dataset import TrackChannels
 
 from cptv import CPTVReader
 
@@ -317,6 +318,13 @@ class FrameBuffer:
 class TrackExtractor:
     """ Extracts tracks from a stream of frames. """
 
+    # enables fast BLOSC compression (requires plugin)
+    ENABLE_COMPRESSION = False
+
+    # includes the filtered channel when exporting.  This is typically not used.  If compression is enabled the
+    # filesize can be reduced by not including it.
+    INCLUDE_FILTERED_CHANNEL = True
+
     # auto threshold needs to find a near maximum value to calculate the threshold level
     # a better solution might be the mean of the max of each frame?
     THRESHOLD_PERCENTILE = 99.9
@@ -574,9 +582,13 @@ class TrackExtractor:
             track_data = []
             for i in range(len(track)):
                 channels = self.get_track_channels(track, i)
+
+                # zero out the filtered channel
+                if not self.INCLUDE_FILTERED_CHANNEL:
+                    channels[TrackChannels.filtered] = 0
                 track_data.append(channels)
             track_id = track_number+1
-            database.add_track(clip_id, track_id, track_data, track, opts=blosc_zstd)
+            database.add_track(clip_id, track_id, track_data, track, opts=blosc_zstd if self.ENABLE_COMPRESSION else None)
 
     def get_track_channels(self, track: Track, frame_number):
         """

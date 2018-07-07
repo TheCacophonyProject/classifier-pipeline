@@ -127,6 +127,10 @@ def train_model(rum_name, epochs=30.0, **kwargs):
     model.save()
     model.close()
 
+    # this shouldn't be nessesary, but unfortunately my model.close isn't cleaning up everything.
+    # I think it's because i'm adding everything to the default graph?
+    tf.reset_default_graph()
+
     return model
 
 def has_job(job_name):
@@ -167,7 +171,7 @@ def run_job(job_name, **kwargs):
 
     model = train_model("search/" + job_name, **kwargs)
 
-    log_job_complete(job_name, model.eval_score, kwargs.keys(), kwargs.values())
+    log_job_complete(job_name, model.eval_score, list(kwargs.keys()), list(kwargs.values()))
 
 
 def axis_search():
