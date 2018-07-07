@@ -81,7 +81,7 @@ class ConvModel(Model):
         # the idea here is to apply sqrt to any values over 100 so that we reduce the effect of very strong values.
         thermal = X[:, :, 0:0 + 1]
 
-        AUTO_NORM_THERMAL = True
+        AUTO_NORM_THERMAL = False
         THERMAL_ROLLOFF = 400
 
         if AUTO_NORM_THERMAL:

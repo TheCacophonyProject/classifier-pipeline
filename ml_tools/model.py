@@ -726,8 +726,8 @@ class Model:
         # make sure the workers load the correct number of frames.
         self.datasets.train.segment_width = self.testing_segment_frames
         self.datasets.validation.segment_width = self.testing_segment_frames
-        self.datasets.train.start_async_load(32)
-        self.datasets.validation.start_async_load(32)
+        self.datasets.train.start_async_load(48)
+        self.datasets.validation.start_async_load(48)
 
     def stop_async(self):
         self.datasets.train.stop_async_load()

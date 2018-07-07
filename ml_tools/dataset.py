@@ -248,12 +248,10 @@ class Preprocessor:
 
             # if the frame is too small we make it a little larger
             while crop_region.width < 4:
-                print("extend width")
                 crop_region.left -=1
                 crop_region.right += 1
                 crop_region.crop(frame_bounds)
             while crop_region.height < 4:
-                print("extend height")
                 crop_region.top -=1
                 crop_region.bottom += 1
                 crop_region.crop(frame_bounds)
@@ -339,6 +337,9 @@ class Dataset:
     # In general if worker threads is one set this to False, if it is two or more set it to True.
     PROCESS_BASED = True
 
+    # number of pixels to inset from frame edges by default
+    DEFAULT_INSET = 2
+
     def __init__(self, track_db: TrackDatabase, name="Dataset"):
 
         # database holding track data
@@ -417,7 +418,7 @@ class Dataset:
         """
 
         # if async is enabled use it.
-        if (not disable_async and self.preloader_queue is not None) or force_no_augmentation:
+        if (not disable_async and self.preloader_queue is not None and not force_no_augmentation):
             # get samples from queue
             batch_X = []
             batch_y = []
@@ -594,7 +595,8 @@ class Dataset:
         data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
         data = Preprocessor.apply(
             data, reference_level=track.thermal_reference_level, frame_velocity=track.frame_velocity,
-            encode_frame_offsets_in_flow=self.encode_frame_offsets_in_flow
+            encode_frame_offsets_in_flow=self.encode_frame_offsets_in_flow,
+            default_inset=self.DEFAULT_INSET
         )
         return data
 
@@ -632,8 +634,10 @@ class Dataset:
         if len(data) != self.segment_width:
             print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)
 
-        data = Preprocessor.apply(data, segment.track.thermal_reference_level[first_frame:last_frame],
-                                        segment.track.frame_velocity[first_frame:last_frame],augment=augment)
+        data = Preprocessor.apply(data,
+                                  segment.track.thermal_reference_level[first_frame:last_frame],
+                                  segment.track.frame_velocity[first_frame:last_frame],augment=augment,
+                                  default_inset=self.DEFAULT_INSET)
 
         return data
 

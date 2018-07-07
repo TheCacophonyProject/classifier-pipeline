@@ -36,6 +36,8 @@ import os
 import datetime
 import argparse
 
+import ast
+
 import tensorflow as tf
 
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
@@ -201,6 +203,7 @@ def main():
 
     parser.add_argument('-d', '--dataset', default="datasets", help='Enables preview MPEG files (can be slow)')
     parser.add_argument('-e', '--epochs', default="30", help='Number of epochs to train for')
+    parser.add_argument('-p', '--params', default="{}", help='model parameters')
 
     args = parser.parse_args()
 
@@ -208,7 +211,9 @@ def main():
         print("Performing hyper parameter search.")
         axis_search()
     else:
-        train_model("training/" + args.name)
+        # literal eval should be safe here.
+        model_args = ast.literal_eval(args.params)
+        train_model("training/" + args.name, **model_args)
 
 
 if __name__ == "__main__":
