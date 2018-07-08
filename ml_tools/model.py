@@ -778,7 +778,7 @@ class Model:
     def load(self, filename):
         """ Loads model and parameters from file. """
 
-        print("Loading model {}".format(filename))
+        logging.info("Loading model {}".format(filename))
 
         saver = tf.train.import_meta_graph(filename+'.meta', clear_devices=True)
         saver.restore(self.session, filename)
