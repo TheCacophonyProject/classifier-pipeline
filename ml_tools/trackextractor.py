@@ -22,6 +22,8 @@ import logging
 from ml_tools.tools import get_image_subsection, blosc_zstd
 from ml_tools.tools import Rectangle
 from ml_tools.trackdatabase import TrackDatabase
+from ml_tools import tools
+from ml_tools.dataset import TrackChannels
 
 from cptv import CPTVReader
 
@@ -30,7 +32,7 @@ __import__('tables')  # <-- import PyTables; __import__ so that linters don't co
 
 class Region(Rectangle):
     """ Region is a rectangle extended to support mass. """
-    def __init__(self, topleft_x, topleft_y, width, height, mass=0, pixel_variance=0, id=0, frame_index=0):
+    def __init__(self, topleft_x, topleft_y, width, height, mass=0, pixel_variance=0, id=0, frame_index=0, was_cropped=False):
         super().__init__(topleft_x, topleft_y, width, height)
         # number of active pixels in region
         self.mass = mass
@@ -40,10 +42,13 @@ class Region(Rectangle):
         self.id = id
         # frame index from clip
         self.frame_index = frame_index
+        # if this region was cropped or not
+        self.was_cropped = was_cropped
 
     def copy(self):
         return Region(
-            self.x, self.y, self.width, self.height, self.mass, self.pixel_variance, self.id, self.frame_index
+            self.x, self.y, self.width, self.height, self.mass, self.pixel_variance, self.id, self.frame_index,
+            self.was_cropped
         )
 
 TrackMovementStatistics = namedtuple(
@@ -313,6 +318,13 @@ class FrameBuffer:
 class TrackExtractor:
     """ Extracts tracks from a stream of frames. """
 
+    # enables fast BLOSC compression (requires plugin)
+    ENABLE_COMPRESSION = False
+
+    # includes the filtered channel when exporting.  This is typically not used.  If compression is enabled the
+    # filesize can be reduced by not including it.
+    INCLUDE_FILTERED_CHANNEL = True
+
     # auto threshold needs to find a near maximum value to calculate the threshold level
     # a better solution might be the mean of the max of each frame?
     THRESHOLD_PERCENTILE = 99.9
@@ -332,6 +344,9 @@ class TrackExtractor:
 
     # number of pixels around object to pad.
     FRAME_PADDING = 6
+
+    # maximum width or height a region can be.  Regions larger than this are ignored.
+    MAX_REGION_SIZE = 128
 
     # number of frames to wait before deleting a lost track
     DELETE_LOST_TRACK_FRAMES = 9
@@ -371,6 +386,9 @@ class TrackExtractor:
         self.track_min_delta = 1.0
         self.track_min_mass = 2.0
 
+        # normally animals on the edge of the screen are ignored, however this can be turned on by enabling this setting.
+        self.include_cropped_regions = False
+
         # minimum allowed threshold for mask, smaller values detect more objects, but bring up additional false positives
         self.min_threshold = 30
 
@@ -401,6 +419,7 @@ class TrackExtractor:
         # accumulates frame changes for FM_DELTA algorithm
         self.accumulator = None
 
+
     def load(self, filename):
         """
         Loads a cptv file, and prepares for track extraction.
@@ -413,9 +432,9 @@ class TrackExtractor:
 
     def extract_tracks(self):
         """
-        Extracts tracks from given source.  Setting self.tracks to a list of good tracks with the clip
+        Extracts tracks from given source.  Setting self.tracks to a list of good tracks within the clip
         :param source_file: filename of cptv file to process
-        :returns: True if clip was sucessfuly processed, false otherwise
+        :returns: True if clip was successfully processed, false otherwise
         """
 
         assert self.reader, "Must call load before extracting tracks."
@@ -563,10 +582,13 @@ class TrackExtractor:
             track_data = []
             for i in range(len(track)):
                 channels = self.get_track_channels(track, i)
+
+                # zero out the filtered channel
+                if not self.INCLUDE_FILTERED_CHANNEL:
+                    channels[TrackChannels.filtered] = 0
                 track_data.append(channels)
-            track_data = np.int16(track_data)
             track_id = track_number+1
-            database.add_track(clip_id, track_id, track_data, track, opts=blosc_zstd)
+            database.add_track(clip_id, track_id, track_data, track, opts=blosc_zstd if self.ENABLE_COMPRESSION else None)
 
     def get_track_channels(self, track: Track, frame_number):
         """
@@ -585,37 +607,25 @@ class TrackExtractor:
         bounds = track.bounds_history[frame_number]
         tracker_frame = track.start_frame + frame_number
 
-        # window size must be even for get_image_subsection to work.
-        window_size = (max(self.WINDOW_SIZE, bounds.width, bounds.height) // 2) * 2
-
         if tracker_frame < 0 or tracker_frame >= len(self.frame_buffer.thermal):
             raise Exception("Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
                tracker_frame, len(self.frame_buffer.thermal)-1))
 
-        thermal = get_image_subsection(self.frame_buffer.thermal[tracker_frame], bounds, (window_size, window_size))
-        filtered = get_image_subsection(self.frame_buffer.filtered[tracker_frame], bounds, (window_size, window_size), 0)
-        flow = get_image_subsection(self.frame_buffer.flow[tracker_frame], bounds, (window_size, window_size), 0)
-        mask = get_image_subsection(self.frame_buffer.mask[tracker_frame], bounds, (window_size, window_size), 0)
-
-        if window_size != self.WINDOW_SIZE:
-            scale = self.WINDOW_SIZE / window_size
-            thermal = scipy.ndimage.zoom(np.float32(thermal), (scale, scale), order=1)
-            filtered = scipy.ndimage.zoom(np.float32(filtered), (scale, scale), order=1)
-            flow = scipy.ndimage.zoom(np.float32(flow), (scale, scale, 1), order=1)
-            mask = scipy.ndimage.zoom(np.float32(mask), (scale, scale), order=0)
-
-            # flow values should be scaled down as well.
-            flow *= scale
+        thermal = get_image_subsection(self.frame_buffer.thermal[tracker_frame], bounds)
+        filtered = get_image_subsection(self.frame_buffer.filtered[tracker_frame], bounds)
+        flow = get_image_subsection(self.frame_buffer.flow[tracker_frame], bounds)
+        mask = get_image_subsection(self.frame_buffer.mask[tracker_frame], bounds)
 
         # make sure only our pixels are included in the mask.
         mask[mask != bounds.id] = 0
         mask[mask > 0] = 1
 
         # stack together into a numpy array.
-        # by using int16 we loose a little precision on the filtered frames, but not much (only 1 unit)
+        # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
         frame = np.int16(np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0))
 
         return frame
+
 
     def apply_matchings(self, regions):
         """
@@ -750,6 +760,8 @@ class TrackExtractor:
         :return: regions of interest, mask frame
         """
 
+        frame_height, frame_width = filtered.shape
+
         # get frames change
         if prev_filtered is not None:
             # we need a lot of precision because the values are squared.  Float32 should work.
@@ -772,20 +784,42 @@ class TrackExtractor:
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.FRAME_PADDING
 
-
         # find regions of interest
         regions = []
         for i in range(1, labels):
+
             region = Region(
-                stats[i, 0] - padding, stats[i, 1] - padding, stats[i, 2] + padding * 2,
-                stats[i, 3] + padding * 2, stats[i, 4], 0, i, self.frame_on
+                stats[i, 0] - padding,
+                stats[i, 1] - padding,
+                stats[i, 2] + padding * 2,
+                stats[i, 3] + padding * 2,
+                stats[i, 4], 0, i, self.frame_on
             )
+
+
+            if self.include_cropped_regions:
+                # in this case we just clip the region to the edges of the screen
+                old_region = str(region)
+                region.left = max(region.left, 0)
+                region.top = max(region.top, 0)
+                region.right = min(region.right, frame_width-1)
+                region.bottom = min(region.bottom, frame_height-1)
+                region.was_cropped = old_region != str(region)
+            else:
+                # if region went outside if bounds ignore it.
+                if (region.left < 0) or (region.right > frame_width) or (region.top < 0) or (region.top < 0) or (region.bottom > frame_height):
+                    continue
+
+            # if region is too large ignore it.  this is mostly because very large objects do not track well,
+            # and take up a lot of space.
+            if (region.width > self.MAX_REGION_SIZE) or (region.height > self.MAX_REGION_SIZE):
+                continue
+
             if delta_frame is not None:
-                region_difference = np.float32(get_image_subsection(delta_frame, region, (self.WINDOW_SIZE, self.WINDOW_SIZE), 0))
+                region_difference = np.float32(get_image_subsection(delta_frame, region))
                 region.pixel_variance = np.var(region_difference)
 
             # filter out regions that are probably just noise
-            #print(region.pixel_variance, region.mass)
             if region.pixel_variance < 2.0 and region.mass < 8:
                 continue
 

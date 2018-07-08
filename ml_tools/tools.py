@@ -40,6 +40,11 @@ class Rectangle:
         self.width = width
         self.height = height
 
+    @staticmethod
+    def from_ltrb(left, top, right, bottom):
+        """ Construct a rectangle from left, top, right, bottom co-ords. """
+        return Rectangle(left, top, right-left, bottom-top)
+
     def copy(self):
         return Rectangle(self.x, self.y, self.width, self.height)
 
@@ -67,11 +72,38 @@ class Rectangle:
     def bottom(self):
         return self.y + self.height
 
+    @left.setter
+    def left(self, value):
+        old_right = self.right
+        self.x = value
+        self.right = old_right
+
+    @top.setter
+    def top(self, value):
+        old_bottom = self.bottom
+        self.y = value
+        self.bottom = old_bottom
+
+    @right.setter
+    def right(self, value):
+        self.width = value - self.x
+
+    @bottom.setter
+    def bottom(self, value):
+        self.height = value - self.y
+
     def overlap_area(self, other):
         """ Compute the area overlap between this rectangle and another. """
         x_overlap = max(0, min(self.right, other.right) - max(self.left, other.left))
         y_overlap = max(0, min(self.bottom, other.bottom) - max(self.top, other.top))
         return x_overlap * y_overlap
+
+    def crop(self, bounds):
+        """ Crops rectangle so that it fits within given bounds"""
+        self.left = max(self.left, bounds.left)
+        self.top = max(self.top, bounds.top)
+        self.right = min(self.right, bounds.right)
+        self.bottom = min(self.bottom, bounds.bottom)
 
     @property
     def area(self):
@@ -318,45 +350,16 @@ def softmax(x):
 
 
 
-def get_image_subsection(image, bounds, window_size, boundary_value=None):
+def get_image_subsection(image, bounds: Rectangle):
     """
     Returns a subsection of the original image bounded by bounds.
-    Area outside of frame will be filled with boundary_value.  If None the 10th percentile value will be used.
+    The bounds must fit within the image bounds.
+
+    :param image mumpy array of dims [height, width, channels]
+    :param bounds bounds of the subsection to get
+    :returns cropped image
     """
-
-    # todo: rewrite this using opencv's built in method
-    # cropping method.  just center on the bounds center and take a section there.
-
-    if len(image.shape) == 2:
-        image = image[:,:,np.newaxis]
-
-    # for some reason I write this to only work with even window sizes?
-    window_half_width, window_half_height = window_size[0] // 2, window_size[1] // 2
-    window_size = (window_half_width * 2, window_half_height * 2)
-    image_height, image_width, channels = image.shape
-
-    # find how many pixels we need to pad by
-    padding = (max(window_size)//2)+1
-
-    midx = int(bounds.mid_x + padding)
-    midy = int(bounds.mid_y + padding)
-
-    if boundary_value is None: boundary_value = np.percentile(image, q=10)
-
-    # note, we take the median of all channels, should really be on a per channel basis.
-    enlarged_frame = np.ones([image_height + padding*2, image_width + padding*2, channels], dtype=np.float16) * boundary_value
-    enlarged_frame[padding:-padding,padding:-padding] = image
-
-    sub_section = enlarged_frame[midy-window_half_width:midy+window_half_width, midx-window_half_height:midx+window_half_height]
-
-    width, height, channels = sub_section.shape
-    if int(width) != window_size[0] or int(height) != window_size[1]:
-        logging.warning("Warning: subsection wrong size. Expected {} but found {}".format(window_size, (width, height)))
-
-    if channels == 1:
-        sub_section = sub_section[:,:,0]
-
-    return sub_section
+    return image[bounds.top:bounds.bottom, bounds.left:bounds.right]
 
 def to_HWC(data):
     """ converts from CHW format to HWC format. """
@@ -427,7 +430,10 @@ def zoom_image(img, scale, pad_with_min=False, channels_first=False, interpolati
         img = cv2.resize(np.float32(crop), dsize=(height, width), interpolation=interpolation)
 
     if channels_first:
-        img = to_CHW(img)
+        if len(img.shape) == 2:
+            img = img[np.newaxis,:,:]
+        else:
+            img = to_CHW(img)
 
     return img
 

@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.contrib.tensorboard.plugins import projector
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -23,6 +24,7 @@ class Model:
 
     MODEL_NAME = "abstract model"
     MODEL_DESCRIPTION = ""
+    VERSION = "0.3.0"
 
     def __init__(self, session=None):
 
@@ -44,7 +46,7 @@ class Model:
         self.global_step = None
 
         # ------------------------------------------------------
-        # tensflow nodes used to evaluate
+        # tensorflow nodes used to evaluate
         # ------------------------------------------------------
 
         # prediction for each class(probability distribution)
@@ -56,9 +58,18 @@ class Model:
         # training operation
         self.train_op = None
 
+        self.novelty = None
+        self.novelty_distance = None
+
         self.state_in = None
         self.state_out = None
-        self.normalise = None
+        self.logits_out = None
+        self.hidden_out = None
+        self.lstm_out = None
+
+        # we store 1000 samples and use these to plot projections during training
+        self.train_samples = None
+        self.val_samples = None
 
         # number of samples to use when evaluating the model, 1000 works well but is a bit slow,
         # 100 should give results to within a few percent.
@@ -234,25 +245,41 @@ class Model:
 
     def classify_batch(self, batch_X):
         """
+        Classifies all segments in the given batch.
         :param batch_X: input batch of shape [n,frames,h,w,channels]
         :return: list of probs for each examples
         """
-        """ Classifies all segments in the given batch. """
+        result = self.classify_batch_extended(batch_X, [self.prediction])
+        return result[self.prediction]
+
+    def classify_batch_extended(self, batch_X, nodes):
+        """
+        Classifies all segments in the given batch and returns extended info
+        :param batch_X: input batch of shape [n,frames,h,w,channels]
+        :parram nodes: a list of node name to evaluate
+        :return: dictionary mapping output node to data
+        """
+
+        assert None not in nodes, "Requests output of 'None' node."
 
         total_samples = batch_X.shape[0]
         batches = (total_samples // self.batch_size) + 1
 
-        predictions = []
+        output_lists = {}
+        for node in nodes:
+            output_lists[node] = []
 
         for i in range(batches):
             Xm = batch_X[i*self.batch_size:(i+1)*self.batch_size]
             if len(Xm) == 0:
                 continue
-            probs = self.session.run([self.prediction], feed_dict={self.X: Xm})[0]
-            for j in range(len(Xm)):
-                predictions.append(probs[j,:])
 
-        return predictions
+            outputs = self.session.run(nodes, feed_dict={self.X: Xm})
+            for node, output in zip(nodes, outputs):
+                for i in range(len(output)):
+                    output_lists[node].append(output[i])
+
+        return output_lists
 
     def eval_model(self, writer=None):
         """ Evaluates the model on the test set. """
@@ -301,7 +328,6 @@ class Model:
         merged = tf.summary.merge_all()
         self.merged_summary = merged
 
-
     def log_scalar(self, tag, value, writer=None):
         """
         Writes a scalar to summary writer.
@@ -314,6 +340,42 @@ class Model:
         writer.add_summary(
             tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)]),
             global_step=self.step)
+
+    def log_histogram(self, tag, values, bins=1000, writer=None):
+        """Logs the histogram of a list/vector of values."""
+
+        if writer is None:
+            writer = self.writer_val
+
+        # Convert to a numpy array
+        values = np.array(values)
+
+        # Create histogram using numpy
+        counts, bin_edges = np.histogram(values, bins=bins)
+
+        # Fill fields of histogram proto
+        hist = tf.HistogramProto()
+        hist.min = float(np.min(values))
+        hist.max = float(np.max(values))
+        hist.num = int(np.prod(values.shape))
+        hist.sum = float(np.sum(values))
+        hist.sum_squares = float(np.sum(values ** 2))
+
+        # Requires equal number as bins, where the first goes from -DBL_MAX to bin_edges[1]
+        # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/summary.proto#L30
+        # Thus, we drop the start of the first bin
+        bin_edges = bin_edges[1:]
+
+        # Add bin edges and counts
+        for edge in bin_edges:
+            hist.bucket_limit.append(edge)
+        for c in counts:
+            hist.bucket.append(c)
+
+        # Create and write Summary
+        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, histo=hist)])
+        writer.add_summary(summary, self.step)
+        writer.flush()
 
     def log_text(self, tag, value, writer=None):
         """
@@ -358,6 +420,47 @@ class Model:
         summary = tf.Summary(value=[im_summary])
         writer.add_summary(summary, self.step)
 
+    def tune_novelty_detection(self):
+
+        # first take 1000 samples from the validation set.  These samples have not been seen by the model so their
+        # distances should be reprentative
+        seen_examples, _ = self.datasets.validation.next_batch(1000)
+
+        # next classify the examples and check their distances
+        data = self.classify_batch_extended(seen_examples, [self.novelty_distance])
+        seen_distances = data[self.novelty_distance]
+
+        # we can take a guess at a good threshold by looking at the examples from seen classes.  A threshold
+        # that includes 75% of these examples seems to work well.
+        threshold_distance = np.percentile(seen_distances , q=75)
+        threshold_scale = np.std(seen_distances)
+
+        # write these values to the model
+        self.update_writeable_variable('novelty_threshold', threshold_distance)
+        self.update_writeable_variable('novelty_scale', threshold_scale)
+
+        self.log_scalar('novelty/threshold', threshold_distance)
+        self.log_scalar('novelty/scale', threshold_scale)
+        self.log_histogram('novelty/distances', seen_distances, bins=40)
+
+        return threshold_distance, threshold_scale
+
+
+    def update_training_data_examples(self):
+        """ Classifies given data and stores it in model.  This can be used to visualise the logit layout, or to
+            help identify examples that different significantly from that seen during training.
+            A batch of 1000 examples samples from all classes is recommended.
+         """
+
+        sample_X = self.train_samples[0]
+
+        # evaluate the stored samples and fetch the logits and hidden states
+        data = self.classify_batch_extended(sample_X, [self.logits_out, self.hidden_out])
+
+        # run the 'assign' operations that update the models stored varaibles
+        for var_name, node in zip(['sample_logits', 'sample_hidden'], [self.logits_out, self.hidden_out]):
+            self.update_writeable_variable(var_name, data[node])
+
     def generate_report(self):
         """
         Logs some important information to the tensorflow summary writer, such as confusion matrix, and f1 scores.
@@ -399,6 +502,77 @@ class Model:
 
         return accuracy, f1_scores
 
+    def _create_sprite_image(self, images):
+        """Returns a sprite image consisting of images passed as argument. Images should be [n,h,w]"""
+
+        print(np.min(images), np.max(images), np.mean(images))
+
+        # clip out the negative values
+        images[images < 0] = 0
+
+        # looks much better as a negative.
+        images = -images
+
+        if isinstance(images, list):
+            images = np.array(images)
+        img_h = images.shape[1]
+        img_w = images.shape[2]
+        n_plots = int(np.ceil(np.sqrt(images.shape[0])))
+
+        spriteimage = np.ones((img_h * n_plots, img_w * n_plots))
+
+        for i in range(n_plots):
+            for j in range(n_plots):
+                this_filter = i * n_plots + j
+                if this_filter < images.shape[0]:
+                    this_img = images[this_filter]
+                    spriteimage[i * img_h:(i + 1) * img_h,
+                    j * img_w:(j + 1) * img_w] = this_img
+
+        return spriteimage
+
+    def setup_sample_training_data(self, log_dir, writer):
+
+        # get some samples
+        segs = [self.datasets.train.sample_segment() for _ in range(1000)]
+        sample_X = []
+        sample_y = []
+        for segment in segs:
+            data = self.datasets.train.fetch_segment(segment, augment=False)
+            sample_X.append(data)
+            sample_y.append(self.labels.index(segment.label))
+
+        X = np.asarray(sample_X, dtype=np.float32)
+        y = np.asarray(sample_y, dtype=np.int32)
+
+        data = (X, y, segs)
+
+        sprite_path = os.path.join(log_dir, "examples.png")
+        meta_path = os.path.join(log_dir, "examples.tsv")
+
+        config = projector.ProjectorConfig()
+        for var_name in ['sample_logits', 'sample_hidden']:
+            embedding = config.embeddings.add()
+            embedding.tensor_name = var_name
+            embedding.metadata_path = meta_path
+            embedding.sprite.image_path = sprite_path
+            embedding.sprite.single_image_dim.extend([48, 48])
+
+        projector.visualize_embeddings(writer, config)
+
+        # save tsv file containing labels"
+        with open(meta_path, 'w') as f:
+            f.write("Index\tLabel\tSource\n")
+            for index, segment in enumerate(segs):
+                f.write("{}\t{}\t{}\n".format(index, segment.label, segment.clip_id))
+
+        # save out image previews
+        to_vis = X[:, self.training_segment_frames // 2, 0]
+        sprite_image = self._create_sprite_image(to_vis)
+        plt.imsave(sprite_path, sprite_image, cmap='gray')
+
+        return data
+
     def train_model(self, epochs=10.0, run_name=None):
         """
         Trains model given number of epocs.  Uses session 'sess'
@@ -415,6 +589,8 @@ class Model:
 
         self.log_id = run_name
 
+        LOG_DIR = os.path.join(self.log_dir, run_name)
+
         iterations = int(math.ceil(epochs * self.rows / self.batch_size))
         if run_name is None:
             run_name = self.MODEL_NAME
@@ -423,16 +599,19 @@ class Model:
         prep_time = 0
         best_step = 0
         examples_since_print = 0
-        last_epoch_save = 0
+        last_epoch_save = -1
         best_report_acc = 0
+        best_val_loss = float('inf')
+
+        # setup writers and run a quick benchmark
+        print("Initialising summary writers at {}.".format(LOG_DIR))
+        self.setup_summary_writers(run_name)
 
         # Run the initializer
         init = tf.global_variables_initializer()
         self.session.run(init)
 
-        # setup writers and run a quick benchmark
-        print("Initialising summary writers at {}.".format(os.path.join(self.log_dir, run_name)))
-        self.setup_summary_writers(run_name)
+        self.train_samples = self.setup_sample_training_data(LOG_DIR, self.writer_train)
 
         # setup a saver
         self.saver = tf.train.Saver(max_to_keep=1000)
@@ -456,7 +635,7 @@ class Model:
                 start = time.time()
 
                 val_batch = self.datasets.validation.next_batch(self.eval_samples)
-                train_batch = self.datasets.train.next_batch(self.eval_samples)
+                train_batch = self.datasets.train.next_batch(self.eval_samples, force_no_augmentation=True)
 
                 train_accuracy, train_loss = self.eval_batch(
                     train_batch[0], train_batch[1],
@@ -484,8 +663,20 @@ class Model:
                 # create a save point
                 self.save(os.path.join(CHECKPOINT_FOLDER, "training-most-recent.sav"))
 
+                # save the best model if validation score was good
+                if val_loss < best_val_loss:
+                    print("Saving best validation model.")
+                    self.save(os.path.join(CHECKPOINT_FOLDER, "training-best-val.sav"))
+                    best_val_loss = val_loss
+
                 # save at epochs
                 if int(epoch) > last_epoch_save:
+
+                    # create a training reference set
+                    print("Updating example training data")
+                    self.update_training_data_examples()
+                    self.tune_novelty_detection()
+
                     print("Epoch report")
                     acc, f1 = self.generate_report()
                     print("results: {:.1f} {}".format(acc*100,["{:.1f}".format(x*100) for x in f1]))
@@ -495,8 +686,14 @@ class Model:
                     last_epoch_save = int(epoch)
 
                     if acc > best_report_acc:
-                        print('Save best model')
+                        print('Save best epoch tested model.')
+                        # saving a copy in the log dir allows tensorboard to access some additional information such
+                        # as the current training data varaibles.
                         self.save(os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
+                        try:
+                            self.save(os.path.join(LOG_DIR, "training-epoch-{:02d}.sav".format(int(epoch))))
+                        except Exception as e:
+                            logging.warning("Could not write training checkpoint, probably TensorBoard is open.")
                         best_report_acc = acc
                         best_step = i
 
@@ -529,8 +726,8 @@ class Model:
         # make sure the workers load the correct number of frames.
         self.datasets.train.segment_width = self.testing_segment_frames
         self.datasets.validation.segment_width = self.testing_segment_frames
-        self.datasets.train.start_async_load(64)
-        self.datasets.validation.start_async_load(64)
+        self.datasets.train.start_async_load(48)
+        self.datasets.validation.start_async_load(48)
 
     def stop_async(self):
         self.datasets.train.stop_async_load()
@@ -556,7 +753,13 @@ class Model:
                 score_part = score_part + "0"
             filename = os.path.join("./models/", self.MODEL_NAME + '-' + score_part)
 
-        self.saver.save(self.session, filename)
+        try:
+            self.saver.save(self.session, filename)
+        except Exception as e:
+            print("*"*60)
+            print("Warning, fail saved.  This is usally because the file was open (maybe dropbox was running?)")
+            print("*" * 60)
+            print(e)
 
         # save some additional data
         model_stats = {}
@@ -568,6 +771,7 @@ class Model:
         model_stats['hyperparams'] = self.params
         model_stats['log_id'] = self.log_id
         model_stats['training_date'] = str(time.time())
+        model_stats['version'] = self.VERSION
 
         json.dump(model_stats, open(filename+ ".txt", 'w'), indent=4)
 
@@ -589,7 +793,7 @@ class Model:
         self.params = stats['hyperparams']
 
         # connect up nodes.
-        self._attach_nodes()
+        self.attach_nodes()
 
     def save_params(self, filename):
         """ Saves model parameters. """
@@ -608,22 +812,26 @@ class Model:
         """
         try:
             return self.session.graph.get_tensor_by_name(name+":0")
-        except KeyError as e:
+        except Exception as e:
             if none_if_not_found:
                 return None
             else:
                 raise e
 
-    def _attach_nodes(self):
+    def attach_nodes(self):
         """ Gets references to key nodes in graph. """
 
         graph = self.session.graph
 
         # attach operations
-        self.prediction = graph.get_tensor_by_name("prediction:0")
-        self.accuracy = graph.get_tensor_by_name("accuracy:0")
-        self.loss=graph.get_tensor_by_name("loss:0")
-        self.train_op=graph.get_operation_by_name("train_op")
+        self.prediction = self.get_tensor("prediction")
+        self.accuracy = self.get_tensor("accuracy")
+        self.loss = self.get_tensor("loss")
+        self.train_op = graph.get_operation_by_name("train_op")
+
+        # novelty
+        self.novelty = self.get_tensor('novelty', none_if_not_found=True)
+        self.novelty_distance = self.get_tensor('novelty_distance', none_if_not_found=True)
 
         # attach to IO tensors
         self.X = self.get_tensor('X')
@@ -631,8 +839,13 @@ class Model:
         self.keep_prob = self.get_tensor('keep_prob')
         self.is_training = self.get_tensor('training')
         self.global_step = self.get_tensor('global_step')
+
         self.state_out = self.get_tensor('state_out')
         self.state_in = self.get_tensor('state_in')
+
+        self.logits_out = self.get_tensor('logits_out', none_if_not_found=True)
+        self.hidden_out = self.get_tensor('hidden_out', none_if_not_found=True)
+        self.lstm_out = self.get_tensor('lstm_out')
 
     def freeze(self):
         """ Freezes graph so that no additional changes can be made. """
@@ -643,7 +856,6 @@ class Model:
         Classify a single frame.
         :param frame: numpy array of dims [C, H, W]
         :param state: the previous state, or none for initial frame.
-        :param frame_motion: the movement of the tracking frame as a tuple (dx, dy)
         :return: tuple (prediction, state).  Where prediction is score for each class
         """
         if state is None:
@@ -651,10 +863,30 @@ class Model:
             state = np.zeros([1, state_shape[1], state_shape[2]], dtype=np.float32)
 
         batch_X = frame[np.newaxis,np.newaxis,:]
+
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
         pred, state = self.session.run([self.prediction, self.state_out], feed_dict=feed_dict)
         pred = pred[0]
+
         return pred, state
+
+    def classify_frame_with_novelty(self, frame, state=None):
+        """
+        Classify a single frame with novelty output.
+        :param frame: numpy array of dims [C, H, W]
+        :param state: the previous state, or none for initial frame.
+        :return: tuple (prediction, novelty, state).  Where prediction is score for each class, and novelty is a scalar
+        """
+        if state is None:
+            state_shape = self.state_in.shape
+            state = np.zeros([1, state_shape[1], state_shape[2]], dtype=np.float32)
+
+        batch_X = frame[np.newaxis,np.newaxis,:]
+
+        feed_dict = self.get_feed_dict(batch_X, state_in=state)
+        pred, novelty, state = self.session.run([self.prediction, self.novelty, self.state_out], feed_dict=feed_dict)
+
+        return pred[0], novelty[0], state
 
     def create_summaries(self, name, var):
         """
@@ -672,11 +904,50 @@ class Model:
             tf.summary.scalar('min', tf.reduce_min(var))
             tf.summary.histogram('histogram', var)
 
-    def save_input_summary(self, input, name):
+    def save_input_summary(self, input, name, reference_level=None):
         """
-        :param input: tensor of shape [B*F, H, W]
+        :param input: tensor of shape [B*F, H, W, 1]
         :param name: name of summary
+        :param reference_level: if given will add pixels in corners of image to set vmin to 0 and vmax to this level.
         """
+
+        # hard code dims
+        W, H = 48, 48
+
+        mean = tf.reduce_mean(input)
         tf.summary.histogram(name, input)
-        tf.summary.image(name + '/image', input[-2:-1], max_outputs=1)
+        tf.summary.scalar(name + "/max", tf.reduce_max(input))
+        tf.summary.scalar(name + "/min", tf.reduce_min(input))
+        tf.summary.scalar(name + "/mean", mean)
+        tf.summary.scalar(name + "/std", tf.sqrt(tf.reduce_mean(tf.square(input - mean))))
+
+        if reference_level is not None:
+            # this is so silly, we need to create a mask and do some tricks just to modify two pixels...
+            # seems to be because tf doesn't really allow for direct updates to tensors.
+            levels = np.zeros([1, H, W, 1], dtype=np.float32)
+            mask = np.ones([1, H, W, 1], dtype=np.float32)
+            for i in range(W):
+                levels[0, 0, i, 0] = reference_level * (i/(W-1))
+                mask[0, 0, i, 0] = 0
+
+            input = input * mask + levels
+            input = tf.abs(input)
+
+        tf.summary.image(name, input[-2:-1], max_outputs=1)
+
+    def create_writable_variable(self, name, shape):
+        """ Creates a variable in the model that can be written to. """
+        var = tf.get_variable(name=name, initializer=tf.initializers.zeros, dtype=tf.float32, trainable=False,
+                              shape=shape)
+        input = tf.placeholder(name=name + "_in", dtype=tf.float32, shape=shape)
+        assign_op = tf.assign(var, input, name=name + "_assign_op")
+        return var
+
+    def update_writeable_variable(self, name, data):
+        """ Updates the contents of a writeable variable in the model. """
+        assign_op = self.session.graph.get_operation_by_name(name + "_assign_op")
+        var_input = self.session.graph.get_tensor_by_name(name + "_in:0")
+        self.session.run(assign_op, feed_dict={var_input:data})
+
+
 

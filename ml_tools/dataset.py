@@ -21,9 +21,21 @@ from dateutil import parser
 from bisect import bisect
 
 import numpy as np
+import scipy.ndimage
 
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
+
+CPTV_FILE_WIDTH = 160
+CPTV_FILE_HEIGHT = 120
+
+class TrackChannels:
+    """ Indexes to channels in track. """
+    thermal = 0
+    filtered = 1
+    flow_h = 2
+    flow_v = 3
+    mask = 4
 
 class TrackHeader:
     """ Header for track. """
@@ -49,7 +61,10 @@ class TrackHeader:
         self.thermal_reference_level = None
         # tracking frame movements for each frame, array of tuples (x-vel, y-vel)
         self.frame_velocity = None
-
+        # original tracking bounds
+        self.track_bounds = []
+        # what fraction of pixels are from out of bounds
+        self.frame_crop = []
 
     @property
     def track_id(self):
@@ -108,6 +123,17 @@ class TrackHeader:
         )
         result.thermal_reference_level = thermal_reference_level
         result.frame_velocity = frame_velocity
+        result.track_bounds = np.asarray(bounds_history)
+
+        # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
+        # bounded rect and check it against frame size.
+        result.frame_crop = []
+        for rect in result.track_bounds:
+            rect = tools.Rectangle.from_ltrb(*rect)
+            rx, ry = rect.mid_x, rect.mid_y
+            size = max(rect.width, rect.height)
+            adjusted_rect = tools.Rectangle(rx-size/2, ry-size/2, size, size)
+            result.frame_crop.append(get_cropped_fraction(adjusted_rect, CPTV_FILE_WIDTH, CPTV_FILE_HEIGHT))
 
         return result
 
@@ -155,6 +181,16 @@ class SegmentHeader:
         return self.track.frame_velocity[self.start_frame:self.start_frame + self.frames]
 
     @property
+    def track_bounds(self):
+        # original location of this tracks bounds.
+        return self.track.track_bounds[self.start_frame:self.start_frame + self.frames]
+
+    @property
+    def frame_crop(self):
+        # how much each frame has been cropped.
+        return self.track.frame_crop[self.start_frame:self.start_frame + self.frames]
+
+    @property
     def thermal_reference_level(self):
         # thermal reference temperature for each frame (i.e. which temp is 0)
         return self.track.thermal_reference_level[self.start_frame:self.start_frame+self.frames]
@@ -172,6 +208,120 @@ class SegmentHeader:
     def __str__(self):
         return "offset:{0} weight:{1:.1f}".format(self.start_frame, self.weight)
 
+
+class Preprocessor:
+    """ Handles preprocessing of track data. """
+
+    # size to scale each frame to when loaded.
+    FRAME_SIZE = 48
+
+    @staticmethod
+    def apply(frames, reference_level, frame_velocity=None, augment=False, encode_frame_offsets_in_flow=False, default_inset=2):
+        """
+        Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
+        :param frames: a list of np array of shape [C, H, W]
+        :param reference_level: thermal reference level for each frame in data
+        :param frame_velocity: velocity (x,y) for each frame.
+        :param augment: if true applies a slightly random crop / scale
+        :param default_inset: the default number of pixels to inset when no augmentation is applied.
+        """
+
+        # -------------------------------------------
+        # first we scale to the standard size
+
+        # adjusting the corners makes the algorithm robust to tracking differences.
+        top_offset = random.randint(0, 5) if augment else default_inset
+        bottom_offset = random.randint(0, 5) if augment else default_inset
+        left_offset = random.randint(0, 5) if augment else default_inset
+        right_offset = random.randint(0, 5) if augment else default_inset
+
+        scaled_frames = []
+
+        for frame in frames:
+
+            channels, frame_height, frame_width = frame.shape
+
+            frame_bounds = tools.Rectangle(0, 0, frame_width, frame_height)
+
+            # set up a cropping frame
+            crop_region = tools.Rectangle.from_ltrb(left_offset, top_offset, frame_width - right_offset, frame_height - bottom_offset)
+
+            # if the frame is too small we make it a little larger
+            while crop_region.width < 4:
+                crop_region.left -=1
+                crop_region.right += 1
+                crop_region.crop(frame_bounds)
+            while crop_region.height < 4:
+                crop_region.top -=1
+                crop_region.bottom += 1
+                crop_region.crop(frame_bounds)
+
+            cropped_frame = frame[:,
+                            crop_region.top: crop_region.bottom,
+                            crop_region.left: crop_region.right]
+
+            scaled_frame = [cv2.resize(np.float32(cropped_frame[channel]), dsize=(Preprocessor.FRAME_SIZE, Preprocessor.FRAME_SIZE),
+                                       interpolation=cv2.INTER_LINEAR if channel != TrackChannels.mask else cv2.INTER_NEAREST)
+                            for channel in range(channels)]
+            scaled_frame = np.float32(scaled_frame)
+
+            scaled_frames.append(scaled_frame)
+
+        # convert back into [F,C,H,W] array.
+        data = np.float32(scaled_frames)
+
+        # the segment will be processed in float32 so we may as well convert it here.
+        # also optical flow is stored as a scaled integer, but we want it in float32 format.
+        data = np.asarray(data, dtype=np.float32)
+
+        # -------------------------------------------
+        # next adjust temperature and flow levels
+
+        # get reference level for thermal channel
+        assert len(data) == len(reference_level), "Reference level shape and data shape not match."
+
+        # reference thermal levels to the reference level
+        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
+
+        # map optical flow down to right level,
+        # we pre-multiplied by 256 to fit into a 16bit int
+        data[:, 2:3 + 1, :, :] *= (1.0/256.0)
+
+        # write frame motion into center of frame
+        if encode_frame_offsets_in_flow:
+            F, C, H, W = data.shape
+            for x in range(-2,2+1):
+                for y in range(-2,2+1):
+                    data[:, 2:3 + 1, H//2+y, W//2+x] = frame_velocity[:, :]
+
+        # set filtered track to delta frames
+        reference = np.clip(data[:, 0], 20, 999)
+        data[0, 1] = 0
+        data[1:, 1] = reference[1:] - reference[:-1]
+
+        # -------------------------------------------
+        # finally apply and additional augmentation
+
+        if augment:
+            if (random.random() <= 0.75):
+                # we will adjust contrast and levels, but only within these bounds.
+                # that is a bright input may have brightness reduced, but not increased.
+                LEVEL_OFFSET = 4
+
+                # apply level and contrast shift
+                level_adjust = random.normalvariate(0, LEVEL_OFFSET)
+                contrast_adjust = tools.random_log(0.9, (1/0.9))
+
+                data[:, 0] *= contrast_adjust
+                data[:, 0] += level_adjust
+
+            if random.random() <= 0.50:
+                # when we flip the frame remember to flip the horizontal velocity as well
+                data = np.flip(data, axis=3)
+                data[:, 2] = -data[:, 2]
+
+        return data
+
 class Dataset:
     """
     Stores visit, clip, track, and segment information headers in memory, and allows track / segment streaming from
@@ -186,6 +336,9 @@ class Dataset:
     # across processes.
     # In general if worker threads is one set this to False, if it is two or more set it to True.
     PROCESS_BASED = True
+
+    # number of pixels to inset from frame edges by default
+    DEFAULT_INSET = 2
 
     def __init__(self, track_db: TrackDatabase, name="Dataset"):
 
@@ -253,18 +406,19 @@ class Dataset:
                     if len(tracks) > 0 and tracks[0].label == label])
         return segments, tracks, bins, weight
 
-    def next_batch(self, n, disable_async=False):
+    def next_batch(self, n, disable_async=False, force_no_augmentation=False):
         """
         Returns a batch of n segments (X, y) from dataset.
         Applies augmentation and preprocessing automatically.
         :param n: number of segments
         :param disable_async: forces fetching of segment in this thread / process rather than collecting from
             an aync reader queue (if one exists)
-        :return: X shape [n, channels, height, width], labels of shape [n]
+        :param force_no_augmentation: forces augmentation off, may disable asyc loading.
+        :return: X of shape [n, channels, height, width], y (labels) of shape [n]
         """
 
         # if async is enabled use it.
-        if not disable_async and self.preloader_queue is not None:
+        if (not disable_async and self.preloader_queue is not None and not force_no_augmentation):
             # get samples from queue
             batch_X = []
             batch_y = []
@@ -282,7 +436,7 @@ class Dataset:
 
         for segment in segments:
 
-            data = self.fetch_segment(segment, augment=self.enable_augmentation)
+            data = self.fetch_segment(segment, augment=self.enable_augmentation and not force_no_augmentation)
             batch_X.append(data)
             batch_y.append(self.labels.index(segment.label))
 
@@ -390,8 +544,6 @@ class Dataset:
                 weight=segment_weight_factor, avg_mass=segment_avg_mass
             )
 
-            segment.thermal_reference = np.float32(clip_meta['frame_temp_median'][segment.start_frame:segment.end_frame])
-
             self.segments.append(segment)
             track_header.segments.append(segment)
 
@@ -405,20 +557,25 @@ class Dataset:
         :return: number of segments removed
         """
 
-        filtered = 0
+        num_filtered = 0
         new_segments = []
 
         for segment in self.segments:
-            if (ignore_labels and segment.label in ignore_labels) or segment.avg_mass >= avg_mass:
+
+            pass_mass = segment.avg_mass >= avg_mass
+
+            if (ignore_labels and segment.label in ignore_labels) or (pass_mass):
                 new_segments.append(segment)
             else:
-                filtered += 1
+                num_filtered += 1
 
         self.segments = new_segments
 
         self._purge_track_segments()
 
-        return filtered
+        self.rebuild_cdf()
+
+        return num_filtered
 
     def fetch_all(self):
         """
@@ -436,7 +593,11 @@ class Dataset:
         :return: segment data of shape [frames, channels, height, width]
         """
         data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
-        data = self.apply_preprocessing(data, track.thermal_reference_level, track.frame_velocity)
+        data = Preprocessor.apply(
+            data, reference_level=track.thermal_reference_level, frame_velocity=track.frame_velocity,
+            encode_frame_offsets_in_flow=self.encode_frame_offsets_in_flow,
+            default_inset=self.DEFAULT_INSET
+        )
         return data
 
     def fetch_segment(self, segment: SegmentHeader, augment=False):
@@ -464,91 +625,21 @@ class Dataset:
         else:
             jitter = 0
 
-        data = self.db.get_track(segment.clip_id, segment.track_number, first_frame + jitter,
-                                 last_frame + jitter)
+        first_frame += jitter
+        last_frame += jitter
+
+        data = self.db.get_track(segment.clip_id, segment.track_number, first_frame,
+                                 last_frame)
 
         if len(data) != self.segment_width:
             print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)
 
-        data = self.apply_preprocessing(data, segment.thermal_reference_level, segment.frame_velocity)
-
-        if augment:
-            data = self.apply_augmentation(data)
-
-        return data
-
-    def apply_preprocessing(self, data, reference_level, frame_velocity=None):
-        """
-        Applies pre-processing to segment data.  For example mapping optical flow down to the right level.
-        :param data: np array of shape [F, C, H, W]
-        :param reference_level: thermal reference level for each frame in data
-        :param frame_velocity: veloctiy (x,y) for each frame.
-        """
-
-        # the segment will be processed in float32 so we may aswell convert it here.
-        # also optical flow is stored as a scaled integer, but we want it in float32 format.
-        data = np.asarray(data, dtype=np.float32)
-
-        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
-
-        # get reference level for thermal channel
-        assert len(data) == len(reference_level), "Reference level shape and data shape not match."
-
-        # map optical flow down to right level,
-        # we pre-multiplied by 256 to fit into a 16bit int
-        data[:, 2:3 + 1, :, :] *= (1/256)
-
-        # write frame motion into center of frame
-        if self.encode_frame_offsets_in_flow:
-            F, C, H, W = data.shape
-            for x in range(-2,2+1):
-                for y in range(-2,2+1):
-                    data[:, 2:3 + 1, H//2+y, W//2+x] = frame_velocity[:, :]
+        data = Preprocessor.apply(data,
+                                  segment.track.thermal_reference_level[first_frame:last_frame],
+                                  segment.track.frame_velocity[first_frame:last_frame],augment=augment,
+                                  default_inset=self.DEFAULT_INSET)
 
         return data
-
-
-    def apply_augmentation(self, segment_data, force_scale=None):
-        """
-        Applies a random augmentation to the segment_data.
-        :param segment_data: array of shape [frames, channels, height, width]
-        :param force_scale: (optional) force a specific scaling amount
-        :return: augmented array
-        """
-
-        frames, channels, height, width = segment_data.shape
-
-        # apply scaling only some of time
-        if random.random() <= self.scale_frequency or force_scale is not None:
-            mask = segment_data[:, 4]
-            av_mass = np.sum(mask) / len(mask)
-            size = math.sqrt(av_mass + 4)
-
-            # work out reasonable bounds so we don't scale too much
-            # general idea is scale to a width of between 4 and 36 pixels
-            max_scale_up = np.clip(36 / size, 1.0, 2.0)
-            min_scale_down = np.clip(4 / size, 0.25, 1.0)
-
-            if force_scale is not None:
-                scale = force_scale
-            else:
-                scale = tools.random_log(min_scale_down, max_scale_up)
-
-            if scale != 1.0:
-                position_jitter = 5
-                xofs = random.normalvariate(0, position_jitter)
-                yofs = random.normalvariate(0, position_jitter)
-                for i in range(frames):
-                    segment_data[i] = tools.zoom_image(segment_data[i], scale=scale, channels_first=True,
-                                                       offset_x=xofs, offset_y=yofs,
-                                                       interpolation=cv2.INTER_LINEAR)
-
-        if random.randint(0, 1) == 0:
-            # when we flip the frame remember to flip the horizontal velocity as well
-            segment_data = np.flip(segment_data, axis=3)
-            segment_data[:, 2] = -segment_data[:, 2]
-
-        return segment_data
 
     def sample_segment(self):
         """ Returns a random segment from weighted list. """
@@ -696,8 +787,9 @@ class Dataset:
         for segment in self.segments:
             prob += segment.weight
             self.segment_cdf.append(prob)
-        normalizer = self.segment_cdf[-1]
-        self.segment_cdf = [x / normalizer for x in self.segment_cdf]
+        if len(self.segment_cdf) > 0:
+            normalizer = self.segment_cdf[-1]
+            self.segment_cdf = [x / normalizer for x in self.segment_cdf]
 
     def get_class_weight(self, label):
         """ Returns the total weight for all segments of given label. """
@@ -772,3 +864,8 @@ def preloader(q, dataset):
                 loads = 0
         else:
             time.sleep(0.01)
+
+def get_cropped_fraction(region: tools.Rectangle, width, height):
+    """ Returns the fraction regions mass outside the rect ((0,0), (width, height)"""
+    bounds = tools.Rectangle(0, 0, width-1, height-1)
+    return 1 - (bounds.overlap_area(region) / region.area)
