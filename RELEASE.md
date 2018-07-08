@@ -2,8 +2,8 @@
 
 * Novelty detection.  Tracks significantly different from those seen during training can be identified.
 * New class 'cat'
-* Improved model.  
-* Improvements to clip classification (state decay, and smoothing refinements). 
+* Improved model.
+* Improvements to clip classification (state decay, and smoothing refinements).
 
 # v0.2.1
 
@@ -22,5 +22,5 @@
 
 ## Major Features and Improvements
 
-* Initial model 
-* 5 classes (birds, false-positive, hedgehog, possum, rat) 
+* Initial model
+* 5 classes (birds, false-positive, hedgehog, possum, rat)
