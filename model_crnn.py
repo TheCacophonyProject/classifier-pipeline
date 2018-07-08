@@ -241,19 +241,19 @@ class ModelCRNN_HQ(ConvModel):
 
         layer = thermal
 
-        layer = self.conv_layer('filtered/1', layer, 64, [3, 3], pool_stride=2)
-        layer = self.conv_layer('filtered/2', layer, 64, [3, 3], pool_stride=2)
-        layer = self.conv_layer('filtered/3', layer, 96, [3, 3], pool_stride=2)
-        layer = self.conv_layer('filtered/4', layer, 128, [3, 3], pool_stride=2)
-        layer = self.conv_layer('filtered/5', layer, 128, [3, 3], pool_stride=1)
+        layer = self.conv_layer('thermal/1', layer, 64, [3, 3], pool_stride=2)
+        layer = self.conv_layer('thermal/2', layer, 64, [3, 3], pool_stride=2)
+        layer = self.conv_layer('thermal/3', layer, 96, [3, 3], pool_stride=2)
+        layer = self.conv_layer('thermal/4', layer, 128, [3, 3], pool_stride=2)
+        layer = self.conv_layer('thermal/5', layer, 128, [3, 3], pool_stride=1)
 
         filtered_conv = layer
         filtered_out = tf.reshape(filtered_conv, [-1, frame_count, tools.product(filtered_conv.shape[1:])],
-                                  name='filtered/out')
+                                  name='thermal/out')
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
 
         if self.params['enable_flow']:
-            # integrate delta and flow into a 3 channel layer
+            # integrate thermal and flow into a 3 channel layer
             layer = tf.concat((thermal, flow), axis=3)
             layer = self.conv_layer('motion/1', layer, 64, [3, 3], pool_stride=2)
             layer = self.conv_layer('motion/2', layer, 64, [3, 3], pool_stride=2)
@@ -422,7 +422,7 @@ class ModelCRNN_LQ(ConvModel):
         filtered_conv = layer
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
         filtered_out = tf.reshape(filtered_conv, [-1, frame_count, tools.product(filtered_conv.shape[1:])],
-                                  name='filtered/out')
+                                  name='thermal/out')
 
         if self.params['enable_flow']:
             # integrate thermal and flow into a 3 channel layer

@@ -71,9 +71,9 @@ FULL_SEARCH_PARAMS = {
 # I've also excluded the default values as these do not need to be tested again.
 SHORT_SEARCH_PARAMS = {
         'batch_size': [8, 32],
-        'l2_reg': [1e-4,1e-5,1e-6],
-        'label_smoothing': [0.05, 0.2],
-        'keep_prob': [0.1,0.4],
+        'l2_reg': [1e-2, 1e-3, 1e-4],
+        'label_smoothing': [0, 0.05, 0.2],
+        'keep_prob': [0.1,0.4,0.6,1.0],
         'batch_norm': [False],
         'lstm_units': [128, 512],
         'enable_flow': [False],
