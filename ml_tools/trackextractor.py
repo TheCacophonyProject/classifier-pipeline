@@ -159,6 +159,36 @@ class Track:
 
         return stats
 
+    def smooth(self, frame_bounds: Rectangle):
+        """
+        Smooths out any quick changes in track dimensions
+        :param frame_bounds The boundaries of the video frame.
+        """
+        if len(self.bounds_history) == 0:
+            return
+
+        new_bounds_history = []
+        prev_frame = self.bounds_history[0]
+        current_frame = self.bounds_history[0]
+        next_frame = self.bounds_history[1]
+
+        for i in range(len(self.bounds_history)):
+
+            prev_frame = self.bounds_history[max(0, i-1)]
+            current_frame = self.bounds_history[i]
+            next_frame = self.bounds_history[min(len(self.bounds_history)-1, i+1)]
+
+            frame_x = current_frame.mid_x
+            frame_y = current_frame.mid_y
+            frame_width = (prev_frame.width + current_frame.width + next_frame.width) / 3
+            frame_height = (prev_frame.height + current_frame.height + next_frame.height) / 3
+            frame = Region(int(frame_x - frame_width / 2), int(frame_y - frame_height / 2), int(frame_width), int(frame_height))
+            frame.crop(frame_bounds)
+
+            new_bounds_history.append(frame)
+
+        self.bounds_history = new_bounds_history
+
     def trim(self):
         """
         Removes empty frames from start and end of track
@@ -353,6 +383,9 @@ class TrackExtractor:
     # 'none': No cropped regions are permitted.  This is the most safe.
     CROPPED_REGIONS_STRATEGY = "cautious"
 
+    # when enabled smooths tracks so that track dimensions do not change too quickly.
+    TRACK_SMOOTHING = False
+
     def __init__(self):
 
         # start time of video
@@ -503,6 +536,12 @@ class TrackExtractor:
 
         # filter out tracks that do not move, or look like noise
         self.filter_tracks()
+
+        # apply smoothing if required
+        if self.TRACK_SMOOTHING and len(frames) > 0:
+            frame_height, frame_width = frames[0].shape
+            for track in self.tracks:
+                track.smooth(Rectangle(0,0,frame_width, frame_height))
 
         return True
 
@@ -811,8 +850,6 @@ class TrackExtractor:
 
                 crop_width_fraction = (old_region.width - region.width) / old_region.width
                 crop_height_fraction = (old_region.height - region.height) / old_region.height
-
-                print("cropping {:.2f} {:.2f}".format(crop_width_fraction, crop_height_fraction))
 
                 if crop_width_fraction > 0.25 or crop_height_fraction > 0.25: continue
 
