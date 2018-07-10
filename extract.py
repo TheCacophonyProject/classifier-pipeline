@@ -411,11 +411,11 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         :return:
         """
 
-        # increased resolution of video file.
+        # resolution of video file.
         # videos look much better scaled up
-        FRAME_SCALE = 4
+        FRAME_SIZE = 4*48
 
-        frame_width, frame_height = int(tracker.WINDOW_SIZE * FRAME_SCALE), int(tracker.WINDOW_SIZE * FRAME_SCALE)
+        frame_width, frame_height = FRAME_SIZE, FRAME_SIZE
         frame_width =  frame_width // 4 * 4
         frame_height = frame_height // 4 * 4
 

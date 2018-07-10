@@ -329,9 +329,6 @@ class TrackExtractor:
     # a better solution might be the mean of the max of each frame?
     THRESHOLD_PERCENTILE = 99.9
 
-    # the dimensions of the tracks in pixels (width and height)
-    WINDOW_SIZE = 48
-
     # measures how different pixels are from estimated background, if they are on average less different than this then
     # video is considered to be static.
     STATIC_BACKGROUND_THRESHOLD = 4.0
@@ -345,11 +342,16 @@ class TrackExtractor:
     # number of pixels around object to pad.
     FRAME_PADDING = 6
 
-    # maximum width or height a region can be.  Regions larger than this are ignored.
-    MAX_REGION_SIZE = 128
-
     # number of frames to wait before deleting a lost track
     DELETE_LOST_TRACK_FRAMES = 9
+
+    # strategy to use when dealing with regions of interest that are cropped against the side of the frame
+    # in general these regions often do not have enough information to acaccuratelydentify the animal.
+    # options are
+    # 'all': All cropped regions are included, good for classifier
+    # 'cautious': Regions that are only cropped a bit are let through, this is good for training data
+    # 'none': No cropped regions are permitted.  This is the most safe.
+    CROPPED_REGIONS_STRATEGY = "cautious"
 
     def __init__(self):
 
@@ -385,9 +387,6 @@ class TrackExtractor:
         self.track_min_offset = 4.0
         self.track_min_delta = 1.0
         self.track_min_mass = 2.0
-
-        # normally animals on the edge of the screen are ignored, however this can be turned on by enabling this setting.
-        self.include_cropped_regions = False
 
         # minimum allowed threshold for mask, smaller values detect more objects, but bring up additional false positives
         self.min_threshold = 30
@@ -796,24 +795,36 @@ class TrackExtractor:
                 stats[i, 4], 0, i, self.frame_on
             )
 
-
-            if self.include_cropped_regions:
+            old_region = region.copy()
+            if self.CROPPED_REGIONS_STRATEGY == "all":
                 # in this case we just clip the region to the edges of the screen
-                old_region = str(region)
                 region.left = max(region.left, 0)
                 region.top = max(region.top, 0)
-                region.right = min(region.right, frame_width-1)
-                region.bottom = min(region.bottom, frame_height-1)
-                region.was_cropped = old_region != str(region)
-            else:
-                # if region went outside if bounds ignore it.
+                region.right = min(region.right, frame_width - 1)
+                region.bottom = min(region.bottom, frame_height - 1)
+            elif self.CROPPED_REGIONS_STRATEGY == "cautious":
+                # keep cropped regions if they have a reasonable size
+                region.left = max(region.left, 0)
+                region.top = max(region.top, 0)
+                region.right = min(region.right, frame_width - 1)
+                region.bottom = min(region.bottom, frame_height - 1)
+
+                crop_width_fraction = (old_region.width - region.width) / old_region.width
+                crop_height_fraction = (old_region.height - region.height) / old_region.height
+
+                print("cropping {:.2f} {:.2f}".format(crop_width_fraction, crop_height_fraction))
+
+                if crop_width_fraction > 0.25 or crop_height_fraction > 0.25: continue
+
+            elif self.CROPPED_REGIONS_STRATEGY == "none":
+                # all regions that touch the side of the screen are removed
                 if (region.left < 0) or (region.right > frame_width) or (region.top < 0) or (region.top < 0) or (region.bottom > frame_height):
                     continue
-
-            # if region is too large ignore it.  this is mostly because very large objects do not track well,
-            # and take up a lot of space.
-            if (region.width > self.MAX_REGION_SIZE) or (region.height > self.MAX_REGION_SIZE):
-                continue
+            else:
+                raise Exception(
+                    "Invalid mode for CROPPED_REGIONS_STRATEGY, expected ['all','cautious','none'] but found {}".format(
+                        self.CROPPED_REGIONS_STRATEGY))
+            region.was_cropped = str(old_region) != str(region)
 
             if delta_frame is not None:
                 region_difference = np.float32(get_image_subsection(delta_frame, region))
