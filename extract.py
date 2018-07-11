@@ -500,6 +500,8 @@ def parse_params():
         print(cv2.getBuildInformation())
         return
 
+    os.makedirs(args.output_folder, mode=0o775, exist_ok=True)
+
     # setup extractor
     extractor = CPTVTrackExtractor(args.output_folder)
 
