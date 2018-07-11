@@ -1,7 +1,7 @@
 tensorflow
 matplotlib
 pytz
-cptv
+cptv==0.1.2
 opencv-python
 numpy
 scipy
