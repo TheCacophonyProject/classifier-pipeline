@@ -245,12 +245,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         else:
             max_tracks = 10
 
-        # make destination folder if required
-        try:
-            os.stat(destination_folder)
-        except:
-            self.log_message(" Making path " + destination_folder)
-            os.mkdir(destination_folder)
+        os.makedirs(destination_folder, mode=0o775, exist_ok=True)
 
         # check if we have already processed this file
         if self.needs_processing(stats_path_and_filename):
@@ -499,6 +494,8 @@ def parse_params():
     if args.show_build_information:
         print(cv2.getBuildInformation())
         return
+
+    os.makedirs(args.output_folder, mode=0o775, exist_ok=True)
 
     # setup extractor
     extractor = CPTVTrackExtractor(args.output_folder)
