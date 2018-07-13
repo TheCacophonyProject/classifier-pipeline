@@ -456,7 +456,8 @@ def show_visits_over_days(visits):
     # bin visits in days
     visit_bins = {}
     for visit in visits:
-        if visit.predicted_tag == 'none': continue
+        if visit.predicted_tag == 'none':
+            continue
         visit_midpoint = visit.start_time + timedelta(seconds=visit.duration / 2)
         date = visit_midpoint.replace(hour=0, minute=0, second=0, microsecond=0)
         offset = (visit_midpoint - date).total_seconds() / 60 / 60

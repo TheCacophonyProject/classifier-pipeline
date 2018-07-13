@@ -159,6 +159,36 @@ class Track:
 
         return stats
 
+    def smooth(self, frame_bounds: Rectangle):
+        """
+        Smooths out any quick changes in track dimensions
+        :param frame_bounds The boundaries of the video frame.
+        """
+        if len(self.bounds_history) == 0:
+            return
+
+        new_bounds_history = []
+        prev_frame = self.bounds_history[0]
+        current_frame = self.bounds_history[0]
+        next_frame = self.bounds_history[1]
+
+        for i in range(len(self.bounds_history)):
+
+            prev_frame = self.bounds_history[max(0, i-1)]
+            current_frame = self.bounds_history[i]
+            next_frame = self.bounds_history[min(len(self.bounds_history)-1, i+1)]
+
+            frame_x = current_frame.mid_x
+            frame_y = current_frame.mid_y
+            frame_width = (prev_frame.width + current_frame.width + next_frame.width) / 3
+            frame_height = (prev_frame.height + current_frame.height + next_frame.height) / 3
+            frame = Region(int(frame_x - frame_width / 2), int(frame_y - frame_height / 2), int(frame_width), int(frame_height))
+            frame.crop(frame_bounds)
+
+            new_bounds_history.append(frame)
+
+        self.bounds_history = new_bounds_history
+
     def trim(self):
         """
         Removes empty frames from start and end of track
@@ -329,9 +359,6 @@ class TrackExtractor:
     # a better solution might be the mean of the max of each frame?
     THRESHOLD_PERCENTILE = 99.9
 
-    # the dimensions of the tracks in pixels (width and height)
-    WINDOW_SIZE = 48
-
     # measures how different pixels are from estimated background, if they are on average less different than this then
     # video is considered to be static.
     STATIC_BACKGROUND_THRESHOLD = 4.0
@@ -345,11 +372,19 @@ class TrackExtractor:
     # number of pixels around object to pad.
     FRAME_PADDING = 6
 
-    # maximum width or height a region can be.  Regions larger than this are ignored.
-    MAX_REGION_SIZE = 128
-
     # number of frames to wait before deleting a lost track
     DELETE_LOST_TRACK_FRAMES = 9
+
+    # strategy to use when dealing with regions of interest that are cropped against the side of the frame
+    # in general these regions often do not have enough information to accurately identify the animal.
+    # options are
+    # 'all': All cropped regions are included, good for classifier
+    # 'cautious': Regions that are only cropped a bit are let through, this is good for training data
+    # 'none': No cropped regions are permitted.  This is the most safe.
+    CROPPED_REGIONS_STRATEGY = "cautious"
+
+    # when enabled smooths tracks so that track dimensions do not change too quickly.
+    TRACK_SMOOTHING = False
 
     def __init__(self):
 
@@ -385,9 +420,6 @@ class TrackExtractor:
         self.track_min_offset = 4.0
         self.track_min_delta = 1.0
         self.track_min_mass = 2.0
-
-        # normally animals on the edge of the screen are ignored, however this can be turned on by enabling this setting.
-        self.include_cropped_regions = False
 
         # minimum allowed threshold for mask, smaller values detect more objects, but bring up additional false positives
         self.min_threshold = 30
@@ -505,6 +537,12 @@ class TrackExtractor:
         # filter out tracks that do not move, or look like noise
         self.filter_tracks()
 
+        # apply smoothing if required
+        if self.TRACK_SMOOTHING and len(frames) > 0:
+            frame_height, frame_width = frames[0].shape
+            for track in self.tracks:
+                track.smooth(Rectangle(0,0,frame_width, frame_height))
+
         return True
 
     def get_filtered(self, thermal, background=None):
@@ -600,7 +638,7 @@ class TrackExtractor:
         """
 
         if frame_number < 0 or frame_number >= len(track):
-            raise Exception("Frame {} is out of bounds for track with {} frames".format(
+            raise ValueError("Frame {} is out of bounds for track with {} frames".format(
                 frame_number, len(track))
             )
 
@@ -608,7 +646,7 @@ class TrackExtractor:
         tracker_frame = track.start_frame + frame_number
 
         if tracker_frame < 0 or tracker_frame >= len(self.frame_buffer.thermal):
-            raise Exception("Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
+            raise ValueError("Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
                tracker_frame, len(self.frame_buffer.thermal)-1))
 
         thermal = get_image_subsection(self.frame_buffer.thermal[tracker_frame], bounds)
@@ -796,24 +834,35 @@ class TrackExtractor:
                 stats[i, 4], 0, i, self.frame_on
             )
 
-
-            if self.include_cropped_regions:
+            old_region = region.copy()
+            if self.CROPPED_REGIONS_STRATEGY == "all":
                 # in this case we just clip the region to the edges of the screen
-                old_region = str(region)
                 region.left = max(region.left, 0)
                 region.top = max(region.top, 0)
-                region.right = min(region.right, frame_width-1)
-                region.bottom = min(region.bottom, frame_height-1)
-                region.was_cropped = old_region != str(region)
-            else:
-                # if region went outside if bounds ignore it.
-                if (region.left < 0) or (region.right > frame_width) or (region.top < 0) or (region.top < 0) or (region.bottom > frame_height):
+                region.right = min(region.right, frame_width - 1)
+                region.bottom = min(region.bottom, frame_height - 1)
+            elif self.CROPPED_REGIONS_STRATEGY == "cautious":
+                # keep cropped regions if they have a reasonable size
+                region.left = max(region.left, 0)
+                region.top = max(region.top, 0)
+                region.right = min(region.right, frame_width - 1)
+                region.bottom = min(region.bottom, frame_height - 1)
+
+                crop_width_fraction = (old_region.width - region.width) / old_region.width
+                crop_height_fraction = (old_region.height - region.height) / old_region.height
+
+                if crop_width_fraction > 0.25 or crop_height_fraction > 0.25:
                     continue
 
-            # if region is too large ignore it.  this is mostly because very large objects do not track well,
-            # and take up a lot of space.
-            if (region.width > self.MAX_REGION_SIZE) or (region.height > self.MAX_REGION_SIZE):
-                continue
+            elif self.CROPPED_REGIONS_STRATEGY == "none":
+                # all regions that touch the side of the screen are removed
+                if (region.left < 0) or (region.right > frame_width) or (region.top < 0) or (region.top < 0) or (region.bottom > frame_height):
+                    continue
+            else:
+                raise ValueError(
+                    "Invalid mode for CROPPED_REGIONS_STRATEGY, expected ['all','cautious','none'] but found {}".format(
+                        self.CROPPED_REGIONS_STRATEGY))
+            region.was_cropped = str(old_region) != str(region)
 
             if delta_frame is not None:
                 region_difference = np.float32(get_image_subsection(delta_frame, region))
