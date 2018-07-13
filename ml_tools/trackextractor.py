@@ -376,7 +376,7 @@ class TrackExtractor:
     DELETE_LOST_TRACK_FRAMES = 9
 
     # strategy to use when dealing with regions of interest that are cropped against the side of the frame
-    # in general these regions often do not have enough information to acaccuratelydentify the animal.
+    # in general these regions often do not have enough information to accurately identify the animal.
     # options are
     # 'all': All cropped regions are included, good for classifier
     # 'cautious': Regions that are only cropped a bit are let through, this is good for training data
@@ -638,7 +638,7 @@ class TrackExtractor:
         """
 
         if frame_number < 0 or frame_number >= len(track):
-            raise Exception("Frame {} is out of bounds for track with {} frames".format(
+            raise ValueError("Frame {} is out of bounds for track with {} frames".format(
                 frame_number, len(track))
             )
 
@@ -646,7 +646,7 @@ class TrackExtractor:
         tracker_frame = track.start_frame + frame_number
 
         if tracker_frame < 0 or tracker_frame >= len(self.frame_buffer.thermal):
-            raise Exception("Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
+            raise ValueError("Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
                tracker_frame, len(self.frame_buffer.thermal)-1))
 
         thermal = get_image_subsection(self.frame_buffer.thermal[tracker_frame], bounds)
@@ -851,14 +851,15 @@ class TrackExtractor:
                 crop_width_fraction = (old_region.width - region.width) / old_region.width
                 crop_height_fraction = (old_region.height - region.height) / old_region.height
 
-                if crop_width_fraction > 0.25 or crop_height_fraction > 0.25: continue
+                if crop_width_fraction > 0.25 or crop_height_fraction > 0.25:
+                    continue
 
             elif self.CROPPED_REGIONS_STRATEGY == "none":
                 # all regions that touch the side of the screen are removed
                 if (region.left < 0) or (region.right > frame_width) or (region.top < 0) or (region.top < 0) or (region.bottom > frame_height):
                     continue
             else:
-                raise Exception(
+                raise ValueError(
                     "Invalid mode for CROPPED_REGIONS_STRATEGY, expected ['all','cautious','none'] but found {}".format(
                         self.CROPPED_REGIONS_STRATEGY))
             region.was_cropped = str(old_region) != str(region)

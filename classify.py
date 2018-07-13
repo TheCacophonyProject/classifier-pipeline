@@ -523,7 +523,8 @@ class ClipClassifier(CPTVFileProcessor):
 
         # extract tracks from file
         tracker = TrackExtractor()
-        tracker.FRAME_PADDING = 4 # when classifiying we can use a tighter padding as we do not need extra for augmentation.
+        tracker.FRAME_PADDING = 4  #when classifying we can use a tighter padding as we do not need extra for
+                                   #augmentation.
         tracker.load(filename)
 
         # turn up sensitivity on tracking so we can catch more animals.  The classifier will sort out the false
@@ -534,7 +535,7 @@ class ClipClassifier(CPTVFileProcessor):
         tracker.track_min_mass = 0.0
 
         tracker.min_threshold = 15
-        tracker.CROPPED_REGIONS_STRATEGY = "all" # when classifying just try and classify everythign
+        tracker.CROPPED_REGIONS_STRATEGY = "all" # when classifying just try and classify everything
 
         tracker.high_quality_optical_flow = self.high_quality_optical_flow
 
