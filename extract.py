@@ -34,7 +34,7 @@ class TrackerTestCase():
 
 def init_workers(lock):
     """ Initialise worker by setting the trackdatabase lock. """
-    trackdatabase.hdf5_lock = lock
+    trackdatabase.HDF5_LOCK = lock
 
 class MPEGPreviewStreamer():
     """ Generates MPEG preview frames from a tracker """
@@ -173,7 +173,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                         self.disable_track_filters = True
                         self.disable_background_subtraction = True
                         print("Turning Track filters OFF.")
-                    self.process_folder(os.path.join(root, folder), tag=folder.lower(), worker_pool_args=(trackdatabase.hdf5_lock,))
+                    self.process_folder(os.path.join(root, folder), tag=folder.lower(), worker_pool_args=(trackdatabase.HDF5_LOCK,))
                     if folder.lower() == "false-positive":
                         print("Restoring Track filters.")
                         self.disable_track_filters = previous_filter_setting
