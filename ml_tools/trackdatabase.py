@@ -14,6 +14,18 @@ import h5py
 import tables           # required for blosc compression to work
 import numpy as np
 
+# default lock for safe database writes.
+#
+# note for multiprocessing this will need to be overwritten with a shared lock for each process.
+# which can be done via
+#
+# def init_workers(lock):
+#    trackdatabase.HDFS_LOCK = lock
+#
+# pool = multiprocessing.Pool(self.workers_threads, initializer=init_workers, initargs=(shared_lock,))
+
+HDFS_LOCK = Lock()
+
 class HDF5Manager:
     """ Class to handle locking of HDF5 files. """
     def __init__(self, db, mode = 'r'):
@@ -24,13 +36,13 @@ class HDF5Manager:
     def __enter__(self):
         # note: we might not have to lock when in read only mode?
         # this could improve performance
-        hdf5_lock.acquire()
+        HDFS_LOCK.acquire()
         self.f = h5py.File(self.db, self.mode)
         return self.f
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.f.close()
-        hdf5_lock.release()
+        HDFS_LOCK.release()
 
 
 class TrackDatabase:
@@ -236,16 +248,3 @@ class TrackDatabase:
             # mark the record as have been writen to.
             # this means if we are interupted part way through the track will be overwritten
             clip_node.attrs['finished'] = True
-
-
-# default lock for safe database writes.
-#
-# note for multiprocessing this will need to be overwritten with a shared lock for each process.
-# which can be done via
-#
-# def init_workers(lock):
-#    trackdatabase.hdf5_lock = lock
-#
-# pool = multiprocessing.Pool(self.workers_threads, initializer=init_workers, initargs=(shared_lock,))
-
-hdf5_lock = Lock()
