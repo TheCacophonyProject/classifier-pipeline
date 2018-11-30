@@ -616,11 +616,14 @@ class ClipClassifier(CPTVFileProcessor):
             track_info['frames'] = prediction.frames()
             track_info['frame_start'] = track.start_frame
             track_info['label'] = self.classifier.labels[prediction.label()]
-            track_info['confidence'] = prediction.score()
-            track_info['clarity'] = prediction.clarity
-            track_info['class_confidence'] = prediction.class_best_score
-            track_info['av_novelty'] = prediction.av_novelty()
-            track_info['max_novelty'] = prediction.novelty()
+            track_info['confidence'] = round(prediction.score(), 2)
+            track_info['clarity'] = round(prediction.clarity, 3)
+            track_info['av_novelty'] = round(prediction.av_novelty(), 2)
+            track_info['max_novelty'] = round(prediction.novelty(), 2)
+            track_info['all_class_confidences'] = []
+            for value in prediction.class_best_score:
+                track_info['all_class_confidences'].append(round(value, 3))
+
 
         if self.write_meta_to_stdout:
             output = json.dumps(save_file, indent=4, cls=tools.CustomJSONEncoder)
