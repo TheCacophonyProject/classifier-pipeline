@@ -112,7 +112,8 @@ class TrackPrediction:
 
         return (first_guess+" "+second_guess).strip()
 
-    def frames(self):
+    @property
+    def num_frames(self):
         return len(self.prediction_history)
 
 
@@ -615,7 +616,7 @@ class ClipClassifier(CPTVFileProcessor):
             save_file['tracks'].append(track_info)
             track_info['start_time'] = track.start_time.isoformat()
             track_info['end_time'] = track.end_time.isoformat()
-            track_info['frames'] = prediction.frames()
+            track_info['num_frames'] = prediction.num_frames
             track_info['frame_start'] = track.start_frame
             track_info['label'] = self.classifier.labels[prediction.label()]
             track_info['confidence'] = round(prediction.score(), 2)
