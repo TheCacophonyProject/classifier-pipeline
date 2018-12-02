@@ -64,11 +64,13 @@ class TrackPrediction:
         """ class label of nth best guess. """
         return int(np.argsort(self.class_best_score)[-n])
 
-    def novelty(self):
+    @property
+    def max_novelty(self):
         """ maximum novelty for this track """
         return max(self.novelty_history)
 
-    def av_novelty(self):
+    @property
+    def average_novelty(self):
         """ average novelty for this track """
         return sum(self.novelty_history) / len(self.novelty_history)
 
@@ -618,8 +620,8 @@ class ClipClassifier(CPTVFileProcessor):
             track_info['label'] = self.classifier.labels[prediction.label()]
             track_info['confidence'] = round(prediction.score(), 2)
             track_info['clarity'] = round(prediction.clarity, 3)
-            track_info['av_novelty'] = round(prediction.av_novelty(), 2)
-            track_info['max_novelty'] = round(prediction.novelty(), 2)
+            track_info['average_novelty'] = round(prediction.average_novelty, 2)
+            track_info['max_novelty'] = round(prediction.max_novelty, 2)
             track_info['all_class_confidences'] = {}
             for i, value in enumerate(prediction.class_best_score):
                 label = self.classifier.labels[i]
