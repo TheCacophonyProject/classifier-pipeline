@@ -620,9 +620,10 @@ class ClipClassifier(CPTVFileProcessor):
             track_info['clarity'] = round(prediction.clarity, 3)
             track_info['av_novelty'] = round(prediction.av_novelty(), 2)
             track_info['max_novelty'] = round(prediction.novelty(), 2)
-            track_info['all_class_confidences'] = []
-            for value in prediction.class_best_score:
-                track_info['all_class_confidences'].append(round(value, 3))
+            track_info['all_class_confidences'] = {}
+            for i, value in enumerate(prediction.class_best_score):
+                label = self.classifier.labels[i]
+                track_info['all_class_confidences'][label] = round(value, 3)
 
 
         if self.write_meta_to_stdout:
