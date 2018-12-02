@@ -474,7 +474,7 @@ class TrackExtractor:
         self.reject_reason = None
 
         # we need to load the entire video so we can analyse the background.
-        frames = [frame for frame, offset in self.reader]
+        frames = [frame.pix for frame in self.reader]
         self.frame_buffer.thermal = frames
 
         # first we get the background.  This requires reading the entire source into memory.
