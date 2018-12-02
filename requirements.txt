@@ -1,11 +1,11 @@
 tensorflow
 matplotlib
 pytz
-cptv
+cptv~=0.3.0
 opencv-python
 numpy
 scipy
 python-dateutil
 sklearn
-tables==3.4.0
+tables==3.4.4
 h5py==2.7.0

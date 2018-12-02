@@ -24,10 +24,10 @@ from ml_tools.mpeg_creator import MPEGCreator
 from ml_tools.trackextractor import TrackExtractor, Track, Region
 
 
-DEFAULT_BASE_PATH = "c:/cac"
+DEFAULT_BASE_PATH = "/Users/clare/cacophony/model"
 HERE = os.path.dirname(__file__)
 RESOURCES_PATH = os.path.join(HERE, "resources")
-MODEL_NAME = "model_hq_joint"
+MODEL_NAME = "model_hq-0.966"
 
 # folders that are not processed when run with 'all'
 IGNORE_FOLDERS = ['untagged','cat','dog','insect','unidentified','rabbit','hard','multi','moving','mouse',
@@ -64,9 +64,15 @@ class TrackPrediction:
         """ class label of nth best guess. """
         return int(np.argsort(self.class_best_score)[-n])
 
-    def novelty(self):
+    @property
+    def max_novelty(self):
         """ maximum novelty for this track """
         return max(self.novelty_history)
+
+    @property
+    def average_novelty(self):
+        """ average novelty for this track """
+        return sum(self.novelty_history) / len(self.novelty_history)
 
     def score(self, n = 1):
         """ class score of nth best guess. """
@@ -105,6 +111,10 @@ class TrackPrediction:
             second_guess = ""
 
         return (first_guess+" "+second_guess).strip()
+
+    @property
+    def num_frames(self):
+        return len(self.prediction_history)
 
 
 class ClipClassifier(CPTVFileProcessor):
@@ -606,10 +616,18 @@ class ClipClassifier(CPTVFileProcessor):
             save_file['tracks'].append(track_info)
             track_info['start_time'] = track.start_time.isoformat()
             track_info['end_time'] = track.end_time.isoformat()
+            track_info['num_frames'] = prediction.num_frames
+            track_info['frame_start'] = track.start_frame
             track_info['label'] = self.classifier.labels[prediction.label()]
-            track_info['confidence'] = prediction.score()
-            track_info['clarity'] = prediction.clarity
-            track_info['class_confidence'] = prediction.class_best_score
+            track_info['confidence'] = round(prediction.score(), 2)
+            track_info['clarity'] = round(prediction.clarity, 3)
+            track_info['average_novelty'] = round(prediction.average_novelty, 2)
+            track_info['max_novelty'] = round(prediction.max_novelty, 2)
+            track_info['all_class_confidences'] = {}
+            for i, value in enumerate(prediction.class_best_score):
+                label = self.classifier.labels[i]
+                track_info['all_class_confidences'][label] = round(value, 3)
+
 
         if self.write_meta_to_stdout:
             output = json.dumps(save_file, indent=4, cls=tools.CustomJSONEncoder)
