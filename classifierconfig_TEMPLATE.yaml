@@ -1,0 +1,59 @@
+
+base_data_folder: <put your base folder here>
+
+# source_folder is where the cptv files reside under (could be in a subdirectory). It is specified relative
+# to the base_data_folder
+source_folder: "clips"
+
+# tracks_folder is where the track files will be created.  It is specified relative to the base_data_folder
+tracks_folder: "tracks"
+
+
+
+
+tracking:
+    # enables fast BLOSC compression (requires plugin)
+    enable_compression: False
+
+    # includes the filtered channel when exporting.  This is typically not used.  If compression is enabled the
+    # filesize can be reduced by not including it.
+    include_filtered_channel: False
+
+    # auto threshold needs to find a near maximum value to calculate the threshold level
+    # a better solution might be the mean of the max of each frame?
+    threshold_percentile: 99.9
+
+    # measures how different pixels are from estimated background, if they are on average less different than this then
+    # video is considered to be static.
+    static_background_threshold: 4.0
+
+    # any clips with a mean temperature hotter than this will be excluded
+    max_mean_temperature_threshold: 10000
+
+    # any clips with a temperature dynamic range greater than this will be excluded
+    max_temperature_range_threshold: 10000
+
+    # number of pixels around object to pad.
+    frame_padding: 6
+
+    # number of frames to wait before removing a track from the list of tracks
+    remove_track_after_frames: 9
+
+    # strategy to use when dealing with regions of interest that are cropped against the side of the frame
+    # in general these regions often do not have enough information to accurately identify the animal.
+    # options are
+    # 'all': All cropped regions are included, good for classifier
+    # 'cautious': Regions that are only cropped a bit are let through, this is good for training data
+    # 'none': No cropped regions are permitted.  This is the most safe.
+    cropped_regions_strategy: "cautious"
+
+    # when enabled smooths tracks so that track dimensions do not change too quickly.
+    track_smoothing: False
+
+# previews:
+#    # if set to true it creates preview MPEG files
+#    create-previews: True
+
+#    # colour map to use when exporting to MPEG.
+#    # Note:  This is relative to the current directory of the application, not the base data folder
+#    colour-map: "custom_colormap.dat"

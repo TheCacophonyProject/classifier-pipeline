@@ -7,10 +7,11 @@ from PIL import Image, ImageDraw
 import numpy as np
 
 from ml_tools import trackdatabase
-from ml_tools.trackextractor import TrackExtractor
+from track.trackextractor import TrackExtractor
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
+from ml_tools.config import Config
 
 import matplotlib.pyplot as plt
 import os
@@ -23,7 +24,7 @@ import time
 __version__ = '1.1.0'
 
 # default base path to use if no source or destination folder are given.
-DEFAULT_BASE_PATH = "c:\\cac"
+DEFAULT_BASE_PATH = DEFAULT_BASE_PATH = "/Users/clare/cacophony/classifier-pipeline/test"
 
 EXCLUDED_FOLDERS = ['other', 'unidentified', 'untagged', 'moving', 'multi','missclassified']
 
@@ -118,10 +119,11 @@ class CPTVTrackExtractor(CPTVFileProcessor):
     # version number.  Recorded into stats file when a clip is processed.
     VERSION = 6
 
-    def __init__(self, out_folder):
+    def __init__(self, out_folder, config):
 
         CPTVFileProcessor.__init__(self)
 
+        self.config = config
         self.hints = {}
         self.colormap = plt.get_cmap('jet')
         self.verbose = False
@@ -257,7 +259,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         tools.purge(destination_folder, base_filename + "*.mp4")
 
         # load the track
-        tracker = TrackExtractor()
+        tracker = TrackExtractor(self.config.tracking)
         tracker.max_tracks = max_tracks
         tracker.tag = tag
         tracker.verbose = self.verbose >= 2
@@ -489,6 +491,8 @@ def parse_params():
     parser.add_argument('-i', '--show-build-information', action='count', help='Show openCV build information and exit.')
     parser.add_argument('-d','--disable-track-filters', default=False, action='store_true', help='Disables filtering of poor quality tracks.')
 
+    config = Config.load()
+
     args = parser.parse_args()
 
     if args.show_build_information:
@@ -498,7 +502,7 @@ def parse_params():
     os.makedirs(args.output_folder, mode=0o775, exist_ok=True)
 
     # setup extractor
-    extractor = CPTVTrackExtractor(args.output_folder)
+    extractor = CPTVTrackExtractor(args.output_folder, config)
 
     extractor.workers_threads = int(args.workers)
     if extractor.workers_threads >= 1:

@@ -102,3 +102,6 @@ ENV/
 .mypy_cache/
 Track Extractor Notes.docx
 Track Extractor Todo.xlsx
+models
+classifier.yaml
+test
