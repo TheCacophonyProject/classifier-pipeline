@@ -16,6 +16,9 @@ configTuple = namedtuple(
         "tracking",
         "source_folder",
         "tracks_folder",
+        "excluded_folders",
+        "overwrite_mode",
+        "previews_colour_map",
     ],
 )
 
@@ -33,7 +36,10 @@ class Config(configTuple):
             return self(
                 tracking=TrackingConfig.load(y["tracking"]),
                 source_folder = path.join(base_folder, y["source_folder"]),
-                tracks_folder = path.join(base_folder, y["tracks_folder"])
+                tracks_folder = path.join(base_folder, y["tracks_folder"]),
+                excluded_folders = path.join(base_folder, y["excluded_folders"]),
+                overwrite_mode = path.join(base_folder, y["overwrite_mode"]),
+                previews_colour_map = path.join(base_folder, y["previews_colour_map"]),
             )
 
 def find_config():

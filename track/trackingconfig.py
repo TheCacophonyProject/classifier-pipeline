@@ -22,8 +22,6 @@ from collections import namedtuple
 configTuple = namedtuple(
     "tracking",
     [
-        "enable_compression",
-        "include_filtered_channel",
         "threshold_percentile",
         "static_background_threshold",
         "max_mean_temperature_threshold",
@@ -32,6 +30,22 @@ configTuple = namedtuple(
         "cropped_regions_strategy",
         "track_smoothing",
         "remove_track_after_frames",
+        "high_quality_optical_flow",
+        "min_threshold",
+        "max_threshold",
+        "flow_threshold",
+        "max_tracks",
+        "track_overlap_ratio",
+        "min_duration_secs",
+        "track_min_offset",
+        "track_min_delta",
+        "track_min_mass",
+
+        "enable_compression",
+        "include_filtered_channel",
+        "worker_threads",
+        "preview_tracks",
+        "hints_file",
     ],
 )
 
@@ -39,7 +53,7 @@ class TrackingConfig(configTuple):
 
     @classmethod
     def load(cls, tracking):
-        return cls(enable_compression = tracking["enable_compression"],
+        config = cls(enable_compression = tracking["enable_compression"],
             include_filtered_channel=tracking["include_filtered_channel"],
             threshold_percentile=tracking["threshold_percentile"],
             static_background_threshold=tracking["static_background_threshold"],
@@ -49,4 +63,21 @@ class TrackingConfig(configTuple):
             cropped_regions_strategy=tracking["cropped_regions_strategy"],
             track_smoothing=tracking["track_smoothing"],
             remove_track_after_frames=tracking["remove_track_after_frames"],
+            high_quality_optical_flow=tracking["high_quality_optical_flow"],
+            min_threshold=tracking["min_threshold"],
+            max_threshold=tracking["max_threshold"],
+            flow_threshold=tracking["flow_threshold"],
+            max_tracks=tracking["max_tracks"],
+            track_overlap_ratio=tracking["filters"]["track_overlap_ratio"],
+            min_duration_secs=tracking["filters"]["min_duration_secs"],
+            track_min_offset=tracking["filters"]["track_min_offset"],
+            track_min_delta=tracking["filters"]["track_min_delta"],
+            track_min_mass=tracking["filters"]["track_min_mass"],
+
+            worker_threads=tracking["worker_threads"],
+            preview_tracks=tracking["preview_tracks"],
+            hints_file=tracking["hints_file"],
         )
+        return config
+
+

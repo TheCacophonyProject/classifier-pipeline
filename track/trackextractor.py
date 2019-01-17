@@ -72,8 +72,6 @@ class TrackExtractor:
         self.reader = None
         # dictionary containing various statistics about the clip / tracking process.
         self.stats = {}
-        # when enabled uses high quality optical flow, which is much slower.  Usualy the default settings are fine.
-        self.high_quality_optical_flow = False
         # used to calculate optical flow
         self.opt_flow = None
         # how much hotter target must be from background to trigger a region of interest.
@@ -82,26 +80,12 @@ class TrackExtractor:
         self.frame_on = 0
         # enables verbose mode
         self.verbose = False
-        # maximum number of tracks to extract from a clip.  Takes the n best tracks.  Set to None for unlimited.
-        self.max_tracks = 10
 
         # per frame temperature statistics for thermal channel
         self.frame_stats_min = []
         self.frame_stats_max = []
         self.frame_stats_median = []
         self.frame_stats_mean = []
-
-        # filters for tracks
-        self.track_min_duration = 3.0
-        self.track_min_offset = 4.0
-        self.track_min_delta = 1.0
-        self.track_min_mass = 2.0
-
-        # minimum allowed threshold for mask, smaller values detect more objects, but bring up additional false positives
-        self.min_threshold = 30
-
-        # how much to threshold thermal before calculating optical flow.
-        self.flow_threshold = 40
 
         # reason qwhy clip was rejected, or none if clip was accepted
         self.reject_reason = None
@@ -126,6 +110,8 @@ class TrackExtractor:
 
         # accumulates frame changes for FM_DELTA algorithm
         self.accumulator = None
+
+        self.max_tracks = self.config.max_tracks
 
 
     def load(self, filename):
@@ -198,7 +184,7 @@ class TrackExtractor:
         # create optical flow
         self.opt_flow = cv2.createOptFlow_DualTVL1()
         self.opt_flow.setUseInitialFlow(True)
-        if not self.high_quality_optical_flow:
+        if not self.config.high_quality_optical_flow:
             # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
             self.opt_flow.setTau(1 / 4)
             self.opt_flow.setScalesNumber(3)
@@ -289,7 +275,7 @@ class TrackExtractor:
             return
 
         if not self.frame_buffer.has_flow:
-            self.frame_buffer.generate_flow(self.opt_flow, self.flow_threshold)
+            self.frame_buffer.generate_flow(self.opt_flow, self.config.flow_threshold)
 
         # get track data
         for track_number, track in enumerate(self.tracks):
@@ -435,24 +421,24 @@ class TrackExtractor:
 
             # discard any tracks that overlap too often with other tracks.  This normally means we are tracking the
             # tail of an animal.
-            if track_overlap_ratio[track] > 0.5:
+            if track_overlap_ratio[track] > self.config.track_smoothing:
                 continue
 
-            # discard any tracks that are less than 3 seconds long (27 frames)
+            # discard any tracks that are less min_dirration
             # these are probably glitches anyway, or don't contain enough information.
-            if stats.duration < self.track_min_duration:
+            if stats.duration < self.config.min_duration_secs:
                 continue
 
             # discard tracks that do not move enough
-            if stats.max_offset < self.track_min_offset:
+            if stats.max_offset < self.config.track_min_offset:
                 continue
 
             # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
-            if stats.delta_std < self.track_min_delta:
+            if stats.delta_std < self.config.track_min_delta:
                 continue
 
             # discard tracks that do not have enough enough average mass.
-            if stats.average_mass < self.track_min_mass:
+            if stats.average_mass < self.config.track_min_mass:
                 continue
 
             good_tracks.append(track)
@@ -586,10 +572,10 @@ class TrackExtractor:
         threshold = float(np.percentile(np.reshape(filtered, [-1]), q=self.config.threshold_percentile) / 2)
 
         # cap the threshold to something reasonable
-        if threshold < self.min_threshold:
-            threshold = self.min_threshold
-        if threshold > 50.0:
-            threshold = 50.0
+        if threshold < self.config.min_threshold:
+            threshold = self.config.min_threshold
+        if threshold > self.config.max_threshold:
+            threshold = self.config.max_threshold
 
         background_stats = BackgroundAnalysis()
         background_stats.threshold = float(threshold)
