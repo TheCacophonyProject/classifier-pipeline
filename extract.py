@@ -59,12 +59,9 @@ def parse_params():
 
     if os.path.splitext(args.target)[1].lower() == '.cptv':
         # run single source
-        source_file = tools.find_file(config.source_folder, args.target)
+        source_file = tools.find_file_from_cmd_line(config.source_folder, args.target)
         if source_file is None:
-            if not os.path.isfile(args.target):
-                print("Could not locate file '" + args.target + "'")
-                return
-            source_file = args.target
+            return
         print("Processing file '" + source_file + "'")
         tag = os.path.basename(os.path.dirname(source_file))
         extractor.overwrite_mode = CPTVTrackExtractor.OM_ALL

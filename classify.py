@@ -728,13 +728,11 @@ def main():
     if args.source == "all":
         clip_classifier.process_all(args.source_folder)
     elif os.path.splitext(args.source)[-1].lower() == '.cptv':
-        source_file = os.path.join(args.source_folder, args.source)
+        source_file = tools.find_file_from_cmd_line(args.source_folder, args.source)
         if source_file is None:
-            if not os.path.isfile(args.source):
-                raise Exception("Could not find file " + args.source_folder + " " + args.source)
-                return
-            source_file = args.source
+            return
         print("Processing file '" + source_file + "'")
+        clip_classifier.process_file(source_file)
     else:
         clip_classifier.process_folder(os.path.join(args.source_folder, args.source))
 

@@ -141,6 +141,16 @@ def find_file(root, filename):
             return os.path.join(root, filename)
     return None
 
+def find_file_from_cmd_line(root, cmd_line_input):
+    source_file = find_file(root, cmd_line_input)
+    if source_file:
+        return source_file
+
+    if os.path.isfile(cmd_line_input):
+        return cmd_line_input
+
+    print("Could not locate file '" + cmd_line_input + "'")
+    return None
 
 def get_ffmpeg_command(filename, width, height, quality=21):
     if os.name == 'nt':
