@@ -1,6 +1,7 @@
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
+from ml_tools import trackdatabase
 from PIL import Image, ImageDraw
 
 from track.trackextractor import TrackExtractor
@@ -61,6 +62,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         self.worker_pool_init = init_workers
 
+
+        self.workers_threads = config.tracking.worker_threads
+
         # load hints.  Hints are a way to give extra information to the tracker when necessary.
         # if os.path.exists(config.tracking.hints_file):
         if config.tracking.hints_file:
@@ -90,12 +94,15 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
     def process_all(self, root):
 
+        if root is None:
+            root = self.config.source_folder
+
         previous_filter_setting = self.disable_track_filters
         previous_background_setting = self.disable_background_subtraction
 
         for root, folders, files in os.walk(root):
             for folder in folders:
-                if folder not in EXCLUDED_FOLDERS:
+                if folder not in self.config.excluded_folders:
                     if folder.lower() == "false-positive":
                         self.disable_track_filters = True
                         self.disable_background_subtraction = True
@@ -186,10 +193,10 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         tools.purge(destination_folder, base_filename + "*.mp4")
 
         # load the track
-        tracker = TrackExtractor(self.config.tracking)
+        tracker = TrackExtractor(self.config.classify_tracking)
         tracker.max_tracks = max_tracks
         tracker.tag = tag
-        tracker.verbose = self.verbose >= 2
+        tracker.verbose = self.verbose
 
         # by default we don't want to process the moving background images as it's too hard to get good tracks
         # without false-positives.
@@ -233,8 +240,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
             tracker.stats['cptv_metadata'] = meta_data
         else:
-            self.log_warning(" - Warning: no metadata found for file.")
-            return
+            self.log_warning(" - Warning: no tag metadata found for file - cannot use for machine learning.")
 
         start = time.time()
 

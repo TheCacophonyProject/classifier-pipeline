@@ -21,13 +21,14 @@ from ml_tools.model import Model
 from ml_tools.dataset import Preprocessor
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools.mpeg_creator import MPEGCreator
-from ml_tools.trackextractor import TrackExtractor, Track, Region
+from ml_tools.config import Config
+from track.trackextractor import TrackExtractor
+from track.track import Track
+from track.region import Region
 
 
-DEFAULT_BASE_PATH = "/Users/clare/cacophony/model"
 HERE = os.path.dirname(__file__)
 RESOURCES_PATH = os.path.join(HERE, "resources")
-MODEL_NAME = "model_hq-0.966"
 
 # folders that are not processed when run with 'all'
 IGNORE_FOLDERS = ['untagged','cat','dog','insect','unidentified','rabbit','hard','multi','moving','mouse',
@@ -531,23 +532,11 @@ class ClipClassifier(CPTVFileProcessor):
 
         start = time.time()
 
-        # extract tracks from file
-        tracker = TrackExtractor()
-        tracker.FRAME_PADDING = 4  #when classifying we can use a tighter padding as we do not need extra for
-                                   #augmentation.
+        config = Config.load()
+        tracker = TrackExtractor(config.classify_tracking)
         tracker.load(filename)
 
-        # turn up sensitivity on tracking so we can catch more animals.  The classifier will sort out the false
-        # positives.
-        tracker.track_min_duration = 0.0
-        tracker.track_min_offset = 0.0
-        tracker.track_min_delta = 1.0
-        tracker.track_min_mass = 0.0
-
-        tracker.min_threshold = 15
-        tracker.CROPPED_REGIONS_STRATEGY = "all" # when classifying just try and classify everything
-
-        tracker.high_quality_optical_flow = self.high_quality_optical_flow
+        tracker.verbose = True
 
         tracker.extract_tracks()
 
@@ -665,24 +654,34 @@ def main():
     parser.add_argument('-v', '--verbose', default=0, action='count', help='Display additional information.')
     parser.add_argument('-w', '--workers', default=0, help='Number of worker threads to use.  0 disables worker pool and forces a single thread.')
     parser.add_argument('-f', '--force-overwrite', default='none',help='Overwrite mode.  Options are all, old, or none.')
-    parser.add_argument('-o', '--output-folder', default=os.path.join(DEFAULT_BASE_PATH, "runs"),help='Folder to output tracks to')
-    parser.add_argument('-s', '--source-folder', default=os.path.join(DEFAULT_BASE_PATH, "clips"),help='Source folder root with class folders containing CPTV files')
+    parser.add_argument('-o', '--output-folder', help='Folder to output tracks to')
+    parser.add_argument('-s', '--source-folder', help='Source folder root with class folders containing CPTV files')
 
-    parser.add_argument('-m', '--model', default=os.path.join(HERE, "models", MODEL_NAME), help='Model to use for classification')
+    parser.add_argument('-m', '--model', help='Model to use for classification')
     parser.add_argument('-i', '--include-prediction-in-filename', default=False, action='store_true', help='Adds class scores to output files')
     parser.add_argument('--meta-to-stdout', default=False, action='store_true', help='Writes metadata to standard out instead of a file')
 
     parser.add_argument('--start-date', help='Only clips on or after this day will be processed (format YYYY-MM-DD)')
     parser.add_argument('--end-date', help='Only clips on or before this day will be processed (format YYYY-MM-DD)')
-    parser.add_argument('--disable-gpu', default=False, action='store_true', help='Disables GPU acclelerated classification')
+
+    config = Config.load()
 
     args = parser.parse_args()
+
+    if not args.output_folder:
+        args.output_folder = config.tracks_folder
+
+    if not args.source_folder:
+        args.source_folder = config.source_folder
 
     if not args.meta_to_stdout:
         log_to_stdout()
 
+    if not args.model:
+        args.model = config.model
+
     clip_classifier = ClipClassifier()
-    clip_classifier.enable_gpu = not args.disable_gpu
+    clip_classifier.enable_gpu = config.use_gpu
     clip_classifier.enable_previews = args.enable_preview
     clip_classifier.enable_side_by_side = args.side_by_side
     clip_classifier.output_folder = args.output_folder
@@ -729,7 +728,13 @@ def main():
     if args.source == "all":
         clip_classifier.process_all(args.source_folder)
     elif os.path.splitext(args.source)[-1].lower() == '.cptv':
-        clip_classifier.process_file(os.path.join(args.source_folder, args.source))
+        source_file = os.path.join(args.source_folder, args.source)
+        if source_file is None:
+            if not os.path.isfile(args.source):
+                raise Exception("Could not find file " + args.source_folder + " " + args.source)
+                return
+            source_file = args.source
+        print("Processing file '" + source_file + "'")
     else:
         clip_classifier.process_folder(os.path.join(args.source_folder, args.source))
 

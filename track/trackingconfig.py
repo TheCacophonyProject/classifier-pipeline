@@ -40,6 +40,7 @@ configTuple = namedtuple(
         "track_min_offset",
         "track_min_delta",
         "track_min_mass",
+        "verbose",
 
         "enable_compression",
         "include_filtered_channel",
@@ -53,9 +54,7 @@ class TrackingConfig(configTuple):
 
     @classmethod
     def load(cls, tracking):
-        config = cls(enable_compression = tracking["enable_compression"],
-            include_filtered_channel=tracking["include_filtered_channel"],
-            threshold_percentile=tracking["threshold_percentile"],
+        config = cls(threshold_percentile=tracking["threshold_percentile"],
             static_background_threshold=tracking["static_background_threshold"],
             max_mean_temperature_threshold=tracking["max_mean_temperature_threshold"],
             max_temperature_range_threshold=tracking["max_temperature_range_threshold"],
@@ -73,7 +72,10 @@ class TrackingConfig(configTuple):
             track_min_offset=tracking["filters"]["track_min_offset"],
             track_min_delta=tracking["filters"]["track_min_delta"],
             track_min_mass=tracking["filters"]["track_min_mass"],
+            verbose=tracking["verbose"],
 
+            enable_compression = tracking["enable_compression"],
+            include_filtered_channel=tracking["include_filtered_channel"],
             worker_threads=tracking["worker_threads"],
             preview_tracks=tracking["preview_tracks"],
             hints_file=tracking["hints_file"],

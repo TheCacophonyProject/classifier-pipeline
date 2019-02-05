@@ -41,23 +41,6 @@ from cptv import CPTVReader
 
 class TrackExtractor:
     """ Extracts tracks from a stream of frames. """
-    # number of pixels around object to pad.
-    FRAME_PADDING = 6
-
-    # number of frames to wait before deleting a lost track
-    DELETE_LOST_TRACK_FRAMES = 9
-
-    # strategy to use when dealing with regions of interest that are cropped against the side of the frame
-    # in general these regions often do not have enough information to accurately identify the animal.
-    # options are
-    # 'all': All cropped regions are included, good for classifier
-    # 'cautious': Regions that are only cropped a bit are let through, this is good for training data
-    # 'none': No cropped regions are permitted.  This is the most safe.
-    CROPPED_REGIONS_STRATEGY = "cautious"
-
-    # when enabled smooths tracks so that track dimensions do not change too quickly.
-    TRACK_SMOOTHING = False
-
     def __init__(self, trackconfig):
 
         self.config = trackconfig
@@ -79,7 +62,7 @@ class TrackExtractor:
         # the current frame number
         self.frame_on = 0
         # enables verbose mode
-        self.verbose = False
+        self.verbose = trackconfig.verbose
 
         # per frame temperature statistics for thermal channel
         self.frame_stats_min = []
@@ -417,34 +400,42 @@ class TrackExtractor:
 
         # filter out tracks that probably are just noise.
         good_tracks = []
-        for stats, track in track_stats:
+        self.print_if_verbose("{} {}".format("Number of tracks before filtering", len(self.tracks)))
 
+        for stats, track in track_stats:
             # discard any tracks that overlap too often with other tracks.  This normally means we are tracking the
             # tail of an animal.
             if track_overlap_ratio[track] > self.config.track_smoothing:
+                self.print_if_verbose("Track filtered.  Too much overlap")
                 continue
 
             # discard any tracks that are less min_dirration
             # these are probably glitches anyway, or don't contain enough information.
             if stats.duration < self.config.min_duration_secs:
+                self.print_if_verbose("Track filtered. Too short")
                 continue
 
             # discard tracks that do not move enough
             if stats.max_offset < self.config.track_min_offset:
+                self.print_if_verbose("Track filtered.  Didn't move")
                 continue
 
             # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
             if stats.delta_std < self.config.track_min_delta:
+                self.print_if_verbose("Track filtered.  Too static")
                 continue
 
             # discard tracks that do not have enough enough average mass.
             if stats.average_mass < self.config.track_min_mass:
+                self.print_if_verbose("Track filtered.  Too small (mass)")
                 continue
 
             good_tracks.append(track)
 
         self.tracks = good_tracks
 
+
+        self.print_if_verbose("{} {}".format("Number of 'good' tracks", len(self.tracks)))
         # apply max_tracks filter
         # note, we take the n best tracks.
         if self.max_tracks is not None and self.max_tracks < len(self.tracks):
@@ -537,6 +528,10 @@ class TrackExtractor:
             regions.append(region)
 
         return regions , mask
+
+    def print_if_verbose(self, info_string):
+        if self.verbose:
+            print(info_string)
 
     def get_video_stats(self):
         """
