@@ -20,11 +20,11 @@ import numpy as np
 # which can be done via
 #
 # def init_workers(lock):
-#    trackdatabase.HDFS_LOCK = lock
+#    trackdatabase.HDF5_LOCK = lock
 #
 # pool = multiprocessing.Pool(self.workers_threads, initializer=init_workers, initargs=(shared_lock,))
 
-HDFS_LOCK = Lock()
+HDF5_LOCK = Lock()
 
 class HDF5Manager:
     """ Class to handle locking of HDF5 files. """
@@ -36,13 +36,13 @@ class HDF5Manager:
     def __enter__(self):
         # note: we might not have to lock when in read only mode?
         # this could improve performance
-        HDFS_LOCK.acquire()
+        HDF5_LOCK.acquire()
         self.f = h5py.File(self.db, self.mode)
         return self.f
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.f.close()
-        HDFS_LOCK.release()
+        HDF5_LOCK.release()
 
 
 class TrackDatabase:
@@ -62,7 +62,7 @@ class TrackDatabase:
             f.close()
 
     def has_clip(self, clip_id):
-        """ 
+        """
         Returns if database contains track information for given clip
         :param clip_id: name of clip
         :return: If the database contains given clip

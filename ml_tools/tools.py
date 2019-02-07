@@ -234,7 +234,7 @@ def write_mpeg(filename, frames):
         # empty video
         return
 
-    frame_count, height, width, channels = frames.shape
+    _, height, width, _ = frames.shape
 
     command = get_ffmpeg_command(filename, width, height)
 

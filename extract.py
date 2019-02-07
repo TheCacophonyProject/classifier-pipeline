@@ -5,6 +5,7 @@ Processes a CPTV file identifying and tracking regions of interest, and saving t
 import cv2
 
 from ml_tools.trackdatabase import TrackDatabase
+from ml_tools import trackdatabase
 from ml_tools import tools
 from ml_tools.config import Config
 
@@ -83,7 +84,7 @@ def parse_params():
         extractor.clean_all()
         return
     else:
-        extractor.process_folder(os.path.join(config.source_folder, args.target), tag=args.target, worker_pool_args=(trackdatabase.hdf5_lock,))
+        extractor.process_folder(os.path.join(config.source_folder, args.target), tag=args.target, worker_pool_args=(trackdatabase.HDFS_LOCK,))
         return
 
 def print_opencl_info():

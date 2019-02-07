@@ -20,7 +20,6 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import pytz
 import datetime
 import os
-import pytz
 
 import numpy as np
 import cv2
@@ -30,7 +29,6 @@ import logging
 
 from ml_tools.tools import get_image_subsection, blosc_zstd
 from ml_tools.trackdatabase import TrackDatabase
-from ml_tools import tools
 from ml_tools.dataset import TrackChannels
 
 from track.track import Track
@@ -39,8 +37,10 @@ from track.framebuffer import FrameBuffer
 
 from cptv import CPTVReader
 
+
 class TrackExtractor:
     """ Extracts tracks from a stream of frames. """
+
     def __init__(self, trackconfig):
 
         self.config = trackconfig
@@ -96,7 +96,6 @@ class TrackExtractor:
 
         self.max_tracks = self.config.max_tracks
 
-
     def load(self, filename):
         """
         Loads a cptv file, and prepares for track extraction.
@@ -145,17 +144,20 @@ class TrackExtractor:
             return False
 
         if self.reject_non_static_clips and not is_static_background:
-            self.reject_reason = "Non static background deviation={:.1f}".format(background_stats.background_deviation)
+            self.reject_reason = "Non static background deviation={:.1f}".format(
+                background_stats.background_deviation)
             return False
 
         # don't process clips that are too hot.
         if self.config.max_mean_temperature_threshold and background_stats.mean_temp > self.config.max_mean_temperature_threshold:
-            self.reject_reason = "Mean temp too high {}".format(background_stats.mean_temp)
+            self.reject_reason = "Mean temp too high {}".format(
+                background_stats.mean_temp)
             return False
 
         # don't process clips with too large of a temperature difference
         if self.config.max_temperature_range_threshold and (background_stats.max_temp - background_stats.min_temp > self.config.max_temperature_range_threshold):
-            self.reject_reason = "Temp delta too high {}".format(background_stats.max_temp - background_stats.min_temp)
+            self.reject_reason = "Temp delta too high {}".format(
+                background_stats.max_temp - background_stats.min_temp)
             return False
 
         # reset the track ID so we start at 1
@@ -186,7 +188,7 @@ class TrackExtractor:
         if self.config.track_smoothing and len(frames) > 0:
             frame_height, frame_width = frames[0].shape
             for track in self.tracks:
-                track.smooth(Rectangle(0,0,frame_width, frame_height))
+                track.smooth(Rectangle(0, 0, frame_width, frame_height))
 
         return True
 
@@ -223,7 +225,8 @@ class TrackExtractor:
         thermal = np.float32(thermal)
         filtered = self.get_filtered(thermal, background)
 
-        regions, mask = self.get_regions_of_interest(filtered, self._prev_filtered)
+        regions, mask = self.get_regions_of_interest(
+            filtered, self._prev_filtered)
 
         # save frame stats
         self.frame_stats_min.append(np.min(thermal))
@@ -258,7 +261,8 @@ class TrackExtractor:
             return
 
         if not self.frame_buffer.has_flow:
-            self.frame_buffer.generate_flow(self.opt_flow, self.config.flow_threshold)
+            self.frame_buffer.generate_flow(
+                self.opt_flow, self.config.flow_threshold)
 
         # get track data
         for track_number, track in enumerate(self.tracks):
@@ -271,7 +275,8 @@ class TrackExtractor:
                     channels[TrackChannels.filtered] = 0
                 track_data.append(channels)
             track_id = track_number+1
-            database.add_track(clip_id, track_id, track_data, track, opts=self.compression)
+            database.add_track(clip_id, track_id, track_data,
+                               track, opts=self.compression)
 
     def get_track_channels(self, track: Track, frame_number):
         """
@@ -292,12 +297,16 @@ class TrackExtractor:
 
         if tracker_frame < 0 or tracker_frame >= len(self.frame_buffer.thermal):
             raise ValueError("Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
-               tracker_frame, len(self.frame_buffer.thermal)-1))
+                tracker_frame, len(self.frame_buffer.thermal)-1))
 
-        thermal = get_image_subsection(self.frame_buffer.thermal[tracker_frame], bounds)
-        filtered = get_image_subsection(self.frame_buffer.filtered[tracker_frame], bounds)
-        flow = get_image_subsection(self.frame_buffer.flow[tracker_frame], bounds)
-        mask = get_image_subsection(self.frame_buffer.mask[tracker_frame], bounds)
+        thermal = get_image_subsection(
+            self.frame_buffer.thermal[tracker_frame], bounds)
+        filtered = get_image_subsection(
+            self.frame_buffer.filtered[tracker_frame], bounds)
+        flow = get_image_subsection(
+            self.frame_buffer.flow[tracker_frame], bounds)
+        mask = get_image_subsection(
+            self.frame_buffer.mask[tracker_frame], bounds)
 
         # make sure only our pixels are included in the mask.
         mask[mask != bounds.id] = 0
@@ -305,10 +314,10 @@ class TrackExtractor:
 
         # stack together into a numpy array.
         # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
-        frame = np.int16(np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0))
+        frame = np.int16(
+            np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0))
 
         return frame
-
 
     def apply_matchings(self, regions):
         """
@@ -352,12 +361,14 @@ class TrackExtractor:
             if region in used_regions:
                 continue
             # make sure we don't overlap with existing tracks.  This can happen if a tail gets tracked as a new object
-            overlaps = [track.bounds.overlap_area(region) for track in self.active_tracks]
+            overlaps = [track.bounds.overlap_area(
+                region) for track in self.active_tracks]
             if len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
                 continue
             track = Track()
             track.add_frame(region)
-            track.start_time = self.video_start_time + datetime.timedelta(seconds=self.frame_on / 9.0)
+            track.start_time = self.video_start_time + \
+                datetime.timedelta(seconds=self.frame_on / 9.0)
             track.start_frame = self.frame_on
             new_tracks.add(track)
             self.active_tracks.append(track)
@@ -370,7 +381,8 @@ class TrackExtractor:
             track.add_blank_frame()
 
         # remove any tracks that have not seen their target in a while
-        self.active_tracks = [track for track in self.active_tracks if track.frames_since_target_seen < self.config.remove_track_after_frames]
+        self.active_tracks = [
+            track for track in self.active_tracks if track.frames_since_target_seen < self.config.remove_track_after_frames]
 
     def filter_tracks(self):
 
@@ -378,7 +390,7 @@ class TrackExtractor:
             track.trim()
 
         track_stats = [(track.get_stats(), track) for track in self.tracks]
-        track_stats.sort(reverse=True, key=lambda record : record[0].score)
+        track_stats.sort(reverse=True, key=lambda record: record[0].score)
 
         if self.verbose:
             for stats, track in track_stats:
@@ -395,12 +407,14 @@ class TrackExtractor:
             for other in self.tracks:
                 if track == other:
                     continue
-                highest_ratio = max(track.get_overlap_ratio(other), highest_ratio)
+                highest_ratio = max(
+                    track.get_overlap_ratio(other), highest_ratio)
             track_overlap_ratio[track] = highest_ratio
 
         # filter out tracks that probably are just noise.
         good_tracks = []
-        self.print_if_verbose("{} {}".format("Number of tracks before filtering", len(self.tracks)))
+        self.print_if_verbose("{} {}".format(
+            "Number of tracks before filtering", len(self.tracks)))
 
         for stats, track in track_stats:
             # discard any tracks that overlap too often with other tracks.  This normally means we are tracking the
@@ -434,12 +448,13 @@ class TrackExtractor:
 
         self.tracks = good_tracks
 
-
-        self.print_if_verbose("{} {}".format("Number of 'good' tracks", len(self.tracks)))
+        self.print_if_verbose("{} {}".format(
+            "Number of 'good' tracks", len(self.tracks)))
         # apply max_tracks filter
         # note, we take the n best tracks.
         if self.max_tracks is not None and self.max_tracks < len(self.tracks):
-            logging.warning(" -using only {0} tracks out of {1}".format(self.max_tracks, len(self.tracks)))
+            logging.warning(
+                " -using only {0} tracks out of {1}".format(self.max_tracks, len(self.tracks)))
             self.tracks = self.tracks[:self.max_tracks]
 
     def get_regions_of_interest(self, filtered, prev_filtered=None):
@@ -456,7 +471,8 @@ class TrackExtractor:
         # get frames change
         if prev_filtered is not None:
             # we need a lot of precision because the values are squared.  Float32 should work.
-            delta_frame = np.abs(np.float32(filtered) - np.float32(prev_filtered))
+            delta_frame = np.abs(np.float32(filtered) -
+                                 np.float32(prev_filtered))
         else:
             delta_frame = None
 
@@ -470,7 +486,8 @@ class TrackExtractor:
             kernel = np.ones((3, 3), np.uint8)
             thresh = cv2.erode(thresh, kernel, iterations=erosion)
 
-        labels, mask, stats, centroids = cv2.connectedComponentsWithStats(thresh)
+        labels, mask, stats, _ = cv2.connectedComponentsWithStats(
+            thresh)
 
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.config.frame_padding
@@ -501,8 +518,10 @@ class TrackExtractor:
                 region.right = min(region.right, frame_width - 1)
                 region.bottom = min(region.bottom, frame_height - 1)
 
-                crop_width_fraction = (old_region.width - region.width) / old_region.width
-                crop_height_fraction = (old_region.height - region.height) / old_region.height
+                crop_width_fraction = (
+                    old_region.width - region.width) / old_region.width
+                crop_height_fraction = (
+                    old_region.height - region.height) / old_region.height
 
                 if crop_width_fraction > 0.25 or crop_height_fraction > 0.25:
                     continue
@@ -518,7 +537,8 @@ class TrackExtractor:
             region.was_cropped = str(old_region) != str(region)
 
             if delta_frame is not None:
-                region_difference = np.float32(get_image_subsection(delta_frame, region))
+                region_difference = np.float32(
+                    get_image_subsection(delta_frame, region))
                 region.pixel_variance = np.var(region_difference)
 
             # filter out regions that are probably just noise
@@ -527,7 +547,7 @@ class TrackExtractor:
 
             regions.append(region)
 
-        return regions , mask
+        return regions, mask
 
     def print_if_verbose(self, info_string):
         if self.verbose:
@@ -558,13 +578,16 @@ class TrackExtractor:
 
         frames = np.float32(frames_list)
         background = np.percentile(frames, q=10, axis=0)
-        filtered = np.float32([self.get_filtered(frame, background) for frame in frames_list])
+        filtered = np.float32([self.get_filtered(frame, background)
+                               for frame in frames_list])
 
-        delta = np.asarray(frames[1:], dtype=np.float32) - np.asarray(frames[:-1], dtype=np.float32)
+        delta = np.asarray(frames[1:], dtype=np.float32) - \
+            np.asarray(frames[:-1], dtype=np.float32)
         average_delta = float(np.mean(np.abs(delta)))
 
         # take half the max filtered value as a threshold
-        threshold = float(np.percentile(np.reshape(filtered, [-1]), q=self.config.threshold_percentile) / 2)
+        threshold = float(np.percentile(np.reshape(
+            filtered, [-1]), q=self.config.threshold_percentile) / 2)
 
         # cap the threshold to something reasonable
         if threshold < self.config.min_threshold:
@@ -578,9 +601,11 @@ class TrackExtractor:
         background_stats.min_temp = float(np.min(frames))
         background_stats.max_temp = float(np.max(frames))
         background_stats.mean_temp = float(np.mean(frames))
-        background_stats.background_deviation = float(np.mean(np.abs(filtered)))
+        background_stats.background_deviation = float(
+            np.mean(np.abs(filtered)))
 
         return background, background_stats
+
 
 def apply_threshold(frame, threshold):
     """
@@ -594,11 +619,9 @@ def apply_threshold(frame, threshold):
     return thresh
 
 
-
-
-
 class BackgroundAnalysis:
     """ Stores background analysis statistics. """
+
     def __init__(self):
         self.threshold = None
         self.average_delta = None
