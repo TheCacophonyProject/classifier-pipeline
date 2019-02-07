@@ -61,8 +61,6 @@ class TrackExtractor:
         self.threshold = 0
         # the current frame number
         self.frame_on = 0
-        # enables verbose mode
-        self.verbose = trackconfig.verbose
 
         # per frame temperature statistics for thermal channel
         self.frame_stats_min = []
@@ -392,7 +390,7 @@ class TrackExtractor:
         track_stats = [(track.get_stats(), track) for track in self.tracks]
         track_stats.sort(reverse=True, key=lambda record: record[0].score)
 
-        if self.verbose:
+        if self.config.verbose:
             for stats, track in track_stats:
                 print(" - track duration:{:.1f}sec offset:{:.1f}px delta:{:.1f} mass:{:.1f}px".format(
                     stats.duration, stats.max_offset, stats.delta_std, stats.average_mass
@@ -550,7 +548,7 @@ class TrackExtractor:
         return regions, mask
 
     def print_if_verbose(self, info_string):
-        if self.verbose:
+        if self.config.verbose:
             print(info_string)
 
     def get_video_stats(self):

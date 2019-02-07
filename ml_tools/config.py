@@ -29,24 +29,32 @@ class Config(configTuple):
     @classmethod
     def load(self):
         filename = find_config()
-        return self.load_from(filename)
+        with open(filename) as stream:
+            yamlMap = yaml.load(stream)
+            self.load_from_map(yamlMap)
 
     @classmethod
-    def load_from(self, filename):
-        with open(filename) as stream:
-            y = yaml.load(stream)
-            base_folder = y["base_data_folder"]
+    def load_from_map(self, config):
+            base_folder = config["base_data_folder"]
             return self(
-                tracking=TrackingConfig.load(y["tracking"]),
-                classify_tracking=TrackingConfig.load(y["classify_tracking"]),
-                model=y["model"],
-                source_folder = path.join(base_folder, y["source_folder"]),
-                tracks_folder = path.join(base_folder, y["tracks_folder"]),
-                excluded_folders = y["excluded_folders"],
-                overwrite_mode = y["overwrite_mode"],
-                previews_colour_map = y["previews_colour_map"],
-                use_gpu=y["use_gpu"],
+                tracking=TrackingConfig.load(config["tracking"]),
+                classify_tracking=TrackingConfig.load(config["classify_tracking"]),
+                model=config["model"],
+                source_folder = path.join(base_folder, config["source_folder"]),
+                tracks_folder = path.join(base_folder, config["tracks_folder"]),
+                excluded_folders = config["excluded_folders"],
+                overwrite_mode = config["overwrite_mode"],
+                previews_colour_map = config["previews_colour_map"],
+                use_gpu=config["use_gpu"],
             )
+
+    @classmethod
+    def read_default_config_file(self):
+        filename = find_config()
+        with open(filename) as stream:
+            yamlMap = yaml.load(stream)
+        return yamlMap
+
 
 def find_config():
     for directory in CONFIG_DIRS:

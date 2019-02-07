@@ -33,18 +33,17 @@ class CPTVTrackExtractor(CPTVFileProcessor):
     # version number.  Recorded into stats file when a clip is processed.
     VERSION = 6
 
-    def __init__(self, config):
+    def __init__(self, config, tracker_config):
 
         CPTVFileProcessor.__init__(self)
 
         self.config = config
+        self.tracker_config = tracker_config
         self.hints = {}
-        self.verbose = False
         self.overwrite_mode = CPTVTrackExtractor.OM_NONE
-        self.enable_previews = config.tracking.preview_tracks
         self.enable_track_output = True
 
-        if config.tracking.preview_tracks:
+        if tracker_config.preview_tracks:
             if os.path.exists(config.previews_colour_map):
                 print("loading colour map " + config.previews_colour_map)
                 self.colormap = tools.load_colormap(config.previews_colour_map)
@@ -61,7 +60,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         self.database = TrackDatabase(os.path.join(self.config.tracks_folder, 'dataset.hdf5'))
 
         self.worker_pool_init = init_workers
-
 
         self.workers_threads = config.tracking.worker_threads
 
@@ -193,10 +191,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         tools.purge(destination_folder, base_filename + "*.mp4")
 
         # load the track
-        tracker = TrackExtractor(self.config.classify_tracking)
+        tracker = TrackExtractor(self.tracker_config)
         tracker.max_tracks = max_tracks
         tracker.tag = tag
-        tracker.verbose = self.verbose
 
         # by default we don't want to process the moving background images as it's too hard to get good tracks
         # without false-positives.
@@ -264,7 +261,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             tracker.export_tracks(self.database)
 
         # write a preview
-        if self.config.tracking.preview_tracks:
+        if self.tracker_config.preview_tracks:
             self.export_mpeg_preview(os.path.join(destination_folder, preview_filename), tracker)
 
         time_per_frame = (time.time() - start) / len(tracker.frame_buffer)

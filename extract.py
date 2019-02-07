@@ -8,7 +8,6 @@ from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import trackdatabase
 from ml_tools import tools
 from ml_tools.config import Config
-
 from track.cptvtrackextractor import CPTVTrackExtractor
 
 import os
@@ -29,29 +28,27 @@ def parse_params():
     parser.add_argument('-f', '--force-overwrite', default='old', help='Overwrite mode.  Options are all, old, or none.')
     parser.add_argument('-i', '--show-build-information', action='count', help='Show openCV build information and exit.')
 
-    config = Config.load()
-
+    conf = Config.read_default_config_file()
     args = parser.parse_args()
 
     if args.show_build_information:
         print(cv2.getBuildInformation())
         return
 
-    # setup extractor
-    extractor = CPTVTrackExtractor(config)
-
-    # override previews if thrue
+    # override previews if true
     if args.show_previews:
-        extractor.preview_tracks = True
+        conf["tracking"]["preview_tracks"] = True
 
     # override verbose if true
     if args.verbose:
-        extractor.verbose = True
+        conf["tracking"]["verbose"] = True
 
-    # # allow everything through
-    # extractor.disable_track_filters = args.disable_track_filters
+    config = Config.load_from_map(conf)
 
-    if extractor.enable_previews:
+    # setup extractor
+    extractor = CPTVTrackExtractor(config, config.tracking)
+
+    if config.tracking.preview_tracks:
         print("Previews enabled.")
 
     if extractor.verbose:
