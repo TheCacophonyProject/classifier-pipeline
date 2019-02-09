@@ -81,41 +81,35 @@ def main():
     parser.add_argument(
         '--end-date', help='Only clips on or before this day will be processed (format YYYY-MM-DD)')
 
-    config = Config.load()
+    conf = Config.read_default_config_file()
 
     args = parser.parse_args()
 
-    if not args.output_folder:
-        args.output_folder = config.tracks_folder
+    # if not args.model:
+    #     print("setting model")
+    #     conf["classify"]["model"]= args.model
 
-    if not args.source_folder:
-        args.source_folder = config.source_folder
+    config = Config.load_from_map(conf)
+
+    clip_classifier = ClipClassifier(config, config.classify_tracking)
+    clip_classifier.enable_gpu = config.use_gpu
+    clip_classifier.enable_previews = args.enable_preview
+    clip_classifier.enable_side_by_side = args.side_by_side
+    clip_classifier.include_prediction_in_filename = args.include_prediction_in_filename
+    clip_classifier.write_meta_to_stdout = args.meta_to_stdout
 
     if not args.meta_to_stdout:
         log_to_stdout()
 
-    if not args.model:
-        args.model = config.model
 
-    clip_classifier = ClipClassifier()
-    clip_classifier.enable_gpu = config.use_gpu
-    clip_classifier.enable_previews = args.enable_preview
-    clip_classifier.enable_side_by_side = args.side_by_side
-    clip_classifier.output_folder = args.output_folder
-    clip_classifier.source_folder = args.source_folder
-    clip_classifier.model_path = args.model
-    clip_classifier.high_quality_optical_flow = args.high_quality_optical_flow
-    clip_classifier.include_prediction_in_filename = args.include_prediction_in_filename
-    clip_classifier.write_meta_to_stdout = args.meta_to_stdout
-
-    if clip_classifier.high_quality_optical_flow:
-        logging.info("High quality optical flow enabled.")
+    # if clip_classifier.high_quality_optical_flow:
+    #     logging.info("High quality optical flow enabled.")
 
     if not clip_classifier.enable_gpu:
         logging.info("GPU mode disabled.")
 
-    if not os.path.exists(args.model+".meta"):
-        logging.error("No model found named '{}'.".format(args.model+".meta"))
+    if not os.path.exists(config.classify.model + ".meta"):
+        logging.error("No model found named '{}'.".format(config.classify.model+".meta"))
         exit(13)
 
     if args.start_date:
@@ -129,9 +123,6 @@ def main():
     print("fetching classifier")
     _ = clip_classifier.classifier
 
-    # apply the colormap
-    clip_classifier.colormap = tools.load_colormap(
-        resource_path("custom_colormap.dat"))
 
     clip_classifier.workers_threads = int(args.workers)
     if clip_classifier.workers_threads >= 1:
@@ -149,15 +140,14 @@ def main():
     if args.source == "all":
         clip_classifier.process_all(args.source_folder)
     elif os.path.splitext(args.source)[-1].lower() == '.cptv':
-        source_file = tools.find_file_from_cmd_line(
-            args.source_folder, args.source)
+        source_file = tools.find_file_from_cmd_line(config.source_folder, args.source)
         if source_file is None:
             return
         print("Processing file '" + source_file + "'")
         clip_classifier.process_file(source_file)
     else:
         clip_classifier.process_folder(
-            os.path.join(args.source_folder, args.source))
+            os.path.join(config.source_folder, args.source))
 
 
 if __name__ == "__main__":

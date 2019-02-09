@@ -30,7 +30,11 @@ class CPTVFileProcessor:
     # no clips will be overwritten
     OM_NONE = 'none'
 
-    def __init__(self):
+    def __init__(self, config, tracker_config):
+
+        self.config = config
+        self.tracker_config = tracker_config
+
         """
         A base class for processing large sets of CPTV video files.
         """

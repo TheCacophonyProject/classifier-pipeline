@@ -92,8 +92,6 @@ class TrackExtractor:
         # accumulates frame changes for FM_DELTA algorithm
         self.accumulator = None
 
-        self.max_tracks = self.config.max_tracks
-
     def load(self, filename):
         """
         Loads a cptv file, and prepares for track extraction.
@@ -450,10 +448,10 @@ class TrackExtractor:
             "Number of 'good' tracks", len(self.tracks)))
         # apply max_tracks filter
         # note, we take the n best tracks.
-        if self.max_tracks is not None and self.max_tracks < len(self.tracks):
+        if self.config.max_tracks is not None and self.config.max_tracks < len(self.tracks):
             logging.warning(
-                " -using only {0} tracks out of {1}".format(self.max_tracks, len(self.tracks)))
-            self.tracks = self.tracks[:self.max_tracks]
+                " -using only {0} tracks out of {1}".format(self.config.max_tracks, len(self.tracks)))
+            self.tracks = self.tracks[:self.config.max_tracks]
 
     def get_regions_of_interest(self, filtered, prev_filtered=None):
         """

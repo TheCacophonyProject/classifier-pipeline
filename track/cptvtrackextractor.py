@@ -35,10 +35,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
     def __init__(self, config, tracker_config):
 
-        CPTVFileProcessor.__init__(self)
+        CPTVFileProcessor.__init__(self, config, tracker_config)
 
-        self.config = config
-        self.tracker_config = tracker_config
         self.hints = {}
         self.overwrite_mode = CPTVTrackExtractor.OM_NONE
         self.enable_track_output = True

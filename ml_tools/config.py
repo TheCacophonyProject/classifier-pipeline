@@ -1,6 +1,7 @@
 from collections import namedtuple
 from pathlib import Path
 from track.trackingconfig import TrackingConfig
+from classify.classifyconfig import ClassifyConfig
 
 import os.path as path
 import yaml
@@ -14,8 +15,8 @@ configTuple = namedtuple(
     "Config",
     [
         "tracking",
-        "model",
         "classify_tracking",
+        "classify",
         "source_folder",
         "tracks_folder",
         "excluded_folders",
@@ -39,7 +40,7 @@ class Config(configTuple):
             return self(
                 tracking=TrackingConfig.load(config["tracking"]),
                 classify_tracking=TrackingConfig.load(config["classify_tracking"]),
-                model=config["model"],
+                classify=ClassifyConfig.load(config["classify"]),
                 source_folder = path.join(base_folder, config["source_folder"]),
                 tracks_folder = path.join(base_folder, config["tracks_folder"]),
                 excluded_folders = config["excluded_folders"],
