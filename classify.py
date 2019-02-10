@@ -92,9 +92,8 @@ def main():
     config = Config.load_from_map(conf)
 
     clip_classifier = ClipClassifier(config, config.classify_tracking)
-    clip_classifier.enable_gpu = config.use_gpu
-    clip_classifier.enable_previews = args.enable_preview
-    clip_classifier.enable_side_by_side = args.side_by_side
+    # clip_classifier.enable_previews = args.enable_preview
+    # clip_classifier.enable_side_by_side = args.side_by_side
     clip_classifier.include_prediction_in_filename = args.include_prediction_in_filename
     clip_classifier.write_meta_to_stdout = args.meta_to_stdout
 
@@ -105,7 +104,7 @@ def main():
     # if clip_classifier.high_quality_optical_flow:
     #     logging.info("High quality optical flow enabled.")
 
-    if not clip_classifier.enable_gpu:
+    if not config.use_gpu:
         logging.info("GPU mode disabled.")
 
     if not os.path.exists(config.classify.model + ".meta"):

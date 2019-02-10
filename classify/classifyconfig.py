@@ -23,7 +23,7 @@ configTuple = namedtuple(
     "classify",
     [
         "model",
-        "meta_to_stdout"
+        "meta_to_stdout",
     ],
 )
 
