@@ -484,8 +484,8 @@ class TrackExtractor:
                 region.bottom = min(region.bottom, frame_height - 1 - edge)
             elif self.config.cropped_regions_strategy == "cautious":
                 # keep cropped regions if they have a reasonable size
-                region.left = max(region.left, 0 - edge)
-                region.top = max(region.top, 0 - edge)
+                region.left = max(region.left, edge)
+                region.top = max(region.top, edge)
                 region.right = min(region.right, frame_width - 1 - edge)
                 region.bottom = min(region.bottom, frame_height - 1 - edge)
 

@@ -346,8 +346,6 @@ class ClipClassifier(CPTVFileProcessor):
             for i, value in enumerate(prediction.class_best_score):
                 label = self.classifier.labels[i]
                 track_info['all_class_confidences'][label] = round(value, 3)
-            # for bound in track.bounds_history:
-            #     print("frame {}, {}".format(bound.frame_index, bound))
 
 
         if self.write_meta_to_stdout:
