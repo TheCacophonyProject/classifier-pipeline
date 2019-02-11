@@ -33,7 +33,8 @@ class ClipClassifier(CPTVFileProcessor):
 
         # mpeg preview output
         self.previewer = None
-        self.previewer = Previewer(config)
+        if config.classify.preview:
+            self.previewer = Previewer(config)
 
         self.start_date = None
         self.end_date = None
@@ -93,16 +94,21 @@ class ClipClassifier(CPTVFileProcessor):
         # note: we should probably be doing this every 9 frames or so.
         state = None
         for i in range(len(track)):
-
             # note: would be much better for the tracker to store the thermal references as it goes.
             thermal_reference = np.median(tracker.frame_buffer.thermal[track.start_frame + i])
 
             frame = tracker.get_track_channels(track, i)
+
             if i % self.FRAME_SKIP == 0:
 
                 # we use a tigher cropping here so we disable the default 2 pixel inset
-                frame = Preprocessor.apply([frame], [thermal_reference], default_inset=0)[0]
+                frames = Preprocessor.apply([frame], [thermal_reference], default_inset=0)
 
+                if frames is None:
+                    logging.info("Frame {} of track could not be classified.".format(i))
+                    return
+
+                frame = frames[0]
                 prediction, novelty, state = self.classifier.classify_frame_with_novelty(frame, state)
 
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
@@ -127,10 +133,6 @@ class ClipClassifier(CPTVFileProcessor):
 
                 prediction *= mass_weight * cropped_weight
 
-            else:
-                # just continue prediction and state along.
-                pass
-
             if smooth_prediction is None:
                 if UNIFORM_PRIOR:
                     smooth_prediction = np.ones([num_labels]) * (1 / num_labels)
@@ -143,6 +145,7 @@ class ClipClassifier(CPTVFileProcessor):
 
             predictions.append(smooth_prediction)
             novelties.append(smooth_novelty)
+
 
         return TrackPrediction(predictions, novelties)
 
@@ -249,7 +252,7 @@ class ClipClassifier(CPTVFileProcessor):
     def process_all(self, root):
         for root, folders, files in os.walk(root):
             for folder in folders:
-                if folder not in IGNORE_FOLDERS:
+                if folder not in self.config.excluded_folders:
                     self.process_folder(os.path.join(root,folder), tag=folder.lower())
 
     def process_file(self, filename, **kwargs):
@@ -297,6 +300,7 @@ class ClipClassifier(CPTVFileProcessor):
         for i, track in enumerate(tracker.tracks):
 
             prediction = self.identify_track(tracker, track)
+            print(prediction)
 
             self.track_prediction[track] = prediction
 
@@ -342,10 +346,13 @@ class ClipClassifier(CPTVFileProcessor):
             for i, value in enumerate(prediction.class_best_score):
                 label = self.classifier.labels[i]
                 track_info['all_class_confidences'][label] = round(value, 3)
+            # for bound in track.bounds_history:
+            #     print("frame {}, {}".format(bound.frame_index, bound))
 
 
         if self.write_meta_to_stdout:
             output = json.dumps(save_file, indent=4, cls=tools.CustomJSONEncoder)
+            print("output is ")
             print(output)
         else:
             f = open(meta_filename, 'w')

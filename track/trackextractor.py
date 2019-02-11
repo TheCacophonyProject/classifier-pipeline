@@ -27,9 +27,7 @@ import h5py
 import scipy.ndimage
 import logging
 
-from ml_tools.tools import get_image_subsection, blosc_zstd
-from ml_tools.trackdatabase import TrackDatabase
-from ml_tools.dataset import TrackChannels
+from ml_tools.tools import get_image_subsection
 
 from track.track import Track
 from track.region import Region
@@ -44,8 +42,6 @@ class TrackExtractor:
     def __init__(self, trackconfig):
 
         self.config = trackconfig
-
-        self.compression = blosc_zstd if self.config.enable_compression else None
 
         # start time of video
         self.video_start_time = None
@@ -70,6 +66,8 @@ class TrackExtractor:
 
         # reason qwhy clip was rejected, or none if clip was accepted
         self.reject_reason = None
+
+        self.max_tracks = trackconfig.max_tracks
 
         # a list of currently active tracks
         self.active_tracks = []
@@ -237,42 +235,9 @@ class TrackExtractor:
         self.region_history.append(regions)
 
         self.apply_matchings(regions)
+        # do we need this
         self._prev_filtered = filtered.copy()
         self.frame_on += 1
-
-    def export_tracks(self, database: TrackDatabase):
-        """
-        Writes tracks to a track database.
-        :param database: database to write track to.
-        """
-
-        clip_id = os.path.basename(self.source_file)
-
-        # overwrite any old clips.
-        # Note: we do this even if there are no tracks so there there will be a blank clip entry as a record
-        # that we have processed it.
-        database.create_clip(clip_id, self)
-
-        if len(self.tracks) == 0:
-            return
-
-        if not self.frame_buffer.has_flow:
-            self.frame_buffer.generate_flow(
-                self.opt_flow, self.config.flow_threshold)
-
-        # get track data
-        for track_number, track in enumerate(self.tracks):
-            track_data = []
-            for i in range(len(track)):
-                channels = self.get_track_channels(track, i)
-
-                # zero out the filtered channel
-                if not self.config.include_filtered_channel:
-                    channels[TrackChannels.filtered] = 0
-                track_data.append(channels)
-            track_id = track_number+1
-            database.add_track(clip_id, track_id, track_data,
-                               track, opts=self.compression)
 
     def get_track_channels(self, track: Track, frame_number):
         """
@@ -448,10 +413,10 @@ class TrackExtractor:
             "Number of 'good' tracks", len(self.tracks)))
         # apply max_tracks filter
         # note, we take the n best tracks.
-        if self.config.max_tracks is not None and self.config.max_tracks < len(self.tracks):
+        if self.max_tracks is not None and self.max_tracks < len(self.tracks):
             logging.warning(
-                " -using only {0} tracks out of {1}".format(self.config.max_tracks, len(self.tracks)))
-            self.tracks = self.tracks[:self.config.max_tracks]
+                " -using only {0} tracks out of {1}".format(self.max_tracks, len(self.tracks)))
+            self.tracks = self.tracks[:self.max_tracks]
 
     def get_regions_of_interest(self, filtered, prev_filtered=None):
         """
@@ -472,7 +437,14 @@ class TrackExtractor:
         else:
             delta_frame = None
 
-        thresh = np.uint8(apply_threshold(filtered, threshold=self.threshold))
+        edge = self.config.edge_pixels
+        if edge > 0:
+            edgeless_filtered = filtered[edge:frame_height - edge, edge:frame_width - edge]
+        else:
+            edge = 0
+            edgeless_filtered = filtered
+
+        thresh = np.uint8(apply_threshold(edgeless_filtered, threshold=self.threshold))
 
         # applies erosion
         erosion = 0
@@ -482,8 +454,11 @@ class TrackExtractor:
             kernel = np.ones((3, 3), np.uint8)
             thresh = cv2.erode(thresh, kernel, iterations=erosion)
 
-        labels, mask, stats, _ = cv2.connectedComponentsWithStats(
+        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(
             thresh)
+
+        mask = np.zeros(filtered.shape)
+        mask[edge:frame_height - edge, edge:frame_width - edge] = small_mask
 
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.config.frame_padding
@@ -493,8 +468,8 @@ class TrackExtractor:
         for i in range(1, labels):
 
             region = Region(
-                stats[i, 0] - padding,
-                stats[i, 1] - padding,
+                stats[i, 0] - padding + edge,
+                stats[i, 1] - padding + edge,
                 stats[i, 2] + padding * 2,
                 stats[i, 3] + padding * 2,
                 stats[i, 4], 0, i, self.frame_on
@@ -503,16 +478,16 @@ class TrackExtractor:
             old_region = region.copy()
             if self.config.cropped_regions_strategy == "all":
                 # in this case we just clip the region to the edges of the screen
-                region.left = max(region.left, 0)
-                region.top = max(region.top, 0)
-                region.right = min(region.right, frame_width - 1)
-                region.bottom = min(region.bottom, frame_height - 1)
+                region.left = max(region.left, edge)
+                region.top = max(region.top, edge)
+                region.right = min(region.right, frame_width - 1 - edge)
+                region.bottom = min(region.bottom, frame_height - 1 - edge)
             elif self.config.cropped_regions_strategy == "cautious":
                 # keep cropped regions if they have a reasonable size
-                region.left = max(region.left, 0)
-                region.top = max(region.top, 0)
-                region.right = min(region.right, frame_width - 1)
-                region.bottom = min(region.bottom, frame_height - 1)
+                region.left = max(region.left, 0 - edge)
+                region.top = max(region.top, 0 - edge)
+                region.right = min(region.right, frame_width - 1 - edge)
+                region.bottom = min(region.bottom, frame_height - 1 - edge)
 
                 crop_width_fraction = (
                     old_region.width - region.width) / old_region.width
@@ -524,7 +499,7 @@ class TrackExtractor:
 
             elif self.config.cropped_regions_strategy == "none":
                 # all regions that touch the side of the screen are removed
-                if (region.left < 0) or (region.right > frame_width) or (region.top < 0) or (region.top < 0) or (region.bottom > frame_height):
+                if (region.left < edge) or (region.right > frame_width - edge) or (region.top < edge) or (region.bottom > frame_height - edge):
                     continue
             else:
                 raise ValueError(

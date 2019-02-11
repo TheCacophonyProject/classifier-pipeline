@@ -20,25 +20,37 @@ class Previewer:
 
     def __init__(self, config):
         self.config = config
+        # make sure all the required files are there
+        self.colourmap
+        self.font
+        self.font_title
 
-        if os.path.exists(config.previews_colour_map):
-            print("loading colour map " + config.previews_colour_map)
-            self.colormap = tools.load_colormap(config.previews_colour_map)
-        else:
-            print("using default colour map")
-            self.colormap = plt.get_cmap('jet')
+    @property
+    def colourmap(self):
+        """ gets colourmap. """
+        if not globs._previewer_colour_map:
+            colourmap = self.config.previews_colour_map
+            if os.path.exists(colourmap):
+                print("loading colour map " + colourmap)
+                self.colormap = tools.load_colormap(colourmap)
+            else:
+                print("using default colour map")
+                self.colormap = plt.get_cmap('jet')
+
+        return globs._previewer_colour_map
+
 
     @property
     def font(self):
         """ gets default font. """
-        if not globs._classifier_font: globs._classifier_font = ImageFont.truetype(resource_path("Ubuntu-R.ttf"), 12)
-        return globs._classifier_font
+        if not globs._previewer_font: globs._previewer_font = ImageFont.truetype(resource_path("Ubuntu-R.ttf"), 12)
+        return globs._previewer_font
 
     @property
     def font_title(self):
         """ gets default title font. """
-        if not globs._classifier_font_title: globs._classifier_font_title = ImageFont.truetype(resource_path("Ubuntu-B.ttf"), 14)
-        return globs._classifier_font_title
+        if not globs._previewer_font_title: globs._previewer_font_title = ImageFont.truetype(resource_path("Ubuntu-B.ttf"), 14)
+        return globs._previewer_font_title
 
 
     def export_clip_preview(self, filename, tracker:TrackExtractor, track_predictions):
@@ -55,8 +67,13 @@ class Previewer:
         # amount pad at ends of thermal range
         HEAD_ROOM = 25
 
-        auto_min = np.min(tracker.frame_buffer.thermal[0])
-        auto_max = np.max(tracker.frame_buffer.thermal[0])
+        if tracker.stats:
+            auto_max = tracker.stats['max_temp']
+            auto_min = tracker.stats['min_temp']
+            print("Using temperatures {}-{}".format(auto_min, auto_max))
+        else:
+            print("Do not have temperatures to use")
+            return
 
         # setting quality to 30 gives files approximately the same size as the original CPTV MPEG previews
         # (but they look quite compressed)
@@ -64,17 +81,17 @@ class Previewer:
 
         for frame_number, thermal in enumerate(tracker.frame_buffer.thermal):
 
-            thermal_min = np.min(thermal)
-            thermal_max = np.max(thermal)
+            # thermal_min = np.min(thermal)
+            # thermal_max = np.max(thermal)
 
-            auto_min = NORMALISATION_SMOOTH * auto_min + (1 - NORMALISATION_SMOOTH) * (thermal_min-HEAD_ROOM)
-            auto_max = NORMALISATION_SMOOTH * auto_max + (1 - NORMALISATION_SMOOTH) * (thermal_max+HEAD_ROOM)
+            # auto_min = NORMALISATION_SMOOTH * auto_min + (1 - NORMALISATION_SMOOTH) * (thermal_min-HEAD_ROOM)
+            # auto_max = NORMALISATION_SMOOTH * auto_max + (1 - NORMALISATION_SMOOTH) * (thermal_max+HEAD_ROOM)
 
-            # sometimes we get an extreme value that throws off the autonormalisation, so if there are values outside
-            # of the expected range just instantly switch levels
-            if thermal_min < auto_min or thermal_max > auto_max:
-                auto_min = thermal_min
-                auto_max = thermal_max
+            # # sometimes we get an extreme value that throws off the autonormalisation, so if there are values outside
+            # # of the expected range just instantly switch levels
+            # if thermal_min < auto_min or thermal_max > auto_max:
+            #     auto_min = thermal_min
+            #     auto_max = thermal_max
 
             thermal_image = tools.convert_heat_to_img(thermal, self.colormap, auto_min, auto_max)
             thermal_image = thermal_image.resize((int(thermal_image.width * FRAME_SCALE), int(thermal_image.height * FRAME_SCALE)), Image.BILINEAR)
@@ -101,12 +118,11 @@ class Previewer:
             # we store the entire video in memory so we need to cap the frame count at some point.
             if frame_number > 9 * 60 * 10:
                 break
+        print("Used temperatures {}-{}".format(auto_min, auto_max))
 
         mpeg.close()
 
     def export_tracking_frame(self, tracker: TrackExtractor, frame_number:int, frame_scale:float, track_predictions):
-
-        mask = tracker.frame_buffer.mask[frame_number]
 
         filtered = tracker.frame_buffer.filtered[frame_number]
         tracking_image = tools.convert_heat_to_img(filtered / 200, self.colormap, temp_min=0, temp_max=1)

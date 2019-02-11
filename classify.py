@@ -8,6 +8,7 @@ import json
 import os
 import logging
 import sys
+import datetime
 
 import numpy as np
 
@@ -52,38 +53,35 @@ def main():
     parser.add_argument(
         'source', help='a CPTV file to process, or a folder name, or "all" for all files within subdirectories of source folder.')
 
-    parser.add_argument('-p', '--enable-preview', default=False,
-                        action='store_true', help='Enables preview MPEG files (can be slow)')
-    parser.add_argument('-b', '--side-by-side', default=False, action='store_true',
-                        help='Output processed footage next to original output in preview MPEG')
+    parser.add_argument('-p', '--create-previews', action='count', help='Create MP4 previews for tracks (can be slow)')
+    parser.add_argument('-v', '--verbose', action='count', help='Display additional information.')
+
     parser.add_argument('-q', '--high-quality-optical-flow', default=False,
                         action='store_true', help='Enabled higher quality optical flow (slow)')
-    parser.add_argument('-v', '--verbose', default=0,
-                        action='count', help='Display additional information.')
-    parser.add_argument('-w', '--workers', default=0,
-                        help='Number of worker threads to use.  0 disables worker pool and forces a single thread.')
     parser.add_argument('-f', '--force-overwrite', default='none',
                         help='Overwrite mode.  Options are all, old, or none.')
-    parser.add_argument('-o', '--output-folder',
-                        help='Folder to output tracks to')
-    parser.add_argument('-s', '--source-folder',
-                        help='Source folder root with class folders containing CPTV files')
-
-    parser.add_argument(
-        '-m', '--model', help='Model to use for classification')
-    parser.add_argument('-i', '--include-prediction-in-filename', default=False,
-                        action='store_true', help='Adds class scores to output files')
-    parser.add_argument('--meta-to-stdout', default=False, action='store_true',
-                        help='Writes metadata to standard out instead of a file')
 
     parser.add_argument(
         '--start-date', help='Only clips on or after this day will be processed (format YYYY-MM-DD)')
     parser.add_argument(
         '--end-date', help='Only clips on or before this day will be processed (format YYYY-MM-DD)')
+    # parser.add_argument('-b', '--side-by-side', default=False, action='store_true',
+    #                     help='Output processed footage next to original output in preview MPEG')
+    # parser.add_argument(
+    #     '-m', '--model', help='Model to use for classification')
+    # parser.add_argument('-i', '--include-prediction-in-filename', default=False,
+    #                     action='store_true', help='Adds class scores to output files')
 
     conf = Config.read_default_config_file()
 
     args = parser.parse_args()
+
+    if args.create_previews:
+        conf["classify"]["preview"] = True
+
+    # override verbose if true
+    if args.verbose:
+        conf["classify-tracking"]["verbose"] = True
 
     # if not args.model:
     #     print("setting model")
@@ -92,17 +90,13 @@ def main():
     config = Config.load_from_map(conf)
 
     clip_classifier = ClipClassifier(config, config.classify_tracking)
-    # clip_classifier.enable_previews = args.enable_preview
-    # clip_classifier.enable_side_by_side = args.side_by_side
-    clip_classifier.include_prediction_in_filename = args.include_prediction_in_filename
-    clip_classifier.write_meta_to_stdout = args.meta_to_stdout
+    # clip_classifier.include_prediction_in_filename = args.include_prediction_in_filename
 
-    if not args.meta_to_stdout:
+    if not config.classify.meta_to_stdout:
         log_to_stdout()
 
-
-    # if clip_classifier.high_quality_optical_flow:
-    #     logging.info("High quality optical flow enabled.")
+    if config.classify.preview:
+        logging.info("Creating previews")
 
     if not config.use_gpu:
         logging.info("GPU mode disabled.")
@@ -119,14 +113,7 @@ def main():
         clip_classifier.end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
 
     # just fetch the classifier now so it doesn't impact the benchmarking on the first clip analysed.
-    print("fetching classifier")
     _ = clip_classifier.classifier
-
-
-    clip_classifier.workers_threads = int(args.workers)
-    if clip_classifier.workers_threads >= 1:
-        logging.info("Using {0} worker threads".format(
-            clip_classifier.workers_threads))
 
     # set overwrite mode
     if args.force_overwrite.lower() not in ['all', 'old', 'none']:
@@ -142,7 +129,7 @@ def main():
         source_file = tools.find_file_from_cmd_line(config.source_folder, args.source)
         if source_file is None:
             return
-        print("Processing file '" + source_file + "'")
+        logging.info("Processing file '" + source_file + "'")
         clip_classifier.process_file(source_file)
     else:
         clip_classifier.process_folder(

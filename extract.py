@@ -22,7 +22,7 @@ def parse_params():
 
     parser.add_argument('target', default='all', help='Target to process, "all" processes all folders, "test" runs test cases, "clean" to remove banned clips from db, or a "cptv" file to run a single source.')
 
-    parser.add_argument('-p', '--show-previews', action='count', help='Show previews for tracks (can be slow)')
+    parser.add_argument('-p', '--create-previews', action='count', help='Create MP4 previews for tracks (can be slow)')
     parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
     parser.add_argument('-v', '--verbose', action='count', help='Display additional information.')
     parser.add_argument('-f', '--force-overwrite', default='old', help='Overwrite mode.  Options are all, old, or none.')
@@ -36,8 +36,9 @@ def parse_params():
         return
 
     # override previews if true
-    if args.show_previews:
+    if args.create_previews:
         conf["tracking"]["preview_tracks"] = True
+        conf["classify_tracking"]["preview_tracks"] = True
 
     # override verbose if true
     if args.verbose:

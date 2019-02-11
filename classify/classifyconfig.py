@@ -24,6 +24,7 @@ configTuple = namedtuple(
     [
         "model",
         "meta_to_stdout",
+        "preview",
     ],
 )
 
@@ -32,7 +33,8 @@ class ClassifyConfig(configTuple):
     @classmethod
     def load(cls, classify):
         config = cls(model=classify["model"],
-            meta_to_stdout=classify["meta_to_stdout"]
+            meta_to_stdout=classify["meta_to_stdout"],
+            preview=classify["preview"],
         )
         return config
 

@@ -14,7 +14,7 @@ import math
 import pickle
 import time
 import dateutil
-from datetime import datetime
+import datetime
 
 import numpy as np
 

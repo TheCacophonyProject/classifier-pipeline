@@ -4,6 +4,8 @@ from ml_tools import tools
 from ml_tools import trackdatabase
 from PIL import Image, ImageDraw
 
+from ml_tools.dataset import TrackChannels
+from ml_tools.tools import blosc_zstd
 from track.trackextractor import TrackExtractor
 from track.mpegpreviewstreamer import MPEGPreviewStreamer
 
@@ -40,6 +42,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         self.hints = {}
         self.overwrite_mode = CPTVTrackExtractor.OM_NONE
         self.enable_track_output = True
+        self.compression = blosc_zstd if self.tracker_config.enable_compression else None
 
         if tracker_config.preview_tracks:
             if os.path.exists(config.previews_colour_map):
@@ -256,7 +259,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             track.tag = tag
 
         if self.enable_track_output:
-            tracker.export_tracks(self.database)
+            self.export_tracks(full_path, tracker, self.database)
 
         # write a preview
         if self.tracker_config.preview_tracks:
@@ -272,6 +275,40 @@ class CPTVTrackExtractor(CPTVFileProcessor):
          ))
 
         return tracker
+
+    def export_tracks(self, full_path, tracker: TrackExtractor, database: TrackDatabase):
+        """
+        Writes tracks to a track database.
+        :param database: database to write track to.
+        """
+
+        clip_id = os.path.basename(full_path)
+
+        # overwrite any old clips.
+        # Note: we do this even if there are no tracks so there there will be a blank clip entry as a record
+        # that we have processed it.
+        database.create_clip(clip_id, tracker)
+
+        if len(tracker.tracks) == 0:
+            return
+
+        if not tracker.frame_buffer.has_flow:
+            tracker.frame_buffer.generate_flow(tracker.opt_flow, tracker.config.flow_threshold)
+
+        # get track data
+        for track_number, track in enumerate(tracker.tracks):
+            track_data = []
+            for i in range(len(track)):
+                channels = tracker.get_track_channels(track, i)
+
+                # zero out the filtered channel
+                if not tracker.config.include_filtered_channel:
+                    channels[TrackChannels.filtered] = 0
+                track_data.append(channels)
+            track_id = track_number+1
+            database.add_track(clip_id, track_id, track_data,
+                               track, opts=self.compression)
+
 
     def needs_processing(self, source_filename):
         """
