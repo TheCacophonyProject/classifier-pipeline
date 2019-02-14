@@ -97,7 +97,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         previous_filter_setting = self.disable_track_filters
         previous_background_setting = self.disable_background_subtraction
 
-        for root, folders, files in os.walk(root):
+        for root, folders, _ in os.walk(root):
             for folder in folders:
                 if folder not in self.config.excluded_folders:
                     if folder.lower() == "false-positive":
@@ -290,8 +290,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         if len(tracker.tracks) == 0:
             return
 
-        if not tracker.frame_buffer.has_flow:
-            tracker.frame_buffer.generate_flow(tracker.opt_flow, tracker.config.flow_threshold)
+        tracker.generate_optical_flow()
 
         # get track data
         for track_number, track in enumerate(tracker.tracks):

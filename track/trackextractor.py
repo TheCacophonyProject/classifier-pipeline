@@ -617,6 +617,10 @@ class TrackExtractor:
 
         return background, background_stats
 
+    def generate_optical_flow(self):
+        if not self.frame_buffer.has_flow:
+            self.frame_buffer.generate_optical_flow(self.opt_flow, self.config.flow_threshold)
+
 
 def apply_threshold(frame, threshold):
     """

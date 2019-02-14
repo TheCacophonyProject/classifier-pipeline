@@ -83,18 +83,9 @@ class Previewer:
             thermal_image = thermal_image.resize((int(thermal_image.width * FRAME_SCALE), int(thermal_image.height * FRAME_SCALE)), Image.BILINEAR)
 
             if tracker.frame_buffer.filtered:
-                # # if self.enable_side_by_side:
-                # #     # put thermal & tracking images side by side
-                # #     tracking_image = self.export_tracking_frame(tracker, frame_number, FRAME_SCALE, track_predictions)
-                # #     side_by_side_image = Image.new('RGB', (tracking_image.width * 2, tracking_image.height))
-                # #     side_by_side_image.paste(thermal_image, (0, 0))
-                # #     side_by_side_image.paste(tracking_image, (tracking_image.width, 0))
-                # #     mpeg.next_frame(np.asarray(side_by_side_image))
-                # else:
                 # overlay track rectanges on original thermal image
                 thermal_image = self.draw_track_rectangles(tracker, frame_number, FRAME_SCALE, thermal_image, track_predictions)
                 mpeg.next_frame(np.asarray(thermal_image))
-
             else:
                 # no filtered frames available (clip too hot or
                 # background moving?) so just output the original

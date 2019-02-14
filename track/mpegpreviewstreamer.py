@@ -16,8 +16,7 @@ class MPEGPreviewStreamer():
         self.tracker = tracker
         self.colormap = colormap
         assert tracker.frame_buffer, 'tracker frame buffer must be allocated for MPEG previews'
-        if not self.tracker.frame_buffer.has_flow:
-            self.tracker.frame_buffer.generate_flow(self.tracker.opt_flow)
+        self.tracker.generate_optical_flow()
         self.current_frame = 0
         self.FRAME_SCALE = 3.0
         self.track_colors = [(255, 0, 0), (0, 255, 0), (255, 255, 0), (128, 255, 255)]

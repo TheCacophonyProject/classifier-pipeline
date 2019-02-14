@@ -35,7 +35,7 @@ class FrameBuffer:
     def has_flow(self):
         return self.flow is not None and len(self.flow) != 0
 
-    def generate_flow(self, opt_flow, flow_threshold=40):
+    def generate_optical_flow(self, opt_flow, flow_threshold=40):
         """
         Generate optical flow from thermal frames
         :param opt_flow: An optical flow algorithm

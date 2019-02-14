@@ -58,12 +58,6 @@ def main():
         '--start-date', help='Only clips on or after this day will be processed (format YYYY-MM-DD)')
     parser.add_argument(
         '--end-date', help='Only clips on or before this day will be processed (format YYYY-MM-DD)')
-    # parser.add_argument('-b', '--side-by-side', default=False, action='store_true',
-    #                     help='Output processed footage next to original output in preview MPEG')
-    # parser.add_argument(
-    #     '-m', '--model', help='Model to use for classification')
-    # parser.add_argument('-i', '--include-prediction-in-filename', default=False,
-    #                     action='store_true', help='Adds class scores to output files')
 
     conf = Config.read_default_config_file()
 
@@ -76,14 +70,9 @@ def main():
     if args.verbose:
         conf["classify-tracking"]["verbose"] = True
 
-    # if not args.model:
-    #     print("setting model")
-    #     conf["classify"]["model"]= args.model
-
     config = Config.load_from_map(conf)
 
     clip_classifier = ClipClassifier(config, config.classify_tracking)
-    # clip_classifier.include_prediction_in_filename = args.include_prediction_in_filename
 
     if not config.classify.meta_to_stdout:
         log_to_stdout()
