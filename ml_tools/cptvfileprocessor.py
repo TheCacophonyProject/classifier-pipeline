@@ -50,6 +50,9 @@ class CPTVFileProcessor:
         # optional initializer for worker threads
         self.worker_pool_init = None
 
+        os.makedirs(config.classify.classify_folder, mode=0o775, exist_ok=True)
+
+
     def process_file(self, filename, **kwargs):
         """ The function to process an individual file. """
         raise Exception("Process file method must be overwritten in sub class.")

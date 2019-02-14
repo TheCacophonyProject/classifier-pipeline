@@ -26,9 +26,13 @@ def parse_params():
     parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
     parser.add_argument('-v', '--verbose', action='count', help='Display additional information.')
     parser.add_argument('-i', '--show-build-information', action='count', help='Show openCV build information and exit.')
+    parser.add_argument('-c', '--config-file', help="Path to config file to use")
 
-    conf = Config.read_default_config_file()
     args = parser.parse_args()
+    if args.config_file:
+        conf = Config.read_config_file(args.config_file)
+    else:
+        conf = Config.read_default_config_file()
 
     if args.show_build_information:
         print(cv2.getBuildInformation())
@@ -36,8 +40,7 @@ def parse_params():
 
     # override previews if true
     if args.create_previews:
-        conf["tracking"]["preview_tracks"] = True
-        conf["classify_tracking"]["preview_tracks"] = True
+        conf["extract"]["preview_tracks"] = True
 
     # override verbose if true
     if args.verbose:
@@ -48,7 +51,7 @@ def parse_params():
     # setup extractor
     extractor = CPTVTrackExtractor(config, config.tracking)
 
-    if config.tracking.preview_tracks:
+    if config.extract.preview_tracks:
         print("Previews enabled.")
 
     if extractor.verbose:

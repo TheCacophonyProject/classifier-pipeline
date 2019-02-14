@@ -20,7 +20,8 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 from collections import namedtuple
 import ml_tools.config
 from track.trackextractor import TrackExtractor
-configTuple = namedtuple(
+
+TrackingConfigTuple = namedtuple(
     "tracking",
     [
         "background_calc",
@@ -47,24 +48,19 @@ configTuple = namedtuple(
         "track_min_delta",
         "track_min_mass",
         "verbose",
-
-        "enable_compression",
-        "include_filtered_channel",
-        "preview_tracks",
-        "hints_file",
     ],
 )
 
-class TrackingConfig(configTuple):
+class TrackingConfig(TrackingConfigTuple):
 
     @classmethod
     def load(cls, tracking):
         config = cls(
             background_calc=ml_tools.config.parse_options_param("background_calc", tracking["background_calc"],[TrackExtractor.PREVIEW, "stats"]),
-            temp_thresh=tracking["temp_thresh"],
-            delta_thresh=tracking["delta_thresh"],
-            ignore_frames=tracking["ignore_frames"],
-            threshold_percentile=tracking["threshold_percentile"],
+            temp_thresh=tracking["preview"]["temp_thresh"],
+            delta_thresh=tracking["preview"]["delta_thresh"],
+            ignore_frames=tracking["preview"]["ignore_frames"],
+            threshold_percentile=tracking["stats"]["threshold_percentile"],
             static_background_threshold=tracking["static_background_threshold"],
             max_mean_temperature_threshold=tracking["max_mean_temperature_threshold"],
             max_temperature_range_threshold=tracking["max_temperature_range_threshold"],
@@ -74,8 +70,8 @@ class TrackingConfig(configTuple):
             track_smoothing=tracking["track_smoothing"],
             remove_track_after_frames=tracking["remove_track_after_frames"],
             high_quality_optical_flow=tracking["high_quality_optical_flow"],
-            min_threshold=tracking["min_threshold"],
-            max_threshold=tracking["max_threshold"],
+            min_threshold=tracking["stats"]["min_threshold"],
+            max_threshold=tracking["stats"]["max_threshold"],
             flow_threshold=tracking["flow_threshold"],
             max_tracks=tracking["max_tracks"],
             track_overlap_ratio=tracking["filters"]["track_overlap_ratio"],
@@ -84,12 +80,8 @@ class TrackingConfig(configTuple):
             track_min_delta=tracking["filters"]["track_min_delta"],
             track_min_mass=tracking["filters"]["track_min_mass"],
             verbose=tracking["verbose"],
-
-            enable_compression = tracking["enable_compression"],
-            include_filtered_channel=tracking["include_filtered_channel"],
-            preview_tracks=tracking["preview_tracks"],
-            hints_file=tracking["hints_file"],
         )
+        print(config)
         return config
 
 

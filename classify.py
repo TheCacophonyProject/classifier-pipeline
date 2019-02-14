@@ -26,26 +26,23 @@ def log_to_stdout():
     root.addHandler(ch)
 
 def main():
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
         'source', help='a CPTV file to process, or a folder name, or "all" for all files within subdirectories of source folder.')
-
     parser.add_argument('-p', '--create-previews', action='count', help='Create MP4 previews for tracks (can be slow)')
     parser.add_argument('-v', '--verbose', action='count', help='Display additional information.')
-
     parser.add_argument(
         '--start-date', help='Only clips on or after this day will be processed (format YYYY-MM-DD)')
     parser.add_argument(
         '--end-date', help='Only clips on or before this day will be processed (format YYYY-MM-DD)')
-
-    conf = Config.read_default_config_file()
+    parser.add_argument('-c', '--config-file', help="Path to config file to use")
 
     args = parser.parse_args()
-
-    # Tracking params for classifier use "tracking" params as a base, and then "classify_tracking" as overrides
-    deep_copy_map_if_key_not_exist(conf["tracking"], conf["classify_tracking"])
+    if args.config_file:
+        conf = Config.read_config_file(args.config_file)
+    else:
+        conf = Config.read_default_config_file()
 
     # parse command line arguments
     if args.create_previews:
@@ -77,7 +74,7 @@ def main():
         exit(13)
 
     # just fetch the classifier now so it doesn't impact the benchmarking on the first clip analysed.
-    _ = clip_classifier.classifier
+    clip_classifier.classifier
 
     if args.source == "all":
         clip_classifier.process_all(config.source_folder)
@@ -89,15 +86,6 @@ def main():
     else:
         clip_classifier.process_folder(
             os.path.join(config.source_folder, args.source))
-
-def deep_copy_map_if_key_not_exist(from_map, to_map):
-    for key in from_map:
-        if isinstance(from_map[key], dict):
-            if key not in to_map:
-                to_map[key] = {}
-            deep_copy_map_if_key_not_exist(from_map[key], to_map[key])
-        elif key not in to_map:
-            to_map[key] = from_map[key]
 
 if __name__ == "__main__":
     main()

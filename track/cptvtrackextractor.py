@@ -41,9 +41,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         self.hints = {}
         self.enable_track_output = True
-        self.compression = blosc_zstd if self.tracker_config.enable_compression else None
+        self.compression = blosc_zstd if self.config.extract.enable_compression else None
 
-        if tracker_config.preview_tracks:
+        if self.config.extract.preview_tracks:
             if os.path.exists(config.previews_colour_map):
                 print("loading colour map " + config.previews_colour_map)
                 self.colormap = tools.load_colormap(config.previews_colour_map)
@@ -56,16 +56,15 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         # disables background subtraction
         self.disable_background_subtraction = False
 
-        os.makedirs(config.tracks_folder, mode=0o775, exist_ok=True)
-        self.database = TrackDatabase(os.path.join(self.config.tracks_folder, 'dataset.hdf5'))
+        os.makedirs(self.config.extract.tracks_folder, mode=0o775, exist_ok=True)
+        self.database = TrackDatabase(os.path.join(self.config.extract.tracks_folder, 'dataset.hdf5'))
 
         self.worker_pool_init = init_workers
 
         # load hints.  Hints are a way to give extra information to the tracker when necessary.
-        # if os.path.exists(config.tracking.hints_file):
-        if config.tracking.hints_file:
-            self.load_hints(config.tracking.hints_file)
-
+        # if os.path.exists(config.extract.hints_file):
+        if config.extract.hints_file:
+            self.load_hints(config.extract.hints_file)
 
     def load_hints(self, filename):
         """ Read in hints file from given path.  If file is not found an empty hints dictionary set."""
@@ -162,7 +161,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         preview_filename = base_filename + '-preview' + '.mp4'
         stats_filename = base_filename + '.txt'
 
-        destination_folder = os.path.join(self.config.tracks_folder, tag.lower())
+        destination_folder = os.path.join(self.config.extract.tracks_folder, tag.lower())
 
         stats_path_and_filename = os.path.join(destination_folder, stats_filename)
 
@@ -252,7 +251,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             self.export_tracks(full_path, tracker, self.database)
 
         # write a preview
-        if self.tracker_config.preview_tracks:
+        if self.config.extract.preview_tracks:
             self.export_mpeg_preview(os.path.join(destination_folder, preview_filename), tracker)
 
         time_per_frame = (time.time() - start) / len(tracker.frame_buffer)
@@ -291,7 +290,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                 channels = tracker.get_track_channels(track, i)
 
                 # zero out the filtered channel
-                if not tracker.config.include_filtered_channel:
+                if not self.config.extract.include_filtered_channel:
                     channels[TrackChannels.filtered] = 0
                 track_data.append(channels)
             track_id = track_number+1

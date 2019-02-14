@@ -1,5 +1,8 @@
-# base folder path for cptv source, and MP4, txt file output
-base_data_folder: "<put your base folder path here>"
+# root folder where the source and output folders belong
+base_data_folder: "<full path>"
+
+# Enables/Disables GPU acclelerated classification
+use_gpu: false
 
 # source_folder is where the cptv files reside under (could be in a subdirectory). It is specified relative
 # to the base_data_folder
@@ -9,12 +12,6 @@ source_folder: "cptv"
 excluded_folders: ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit', 'hard', 'multi', 'moving',
                   'mouse', 'bird-kiwi', 'for_grant', 'missclassified', 'other']
 
-# tracks_folder is where the track files will be created.  It is specified relative to the base_data_folder
-tracks_folder: "tracks"
-
-# Enables/Disables GPU acclelerated classification
-use_gpu: false
-
 # Reprocess files which have already been processed.
 reprocess: True
 
@@ -23,7 +20,7 @@ reprocess: True
 previews_colour_map: "custom_colormap.dat"
 
 # Number of worker threads to use.  0 disables worker pool and forces a single thread.
-worker_threads: 3
+worker_threads: 0
 
 tracking:
     #
@@ -35,29 +32,40 @@ tracking:
     # Stats uses a statistical analysis of the whole video to get background levels
     background_calc: preview
 
-    # When calculating the background ignore the last frames of the preview as the motion detection
-    # will still be triggering during this time.
-    ignore_frames: 2
+    # these parameters are associated with the preview background method
+    preview:
+        # When calculating the background ignore the last frames of the preview as the motion detection
+        # will still be triggering during this time.
+        ignore_frames: 2
 
-    # Minimum aw temperature considered to be worth tracking
-    temp_thresh: 2900
+        # Minimum aw temperature considered to be worth tracking
+        temp_thresh: 2900
 
-    # Minimum differenct of raw temperature difference from background to track
-    delta_thresh: 30
+        # Minimum differenct of raw temperature difference from background to track
+        delta_thresh: 30
 
-    # auto threshold needs to find a near maximum value to calculate the threshold level
-    # a better solution might be the mean of the max of each frame?
-    threshold_percentile: 99.9
+    # these parameters are associated with the stats background method
+    stats:
+        # auto threshold needs to find a near maximum value to calculate the threshold level
+        # a better solution might be the mean of the max of each frame?
+        threshold_percentile: 99.9
 
-    # measures how different pixels are from estimated background, if they are on average less different than this then
-    # video is considered to be static.
-    static_background_threshold: 4.0
+        # minimum allowed threshold for number of pixels changed from average background, smaller values detect more objects, but bring up additional false positives
+        min_threshold: 30
+
+        # minimum allowed threshold for number of pixels changed from average background, smaller values detect more objects, but bring up additional false positives
+        max_threshold: 50
+
 
     # any clips with a mean temperature hotter than this will be excluded
     max_mean_temperature_threshold: 10000
 
     # any clips with a temperature dynamic range greater than this will be excluded
     max_temperature_range_threshold: 10000
+
+    # measures how different pixels are from estimated background, if they are on average less different than this then
+    # video is considered to be static.
+    static_background_threshold: 4.0
 
     # number of pixels round the edge to ignore due to strange values
     edge_pixels: 1
@@ -81,12 +89,6 @@ tracking:
     track_smoothing: False
 
     high_quality_optical_flow: False
-
-    # minimum allowed threshold for number of pixels changed from average background, smaller values detect more objects, but bring up additional false positives
-    min_threshold: 30
-
-    # minimum allowed threshold for number of pixels changed from average background, smaller values detect more objects, but bring up additional false positives
-    max_threshold: 50
 
     # how much to threshold thermal before calculating optical flow.
     flow_threshold: 40
@@ -113,16 +115,11 @@ tracking:
     # Add verbose logging about tracks generated
     verbose: False
 
-
-
-    #
-    #  Tracking processor
-    #
-
-    # enables fast BLOSC compression (requires plugin)
+extract:
+    # Use fast BLOSC compression (requires plugin), when saving tracks to database
     enable_compression: False
 
-    # includes the filtered channel when exporting.  This is typically not used.  If compression is enabled the
+    # Includes the filtered channel in tracks database.  This is typically not used.  If compression is enabled the
     # filesize can be reduced by not including it.
     include_filtered_channel: False
 
@@ -134,15 +131,14 @@ tracking:
     # Note:  This is relative to the current directory of the application, not the base data folder
     hints_file: "hints.txt"
 
+    # tracks_folder is where the track files will be created.  It is specified relative to the base_data_folder
+    tracks_folder: "tracks"
 
 
-# Tracking params used by classify.py.   Note you don't need to specify all here, just any that are different
-# from 'tracking'
 classify_tracking:
     # Note: frame_padding must be atleast 3 or some frames may be too small for classification
     frame_padding: 4
     high_quality_optical_flow: True
-    min_threshold: 4
     filters:
         track_overlap_ratio: 0.5
         min_duration_secs: 0.0
@@ -155,10 +151,12 @@ classify:
     meta_to_stdout : False
 
     # Path to pretrained Model use for classification (This should be the base filename without any extension)
-    model: "<put your base folder path here>"
+    model: "<full path>"
 
     # Path to pretrained Model use for classification (This should be the base filename without any extension)
     preview: False
 
+    # folder is where classifier output and mp4s will be created.  It is specified relative to the base_data_folder
+    classify_folder: "classify"
 
 

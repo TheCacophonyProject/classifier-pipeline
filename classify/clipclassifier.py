@@ -1,11 +1,11 @@
 import json
 import logging
-
-from datetime import datetime, timedelta
-import numpy as np
 import os.path
 import time
 from typing import Dict
+
+from datetime import datetime, timedelta
+import numpy as np
 
 from classify.trackprediction import TrackPrediction
 import classify.globals as globs
@@ -234,7 +234,7 @@ class ClipClassifier(CPTVFileProcessor):
             return None
 
     def get_base_name(self, input_filename):
-        return os.path.splitext(os.path.join(self.config.tracks_folder, os.path.basename(input_filename)))[0]
+        return os.path.splitext(os.path.join(self.config.classify.classify_folder, os.path.basename(input_filename)))[0]
 
     def process_all(self, root):
         for root, folders, _ in os.walk(root):
