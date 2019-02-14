@@ -46,7 +46,7 @@ class CPTVFileProcessor:
         self.source_folder = None
 
         # number of threads to use when processing jobs.
-        self.workers_threads = 0
+        self.workers_threads = config.worker_threads
 
         # what rule to apply when a destination file already exists.
         self.overwrite_mode = self.OM_NONE

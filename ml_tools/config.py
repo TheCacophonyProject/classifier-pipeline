@@ -23,6 +23,7 @@ configTuple = namedtuple(
         "overwrite_mode",
         "previews_colour_map",
         "use_gpu",
+        "worker_threads",
     ],
 )
 
@@ -44,10 +45,11 @@ class Config(configTuple):
                 source_folder = path.join(base_folder, config["source_folder"]),
                 tracks_folder = path.join(base_folder, config["tracks_folder"]),
                 excluded_folders = config["excluded_folders"],
-                overwrite_mode = config["overwrite_mode"],
+                overwrite_mode = parse_options_param("overwrite_mode", config["overwrite_mode"], ['all', 'old', 'none']),
                 previews_colour_map = config["previews_colour_map"],
                 use_gpu=config["use_gpu"],
-            )
+                worker_threads=config["worker_threads"],
+           )
 
     @classmethod
     def read_default_config_file(self):
@@ -62,4 +64,10 @@ def find_config():
         p = directory / CONFIG_FILENAME
         if p.is_file():
             return str(p)
-    raise FileNotFoundError("no configuration file found")
+    raise FileNotFoundError("No configuration file found.  Looking for file named '{}' in dirs {}".format(CONFIG_FILENAME, CONFIG_DIRS))
+
+
+def parse_options_param(name, value, options):
+    if value.lower() not in options:
+        raise Exception("Cannot parse {} as '{}'.  Valid options are {}.".format(name, value, options))
+    return value.lower()

@@ -39,6 +39,10 @@ from cptv import CPTVReader
 class TrackExtractor:
     """ Extracts tracks from a stream of frames. """
 
+    PREVIEW = "preview"
+
+    FRAMES_PER_SEC = 9
+
     def __init__(self, trackconfig):
 
         self.config = trackconfig
@@ -47,10 +51,10 @@ class TrackExtractor:
         self.video_start_time = None
         # name of source file
         self.source_file = None
-        # cptv reader
-        self.reader = None
         # dictionary containing various statistics about the clip / tracking process.
         self.stats = {}
+        # preview seconds in video
+        self.preview_secs = 0
         # used to calculate optical flow
         self.opt_flow = None
         # how much hotter target must be from background to trigger a region of interest.
@@ -76,6 +80,9 @@ class TrackExtractor:
         # list of regions for each frame
         self.region_history = []
 
+        # use the preview time for background calcs if asked (else use a statisical analysis of all frames)
+        self.background_is_preview = False
+
         # if enabled will force the background subtraction algorithm off.
         self.disable_background_subtraction = False
         # rejects any videos that have non static backgrounds
@@ -95,10 +102,17 @@ class TrackExtractor:
         Loads a cptv file, and prepares for track extraction.
         """
         self.source_file = filename
-        self.reader = CPTVReader(open(filename, 'rb'))
-        local_tz = pytz.timezone('Pacific/Auckland')
-        self.video_start_time = self.reader.timestamp.astimezone(local_tz)
-        self.stats.update(self.get_video_stats())
+
+        with open(filename, "rb") as f:
+            reader = CPTVReader(f)
+            local_tz = pytz.timezone('Pacific/Auckland')
+            self.video_start_time = reader.timestamp.astimezone(local_tz)
+            self.preview_secs = reader.preview_secs
+            self.stats.update(self.get_video_stats())
+            # we need to load the entire video so we can analyse the background.
+            frames = ([frame.pix for frame in reader])
+            self.frame_buffer.thermal = frames
+
 
     def extract_tracks(self):
         """
@@ -107,31 +121,20 @@ class TrackExtractor:
         :returns: True if clip was successfully processed, false otherwise
         """
 
-        assert self.reader, "Must call load before extracting tracks."
+        assert self.frame_buffer.thermal, "Must call load before extract tracks"
 
+        frames = self.frame_buffer.thermal
         self.reject_reason = None
 
-        # we need to load the entire video so we can analyse the background.
-        frames = [frame.pix for frame in self.reader]
-        self.frame_buffer.thermal = frames
+        # for now just always calculate as we are using the stats...
+        background, background_stats = self.process_background(frames)
 
-        # first we get the background.  This requires reading the entire source into memory.
-        background, background_stats = self.analyse_background(frames)
-        is_static_background = background_stats.background_deviation < self.config.static_background_threshold
-
-        self.stats['threshold'] = background_stats.threshold
-        self.stats['average_background_delta'] = background_stats.background_deviation
-        self.stats['average_delta'] = background_stats.average_delta
-        self.stats['mean_temp'] = background_stats.mean_temp
-        self.stats['max_temp'] = background_stats.max_temp
-        self.stats['min_temp'] = background_stats.min_temp
-        self.stats['is_static'] = is_static_background
-
-        self.threshold = background_stats.threshold
-
-        # if the clip is moving then remove the estimated background and just use a threshold.
-        if not is_static_background or self.disable_background_subtraction:
-            background = None
+        if self.config.background_calc == self.PREVIEW:
+            if self.preview_secs > 0:
+                self.background_is_preview = True
+                background = self.calculate_preview(frames)
+            else:
+                logging.info("No preview secs defined for CPTV file - using statistical background measurement")
 
         if len(frames) <= 9:
             self.reject_reason = "Clip too short {} frames".format(len(frames))
@@ -172,8 +175,11 @@ class TrackExtractor:
 
         # process each frame
         self.frame_on = 0
+
         for frame in frames:
             self.track_next_frame(frame, background)
+            self.frame_on += 1
+
 
         # filter out tracks that do not move, or look like noise
         self.filter_tracks()
@@ -186,6 +192,14 @@ class TrackExtractor:
 
         return True
 
+    def calculate_preview(self, frame_list):
+        number_frames = self.preview_secs * self.FRAMES_PER_SEC - self.config.ignore_frames
+        assert (number_frames < len(frame_list))
+        frames = np.int32(frame_list[0:number_frames])
+        background = np.average(frames, axis=0)
+        background = np.int32(np.rint(background))
+        return background
+
     def get_filtered(self, thermal, background=None):
         """
         Calculates filtered frame from thermal
@@ -194,18 +208,21 @@ class TrackExtractor:
         :return: the filtered frame
         """
 
-        thermal = np.float32(thermal)
-
         if background is None:
             filtered = thermal - np.median(thermal) - 40
             filtered[filtered < 0] = 0
+        elif self.background_is_preview:
+            avg_change = np.average(thermal) - np.average(background)
+            filtered = thermal.copy()
+            filtered[filtered < self.config.temp_thresh] = 0
+            filtered = filtered - background - avg_change
+            filtered[filtered < self.config.delta_thresh] = 0
         else:
             background = np.float32(background)
             filtered = thermal - background
             filtered[filtered < 0] = 0
             filtered = filtered - np.median(filtered)
             filtered[filtered < 0] = 0
-
         return filtered
 
     def track_next_frame(self, thermal, background=None):
@@ -235,9 +252,8 @@ class TrackExtractor:
         self.region_history.append(regions)
 
         self.apply_matchings(regions)
-        # do we need this
+        # do we need to copy?
         self._prev_filtered = filtered.copy()
-        self.frame_on += 1
 
     def get_track_channels(self, track: Track, frame_number):
         """
@@ -513,7 +529,7 @@ class TrackExtractor:
                 region.pixel_variance = np.var(region_difference)
 
             # filter out regions that are probably just noise
-            if region.pixel_variance < 2.0 and region.mass < 8:
+            if region.pixel_variance < 2.0 and region.mass < 4:
                 continue
 
             regions.append(region)
@@ -537,7 +553,29 @@ class TrackExtractor:
 
         return result
 
-    def analyse_background(self, frames_list):
+
+    def process_background(self, frames):
+        background, background_stats = self.analyse_background(frames)
+        is_static_background = background_stats.background_deviation < self.config.static_background_threshold
+
+        self.stats['threshold'] = background_stats.threshold
+        self.stats['average_background_delta'] = background_stats.background_deviation
+        self.stats['average_delta'] = background_stats.average_delta
+        self.stats['mean_temp'] = background_stats.mean_temp
+        self.stats['max_temp'] = background_stats.max_temp
+        self.stats['min_temp'] = background_stats.min_temp
+        self.stats['is_static'] = is_static_background
+
+        self.threshold = background_stats.threshold
+
+        # if the clip is moving then remove the estimated background and just use a threshold.
+        if not is_static_background or self.disable_background_subtraction:
+            background = None
+
+        return background, background_stats
+
+
+    def analyse_background(self, frames):
         """
         Runs through all provided frames and estimates the background, consuming all the source frames.
         :param frames_list: a list of numpy array frames
@@ -547,10 +585,10 @@ class TrackExtractor:
         # note: unfortunately this must be done before any other processing, which breaks the streaming architecture
         # for this reason we must return all the frames so they can be reused
 
-        frames = np.float32(frames_list)
+        frames = np.float32(frames)
         background = np.percentile(frames, q=10, axis=0)
         filtered = np.float32([self.get_filtered(frame, background)
-                               for frame in frames_list])
+                               for frame in frames])
 
         delta = np.asarray(frames[1:], dtype=np.float32) - \
             np.asarray(frames[:-1], dtype=np.float32)

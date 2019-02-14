@@ -24,11 +24,6 @@ from track.track import Track
 HERE = os.path.dirname(__file__)
 RESOURCES_PATH = os.path.join(HERE, "resources")
 
-# folders that are not processed when run with 'all'
-IGNORE_FOLDERS = ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit', 'hard', 'multi', 'moving', 'mouse',
-                  'bird-kiwi', 'for_grant']
-
-
 def resource_path(name):
     return os.path.join(RESOURCES_PATH, name)
 
@@ -58,8 +53,6 @@ def main():
 
     parser.add_argument('-q', '--high-quality-optical-flow', default=False,
                         action='store_true', help='Enabled higher quality optical flow (slow)')
-    parser.add_argument('-f', '--force-overwrite', default='none',
-                        help='Overwrite mode.  Options are all, old, or none.')
 
     parser.add_argument(
         '--start-date', help='Only clips on or after this day will be processed (format YYYY-MM-DD)')
@@ -115,16 +108,11 @@ def main():
     # just fetch the classifier now so it doesn't impact the benchmarking on the first clip analysed.
     _ = clip_classifier.classifier
 
-    # set overwrite mode
-    if args.force_overwrite.lower() not in ['all', 'old', 'none']:
-        raise Exception("Valid overwrite modes are all, old, or none.")
-    clip_classifier.overwrite_mode = args.force_overwrite.lower()
-
     # set verbose
     clip_classifier.verbose = args.verbose if args.verbose is not None else 0
 
     if args.source == "all":
-        clip_classifier.process_all(args.source_folder)
+        clip_classifier.process_all(config.source_folder)
     elif os.path.splitext(args.source)[-1].lower() == '.cptv':
         source_file = tools.find_file_from_cmd_line(config.source_folder, args.source)
         if source_file is None:

@@ -204,9 +204,9 @@ class ClipClassifier(CPTVFileProcessor):
         # if no stats file exists we haven't processed file, so reprocess
 
         # otherwise check what needs to be done.
-        if self.overwrite_mode == self.OM_ALL:
+        if self.config.overwrite_mode == self.OM_ALL:
             return True
-        elif self.overwrite_mode == self.OM_NONE:
+        elif self.config.overwrite_mode == self.OM_NONE:
             return not os.path.exists(meta_filename)
         else:
             raise Exception("Overwrite mode {} not supported.".format(self.overwrite_mode))
@@ -348,7 +348,7 @@ class ClipClassifier(CPTVFileProcessor):
                 track_info['all_class_confidences'][label] = round(value, 3)
 
 
-        if self.write_meta_to_stdout:
+        if self.config.classify.meta_to_stdout:
             output = json.dumps(save_file, indent=4, cls=tools.CustomJSONEncoder)
             print("output is ")
             print(output)
