@@ -83,6 +83,9 @@ class TrackExtractor:
         # use the preview time for background calcs if asked (else use a statisical analysis of all frames)
         self.background_is_preview = False
 
+        # if mean value for the background
+        self.mean_background_value = 0.0
+
         # if enabled will force the background subtraction algorithm off.
         self.disable_background_subtraction = False
         # rejects any videos that have non static backgrounds
@@ -140,7 +143,7 @@ class TrackExtractor:
             self.reject_reason = "Clip too short {} frames".format(len(frames))
             return False
 
-        if self.reject_non_static_clips and not is_static_background:
+        if self.reject_non_static_clips and not self.stats['is_static']:
             self.reject_reason = "Non static background deviation={:.1f}".format(
                 background_stats.background_deviation)
             return False
@@ -175,11 +178,9 @@ class TrackExtractor:
 
         # process each frame
         self.frame_on = 0
-
         for frame in frames:
             self.track_next_frame(frame, background)
             self.frame_on += 1
-
 
         # filter out tracks that do not move, or look like noise
         self.filter_tracks()
@@ -198,6 +199,7 @@ class TrackExtractor:
         frames = np.int32(frame_list[0:number_frames])
         background = np.average(frames, axis=0)
         background = np.int32(np.rint(background))
+        self.mean_background_value = np.average(background)
         return background
 
     def get_filtered(self, thermal, background=None):
@@ -212,7 +214,7 @@ class TrackExtractor:
             filtered = thermal - np.median(thermal) - 40
             filtered[filtered < 0] = 0
         elif self.background_is_preview:
-            avg_change = np.average(thermal) - np.average(background)
+            avg_change = int(round(np.average(thermal) - self.mean_background_value))
             filtered = thermal.copy()
             filtered[filtered < self.config.temp_thresh] = 0
             filtered = filtered - background - avg_change
