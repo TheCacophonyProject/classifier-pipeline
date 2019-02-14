@@ -25,7 +25,6 @@ def parse_params():
     parser.add_argument('-p', '--create-previews', action='count', help='Create MP4 previews for tracks (can be slow)')
     parser.add_argument('-t', '--test-file', default='tests.txt', help='File containing test cases to run')
     parser.add_argument('-v', '--verbose', action='count', help='Display additional information.')
-    parser.add_argument('-f', '--force-overwrite', default='old', help='Overwrite mode.  Options are all, old, or none.')
     parser.add_argument('-i', '--show-build-information', action='count', help='Show openCV build information and exit.')
 
     conf = Config.read_default_config_file()
@@ -63,7 +62,6 @@ def parse_params():
             return
         print("Processing file '" + source_file + "'")
         tag = os.path.basename(os.path.dirname(source_file))
-        extractor.overwrite_mode = CPTVTrackExtractor.OM_ALL
         extractor.process_file(source_file, tag=tag)
         return
 

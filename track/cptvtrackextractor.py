@@ -40,7 +40,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         CPTVFileProcessor.__init__(self, config, tracker_config)
 
         self.hints = {}
-        self.overwrite_mode = CPTVTrackExtractor.OM_NONE
         self.enable_track_output = True
         self.compression = blosc_zstd if self.tracker_config.enable_compression else None
 
@@ -146,7 +145,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                         print(" - removing out of date clip {}".format(clip_id))
                         self.database.remove_clip(clip_id)
 
-
     def process_file(self, full_path, **kwargs):
         """
         Extract tracks from specific file, and assign given tag.
@@ -179,12 +177,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             max_tracks = self.config.tracking.max_tracks
 
         os.makedirs(destination_folder, mode=0o775, exist_ok=True)
-
-        # check if we have already processed this file
-        if self.needs_processing(stats_path_and_filename):
-            print("Processing {0} [{1}]".format(cptv_filename, tag))
-        else:
-            return
 
         # delete any previous files
         tools.purge(destination_folder, base_filename + "*.mp4")
@@ -306,7 +298,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             database.add_track(clip_id, track_id, track_data,
                                track, opts=self.compression)
 
-
     def needs_processing(self, source_filename):
         """
         Returns if given source file needs processing or not
@@ -316,7 +307,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         clip_id = os.path.basename(source_filename)
 
-        if self.overwrite_mode == self.OM_ALL:
+        if self.config.reprocess:
             return True
 
         return not self.database.has_clip(clip_id)
@@ -408,8 +399,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         tests = []
         test = None
 
-        # we need to make sure all tests are redone every time.
-        self.overwrite_mode = CPTVTrackExtractor.OM_ALL
+        # # we need to make sure all tests are redone every time.
+        # self.overwrite_mode = self.OM_ALL
 
         # load in the test data
         for line in open(tests_file, 'r'):

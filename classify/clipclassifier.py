@@ -199,14 +199,10 @@ class ClipClassifier(CPTVFileProcessor):
         meta_filename = base_name + '.txt'
 
         # if no stats file exists we haven't processed file, so reprocess
-
-        # otherwise check what needs to be done.
-        if self.config.overwrite_mode == self.OM_ALL:
+        if self.config.reprocess:
             return True
-        elif self.config.overwrite_mode == self.OM_NONE:
-            return not os.path.exists(meta_filename)
         else:
-            raise Exception("Overwrite mode {} not supported.".format(self.overwrite_mode))
+            return not os.path.exists(meta_filename)
 
     def get_meta_data(self, filename):
         """ Reads meta-data for a given cptv file. """
@@ -256,6 +252,8 @@ class ClipClassifier(CPTVFileProcessor):
         if not os.path.exists(filename):
             raise Exception("File {} not found.".format(filename))
 
+        logging.info("Processing file '{}'".format(filename))
+
         start = time.time()
 
         tracker = TrackExtractor(self.tracker_config)
@@ -286,7 +284,6 @@ class ClipClassifier(CPTVFileProcessor):
         for i, track in enumerate(tracker.tracks):
 
             prediction = self.identify_track(tracker, track)
-            print(prediction)
 
             self.track_prediction[track] = prediction
 

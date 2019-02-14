@@ -20,7 +20,7 @@ configTuple = namedtuple(
         "source_folder",
         "tracks_folder",
         "excluded_folders",
-        "overwrite_mode",
+        "reprocess",
         "previews_colour_map",
         "use_gpu",
         "worker_threads",
@@ -45,7 +45,7 @@ class Config(configTuple):
                 source_folder = path.join(base_folder, config["source_folder"]),
                 tracks_folder = path.join(base_folder, config["tracks_folder"]),
                 excluded_folders = config["excluded_folders"],
-                overwrite_mode = parse_options_param("overwrite_mode", config["overwrite_mode"], ['all', 'old', 'none']),
+                reprocess = config["reprocess"],
                 previews_colour_map = config["previews_colour_map"],
                 use_gpu=config["use_gpu"],
                 worker_threads=config["worker_threads"],
@@ -71,3 +71,4 @@ def parse_options_param(name, value, options):
     if value.lower() not in options:
         raise Exception("Cannot parse {} as '{}'.  Valid options are {}.".format(name, value, options))
     return value.lower()
+

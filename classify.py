@@ -68,7 +68,7 @@ def main():
 
     # override verbose if true
     if args.verbose:
-        conf["classify-tracking"]["verbose"] = True
+        conf["classify_tracking"]["verbose"] = True
 
     config = Config.load_from_map(conf)
 
@@ -106,7 +106,6 @@ def main():
         source_file = tools.find_file_from_cmd_line(config.source_folder, args.source)
         if source_file is None:
             return
-        logging.info("Processing file '" + source_file + "'")
         clip_classifier.process_file(source_file)
     else:
         clip_classifier.process_folder(

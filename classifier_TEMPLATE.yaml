@@ -1,8 +1,6 @@
 # base folder path for cptv source, and MP4, txt file output
 base_data_folder: "<put your base folder path here>"
 
-
-
 # source_folder is where the cptv files reside under (could be in a subdirectory). It is specified relative
 # to the base_data_folder
 source_folder: "cptv"
@@ -17,9 +15,8 @@ tracks_folder: "tracks"
 # Enables/Disables GPU acclelerated classification
 use_gpu: false
 
-# Overwrite existing files.  Options are all, old, or none.  Note this is ignored when processing a single
-# cptv file
-overwrite_mode: "none"
+# Reprocess files which have already been processed.
+reprocess: True
 
 # colour map to use when exporting to MPEG.
 # Note:  This is relative to the current directory of the application, not the base data folder
