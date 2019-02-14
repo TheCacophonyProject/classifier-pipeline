@@ -4,29 +4,14 @@ Script to classify animals within a CPTV video file.
 
 
 import argparse
-import json
 import os
 import logging
 import sys
-import datetime
+from datetime import datetime
 
-import numpy as np
-
-from classify.trackprediction import TrackPrediction
 from classify.clipclassifier import ClipClassifier
-import classify.globals as globs
 from ml_tools import tools
 from ml_tools.config import Config
-from track.trackextractor import TrackExtractor
-from track.track import Track
-
-
-HERE = os.path.dirname(__file__)
-RESOURCES_PATH = os.path.join(HERE, "resources")
-
-def resource_path(name):
-    return os.path.join(RESOURCES_PATH, name)
-
 
 def log_to_stdout():
     """ Outputs all log entries to standard out. """
@@ -40,7 +25,6 @@ def log_to_stdout():
     ch.setFormatter(formatter)
     root.addHandler(ch)
 
-
 def main():
 
     parser = argparse.ArgumentParser()
@@ -51,9 +35,6 @@ def main():
     parser.add_argument('-p', '--create-previews', action='count', help='Create MP4 previews for tracks (can be slow)')
     parser.add_argument('-v', '--verbose', action='count', help='Display additional information.')
 
-    parser.add_argument('-q', '--high-quality-optical-flow', default=False,
-                        action='store_true', help='Enabled higher quality optical flow (slow)')
-
     parser.add_argument(
         '--start-date', help='Only clips on or after this day will be processed (format YYYY-MM-DD)')
     parser.add_argument(
@@ -63,16 +44,24 @@ def main():
 
     args = parser.parse_args()
 
+    # Tracking params for classifier use "tracking" params as a base, and then "classify_tracking" as overrides
+    deep_copy_map_if_key_not_exist(conf["tracking"], conf["classify_tracking"])
+
+    # parse command line arguments
     if args.create_previews:
         conf["classify"]["preview"] = True
 
-    # override verbose if true
     if args.verbose:
         conf["classify_tracking"]["verbose"] = True
 
     config = Config.load_from_map(conf)
-
     clip_classifier = ClipClassifier(config, config.classify_tracking)
+
+    # parse start and end dates
+    if args.start_date:
+        clip_classifier.start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
+    if args.end_date:
+        clip_classifier.end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
 
     if not config.classify.meta_to_stdout:
         log_to_stdout()
@@ -87,18 +76,8 @@ def main():
         logging.error("No model found named '{}'.".format(config.classify.model+".meta"))
         exit(13)
 
-    if args.start_date:
-        clip_classifier.start_date = datetime.strptime(
-            args.start_date, "%Y-%m-%d")
-
-    if args.end_date:
-        clip_classifier.end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
-
     # just fetch the classifier now so it doesn't impact the benchmarking on the first clip analysed.
     _ = clip_classifier.classifier
-
-    # set verbose
-    clip_classifier.verbose = args.verbose if args.verbose is not None else 0
 
     if args.source == "all":
         clip_classifier.process_all(config.source_folder)
@@ -111,6 +90,14 @@ def main():
         clip_classifier.process_folder(
             os.path.join(config.source_folder, args.source))
 
+def deep_copy_map_if_key_not_exist(from_map, to_map):
+    for key in from_map:
+        if isinstance(from_map[key], dict):
+            if key not in to_map:
+                to_map[key] = {}
+            deep_copy_map_if_key_not_exist(from_map[key], to_map[key])
+        elif key not in to_map:
+            to_map[key] = from_map[key]
 
 if __name__ == "__main__":
     main()

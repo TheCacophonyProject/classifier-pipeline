@@ -237,7 +237,7 @@ class ClipClassifier(CPTVFileProcessor):
         return os.path.splitext(os.path.join(self.config.tracks_folder, os.path.basename(input_filename)))[0]
 
     def process_all(self, root):
-        for root, folders, files in os.walk(root):
+        for root, folders, _ in os.walk(root):
             for folder in folders:
                 if folder not in self.config.excluded_folders:
                     self.process_folder(os.path.join(root,folder), tag=folder.lower())

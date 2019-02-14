@@ -136,41 +136,19 @@ tracking:
 
 
 
-
+# Tracking params used by classify.py.   Note you don't need to specify all here, just any that are different
+# from 'tracking'
 classify_tracking:
-    background_calc: preview
-    ignore_frames: 2
-    temp_thresh: 2900
-    delta_thresh: 30
-    threshold_percentile: 99.9
-    static_background_threshold: 4.0
-    max_mean_temperature_threshold: 10000
-    max_temperature_range_threshold: 10000
-    edge_pixels: 1
     # Note: frame_padding must be atleast 3 or some frames may be too small for classification
     frame_padding: 4
-    remove_track_after_frames: 9
-    cropped_regions_strategy: "all"
-    track_smoothing: False
     high_quality_optical_flow: True
     min_threshold: 4
-    max_threshold: 50
-    flow_threshold: 40
-    max_tracks: 10
-    verbose: false
-
     filters:
         track_overlap_ratio: 0.5
         min_duration_secs: 0.0
         track_min_offset: 0.0
         track_min_delta: 1.0
         track_min_mass: 0.0
-
-    # not used
-    enable_compression: False
-    include_filtered_channel: False
-    preview_tracks: False
-    hints_file: "hints.txt"
 
 classify:
     # Writes metadata to standard out instead of a file with extension .txt
