@@ -1,7 +1,7 @@
 # root folder where the source and output folders belong
 base_data_folder: "<full path>"
 
-# Enables/Disables GPU acclelerated classification
+# Enables/Disables GPU accelerated classification
 use_gpu: false
 
 # source_folder is where the cptv files reside under (could be in a subdirectory). It is specified relative
@@ -38,10 +38,10 @@ tracking:
         # will still be triggering during this time.
         ignore_frames: 2
 
-        # Minimum aw temperature considered to be worth tracking
+        # Minimum raw (temperature) value to be tracked
         temp_thresh: 2900
 
-        # Minimum differenct of raw temperature difference from background to track
+        # Minimum raw temperature difference between background and track
         delta_thresh: 30
 
     # these parameters are associated with the stats background method
@@ -71,7 +71,7 @@ tracking:
     edge_pixels: 1
 
     # number of pixels around object to pad.
-    # Note: frame_padding must be atleast 3 or some frames may be too small for classification
+    # Note: frame_padding must be at least 3 or some frames may be too small for classification and program may crash
     frame_padding: 6
 
     # number of frames to wait before removing a track from the list of tracks

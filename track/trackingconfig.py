@@ -81,7 +81,6 @@ class TrackingConfig(TrackingConfigTuple):
             track_min_mass=tracking["filters"]["track_min_mass"],
             verbose=tracking["verbose"],
         )
-        print(config)
         return config
 
 

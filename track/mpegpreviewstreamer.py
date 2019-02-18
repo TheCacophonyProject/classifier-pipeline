@@ -38,7 +38,7 @@ class MPEGPreviewStreamer():
         # I multiply it here, but really I should use a seperate color map for this.
         # maybe I could multiply it modulo, and offset by some amount?
 
-        # This really should be using a pallete here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
+        # This really should be using a palette here, I multiply by 10000 to make sure the binary mask '1' values get set to the brightest color (which is about 4000)
         # here I map the flow magnitude [ranges in the single didgits) to a temperature in the display range.
         flow_magnitude = np.linalg.norm(np.float32(flow), ord=2, axis=2) / 4.0
 

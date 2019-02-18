@@ -213,9 +213,9 @@ def stream_mpeg(filename, frame_generator):
 
         return_code = process.wait(timeout=30)
         if return_code != 0:
-            raise Exception("FFMPEG failed with error {}. Have you isntalled ffmpeg and added it to your path?".format(return_code))
+            raise Exception("FFMPEG failed with error {}. Have you installed ffmpeg and added it to your path?".format(return_code))
     except Exception as e:
-        logging.error("Failed to write MPEG: %s.  Have you isntalled ffmpeg and added it to your path?", e)
+        logging.error("Failed to write MPEG: %s.  Have you installed ffmpeg and added it to your path?", e)
         if process is not None:
             logging.error(process.stderr.read())
 

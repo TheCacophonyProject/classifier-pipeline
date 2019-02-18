@@ -1,7 +1,7 @@
 
 # Overview
 
-These scripts handle the data pre-processing, training, and execution of a Convolutional Neural Network based classifier 
+These scripts handle the data pre-processing, training, and execution of a Convolutional Neural Network based classifier
 for thermal vision.
 
 The output is a TensorFlow model that can identify 48x48 video clips centered on the object of interest.
@@ -23,23 +23,18 @@ Uses a pre-trained model to identifying and classifying any animals in a CPTV fi
 ### evaluate.py
 Evaluates the performance of a classify.py run and generates reports.
 
-# Notebooks
-
-None yet, but coming soon.
 
 # Setup
 
-Create a virtual environment and install the necessary prerequisits 
-
+1. Create a virtual environment and install the necessary prerequisites </br>
 `pip install -r requirements.txt`
 
-Optionally install GPU support for tensorflow (note this requires additional [setup](https://www.tensorflow.org/install/)
+2. Copy the classifier_Template.yaml to classifier.yaml and then edit this file with your own settings.   You will need to set up the paths for it work on your system. (Note: Currently these settings only apply to classify.py and extract.py)
 
-`pip install tensorflow-gpu`  
+3. Optionally install GPU support for tensorflow (note this requires additional [setup](https://www.tensorflow.org/install/))</br>
+`pip install tensorflow-gpu`
 
-MPEG4 output requires FFMPEG to be installed which can be found [here](https://www.ffmpeg.org/).  
-
-On windows the installation path will need to be added to the system path. 
+4. MPEG4 output requires FFMPEG to be installed which can be found [here](https://www.ffmpeg.org/).  On windows the installation path will need to be added to the system path.
 
 # Usage
 
@@ -50,11 +45,11 @@ CPTV files can be downloaded using the [cptv-downloader](https://github.com/TheC
 ## Training the Model
 
 First download the CPTV files by running
- 
+
 `python cptv-download.py --user x --password x`
- 
+
 Next extract the track files.  This can take some time
- 
+
 `python extract.py all -v -p`
 
 Now we can build the data set
@@ -64,7 +59,7 @@ Now we can build the data set
 And finally train the model
 
 `python train.py -dataset=data -model-name=model --epochs=10`
- 
+
 ## Classifying animals within a CPTV File
 
 A pre-trained model can be used to classify objects within a CPTV video

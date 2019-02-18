@@ -74,7 +74,7 @@ def main():
         exit(13)
 
     # just fetch the classifier now so it doesn't impact the benchmarking on the first clip analysed.
-    clip_classifier.classifier
+    _ = clip_classifier.classifier
 
     if args.source == "all":
         clip_classifier.process_all(config.source_folder)
