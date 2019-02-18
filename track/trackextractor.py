@@ -195,11 +195,14 @@ class TrackExtractor:
 
     def calculate_preview(self, frame_list):
         number_frames = self.preview_secs * self.FRAMES_PER_SEC - self.config.ignore_frames
-        assert (number_frames < len(frame_list))
+        if not number_frames < len(frame_list):
+            logging.error("Video consists entirely of preview")
+            number_frames = len(frame_list)
         frames = np.int32(frame_list[0:number_frames])
         background = np.average(frames, axis=0)
         background = np.int32(np.rint(background))
         self.mean_background_value = np.average(background)
+        self.threshold = self.config.delta_thresh
         return background
 
     def get_filtered(self, thermal, background=None):
@@ -218,7 +221,6 @@ class TrackExtractor:
             filtered = thermal.copy()
             filtered[filtered < self.config.temp_thresh] = 0
             filtered = filtered - background - avg_change
-            filtered[filtered < self.config.delta_thresh] = 0
         else:
             background = np.float32(background)
             filtered = thermal - background
@@ -373,8 +375,8 @@ class TrackExtractor:
 
         if self.config.verbose:
             for stats, track in track_stats:
-                print(" - track duration:{:.1f}sec offset:{:.1f}px delta:{:.1f} mass:{:.1f}px".format(
-                    stats.duration, stats.max_offset, stats.delta_std, stats.average_mass
+                print(" - track duration:{:.1f}sec, number of frames:{}, offset:{:.1f}px, delta:{:.1f}, mass:{:.1f}px".format(
+                    stats.duration, len(track), stats.max_offset, stats.delta_std, stats.average_mass
                 ))
 
         # find how much each track overlaps with other tracks
@@ -455,6 +457,7 @@ class TrackExtractor:
         else:
             delta_frame = None
 
+        # remove the edges of the frame as we know these pixels can be spurious value
         edge = self.config.edge_pixels
         if edge > 0:
             edgeless_filtered = filtered[edge:frame_height - edge, edge:frame_width - edge]
@@ -462,7 +465,7 @@ class TrackExtractor:
             edge = 0
             edgeless_filtered = filtered
 
-        thresh = np.uint8(apply_threshold(edgeless_filtered, threshold=self.threshold))
+        thresh = np.uint8(blur_and_return_as_mask(edgeless_filtered, threshold=self.threshold))
 
         # applies erosion
         erosion = 0
@@ -475,6 +478,7 @@ class TrackExtractor:
         labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(
             thresh)
 
+        # make mask go back to full frame size without edges chopped
         mask = np.zeros(filtered.shape)
         mask[edge:frame_height - edge, edge:frame_width - edge] = small_mask
 
@@ -622,7 +626,7 @@ class TrackExtractor:
             self.frame_buffer.generate_optical_flow(self.opt_flow, self.config.flow_threshold)
 
 
-def apply_threshold(frame, threshold):
+def blur_and_return_as_mask(frame, threshold):
     """
     Creates a binary mask out of an image by applying a threshold.
     Any pixels more than the threshold are set 1, all others are set to 0.
