@@ -74,7 +74,7 @@ tracking:
     # Note: frame_padding must be at least 3 or some frames may be too small for classification and program may crash
     frame_padding: 6
 
-    # number of frames to wait before removing a track from the list of tracks
+    # wait this many frames for animal to "reappear" after it is last detected.
     remove_track_after_frames: 9
 
     # strategy to use when dealing with regions of interest that are cropped against the side of the frame
