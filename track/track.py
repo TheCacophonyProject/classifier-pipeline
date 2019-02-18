@@ -170,11 +170,12 @@ class Track:
             end -= 1
 
         if end < start:
-            end = start
-
-        self.start_time += datetime.timedelta(seconds=start / 9.0)
-        self.start_frame += start
-        self.bounds_history = self.bounds_history[start:end-1]
+            self.start_frame = 0
+            self.bounds_history = []
+        else:
+            self.start_time += datetime.timedelta(seconds=start / 9.0)
+            self.start_frame += start
+            self.bounds_history = self.bounds_history[start:end+1]
 
     def get_track_region_score(self, region: Region):
         """
