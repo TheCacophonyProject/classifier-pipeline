@@ -141,6 +141,16 @@ def find_file(root, filename):
             return os.path.join(root, filename)
     return None
 
+def find_file_from_cmd_line(root, cmd_line_input):
+    source_file = find_file(root, cmd_line_input)
+    if source_file:
+        return source_file
+
+    if os.path.isfile(cmd_line_input):
+        return cmd_line_input
+
+    print("Could not locate file '" + cmd_line_input + "'")
+    return None
 
 def get_ffmpeg_command(filename, width, height, quality=21):
     if os.name == 'nt':
@@ -203,9 +213,9 @@ def stream_mpeg(filename, frame_generator):
 
         return_code = process.wait(timeout=30)
         if return_code != 0:
-            raise Exception("FFMPEG failed with error {}".format(return_code))
+            raise Exception("FFMPEG failed with error {}. Have you installed ffmpeg and added it to your path?".format(return_code))
     except Exception as e:
-        logging.error("Failed to write MPEG: %s", e)
+        logging.error("Failed to write MPEG: %s.  Have you installed ffmpeg and added it to your path?", e)
         if process is not None:
             logging.error(process.stderr.read())
 
@@ -224,7 +234,7 @@ def write_mpeg(filename, frames):
         # empty video
         return
 
-    frame_count, height, width, channels = frames.shape
+    _, height, width, _ = frames.shape
 
     command = get_ffmpeg_command(filename, width, height)
 
@@ -327,7 +337,7 @@ def get_session(disable_gpu=False):
 
     global tf
     import tensorflow as tf
-    
+
     session = None
 
     if disable_gpu:

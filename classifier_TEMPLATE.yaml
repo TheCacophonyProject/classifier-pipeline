@@ -1,0 +1,162 @@
+# root folder where the source and output folders belong
+base_data_folder: "<full path>"
+
+# Enables/Disables GPU accelerated classification
+use_gpu: false
+
+# source_folder is where the cptv files reside under (could be in a subdirectory). It is specified relative
+# to the base_data_folder
+source_folder: "cptv"
+
+# which folders (tags) to ignore when selecting cptv files from source_folder
+excluded_folders: ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit', 'hard', 'multi', 'moving',
+                  'mouse', 'bird-kiwi', 'for_grant', 'missclassified', 'other']
+
+# Reprocess files which have already been processed.
+reprocess: True
+
+# colour map to use when exporting to MPEG.
+# Note:  This is relative to the current directory of the application, not the base data folder
+previews_colour_map: "custom_colormap.dat"
+
+# Number of worker threads to use.  0 disables worker pool and forces a single thread.
+worker_threads: 0
+
+tracking:
+    #
+    #  Tracking algorithm
+    #
+
+    # Default algorithm used to calculate the image background.   Must be "preview" or "stats"
+    # Preview uses the preview time in the video (if it exists in the meta for cptv file)
+    # Stats uses a statistical analysis of the whole video to get background levels
+    background_calc: preview
+
+    # these parameters are associated with the preview background method
+    preview:
+        # When calculating the background ignore the last frames of the preview as the motion detection
+        # will still be triggering during this time.
+        ignore_frames: 2
+
+        # Minimum raw (temperature) value to be tracked
+        temp_thresh: 2900
+
+        # Minimum raw temperature difference between background and track
+        delta_thresh: 30
+
+    # these parameters are associated with the stats background method
+    stats:
+        # auto threshold needs to find a near maximum value to calculate the threshold level
+        # a better solution might be the mean of the max of each frame?
+        threshold_percentile: 99.9
+
+        # minimum allowed threshold for number of pixels changed from average background, smaller values detect more objects, but bring up additional false positives
+        min_threshold: 30
+
+        # minimum allowed threshold for number of pixels changed from average background, smaller values detect more objects, but bring up additional false positives
+        max_threshold: 50
+
+
+    # any clips with a mean temperature hotter than this will be excluded
+    max_mean_temperature_threshold: 10000
+
+    # any clips with a temperature dynamic range greater than this will be excluded
+    max_temperature_range_threshold: 10000
+
+    # measures how different pixels are from estimated background, if they are on average less different than this then
+    # video is considered to be static.
+    static_background_threshold: 4.0
+
+    # number of pixels round the edge to ignore due to strange values
+    edge_pixels: 1
+
+    # number of pixels around object to pad.
+    # Note: frame_padding must be at least 3 or some frames may be too small for classification and program may crash
+    frame_padding: 6
+
+    # wait this many frames for animal to "reappear" after it is last detected.
+    remove_track_after_frames: 9
+
+    # strategy to use when dealing with regions of interest that are cropped against the side of the frame
+    # in general these regions often do not have enough information to accurately identify the animal.
+    # options are
+    # 'all': All cropped regions are included, good for classifier
+    # 'cautious': Regions that are only cropped a bit are let through, this is good for training data
+    # 'none': No cropped regions are permitted.  This is the most safe.
+    cropped_regions_strategy: "cautious"
+
+    # when enabled smooths tracks so that track dimensions do not change too quickly.
+    track_smoothing: False
+
+    high_quality_optical_flow: False
+
+    # how much to threshold thermal before calculating optical flow.
+    flow_threshold: 40
+
+    # maximum number of tracks to extract from a clip.  Takes the n best tracks.
+    max_tracks: 10
+
+    filters:
+        # discard any tracks that overlap with other tracks more than this.   T than this length in seconds
+        track_overlap_ratio: 0.5
+
+        # discard any tracks shorter than this length in seconds
+        min_duration_secs: 3.0
+
+        # dicard any tracks that do not move enough, (move less than this)
+        track_min_offset: 4.0
+
+        # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
+        track_min_delta: 1.0
+
+        # discard tracks that do not have enough enough average mass.
+        track_min_mass: 2.0
+
+    # Add verbose logging about tracks generated
+    verbose: False
+
+extract:
+    # Use fast BLOSC compression (requires plugin), when saving tracks to database
+    enable_compression: False
+
+    # Includes the filtered channel in tracks database.  This is typically not used.  If compression is enabled the
+    # filesize can be reduced by not including it.
+    include_filtered_channel: False
+
+    # Create a preview of each track
+    preview_tracks: False
+
+    # Hints file to loade.  Hints are a way to give extra information to the tracker about how many tracks to take.
+    # Note:  Set to 'False' is there is no hints file.
+    # Note:  This is relative to the current directory of the application, not the base data folder
+    hints_file: "hints.txt"
+
+    # tracks_folder is where the track files will be created.  It is specified relative to the base_data_folder
+    tracks_folder: "tracks"
+
+
+classify_tracking:
+    # Note: frame_padding must be atleast 3 or some frames may be too small for classification
+    frame_padding: 4
+    high_quality_optical_flow: True
+    filters:
+        track_overlap_ratio: 0.5
+        min_duration_secs: 0.0
+        track_min_offset: 0.0
+        track_min_delta: 1.0
+        track_min_mass: 0.0
+
+classify:
+    # Writes metadata to standard out instead of a file with extension .txt
+    meta_to_stdout : False
+
+    # Path to pretrained Model use for classification (This should be the base filename without any extension)
+    model: "<full path>"
+
+    # Path to pretrained Model use for classification (This should be the base filename without any extension)
+    preview: False
+
+    # folder is where classifier output and mp4s will be created.  It is specified relative to the base_data_folder
+    classify_folder: "classify"
+
+

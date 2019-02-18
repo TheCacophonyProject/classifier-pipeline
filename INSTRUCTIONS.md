@@ -1,9 +1,9 @@
 # 1. Introduction
-Instructions for performing various processes with the pipeline.  
+Instructions for performing various processes with the pipeline.
 
 These assume you have already activated the correct virtual environment which has access to TensorFlow
 
-These instructions are for Windows, on Linux `python` may have to be replaced with `python3`  
+These instructions are for Windows, on Linux `python` may have to be replaced with `python3`
 
 # 2. Downloading new data
 
@@ -21,7 +21,7 @@ Note: cptv-download is part of the cptv-download github project, not the classif
 
 # 3. Extracting Tracks
 
-Track extraction processes the CPTV clips and extracts tracking frames around moving objects.  
+Track extraction processes the CPTV clips and extracts tracking frames around moving objects.
 
 The tracking algorithm tries to distinguish between animal tracks and false positives, but is not 100% reliable.  For this reason the output of the tracking algorithm needs to be checked by hand.
 
@@ -35,19 +35,14 @@ python extract.py all -v -p
 
 This process will be reasonably quick if only an small number of new clips need to be processed.  However if the entire dataset needs to be reprocessed it can take around 12 hours.
 
-To speed up the process worker threads can be enabled
-
-```commandline
-python extract.py all -v -p -w 2
-```
-
-Which processes clips in parallel.  In general each process takes around 2 CPU cores, and 1GB of RAM.  So a quad core computer would run well with `-w 2` 
+To speed up the process worker threads can be enabled.   This processes clips in parallel.  In general each process takes around 2 CPU cores, and 1GB of RAM.  So a quad core computer would run well with 2 workers.
+To update the worker threads open 'classifier.yaml' and change the worker_threads parameter
 
 ### 3.1.1 Clean run
 
 If a clean run is required delete or rename the output tracks folder.
 
-The output file `dataset.hd5f` records which clips have been done, so removing this will cause all clips to be processed. 
+The output file `dataset.hd5f` records which clips have been done, so removing this will cause all clips to be processed.
 
 ## 3.2 Checking the output
 
@@ -69,7 +64,7 @@ For example picking up on a moving branch.  These can be fixed via step 3.3.
 
 3/ A bird or small animal tagged as false-positive
 
-Sometimes small birds are missed in the tagging process but picked up by the tracker.  
+Sometimes small birds are missed in the tagging process but picked up by the tracker.
 
 ## 3.3 Removing invalid tracks
 
@@ -80,11 +75,11 @@ For example
 
 ```text
 20171126-142109-akaroa10.cptv 1 "false-positive"
-``` 
+```
 
 Which would tell the extractor to only use 1 track from the file `20171126-142109-akaroa10.cptv` when processing it.
 
-Setting the max tracks to 0 will cause the clip to not be processed. 
+Setting the max tracks to 0 will cause the clip to not be processed.
 
 The reason field is not used, but is included for reference.
 
@@ -92,7 +87,7 @@ Once these changes have been made the track extractor will need to be rerun to a
 
 # 4 Building the dataset
 
-To build the dataset run 
+To build the dataset run
 
 ```commandline
 python build.py
@@ -100,25 +95,25 @@ python build.py
 
 This will take a minute or so.
 
-By default only clips up to a certian date will be processed, so it may be necessary to edit the `build.py` and edit the line 
+By default only clips up to a certian date will be processed, so it may be necessary to edit the `build.py` and edit the line
 
 ```python
 END_DATE = datetime(2018, 1, 31)
 ```
-  
+
 It can be quite useful to know that a dataset does not contain data past a certian date as any data after this date can safely be used for testing.
 
 If new classes have been added, but do not have enough data the `EXCLUDED_LABELS` variable may also have to be updated. (see 4.1)
 
 ## 4.1 Adding a new class to the model
 
-By default the validation set requires 300 segments taken from 10 different 'bins'.  
+By default the validation set requires 300 segments taken from 10 different 'bins'.
 
 A rule of thumb is that we require at least 2,000 segments, taken from at least 100 different tracks to enable classification on a specific class.
 
-Training with less data that this often results is poor results, not only on the class in questions, but in training in general. 
+Training with less data that this often results is poor results, not only on the class in questions, but in training in general.
 
-In the file `build.py` modify the line 
+In the file `build.py` modify the line
 
 ```python
 EXCLUDED_LABELS = ['insect','dog','human','mouse','rabbit', 'bird-kiwi']
@@ -131,28 +126,28 @@ When build.py is run it will output numbers for each class
 ```text
 
 ------------------------------------------------------------------------------------------
-Class                Train                 Validation            Test                 
+Class                Train                 Validation            Test
 ------------------------------------------------------------------------------------------
-bird                 3610/673/152/3360.3  316/94/27/319.1      300/94/27/255.2     
-cat                  1325/61/21/3360.3    309/23/10/319.1      300/23/10/343.5     
-false-positive       7336/896/102/3360.3  339/46/10/319.1      300/46/10/277.4     
-hedgehog             4812/481/121/3360.3  321/46/17/319.1      300/46/17/283.4     
-possum               6118/516/83/3360.3   412/35/10/319.1      300/35/10/315.8     
-rat                  4075/554/19/3360.3   311/80/18/319.1      300/80/18/252.7     
-stoat                1745/286/19/3360.3   313/88/10/319.1      300/88/10/288.7  
-```   
+bird                 3610/673/152/3360.3  316/94/27/319.1      300/94/27/255.2
+cat                  1325/61/21/3360.3    309/23/10/319.1      300/23/10/343.5
+false-positive       7336/896/102/3360.3  339/46/10/319.1      300/46/10/277.4
+hedgehog             4812/481/121/3360.3  321/46/17/319.1      300/46/17/283.4
+possum               6118/516/83/3360.3   412/35/10/319.1      300/35/10/315.8
+rat                  4075/554/19/3360.3   311/80/18/319.1      300/80/18/252.7
+stoat                1745/286/19/3360.3   313/88/10/319.1      300/88/10/288.7
+```
 
 The numbers in each column represent the segments / tracks / bins / total weight for each class / dataset.
 
 # 5. Training a new model.
 
-Models can be trained via train.py.  
+Models can be trained via train.py.
 
 Editing models and hyper-parameters needs to be done via code at this point.
 
 In train.py edit the line
 
-```python 
+```python
 model = ModelCRNN_HQ(labels=len(labels), enable_flow=True, l2_reg=0, keep_prob=0.2)
 ```
 
@@ -189,7 +184,7 @@ lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
 
 control the architecture of the Recurrent block.
 
-Training is processed by 
+Training is processed by
 
 ```python
 model.train_model(epochs=30, run_name='HQ Novelty/V7 zeroed flow/'+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
@@ -197,9 +192,9 @@ model.train_model(epochs=30, run_name='HQ Novelty/V7 zeroed flow/'+datetime.date
 
 Where the maximum number of epochs and the run name (used as the logging folder) are provided.
 
-Each run should be given a unique run name.  
+Each run should be given a unique run name.
 
-When ready to train model simply run. 
+When ready to train model simply run.
 
 ```commandline
 python train.py
@@ -208,7 +203,7 @@ python train.py
 # 5.1 Using Tensorboard to monitor training
 
 To view a model while training you can run Tensorboard from the command prompt.  By default logs are placed in the folder 'c:/cac/logs'.
-It is often a good idea to group logs from related runs together in a folder.  For example 'c:/cac/logs/v030/optical flow test/' 
+It is often a good idea to group logs from related runs together in a folder.  For example 'c:/cac/logs/v030/optical flow test/'
 
 ```commandline
 tensorboard --logdir=[LOG_FOLDER]`
@@ -218,7 +213,7 @@ Tensorboard will output a URL which you can open in browser
 
 The most useful information are the metrics 'accuracy' and 'loss'.  The f1 scores also include useful per class information, as does the confusion matrix which is found under the images tab (generated very epoch).
 
-Tensorboard will list all runs found in the provided log folder.  It can be therefore quite helpful to copy and paste a reference model from a previous set of tests, rename it to 'v0 reference' and use it to compare results against.  This can give an early indication of the performance of the model. 
+Tensorboard will list all runs found in the provided log folder.  It can be therefore quite helpful to copy and paste a reference model from a previous set of tests, rename it to 'v0 reference' and use it to compare results against.  This can give an early indication of the performance of the model.
 
 # 5.2 Testing a model
 
@@ -231,10 +226,10 @@ To test the performance of a model run the Model Test Notebook
 A browser should open.  Use the UI to select `Test Model.ipynb`
 
 Edit the `model path` parameter to the model you want to test.
-  
-Note: you can run the debugging script on a model that is currently training by setting the path to a model in the 
-checkpoints folder.  e.g. c:/cac/checkpoints/model-most-recent' 
 
-Run each cell in the notebook.  Some of these cells will take a long time to run (more than 10 minutes).  
+Note: you can run the debugging script on a model that is currently training by setting the path to a model in the
+checkpoints folder.  e.g. c:/cac/checkpoints/model-most-recent'
+
+Run each cell in the notebook.  Some of these cells will take a long time to run (more than 10 minutes).
 
 The script will evaluate the per segment and per track classification performance.

@@ -24,13 +24,11 @@ class CPTVFileProcessor:
     Supports a worker pool to process multiple files at once.
     """
 
-    # all files will be reprocessed
-    OM_ALL = 'all'
+    def __init__(self, config, tracker_config):
 
-    # no clips will be overwritten
-    OM_NONE = 'none'
+        self.config = config
+        self.tracker_config = tracker_config
 
-    def __init__(self):
         """
         A base class for processing large sets of CPTV video files.
         """
@@ -42,10 +40,7 @@ class CPTVFileProcessor:
         self.source_folder = None
 
         # number of threads to use when processing jobs.
-        self.workers_threads = 0
-
-        # what rule to apply when a destination file already exists.
-        self.overwrite_mode = self.OM_NONE
+        self.workers_threads = config.worker_threads
 
         # default grayscale colormap
         self.colormap = lambda x : (x*255,x*255,x*255)
@@ -54,6 +49,9 @@ class CPTVFileProcessor:
 
         # optional initializer for worker threads
         self.worker_pool_init = None
+
+        os.makedirs(config.classify.classify_folder, mode=0o775, exist_ok=True)
+
 
     def process_file(self, filename, **kwargs):
         """ The function to process an individual file. """

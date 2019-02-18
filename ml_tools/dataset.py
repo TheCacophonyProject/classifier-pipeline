@@ -215,6 +215,8 @@ class Preprocessor:
     # size to scale each frame to when loaded.
     FRAME_SIZE = 48
 
+    MIN_SIZE = 4
+
     @staticmethod
     def apply(frames, reference_level, frame_velocity=None, augment=False, encode_frame_offsets_in_flow=False, default_inset=2):
         """
@@ -241,17 +243,20 @@ class Preprocessor:
 
             channels, frame_height, frame_width = frame.shape
 
+            if frame_height < Preprocessor.MIN_SIZE or frame_width < Preprocessor.MIN_SIZE:
+                return
+
             frame_bounds = tools.Rectangle(0, 0, frame_width, frame_height)
 
             # set up a cropping frame
             crop_region = tools.Rectangle.from_ltrb(left_offset, top_offset, frame_width - right_offset, frame_height - bottom_offset)
 
             # if the frame is too small we make it a little larger
-            while crop_region.width < 4:
+            while crop_region.width < Preprocessor.MIN_SIZE:
                 crop_region.left -=1
                 crop_region.right += 1
                 crop_region.crop(frame_bounds)
-            while crop_region.height < 4:
+            while crop_region.height < Preprocessor.MIN_SIZE:
                 crop_region.top -=1
                 crop_region.bottom += 1
                 crop_region.crop(frame_bounds)
