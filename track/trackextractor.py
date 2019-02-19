@@ -348,8 +348,6 @@ class TrackExtractor:
                 continue
             track = Track()
             track.add_frame(region)
-            track.start_time = self.video_start_time + \
-                datetime.timedelta(seconds=self.frame_on / 9.0)
             track.start_frame = self.frame_on
             new_tracks.add(track)
             self.active_tracks.append(track)
@@ -375,8 +373,9 @@ class TrackExtractor:
 
         if self.config.verbose:
             for stats, track in track_stats:
+                start_s, end_s = self.start_and_end_in_secs(track)
                 print(" - track duration:{:.1f}sec, number of frames:{}, offset:{:.1f}px, delta:{:.1f}, mass:{:.1f}px".format(
-                    stats.duration, len(track), stats.max_offset, stats.delta_std, stats.average_mass
+                    end_s - start_s, len(track), stats.max_offset, stats.delta_std, stats.average_mass
                 ))
 
         # find how much each track overlaps with other tracks
@@ -404,7 +403,7 @@ class TrackExtractor:
                 self.print_if_verbose("Track filtered.  Too much overlap")
                 continue
 
-            # discard any tracks that are less min_dirration
+            # discard any tracks that are less min_duration
             # these are probably glitches anyway, or don't contain enough information.
             if stats.duration < self.config.min_duration_secs:
                 self.print_if_verbose("Track filtered. Too short")
@@ -625,6 +624,15 @@ class TrackExtractor:
         if not self.frame_buffer.has_flow:
             self.frame_buffer.generate_optical_flow(self.opt_flow, self.config.flow_threshold)
 
+    def start_and_end_in_secs(self, track):
+        return self.frame_time_in_secs(track, 0), self.frame_time_in_secs(track, len(track) - 1)
+
+    def frame_time_in_secs(self, track, frame_index = 0):
+        return round((track.start_frame  + frame_index) / self.FRAMES_PER_SEC, 2)
+
+    def start_and_end_time_absolute(self, track):
+        start_s, end_s = self.start_and_end_in_secs(track)
+        return self.video_start_time + datetime.timedelta(seconds=start_s), self.video_start_time + datetime.timedelta(seconds=end_s)
 
 def blur_and_return_as_mask(frame, threshold):
     """
