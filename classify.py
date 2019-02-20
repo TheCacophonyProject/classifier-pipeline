@@ -10,6 +10,7 @@ import sys
 from datetime import datetime
 
 from classify.clipclassifier import ClipClassifier
+from classify.previewer import Previewer
 from ml_tools import tools
 from ml_tools.config import Config
 
@@ -46,7 +47,7 @@ def main():
 
     # parse command line arguments
     if args.create_previews:
-        conf["classify"]["preview"] = True
+        conf["classify"]["preview"] = Previewer.PREVIEW_CLASSIFIED
 
     if args.verbose:
         conf["classify_tracking"]["verbose"] = True
@@ -63,7 +64,7 @@ def main():
     if not config.classify.meta_to_stdout:
         log_to_stdout()
 
-    if config.classify.preview:
+    if not config.classify.preview == Previewer.PREVIEW_NONE:
         logging.info("Creating previews")
 
     if not config.use_gpu:

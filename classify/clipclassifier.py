@@ -33,8 +33,9 @@ class ClipClassifier(CPTVFileProcessor):
 
         # mpeg preview output
         self.previewer = None
-        if config.classify.preview:
-            self.previewer = Previewer(config)
+        preview_type = config.classify.preview
+        if not preview_type == Previewer.PREVIEW_NONE:
+            self.previewer = Previewer(config, preview_type)
 
         self.start_date = None
         self.end_date = None

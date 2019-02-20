@@ -18,13 +18,22 @@ def resource_path(name):
 
 class Previewer:
 
-    def __init__(self, config):
+    PREVIEW_RAW="raw"
+
+    PREVIEW_CLASSIFIED="classified"
+
+    PREVIEW_NONE = "none"
+
+    PREVIEW_OPTIONS = [PREVIEW_NONE, PREVIEW_RAW, PREVIEW_CLASSIFIED]
+
+    def __init__(self, config, preview_type):
         self.config = config
         # make sure all the required files are there
         self.track_descs = {}
         self.colourmap
         self.font
         self.font_title
+        self.preview_type = preview_type
 
     @property
     def colourmap(self):
@@ -71,7 +80,9 @@ class Previewer:
             print("Do not have temperatures to use")
             return
 
-        if track_predictions:
+        has_tracks = track_predictions and len(track_predictions) > 0
+        show_tracks = (self.preview_type == self.PREVIEW_CLASSIFIED) and has_tracks
+        if show_tracks:
             self.create_track_descriptions(tracker, track_predictions)
 
         # setting quality to 30 gives files approximately the same size as the original CPTV MPEG previews
@@ -80,21 +91,16 @@ class Previewer:
 
         for frame_number, thermal in enumerate(tracker.frame_buffer.thermal):
             thermal_image = tools.convert_heat_to_img(thermal, self.colormap, auto_min, auto_max)
-            thermal_image = thermal_image.resize((int(thermal_image.width * FRAME_SCALE), int(thermal_image.height * FRAME_SCALE)), Image.BILINEAR)
-
-            if tracker.frame_buffer.filtered:
+            if show_tracks:
+                thermal_image = thermal_image.resize((int(thermal_image.width * FRAME_SCALE), int(thermal_image.height * FRAME_SCALE)), Image.BILINEAR)
                 # overlay track rectanges on original thermal image
                 thermal_image = self.draw_track_rectangles(tracker, frame_number, FRAME_SCALE, thermal_image, track_predictions)
-                mpeg.next_frame(np.asarray(thermal_image))
-            else:
-                # no filtered frames available (clip too hot or
-                # background moving?) so just output the original
-                # frame without the tracking frame.
-                mpeg.next_frame(np.asarray(thermal_image))
+            mpeg.next_frame(np.asarray(thermal_image))
 
             # we store the entire video in memory so we need to cap the frame count at some point.
             if frame_number > 9 * 60 * 10:
                 break
+
         mpeg.close()
 
     def export_tracking_frame(self, tracker: TrackExtractor, frame_number:int, frame_scale:float, track_predictions):

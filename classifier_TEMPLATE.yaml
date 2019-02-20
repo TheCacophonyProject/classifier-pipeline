@@ -153,8 +153,11 @@ classify:
     # Path to pretrained Model use for classification (This should be the base filename without any extension)
     model: "<full path>"
 
-    # Path to pretrained Model use for classification (This should be the base filename without any extension)
-    preview: False
+    # Create a MP4 preview of the recording.  Options are "none", "raw", "classified".
+    # None - won't create a preview.
+    # Raw - creates a preview of just the video (no classification)
+    # Classified - creates a video showing tracks and classification values.
+    preview: "none"
 
     # folder is where classifier output and mp4s will be created.  It is specified relative to the base_data_folder
     classify_folder: "classify"
