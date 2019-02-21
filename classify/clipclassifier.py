@@ -33,8 +33,9 @@ class ClipClassifier(CPTVFileProcessor):
 
         # mpeg preview output
         self.previewer = None
-        if config.classify.preview:
-            self.previewer = Previewer(config)
+        preview_type = config.classify.preview
+        if not preview_type == Previewer.PREVIEW_NONE:
+            self.previewer = Previewer(config, preview_type)
 
         self.start_date = None
         self.end_date = None
@@ -292,21 +293,29 @@ class ClipClassifier(CPTVFileProcessor):
             logging.info(" - [{}/{}] prediction: {}".format(i + 1, len(tracker.tracks), description))
 
         if self.previewer:
-            print("Exporting preview... to {}".format(mpeg_filename))
+            logging.info("Exporting preview to '{}'".format(mpeg_filename))
             prediction_string = ""
             for label, score in self.get_clip_prediction():
                 if score > 0.5:
                     prediction_string = prediction_string + " {} {:.1f}".format(label, score * 10)
             self.previewer.export_clip_preview(mpeg_filename, tracker, self.track_prediction)
 
+
+        self.save_metadata(filename, meta_filename, tracker)
+
+        if self.tracker_config.verbose:
+            ms_per_frame = (time.time() - start) * 1000 / max(1, len(tracker.frame_buffer.thermal))
+            logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
+
+    def save_metadata(self, filename, meta_filename, tracker):
+        # read in original metadata
+        meta_data = self.get_meta_data(filename)
+
         # record results in text file.
         save_file = {}
         save_file['source'] = filename
         save_file['start_time'] = tracker.video_start_time.isoformat()
         save_file['end_time'] = (tracker.video_start_time + timedelta(seconds=len(tracker.frame_buffer.thermal) / 9.0)).isoformat()
-
-        # read in original metadata
-        meta_data = self.get_meta_data(filename)
 
         if meta_data:
             save_file['camera'] = meta_data['Device']['devicename']
@@ -315,9 +324,10 @@ class ClipClassifier(CPTVFileProcessor):
         save_file['tracks'] = []
         for track, prediction in self.track_prediction.items():
             track_info = {}
+            start_s, end_s = tracker.start_and_end_in_secs(track)
             save_file['tracks'].append(track_info)
-            track_info['start_time'] = track.start_time.isoformat()
-            track_info['end_time'] = track.end_time.isoformat()
+            track_info['start_s'] = start_s
+            track_info['end_s'] = end_s
             track_info['num_frames'] = prediction.num_frames
             track_info['frame_start'] = track.start_frame
             track_info['label'] = self.classifier.labels[prediction.label()]
@@ -330,15 +340,15 @@ class ClipClassifier(CPTVFileProcessor):
                 label = self.classifier.labels[i]
                 track_info['all_class_confidences'][label] = round(value, 3)
 
+            positions = []
+            for index, bounds in enumerate(track.bounds_history):
+                track_time = tracker.frame_time_in_secs(track, index)
+                positions.append([track_time, bounds])
+            track_info['positions'] = positions
 
         if self.config.classify.meta_to_stdout:
             output = json.dumps(save_file, indent=4, cls=tools.CustomJSONEncoder)
-            print("output is ")
             print(output)
         else:
             f = open(meta_filename, 'w')
             json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
-
-        ms_per_frame = (time.time() - start) * 1000 / max(1, len(tracker.frame_buffer.thermal))
-        if self.verbose:
-            logging.info("Took {:.1f}ms per frame".format(ms_per_frame))

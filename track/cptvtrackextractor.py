@@ -294,8 +294,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                     channels[TrackChannels.filtered] = 0
                 track_data.append(channels)
             track_id = track_number+1
+            start_time, end_time = tracker.start_and_end_time_absolute(track)
             database.add_track(clip_id, track_id, track_data,
-                               track, opts=self.compression)
+                               track, opts=self.compression, start_time=start_time, end_time=end_time)
 
     def needs_processing(self, source_filename):
         """

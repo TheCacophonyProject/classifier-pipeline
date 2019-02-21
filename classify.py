@@ -10,6 +10,7 @@ import sys
 from datetime import datetime
 
 from classify.clipclassifier import ClipClassifier
+from classify.previewer import Previewer
 from ml_tools import tools
 from ml_tools.config import Config
 
@@ -37,6 +38,7 @@ def main():
     parser.add_argument(
         '--end-date', help='Only clips on or before this day will be processed (format YYYY-MM-DD)')
     parser.add_argument('-c', '--config-file', help="Path to config file to use")
+    parser.add_argument('--processor-folder', help="When running from thermal-processing use this to specify the folder for both the source cptv and output mp4.   With this option the metadata will be sent to stdout.")
 
     args = parser.parse_args()
     if args.config_file:
@@ -46,10 +48,16 @@ def main():
 
     # parse command line arguments
     if args.create_previews:
-        conf["classify"]["preview"] = True
+        conf["classify"]["preview"] = Previewer.PREVIEW_CLASSIFIED
 
     if args.verbose:
         conf["classify_tracking"]["verbose"] = True
+
+    if args.processor_folder:
+        conf["classify"]['meta_to_stdout'] = True
+        conf["base_data_folder"] = args.processor_folder
+        conf["classify"]["classify_folder"] = ''
+        conf["source_folder"] = ''
 
     config = Config.load_from_map(conf)
     clip_classifier = ClipClassifier(config, config.classify_tracking)
@@ -63,7 +71,7 @@ def main():
     if not config.classify.meta_to_stdout:
         log_to_stdout()
 
-    if config.classify.preview:
+    if config.classify.preview != Previewer.PREVIEW_NONE:
         logging.info("Creating previews")
 
     if not config.use_gpu:

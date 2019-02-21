@@ -20,6 +20,9 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 from collections import namedtuple
 import os.path as path
 
+import ml_tools.config
+from classify.previewer import Previewer
+
 ClassifyConfigTuple = namedtuple(
     "classify",
     [
@@ -36,7 +39,7 @@ class ClassifyConfig(ClassifyConfigTuple):
     def load(cls, classify, base_folder):
         config = cls(model=classify["model"],
             meta_to_stdout=classify["meta_to_stdout"],
-            preview=classify["preview"],
+            preview=ml_tools.config.parse_options_param("preview", classify["preview"], Previewer.PREVIEW_OPTIONS),
             classify_folder=path.join(base_folder, classify["classify_folder"]),
         )
         return config

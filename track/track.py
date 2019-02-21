@@ -46,8 +46,6 @@ class Track:
 
         # frame number this track starts at
         self.start_frame = 0
-        # datetime this track starts
-        self.start_time = None
         # our bounds over time
         self.bounds_history = []
         # number frames since we lost target.
@@ -119,7 +117,6 @@ class Track:
             max_offset=float(max_offset),
             average_mass=float(np.mean(mass_history)),
             median_mass=float(np.median(mass_history)),
-            duration=len(self) / 9.0,
             delta_std=float(delta_std),
             score=float(score)
         )
@@ -173,7 +170,6 @@ class Track:
             self.start_frame = 0
             self.bounds_history = []
         else:
-            self.start_time += datetime.timedelta(seconds=start / 9.0)
             self.start_frame += start
             self.bounds_history = self.bounds_history[start:end+1]
 
@@ -228,15 +224,6 @@ class Track:
     @property
     def bounds(self) -> Region:
         return self.bounds_history[-1]
-
-    @property
-    def duration(self):
-        """ Duration of track in seconds. """
-        return len(self) / 9.0
-
-    @property
-    def end_time(self):
-        return self.start_time + datetime.timedelta(seconds=self.duration)
 
     def __repr__(self):
         return "Track:{} frames".format(len(self))

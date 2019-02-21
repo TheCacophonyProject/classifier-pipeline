@@ -186,7 +186,7 @@ class TrackDatabase:
             else:
                 return False
 
-    def add_track(self, clip_id, track_number, track_data, track=None, opts=None):
+    def add_track(self, clip_id, track_number, track_data, track=None, opts=None, start_time=None, end_time=None):
         """
         Adds track to database.
         :param clip_id: id of the clip to add track to write
@@ -233,8 +233,10 @@ class TrackDatabase:
                 stats['tag'] = track.tag
                 stats['frames'] = frames
                 stats['start_frame'] = track.start_frame
-                stats['start_time'] = track.start_time.isoformat()
-                stats['end_time'] = track.end_time.isoformat()
+                if start_time:
+                    stats['start_time'] = start_time.isoformat()
+                if end_time:
+                    stats['end_time'] = end_time.isoformat()
 
                 for name, value in track_stats._asdict().items():
                     stats[name] = value
