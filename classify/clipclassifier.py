@@ -293,7 +293,7 @@ class ClipClassifier(CPTVFileProcessor):
             logging.info(" - [{}/{}] prediction: {}".format(i + 1, len(tracker.tracks), description))
 
         if self.previewer:
-            print("Exporting preview... to {}".format(mpeg_filename))
+            logging.info("Exporting preview... to {}", mpeg_filename)
             prediction_string = ""
             for label, score in self.get_clip_prediction():
                 if score > 0.5:
@@ -348,7 +348,6 @@ class ClipClassifier(CPTVFileProcessor):
 
         if self.config.classify.meta_to_stdout:
             output = json.dumps(save_file, indent=4, cls=tools.CustomJSONEncoder)
-            print("output is ")
             print(output)
         else:
             f = open(meta_filename, 'w')

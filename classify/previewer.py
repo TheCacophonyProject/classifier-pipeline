@@ -41,7 +41,6 @@ class Previewer:
         if not globs._previewer_colour_map:
             colourmap = self.config.previews_colour_map
             if os.path.exists(colourmap):
-                print("loading colour map " + colourmap)
                 self.colormap = tools.load_colormap(colourmap)
             else:
                 print("using default colour map")
@@ -75,7 +74,6 @@ class Previewer:
         if tracker.stats:
             auto_max = tracker.stats['max_temp']
             auto_min = tracker.stats['min_temp']
-            print("Using temperatures {}-{}".format(auto_min, auto_max))
         else:
             print("Do not have temperatures to use")
             return
