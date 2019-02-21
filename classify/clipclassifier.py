@@ -293,7 +293,7 @@ class ClipClassifier(CPTVFileProcessor):
             logging.info(" - [{}/{}] prediction: {}".format(i + 1, len(tracker.tracks), description))
 
         if self.previewer:
-            logging.info("Exporting preview... to {}", mpeg_filename)
+            logging.info("Exporting preview to '{}'".format(mpeg_filename))
             prediction_string = ""
             for label, score in self.get_clip_prediction():
                 if score > 0.5:
@@ -303,8 +303,8 @@ class ClipClassifier(CPTVFileProcessor):
 
         self.save_metadata(filename, meta_filename, tracker)
 
-        ms_per_frame = (time.time() - start) * 1000 / max(1, len(tracker.frame_buffer.thermal))
-        if self.verbose:
+        if self.tracker_config.verbose:
+            ms_per_frame = (time.time() - start) * 1000 / max(1, len(tracker.frame_buffer.thermal))
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
 
     def save_metadata(self, filename, meta_filename, tracker):

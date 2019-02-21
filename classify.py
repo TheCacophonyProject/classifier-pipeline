@@ -38,7 +38,7 @@ def main():
     parser.add_argument(
         '--end-date', help='Only clips on or before this day will be processed (format YYYY-MM-DD)')
     parser.add_argument('-c', '--config-file', help="Path to config file to use")
-    parser.add_argument('--processor-folder', help="When running from thermal-processor use this to specify the folder for both the source cptv and output mp4.   With this option the meta data will be sent to standard-out.")
+    parser.add_argument('--processor-folder', help="When running from thermal-processing use this to specify the folder for both the source cptv and output mp4.   With this option the metadata will be sent to stdout.")
 
     args = parser.parse_args()
     if args.config_file:
@@ -71,7 +71,7 @@ def main():
     if not config.classify.meta_to_stdout:
         log_to_stdout()
 
-    if not config.classify.preview == Previewer.PREVIEW_NONE:
+    if config.classify.preview != Previewer.PREVIEW_NONE:
         logging.info("Creating previews")
 
     if not config.use_gpu:

@@ -78,8 +78,7 @@ class Previewer:
             print("Do not have temperatures to use")
             return
 
-        has_tracks = track_predictions and len(track_predictions) > 0
-        show_tracks = (self.preview_type == self.PREVIEW_CLASSIFIED) and has_tracks
+        show_tracks = bool(track_predictions) and self.preview_type == self.PREVIEW_CLASSIFIED
         if show_tracks:
             self.create_track_descriptions(tracker, track_predictions)
 

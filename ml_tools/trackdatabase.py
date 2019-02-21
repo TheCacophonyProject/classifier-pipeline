@@ -233,9 +233,9 @@ class TrackDatabase:
                 stats['tag'] = track.tag
                 stats['frames'] = frames
                 stats['start_frame'] = track.start_frame
-                if start_time is not None:
+                if start_time:
                     stats['start_time'] = start_time.isoformat()
-                if end_time is not None:
+                if end_time:
                     stats['end_time'] = end_time.isoformat()
 
                 for name, value in track_stats._asdict().items():

@@ -54,10 +54,6 @@ def parse_params():
     if config.extract.preview_tracks:
         print("Previews enabled.")
 
-    if extractor.verbose:
-        print("Verbose description enabled.")
-
-
     if os.path.splitext(args.target)[1].lower() == '.cptv':
         # run single source
         source_file = tools.find_file_from_cmd_line(config.source_folder, args.target)

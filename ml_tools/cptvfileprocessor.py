@@ -45,8 +45,6 @@ class CPTVFileProcessor:
         # default grayscale colormap
         self.colormap = lambda x : (x*255,x*255,x*255)
 
-        self.verbose = False
-
         # optional initializer for worker threads
         self.worker_pool_init = None
 
@@ -104,12 +102,12 @@ class CPTVFileProcessor:
                 pool.close()
 
     def log_message(self, message):
-        """ Record message in log.  Will be printed if verbose is enabled. """
+        """ Record message in stdout.  Will be printed if verbose is enabled. """
         # note, python has really good logging... I should probably make use of this.
-        if self.verbose: print(message)
+        if self.tracker_config.verbose: print(message)
 
     def log_warning(self, message):
-        """ Record warning message in log.  Will be printed if verbose is enabled. """
+        """ Record warning message in stdout."""
         # note, python has really good logging... I should probably make use of this.
         print("Warning:",message)
 
