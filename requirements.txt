@@ -9,3 +9,4 @@ python-dateutil
 sklearn
 tables==3.4.4
 h5py==2.7.0
+pyyaml

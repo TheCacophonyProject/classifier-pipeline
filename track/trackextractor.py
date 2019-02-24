@@ -399,8 +399,8 @@ class TrackExtractor:
         for stats, track in track_stats:
             # discard any tracks that overlap too often with other tracks.  This normally means we are tracking the
             # tail of an animal.
-            if track_overlap_ratio[track] > self.config.track_smoothing:
-                self.print_if_verbose("Track filtered.  Too much overlap")
+            if track_overlap_ratio[track] > self.config.track_overlap_ratio:
+                self.print_if_verbose("Track filtered.  Too much overlap {}".format(track_overlap_ratio[track]))
                 continue
 
             # discard any tracks that are less min_duration
