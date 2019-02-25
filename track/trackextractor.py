@@ -100,6 +100,11 @@ class TrackExtractor:
         # accumulates frame changes for FM_DELTA algorithm
         self.accumulator = None
 
+        # frame_padding < 3 causes problems when we get small areas...
+        self.frame_padding = max(3, self.config.frame_padding)
+        # the dilation effectively also pads the frame so take it into consideration.
+        self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
+
     def load(self, filename):
         """
         Loads a cptv file, and prepares for track extraction.
@@ -466,23 +471,19 @@ class TrackExtractor:
 
         thresh = np.uint8(blur_and_return_as_mask(edgeless_filtered, threshold=self.threshold))
 
-        # applies erosion
-        erosion = 0
+        if self.config.dilation_pixels > 0:
+            size = self.config.dilation_pixels * 2 + 1
+            kernel = np.ones((size, size), np.uint8)
+            thresh = cv2.dilate(thresh, kernel, iterations=1)
 
-        if erosion:
-            # this removes small slivers
-            kernel = np.ones((3, 3), np.uint8)
-            thresh = cv2.erode(thresh, kernel, iterations=erosion)
-
-        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(
-            thresh)
+        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(thresh)
 
         # make mask go back to full frame size without edges chopped
         mask = np.zeros(filtered.shape)
         mask[edge:frame_height - edge, edge:frame_width - edge] = small_mask
 
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
-        padding = self.config.frame_padding
+        padding = self.frame_padding
 
         # find regions of interest
         regions = []

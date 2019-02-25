@@ -42,7 +42,7 @@ tracking:
         temp_thresh: 2900
 
         # Minimum raw temperature difference between background and track
-        delta_thresh: 30
+        delta_thresh: 20
 
     # these parameters are associated with the stats background method
     stats:
@@ -73,6 +73,10 @@ tracking:
     # number of pixels around object to pad.
     # Note: frame_padding must be at least 3 or some frames may be too small for classification and program may crash
     frame_padding: 6
+
+    # dilation pixels:  This is the number of pixels to grow the mask of interesting bits.
+    # The higher the value, the further apart things (bits of animal, or animals) will be linked together as one object
+    dilation_pixels: 2
 
     # wait this many frames for animal to "reappear" after it is last detected.
     remove_track_after_frames: 9
