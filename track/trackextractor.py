@@ -27,7 +27,7 @@ import h5py
 import scipy.ndimage
 import logging
 
-from ml_tools.tools import get_image_subsection
+from ml_tools.tools import Rectangle
 
 from track.track import Track
 from track.region import Region
@@ -120,7 +120,8 @@ class TrackExtractor:
             # we need to load the entire video so we can analyse the background.
             frames = ([frame.pix for frame in reader])
             self.frame_buffer.thermal = frames
-
+            edge = self.config.edge_pixels
+            self.crop_rectangle = Rectangle(edge, edge, reader.x_resolution - 2 * edge, reader.y_resolution - 2 * edge)
 
     def extract_tracks(self):
         """
@@ -285,14 +286,10 @@ class TrackExtractor:
             raise ValueError("Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
                 tracker_frame, len(self.frame_buffer.thermal)-1))
 
-        thermal = get_image_subsection(
-            self.frame_buffer.thermal[tracker_frame], bounds)
-        filtered = get_image_subsection(
-            self.frame_buffer.filtered[tracker_frame], bounds)
-        flow = get_image_subsection(
-            self.frame_buffer.flow[tracker_frame], bounds)
-        mask = get_image_subsection(
-            self.frame_buffer.mask[tracker_frame], bounds)
+        thermal = bounds.subimage(self.frame_buffer.thermal[tracker_frame])
+        filtered = bounds.subimage(self.frame_buffer.filtered[tracker_frame])
+        flow = bounds.subimage(self.frame_buffer.flow[tracker_frame])
+        mask = bounds.subimage(self.frame_buffer.mask[tracker_frame])
 
         # make sure only our pixels are included in the mask.
         mask[mask != bounds.id] = 0
@@ -462,12 +459,7 @@ class TrackExtractor:
             delta_frame = None
 
         # remove the edges of the frame as we know these pixels can be spurious value
-        edge = self.config.edge_pixels
-        if edge > 0:
-            edgeless_filtered = filtered[edge:frame_height - edge, edge:frame_width - edge]
-        else:
-            edge = 0
-            edgeless_filtered = filtered
+        edgeless_filtered = self.crop_rectangle.subimage(filtered)
 
         thresh = np.uint8(blur_and_return_as_mask(edgeless_filtered, threshold=self.threshold))
 
@@ -479,6 +471,7 @@ class TrackExtractor:
         labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(thresh)
 
         # make mask go back to full frame size without edges chopped
+        edge = self.config.edge_pixels
         mask = np.zeros(filtered.shape)
         mask[edge:frame_height - edge, edge:frame_width - edge] = small_mask
 
@@ -498,40 +491,24 @@ class TrackExtractor:
             )
 
             old_region = region.copy()
-            if self.config.cropped_regions_strategy == "all":
-                # in this case we just clip the region to the edges of the screen
-                region.left = max(region.left, edge)
-                region.top = max(region.top, edge)
-                region.right = min(region.right, frame_width - 1 - edge)
-                region.bottom = min(region.bottom, frame_height - 1 - edge)
-            elif self.config.cropped_regions_strategy == "cautious":
-                # keep cropped regions if they have a reasonable size
-                region.left = max(region.left, edge)
-                region.top = max(region.top, edge)
-                region.right = min(region.right, frame_width - 1 - edge)
-                region.bottom = min(region.bottom, frame_height - 1 - edge)
+            region.crop(self.crop_rectangle)
+            region.was_cropped = str(old_region) != str(region)
 
-                crop_width_fraction = (
-                    old_region.width - region.width) / old_region.width
-                crop_height_fraction = (
-                    old_region.height - region.height) / old_region.height
-
+            if self.config.cropped_regions_strategy == "cautious":
+                crop_width_fraction = (old_region.width - region.width) / old_region.width
+                crop_height_fraction = (old_region.height - region.height) / old_region.height
                 if crop_width_fraction > 0.25 or crop_height_fraction > 0.25:
                     continue
-
             elif self.config.cropped_regions_strategy == "none":
-                # all regions that touch the side of the screen are removed
-                if (region.left < edge) or (region.right > frame_width - edge) or (region.top < edge) or (region.bottom > frame_height - edge):
+                if region.was_cropped:
                     continue
-            else:
+            elif self.config.cropped_regions_strategy != "all":
                 raise ValueError(
                     "Invalid mode for CROPPED_REGIONS_STRATEGY, expected ['all','cautious','none'] but found {}".format(
                         self.config.cropped_regions_strategy))
-            region.was_cropped = str(old_region) != str(region)
 
             if delta_frame is not None:
-                region_difference = np.float32(
-                    get_image_subsection(delta_frame, region))
+                region_difference = np.float32(region.subimage(delta_frame))
                 region.pixel_variance = np.var(region_difference)
 
             # filter out regions that are probably just noise
