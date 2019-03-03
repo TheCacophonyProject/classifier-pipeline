@@ -39,7 +39,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         self.enable_track_output = True
         self.compression = blosc_zstd if self.config.extract.enable_compression else None
 
-        self.previewer = Previewer.create_if_required(config, config.classify.preview)
+        self.previewer = Previewer.create_if_required(config, config.extract.preview)
 
         # normally poor quality tracks are filtered out, enabling this will let them through.
         self.disable_track_filters = False

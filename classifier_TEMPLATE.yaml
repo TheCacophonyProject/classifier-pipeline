@@ -130,10 +130,10 @@ extract:
     # Create a MP4 preview of the recording.  Options are "none", "raw", "classified", "tracking"
     # see above for descriptions
     # None - won't create a preview.
-    # Raw - creates a preview of just the video (no classification)
+    # Raw - creates a preview of just the video (no classification or tracks)
     # Classified - creates a video showing tracks and classification values.
     # Tracking - is the four frame video view, including thermal, filtered, mask and flow.
-    preview_tracks: "tracking"
+    preview: "tracking"
 
     # Hints file to loade.  Hints are a way to give extra information to the tracker about how many tracks to take.
     # Note:  Set to 'False' is there is no hints file.

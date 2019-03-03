@@ -18,8 +18,8 @@ def resource_path(name):
 class Previewer:
 
     PREVIEW_RAW = "raw"
-    PREVIEW_CLASSIFIED = "classified"
 
+    PREVIEW_CLASSIFIED = "classified"
 
     PREVIEW_NONE = "none"
 
@@ -81,13 +81,15 @@ class Previewer:
         if tracker.stats:
             self.auto_max = tracker.stats['max_temp']
             self.auto_min = tracker.stats['min_temp']
-            print("Temps are {} - {}, cf {}- {}".format(self.auto_min, self.auto_max, tools.TEMPERATURE_MIN, tools.TEMPERATURE_MAX))
         else:
-            print("Do not have temperatures to use")
+            print("Do not have temperatures to use.")
             return
 
         if bool(track_predictions) and self.preview_type == self.PREVIEW_CLASSIFIED:
             self.create_track_descriptions(tracker, track_predictions)
+
+        if self.preview_type == self.PREVIEW_TRACKING and not tracker.frame_buffer.flow:
+            tracker.generate_optical_flow()
 
         mpeg = MPEGCreator(filename)
 

@@ -40,7 +40,7 @@ def parse_params():
 
     # override previews if true
     if args.create_previews:
-        conf["extract"]["preview_tracks"] = True
+        conf["extract"]["preview"] = "tracking"
 
     # override verbose if true
     if args.verbose:
@@ -50,9 +50,6 @@ def parse_params():
 
     # setup extractor
     extractor = CPTVTrackExtractor(config, config.tracking)
-
-    if config.extract.preview_tracks:
-        print("Previews enabled.")
 
     if os.path.splitext(args.target)[1].lower() == '.cptv':
         # run single source
