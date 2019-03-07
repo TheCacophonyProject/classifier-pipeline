@@ -312,6 +312,10 @@ class ClipClassifier(CPTVFileProcessor):
         save_file['source'] = filename
         save_file['start_time'] = tracker.video_start_time.isoformat()
         save_file['end_time'] = (tracker.video_start_time + timedelta(seconds=len(tracker.frame_buffer.thermal) / 9.0)).isoformat()
+        save_file['algorithm'] = {}
+        save_file['algorithm']['model'] = self.config.classify.model
+        save_file['algorithm']['tracker_version'] = tracker.VERSION
+        save_file['algorithm']['tracker_config'] = tracker.config._asdict()
 
         if meta_data:
             save_file['camera'] = meta_data['Device']['devicename']

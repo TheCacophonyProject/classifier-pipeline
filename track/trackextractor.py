@@ -43,6 +43,9 @@ class TrackExtractor:
 
     FRAMES_PER_SEC = 9
 
+    # version number.  Recorded into stats file when a clip is processed.
+    VERSION = 6
+
     def __init__(self, trackconfig):
 
         self.config = trackconfig

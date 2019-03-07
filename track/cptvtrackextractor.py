@@ -28,9 +28,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
     during processing.
     """
 
-    # version number.  Recorded into stats file when a clip is processed.
-    VERSION = 6
-
     def __init__(self, config, tracker_config):
 
         CPTVFileProcessor.__init__(self, config, tracker_config)
@@ -217,7 +214,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         start = time.time()
 
         # save some additional stats
-        tracker.stats['version'] = CPTVTrackExtractor.VERSION
+        tracker.stats['version'] = TrackerExtractor.VERSION
 
         tracker.load(full_path)
 
