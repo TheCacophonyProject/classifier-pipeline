@@ -10,9 +10,9 @@ import sys
 from datetime import datetime
 
 from classify.clipclassifier import ClipClassifier
-from classify.previewer import Previewer
 from ml_tools import tools
 from ml_tools.config import Config
+from ml_tools.previewer import Previewer
 
 def log_to_stdout():
     """ Outputs all log entries to standard out. """

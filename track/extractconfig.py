@@ -25,7 +25,7 @@ ExtractConfigTuple = namedtuple(
     [
         "enable_compression",
         "include_filtered_channel",
-        "preview_tracks",
+        "preview",
         "hints_file",
         "tracks_folder",
     ],
@@ -38,7 +38,7 @@ class ExtractConfig(ExtractConfigTuple):
         config = cls(
             enable_compression = extract["enable_compression"],
             include_filtered_channel=extract["include_filtered_channel"],
-            preview_tracks=extract["preview_tracks"],
+            preview=extract["preview"],
             hints_file=extract["hints_file"],
             tracks_folder=path.join(base_folder, extract["tracks_folder"]),
         )

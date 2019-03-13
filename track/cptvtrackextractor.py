@@ -2,15 +2,11 @@ from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
 from ml_tools import trackdatabase
-from PIL import Image, ImageDraw
 
 from ml_tools.dataset import TrackChannels
 from ml_tools.tools import blosc_zstd
+from ml_tools.previewer import Previewer
 from track.trackextractor import TrackExtractor
-from track.mpegpreviewstreamer import MPEGPreviewStreamer
-
-import numpy as np
-import matplotlib.pyplot as plt
 
 import time
 import os
@@ -32,9 +28,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
     during processing.
     """
 
-    # version number.  Recorded into stats file when a clip is processed.
-    VERSION = 6
-
     def __init__(self, config, tracker_config):
 
         CPTVFileProcessor.__init__(self, config, tracker_config)
@@ -43,13 +36,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         self.enable_track_output = True
         self.compression = blosc_zstd if self.config.extract.enable_compression else None
 
-        if self.config.extract.preview_tracks:
-            if os.path.exists(config.previews_colour_map):
-                print("loading colour map " + config.previews_colour_map)
-                self.colormap = tools.load_colormap(config.previews_colour_map)
-            else:
-                print("using default colour map")
-                self.colormap = plt.get_cmap('jet')
+        self.previewer = Previewer.create_if_required(config, config.extract.preview)
 
         # normally poor quality tracks are filtered out, enabling this will let them through.
         self.disable_track_filters = False
@@ -149,8 +136,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         Extract tracks from specific file, and assign given tag.
         :param full_path: path: path to CPTV file to be processed
         :param tag: the tag to assign all tracks from this CPTV files
-        :param create_preview_file: if enabled creates an MPEG preview file showing the tracking working.  This
-            process can be quite time consuming.
         :returns the tracker object
         """
 
@@ -158,12 +143,13 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         base_filename = os.path.splitext(os.path.split(full_path)[1])[0]
         cptv_filename = base_filename + '.cptv'
-        preview_filename = base_filename + '-preview' + '.mp4'
-        stats_filename = base_filename + '.txt'
 
+        print("Tracks folder is {}".format(self.config.extract.tracks_folder))
         destination_folder = os.path.join(self.config.extract.tracks_folder, tag.lower())
+        os.makedirs(destination_folder, mode=0o775, exist_ok=True)
+        # delete any previous files
+        tools.purge(destination_folder, base_filename + "*.mp4")
 
-        stats_path_and_filename = os.path.join(destination_folder, stats_filename)
 
         # read additional information from hints file
         if cptv_filename in self.hints:
@@ -175,10 +161,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         else:
             max_tracks = self.config.tracking.max_tracks
 
-        os.makedirs(destination_folder, mode=0o775, exist_ok=True)
-
-        # delete any previous files
-        tools.purge(destination_folder, base_filename + "*.mp4")
 
         # load the track
         tracker = TrackExtractor(self.tracker_config)
@@ -232,7 +214,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         start = time.time()
 
         # save some additional stats
-        tracker.stats['version'] = CPTVTrackExtractor.VERSION
+        tracker.stats['version'] = TrackerExtractor.VERSION
 
         tracker.load(full_path)
 
@@ -251,17 +233,16 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             self.export_tracks(full_path, tracker, self.database)
 
         # write a preview
-        if self.config.extract.preview_tracks:
-            self.export_mpeg_preview(os.path.join(destination_folder, preview_filename), tracker)
+        if self.previewer:
+            preview_filename = base_filename + '-preview' + '.mp4'
+            preview_filename = os.path.join(destination_folder, preview_filename)
+            self.previewer.create_individual_track_previews(preview_filename, tracker)
+            self.previewer.export_clip_preview(preview_filename, tracker)
 
-        time_per_frame = (time.time() - start) / len(tracker.frame_buffer)
-
-        # time_stats = tracker.stats['time_per_frame']
-        self.log_message(" -tracks: {} {:.1f}sec - Time per frame: {:.1f}ms".format(
-             len(tracker.tracks),
-             sum(track.duration for track in tracker.tracks),
-             time_per_frame * 1000
-         ))
+        if self.tracker_config.verbose:
+            num_frames = len(tracker.frame_buffer.thermal)
+            ms_per_frame = (time.time() - start) * 1000 / max(1, num_frames)
+            self.log_message("Tracks {}.  Frames: {}, Took {:.1f}ms per frame".format(len(tracker.tracks), num_frames,  ms_per_frame))
 
         return tracker
 
@@ -350,45 +331,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                     (test_result.duration, track_stats.max_offset)))
             else:
                 print("[PASS] {0}".format(test.source))
-
-    def export_track_mpeg_previews(self, filename_base, tracker: TrackExtractor):
-        """
-        Exports preview MPEG for a specific track
-        :param filename_base:
-        :param tracker:
-        :param track:
-        :return:
-        """
-
-        # resolution of video file.
-        # videos look much better scaled up
-        FRAME_SIZE = 4*48
-
-        frame_width, frame_height = FRAME_SIZE, FRAME_SIZE
-        frame_width =  frame_width // 4 * 4
-        frame_height = frame_height // 4 * 4
-
-        for id, track in enumerate(tracker.tracks):
-            video_frames = []
-            for frame_number in range(len(track.bounds_history)):
-                channels = tracker.get_track_channels(track, frame_number)
-                img = tools.convert_heat_to_img(channels[1], self.colormap, 0, 350)
-                img = img.resize((frame_width, frame_height), Image.NEAREST)
-                video_frames.append(np.asarray(img))
-
-            tools.write_mpeg(filename_base+"-"+str(id+1)+".mp4", video_frames)
-
-    def export_mpeg_preview(self, filename, tracker: TrackExtractor):
-        """
-        Exports tracking information preview to MPEG file.
-        """
-
-        self.export_track_mpeg_previews(os.path.splitext(filename)[0], tracker)
-
-        MPEGStreamer = MPEGPreviewStreamer(tracker, self.colormap)
-
-        print("Creating preview MPEG file '" + filename + "'")
-        tools.stream_mpeg(filename, MPEGStreamer)
 
     def run_tests(self, source_folder, tests_file):
         """ Processes file in test file and compares results to expected output. """

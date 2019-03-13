@@ -21,7 +21,7 @@ from collections import namedtuple
 import os.path as path
 
 import ml_tools.config
-from classify.previewer import Previewer
+from ml_tools.previewer import Previewer
 
 ClassifyConfigTuple = namedtuple(
     "classify",

@@ -99,11 +99,17 @@ class Rectangle:
         return x_overlap * y_overlap
 
     def crop(self, bounds):
-        """ Crops rectangle so that it fits within given bounds"""
+        """ Crops this rectangle so that it fits within given bounds"""
         self.left = max(self.left, bounds.left)
         self.top = max(self.top, bounds.top)
         self.right = min(self.right, bounds.right)
         self.bottom = min(self.bottom, bounds.bottom)
+
+    def subimage(self, image):
+        """ Returns a subsection of the original image bounded by this rectangle
+            :param image mumpy array of dims [height, width]
+        """
+        return image[self.top:self.top + self.height, self.left:self.left + self.width]
 
     @property
     def area(self):
@@ -357,19 +363,6 @@ def softmax(x):
     """Compute softmax values for each sets of scores in x."""
     e_x = np.exp(x - np.max(x))
     return e_x / e_x.sum()
-
-
-
-def get_image_subsection(image, bounds: Rectangle):
-    """
-    Returns a subsection of the original image bounded by bounds.
-    The bounds must fit within the image bounds.
-
-    :param image mumpy array of dims [height, width, channels]
-    :param bounds bounds of the subsection to get
-    :returns cropped image
-    """
-    return image[bounds.top:bounds.bottom, bounds.left:bounds.right]
 
 def to_HWC(data):
     """ converts from CHW format to HWC format. """

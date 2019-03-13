@@ -8,11 +8,11 @@ from datetime import datetime, timedelta
 import numpy as np
 
 from classify.trackprediction import TrackPrediction
-import classify.globals as globs
-from classify.previewer import Previewer
 from ml_tools import tools
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools.dataset import Preprocessor
+import ml_tools.globals as globs
+from ml_tools.previewer import Previewer
 from ml_tools.model import Model
 from track.track import Track
 from track.trackextractor import TrackExtractor
@@ -31,11 +31,7 @@ class ClipClassifier(CPTVFileProcessor):
         # prediction record for each track
         self.track_prediction: Dict[Track, TrackPrediction] = {}
 
-        # mpeg preview output
-        self.previewer = None
-        preview_type = config.classify.preview
-        if not preview_type == Previewer.PREVIEW_NONE:
-            self.previewer = Previewer(config, preview_type)
+        self.previewer = Previewer.create_if_required(config, config.classify.preview)
 
         self.start_date = None
         self.end_date = None
@@ -316,6 +312,10 @@ class ClipClassifier(CPTVFileProcessor):
         save_file['source'] = filename
         save_file['start_time'] = tracker.video_start_time.isoformat()
         save_file['end_time'] = (tracker.video_start_time + timedelta(seconds=len(tracker.frame_buffer.thermal) / 9.0)).isoformat()
+        save_file['algorithm'] = {}
+        save_file['algorithm']['model'] = self.config.classify.model
+        save_file['algorithm']['tracker_version'] = tracker.VERSION
+        save_file['algorithm']['tracker_config'] = tracker.config._asdict()
 
         if meta_data:
             save_file['camera'] = meta_data['Device']['devicename']

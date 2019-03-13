@@ -127,8 +127,13 @@ extract:
     # filesize can be reduced by not including it.
     include_filtered_channel: False
 
-    # Create a preview of each track
-    preview_tracks: False
+    # Create a MP4 preview of the recording.  Options are "none", "raw", "classified", "tracking"
+    # see above for descriptions
+    # None - won't create a preview.
+    # Raw - creates a preview of just the video (no classification or tracks)
+    # Classified - creates a video showing tracks and classification values.
+    # Tracking - is the four frame video view, including thermal, filtered, mask and flow.
+    preview: "tracking"
 
     # Hints file to loade.  Hints are a way to give extra information to the tracker about how many tracks to take.
     # Note:  Set to 'False' is there is no hints file.
@@ -157,10 +162,8 @@ classify:
     # Path to pretrained Model use for classification (This should be the base filename without any extension)
     model: "<full path>"
 
-    # Create a MP4 preview of the recording.  Options are "none", "raw", "classified".
-    # None - won't create a preview.
-    # Raw - creates a preview of just the video (no classification)
-    # Classified - creates a video showing tracks and classification values.
+    # Create a MP4 preview after classification of recording.  Options are "none", "raw", "classified", "tracking"
+    # See extract:preview for details on each option.
     preview: "none"
 
     # folder is where classifier output and mp4s will be created.  It is specified relative to the base_data_folder
