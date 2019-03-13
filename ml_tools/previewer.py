@@ -61,13 +61,15 @@ class Previewer:
     @property
     def font(self):
         """ gets default font. """
-        if not globs._previewer_font: globs._previewer_font = ImageFont.truetype(resource_path("Ubuntu-R.ttf"), 12)
+        if not globs._previewer_font:
+            globs._previewer_font = ImageFont.truetype(resource_path("Ubuntu-R.ttf"), 12)
         return globs._previewer_font
 
     @property
     def font_title(self):
         """ gets default title font. """
-        if not globs._previewer_font_title: globs._previewer_font_title = ImageFont.truetype(resource_path("Ubuntu-B.ttf"), 14)
+        if not globs._previewer_font_title:
+            globs._previewer_font_title = ImageFont.truetype(resource_path("Ubuntu-B.ttf"), 14)
         return globs._previewer_font_title
 
 
