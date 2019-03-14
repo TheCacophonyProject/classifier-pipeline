@@ -214,7 +214,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         start = time.time()
 
         # save some additional stats
-        tracker.stats['version'] = TrackerExtractor.VERSION
+        tracker.stats['version'] = TrackExtractor.VERSION
 
         tracker.load(full_path)
 
