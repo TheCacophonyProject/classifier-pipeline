@@ -118,7 +118,7 @@ class Track:
             average_mass=float(np.mean(mass_history)),
             median_mass=float(np.median(mass_history)),
             delta_std=float(delta_std),
-            score=float(score)
+            score=float(score),
         )
 
         return stats
@@ -233,6 +233,6 @@ class Track:
 
 TrackMovementStatistics = namedtuple(
     'TrackMovementStatistics',
-    'movement max_offset score average_mass median_mass duration delta_std'
+    'movement max_offset score average_mass median_mass delta_std'
 )
 TrackMovementStatistics.__new__.__defaults__ = (0,) * len(TrackMovementStatistics._fields)
