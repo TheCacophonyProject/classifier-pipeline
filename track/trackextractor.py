@@ -16,15 +16,12 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
-
 import pytz
 import datetime
 import os
 
 import numpy as np
 import cv2
-import h5py
-import scipy.ndimage
 import logging
 
 from ml_tools.tools import Rectangle
@@ -34,8 +31,6 @@ from track.region import Region
 from track.framebuffer import FrameBuffer
 
 from cptv import CPTVReader
-
-
 class TrackExtractor:
     """ Extracts tracks from a stream of frames. """
 
@@ -410,8 +405,8 @@ class TrackExtractor:
 
             # discard any tracks that are less min_duration
             # these are probably glitches anyway, or don't contain enough information.
-            if stats.duration < self.config.min_duration_secs:
-                self.print_if_verbose("Track filtered. Too short")
+            if len(track) < self.config.min_duration_secs * 9:
+                self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
                 continue
 
             # discard tracks that do not move enough
@@ -426,7 +421,7 @@ class TrackExtractor:
 
             # discard tracks that do not have enough enough average mass.
             if stats.average_mass < self.config.track_min_mass:
-                self.print_if_verbose("Track filtered.  Too small (mass)")
+                self.print_if_verbose("Track filtered.  Mass too small ({})".format(stats.average_mass))
                 continue
 
             good_tracks.append(track)
