@@ -421,7 +421,7 @@ class TrackExtractor:
 
             # discard tracks that do not have enough enough average mass.
             if stats.average_mass < self.config.track_min_mass:
-                self.print_if_verbose("Track filtered.  Too small (mass) {}".format(stats.average_mass))
+                self.print_if_verbose("Track filtered.  Mass too small ({})".format(stats.average_mass))
                 continue
 
             good_tracks.append(track)
