@@ -460,13 +460,15 @@ class TrackExtractor:
         edgeless_filtered = self.crop_rectangle.subimage(filtered)
 
         thresh = np.uint8(blur_and_return_as_mask(edgeless_filtered, threshold=self.threshold))
+        dilated = thresh
 
+        # Dilation groups interested pixels that are near to each other into one component(animal/track)
         if self.config.dilation_pixels > 0:
             size = self.config.dilation_pixels * 2 + 1
             kernel = np.ones((size, size), np.uint8)
-            thresh = cv2.dilate(thresh, kernel, iterations=1)
+            dilated = cv2.dilate(dilated, kernel, iterations=1)
 
-        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(thresh)
+        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(dilated)
 
         # make mask go back to full frame size without edges chopped
         edge = self.config.edge_pixels
@@ -481,12 +483,21 @@ class TrackExtractor:
         for i in range(1, labels):
 
             region = Region(
-                stats[i, 0] - padding + edge,
-                stats[i, 1] - padding + edge,
-                stats[i, 2] + padding * 2,
-                stats[i, 3] + padding * 2,
+                stats[i, 0],
+                stats[i, 1],
+                stats[i, 2],
+                stats[i, 3],
                 stats[i, 4], 0, i, self.frame_on
             )
+
+            # want the real mass calculated from before the dilation
+            region.mass = np.sum(region.subimage(thresh))
+
+            # Add padding to region and change coordinates from edgeless image -> full image
+            region.x += edge - padding
+            region.y += edge - padding
+            region.width += padding * 2
+            region.height += padding * 2
 
             old_region = region.copy()
             region.crop(self.crop_rectangle)
@@ -510,7 +521,7 @@ class TrackExtractor:
                 region.pixel_variance = np.var(region_difference)
 
             # filter out regions that are probably just noise
-            if region.pixel_variance < 2.0 and region.mass < 4:
+            if region.pixel_variance < self.config.aoi_pixel_variance and region.mass < self.config.aoi_min_mass:
                 continue
 
             regions.append(region)

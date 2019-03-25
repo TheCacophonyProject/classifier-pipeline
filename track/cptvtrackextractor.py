@@ -1,3 +1,6 @@
+import time
+import os
+
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
@@ -7,9 +10,6 @@ from ml_tools.dataset import TrackChannels
 from ml_tools.tools import blosc_zstd
 from ml_tools.previewer import Previewer
 from track.trackextractor import TrackExtractor
-
-import time
-import os
 
 class TrackerTestCase():
     def __init__(self):
