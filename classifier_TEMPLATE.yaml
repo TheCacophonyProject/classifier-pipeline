@@ -72,7 +72,7 @@ tracking:
 
     # number of pixels around object to pad.
     # Note: frame_padding must be at least 3 or some frames may be too small for classification and program may crash
-    frame_padding: 6
+    frame_padding: 4
 
     # dilation pixels:  This is the number of pixels to grow the mask of interesting bits.
     # The higher the value, the further apart things (bits of animal, or animals) will be linked together as one object
