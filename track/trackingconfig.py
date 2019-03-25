@@ -35,7 +35,6 @@ TrackingConfigTuple = namedtuple(
         "edge_pixels",
         "dilation_pixels",
         "frame_padding",
-        "cropped_regions_strategy",
         "track_smoothing",
         "remove_track_after_frames",
         "high_quality_optical_flow",
@@ -48,6 +47,9 @@ TrackingConfigTuple = namedtuple(
         "track_min_offset",
         "track_min_delta",
         "track_min_mass",
+        "aoi_min_mass",
+        "aoi_pixel_variance",
+        "cropped_regions_strategy",
         "verbose",
     ],
 )
@@ -68,7 +70,6 @@ class TrackingConfig(TrackingConfigTuple):
             edge_pixels=tracking["edge_pixels"],
             dilation_pixels=tracking["dilation_pixels"],
             frame_padding=tracking["frame_padding"],
-            cropped_regions_strategy=tracking["cropped_regions_strategy"],
             track_smoothing=tracking["track_smoothing"],
             remove_track_after_frames=tracking["remove_track_after_frames"],
             high_quality_optical_flow=tracking["high_quality_optical_flow"],
@@ -81,6 +82,9 @@ class TrackingConfig(TrackingConfigTuple):
             track_min_offset=tracking["filters"]["track_min_offset"],
             track_min_delta=tracking["filters"]["track_min_delta"],
             track_min_mass=tracking["filters"]["track_min_mass"],
+            cropped_regions_strategy=tracking["areas_of_interest"]["cropped_regions_strategy"],
+            aoi_min_mass=tracking["areas_of_interest"]["min_mass"],
+            aoi_pixel_variance=tracking["areas_of_interest"]["pixel_variance"],
             verbose=tracking["verbose"],
         )
         return config
