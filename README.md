@@ -1,5 +1,5 @@
 # Please note
-We are in the process of changing how we classify videos.   We are moving away from video based tagging, to track based tagging.
+We are in the process of changing how we classify videos.   We are moving away from video based tagging, to tagging parts of the videos where we have recognised there may be an animal.  These consist of smaller rectangles of video that are linked together through frames and we call them tracks.  
 
 As part of this change, the projects *extract.py* and *classify.py* has been updated to use our new python package structure and config files but the rest of the projects have not.   At this stage we are not sure whether *build.py*, *train.py* and *evaluate.py* run as we are still refactoring them.   (Please use code commited last year (2018) if you want to run these scripts)
 
