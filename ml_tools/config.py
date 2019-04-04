@@ -32,7 +32,7 @@ class Config(ConfigBaseTuple):
     def load(cls):
         filename = find_config()
         with open(filename) as stream:
-            yaml_map = yaml.load(stream)
+            yaml_map = yaml.safe_load(stream)
             cls.load_from_map(yaml_map)
 
     @classmethod
@@ -68,8 +68,7 @@ class Config(ConfigBaseTuple):
 
 def load_to_yaml(filename):
     with open(filename) as stream:
-        yaml_map = yaml.load(stream)
-    return yaml_map
+        return yaml.safe_load(stream)
 
 
 def find_config():
