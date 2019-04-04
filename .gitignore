@@ -24,6 +24,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 .idea
+.vscode
 *.egg
 
 # PyInstaller
