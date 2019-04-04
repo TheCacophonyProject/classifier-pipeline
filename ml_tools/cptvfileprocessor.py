@@ -43,9 +43,6 @@ class CPTVFileProcessor:
         # number of threads to use when processing jobs.
         self.workers_threads = config.worker_threads
 
-        # default grayscale colormap
-        self.colormap = lambda x : (x*255,x*255,x*255)
-
         # optional initializer for worker threads
         self.worker_pool_init = None
 
@@ -97,7 +94,7 @@ class CPTVFileProcessor:
                 print("KeyboardInterrupt, terminating.")
                 pool.terminate()
                 exit()
-            except Exception as e:
+            except Exception:
                 logging.exception("Error processing files")
             else:
                 pool.close()
