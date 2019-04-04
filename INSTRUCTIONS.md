@@ -25,6 +25,11 @@ Track extraction processes the CPTV clips and extracts tracking frames around mo
 
 The tracking algorithm tries to distinguish between animal tracks and false positives, but is not 100% reliable.  For this reason the output of the tracking algorithm needs to be checked by hand.
 
+
+## 3.0 Create a classifier configuration
+
+Copy `classifier_TEMPLATE.yaml` to `classifier.yaml`. Edit.
+
 ## 3.1 Running the extractor
 
 To run the extractor call
