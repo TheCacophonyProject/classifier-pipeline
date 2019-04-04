@@ -345,7 +345,7 @@ def split_dataset_days(prefill_bins=None):
     return train, validation, test
 
 def get_bin_split(filename):
-    """ Loads bin splits from previous databse. """
+    """ Loads bin splits from previous database. """
     train, validation, text = pickle.load(open(filename, 'rb'))
     test_bins = {}
     for label in validation.labels:
@@ -390,7 +390,7 @@ def main():
     else:
         datasets = split_dataset_days()
 
-    pickle.dump(datasets,open(os.path.join(DATASET_FOLDER,'datasets.dat'),'wb'))
+    pickle.dump(datasets, open(os.path.join(DATASET_FOLDER,'datasets.dat'),'wb'))
 
 
 if __name__ == "__main__":
