@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 import multiprocessing
@@ -97,7 +98,7 @@ class CPTVFileProcessor:
                 pool.terminate()
                 exit()
             except Exception as e:
-                print("Error processing file:", e)
+                logging.exception("Error processing files")
             else:
                 pool.close()
 
