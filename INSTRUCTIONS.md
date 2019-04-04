@@ -1,3 +1,10 @@
+# 0. Installation
+
+Install:
+* Python 3
+* The Python requirements from  `requirements.txt`
+* `ffmpeg`
+
 # 1. Introduction
 Instructions for performing various processes with the pipeline.
 
