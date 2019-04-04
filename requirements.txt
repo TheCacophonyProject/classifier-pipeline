@@ -11,3 +11,4 @@ tables~=3.4
 h5py~=2.7
 pyyaml>=4.2b1
 pillow~=5.4
+attrs~=19.1

@@ -1,6 +1,7 @@
-from collections import namedtuple
 from pathlib import Path
 import os.path as path
+
+import attr
 import yaml
 
 from track.trackingconfig import TrackingConfig
@@ -11,64 +12,46 @@ CONFIG_FILENAME = "classifier.yaml"
 CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
 
 
-ConfigBaseTuple = namedtuple(
-    "Config",
-    [
-        "tracking",
-        "extract",
-        "classify_tracking",
-        "classify",
-        "source_folder",
-        "excluded_folders",
-        "reprocess",
-        "previews_colour_map",
-        "use_gpu",
-        "worker_threads",
-    ],
-)
+@attr.s
+class Config:
+    tracking = attr.ib()
+    extract = attr.ib()
+    classify_tracking = attr.ib()
+    classify = attr.ib()
+    source_folder = attr.ib()
+    excluded_folders = attr.ib()
+    reprocess = attr.ib()
+    previews_colour_map = attr.ib()
+    use_gpu = attr.ib()
+    worker_threads = attr.ib()
 
-class Config(ConfigBaseTuple):
     @classmethod
-    def load(cls):
-        filename = find_config()
+    def load_from_file(cls, filename=None):
+        if not filename:
+            filename = find_config()
         with open(filename) as stream:
-            yaml_map = yaml.safe_load(stream)
-            cls.load_from_map(yaml_map)
+            return cls.load_from_stream(stream)
 
     @classmethod
-    def load_from_map(cls, config):
-        base_folder = config["base_data_folder"]
+    def load_from_stream(cls, stream):
+        raw = yaml.safe_load(stream)
+
         # "classify_tracking" params are overrides, add other parameters from "tracking"
-        deep_copy_map_if_key_not_exist(config["tracking"], config["classify_tracking"])
+        deep_copy_map_if_key_not_exist(raw["tracking"], raw["classify_tracking"])
+
+        base_folder = path.expanduser(raw["base_data_folder"])
         return cls(
-            tracking=TrackingConfig.load(config["tracking"]),
-            extract=ExtractConfig.load(config["extract"], base_folder),
-            classify_tracking=TrackingConfig.load(config["classify_tracking"]),
-            classify=ClassifyConfig.load(config["classify"], base_folder),
-            source_folder = path.join(base_folder, config["source_folder"]),
-            excluded_folders = config["excluded_folders"],
-            reprocess = config["reprocess"],
-            previews_colour_map = config["previews_colour_map"],
-            use_gpu=config["use_gpu"],
-            worker_threads=config["worker_threads"],
+            tracking=TrackingConfig.load(raw["tracking"]),
+            extract=ExtractConfig.load(raw["extract"], base_folder),
+            classify_tracking=TrackingConfig.load(raw["classify_tracking"]),
+            classify=ClassifyConfig.load(raw["classify"], base_folder),
+            source_folder=path.join(base_folder, raw["source_folder"]),
+            excluded_folders=raw["excluded_folders"],
+            reprocess=raw["reprocess"],
+            previews_colour_map=raw["previews_colour_map"],
+            use_gpu=raw["use_gpu"],
+            worker_threads=raw["worker_threads"],
         )
-
-    @classmethod
-    def read_default_config_file(cls):
-        filename = find_config()
-        return load_to_yaml(filename)
-
-    @classmethod
-    def read_config_file(cls, filename):
-        if path.isfile(filename):
-            return load_to_yaml(filename)
-        else:
-            raise FileNotFoundError("Configuration file '{}' was not found".format(filename))
-
-
-def load_to_yaml(filename):
-    with open(filename) as stream:
-        return yaml.safe_load(stream)
 
 
 def find_config():
@@ -76,13 +59,22 @@ def find_config():
         p = directory / CONFIG_FILENAME
         if p.is_file():
             return str(p)
-    raise FileNotFoundError("No configuration file found.  Looking for file named '{}' in dirs {}".format(CONFIG_FILENAME, CONFIG_DIRS))
+    raise FileNotFoundError(
+        "No configuration file found.  Looking for file named '{}' in dirs {}".format(
+            CONFIG_FILENAME, CONFIG_DIRS
+        )
+    )
 
 
 def parse_options_param(name, value, options):
     if value.lower() not in options:
-        raise Exception("Cannot parse {} as '{}'.  Valid options are {}.".format(name, value, options))
+        raise Exception(
+            "Cannot parse {} as '{}'.  Valid options are {}.".format(
+                name, value, options
+            )
+        )
     return value.lower()
+
 
 def deep_copy_map_if_key_not_exist(from_map, to_map):
     for key in from_map:

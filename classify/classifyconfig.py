@@ -17,31 +17,29 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-from collections import namedtuple
 import os.path as path
+
+import attr
 
 import ml_tools.config
 from ml_tools.previewer import Previewer
 
-ClassifyConfigTuple = namedtuple(
-    "classify",
-    [
-        "model",
-        "meta_to_stdout",
-        "preview",
-        "classify_folder",
-    ],
-)
 
-class ClassifyConfig(ClassifyConfigTuple):
+@attr.s
+class ClassifyConfig:
+
+    model = attr.ib()
+    meta_to_stdout = attr.ib()
+    preview = attr.ib()
+    classify_folder = attr.ib()
 
     @classmethod
     def load(cls, classify, base_folder):
-        config = cls(model=classify["model"],
+        return cls(
+            model=classify["model"],
             meta_to_stdout=classify["meta_to_stdout"],
-            preview=ml_tools.config.parse_options_param("preview", classify["preview"], Previewer.PREVIEW_OPTIONS),
+            preview=ml_tools.config.parse_options_param(
+                "preview", classify["preview"], Previewer.PREVIEW_OPTIONS
+            ),
             classify_folder=path.join(base_folder, classify["classify_folder"]),
         )
-        return config
-
-

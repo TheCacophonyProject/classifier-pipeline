@@ -2,7 +2,9 @@
 Processes a CPTV file identifying and tracking regions of interest, and saving them in the 'trk' format.
 """
 
+import argparse
 import cv2
+import os
 
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import trackdatabase
@@ -10,16 +12,10 @@ from ml_tools import tools
 from ml_tools.config import Config
 from track.cptvtrackextractor import CPTVTrackExtractor
 
-import os
 
-import argparse
-
-__version__ = '1.1.0'
 
 def parse_params():
-
     parser = argparse.ArgumentParser()
-
     parser.add_argument('target', default='all', help='Target to process, "all" processes all folders, "test" runs test cases, "clean" to remove banned clips from db, or a "cptv" file to run a single source.')
 
     parser.add_argument('-p', '--create-previews', action='count', help='Create MP4 previews for tracks (can be slow)')
@@ -27,26 +23,17 @@ def parse_params():
     parser.add_argument('-v', '--verbose', action='count', help='Display additional information.')
     parser.add_argument('-i', '--show-build-information', action='count', help='Show openCV build information and exit.')
     parser.add_argument('-c', '--config-file', help="Path to config file to use")
-
     args = parser.parse_args()
-    if args.config_file:
-        conf = Config.read_config_file(args.config_file)
-    else:
-        conf = Config.read_default_config_file()
 
     if args.show_build_information:
         print(cv2.getBuildInformation())
         return
 
-    # override previews if true
+    config = Config.load_from_file(args.config_file)
     if args.create_previews:
-        conf["extract"]["preview"] = "tracking"
-
-    # override verbose if true
+        config.extract.preview = "tracking"
     if args.verbose:
-        conf["tracking"]["verbose"] = True
-
-    config = Config.load_from_map(conf)
+        config.extract.verbose = True
 
     # setup extractor
     extractor = CPTVTrackExtractor(config, config.tracking)
