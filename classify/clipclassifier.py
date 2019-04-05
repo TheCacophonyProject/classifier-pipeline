@@ -315,7 +315,7 @@ class ClipClassifier(CPTVFileProcessor):
         save_file['algorithm'] = {}
         save_file['algorithm']['model'] = self.config.classify.model
         save_file['algorithm']['tracker_version'] = tracker.VERSION
-        save_file['algorithm']['tracker_config'] = tracker.config._asdict()
+        save_file['algorithm']['tracker_config'] = self.tracker_config.as_dict()
 
         if meta_data:
             save_file['camera'] = meta_data['Device']['devicename']

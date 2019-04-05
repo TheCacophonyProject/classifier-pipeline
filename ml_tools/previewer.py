@@ -25,7 +25,9 @@ class Previewer:
 
     PREVIEW_TRACKING = "tracking"
 
-    PREVIEW_OPTIONS = [PREVIEW_NONE, PREVIEW_RAW, PREVIEW_CLASSIFIED, PREVIEW_TRACKING]
+    PREVIEW_BOXES = "boxes"
+
+    PREVIEW_OPTIONS = [PREVIEW_NONE, PREVIEW_RAW, PREVIEW_CLASSIFIED, PREVIEW_TRACKING, PREVIEW_BOXES]
 
     TRACK_COLOURS = [(255, 0, 0), (0, 255, 0), (255, 255, 0), (128, 255, 255)]
 
@@ -106,6 +108,12 @@ class Previewer:
                 regions = tracker.region_history[frame_number]
                 self.add_regions(draw, regions)
                 self.add_regions(draw, regions, v_offset=120)
+                self.add_tracks(draw, tracker.tracks, frame_number)
+
+            if self.preview_type == self.PREVIEW_BOXES:
+                image = self.convert_and_resize(thermal, 4.0)
+                draw = ImageDraw.Draw(image)
+                screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(draw, tracker.tracks, frame_number)
 
             if self.preview_type == self.PREVIEW_CLASSIFIED:
