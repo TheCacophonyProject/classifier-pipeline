@@ -75,7 +75,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             self.hints[filename] = int(file_max_tracks)
 
     def process_all(self, root):
-
         if root is None:
             root = self.config.source_folder
 
@@ -144,7 +143,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         base_filename = os.path.splitext(os.path.split(full_path)[1])[0]
         cptv_filename = base_filename + '.cptv'
 
-        print("Tracks folder is {}".format(self.config.extract.tracks_folder))
+        print(f"processing {cptv_filename}")
+
         destination_folder = os.path.join(self.config.extract.tracks_folder, tag.lower())
         os.makedirs(destination_folder, mode=0o775, exist_ok=True)
         # delete any previous files

@@ -17,49 +17,51 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-from collections import namedtuple
+import attr
+
 import ml_tools.config
 from track.trackextractor import TrackExtractor
 
-TrackingConfigTuple = namedtuple(
-    "tracking",
-    [
-        "background_calc",
-        "temp_thresh",
-        "delta_thresh",
-        "ignore_frames",
-        "threshold_percentile",
-        "static_background_threshold",
-        "max_mean_temperature_threshold",
-        "max_temperature_range_threshold",
-        "edge_pixels",
-        "dilation_pixels",
-        "frame_padding",
-        "track_smoothing",
-        "remove_track_after_frames",
-        "high_quality_optical_flow",
-        "min_threshold",
-        "max_threshold",
-        "flow_threshold",
-        "max_tracks",
-        "track_overlap_ratio",
-        "min_duration_secs",
-        "track_min_offset",
-        "track_min_delta",
-        "track_min_mass",
-        "aoi_min_mass",
-        "aoi_pixel_variance",
-        "cropped_regions_strategy",
-        "verbose",
-    ],
-)
 
-class TrackingConfig(TrackingConfigTuple):
+@attr.s
+class TrackingConfig:
+
+    background_calc = attr.ib()
+    temp_thresh = attr.ib()
+    delta_thresh = attr.ib()
+    ignore_frames = attr.ib()
+    threshold_percentile = attr.ib()
+    static_background_threshold = attr.ib()
+    max_mean_temperature_threshold = attr.ib()
+    max_temperature_range_threshold = attr.ib()
+    edge_pixels = attr.ib()
+    dilation_pixels = attr.ib()
+    frame_padding = attr.ib()
+    track_smoothing = attr.ib()
+    remove_track_after_frames = attr.ib()
+    high_quality_optical_flow = attr.ib()
+    min_threshold = attr.ib()
+    max_threshold = attr.ib()
+    flow_threshold = attr.ib()
+    max_tracks = attr.ib()
+    track_overlap_ratio = attr.ib()
+    min_duration_secs = attr.ib()
+    track_min_offset = attr.ib()
+    track_min_delta = attr.ib()
+    track_min_mass = attr.ib()
+    aoi_min_mass = attr.ib()
+    aoi_pixel_variance = attr.ib()
+    cropped_regions_strategy = attr.ib()
+    verbose = attr.ib()
 
     @classmethod
     def load(cls, tracking):
-        config = cls(
-            background_calc=ml_tools.config.parse_options_param("background_calc", tracking["background_calc"],[TrackExtractor.PREVIEW, "stats"]),
+        return cls(
+            background_calc=ml_tools.config.parse_options_param(
+                "background_calc",
+                tracking["background_calc"],
+                [TrackExtractor.PREVIEW, "stats"],
+            ),
             temp_thresh=tracking["preview"]["temp_thresh"],
             delta_thresh=tracking["preview"]["delta_thresh"],
             ignore_frames=tracking["preview"]["ignore_frames"],
@@ -82,11 +84,10 @@ class TrackingConfig(TrackingConfigTuple):
             track_min_offset=tracking["filters"]["track_min_offset"],
             track_min_delta=tracking["filters"]["track_min_delta"],
             track_min_mass=tracking["filters"]["track_min_mass"],
-            cropped_regions_strategy=tracking["areas_of_interest"]["cropped_regions_strategy"],
+            cropped_regions_strategy=tracking["areas_of_interest"][
+                "cropped_regions_strategy"
+            ],
             aoi_min_mass=tracking["areas_of_interest"]["min_mass"],
             aoi_pixel_variance=tracking["areas_of_interest"]["pixel_variance"],
             verbose=tracking["verbose"],
         )
-        return config
-
-
