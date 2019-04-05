@@ -42,6 +42,8 @@ import tensorflow as tf
 
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
 
+import ml_tools.config
+
 # folder to put tensor board logs into
 LOG_FOLDER = "c:/cac/logs/"
 
@@ -208,8 +210,9 @@ def main():
     parser.add_argument('-d', '--dataset', default="datasets", help='Enables preview MPEG files (can be slow)')
     parser.add_argument('-e', '--epochs', default="30", help='Number of epochs to train for')
     parser.add_argument('-p', '--params', default="{}", help='model parameters')
-
+    parser.add_argument('-c', '--config-file', help="Path to config file to use")
     args = parser.parse_args()
+    config = ml_tools.config.load_from_map(conf)
 
     if args.name == "search":
         print("Performing hyper parameter search.")

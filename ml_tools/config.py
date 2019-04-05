@@ -84,3 +84,12 @@ def deep_copy_map_if_key_not_exist(from_map, to_map):
             deep_copy_map_if_key_not_exist(from_map[key], to_map[key])
         elif key not in to_map:
             to_map[key] = from_map[key]
+
+
+def args_to_config(args):
+    """Convert an argparse args dict to a usable Config object."""
+    if args.config_file:
+        conf = Config.read_config_file(args.config_file)
+    else:
+        conf = Config.read_default_config_file()
+    return Config.load_from_map(conf)

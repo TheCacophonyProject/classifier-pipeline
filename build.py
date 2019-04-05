@@ -19,6 +19,7 @@ import datetime
 import numpy as np
 
 from ml_tools.trackdatabase import TrackDatabase
+import ml_tools.config
 from ml_tools.dataset import Dataset
 
 DATASET_FOLDER = 'c:/cac/datasets/fantail/'
@@ -64,7 +65,7 @@ LABEL_WEIGHTS = {
 
 # clips after this date will be ignored.
 # note: this is based on the UTC date.
-END_DATE = datetime(2018, 1, 31)
+END_DATE = datetime.datetime(2018, 1, 31)
 
 # minimum average mass for test segment
 TEST_MIN_MASS = 30
@@ -356,6 +357,10 @@ def get_bin_split(filename):
     return test_bins
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--config-file', help="Path to config file to use")
+    args = parser.parse_args()
+    config = ml_tools.config.load_from_map(conf)
 
     global dataset
     global db
