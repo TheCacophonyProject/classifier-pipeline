@@ -79,7 +79,8 @@ class CPTVFileProcessor:
 
         if self.workers_threads == 0:
             # just process the jobs in the main thread
-            for job in jobs: process_job(job)
+            for job in jobs:
+                process_job(job)
         else:
             # send the jobs to a worker pool
             pool = multiprocessing.Pool(self.workers_threads, initializer=self.worker_pool_init, initargs=worker_pool_args)

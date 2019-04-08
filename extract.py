@@ -9,7 +9,6 @@ import os
 import cv2
 
 from ml_tools.logs import init_logging
-from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import trackdatabase
 from ml_tools import tools
 from ml_tools.config import Config

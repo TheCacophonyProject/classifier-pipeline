@@ -44,8 +44,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         # disables background subtraction
         self.disable_background_subtraction = False
 
-        os.makedirs(self.config.extract.tracks_folder, mode=0o775, exist_ok=True)
-        self.database = TrackDatabase(os.path.join(self.config.extract.tracks_folder, 'dataset.hdf5'))
+        os.makedirs(self.config.tracks_folder, mode=0o775, exist_ok=True)
+        self.database = TrackDatabase(os.path.join(self.config.tracks_folder, 'dataset.hdf5'))
 
         self.worker_pool_init = init_workers
 
@@ -82,7 +82,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         previous_filter_setting = self.disable_track_filters
         previous_background_setting = self.disable_background_subtraction
 
-        for root, folders, _ in os.walk(root):
+        for _, folders, _ in os.walk(root):
             for folder in folders:
                 if folder not in self.config.excluded_folders:
                     if folder.lower() == "false-positive":
@@ -146,7 +146,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         logging.info(f"processing %s", cptv_filename)
 
-        destination_folder = os.path.join(self.config.extract.tracks_folder, tag.lower())
+        destination_folder = os.path.join(self.config.tracks_folder, tag.lower())
         os.makedirs(destination_folder, mode=0o775, exist_ok=True)
         # delete any previous files
         tools.purge(destination_folder, base_filename + "*.mp4")

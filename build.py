@@ -1,28 +1,23 @@
 """
-Author: Matthew Aitchison
-Date: December 2017
-
 Build a segment dataset for training.
 Segment headers will be extracted from a track database and balanced according to class.
 Some filtering occurs at this stage as well, for example tracks with low confidence are excluded.
-
 """
 
-import os
-import random
-import math
-import pickle
-import time
-import dateutil
+import argparse
 import datetime
+import os
+import pickle
+import random
 
+import dateutil
 import numpy as np
 
 from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
+from ml_tools.config import Config
 from ml_tools.dataset import Dataset
-
-DATASET_FOLDER = 'c:/cac/datasets/fantail/'
+from ml_tools.trackdatabase import TrackDatabase
 
 # uses split from previous run
 USE_PREVIOUS_SPLIT = True
@@ -356,13 +351,21 @@ def get_bin_split(filename):
         test_bins[label] = list(test_bins[label])
     return test_bins
 
+def load_config():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--config-file', help="Path to config file to use")
+    args = parser.parse_args()
+    return Config.load_from_file(args.config_file)
+
 def main():
     init_logging()
 
     global dataset
     global db
 
-    db = TrackDatabase(os.path.join(DATASET_FOLDER,'dataset.hdf5'))
+    config = load_config()
+
+    db = TrackDatabase(os.path.join(config.tracks_folder, 'dataset.hdf5'))
     dataset = Dataset(db, 'dataset')
 
     total_tracks = len(db.get_all_track_ids())
@@ -392,7 +395,7 @@ def main():
     else:
         datasets = split_dataset_days()
 
-    pickle.dump(datasets, open(os.path.join(DATASET_FOLDER,'datasets.dat'),'wb'))
+    pickle.dump(datasets, open(os.path.join(config.tracks_folder, 'datasets.dat'), 'wb'))
 
 
 if __name__ == "__main__":
