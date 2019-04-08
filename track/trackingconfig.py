@@ -91,3 +91,7 @@ class TrackingConfig:
             aoi_pixel_variance=tracking["areas_of_interest"]["pixel_variance"],
             verbose=tracking["verbose"],
         )
+
+    def as_dict(self):
+        return attr.asdict(self)
+

@@ -53,8 +53,8 @@ def main():
     if args.processor_folder:
         config.classify.meta_to_stdout = True
         config.base_data_folder = args.processor_folder
-        config.classify.classify_folder = ''
-        config.source_folder = ''
+        config.classify.classify_folder = args.processor_folder
+        config.source_folder = args.processor_folder
 
     clip_classifier = ClipClassifier(config, config.classify_tracking)
 
