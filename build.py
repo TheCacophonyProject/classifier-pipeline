@@ -65,7 +65,7 @@ LABEL_WEIGHTS = {
 
 # clips after this date will be ignored.
 # note: this is based on the UTC date.
-END_DATE = datetime(2018, 1, 31)
+END_DATE = datetime.datetime(2018, 1, 31)
 
 # minimum average mass for test segment
 TEST_MIN_MASS = 30
