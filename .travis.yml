@@ -1,0 +1,25 @@
+dist: xenial
+language: python
+python:
+- '3.6'
+
+install:
+- pip install -r requirements.txt
+
+script:
+- pytest
+
+before_deploy:
+- "pip install pex"
+- "mkdir -p /tmp/x"
+- "curl -sL https://github.com/goreleaser/nfpm/releases/download/v0.9.5/nfpm_0.9.5_Linux_x86_64.tar.gz | tar -C /tmp/x -xzf -"
+- "PATH=/tmp/x:$PATH _release/build ${TRAVIS_TAG}"
+
+deploy:
+  provider: releases
+  skip_cleanup: true
+  file_glob: true
+  file: "build/*.deb"
+  on:
+    repo: TheCacophonyProject/classifier-pipeline
+    tags: true

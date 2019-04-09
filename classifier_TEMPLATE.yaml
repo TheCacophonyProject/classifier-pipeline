@@ -138,6 +138,7 @@ extract:
     # see above for descriptions
     # None - won't create a preview.
     # Raw - creates a preview of just the video (no classification or tracks)
+    # Boxes - creates a preview of the video showing track boxes but no text.
     # Classified - creates a video showing tracks and classification values.
     # Tracking - is the four frame video view, including thermal, filtered, mask and flow.
     preview: "tracking"
