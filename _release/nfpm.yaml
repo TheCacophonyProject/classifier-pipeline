@@ -1,0 +1,20 @@
+name: "classifier-pipeline"
+arch: "amd64"
+platform: "linux"
+version: "0.0.0"
+maintainer: "Cacophony Developers <dev@cacophony.org.nz>"
+description: "Component to run machine learning model over thermal video to guess which animals are in the video."
+vendor: "The Cacophony Project"
+homepage: https://github.com/TheCacophonyProject
+license: "GPLv3"
+
+overrides:
+  deb:
+    depends:
+      - python3.6
+
+files:
+  build/classifier-pipeline.pex: "/usr/bin/classifier-pipeline.pex"
+
+config_files:
+  classifier_TEMPLATE.yaml: "/etc/cacophony/classifier.yaml"
