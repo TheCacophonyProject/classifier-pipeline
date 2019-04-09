@@ -23,3 +23,4 @@ deploy:
   file: '"build/*.deb"'
   on:
     repo: TheCacophonyProject/classifier-pipeline
+    tags: true
