@@ -28,7 +28,6 @@ find -name __pycache__ | xargs rm -rf
 
 echo "building .pex..."
 pex --python python3.6 -D . -r requirements.txt -o classifier-pipeline.pex
-
 echo "pex build completed."
 
 cd "$src"
