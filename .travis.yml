@@ -18,8 +18,8 @@ before_deploy:
 deploy:
   provider: releases
   skip_cleanup: true
-  file_glob: true
-  file: "build/*.deb"
+  api_key:
+    secure: OyS/sSdGxfT6TrubkmjVBx9qR5xd5jx0228C2wbc3DDk4NcVt3C8qfr2rIpAstlIhoNdKn4/W6uEMWavzGmsyXdTFmnNOowz8FntiBkniPOA2MNqfsyWig2Ns4L916gQh487AChcQE98uk0vRliJtkCSdONZFFUqUCHCnt6/NT2XZiG+bqESbjtifYdc0mPQrXvJOswsOjnC73wjNIHqJJNf9T5LpUMdz6xDeAK1dGZqBmKcG/9o/iYOo2F24dH/jJ23DYX23koeYnoZdYYw4tWZWmEhxZIHgM7mdy8BcwwlYthmU4PfeTw5XdaIH/4X2AkjMI+7ou/t1ajODbHu9GXxn4wgn8jjkei/B6olGCjdNhcJwgFau1tHLAwHyryWn5lLgBBRojBL4HfEJCaciWKYZQko7R0Kn0xQYTl69KLL93bACif9BMPdZ5F53FGo2MHjZa1NsWbTTcjddDgWq1UJxQyWkaVU5AH6GRWMAbYFVBsPLG4m4nri5v/GAcPqTacmfcZV76+Xpo3oPtiwaSWehMovXybbMozu7s9RoK2Zr4hbGYUk8W9xlLsbBhHdbHB6445iacCx4OMCiSLWVWAbOJE9CDIA0htRoxCBa6kHKxLgjr8mZ9vpfJ4LhkBGWtPA3FL/fDe1rDemYOml2Iw3zP96dsJVgvGdDZpXW8k=
+  file: '"build/*.deb"'
   on:
     repo: TheCacophonyProject/classifier-pipeline
-    tags: true
