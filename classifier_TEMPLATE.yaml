@@ -134,13 +134,12 @@ extract:
     # filesize can be reduced by not including it.
     include_filtered_channel: False
 
-    # Create a MP4 preview of the recording.  Options are "none", "raw", "classified", "tracking"
-    # see above for descriptions
-    # None - won't create a preview.
-    # Raw - creates a preview of just the video (no classification or tracks)
-    # Boxes - creates a preview of the video showing track boxes but no text.
-    # Classified - creates a video showing tracks and classification values.
-    # Tracking - is the four frame video view, including thermal, filtered, mask and flow.
+    # Create a MP4 preview of the recording.  Options are "none", "raw", "boxes", "classified", "tracking"
+    # none - won't create a preview video
+    # raw - just the video (no classification or tracks)
+    # boxes - show track boxes but no text
+    # classified - show tracks and classification values
+    # tracking -  four frame video view, including thermal, filtered, mask and flow layers
     preview: "tracking"
 
     # Hints file to loade.  Hints are a way to give extra information to the tracker about how many tracks to take.
