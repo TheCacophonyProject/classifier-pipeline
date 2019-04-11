@@ -1,4 +1,5 @@
-import os
+from os import path
+
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
@@ -9,11 +10,17 @@ from ml_tools.mpeg_creator import MPEGCreator
 from track.trackextractor import TrackExtractor
 from track.region import Region
 
-HERE = os.path.dirname(os.path.dirname(__file__))
-RESOURCES_PATH = os.path.join(HERE, "resources")
+LOCAL_RESOURCES = path.join(path.dirname(path.dirname(__file__)), "resources")
+GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
+
 
 def resource_path(name):
-    return os.path.join(RESOURCES_PATH, name)
+    for base in [LOCAL_RESOURCES, GLOBAL_RESOURCES]:
+        p = path.join(base, name)
+        if path.exists(p):
+            return p
+    raise OSError(f"unable to locate {name!r} resource")
+
 
 class Previewer:
 
@@ -51,7 +58,7 @@ class Previewer:
         """ gets colourmap. """
         if not globs._previewer_colour_map:
             colourmap = self.config.previews_colour_map
-            if os.path.exists(colourmap):
+            if path.exists(colourmap):
                 self.colormap = tools.load_colormap(colourmap)
             else:
                 print("using default colour map")
@@ -132,7 +139,7 @@ class Previewer:
     def create_individual_track_previews(self, filename, tracker:TrackExtractor):
         # resolution of video file.
         # videos look much better scaled up
-        filename_format = os.path.splitext(filename)[0] + "-{}.mp4"
+        filename_format = path.splitext(filename)[0] + "-{}.mp4"
 
         FRAME_SIZE = 4*48
         frame_width, frame_height = FRAME_SIZE, FRAME_SIZE
