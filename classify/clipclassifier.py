@@ -220,7 +220,6 @@ class ClipClassifier(CPTVFileProcessor):
             elif len(tags) == 1:
                 tag = tags[0] if tags[0] else "none"
             else:
-                print(tags)
                 tag = 'multi'
             meta_data["primary_tag"] = tag
             return meta_data
@@ -344,8 +343,7 @@ class ClipClassifier(CPTVFileProcessor):
             track_info['positions'] = positions
 
         if self.config.classify.meta_to_stdout:
-            output = json.dumps(save_file, indent=4, cls=tools.CustomJSONEncoder)
-            print(output)
+            print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
         else:
-            f = open(meta_filename, 'w')
-            json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
+            with open(meta_filename, 'w') as f:
+                json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
