@@ -39,9 +39,6 @@ class ClipClassifier(CPTVFileProcessor):
         # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
         self.enable_per_track_information = False
 
-        # writes metadata to standard out instead of a file.
-        self.write_meta_to_stdout = False
-
     def preprocess(self, frame, thermal_reference):
         """
         Applies preprocessing to frame required by the model.
