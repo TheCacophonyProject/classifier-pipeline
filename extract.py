@@ -3,9 +3,12 @@ Processes a CPTV file identifying and tracking regions of interest, and saving t
 """
 
 import argparse
-import cv2
+import logging
 import os
 
+import cv2
+
+from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import trackdatabase
 from ml_tools import tools
@@ -29,6 +32,8 @@ def parse_params():
         print(cv2.getBuildInformation())
         return
 
+    init_logging()
+
     config = Config.load_from_file(args.config_file)
     if args.create_previews:
         config.extract.preview = "tracking"
@@ -43,17 +48,17 @@ def parse_params():
         source_file = tools.find_file_from_cmd_line(config.source_folder, args.target)
         if source_file is None:
             return
-        print("Processing file '" + source_file + "'")
+        logging.info("Processing file '" + source_file + "'")
         tag = os.path.basename(os.path.dirname(source_file))
         extractor.process_file(source_file, tag=tag)
         return
 
     if args.target.lower() == 'test':
-        print("Running test suite")
+        logging.info("Running test suite")
         extractor.run_tests(args.source_folder, args.test_file)
         return
 
-    print('Processing tag "{0}"'.format(args.target))
+    logging.info('Processing tag "{0}"'.format(args.target))
 
     if args.target.lower() == 'all':
         extractor.clean_all()

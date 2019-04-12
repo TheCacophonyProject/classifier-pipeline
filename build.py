@@ -18,6 +18,7 @@ import datetime
 
 import numpy as np
 
+from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.dataset import Dataset
 
@@ -356,6 +357,7 @@ def get_bin_split(filename):
     return test_bins
 
 def main():
+    init_logging()
 
     global dataset
     global db

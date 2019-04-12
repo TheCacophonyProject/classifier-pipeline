@@ -286,7 +286,7 @@ class Model:
         print("-"*60)
         self.datasets.test.load_all()
         test_accuracy, _ = self.eval_batch(self.datasets.test.X, self.datasets.test.y, writer=writer)
-        print("Test Accuracy {0:.2f}% (error {1:.2f}%)".format(test_accuracy*100,(1.0-test_accuracy)*100))
+        logging.info("Test Accuracy %.2f (error %.2f%%)", test_accuracy * 100, (1.0 - test_accuracy) * 100)
         return test_accuracy
 
     def benchmark_model(self):
