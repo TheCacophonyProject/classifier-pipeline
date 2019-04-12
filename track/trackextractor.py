@@ -374,9 +374,9 @@ class TrackExtractor:
         if self.config.verbose:
             for stats, track in track_stats:
                 start_s, end_s = self.start_and_end_in_secs(track)
-                print(" - track duration:{:.1f}sec, number of frames:{}, offset:{:.1f}px, delta:{:.1f}, mass:{:.1f}px".format(
+                logging.info(" - track duration: %.1fsec, number of frames:%s, offset:%.1fpx, delta:%.1f, mass:%.1fpx",
                     end_s - start_s, len(track), stats.max_offset, stats.delta_std, stats.average_mass
-                ))
+                )
 
         # find how much each track overlaps with other tracks
 
@@ -530,7 +530,7 @@ class TrackExtractor:
 
     def print_if_verbose(self, info_string):
         if self.config.verbose:
-            print(info_string)
+            logging.info(info_string)
 
     def get_video_stats(self):
         """

@@ -21,13 +21,16 @@ import os
 import json
 from datetime import datetime, timedelta
 import dateutil.parser
-from ml_tools import tools
 import matplotlib.pyplot as plt
 from sklearn import metrics
 import numpy as np
 import itertools
 import argparse
 import seaborn as sns
+
+from ml_tools.logs import init_logging
+from ml_tools import tools
+
 
 # number of seconds between clips required to trigger a a new visit
 NEW_VISIT_THRESHOLD = 3*60
@@ -576,6 +579,8 @@ def print_evaluation(visits):
     show_errors_by_score(visits)
 
 def main():
+    init_logging()
+
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-s', '--source-folder', default=os.path.join(DEFAULT_SOURCE_FOLDER), help='Source folder containing .txt files exported by classify.py')

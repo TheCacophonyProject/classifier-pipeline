@@ -9,7 +9,9 @@ Handles reading and writing tracks (or segments) to a large database.  Uses HDF5
 """
 
 import os
+import logging
 from multiprocessing import Lock
+
 import h5py
 import tables           # required for blosc compression to work
 import numpy as np
@@ -56,7 +58,7 @@ class TrackDatabase:
         self.database = database_filename
 
         if not os.path.exists(database_filename):
-            print("Creating new database {}".format(database_filename))
+            logging.info("Creating new database %s", database_filename)
             f = h5py.File(database_filename, 'w')
             f.create_group("clips")
             f.close()

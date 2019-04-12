@@ -155,7 +155,7 @@ def find_file_from_cmd_line(root, cmd_line_input):
     if os.path.isfile(cmd_line_input):
         return cmd_line_input
 
-    print("Could not locate file '" + cmd_line_input + "'")
+    logging.warning("Could not locate %r", cmd_line_input)
     return None
 
 def get_ffmpeg_command(filename, width, height, quality=21):

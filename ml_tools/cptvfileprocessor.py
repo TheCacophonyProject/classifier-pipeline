@@ -1,7 +1,7 @@
 import logging
+import multiprocessing
 import os
 import time
-import multiprocessing
 import traceback
 
 def process_job(job):
@@ -12,9 +12,8 @@ def process_job(job):
 
     try:
         processor.process_file(path, **params)
-    except Exception as e:
-        print("Warning - error processing job:",e)
-        traceback.print_exc()
+    except Exception:
+        logging.exception("Warning - error processing job")
 
     time.sleep(0.001) # apparently gives me a chance to catch the control-c
 
@@ -60,10 +59,9 @@ class CPTVFileProcessor:
     def process_folder(self, folder_path, worker_pool_args=None, **kwargs):
         """Processes all files within a folder."""
 
+        logging.info('processing %s', folder_path)
+
         jobs = []
-
-        print('processing',folder_path)
-
         for file_name in os.listdir(folder_path):
             full_path = os.path.join(folder_path, file_name)
             if os.path.isfile(full_path) and os.path.splitext(full_path )[1].lower() == '.cptv':
@@ -91,7 +89,7 @@ class CPTVFileProcessor:
                 pool.close()
                 pool.join()
             except KeyboardInterrupt:
-                print("KeyboardInterrupt, terminating.")
+                logging.info("KeyboardInterrupt, terminating.")
                 pool.terminate()
                 exit()
             except Exception:
@@ -102,12 +100,13 @@ class CPTVFileProcessor:
     def log_message(self, message):
         """ Record message in stdout.  Will be printed if verbose is enabled. """
         # note, python has really good logging... I should probably make use of this.
-        if self.tracker_config.verbose: print(message)
+        if self.tracker_config.verbose:
+            logging.info(message)
 
     def log_warning(self, message):
         """ Record warning message in stdout."""
         # note, python has really good logging... I should probably make use of this.
-        print("Warning:",message)
+        logging.warning("Warning: %s", message)
 
 if __name__ == '__main__':
     # for some reason the fork method seems to memory leak, and unix defaults to this so we

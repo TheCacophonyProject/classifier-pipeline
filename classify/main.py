@@ -1,25 +1,13 @@
 import argparse
 import os
 import logging
-import sys
 from datetime import datetime
 
+from ml_tools.logs import init_logging
 from ml_tools import tools
 from ml_tools.config import Config
 from ml_tools.previewer import Previewer
 from .clipclassifier import ClipClassifier
-
-def log_to_stdout():
-    """ Outputs all log entries to standard out. """
-    # taken from https://stackoverflow.com/questions/14058453/making-python-loggers-output-all-messages-to-stdout-in-addition-to-log
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(message)s')
-    ch.setFormatter(formatter)
-    root.addHandler(ch)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -34,9 +22,12 @@ def main():
         '--end-date', help='Only clips on or before this day will be processed (format YYYY-MM-DD)')
     parser.add_argument('-c', '--config-file', help="Path to config file to use")
     parser.add_argument('--processor-folder', help="When running from thermal-processing use this to specify the folder for both the source cptv and output mp4. With this option the metadata will be sent to stdout.")
-
+    parser.add_argument('-T', '--timestamps', action="store_true", help="Emit log timestamps")
     args = parser.parse_args()
+
     config = Config.load_from_file(args.config_file)
+
+    init_logging(args.timestamps)
 
     # parse command line arguments
     if args.create_previews:
@@ -58,9 +49,6 @@ def main():
         clip_classifier.start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
     if args.end_date:
         clip_classifier.end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
-
-    if not config.classify.meta_to_stdout:
-        log_to_stdout()
 
     if config.classify.preview != Previewer.PREVIEW_NONE:
         logging.info("Creating previews")

@@ -39,8 +39,10 @@ import argparse
 import ast
 
 import tensorflow as tf
-
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
+
+from ml_tools.logs import init_logging
+
 
 # folder to put tensor board logs into
 LOG_FOLDER = "c:/cac/logs/"
@@ -200,6 +202,7 @@ def axis_search():
 
 
 def main():
+    init_logging()
 
     parser = argparse.ArgumentParser()
 

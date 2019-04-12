@@ -1,3 +1,4 @@
+import logging
 from os import path
 
 import numpy as np
@@ -61,7 +62,7 @@ class Previewer:
             if path.exists(colourmap):
                 self.colormap = tools.load_colormap(colourmap)
             else:
-                print("using default colour map")
+                logging.info("using default colour map")
                 self.colormap = plt.get_cmap('jet')
 
         return globs._previewer_colour_map
@@ -93,7 +94,7 @@ class Previewer:
             self.auto_max = tracker.stats['max_temp']
             self.auto_min = tracker.stats['min_temp']
         else:
-            print("Do not have temperatures to use.")
+            logging.error("Do not have temperatures to use.")
             return
 
         if bool(track_predictions) and self.preview_type == self.PREVIEW_CLASSIFIED:
@@ -151,7 +152,7 @@ class Previewer:
                 img = img.resize((frame_width, frame_height), Image.NEAREST)
                 video_frames.append(np.asarray(img))
 
-            print("creating preview {}".format(filename_format.format(id + 1)))
+            logging.info("creating preview %s", filename_format.format(id + 1))
             tools.write_mpeg(filename_format.format(id + 1), video_frames)
 
 

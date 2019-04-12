@@ -39,9 +39,6 @@ class ClipClassifier(CPTVFileProcessor):
         # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
         self.enable_per_track_information = False
 
-        # writes metadata to standard out instead of a file.
-        self.write_meta_to_stdout = False
-
     def preprocess(self, frame, thermal_reference):
         """
         Applies preprocessing to frame required by the model.
@@ -223,7 +220,6 @@ class ClipClassifier(CPTVFileProcessor):
             elif len(tags) == 1:
                 tag = tags[0] if tags[0] else "none"
             else:
-                print(tags)
                 tag = 'multi'
             meta_data["primary_tag"] = tag
             return meta_data
@@ -347,8 +343,7 @@ class ClipClassifier(CPTVFileProcessor):
             track_info['positions'] = positions
 
         if self.config.classify.meta_to_stdout:
-            output = json.dumps(save_file, indent=4, cls=tools.CustomJSONEncoder)
-            print(output)
+            print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
         else:
-            f = open(meta_filename, 'w')
-            json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
+            with open(meta_filename, 'w') as f:
+                json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)

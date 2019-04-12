@@ -9,6 +9,7 @@ Tracks are broken into segments.  Filtered, and then passed to the trainer using
 """
 
 import queue
+import logging
 import threading
 import multiprocessing
 import cv2
@@ -446,14 +447,7 @@ class Dataset:
             batch_y.append(self.labels.index(segment.label))
 
             if np.isnan(data).any():
-                print("Warning NaN found in data from source {}".format(segment.clip_id))
-
-            # I've been getting some NaN's come through so I check here to make sure input is reasonable.
-            # note: this is a really good idea, however my data has some '0' values in the thermal data which come
-            # through as -reference level (i.e. -3000) so I've disabled this for now.
-            #if np.max(np.abs(data)) > 2000:
-            #    print("Extreme values found in batch from source {} with value +-{:.1f}".format(segment.clip_id,
-            #                                                                              np.max(np.abs(data))))
+                logging.warning("NaN found in data from source: %r", segment.clip_id)
 
         # Half float should be fine here.  When using process based async loading we have to pickle the batch between
         # processes, so having it half the size helps a lot.  Also it reduces the memory required for the read buffers
@@ -637,7 +631,7 @@ class Dataset:
                                  last_frame)
 
         if len(data) != self.segment_width:
-            print("ERROR, invalid segment length {}, expected {}", len(data), self.segment_width)
+            logging.error("invalid segment length %d, expected %d", len(data), self.segment_width)
 
         data = Preprocessor.apply(data,
                                   segment.track.thermal_reference_level[first_frame:last_frame],
@@ -855,8 +849,8 @@ class Dataset:
 # continue to read examples until queue is full
 def preloader(q, dataset):
     """ add a segment into buffer """
-    print(" -started async fetcher for {} with augment={} segment_width={}".format(
-        dataset.name, dataset.enable_augmentation, dataset.segment_width))
+    logging.info(" -started async fetcher for %s with augment=%s segment_width=%s",
+        dataset.name, dataset.enable_augmentation, dataset.segment_width)
     loads = 0
     timer = time.time()
     while not dataset.preloader_stop_flag:
