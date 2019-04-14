@@ -41,9 +41,10 @@ class Previewer:
 
     def __init__(self, config, preview_type):
         self.config = config
+        self.colourmap = self._load_colourmap()
+
         # make sure all the required files are there
         self.track_descs = {}
-        self.colourmap
         self.font
         self.font_title
         self.preview_type = preview_type
@@ -54,21 +55,12 @@ class Previewer:
         if not preview_type == Previewer.PREVIEW_NONE:
             return Previewer(config, preview_type)
 
-    @property
-    def colourmap(self):
-        """ gets colourmap. """
-        if not globs._previewer_colour_map:
-            colourmap = self.config.previews_colour_map
-            if path.exists(colourmap):
-                self.colormap = tools.load_colormap(colourmap)
-            else:
-                logging.info("using default colour map")
-                self.colormap = plt.get_cmap('jet')
+    def _load_colourmap(self):
+        colourmap_path = self.config.previews_colour_map
+        if not path.exists(colourmap_path):
+            colourmap_path = resource_path("colourmap.dat")
+        return tools.load_colourmap(colourmap_path)
 
-        return globs._previewer_colour_map
-
-
-    @property
     def font(self):
         """ gets default font. """
         if not globs._previewer_font:
@@ -87,6 +79,8 @@ class Previewer:
         """
         Exports a clip showing the tracking and predictions for objects within the clip.
         """
+
+        logging.info("creating clip preview %s", filename)
 
         # increased resolution of video file.
         # videos look much better scaled up
@@ -148,7 +142,7 @@ class Previewer:
             video_frames = []
             for frame_number in range(len(track.bounds_history)):
                 channels = tracker.get_track_channels(track, frame_number)
-                img = tools.convert_heat_to_img(channels[1], self.colormap, 0, 350)
+                img = tools.convert_heat_to_img(channels[1], self.colourmap, 0, 350)
                 img = img.resize((frame_width, frame_height), Image.NEAREST)
                 video_frames.append(np.asarray(img))
 
@@ -158,7 +152,7 @@ class Previewer:
 
     def convert_and_resize(self, image, size = None, mode = Image.BILINEAR):
         """ Converts the image to colour using colour map and resize """
-        image = tools.convert_heat_to_img(image, self.colormap, self.auto_min, self.auto_max)
+        image = tools.convert_heat_to_img(image, self.colourmap, self.auto_min, self.auto_max)
         if size:
             self.frame_scale = size
             image = image.resize((int(image.width * self.frame_scale), int(image.height * self.frame_scale)), mode)

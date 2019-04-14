@@ -3,4 +3,3 @@
 _classifier = None
 _previewer_font = None
 _previewer_font_title = None
-_previewer_colour_map = None

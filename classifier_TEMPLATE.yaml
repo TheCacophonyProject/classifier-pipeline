@@ -19,9 +19,10 @@ excluded_folders: ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit',
 # Reprocess files which have already been processed.
 reprocess: True
 
-# colour map to use when exporting to MPEG.
-# Note:  This is relative to the current directory of the application, not the base data folder
-previews_colour_map: "custom_colormap.dat"
+# Colour map override to use when exporting to MPEG. If not specified,
+# a sensible default colour map is used.
+# Note: This is should be a full path. It is not relative to the # base_data_folder.
+# previews_colour_map: "custom_colormap.dat"
 
 # Number of worker threads to use.  0 disables worker pool and forces a single thread.
 worker_threads: 0

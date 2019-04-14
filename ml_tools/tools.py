@@ -255,13 +255,9 @@ def write_mpeg(filename, frames):
             logging.info("out:  %s", process.stdout.decode('ascii'))
             logging.info("error: %s", process.stderr.decode('ascii'))
 
-def load_colormap(filename):
-    """ Loads a custom colormap used for creating MPEG previews of tracks. """
-
-    if not os.path.exists(filename):
-        return
-
-    return pickle.load(open(filename, 'rb'))
+def load_colourmap(filename):
+    with open(filename, 'rb') as f:
+        return pickle.load(f)
 
 def convert_heat_to_img(frame, colormap, temp_min = 2800, temp_max = 4200):
     """
