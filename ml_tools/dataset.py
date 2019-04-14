@@ -8,19 +8,18 @@ Tracks are broken into segments.  Filtered, and then passed to the trainer using
 
 """
 
-import queue
 import logging
-import threading
-import multiprocessing
-import cv2
-
-import os
 import math
+import multiprocessing
+import os
+import queue
 import random
+import threading
 import time
-from dateutil import parser
 from bisect import bisect
 
+import cv2
+import dateutil
 import numpy as np
 import scipy.ndimage
 
@@ -95,12 +94,16 @@ class TrackHeader:
     def from_meta(clip_id, clip_meta, track_meta):
         """ Creates a track header from given metadata. """
 
+        start_time = dateutil.parser.parse(track_meta['start_time'])
+        end_time = dateutil.parser.parse(track_meta['end_time'])
+        duration = (end_time - start_time).total_seconds()
+
         # kind of checky way to get camera name from clip_id, in the future camera will be included in the metadata.
         camera = os.path.splitext(os.path.basename(clip_id))[0].split('-')[-1]
 
         # get the reference levels from clip_meta and load them into the track.
         track_start_frame = track_meta['start_frame']
-        track_end_frame = track_meta['start_frame'] + int(round(track_meta['duration']*9))
+        track_end_frame = track_meta['start_frame'] + int(round(duration * 9))
         thermal_reference_level = np.float32(clip_meta['frame_temp_median'][track_start_frame:track_end_frame])
 
         # calculate the frame velocities
@@ -117,8 +120,8 @@ class TrackHeader:
 
         result = TrackHeader(
             clip_id=clip_id, track_number=track_meta['id'], label=track_meta['tag'],
-            start_time=parser.parse(track_meta['start_time']),
-            duration=float(track_meta['duration']),
+            start_time=start_time,
+            duration=duration,
             camera=camera,
             score=float(track_meta['score'])
         )
