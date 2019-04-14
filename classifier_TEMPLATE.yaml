@@ -4,9 +4,13 @@ base_data_folder: "<full path>"
 # Enables/Disables GPU accelerated classification
 use_gpu: false
 
-# source_folder is where the cptv files reside under (could be in a subdirectory). It is specified relative
-# to the base_data_folder
+# source_folder is where the cptv files reside under. It is relative
+# to base_data_folder.
 source_folder: "cptv"
+
+# tracks_folder is where the track data files will be created. It is
+# specified relative to base_data_folder.
+tracks_folder: "tracks"
 
 # which folders (tags) to ignore when selecting cptv files from source_folder
 excluded_folders: ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit', 'hard', 'multi', 'moving',
@@ -146,9 +150,6 @@ extract:
     # Note:  Set to 'False' is there is no hints file.
     # Note:  This is relative to the current directory of the application, not the base data folder
     hints_file: "hints.txt"
-
-    # tracks_folder is where the track files will be created.  It is specified relative to the base_data_folder
-    tracks_folder: "tracks"
 
 
 classify_tracking:

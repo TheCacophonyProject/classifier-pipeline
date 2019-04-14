@@ -17,8 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import os.path as path
-
 import attr
 
 
@@ -29,14 +27,12 @@ class ExtractConfig:
     include_filtered_channel = attr.ib()
     preview = attr.ib()
     hints_file = attr.ib()
-    tracks_folder = attr.ib()
 
     @classmethod
-    def load(cls, extract, base_folder):
+    def load(cls, extract):
         return cls(
             enable_compression=extract["enable_compression"],
             include_filtered_channel=extract["include_filtered_channel"],
             preview=extract["preview"],
             hints_file=extract["hints_file"],
-            tracks_folder=path.join(base_folder, extract["tracks_folder"]),
         )

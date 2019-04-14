@@ -14,11 +14,12 @@ CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
 
 @attr.s
 class Config:
+    source_folder = attr.ib()
+    tracks_folder = attr.ib()
     tracking = attr.ib()
     extract = attr.ib()
     classify_tracking = attr.ib()
     classify = attr.ib()
-    source_folder = attr.ib()
     excluded_folders = attr.ib()
     reprocess = attr.ib()
     previews_colour_map = attr.ib()
@@ -41,11 +42,12 @@ class Config:
 
         base_folder = path.expanduser(raw["base_data_folder"])
         return cls(
+            source_folder=path.join(base_folder, raw["source_folder"]),
+            tracks_folder=path.join(base_folder, raw.get("tracks_folder", "tracks")),
             tracking=TrackingConfig.load(raw["tracking"]),
-            extract=ExtractConfig.load(raw["extract"], base_folder),
+            extract=ExtractConfig.load(raw["extract"]),
             classify_tracking=TrackingConfig.load(raw["classify_tracking"]),
             classify=ClassifyConfig.load(raw["classify"], base_folder),
-            source_folder=path.join(base_folder, raw["source_folder"]),
             excluded_folders=raw["excluded_folders"],
             reprocess=raw["reprocess"],
             previews_colour_map=raw["previews_colour_map"],
