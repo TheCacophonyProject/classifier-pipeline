@@ -21,8 +21,10 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import numpy as np
 import cv2
 
+
 class FrameBuffer:
     """ Stores entire clip in memory, required for some operations such as track exporting. """
+
     def __init__(self):
         self.thermal = None
         self.filtered = None

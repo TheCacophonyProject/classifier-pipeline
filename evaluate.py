@@ -33,30 +33,37 @@ from ml_tools import tools
 
 
 # number of seconds between clips required to trigger a a new visit
-NEW_VISIT_THRESHOLD = 3*60
+NEW_VISIT_THRESHOLD = 3 * 60
 
 DEFAULT_SOURCE_FOLDER = "c:\\cac\\autotagged"
 
 # false positive's and 'none' can be mapped to the same label as they represent the same idea.
-NULL_TAGS = ['false-positive', 'none', 'no-tag']
+NULL_TAGS = ["false-positive", "none", "no-tag"]
 
-classes = ['bird', 'possum', 'rat', 'hedgehog', 'stoat', 'none']
+classes = ["bird", "possum", "rat", "hedgehog", "stoat", "none"]
+
 
 class TrackResult:
-
     def __init__(self, track_record):
         """ Creates track result from track stats entry. """
         # ops... must have lost time zone at some point, so I put it back here...
-        self.start_time = dateutil.parser.parse(track_record["start_time"]) + timedelta(hours=13)
-        self.end_time = dateutil.parser.parse(track_record["end_time"]) + timedelta(hours=13)
+        self.start_time = dateutil.parser.parse(track_record["start_time"]) + timedelta(
+            hours=13
+        )
+        self.end_time = dateutil.parser.parse(track_record["end_time"]) + timedelta(
+            hours=13
+        )
         self.label = track_record["label"]
         self.score = track_record["confidence"]
         self.clarity = track_record["clarity"]
 
-        if self.label in NULL_TAGS: self.label = 'none'
+        if self.label in NULL_TAGS:
+            self.label = "none"
 
     def __repr__(self):
-        return "{} {:.1f} clarity {:.1f}".format(self.label, self.score * 10, self.clarity * 10)
+        return "{} {:.1f} clarity {:.1f}".format(
+            self.label, self.score * 10, self.clarity * 10
+        )
 
     @property
     def duration(self):
@@ -65,32 +72,36 @@ class TrackResult:
     @property
     def confidence(self):
         """ The tracks 'confidence' level which is a combination of the score and clarity. """
-        score_uncertanity = 1-self.score
-        clarity_uncertainty = 1-self.clarity
+        score_uncertanity = 1 - self.score
+        clarity_uncertainty = 1 - self.clarity
         return 1 - ((score_uncertanity * clarity_uncertainty) ** 0.5)
 
-    def print_tree(self, level = 0):
+    def print_tree(self, level=0):
         print("\t" * level + "-" + str(self))
 
 
 class ClipResult:
-
     def __init__(self, full_path):
         """ Initialise a clip result record from given stats file. """
         self.stats = read_stats_file(full_path)
 
-        self.tracks = [TrackResult(track) for track in self.stats['tracks']]
+        self.tracks = [TrackResult(track) for track in self.stats["tracks"]]
 
         self.source = os.path.basename(full_path)
-        self.start_time = dateutil.parser.parse(self.stats['start_time']) + timedelta(hours=13)
-        self.end_time = dateutil.parser.parse(self.stats['end_time']) + timedelta(hours=13)
-        self.camera = self.stats.get('camera', 'none')
-        self.true_tag = self.stats.get('original_tag', 'unknown')
+        self.start_time = dateutil.parser.parse(self.stats["start_time"]) + timedelta(
+            hours=13
+        )
+        self.end_time = dateutil.parser.parse(self.stats["end_time"]) + timedelta(
+            hours=13
+        )
+        self.camera = self.stats.get("camera", "none")
+        self.true_tag = self.stats.get("original_tag", "unknown")
 
-        if self.true_tag in NULL_TAGS: self.true_tag = 'none'
+        if self.true_tag in NULL_TAGS:
+            self.true_tag = "none"
 
         self.classifier_best_guess, self.classifier_best_score = self.get_best_guess()
-        
+
     def get_best_guess(self):
         """ Returns the best guess from classification data. """
         class_confidences = {}
@@ -104,11 +115,14 @@ class ClipResult:
 
             # we weight the false-positives lower as if they co-occur with an animals we want the animals to come
             # across
-            if label == 'none': confidence *= 0.5
+            if label == "none":
+                confidence *= 0.5
 
             print(label, confidence)
 
-            class_confidences[label] = max(class_confidences.get(label, 0.0), confidence)
+            class_confidences[label] = max(
+                class_confidences.get(label, 0.0), confidence
+            )
 
             confidence = class_confidences[label]
 
@@ -123,12 +137,15 @@ class ClipResult:
         return (self.end_time - self.start_time).total_seconds()
 
     def __repr__(self):
-        return "{} {} {:.1f}".format(self.true_tag, self.classifier_best_guess, self.classifier_best_score * 10)
+        return "{} {} {:.1f}".format(
+            self.true_tag, self.classifier_best_guess, self.classifier_best_score * 10
+        )
 
-    def print_tree(self, level = 0):
+    def print_tree(self, level=0):
         print("\t" * level + "-" + str(self))
         for track in self.tracks:
-            track.print_tree(level+1)
+            track.print_tree(level + 1)
+
 
 class VisitResult:
     """ Represents a visit."""
@@ -140,7 +157,7 @@ class VisitResult:
     def add_clip(self, clip):
         """ Adds a clip to the clip list.  Clips are maintained start_time sorted order. """
         self.clips.append(clip)
-        self.clips.sort(key = lambda clip: clip.start_time)
+        self.clips.sort(key=lambda clip: clip.start_time)
 
     @property
     def camera(self):
@@ -152,17 +169,20 @@ class VisitResult:
 
     @property
     def start_time(self):
-        if len(self.clips) == 0: return 0.0
+        if len(self.clips) == 0:
+            return 0.0
         return self.clips[0].start_time
 
     @property
     def end_time(self):
-        if len(self.clips) == 0: return 0.0
+        if len(self.clips) == 0:
+            return 0.0
         return self.clips[-1].end_time
 
     @property
     def mid_time(self):
-        if len(self.clips) == 0: return 0.0
+        if len(self.clips) == 0:
+            return 0.0
         return self.start_time + timedelta(seconds=(self.duration / 2))
 
     @property
@@ -173,7 +193,7 @@ class VisitResult:
     @property
     def predicted_tag(self):
         """ Returns the predicted tag based on best guess from individual clips. """
-        sorted_clips = sorted(self.clips, key = lambda x: x.classifier_best_score)
+        sorted_clips = sorted(self.clips, key=lambda x: x.classifier_best_score)
         best_guess = sorted_clips[-1].classifier_best_guess
         return best_guess
 
@@ -185,36 +205,45 @@ class VisitResult:
         return best_guess
 
     def __repr__(self):
-        return "{} {} {:.1f}".format(self.true_tag, self.predicted_tag, self.predicted_confidence * 10)
+        return "{} {} {:.1f}".format(
+            self.true_tag, self.predicted_tag, self.predicted_confidence * 10
+        )
 
-    def print_tree(self, level = 0):
+    def print_tree(self, level=0):
         print("\t" * level + "-" + str(self))
         for clip in self.clips:
-            clip.print_tree(level+1)
+            clip.print_tree(level + 1)
 
 
 def is_stats_file(filename):
     """ returns if filename is a valid stats file. """
     # note, we also have track stats files which have 4 parts, date-time-camera-track
     ext = os.path.splitext(filename)[-1].lower()
-    parts = filename.split('-')
-    return ext == '.txt' and len(parts) == 3
+    parts = filename.split("-")
+    return ext == ".txt" and len(parts) == 3
+
 
 def read_stats_file(full_path):
     """ reads in given stats file. """
-    stats = json.load(open(full_path, 'r'))
+    stats = json.load(open(full_path, "r"))
 
     return stats
 
 
-def show_confusion_matrix(true_class, pred_class, labels, normalize=True, title="Classification Confusion Matrix"):
+def show_confusion_matrix(
+    true_class,
+    pred_class,
+    labels,
+    normalize=True,
+    title="Classification Confusion Matrix",
+):
 
     cm = metrics.confusion_matrix(true_class, pred_class, labels=labels)
 
     # normalise matrix
     if normalize:
         print(cm.sum(axis=1)[np.newaxis, :])
-        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
 
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111)
@@ -222,16 +251,20 @@ def show_confusion_matrix(true_class, pred_class, labels, normalize=True, title=
 
     plt.title(title)
 
-    fmt = '.2f' if normalize else 'd'
-    thresh = cm.max() / 2.
+    fmt = ".2f" if normalize else "d"
+    thresh = cm.max() / 2.0
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        plt.text(j, i, format(cm[i, j], fmt),
-                 horizontalalignment="center",
-                 color="white" if cm[i, j] > thresh else "black")
+        plt.text(
+            j,
+            i,
+            format(cm[i, j], fmt),
+            horizontalalignment="center",
+            color="white" if cm[i, j] > thresh else "black",
+        )
 
-    ax.set_xticklabels([''] + labels, rotation=45)
-    ax.set_yticklabels([''] + labels)
-    ax.xaxis.set_tick_params(labeltop='off', labelbottom='on')
+    ax.set_xticklabels([""] + labels, rotation=45)
+    ax.set_yticklabels([""] + labels)
+    ax.xaxis.set_tick_params(labeltop="off", labelbottom="on")
     plt.show()
 
 
@@ -245,7 +278,8 @@ def show_breakdown(true_class, pred_class, title="Confusion Matrix"):
 
     correct = 0
     for true, pred in zip(true_class, pred_class):
-        if true==pred: correct += 1
+        if true == pred:
+            correct += 1
 
     print("F1 scores:")
     for class_name, f1_score in zip(classes, f1_scores):
@@ -253,8 +287,16 @@ def show_breakdown(true_class, pred_class, title="Confusion Matrix"):
 
     print()
 
-    print("Correctly classified {0} / {1} = {2:.2f}%".format(correct, len(true_class), 100 * correct / len(true_class)))
-    print("Final score: {:.1f}".format(100 * np.sum(f1_scores) / np.count_nonzero(f1_scores)))
+    print(
+        "Correctly classified {0} / {1} = {2:.2f}%".format(
+            correct, len(true_class), 100 * correct / len(true_class)
+        )
+    )
+    print(
+        "Final score: {:.1f}".format(
+            100 * np.sum(f1_scores) / np.count_nonzero(f1_scores)
+        )
+    )
 
 
 def breakdown_tracks(visits):
@@ -276,7 +318,7 @@ def breakdown_tracks(visits):
                 true_class.append(clip.true_tag)
                 pred_class.append(track.label)
                 if track.label not in classes:
-                    print("Warning, invalid label",track.label)
+                    print("Warning, invalid label", track.label)
 
     print()
     print("Total tracks: {} {:.1f}h".format(len(tracks), total_duration / 60 / 60))
@@ -302,7 +344,15 @@ def breakdown_clips(visits):
             i += 1
             clips.append(clip)
             if clip.true_tag != clip.classifier_best_guess:
-                print("{} {} {} {:.2f} {}".format(i + 1, clip.true_tag, clip.classifier_best_guess, clip.classifier_best_score, clip.source))
+                print(
+                    "{} {} {} {:.2f} {}".format(
+                        i + 1,
+                        clip.true_tag,
+                        clip.classifier_best_guess,
+                        clip.classifier_best_score,
+                        clip.source,
+                    )
+                )
             if clip.true_tag == clip.classifier_best_guess:
                 correct += 1
             else:
@@ -310,7 +360,9 @@ def breakdown_clips(visits):
             total_duration += clip.duration
 
     print()
-    print("Total footage: {} clips {:.1f}h".format(len(clips), total_duration/60/60))
+    print(
+        "Total footage: {} clips {:.1f}h".format(len(clips), total_duration / 60 / 60)
+    )
 
     print("-" * 60)
 
@@ -325,6 +377,7 @@ def show_error_tree(visits):
     for i, visit in enumerate(visits):
         if visit.true_tag != visit.predicted_tag:
             visit.print_tree()
+
 
 def breakdown_visits(visits):
     """ Prints out breakdown of per visit accuracy. """
@@ -361,14 +414,14 @@ def show_errors_by_score(visits):
             errors.append(visit.predicted_confidence * 10)
 
     bin_divisions = 2
-    bins = [x/bin_divisions for x in range(10*bin_divisions+1)]
+    bins = [x / bin_divisions for x in range(10 * bin_divisions + 1)]
     plt.title("Visit Errors by Confidence")
-    plt.hist(correct, bins=bins, label='correct')
-    plt.hist(errors, bins=bins, label='error')
+    plt.hist(correct, bins=bins, label="correct")
+    plt.hist(errors, bins=bins, label="error")
     plt.legend()
     plt.show()
 
-    print("Max confidence on misclassified visit",max(errors))
+    print("Max confidence on misclassified visit", max(errors))
 
     # clips by score
 
@@ -383,8 +436,8 @@ def show_errors_by_score(visits):
                 errors.append(clip.classifier_best_score * 10)
 
     plt.title("Clip Errors by Confidence")
-    plt.hist(correct, bins=bins, label='correct')
-    plt.hist(errors, bins=bins, label='error')
+    plt.hist(correct, bins=bins, label="correct")
+    plt.hist(errors, bins=bins, label="error")
     plt.legend()
     plt.show()
 
@@ -402,10 +455,11 @@ def show_errors_by_score(visits):
                     errors.append(track.confidence * 10)
 
     plt.title("Track Errors by Confidence")
-    plt.hist(correct, bins=bins, label='correct')
-    plt.hist(errors, bins=bins, label='error')
+    plt.hist(correct, bins=bins, label="correct")
+    plt.hist(errors, bins=bins, label="error")
     plt.legend()
     plt.show()
+
 
 def get_visits(path):
     """ Scans a folder loading all clip statstics, and formats them into visits. """
@@ -426,7 +480,11 @@ def get_visits(path):
 
     for camera in cameras:
 
-        records = [record for record in all_records if record.camera == camera and record.true_tag in classes]
+        records = [
+            record
+            for record in all_records
+            if record.camera == camera and record.true_tag in classes
+        ]
 
         # group clips into visits by camera
         records.sort(key=lambda x: x.start_time)
@@ -440,16 +498,22 @@ def get_visits(path):
                 current_visit = VisitResult(record)
                 visits.append(current_visit)
 
-            gap = (record.start_time - previous_record_end).total_seconds() if previous_record_end else 0.0
+            gap = (
+                (record.start_time - previous_record_end).total_seconds()
+                if previous_record_end
+                else 0.0
+            )
 
             # start a new visit if gap is too large, or tag changes.
-            if gap >= NEW_VISIT_THRESHOLD or (record.true_tag != current_visit.true_tag):
+            if gap >= NEW_VISIT_THRESHOLD or (
+                record.true_tag != current_visit.true_tag
+            ):
                 current_visit = VisitResult(record)
                 visits.append(current_visit)
             else:
                 current_visit.add_clip(record)
 
-            previous_record_end= record.end_time
+            previous_record_end = record.end_time
 
     return visits
 
@@ -459,18 +523,21 @@ def show_visits_over_days(visits):
     # bin visits in days
     visit_bins = {}
     for visit in visits:
-        if visit.predicted_tag == 'none':
+        if visit.predicted_tag == "none":
             continue
         visit_midpoint = visit.start_time + timedelta(seconds=visit.duration / 2)
         date = visit_midpoint.replace(hour=0, minute=0, second=0, microsecond=0)
         offset = (visit_midpoint - date).total_seconds() / 60 / 60
-        if date not in visit_bins: visit_bins[date] = []
+        if date not in visit_bins:
+            visit_bins[date] = []
         visit_bins[date].append((offset, visit))
 
     bins = range(0, 24)
 
     for date, visit_bin in visit_bins.items():
-        plt.title("Classifier Visit Sightings for {}".format(date.strftime("%D %Y/%m/%d")))
+        plt.title(
+            "Classifier Visit Sightings for {}".format(date.strftime("%D %Y/%m/%d"))
+        )
 
         xs = []
 
@@ -484,11 +551,12 @@ def show_visits_over_days(visits):
         print(xs)
 
         for i, x in enumerate(xs):
-            plt.hist(x, bins, histtype='bar', stacked=True, label=classes[i])
+            plt.hist(x, bins, histtype="bar", stacked=True, label=classes[i])
             ax = plt.gca()
             ax.set_ylim([0, 10])
         plt.legend()
         plt.show()
+
 
 def plot_visits(visits, true_tags=False):
     """
@@ -500,17 +568,29 @@ def plot_visits(visits, true_tags=False):
 
     start_date = min([visit.start_time for visit in visits])
 
-    visits = sorted(visits, key = lambda x: x.predicted_tag)
+    visits = sorted(visits, key=lambda x: x.predicted_tag)
     cameras = sorted(list(set([visit.camera for visit in visits])))
 
     data_x = [visit.camera for visit in visits]
-    data_y = [(visit.start_time - start_date).total_seconds() / (60*60*24) for visit in visits]
+    data_y = [
+        (visit.start_time - start_date).total_seconds() / (60 * 60 * 24)
+        for visit in visits
+    ]
     data_c = [visit.true_tag if true_tags else visit.predicted_tag for visit in visits]
-    data_s = [visit.duration/60 for visit in visits]
-    plt.figure(figsize=(14,6))
+    data_s = [visit.duration / 60 for visit in visits]
+    plt.figure(figsize=(14, 6))
     plt.title("Strip plot for week starting {}".format(start_date.strftime("%Y/%m/%d")))
 
-    sns.stripplot(y=data_x, x=data_y, order=cameras, hue_order=classes, linewidth=0.5, jitter = 0.25, hue=data_c, dodge=True)
+    sns.stripplot(
+        y=data_x,
+        x=data_y,
+        order=cameras,
+        hue_order=classes,
+        linewidth=0.5,
+        jitter=0.25,
+        hue=data_c,
+        dodge=True,
+    )
 
     plt.show()
 
@@ -524,7 +604,9 @@ def plot_camera_visits(camera, visits):
     """
 
     def time_in_seconds(time):
-        return (time - time.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
+        return (
+            time - time.replace(hour=0, minute=0, second=0, microsecond=0)
+        ).total_seconds()
 
     def map_noon(hour):
         return hour if hour < 12 else hour - 24
@@ -533,17 +615,22 @@ def plot_camera_visits(camera, visits):
 
     x = []
     for i, class_name in enumerate(classes):
-        x.append([map_noon(time_in_seconds(visit.mid_time) / 60 / 60) for visit in visits if visit.true_tag == class_name])
+        x.append(
+            [
+                map_noon(time_in_seconds(visit.mid_time) / 60 / 60)
+                for visit in visits
+                if visit.true_tag == class_name
+            ]
+        )
 
-
-    plt.figure(figsize=(8,6))
+    plt.figure(figsize=(8, 6))
     plt.title("{} activity".format(camera))
 
-    #sns.stripplot(x=data_x, hue_order=classes, linewidth=0.5, jitter = 0.25, hue=data_c, dodge=True)
+    # sns.stripplot(x=data_x, hue_order=classes, linewidth=0.5, jitter = 0.25, hue=data_c, dodge=True)
     bin_divisions = 2
-    bins = range(-12,13,2)
+    bins = range(-12, 13, 2)
 
-    plt.hist(x, bins=bins, histtype='bar', stacked=True, label=classes)
+    plt.hist(x, bins=bins, histtype="bar", stacked=True, label=classes)
     plt.legend()
 
     plt.show()
@@ -564,11 +651,10 @@ def print_summary(visits):
     for class_name, visit_count in animal_visits.items():
         print("{:<10} {}".format(class_name, visit_count))
 
-    #show_visits_over_days(visits)
+    # show_visits_over_days(visits)
 
-    #plot_visits(visits, true_tags=True)
-    plot_camera_visits('akaroa09', visits)
-
+    # plot_visits(visits, true_tags=True)
+    plot_camera_visits("akaroa09", visits)
 
 
 def print_evaluation(visits):
@@ -578,13 +664,25 @@ def print_evaluation(visits):
     breakdown_visits(visits)
     show_errors_by_score(visits)
 
+
 def main():
     init_logging()
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-s', '--source-folder', default=os.path.join(DEFAULT_SOURCE_FOLDER), help='Source folder containing .txt files exported by classify.py')
-    parser.add_argument('-x', '--show-extended-evaluation', default=False, action='store_true', help='Evalulates results against pre-tagged ground truth.')
+    parser.add_argument(
+        "-s",
+        "--source-folder",
+        default=os.path.join(DEFAULT_SOURCE_FOLDER),
+        help="Source folder containing .txt files exported by classify.py",
+    )
+    parser.add_argument(
+        "-x",
+        "--show-extended-evaluation",
+        default=False,
+        action="store_true",
+        help="Evalulates results against pre-tagged ground truth.",
+    )
 
     args = parser.parse_args()
 

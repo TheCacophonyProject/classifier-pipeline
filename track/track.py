@@ -110,7 +110,7 @@ class Track:
 
         movement_points = (movement ** 0.5) + max_offset
         delta_points = delta_std * 25.0
-        score = min(movement_points,100) + min(delta_points, 100)
+        score = min(movement_points, 100) + min(delta_points, 100)
 
         stats = TrackMovementStatistics(
             movement=float(movement),
@@ -138,15 +138,24 @@ class Track:
 
         for i in range(len(self.bounds_history)):
 
-            prev_frame = self.bounds_history[max(0, i-1)]
+            prev_frame = self.bounds_history[max(0, i - 1)]
             current_frame = self.bounds_history[i]
-            next_frame = self.bounds_history[min(len(self.bounds_history)-1, i+1)]
+            next_frame = self.bounds_history[min(len(self.bounds_history) - 1, i + 1)]
 
             frame_x = current_frame.mid_x
             frame_y = current_frame.mid_y
-            frame_width = (prev_frame.width + current_frame.width + next_frame.width) / 3
-            frame_height = (prev_frame.height + current_frame.height + next_frame.height) / 3
-            frame = Region(int(frame_x - frame_width / 2), int(frame_y - frame_height / 2), int(frame_width), int(frame_height))
+            frame_width = (
+                prev_frame.width + current_frame.width + next_frame.width
+            ) / 3
+            frame_height = (
+                prev_frame.height + current_frame.height + next_frame.height
+            ) / 3
+            frame = Region(
+                int(frame_x - frame_width / 2),
+                int(frame_y - frame_height / 2),
+                int(frame_width),
+                int(frame_height),
+            )
             frame.crop(frame_bounds)
 
             new_bounds_history.append(frame)
@@ -162,7 +171,7 @@ class Track:
         start = 0
         while start < len(self) and mass_history[start] <= 2:
             start += 1
-        end = len(self)-1
+        end = len(self) - 1
         while end > 0 and mass_history[end] <= 2:
             end -= 1
 
@@ -171,7 +180,7 @@ class Track:
             self.bounds_history = []
         else:
             self.start_frame += start
-            self.bounds_history = self.bounds_history[start:end+1]
+            self.bounds_history = self.bounds_history[start : end + 1]
 
     def get_track_region_score(self, region: Region):
         """
@@ -181,15 +190,19 @@ class Track:
         expected_x = int(self.bounds.mid_x + self.vel_x)
         expected_y = int(self.bounds.mid_y + self.vel_y)
 
-        distance = ((region.mid_x - expected_x) ** 2 + (region.mid_y - expected_y) ** 2) ** 0.5
+        distance = (
+            (region.mid_x - expected_x) ** 2 + (region.mid_y - expected_y) ** 2
+        ) ** 0.5
 
         # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
         # area is padded with 50 pixels so small regions don't change too much
-        size_difference = (abs(region.area - self.bounds.area) / (self.bounds.area+50)) * 100
+        size_difference = (
+            abs(region.area - self.bounds.area) / (self.bounds.area + 50)
+        ) * 100
 
         return distance, size_difference
 
-    def get_overlap_ratio(self, other_track, threshold = 0.05):
+    def get_overlap_ratio(self, other_track, threshold=0.05):
         """
         Checks what ratio of the time these two tracks overlap.
         :param other_track: the other track to compare with
@@ -201,14 +214,21 @@ class Track:
             return 0.0
 
         start = max(self.start_frame, other_track.start_frame)
-        end = min(self.start_frame + len(self), other_track.start_frame + len(other_track))
+        end = min(
+            self.start_frame + len(self), other_track.start_frame + len(other_track)
+        )
 
         frames_overlapped = 0
 
-        for pos in range(start, end+1):
+        for pos in range(start, end + 1):
             our_index = pos - self.start_frame
             other_index = pos - other_track.start_frame
-            if our_index >= 0 and other_index >= 0 and our_index < len(self) and other_index < len(other_track):
+            if (
+                our_index >= 0
+                and other_index >= 0
+                and our_index < len(self)
+                and other_index < len(other_track)
+            ):
                 our_bounds = self.bounds_history[our_index]
                 other_bounds = other_track.bounds_history[other_index]
                 overlap = our_bounds.overlap_area(other_bounds) / our_bounds.area
@@ -231,8 +251,11 @@ class Track:
     def __len__(self):
         return len(self.bounds_history)
 
+
 TrackMovementStatistics = namedtuple(
-    'TrackMovementStatistics',
-    'movement max_offset score average_mass median_mass delta_std'
+    "TrackMovementStatistics",
+    "movement max_offset score average_mass median_mass delta_std",
 )
-TrackMovementStatistics.__new__.__defaults__ = (0,) * len(TrackMovementStatistics._fields)
+TrackMovementStatistics.__new__.__defaults__ = (0,) * len(
+    TrackMovementStatistics._fields
+)

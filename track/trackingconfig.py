@@ -94,4 +94,3 @@ class TrackingConfig:
 
     def as_dict(self):
         return attr.asdict(self)
-

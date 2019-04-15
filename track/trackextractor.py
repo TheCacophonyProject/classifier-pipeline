@@ -31,6 +31,8 @@ from track.region import Region
 from track.framebuffer import FrameBuffer
 
 from cptv import CPTVReader
+
+
 class TrackExtractor:
     """ Extracts tracks from a stream of frames. """
 
@@ -111,15 +113,20 @@ class TrackExtractor:
 
         with open(filename, "rb") as f:
             reader = CPTVReader(f)
-            local_tz = pytz.timezone('Pacific/Auckland')
+            local_tz = pytz.timezone("Pacific/Auckland")
             self.video_start_time = reader.timestamp.astimezone(local_tz)
             self.preview_secs = reader.preview_secs
             self.stats.update(self.get_video_stats())
             # we need to load the entire video so we can analyse the background.
-            frames = ([frame.pix for frame in reader])
+            frames = [frame.pix for frame in reader]
             self.frame_buffer.thermal = frames
             edge = self.config.edge_pixels
-            self.crop_rectangle = Rectangle(edge, edge, reader.x_resolution - 2 * edge, reader.y_resolution - 2 * edge)
+            self.crop_rectangle = Rectangle(
+                edge,
+                edge,
+                reader.x_resolution - 2 * edge,
+                reader.y_resolution - 2 * edge,
+            )
 
     def extract_tracks(self):
         """
@@ -141,27 +148,38 @@ class TrackExtractor:
                 self.background_is_preview = True
                 background = self.calculate_preview(frames)
             else:
-                logging.info("No preview secs defined for CPTV file - using statistical background measurement")
+                logging.info(
+                    "No preview secs defined for CPTV file - using statistical background measurement"
+                )
 
         if len(frames) <= 9:
             self.reject_reason = "Clip too short {} frames".format(len(frames))
             return False
 
-        if self.reject_non_static_clips and not self.stats['is_static']:
+        if self.reject_non_static_clips and not self.stats["is_static"]:
             self.reject_reason = "Non static background deviation={:.1f}".format(
-                background_stats.background_deviation)
+                background_stats.background_deviation
+            )
             return False
 
         # don't process clips that are too hot.
-        if self.config.max_mean_temperature_threshold and background_stats.mean_temp > self.config.max_mean_temperature_threshold:
+        if (
+            self.config.max_mean_temperature_threshold
+            and background_stats.mean_temp > self.config.max_mean_temperature_threshold
+        ):
             self.reject_reason = "Mean temp too high {}".format(
-                background_stats.mean_temp)
+                background_stats.mean_temp
+            )
             return False
 
         # don't process clips with too large of a temperature difference
-        if self.config.max_temperature_range_threshold and (background_stats.max_temp - background_stats.min_temp > self.config.max_temperature_range_threshold):
+        if self.config.max_temperature_range_threshold and (
+            background_stats.max_temp - background_stats.min_temp
+            > self.config.max_temperature_range_threshold
+        ):
             self.reject_reason = "Temp delta too high {}".format(
-                background_stats.max_temp - background_stats.min_temp)
+                background_stats.max_temp - background_stats.min_temp
+            )
             return False
 
         # reset the track ID so we start at 1
@@ -198,7 +216,9 @@ class TrackExtractor:
         return True
 
     def calculate_preview(self, frame_list):
-        number_frames = self.preview_secs * self.FRAMES_PER_SEC - self.config.ignore_frames
+        number_frames = (
+            self.preview_secs * self.FRAMES_PER_SEC - self.config.ignore_frames
+        )
         if not number_frames < len(frame_list):
             logging.error("Video consists entirely of preview")
             number_frames = len(frame_list)
@@ -244,8 +264,7 @@ class TrackExtractor:
         thermal = np.float32(thermal)
         filtered = self.get_filtered(thermal, background)
 
-        regions, mask = self.get_regions_of_interest(
-            filtered, self._prev_filtered)
+        regions, mask = self.get_regions_of_interest(filtered, self._prev_filtered)
 
         # save frame stats
         self.frame_stats_min.append(np.min(thermal))
@@ -273,16 +292,21 @@ class TrackExtractor:
         """
 
         if frame_number < 0 or frame_number >= len(track):
-            raise ValueError("Frame {} is out of bounds for track with {} frames".format(
-                frame_number, len(track))
+            raise ValueError(
+                "Frame {} is out of bounds for track with {} frames".format(
+                    frame_number, len(track)
+                )
             )
 
         bounds = track.bounds_history[frame_number]
         tracker_frame = track.start_frame + frame_number
 
         if tracker_frame < 0 or tracker_frame >= len(self.frame_buffer.thermal):
-            raise ValueError("Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
-                tracker_frame, len(self.frame_buffer.thermal)-1))
+            raise ValueError(
+                "Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
+                    tracker_frame, len(self.frame_buffer.thermal) - 1
+                )
+            )
 
         thermal = bounds.subimage(self.frame_buffer.thermal[tracker_frame])
         filtered = bounds.subimage(self.frame_buffer.filtered[tracker_frame])
@@ -296,7 +320,8 @@ class TrackExtractor:
         # stack together into a numpy array.
         # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
         frame = np.int16(
-            np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0))
+            np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0)
+        )
 
         return frame
 
@@ -342,8 +367,9 @@ class TrackExtractor:
             if region in used_regions:
                 continue
             # make sure we don't overlap with existing tracks.  This can happen if a tail gets tracked as a new object
-            overlaps = [track.bounds.overlap_area(
-                region) for track in self.active_tracks]
+            overlaps = [
+                track.bounds.overlap_area(region) for track in self.active_tracks
+            ]
             if len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
                 continue
             track = Track()
@@ -354,14 +380,21 @@ class TrackExtractor:
             self.tracks.append(track)
 
         # check if any tracks did not find a matched region
-        for track in [track for track in self.active_tracks if track not in matched_tracks and track not in new_tracks]:
+        for track in [
+            track
+            for track in self.active_tracks
+            if track not in matched_tracks and track not in new_tracks
+        ]:
             # we lost this track.  start a count down, and if we don't get it back soon remove it
             track.frames_since_target_seen += 1
             track.add_blank_frame()
 
         # remove any tracks that have not seen their target in a while
         self.active_tracks = [
-            track for track in self.active_tracks if track.frames_since_target_seen < self.config.remove_track_after_frames]
+            track
+            for track in self.active_tracks
+            if track.frames_since_target_seen < self.config.remove_track_after_frames
+        ]
 
     def filter_tracks(self):
 
@@ -374,8 +407,13 @@ class TrackExtractor:
         if self.config.verbose:
             for stats, track in track_stats:
                 start_s, end_s = self.start_and_end_in_secs(track)
-                logging.info(" - track duration: %.1fsec, number of frames:%s, offset:%.1fpx, delta:%.1f, mass:%.1fpx",
-                    end_s - start_s, len(track), stats.max_offset, stats.delta_std, stats.average_mass
+                logging.info(
+                    " - track duration: %.1fsec, number of frames:%s, offset:%.1fpx, delta:%.1f, mass:%.1fpx",
+                    end_s - start_s,
+                    len(track),
+                    stats.max_offset,
+                    stats.delta_std,
+                    stats.average_mass,
                 )
 
         # find how much each track overlaps with other tracks
@@ -387,26 +425,32 @@ class TrackExtractor:
             for other in self.tracks:
                 if track == other:
                     continue
-                highest_ratio = max(
-                    track.get_overlap_ratio(other), highest_ratio)
+                highest_ratio = max(track.get_overlap_ratio(other), highest_ratio)
             track_overlap_ratio[track] = highest_ratio
 
         # filter out tracks that probably are just noise.
         good_tracks = []
-        self.print_if_verbose("{} {}".format(
-            "Number of tracks before filtering", len(self.tracks)))
+        self.print_if_verbose(
+            "{} {}".format("Number of tracks before filtering", len(self.tracks))
+        )
 
         for stats, track in track_stats:
             # discard any tracks that overlap too often with other tracks.  This normally means we are tracking the
             # tail of an animal.
             if track_overlap_ratio[track] > self.config.track_overlap_ratio:
-                self.print_if_verbose("Track filtered.  Too much overlap {}".format(track_overlap_ratio[track]))
+                self.print_if_verbose(
+                    "Track filtered.  Too much overlap {}".format(
+                        track_overlap_ratio[track]
+                    )
+                )
                 continue
 
             # discard any tracks that are less min_duration
             # these are probably glitches anyway, or don't contain enough information.
             if len(track) < self.config.min_duration_secs * 9:
-                self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
+                self.print_if_verbose(
+                    "Track filtered. Too short, {}".format(len(track))
+                )
                 continue
 
             # discard tracks that do not move enough
@@ -421,21 +465,27 @@ class TrackExtractor:
 
             # discard tracks that do not have enough enough average mass.
             if stats.average_mass < self.config.track_min_mass:
-                self.print_if_verbose("Track filtered.  Mass too small ({})".format(stats.average_mass))
+                self.print_if_verbose(
+                    "Track filtered.  Mass too small ({})".format(stats.average_mass)
+                )
                 continue
 
             good_tracks.append(track)
 
         self.tracks = good_tracks
 
-        self.print_if_verbose("{} {}".format(
-            "Number of 'good' tracks", len(self.tracks)))
+        self.print_if_verbose(
+            "{} {}".format("Number of 'good' tracks", len(self.tracks))
+        )
         # apply max_tracks filter
         # note, we take the n best tracks.
         if self.max_tracks is not None and self.max_tracks < len(self.tracks):
             logging.warning(
-                " -using only {0} tracks out of {1}".format(self.max_tracks, len(self.tracks)))
-            self.tracks = self.tracks[:self.max_tracks]
+                " -using only {0} tracks out of {1}".format(
+                    self.max_tracks, len(self.tracks)
+                )
+            )
+            self.tracks = self.tracks[: self.max_tracks]
 
     def get_regions_of_interest(self, filtered, prev_filtered=None):
         """
@@ -451,15 +501,16 @@ class TrackExtractor:
         # get frames change
         if prev_filtered is not None:
             # we need a lot of precision because the values are squared.  Float32 should work.
-            delta_frame = np.abs(np.float32(filtered) -
-                                 np.float32(prev_filtered))
+            delta_frame = np.abs(np.float32(filtered) - np.float32(prev_filtered))
         else:
             delta_frame = None
 
         # remove the edges of the frame as we know these pixels can be spurious value
         edgeless_filtered = self.crop_rectangle.subimage(filtered)
 
-        thresh = np.uint8(blur_and_return_as_mask(edgeless_filtered, threshold=self.threshold))
+        thresh = np.uint8(
+            blur_and_return_as_mask(edgeless_filtered, threshold=self.threshold)
+        )
         dilated = thresh
 
         # Dilation groups interested pixels that are near to each other into one component(animal/track)
@@ -473,7 +524,7 @@ class TrackExtractor:
         # make mask go back to full frame size without edges chopped
         edge = self.config.edge_pixels
         mask = np.zeros(filtered.shape)
-        mask[edge:frame_height - edge, edge:frame_width - edge] = small_mask
+        mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
 
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.frame_padding
@@ -487,7 +538,10 @@ class TrackExtractor:
                 stats[i, 1],
                 stats[i, 2],
                 stats[i, 3],
-                stats[i, 4], 0, i, self.frame_on
+                stats[i, 4],
+                0,
+                i,
+                self.frame_on,
             )
 
             # want the real mass calculated from before the dilation
@@ -504,8 +558,12 @@ class TrackExtractor:
             region.was_cropped = str(old_region) != str(region)
 
             if self.config.cropped_regions_strategy == "cautious":
-                crop_width_fraction = (old_region.width - region.width) / old_region.width
-                crop_height_fraction = (old_region.height - region.height) / old_region.height
+                crop_width_fraction = (
+                    old_region.width - region.width
+                ) / old_region.width
+                crop_height_fraction = (
+                    old_region.height - region.height
+                ) / old_region.height
                 if crop_width_fraction > 0.25 or crop_height_fraction > 0.25:
                     continue
             elif self.config.cropped_regions_strategy == "none":
@@ -514,14 +572,19 @@ class TrackExtractor:
             elif self.config.cropped_regions_strategy != "all":
                 raise ValueError(
                     "Invalid mode for CROPPED_REGIONS_STRATEGY, expected ['all','cautious','none'] but found {}".format(
-                        self.config.cropped_regions_strategy))
+                        self.config.cropped_regions_strategy
+                    )
+                )
 
             if delta_frame is not None:
                 region_difference = np.float32(region.subimage(delta_frame))
                 region.pixel_variance = np.var(region_difference)
 
             # filter out regions that are probably just noise
-            if region.pixel_variance < self.config.aoi_pixel_variance and region.mass < self.config.aoi_min_mass:
+            if (
+                region.pixel_variance < self.config.aoi_pixel_variance
+                and region.mass < self.config.aoi_min_mass
+            ):
                 continue
 
             regions.append(region)
@@ -537,26 +600,30 @@ class TrackExtractor:
         Extracts useful statics from video clip.
         :returns: a dictionary containing the video statistics.
         """
-        local_tz = pytz.timezone('Pacific/Auckland')
+        local_tz = pytz.timezone("Pacific/Auckland")
         result = {}
-        result['date_time'] = self.video_start_time.astimezone(local_tz)
-        result['is_night'] = self.video_start_time.astimezone(
-            local_tz).time().hour >= 21 or self.video_start_time.astimezone(local_tz).time().hour <= 4
+        result["date_time"] = self.video_start_time.astimezone(local_tz)
+        result["is_night"] = (
+            self.video_start_time.astimezone(local_tz).time().hour >= 21
+            or self.video_start_time.astimezone(local_tz).time().hour <= 4
+        )
 
         return result
 
-
     def process_background(self, frames):
         background, background_stats = self.analyse_background(frames)
-        is_static_background = background_stats.background_deviation < self.config.static_background_threshold
+        is_static_background = (
+            background_stats.background_deviation
+            < self.config.static_background_threshold
+        )
 
-        self.stats['threshold'] = background_stats.threshold
-        self.stats['average_background_delta'] = background_stats.background_deviation
-        self.stats['average_delta'] = background_stats.average_delta
-        self.stats['mean_temp'] = background_stats.mean_temp
-        self.stats['max_temp'] = background_stats.max_temp
-        self.stats['min_temp'] = background_stats.min_temp
-        self.stats['is_static'] = is_static_background
+        self.stats["threshold"] = background_stats.threshold
+        self.stats["average_background_delta"] = background_stats.background_deviation
+        self.stats["average_delta"] = background_stats.average_delta
+        self.stats["mean_temp"] = background_stats.mean_temp
+        self.stats["max_temp"] = background_stats.max_temp
+        self.stats["min_temp"] = background_stats.min_temp
+        self.stats["is_static"] = is_static_background
 
         self.threshold = background_stats.threshold
 
@@ -565,7 +632,6 @@ class TrackExtractor:
             background = None
 
         return background, background_stats
-
 
     def analyse_background(self, frames):
         """
@@ -579,16 +645,22 @@ class TrackExtractor:
 
         frames = np.float32(frames)
         background = np.percentile(frames, q=10, axis=0)
-        filtered = np.float32([self.get_filtered(frame, background)
-                               for frame in frames])
+        filtered = np.float32(
+            [self.get_filtered(frame, background) for frame in frames]
+        )
 
-        delta = np.asarray(frames[1:], dtype=np.float32) - \
-            np.asarray(frames[:-1], dtype=np.float32)
+        delta = np.asarray(frames[1:], dtype=np.float32) - np.asarray(
+            frames[:-1], dtype=np.float32
+        )
         average_delta = float(np.mean(np.abs(delta)))
 
         # take half the max filtered value as a threshold
-        threshold = float(np.percentile(np.reshape(
-            filtered, [-1]), q=self.config.threshold_percentile) / 2)
+        threshold = float(
+            np.percentile(
+                np.reshape(filtered, [-1]), q=self.config.threshold_percentile
+            )
+            / 2
+        )
 
         # cap the threshold to something reasonable
         if threshold < self.config.min_threshold:
@@ -602,24 +674,32 @@ class TrackExtractor:
         background_stats.min_temp = float(np.min(frames))
         background_stats.max_temp = float(np.max(frames))
         background_stats.mean_temp = float(np.mean(frames))
-        background_stats.background_deviation = float(
-            np.mean(np.abs(filtered)))
+        background_stats.background_deviation = float(np.mean(np.abs(filtered)))
 
         return background, background_stats
 
     def generate_optical_flow(self):
         if not self.frame_buffer.has_flow:
-            self.frame_buffer.generate_optical_flow(self.opt_flow, self.config.flow_threshold)
+            self.frame_buffer.generate_optical_flow(
+                self.opt_flow, self.config.flow_threshold
+            )
 
     def start_and_end_in_secs(self, track):
-        return self.frame_time_in_secs(track, 0), self.frame_time_in_secs(track, len(track) - 1)
+        return (
+            self.frame_time_in_secs(track, 0),
+            self.frame_time_in_secs(track, len(track) - 1),
+        )
 
-    def frame_time_in_secs(self, track, frame_index = 0):
-        return round((track.start_frame  + frame_index) / self.FRAMES_PER_SEC, 2)
+    def frame_time_in_secs(self, track, frame_index=0):
+        return round((track.start_frame + frame_index) / self.FRAMES_PER_SEC, 2)
 
     def start_and_end_time_absolute(self, track):
         start_s, end_s = self.start_and_end_in_secs(track)
-        return self.video_start_time + datetime.timedelta(seconds=start_s), self.video_start_time + datetime.timedelta(seconds=end_s)
+        return (
+            self.video_start_time + datetime.timedelta(seconds=start_s),
+            self.video_start_time + datetime.timedelta(seconds=end_s),
+        )
+
 
 def blur_and_return_as_mask(frame, threshold):
     """

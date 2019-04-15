@@ -4,6 +4,7 @@ import os
 import time
 import traceback
 
+
 def process_job(job):
     """ Just a wrapper to pass tupple containing (extractor, *params) to the process_file method. """
     processor = job[0]
@@ -15,7 +16,7 @@ def process_job(job):
     except Exception:
         logging.exception("Warning - error processing job")
 
-    time.sleep(0.001) # apparently gives me a chance to catch the control-c
+    time.sleep(0.001)  # apparently gives me a chance to catch the control-c
 
 
 class CPTVFileProcessor:
@@ -47,7 +48,6 @@ class CPTVFileProcessor:
 
         os.makedirs(config.classify.classify_folder, mode=0o775, exist_ok=True)
 
-
     def process_file(self, filename, **kwargs):
         """ The function to process an individual file. """
         raise Exception("Process file method must be overwritten in sub class.")
@@ -59,12 +59,15 @@ class CPTVFileProcessor:
     def process_folder(self, folder_path, worker_pool_args=None, **kwargs):
         """Processes all files within a folder."""
 
-        logging.info('processing %s', folder_path)
+        logging.info("processing %s", folder_path)
 
         jobs = []
         for file_name in os.listdir(folder_path):
             full_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(full_path) and os.path.splitext(full_path )[1].lower() == '.cptv':
+            if (
+                os.path.isfile(full_path)
+                and os.path.splitext(full_path)[1].lower() == ".cptv"
+            ):
                 if self.needs_processing(full_path):
                     jobs.append((self, full_path, kwargs))
 
@@ -83,7 +86,11 @@ class CPTVFileProcessor:
                 process_job(job)
         else:
             # send the jobs to a worker pool
-            pool = multiprocessing.Pool(self.workers_threads, initializer=self.worker_pool_init, initargs=worker_pool_args)
+            pool = multiprocessing.Pool(
+                self.workers_threads,
+                initializer=self.worker_pool_init,
+                initargs=worker_pool_args,
+            )
             try:
                 # see https://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
                 pool.map(process_job, jobs, chunksize=1)
@@ -109,7 +116,8 @@ class CPTVFileProcessor:
         # note, python has really good logging... I should probably make use of this.
         logging.warning("Warning: %s", message)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # for some reason the fork method seems to memory leak, and unix defaults to this so we
     # stick to spawn.  Also, form might be a problem as some numpy commands have multiple threads?
-    multiprocessing.set_start_method('spawn')
+    multiprocessing.set_start_method("spawn")

@@ -12,10 +12,12 @@ from ml_tools.tools import blosc_zstd
 from ml_tools.previewer import Previewer
 from track.trackextractor import TrackExtractor
 
-class TrackerTestCase():
+
+class TrackerTestCase:
     def __init__(self):
         self.source = None
         self.tracks = []
+
 
 def init_workers(lock):
     """ Initialise worker by setting the trackdatabase lock. """
@@ -35,7 +37,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         self.hints = {}
         self.enable_track_output = True
-        self.compression = blosc_zstd if self.config.extract.enable_compression else None
+        self.compression = (
+            blosc_zstd if self.config.extract.enable_compression else None
+        )
 
         self.previewer = Previewer.create_if_required(config, config.extract.preview)
 
@@ -45,7 +49,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         self.disable_background_subtraction = False
 
         os.makedirs(self.config.tracks_folder, mode=0o775, exist_ok=True)
-        self.database = TrackDatabase(os.path.join(self.config.tracks_folder, 'dataset.hdf5'))
+        self.database = TrackDatabase(
+            os.path.join(self.config.tracks_folder, "dataset.hdf5")
+        )
 
         self.worker_pool_init = init_workers
 
@@ -67,7 +73,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         for line_number, line in enumerate(f):
             line = line.strip()
             # comments
-            if line == '' or line[0] == '#':
+            if line == "" or line[0] == "#":
                 continue
             try:
                 (filename, file_max_tracks) = line.split()[:2]
@@ -89,13 +95,17 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                         self.disable_track_filters = True
                         self.disable_background_subtraction = True
                         logging.info("Turning Track filters OFF.")
-                    self.process_folder(os.path.join(root, folder), tag=folder.lower(), worker_pool_args=(trackdatabase.HDF5_LOCK,))
+                    self.process_folder(
+                        os.path.join(root, folder),
+                        tag=folder.lower(),
+                        worker_pool_args=(trackdatabase.HDF5_LOCK,),
+                    )
                     if folder.lower() == "false-positive":
                         logging.info("Restoring Track filters.")
                         self.disable_track_filters = previous_filter_setting
-                        self.disable_background_subtraction = previous_background_setting
-
-
+                        self.disable_background_subtraction = (
+                            previous_background_setting
+                        )
 
     def clean_tag(self, tag):
         """
@@ -109,10 +119,9 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             if not self.database.has_clip(clip_id):
                 continue
             meta = self.database.get_track_meta(clip_id, track_number)
-            if meta['tag'] == tag:
+            if meta["tag"] == tag:
                 logging.info("removing: %s", clip_id)
                 self.database.remove_clip(clip_id)
-
 
     def clean_all(self):
         """
@@ -120,14 +129,14 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         tracks than specified in hints file.
         """
 
-        for clip_id, max_tracks in self.hints.items( ):
+        for clip_id, max_tracks in self.hints.items():
             if self.database.has_clip(clip_id):
                 if max_tracks == 0:
                     logging.info(" - removing banned clip %s", clip_id)
                     self.database.remove_clip(clip_id)
                 else:
                     meta = self.database.get_clip_meta(clip_id)
-                    if meta['tracks'] > max_tracks:
+                    if meta["tracks"] > max_tracks:
                         logging.info(" - removing out of date clip: %s", clip_id)
                         self.database.remove_clip(clip_id)
 
@@ -139,10 +148,10 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         :returns the tracker object
         """
 
-        tag = kwargs['tag']
+        tag = kwargs["tag"]
 
         base_filename = os.path.splitext(os.path.split(full_path)[1])[0]
-        cptv_filename = base_filename + '.cptv'
+        cptv_filename = base_filename + ".cptv"
 
         logging.info(f"processing %s", cptv_filename)
 
@@ -150,7 +159,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         os.makedirs(destination_folder, mode=0o775, exist_ok=True)
         # delete any previous files
         tools.purge(destination_folder, base_filename + "*.mp4")
-
 
         # read additional information from hints file
         if cptv_filename in self.hints:
@@ -161,7 +169,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                 return
         else:
             max_tracks = self.config.tracking.max_tracks
-
 
         # load the track
         tracker = TrackExtractor(self.tracker_config)
@@ -187,35 +194,46 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
             meta_data = tools.load_clip_metadata(meta_data_filename)
 
-            tags = set([tag['animal'] for tag in meta_data['Tags'] if 'automatic' not in tag or not tag['automatic']])
+            tags = set(
+                [
+                    tag["animal"]
+                    for tag in meta_data["Tags"]
+                    if "automatic" not in tag or not tag["automatic"]
+                ]
+            )
 
             # we can only handle one tagged animal at a time here.
             if len(tags) == 0:
                 logging.warning(" - no tags in cptv files, ignoring.")
                 return
 
-            if len(tags)>= 2:
+            if len(tags) >= 2:
                 # make sure all tags are the same
                 logging.warning(" - mixed tags, can not process: %s", tags)
                 return
 
-            tracker.stats['confidence'] = meta_data['Tags'][0].get('confidence',0.0)
-            tracker.stats['trap'] = meta_data['Tags'][0].get('trap','none')
-            tracker.stats['event'] = meta_data['Tags'][0].get('event','none')
+            tracker.stats["confidence"] = meta_data["Tags"][0].get("confidence", 0.0)
+            tracker.stats["trap"] = meta_data["Tags"][0].get("trap", "none")
+            tracker.stats["event"] = meta_data["Tags"][0].get("event", "none")
 
             # clips tagged with false-positive sometimes come through with a null confidence rating
             # so we set it to 0.8 here.
-            if tracker.stats['event'] in ['false-positive', 'false positive'] and tracker.stats['confidence'] is None:
-                tracker.stats['confidence'] = 0.8
+            if (
+                tracker.stats["event"] in ["false-positive", "false positive"]
+                and tracker.stats["confidence"] is None
+            ):
+                tracker.stats["confidence"] = 0.8
 
-            tracker.stats['cptv_metadata'] = meta_data
+            tracker.stats["cptv_metadata"] = meta_data
         else:
-            self.log_warning(" - Warning: no tag metadata found for file - cannot use for machine learning.")
+            self.log_warning(
+                " - Warning: no tag metadata found for file - cannot use for machine learning."
+            )
 
         start = time.time()
 
         # save some additional stats
-        tracker.stats['version'] = TrackExtractor.VERSION
+        tracker.stats["version"] = TrackExtractor.VERSION
 
         tracker.load(full_path)
 
@@ -235,7 +253,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         # write a preview
         if self.previewer:
-            preview_filename = base_filename + '-preview' + '.mp4'
+            preview_filename = base_filename + "-preview" + ".mp4"
             preview_filename = os.path.join(destination_folder, preview_filename)
             self.previewer.create_individual_track_previews(preview_filename, tracker)
             self.previewer.export_clip_preview(preview_filename, tracker)
@@ -243,11 +261,17 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         if self.tracker_config.verbose:
             num_frames = len(tracker.frame_buffer.thermal)
             ms_per_frame = (time.time() - start) * 1000 / max(1, num_frames)
-            self.log_message("Tracks {}.  Frames: {}, Took {:.1f}ms per frame".format(len(tracker.tracks), num_frames,  ms_per_frame))
+            self.log_message(
+                "Tracks {}.  Frames: {}, Took {:.1f}ms per frame".format(
+                    len(tracker.tracks), num_frames, ms_per_frame
+                )
+            )
 
         return tracker
 
-    def export_tracks(self, full_path, tracker: TrackExtractor, database: TrackDatabase):
+    def export_tracks(
+        self, full_path, tracker: TrackExtractor, database: TrackDatabase
+    ):
         """
         Writes tracks to a track database.
         :param database: database to write track to.
@@ -275,10 +299,17 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                 if not self.config.extract.include_filtered_channel:
                     channels[TrackChannels.filtered] = 0
                 track_data.append(channels)
-            track_id = track_number+1
+            track_id = track_number + 1
             start_time, end_time = tracker.start_and_end_time_absolute(track)
-            database.add_track(clip_id, track_id, track_data,
-                               track, opts=self.compression, start_time=start_time, end_time=end_time)
+            database.add_track(
+                clip_id,
+                track_id,
+                track_data,
+                track,
+                opts=self.compression,
+                start_time=start_time,
+                end_time=end_time,
+            )
 
     def needs_processing(self, source_filename):
         """
@@ -297,11 +328,13 @@ class CPTVTrackExtractor(CPTVFileProcessor):
     def run_test(self, source_folder, test: TrackerTestCase):
         """ Runs a specific test case. """
 
-        def are_similar(value, expected, relative_error = 0.2, abs_error = 2.0):
+        def are_similar(value, expected, relative_error=0.2, abs_error=2.0):
             """ Checks of value is similar to expected value. An expected value of 0 will always return true. """
             if expected == 0:
                 return True
-            return ((abs(value - expected) / expected) <= relative_error) or (abs(value - expected) <= abs_error)
+            return ((abs(value - expected) / expected) <= relative_error) or (
+                abs(value - expected) <= abs_error
+            )
 
         # find the file.  We looking in all the tag folder to make life simpler when creating the test file.
         source_file = tools.find_file(source_folder, test.source)
@@ -310,26 +343,39 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         self.enable_track_output = False
 
         if source_file is None:
-            logging.warning("Could not find %s in root folder %s", test.source, source_folder)
+            logging.warning(
+                "Could not find %s in root folder %s", test.source, source_folder
+            )
             return
 
         logging.info(source_file)
-        tracker = self.process_file(source_file, tag='test')
+        tracker = self.process_file(source_file, tag="test")
 
         # read in stats files and see how we did
         if len(tracker.tracks) != len(test.tracks):
-            logging.error("%s Incorrect number of tracks, expected %s found %s", test.source, len(test.tracks), len(tracker.tracks))
+            logging.error(
+                "%s Incorrect number of tracks, expected %s found %s",
+                test.source,
+                len(test.tracks),
+                len(tracker.tracks),
+            )
             return
 
-        for test_result, (expected_duration, expected_movement) in zip(tracker.tracks, test.tracks):
+        for test_result, (expected_duration, expected_movement) in zip(
+            tracker.tracks, test.tracks
+        ):
 
             track_stats = test_result.get_stats()
 
-            if not are_similar(test_result.duration, expected_duration) or not are_similar(track_stats.max_offset, expected_movement):
-                logging.error("%s Track too dissimilar expected %s but found %s",
+            if not are_similar(
+                test_result.duration, expected_duration
+            ) or not are_similar(track_stats.max_offset, expected_movement):
+                logging.error(
+                    "%s Track too dissimilar expected %s but found %s",
                     test.source,
                     (expected_duration, expected_movement),
-                    (test_result.duration, track_stats.max_offset))
+                    (test_result.duration, track_stats.max_offset),
+                )
             else:
                 logging.info("%s passed", test.source)
 
@@ -346,14 +392,14 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         # self.overwrite_mode = self.OM_ALL
 
         # load in the test data
-        for line in open(tests_file, 'r'):
+        for line in open(tests_file, "r"):
             line = line.strip()
-            if line == '':
+            if line == "":
                 continue
-            if line[0] == '#':
+            if line[0] == "#":
                 continue
 
-            if line.split()[0].lower() == 'track':
+            if line.split()[0].lower() == "track":
                 if test == None:
                     raise Exception("Can not have track before source file.")
                 expected_length, expected_movement = [int(x) for x in line.split()[1:]]

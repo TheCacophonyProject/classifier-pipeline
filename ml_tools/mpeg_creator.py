@@ -17,6 +17,7 @@ class MPEGCreator:
 
     The output from ffmpeg is available via the `output` property.
     """
+
     def __init__(self, filename, quality=21):
         self.filename = filename
         self.quality = quality
@@ -36,8 +37,11 @@ class MPEGCreator:
         return_code = self._ffmpeg.wait(timeout=60)
         if return_code:
             self._collect_output()
-            raise Exception("ffmpeg failed with error {}. output:\n{}".format(
-                return_code, self.output))
+            raise Exception(
+                "ffmpeg failed with error {}. output:\n{}".format(
+                    return_code, self.output
+                )
+            )
 
     @property
     def output(self):
@@ -45,14 +49,14 @@ class MPEGCreator:
         return (b"".join(self._output)).decode(encoding)
 
     def _start(self, width, height):
-        command = get_ffmpeg_command(self.filename, width, height,
-                                     self.quality)
+        command = get_ffmpeg_command(self.filename, width, height, self.quality)
         proc = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            bufsize=8*1024)
+            bufsize=8 * 1024,
+        )
         return proc
 
     def _collect_output(self):
@@ -62,26 +66,37 @@ class MPEGCreator:
 
 
 def get_ffmpeg_command(filename, width, height, quality=21):
-    if os.name == 'nt':
+    if os.name == "nt":
         FFMPEG_BIN = "ffmpeg.exe"  # on Windows
     else:
         FFMPEG_BIN = "ffmpeg"  # on Linux ans Mac OS
 
     command = [
         FFMPEG_BIN,
-        '-y',  # overwrite output file if it exists
-        '-f', 'rawvideo',
-        '-vcodec', 'rawvideo',
-        '-loglevel', 'warning', # minimal output
-        '-s', str(width) + 'x' + str(height),  # size of one frame
-        '-pix_fmt', 'rgb24',
-        '-r', '9',  # frames per second
-        '-i', '-',  # The imput comes from a pipe
-        '-an',  # Tells FFMPEG not to expect any audio
-        '-vcodec', 'libx264',
-        '-tune', 'grain',  # good for keepinn the grain in our videos
-        '-crf', str(quality),  # quality, lower is better
-        '-pix_fmt', 'yuv420p',  # window thumbnails require yuv420p for some reason
-        filename
+        "-y",  # overwrite output file if it exists
+        "-f",
+        "rawvideo",
+        "-vcodec",
+        "rawvideo",
+        "-loglevel",
+        "warning",  # minimal output
+        "-s",
+        str(width) + "x" + str(height),  # size of one frame
+        "-pix_fmt",
+        "rgb24",
+        "-r",
+        "9",  # frames per second
+        "-i",
+        "-",  # The imput comes from a pipe
+        "-an",  # Tells FFMPEG not to expect any audio
+        "-vcodec",
+        "libx264",
+        "-tune",
+        "grain",  # good for keepinn the grain in our videos
+        "-crf",
+        str(quality),  # quality, lower is better
+        "-pix_fmt",
+        "yuv420p",  # window thumbnails require yuv420p for some reason
+        filename,
     ]
     return command

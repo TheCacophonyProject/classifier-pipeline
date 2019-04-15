@@ -33,6 +33,7 @@ TEMPERATURE_MAX = 4200
 
 class Rectangle:
     """ Defines a rectangle by the topleft point and width / height. """
+
     def __init__(self, topleft_x, topleft_y, width, height):
         """ Defines new rectangle. """
         self.x = topleft_x
@@ -43,7 +44,7 @@ class Rectangle:
     @staticmethod
     def from_ltrb(left, top, right, bottom):
         """ Construct a rectangle from left, top, right, bottom co-ords. """
-        return Rectangle(left, top, right-left, bottom-top)
+        return Rectangle(left, top, right - left, bottom - top)
 
     def copy(self):
         return Rectangle(self.x, self.y, self.width, self.height)
@@ -109,7 +110,9 @@ class Rectangle:
         """ Returns a subsection of the original image bounded by this rectangle
             :param image mumpy array of dims [height, width]
         """
-        return image[self.top:self.top + self.height, self.left:self.left + self.width]
+        return image[
+            self.top : self.top + self.height, self.left : self.left + self.width
+        ]
 
     @property
     def area(self):
@@ -121,6 +124,7 @@ class Rectangle:
     def __str__(self):
         return "<({0},{1})-{2}x{3}>".format(self.x, self.y, self.width, self.height)
 
+
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime.datetime):
@@ -131,9 +135,11 @@ class CustomJSONEncoder(json.JSONEncoder):
         # Let the base class default method raise the TypeError
         return json.JSONEncoder.default(self, obj)
 
+
 def purge(dir, pattern):
     for f in glob.glob(os.path.join(dir, pattern)):
         os.remove(os.path.join(dir, f))
+
 
 def find_file(root, filename):
     """
@@ -147,6 +153,7 @@ def find_file(root, filename):
             return os.path.join(root, filename)
     return None
 
+
 def find_file_from_cmd_line(root, cmd_line_input):
     source_file = find_file(root, cmd_line_input)
     if source_file:
@@ -158,28 +165,40 @@ def find_file_from_cmd_line(root, cmd_line_input):
     logging.warning("Could not locate %r", cmd_line_input)
     return None
 
+
 def get_ffmpeg_command(filename, width, height, quality=21):
-    if os.name == 'nt':
+    if os.name == "nt":
         FFMPEG_BIN = "ffmpeg.exe"  # on Windows
     else:
         FFMPEG_BIN = "ffmpeg"  # on Linux ans Mac OS
 
     command = [
         FFMPEG_BIN,
-        '-y',  # (optional) overwrite output file if it exists
-        '-f', 'rawvideo',
-        '-vcodec', 'rawvideo',
-        '-loglevel', 'error', # no output
-        '-s', str(width) + 'x' + str(height),  # size of one frame
-        '-pix_fmt', 'rgb24',
-        '-r', '9',  # frames per second
-        '-i', '-',  # The imput comes from a pipe
-        '-an',  # Tells FFMPEG not to expect any audio
-        '-vcodec', 'libx264',
-        '-tune', 'grain',  # good for keepinn the grain in our videos
-        '-crf', str(quality),  # quality, lower is better
-        '-pix_fmt', 'yuv420p',  # window thumbnails require yuv420p for some reason
-        filename
+        "-y",  # (optional) overwrite output file if it exists
+        "-f",
+        "rawvideo",
+        "-vcodec",
+        "rawvideo",
+        "-loglevel",
+        "error",  # no output
+        "-s",
+        str(width) + "x" + str(height),  # size of one frame
+        "-pix_fmt",
+        "rgb24",
+        "-r",
+        "9",  # frames per second
+        "-i",
+        "-",  # The imput comes from a pipe
+        "-an",  # Tells FFMPEG not to expect any audio
+        "-vcodec",
+        "libx264",
+        "-tune",
+        "grain",  # good for keepinn the grain in our videos
+        "-crf",
+        str(quality),  # quality, lower is better
+        "-pix_fmt",
+        "yuv420p",  # window thumbnails require yuv420p for some reason
+        filename,
     ]
     return command
 
@@ -207,7 +226,12 @@ def stream_mpeg(filename, frame_generator):
     process = None
     try:
         process = subprocess.Popen(
-            command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=4096)
+            command,
+            stdout=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=4096,
+        )
 
         for frame in frame_generator:
             data = frame.tobytes()
@@ -219,9 +243,16 @@ def stream_mpeg(filename, frame_generator):
 
         return_code = process.wait(timeout=30)
         if return_code != 0:
-            raise Exception("FFMPEG failed with error {}. Have you installed ffmpeg and added it to your path?".format(return_code))
+            raise Exception(
+                "FFMPEG failed with error {}. Have you installed ffmpeg and added it to your path?".format(
+                    return_code
+                )
+            )
     except Exception as e:
-        logging.error("Failed to write MPEG: %s.  Have you installed ffmpeg and added it to your path?", e)
+        logging.error(
+            "Failed to write MPEG: %s.  Have you installed ffmpeg and added it to your path?",
+            e,
+        )
         if process is not None:
             logging.error(process.stderr.read())
 
@@ -247,19 +278,26 @@ def write_mpeg(filename, frames):
     # write out the data.
     process = None
     try:
-        process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=frames.tostring())
+        process = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            input=frames.tostring(),
+        )
         process.check_returncode()
     except Exception as e:
         logging.error("Failed to write MPEG: %s", e)
         if process is not None:
-            logging.info("out:  %s", process.stdout.decode('ascii'))
-            logging.info("error: %s", process.stderr.decode('ascii'))
+            logging.info("out:  %s", process.stdout.decode("ascii"))
+            logging.info("error: %s", process.stderr.decode("ascii"))
+
 
 def load_colourmap(filename):
-    with open(filename, 'rb') as f:
+    with open(filename, "rb") as f:
         return pickle.load(f)
 
-def convert_heat_to_img(frame, colormap, temp_min = 2800, temp_max = 4200):
+
+def convert_heat_to_img(frame, colormap, temp_min=2800, temp_max=4200):
     """
     Converts a frame in float32 format to a PIL image in in uint8 format.
     :param frame: the numpy frame contining heat values to convert
@@ -269,18 +307,19 @@ def convert_heat_to_img(frame, colormap, temp_min = 2800, temp_max = 4200):
     # normalise
     frame = np.float32(frame)
     frame = (frame - temp_min) / (temp_max - temp_min)
-    colorized = np.uint8(255.0*colormap(frame))
-    img = pillow.Image.fromarray(colorized[:,:,:3]) #ignore alpha
+    colorized = np.uint8(255.0 * colormap(frame))
+    img = pillow.Image.fromarray(colorized[:, :, :3])  # ignore alpha
     return img
 
 
 def most_common(lst):
     return max(set(lst), key=lst.count)
 
+
 def is_gz_file(filepath):
     """ returns if file is a gzip file or not"""
-    with open(filepath, 'rb') as test_f:
-        return binascii.hexlify(test_f.read(2)) == b'1f8b'
+    with open(filepath, "rb") as test_f:
+        return binascii.hexlify(test_f.read(2)) == b"1f8b"
 
 
 def normalise(x):
@@ -294,11 +333,11 @@ def load_tracker_stats(filename):
     :param filename: full path and filename to stats file
     :return: returns the stats file
     """
-    with open(filename, 'r') as t:
+    with open(filename, "r") as t:
         # add in some metadata stats
         stats = json.load(t)
 
-    stats['date_time'] = dateutil.parser.parse(stats['date_time'])
+    stats["date_time"] = dateutil.parser.parse(stats["date_time"])
 
     return stats
 
@@ -309,11 +348,11 @@ def load_clip_metadata(filename):
     :param filename: full path and filename to stats file
     :return: returns the stats file
     """
-    with open(filename, 'r') as t:
+    with open(filename, "r") as t:
         # add in some metadata stats
         stats = json.load(t)
 
-    stats['recordingDateTime'] = dateutil.parser.parse(stats['recordingDateTime'])
+    stats["recordingDateTime"] = dateutil.parser.parse(stats["recordingDateTime"])
 
     return stats
 
@@ -325,11 +364,11 @@ def load_track_stats(filename):
     :return: returns the stats file
     """
 
-    with open(filename, 'r') as t:
+    with open(filename, "r") as t:
         # add in some metadata stats
         stats = json.load(t)
 
-    stats['timestamp'] = dateutil.parser.parse(stats['timestamp'])
+    stats["timestamp"] = dateutil.parser.parse(stats["timestamp"])
     return stats
 
 
@@ -344,12 +383,14 @@ def get_session(disable_gpu=False):
 
     if disable_gpu:
         logging.info("Creating new CPU session.")
-        session = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}))
+        session = tf.Session(config=tf.ConfigProto(device_count={"GPU": 0}))
     else:
         logging.info("Creating new GPU session with memory growth enabled.")
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
-        config.gpu_options.per_process_gpu_memory_fraction = 0.8 # save some ram for other applications.
+        config.gpu_options.per_process_gpu_memory_fraction = (
+            0.8
+        )  # save some ram for other applications.
         session = tf.Session(config=config)
 
     return session
@@ -360,24 +401,34 @@ def softmax(x):
     e_x = np.exp(x - np.max(x))
     return e_x / e_x.sum()
 
+
 def to_HWC(data):
     """ converts from CHW format to HWC format. """
     return np.transpose(data, axes=(1, 2, 0))
+
 
 def to_CHW(data):
     """ converts from HWC format to CHW format. """
     return np.transpose(data, axes=(2, 0, 1))
 
 
-def random_log(a,b):
+def random_log(a, b):
     """ Returns a random number between a and b, but on a log scale"""
     a = math.log(a)
     b = math.log(b)
-    x = random.random() * (b-a) + a
+    x = random.random() * (b - a) + a
     return math.exp(x)
 
-def zoom_image(img, scale, pad_with_min=False, channels_first=False, interpolation=cv2.INTER_LINEAR,
-               offset_x=0, offset_y=0):
+
+def zoom_image(
+    img,
+    scale,
+    pad_with_min=False,
+    channels_first=False,
+    interpolation=cv2.INTER_LINEAR,
+    offset_x=0,
+    offset_y=0,
+):
     """
     Zooms into or out of the center of the image.  The dimensions are left unchanged, and either padding is added, or
     cropping is performed.
@@ -402,10 +453,12 @@ def zoom_image(img, scale, pad_with_min=False, channels_first=False, interpolati
 
         # note:
         # cv2.INTER_AREA would be better, but sometimes bugs out for certian scales, not sure why.
-        res = cv2.resize(np.float32(img), (new_height, new_width), interpolation=interpolation)
+        res = cv2.resize(
+            np.float32(img), (new_height, new_width), interpolation=interpolation
+        )
 
-        extra_width = (width - new_width)
-        extra_height = (height - new_height)
+        extra_width = width - new_width
+        extra_height = height - new_height
 
         insert_x = int(np.clip(extra_width / 2 + offset_x, 0, extra_width))
         insert_y = int(np.clip(extra_height / 2 + offset_y, 0, extra_height))
@@ -415,35 +468,43 @@ def zoom_image(img, scale, pad_with_min=False, channels_first=False, interpolati
         else:
             img = np.zeros([width, height, channels], dtype=np.float32)
 
-        img[insert_y:insert_y + new_height, insert_x:insert_x + new_width, :] = res
+        img[insert_y : insert_y + new_height, insert_x : insert_x + new_width, :] = res
     else:
         # crop and scale up
         crop_height, crop_width = int(height / scale), int(width / scale)
-        extra_width = (width - crop_width)
-        extra_height = (height - crop_height)
+        extra_width = width - crop_width
+        extra_height = height - crop_height
 
         insert_x = int(np.clip(extra_width / 2 + offset_x, 0, extra_width))
         insert_y = int(np.clip(extra_height / 2 + offset_y, 0, extra_height))
 
-        crop = img[insert_y:insert_y + crop_height, insert_x:insert_x + crop_width]
-        img = cv2.resize(np.float32(crop), dsize=(height, width), interpolation=interpolation)
+        crop = img[insert_y : insert_y + crop_height, insert_x : insert_x + crop_width]
+        img = cv2.resize(
+            np.float32(crop), dsize=(height, width), interpolation=interpolation
+        )
 
     if channels_first:
         if len(img.shape) == 2:
-            img = img[np.newaxis,:,:]
+            img = img[np.newaxis, :, :]
         else:
             img = to_CHW(img)
 
     return img
 
-def read_track_files(track_folder, min_tracks = 50, ignore_classes = ['false-positive'], track_filter = None):
+
+def read_track_files(
+    track_folder, min_tracks=50, ignore_classes=["false-positive"], track_filter=None
+):
     """ Read in the tracks files from folder. Returns tupple containing list of class names and dictionary mapping from
         class name to list of racks."""
 
     # gather up all the tracks we can find and show how many of each class exist
 
-    folders = [os.path.join(track_folder, f) for f in os.listdir(track_folder) if os.path.isdir(os.path.join(track_folder, f)) \
-               and f not in ignore_classes]
+    folders = [
+        os.path.join(track_folder, f)
+        for f in os.listdir(track_folder)
+        if os.path.isdir(os.path.join(track_folder, f)) and f not in ignore_classes
+    ]
 
     class_tracks = {}
     classes = []
@@ -457,23 +518,27 @@ def read_track_files(track_folder, min_tracks = 50, ignore_classes = ['false-pos
         if class_name in ignore_classes:
             continue
 
-        trk_files = [os.path.join(folder, f) for f in os.listdir(folder) if os.path.splitext(f)[1].lower() == '.trk']
+        trk_files = [
+            os.path.join(folder, f)
+            for f in os.listdir(folder)
+            if os.path.splitext(f)[1].lower() == ".trk"
+        ]
 
         if track_filter:
             filtered_files = []
             for track in trk_files:
-                stats_filename = os.path.splitext(track)[0]+".txt"
+                stats_filename = os.path.splitext(track)[0] + ".txt"
                 if os.path.exists(stats_filename):
                     stats = load_track_stats(stats_filename)
                 else:
                     continue
                 # stub: some data is excluded from track stats and only found in the clip stats, so we read it in here.
                 base_name = os.path.splitext(track)[0]
-                clip_stats_filename = base_name[:base_name.rfind('-')] + ".txt"
+                clip_stats_filename = base_name[: base_name.rfind("-")] + ".txt"
                 if os.path.exists(clip_stats_filename):
                     clip_stats = load_tracker_stats(clip_stats_filename)
-                    stats['source'] = base_name
-                    stats['event'] = clip_stats.get('event','none')
+                    stats["source"] = base_name
+                    stats["event"] = clip_stats.get("event", "none")
                 else:
                     continue
                 if track_filter(stats):
@@ -485,17 +550,30 @@ def read_track_files(track_folder, min_tracks = 50, ignore_classes = ['false-pos
         num_filtered[class_name] = len(trk_files) - len(filtered_files)
 
         if len(filtered_files) < min_tracks:
-            logging.warning("Warning, too few tracks ({1}) to process for class {0}".format(class_name, len(filtered_files)))
+            logging.warning(
+                "Warning, too few tracks ({1}) to process for class {0}".format(
+                    class_name, len(filtered_files)
+                )
+            )
             continue
 
         class_tracks[class_name] = filtered_files
         classes.append(class_name)
 
     for class_name in classes:
-        filter_string = "" if num_filtered[class_name] == 0 else "({0} filtered)".format(num_filtered[class_name])
-        logging.info("{0:<10} {1} tracks {2}".format(class_name, len(class_tracks[class_name]), filter_string))
+        filter_string = (
+            ""
+            if num_filtered[class_name] == 0
+            else "({0} filtered)".format(num_filtered[class_name])
+        )
+        logging.info(
+            "{0:<10} {1} tracks {2}".format(
+                class_name, len(class_tracks[class_name]), filter_string
+            )
+        )
 
     return classes, class_tracks
+
 
 def get_classification_info(model, batch_X, batch_y):
     """
@@ -523,7 +601,7 @@ def get_classification_info(model, batch_X, batch_y):
 
 
 # todo: change this to classify track.
-def classify_segment(model, segment, verbose = False):
+def classify_segment(model, segment, verbose=False):
     """ Loop through frames in the segment, classifying them, then output a probability distribution of the class
         of this segment """
     frames = segment.shape[0]
@@ -536,13 +614,15 @@ def classify_segment(model, segment, verbose = False):
 
     for i in range(frames):
 
-        feed_dict = {model.X: segment[i:i+1]}
+        feed_dict = {model.X: segment[i : i + 1]}
 
-        prediction = model.pred_out.eval(feed_dict = feed_dict, session = model.sess)[0]
+        prediction = model.pred_out.eval(feed_dict=feed_dict, session=model.sess)[0]
 
         # bayesian update
         # this responds much quicker to strong changes in evidence, which is more helpful I think.
-        confidence = (confidence * prediction) / (confidence * prediction + (confidence * (1.0-prediction)))
+        confidence = (confidence * prediction) / (
+            confidence * prediction + (confidence * (1.0 - prediction))
+        )
 
         confidence = np.clip(confidence, 0.05, 0.95)
 
@@ -554,25 +634,26 @@ def classify_segment(model, segment, verbose = False):
     if verbose:
         logging.info("%d %d", image.min(), image.max())
         logging.info("%r", prediction)
-        plt.imshow(image, aspect = "auto", vmin=0, vmax = 1.0)
+        plt.imshow(image, aspect="auto", vmin=0, vmax=1.0)
         plt.show()
     # divide by temperature to smooth out confidence (i.e. decrease confidence when there are competing categories)
-    predicted_class = softmax(np.sum(confidence_history, axis = 0)/10.0)
+    predicted_class = softmax(np.sum(confidence_history, axis=0) / 10.0)
     return predicted_class
 
 
-def blosc_opts(complevel=9, complib='blosc:lz4', shuffle=True):
+def blosc_opts(complevel=9, complib="blosc:lz4", shuffle=True):
     """ Gets params to pass for blosc compression.  Requires tables to be imported. """
-    shuffle = 2 if shuffle == 'bit' else 1 if shuffle else 0
-    compressors = ['blosclz', 'lz4', 'lz4hc', 'snappy', 'zlib', 'zstd']
-    complib = ['blosc:' + c for c in compressors].index(complib)
+    shuffle = 2 if shuffle == "bit" else 1 if shuffle else 0
+    compressors = ["blosclz", "lz4", "lz4hc", "snappy", "zlib", "zstd"]
+    complib = ["blosc:" + c for c in compressors].index(complib)
     args = {
-        'compression': 32001,
-        'compression_opts': (0, 0, 0, 0, complevel, shuffle, complib)
+        "compression": 32001,
+        "compression_opts": (0, 0, 0, 0, complevel, shuffle, complib),
     }
     if shuffle:
-        args['shuffle'] = False
+        args["shuffle"] = False
     return args
+
 
 def product(numbers):
     """
@@ -590,27 +671,24 @@ def product(numbers):
 def get_confusion_matrix(pred_class, true_class, classes, normalize=True):
     """ get a confusion matrix figure from list of results with optional normalisation. """
 
-    cm = metrics.confusion_matrix([classes[class_num] for class_num in pred_class],
-                          [classes[class_num] for class_num in true_class], labels=classes)
+    cm = metrics.confusion_matrix(
+        [classes[class_num] for class_num in pred_class],
+        [classes[class_num] for class_num in true_class],
+        labels=classes,
+    )
 
     if normalize:
-        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
         cm = np.nan_to_num(cm)
 
     return cm
 
-blosc_zstd = blosc_opts(complevel=9, complib='blosc:zstd', shuffle=True)
 
-color_dict = {'red': ((0.0, 0.0, 0.0),
-                      (0.5, 0.0, 0.0),
-                      (1.0, 1.0, 1.0)),
+blosc_zstd = blosc_opts(complevel=9, complib="blosc:zstd", shuffle=True)
 
-              'green': ((0.0, 1.0, 1.0),
-                        (0.5, 0.0, 0.0),
-                        (1.0, 0.5, 0.8)),
-
-              'blue': ((0.0, 0.3, 0.3),
-                       (0.5, 0.0, 0.0),
-                       (1.0, 0.1, 0.1))
-              }
-cm_blue_red = LinearSegmentedColormap('BlueRed2', color_dict)
+color_dict = {
+    "red": ((0.0, 0.0, 0.0), (0.5, 0.0, 0.0), (1.0, 1.0, 1.0)),
+    "green": ((0.0, 1.0, 1.0), (0.5, 0.0, 0.0), (1.0, 0.5, 0.8)),
+    "blue": ((0.0, 0.3, 0.3), (0.5, 0.0, 0.0), (1.0, 0.1, 0.1)),
+}
+cm_blue_red = LinearSegmentedColormap("BlueRed2", color_dict)

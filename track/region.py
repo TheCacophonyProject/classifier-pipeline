@@ -19,9 +19,22 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 from ml_tools.tools import Rectangle
 
+
 class Region(Rectangle):
     """ Region is a rectangle extended to support mass. """
-    def __init__(self, topleft_x, topleft_y, width, height, mass=0, pixel_variance=0, id=0, frame_index=0, was_cropped=False):
+
+    def __init__(
+        self,
+        topleft_x,
+        topleft_y,
+        width,
+        height,
+        mass=0,
+        pixel_variance=0,
+        id=0,
+        frame_index=0,
+        was_cropped=False,
+    ):
         super().__init__(topleft_x, topleft_y, width, height)
         # number of active pixels in region
         self.mass = mass
@@ -36,6 +49,13 @@ class Region(Rectangle):
 
     def copy(self):
         return Region(
-            self.x, self.y, self.width, self.height, self.mass, self.pixel_variance, self.id, self.frame_index,
-            self.was_cropped
+            self.x,
+            self.y,
+            self.width,
+            self.height,
+            self.mass,
+            self.pixel_variance,
+            self.id,
+            self.frame_index,
+            self.was_cropped,
         )
