@@ -29,18 +29,23 @@ from ml_tools.trackdatabase import TrackDatabase
 CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
 
+
 class TrackChannels:
     """ Indexes to channels in track. """
+
     thermal = 0
     filtered = 1
     flow_h = 2
     flow_v = 3
     mask = 4
 
+
 class TrackHeader:
     """ Header for track. """
 
-    def __init__(self, clip_id, track_number, label, start_time, duration, camera, score):
+    def __init__(
+        self, clip_id, track_number, label, start_time, duration, camera, score
+    ):
         # reference to clip this segment came from
         self.clip_id = clip_id
         # reference to track this segment came from
@@ -74,7 +79,7 @@ class TrackHeader:
     @property
     def bin_id(self):
         # name of the bin to assign this track to.
-        return str(self.start_time.date()) + '-' + str(self.camera) + '-' + self.label
+        return str(self.start_time.date()) + "-" + str(self.camera) + "-" + self.label
 
     @property
     def weight(self):
@@ -88,42 +93,49 @@ class TrackHeader:
 
     @staticmethod
     def get_name(clip_id, track_number):
-        return str(clip_id) + '-' + str(track_number)
+        return str(clip_id) + "-" + str(track_number)
 
     @staticmethod
     def from_meta(clip_id, clip_meta, track_meta):
         """ Creates a track header from given metadata. """
 
-        start_time = dateutil.parser.parse(track_meta['start_time'])
-        end_time = dateutil.parser.parse(track_meta['end_time'])
+        start_time = dateutil.parser.parse(track_meta["start_time"])
+        end_time = dateutil.parser.parse(track_meta["end_time"])
         duration = (end_time - start_time).total_seconds()
 
         # kind of checky way to get camera name from clip_id, in the future camera will be included in the metadata.
-        camera = os.path.splitext(os.path.basename(clip_id))[0].split('-')[-1]
+        camera = os.path.splitext(os.path.basename(clip_id))[0].split("-")[-1]
 
         # get the reference levels from clip_meta and load them into the track.
-        track_start_frame = track_meta['start_frame']
-        track_end_frame = track_meta['start_frame'] + int(round(duration * 9))
-        thermal_reference_level = np.float32(clip_meta['frame_temp_median'][track_start_frame:track_end_frame])
+        track_start_frame = track_meta["start_frame"]
+        track_end_frame = track_meta["start_frame"] + int(round(duration * 9))
+        thermal_reference_level = np.float32(
+            clip_meta["frame_temp_median"][track_start_frame:track_end_frame]
+        )
 
         # calculate the frame velocities
-        bounds_history = track_meta['bounds_history']
-        frame_center = [((left + right)/2, (top + bottom)/2) for left, top, right, bottom in bounds_history]
+        bounds_history = track_meta["bounds_history"]
+        frame_center = [
+            ((left + right) / 2, (top + bottom) / 2)
+            for left, top, right, bottom in bounds_history
+        ]
         frame_velocity = []
         prev = None
         for x, y in frame_center:
             if prev is None:
-                frame_velocity.append((0.0,0.0))
+                frame_velocity.append((0.0, 0.0))
             else:
-                frame_velocity.append((x-prev[0], y-prev[1]))
+                frame_velocity.append((x - prev[0], y - prev[1]))
             prev = (x, y)
 
         result = TrackHeader(
-            clip_id=clip_id, track_number=track_meta['id'], label=track_meta['tag'],
+            clip_id=clip_id,
+            track_number=track_meta["id"],
+            label=track_meta["tag"],
             start_time=start_time,
             duration=duration,
             camera=camera,
-            score=float(track_meta['score'])
+            score=float(track_meta["score"]),
         )
         result.thermal_reference_level = thermal_reference_level
         result.frame_velocity = frame_velocity
@@ -136,13 +148,16 @@ class TrackHeader:
             rect = tools.Rectangle.from_ltrb(*rect)
             rx, ry = rect.mid_x, rect.mid_y
             size = max(rect.width, rect.height)
-            adjusted_rect = tools.Rectangle(rx-size/2, ry-size/2, size, size)
-            result.frame_crop.append(get_cropped_fraction(adjusted_rect, CPTV_FILE_WIDTH, CPTV_FILE_HEIGHT))
+            adjusted_rect = tools.Rectangle(rx - size / 2, ry - size / 2, size, size)
+            result.frame_crop.append(
+                get_cropped_fraction(adjusted_rect, CPTV_FILE_WIDTH, CPTV_FILE_HEIGHT)
+            )
 
         return result
 
     def __repr__(self):
         return self.track_id
+
 
 class SegmentHeader:
     """ Header for segment. """
@@ -177,27 +192,33 @@ class SegmentHeader:
     @property
     def name(self):
         """ Unique name of this segment. """
-        return self.clip_id + '-' + str(self.track_number) + '-' + str(self.start_frame)
+        return self.clip_id + "-" + str(self.track_number) + "-" + str(self.start_frame)
 
     @property
     def frame_velocity(self):
         # tracking frame velocity for each frame.
-        return self.track.frame_velocity[self.start_frame:self.start_frame + self.frames]
+        return self.track.frame_velocity[
+            self.start_frame : self.start_frame + self.frames
+        ]
 
     @property
     def track_bounds(self):
         # original location of this tracks bounds.
-        return self.track.track_bounds[self.start_frame:self.start_frame + self.frames]
+        return self.track.track_bounds[
+            self.start_frame : self.start_frame + self.frames
+        ]
 
     @property
     def frame_crop(self):
         # how much each frame has been cropped.
-        return self.track.frame_crop[self.start_frame:self.start_frame + self.frames]
+        return self.track.frame_crop[self.start_frame : self.start_frame + self.frames]
 
     @property
     def thermal_reference_level(self):
         # thermal reference temperature for each frame (i.e. which temp is 0)
-        return self.track.thermal_reference_level[self.start_frame:self.start_frame+self.frames]
+        return self.track.thermal_reference_level[
+            self.start_frame : self.start_frame + self.frames
+        ]
 
     @property
     def end_frame(self):
@@ -222,7 +243,14 @@ class Preprocessor:
     MIN_SIZE = 4
 
     @staticmethod
-    def apply(frames, reference_level, frame_velocity=None, augment=False, encode_frame_offsets_in_flow=False, default_inset=2):
+    def apply(
+        frames,
+        reference_level,
+        frame_velocity=None,
+        augment=False,
+        encode_frame_offsets_in_flow=False,
+        default_inset=2,
+    ):
         """
         Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
         :param frames: a list of np array of shape [C, H, W]
@@ -247,31 +275,48 @@ class Preprocessor:
 
             channels, frame_height, frame_width = frame.shape
 
-            if frame_height < Preprocessor.MIN_SIZE or frame_width < Preprocessor.MIN_SIZE:
+            if (
+                frame_height < Preprocessor.MIN_SIZE
+                or frame_width < Preprocessor.MIN_SIZE
+            ):
                 return
 
             frame_bounds = tools.Rectangle(0, 0, frame_width, frame_height)
 
             # set up a cropping frame
-            crop_region = tools.Rectangle.from_ltrb(left_offset, top_offset, frame_width - right_offset, frame_height - bottom_offset)
+            crop_region = tools.Rectangle.from_ltrb(
+                left_offset,
+                top_offset,
+                frame_width - right_offset,
+                frame_height - bottom_offset,
+            )
 
             # if the frame is too small we make it a little larger
             while crop_region.width < Preprocessor.MIN_SIZE:
-                crop_region.left -=1
+                crop_region.left -= 1
                 crop_region.right += 1
                 crop_region.crop(frame_bounds)
             while crop_region.height < Preprocessor.MIN_SIZE:
-                crop_region.top -=1
+                crop_region.top -= 1
                 crop_region.bottom += 1
                 crop_region.crop(frame_bounds)
 
-            cropped_frame = frame[:,
-                            crop_region.top: crop_region.bottom,
-                            crop_region.left: crop_region.right]
+            cropped_frame = frame[
+                :,
+                crop_region.top : crop_region.bottom,
+                crop_region.left : crop_region.right,
+            ]
 
-            scaled_frame = [cv2.resize(np.float32(cropped_frame[channel]), dsize=(Preprocessor.FRAME_SIZE, Preprocessor.FRAME_SIZE),
-                                       interpolation=cv2.INTER_LINEAR if channel != TrackChannels.mask else cv2.INTER_NEAREST)
-                            for channel in range(channels)]
+            scaled_frame = [
+                cv2.resize(
+                    np.float32(cropped_frame[channel]),
+                    dsize=(Preprocessor.FRAME_SIZE, Preprocessor.FRAME_SIZE),
+                    interpolation=cv2.INTER_LINEAR
+                    if channel != TrackChannels.mask
+                    else cv2.INTER_NEAREST,
+                )
+                for channel in range(channels)
+            ]
             scaled_frame = np.float32(scaled_frame)
 
             scaled_frames.append(scaled_frame)
@@ -287,21 +332,23 @@ class Preprocessor:
         # next adjust temperature and flow levels
 
         # get reference level for thermal channel
-        assert len(data) == len(reference_level), "Reference level shape and data shape not match."
+        assert len(data) == len(
+            reference_level
+        ), "Reference level shape and data shape not match."
 
         # reference thermal levels to the reference level
         data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
 
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
-        data[:, 2:3 + 1, :, :] *= (1.0/256.0)
+        data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
 
         # write frame motion into center of frame
         if encode_frame_offsets_in_flow:
             F, C, H, W = data.shape
-            for x in range(-2,2+1):
-                for y in range(-2,2+1):
-                    data[:, 2:3 + 1, H//2+y, W//2+x] = frame_velocity[:, :]
+            for x in range(-2, 2 + 1):
+                for y in range(-2, 2 + 1):
+                    data[:, 2 : 3 + 1, H // 2 + y, W // 2 + x] = frame_velocity[:, :]
 
         # set filtered track to delta frames
         reference = np.clip(data[:, 0], 20, 999)
@@ -312,14 +359,14 @@ class Preprocessor:
         # finally apply and additional augmentation
 
         if augment:
-            if (random.random() <= 0.75):
+            if random.random() <= 0.75:
                 # we will adjust contrast and levels, but only within these bounds.
                 # that is a bright input may have brightness reduced, but not increased.
                 LEVEL_OFFSET = 4
 
                 # apply level and contrast shift
                 level_adjust = random.normalvariate(0, LEVEL_OFFSET)
-                contrast_adjust = tools.random_log(0.9, (1/0.9))
+                contrast_adjust = tools.random_log(0.9, (1 / 0.9))
 
                 data[:, 0] *= contrast_adjust
                 data[:, 0] += level_adjust
@@ -330,6 +377,7 @@ class Preprocessor:
                 data[:, 2] = -data[:, 2]
 
         return data
+
 
 class Dataset:
     """
@@ -411,8 +459,13 @@ class Dataset:
         segments = sum(len(track.segments) for track in label_tracks)
         weight = self.get_class_weight(label)
         tracks = len(label_tracks)
-        bins = len([tracks for bin_name, tracks in self.tracks_by_bin.items()
-                    if len(tracks) > 0 and tracks[0].label == label])
+        bins = len(
+            [
+                tracks
+                for bin_name, tracks in self.tracks_by_bin.items()
+                if len(tracks) > 0 and tracks[0].label == label
+            ]
+        )
         return segments, tracks, bins, weight
 
     def next_batch(self, n, disable_async=False, force_no_augmentation=False):
@@ -427,7 +480,11 @@ class Dataset:
         """
 
         # if async is enabled use it.
-        if (not disable_async and self.preloader_queue is not None and not force_no_augmentation):
+        if (
+            not disable_async
+            and self.preloader_queue is not None
+            and not force_no_augmentation
+        ):
             # get samples from queue
             batch_X = []
             batch_y = []
@@ -445,7 +502,9 @@ class Dataset:
 
         for segment in segments:
 
-            data = self.fetch_segment(segment, augment=self.enable_augmentation and not force_no_augmentation)
+            data = self.fetch_segment(
+                segment, augment=self.enable_augmentation and not force_no_augmentation
+            )
             batch_X.append(data)
             batch_y.append(self.labels.index(segment.label))
 
@@ -518,14 +577,16 @@ class Dataset:
 
         self.tracks_by_bin[track_header.bin_id].append(track_header)
 
-        mass_history = track_meta['mass_history']
+        mass_history = track_meta["mass_history"]
         segment_count = len(mass_history) // self.segment_spacing
 
         # scan through track looking for good segments to add to our datset
 
         for i in range(segment_count):
             segment_start = i * self.segment_spacing
-            mass_slice = mass_history[segment_start:segment_start + self.segment_width]
+            mass_slice = mass_history[
+                segment_start : segment_start + self.segment_width
+            ]
             segment_avg_mass = np.mean(mass_slice)
             segment_frames = len(mass_slice)
 
@@ -542,8 +603,10 @@ class Dataset:
 
             segment = SegmentHeader(
                 track=track_header,
-                start_frame=segment_start, frames=self.segment_width,
-                weight=segment_weight_factor, avg_mass=segment_avg_mass
+                start_frame=segment_start,
+                frames=self.segment_width,
+                weight=segment_weight_factor,
+                avg_mass=segment_avg_mass,
             )
 
             self.segments.append(segment)
@@ -596,9 +659,11 @@ class Dataset:
         """
         data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
         data = Preprocessor.apply(
-            data, reference_level=track.thermal_reference_level, frame_velocity=track.frame_velocity,
+            data,
+            reference_level=track.thermal_reference_level,
+            frame_velocity=track.frame_velocity,
             encode_frame_offsets_in_flow=self.encode_frame_offsets_in_flow,
-            default_inset=self.DEFAULT_INSET
+            default_inset=self.DEFAULT_INSET,
         )
         return data
 
@@ -611,10 +676,13 @@ class Dataset:
         """
 
         # if we are requesting a segment smaller than the default segment size take it from the middle.
-        unused_frames = (segment.frames - self.segment_width)
+        unused_frames = segment.frames - self.segment_width
         if unused_frames < 0:
-            raise Exception("Maximum segment size for the dataset is {} frames, but requested {}".format(
-                segment.frames, self.segment_width))
+            raise Exception(
+                "Maximum segment size for the dataset is {} frames, but requested {}".format(
+                    segment.frames, self.segment_width
+                )
+            )
         first_frame = segment.start_frame + (unused_frames // 2)
         last_frame = segment.start_frame + (unused_frames // 2) + self.segment_width
 
@@ -623,23 +691,31 @@ class Dataset:
             prev_frames = first_frame
             post_frames = self.track_by_id[segment.track_id].frames - last_frame
             max_jitter = max(5, unused_frames)
-            jitter = np.clip(np.random.randint(-max_jitter, max_jitter), -prev_frames, post_frames)
+            jitter = np.clip(
+                np.random.randint(-max_jitter, max_jitter), -prev_frames, post_frames
+            )
         else:
             jitter = 0
 
         first_frame += jitter
         last_frame += jitter
 
-        data = self.db.get_track(segment.clip_id, segment.track_number, first_frame,
-                                 last_frame)
+        data = self.db.get_track(
+            segment.clip_id, segment.track_number, first_frame, last_frame
+        )
 
         if len(data) != self.segment_width:
-            logging.error("invalid segment length %d, expected %d", len(data), self.segment_width)
+            logging.error(
+                "invalid segment length %d, expected %d", len(data), self.segment_width
+            )
 
-        data = Preprocessor.apply(data,
-                                  segment.track.thermal_reference_level[first_frame:last_frame],
-                                  segment.track.frame_velocity[first_frame:last_frame],augment=augment,
-                                  default_inset=self.DEFAULT_INSET)
+        data = Preprocessor.apply(
+            data,
+            segment.track.thermal_reference_level[first_frame:last_frame],
+            segment.track.frame_velocity[first_frame:last_frame],
+            augment=augment,
+            default_inset=self.DEFAULT_INSET,
+        )
 
         return data
 
@@ -671,11 +747,17 @@ class Dataset:
 
         scale_factor = {}
         for class_name in self.labels:
-            modifier = 1.0 if weight_modifiers is None else weight_modifiers.get(class_name, 1.0)
+            modifier = (
+                1.0
+                if weight_modifiers is None
+                else weight_modifiers.get(class_name, 1.0)
+            )
             if class_weight[class_name] == 0:
                 scale_factor[class_name] = 1.0
             else:
-                scale_factor[class_name] = mean_class_weight / class_weight[class_name] * modifier
+                scale_factor[class_name] = (
+                    mean_class_weight / class_weight[class_name] * modifier
+                )
 
         for segment in self.segments:
             segment.weight *= scale_factor.get(segment.label, 1.0)
@@ -707,10 +789,16 @@ class Dataset:
             segments = self.get_class_segments(class_name)
             required_class_samples = required_samples
             if weight_modifiers:
-                required_class_samples = int(math.ceil(required_class_samples * weight_modifiers.get(class_name, 1.0)))
+                required_class_samples = int(
+                    math.ceil(
+                        required_class_samples * weight_modifiers.get(class_name, 1.0)
+                    )
+                )
             if len(segments) > required_class_samples:
                 # resample down
-                segments = np.random.choice(segments, required_class_samples, replace=False).tolist()
+                segments = np.random.choice(
+                    segments, required_class_samples, replace=False
+                ).tolist()
             new_segments += segments
 
         self.segments = new_segments
@@ -726,7 +814,9 @@ class Dataset:
         """
         if label_to_remove not in self.labels:
             return
-        self.segments = [segment for segment in self.segments if segment.label != label_to_remove]
+        self.segments = [
+            segment for segment in self.segments if segment.label != label_to_remove
+        ]
         self._purge_track_segments()
         self.rebuild_cdf()
 
@@ -756,7 +846,11 @@ class Dataset:
         if len(self.segments) == 0:
             raise Exception("No segments in dataset.")
 
-        sample = self.segments if n is None or n >= len(self.segments) else random.sample(self.segments, n)
+        sample = (
+            self.segments
+            if n is None or n >= len(self.segments)
+            else random.sample(self.segments, n)
+        )
 
         # fetch a sample to see what the dims are
         example = self.fetch_segment(self.segments[0])
@@ -772,8 +866,12 @@ class Dataset:
             second_moment += np.mean(np.square(data), axis=0)
 
         # reduce down to channel only moments, in the future per pixel normalisation would be a good idea.
-        first_moment = np.sum(first_moment, axis=(1, 2)) / (len(sample) * width * height)
-        second_moment = np.sum(second_moment, axis=(1, 2)) / (len(sample) * width * height)
+        first_moment = np.sum(first_moment, axis=(1, 2)) / (
+            len(sample) * width * height
+        )
+        second_moment = np.sum(second_moment, axis=(1, 2)) / (
+            len(sample) * width * height
+        )
 
         mu = first_moment
         var = second_moment + (mu ** 2) - (2 * mu * first_moment)
@@ -795,7 +893,9 @@ class Dataset:
 
     def get_class_weight(self, label):
         """ Returns the total weight for all segments of given label. """
-        return sum(segment.weight for segment in self.segments if segment.label == label)
+        return sum(
+            segment.weight for segment in self.segments if segment.label == label
+        )
 
     def get_class_segments_count(self, label):
         """ Returns the total weight for all segments of given class. """
@@ -824,12 +924,18 @@ class Dataset:
 
         if self.PROCESS_BASED:
             self.preloader_queue = multiprocessing.Queue(buffer_size)
-            self.preloader_threads = [multiprocessing.Process(target=preloader, args=(self.preloader_queue, self)) for _
-                                      in range(self.WORKER_THREADS)]
+            self.preloader_threads = [
+                multiprocessing.Process(
+                    target=preloader, args=(self.preloader_queue, self)
+                )
+                for _ in range(self.WORKER_THREADS)
+            ]
         else:
             self.preloader_queue = queue.Queue(buffer_size)
-            self.preloader_threads = [threading.Thread(target=preloader, args=(self.preloader_queue, self)) for _ in
-                                      range(self.WORKER_THREADS)]
+            self.preloader_threads = [
+                threading.Thread(target=preloader, args=(self.preloader_queue, self))
+                for _ in range(self.WORKER_THREADS)
+            ]
 
         self.preloader_stop_flag = False
         for thread in self.preloader_threads:
@@ -841,7 +947,7 @@ class Dataset:
         """
         if self.preloader_threads is not None:
             for thread in self.preloader_threads:
-                if hasattr(thread, 'terminate'):
+                if hasattr(thread, "terminate"):
                     # note this will corrupt the queue, so reset it
                     thread.terminate()
                     self.preloader_queue = None
@@ -852,8 +958,12 @@ class Dataset:
 # continue to read examples until queue is full
 def preloader(q, dataset):
     """ add a segment into buffer """
-    logging.info(" -started async fetcher for %s with augment=%s segment_width=%s",
-        dataset.name, dataset.enable_augmentation, dataset.segment_width)
+    logging.info(
+        " -started async fetcher for %s with augment=%s segment_width=%s",
+        dataset.name,
+        dataset.enable_augmentation,
+        dataset.segment_width,
+    )
     loads = 0
     timer = time.time()
     while not dataset.preloader_stop_flag:
@@ -867,7 +977,8 @@ def preloader(q, dataset):
         else:
             time.sleep(0.01)
 
+
 def get_cropped_fraction(region: tools.Rectangle, width, height):
     """ Returns the fraction regions mass outside the rect ((0,0), (width, height)"""
-    bounds = tools.Rectangle(0, 0, width-1, height-1)
+    bounds = tools.Rectangle(0, 0, width - 1, height - 1)
     return 1 - (bounds.overlap_area(region) / region.area)

@@ -17,6 +17,7 @@ from ml_tools.model import Model
 from track.track import Track
 from track.trackextractor import TrackExtractor
 
+
 class ClipClassifier(CPTVFileProcessor):
     """ Classifies tracks within CPTV files. """
 
@@ -49,12 +50,12 @@ class ClipClassifier(CPTVFileProcessor):
         # note, would be much better if the model did this, as only the model knows how preprocessing occured during
         # training
         frame = np.float32(frame)
-        frame[2:3+1] *= (1 / 256)
+        frame[2 : 3 + 1] *= 1 / 256
         frame[0] -= thermal_reference
 
         return frame
 
-    def identify_track(self, tracker:TrackExtractor, track: Track):
+    def identify_track(self, tracker: TrackExtractor, track: Track):
         """
         Runs through track identifying segments, and then returns it's prediction of what kind of animal this is.
         One prediction will be made for every frame.
@@ -79,28 +80,34 @@ class ClipClassifier(CPTVFileProcessor):
         prediction = 0.0
         novelty = 0.0
 
-        fp_index = self.classifier.labels.index('false-positive')
+        fp_index = self.classifier.labels.index("false-positive")
 
         # go through making clas sifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         state = None
         for i in range(len(track)):
             # note: would be much better for the tracker to store the thermal references as it goes.
-            thermal_reference = np.median(tracker.frame_buffer.thermal[track.start_frame + i])
+            thermal_reference = np.median(
+                tracker.frame_buffer.thermal[track.start_frame + i]
+            )
 
             frame = tracker.get_track_channels(track, i)
 
             if i % self.FRAME_SKIP == 0:
 
                 # we use a tigher cropping here so we disable the default 2 pixel inset
-                frames = Preprocessor.apply([frame], [thermal_reference], default_inset=0)
+                frames = Preprocessor.apply(
+                    [frame], [thermal_reference], default_inset=0
+                )
 
                 if frames is None:
                     logging.info("Frame {} of track could not be classified.".format(i))
                     return
 
                 frame = frames[0]
-                prediction, novelty, state = self.classifier.classify_frame_with_novelty(frame, state)
+                prediction, novelty, state = self.classifier.classify_frame_with_novelty(
+                    frame, state
+                )
 
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
@@ -131,12 +138,15 @@ class ClipClassifier(CPTVFileProcessor):
                     smooth_prediction = prediction
                 smooth_novelty = 0.5
             else:
-                smooth_prediction = (1-prediction_smooth) * smooth_prediction + prediction_smooth * prediction
-                smooth_novelty = (1-prediction_smooth) * smooth_novelty + prediction_smooth * novelty
+                smooth_prediction = (
+                    1 - prediction_smooth
+                ) * smooth_prediction + prediction_smooth * prediction
+                smooth_novelty = (
+                    1 - prediction_smooth
+                ) * smooth_novelty + prediction_smooth * novelty
 
             predictions.append(smooth_prediction)
             novelties.append(smooth_novelty)
-
 
         return TrackPrediction(predictions, novelties)
 
@@ -149,7 +159,9 @@ class ClipClassifier(CPTVFileProcessor):
         if globs._classifier is None:
             t0 = datetime.now()
             logging.info("classifier loading")
-            globs._classifier = Model(tools.get_session(disable_gpu=not self.config.use_gpu))
+            globs._classifier = Model(
+                tools.get_session(disable_gpu=not self.config.use_gpu)
+            )
             globs._classifier.load(self.config.classify.model)
             logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
@@ -163,10 +175,12 @@ class ClipClassifier(CPTVFileProcessor):
         # keep track of our highest confidence over every track for each class
         for _, prediction in self.track_prediction.items():
             for i in range(len(self.classifier.labels)):
-                class_best_score[i] = max(class_best_score[i], prediction.class_best_score[i])
+                class_best_score[i] = max(
+                    class_best_score[i], prediction.class_best_score[i]
+                )
 
         results = []
-        for n in range(1, 1+len(self.classifier.labels)):
+        for n in range(1, 1 + len(self.classifier.labels)):
             nth_label = int(np.argsort(class_best_score)[-n])
             nth_score = float(np.sort(class_best_score)[-n])
             results.append((self.classifier.labels[nth_label], nth_score))
@@ -190,7 +204,7 @@ class ClipClassifier(CPTVFileProcessor):
 
         # look to see of the destination file already exists.
         base_name = self.get_base_name(filename)
-        meta_filename = base_name + '.txt'
+        meta_filename = base_name + ".txt"
 
         # if no stats file exists we haven't processed file, so reprocess
         if self.config.reprocess:
@@ -211,29 +225,33 @@ class ClipClassifier(CPTVFileProcessor):
                 if record.get("automatic", False):
                     continue
                 else:
-                    tags.add(record['animal'])
+                    tags.add(record["animal"])
 
             tags = list(tags)
 
             if len(tags) == 0:
-                tag = 'no tag'
+                tag = "no tag"
             elif len(tags) == 1:
                 tag = tags[0] if tags[0] else "none"
             else:
-                tag = 'multi'
+                tag = "multi"
             meta_data["primary_tag"] = tag
             return meta_data
         else:
             return None
 
     def get_base_name(self, input_filename):
-        return os.path.splitext(os.path.join(self.config.classify.classify_folder, os.path.basename(input_filename)))[0]
+        return os.path.splitext(
+            os.path.join(
+                self.config.classify.classify_folder, os.path.basename(input_filename)
+            )
+        )[0]
 
     def process_all(self, root):
         for root, folders, _ in os.walk(root):
             for folder in folders:
                 if folder not in self.config.excluded_folders:
-                    self.process_folder(os.path.join(root,folder), tag=folder.lower())
+                    self.process_folder(os.path.join(root, folder), tag=folder.lower())
 
     def process_file(self, filename, **kwargs):
         """
@@ -264,14 +282,14 @@ class ClipClassifier(CPTVFileProcessor):
             logging.info("Creating folder {}".format(destination_folder))
             os.makedirs(destination_folder)
 
-        mpeg_filename = base_name + '.mp4'
+        mpeg_filename = base_name + ".mp4"
 
-        meta_filename = base_name + '.txt'
+        meta_filename = base_name + ".txt"
 
         # reset track predictions
         self.track_prediction = {}
 
-        logging.info(os.path.basename(filename)+":")
+        logging.info(os.path.basename(filename) + ":")
 
         # identify each track
         for i, track in enumerate(tracker.tracks):
@@ -282,21 +300,30 @@ class ClipClassifier(CPTVFileProcessor):
 
             description = prediction.description(self.classifier.labels)
 
-            logging.info(" - [{}/{}] prediction: {}".format(i + 1, len(tracker.tracks), description))
+            logging.info(
+                " - [{}/{}] prediction: {}".format(
+                    i + 1, len(tracker.tracks), description
+                )
+            )
 
         if self.previewer:
             logging.info("Exporting preview to '{}'".format(mpeg_filename))
             prediction_string = ""
             for label, score in self.get_clip_prediction():
                 if score > 0.5:
-                    prediction_string = prediction_string + " {} {:.1f}".format(label, score * 10)
-            self.previewer.export_clip_preview(mpeg_filename, tracker, self.track_prediction)
-
+                    prediction_string = prediction_string + " {} {:.1f}".format(
+                        label, score * 10
+                    )
+            self.previewer.export_clip_preview(
+                mpeg_filename, tracker, self.track_prediction
+            )
 
         self.save_metadata(filename, meta_filename, tracker)
 
         if self.tracker_config.verbose:
-            ms_per_frame = (time.time() - start) * 1000 / max(1, len(tracker.frame_buffer.thermal))
+            ms_per_frame = (
+                (time.time() - start) * 1000 / max(1, len(tracker.frame_buffer.thermal))
+            )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
 
     def save_metadata(self, filename, meta_filename, tracker):
@@ -305,45 +332,48 @@ class ClipClassifier(CPTVFileProcessor):
 
         # record results in text file.
         save_file = {}
-        save_file['source'] = filename
-        save_file['start_time'] = tracker.video_start_time.isoformat()
-        save_file['end_time'] = (tracker.video_start_time + timedelta(seconds=len(tracker.frame_buffer.thermal) / 9.0)).isoformat()
-        save_file['algorithm'] = {}
-        save_file['algorithm']['model'] = self.config.classify.model
-        save_file['algorithm']['tracker_version'] = tracker.VERSION
-        save_file['algorithm']['tracker_config'] = self.tracker_config.as_dict()
+        save_file["source"] = filename
+        save_file["start_time"] = tracker.video_start_time.isoformat()
+        save_file["end_time"] = (
+            tracker.video_start_time
+            + timedelta(seconds=len(tracker.frame_buffer.thermal) / 9.0)
+        ).isoformat()
+        save_file["algorithm"] = {}
+        save_file["algorithm"]["model"] = self.config.classify.model
+        save_file["algorithm"]["tracker_version"] = tracker.VERSION
+        save_file["algorithm"]["tracker_config"] = self.tracker_config.as_dict()
 
         if meta_data:
-            save_file['camera'] = meta_data['Device']['devicename']
-            save_file['cptv_meta'] = meta_data
-            save_file['original_tag'] = meta_data['primary_tag']
-        save_file['tracks'] = []
+            save_file["camera"] = meta_data["Device"]["devicename"]
+            save_file["cptv_meta"] = meta_data
+            save_file["original_tag"] = meta_data["primary_tag"]
+        save_file["tracks"] = []
         for track, prediction in self.track_prediction.items():
             track_info = {}
             start_s, end_s = tracker.start_and_end_in_secs(track)
-            save_file['tracks'].append(track_info)
-            track_info['start_s'] = start_s
-            track_info['end_s'] = end_s
-            track_info['num_frames'] = prediction.num_frames
-            track_info['frame_start'] = track.start_frame
-            track_info['label'] = self.classifier.labels[prediction.label()]
-            track_info['confidence'] = round(prediction.score(), 2)
-            track_info['clarity'] = round(prediction.clarity, 3)
-            track_info['average_novelty'] = round(prediction.average_novelty, 2)
-            track_info['max_novelty'] = round(prediction.max_novelty, 2)
-            track_info['all_class_confidences'] = {}
+            save_file["tracks"].append(track_info)
+            track_info["start_s"] = start_s
+            track_info["end_s"] = end_s
+            track_info["num_frames"] = prediction.num_frames
+            track_info["frame_start"] = track.start_frame
+            track_info["label"] = self.classifier.labels[prediction.label()]
+            track_info["confidence"] = round(prediction.score(), 2)
+            track_info["clarity"] = round(prediction.clarity, 3)
+            track_info["average_novelty"] = round(prediction.average_novelty, 2)
+            track_info["max_novelty"] = round(prediction.max_novelty, 2)
+            track_info["all_class_confidences"] = {}
             for i, value in enumerate(prediction.class_best_score):
                 label = self.classifier.labels[i]
-                track_info['all_class_confidences'][label] = round(value, 3)
+                track_info["all_class_confidences"][label] = round(value, 3)
 
             positions = []
             for index, bounds in enumerate(track.bounds_history):
                 track_time = tracker.frame_time_in_secs(track, index)
                 positions.append([track_time, bounds])
-            track_info['positions'] = positions
+            track_info["positions"] = positions
 
         if self.config.classify.meta_to_stdout:
             print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
         else:
-            with open(meta_filename, 'w') as f:
+            with open(meta_filename, "w") as f:
                 json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)

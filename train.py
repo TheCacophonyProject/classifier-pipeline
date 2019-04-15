@@ -28,7 +28,8 @@ All the training results are stored in tensorboard.  To assess the training run 
 """
 
 import matplotlib
-matplotlib.use('Agg') # enable canvas drawing
+
+matplotlib.use("Agg")  # enable canvas drawing
 
 import logging
 import pickle
@@ -55,33 +56,33 @@ RESULTS_FILENAME = "batch training results.txt"
 
 # this is a good list for a full search, but will take a long time to run (days)
 FULL_SEARCH_PARAMS = {
-        'batch_size': [1, 2, 4, 8, 16, 32, 64],
-        'learning_rate': [1e-3, 3e-4, 1e-4, 3e-5, 1e-5],
-        'l2_reg': [0,1e-1,1e-2,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8],
-        'label_smoothing': [0, 0.01, 0.05, 0.1, 0.2],
-        'keep_prob': [0,0.1,0.2,0.5,0.8,1.0],
-        'batch_norm': [True, False],
-        'lstm_units': [64, 128, 256, 512],
-        'enable_flow': [True, False],
-        'augmentation': [True, False],
-        'thermal_threshold': [-100,-20,-10,0,10,20,100],
-        # these runs will be identical in their parameters, it gives a feel for the varience during training.
-        'identical': [1, 2, 3, 4, 5],
-    }
+    "batch_size": [1, 2, 4, 8, 16, 32, 64],
+    "learning_rate": [1e-3, 3e-4, 1e-4, 3e-5, 1e-5],
+    "l2_reg": [0, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8],
+    "label_smoothing": [0, 0.01, 0.05, 0.1, 0.2],
+    "keep_prob": [0, 0.1, 0.2, 0.5, 0.8, 1.0],
+    "batch_norm": [True, False],
+    "lstm_units": [64, 128, 256, 512],
+    "enable_flow": [True, False],
+    "augmentation": [True, False],
+    "thermal_threshold": [-100, -20, -10, 0, 10, 20, 100],
+    # these runs will be identical in their parameters, it gives a feel for the varience during training.
+    "identical": [1, 2, 3, 4, 5],
+}
 
 # this checks just the important parameters, and only around areas that are likely to work well.
 # I've also excluded the default values as these do not need to be tested again.
 SHORT_SEARCH_PARAMS = {
-        'batch_size': [8, 32],
-        'l2_reg': [1e-2, 1e-3, 1e-4],
-        'label_smoothing': [0, 0.05, 0.2],
-        'keep_prob': [0.1,0.4,0.6,1.0],
-        'batch_norm': [False],
-        'lstm_units': [128, 512],
-        'enable_flow': [False],
-        'augmentation': [False],
-        'thermal_threshold': [-100,-20,-10,0,20,100],
-    }
+    "batch_size": [8, 32],
+    "l2_reg": [1e-2, 1e-3, 1e-4],
+    "label_smoothing": [0, 0.05, 0.2],
+    "keep_prob": [0.1, 0.4, 0.6, 1.0],
+    "batch_norm": [False],
+    "lstm_units": [128, 512],
+    "enable_flow": [False],
+    "augmentation": [False],
+    "thermal_threshold": [-100, -20, -10, 0, 20, 100],
+}
 
 
 def train_model(rum_name, epochs=30.0, **kwargs):
@@ -92,8 +93,8 @@ def train_model(rum_name, epochs=30.0, **kwargs):
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
     # but we don't load the dataset till after that, so we load it here just to count the number of labels...
-    dataset_name = os.path.join(DATASET_FOLDER, 'datasets.dat')
-    dsets = pickle.load(open(dataset_name,'rb'))
+    dataset_name = os.path.join(DATASET_FOLDER, "datasets.dat")
+    dsets = pickle.load(open(dataset_name, "rb"))
     labels = dsets[0].labels
 
     model = ModelCRNN_LQ(labels=len(labels), **kwargs)
@@ -102,16 +103,22 @@ def train_model(rum_name, epochs=30.0, **kwargs):
     model.log_dir = LOG_FOLDER
 
     # display the data set summary
-    print("Training on labels",labels)
+    print("Training on labels", labels)
     print()
-    print("{:<20} {:<20} {:<20} {:<20} (segments/tracks/bins/weight)".format("label","train","validation","test"))
+    print(
+        "{:<20} {:<20} {:<20} {:<20} (segments/tracks/bins/weight)".format(
+            "label", "train", "validation", "test"
+        )
+    )
     for label in labels:
-        print("{:<20} {:<20} {:<20} {:<20}".format(
-            label,
-            "{}/{}/{}/{:.1f}".format(*model.datasets.train.get_counts(label)),
-            "{}/{}/{}/{:.1f}".format(*model.datasets.validation.get_counts(label)),
-            "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
-        ))
+        print(
+            "{:<20} {:<20} {:<20} {:<20}".format(
+                label,
+                "{}/{}/{}/{:.1f}".format(*model.datasets.train.get_counts(label)),
+                "{}/{}/{}/{:.1f}".format(*model.datasets.validation.get_counts(label)),
+                "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
+            )
+        )
     print()
 
     for dataset in dsets:
@@ -119,13 +126,16 @@ def train_model(rum_name, epochs=30.0, **kwargs):
 
     print("Training started")
     print("---------------------")
-    print('Hyper parameters')
+    print("Hyper parameters")
     print("---------------------")
     print(model.hyperparams_string)
     print()
     print("Found {0:.1f}K training examples".format(model.rows / 1000))
     print()
-    model.train_model(epochs=epochs, run_name=rum_name+" "+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    model.train_model(
+        epochs=epochs,
+        run_name=rum_name + " " + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),
+    )
     model.save()
     model.close()
 
@@ -134,6 +144,7 @@ def train_model(rum_name, epochs=30.0, **kwargs):
     tf.reset_default_graph()
 
     return model
+
 
 def has_job(job_name):
     """ Returns if this job has been processed before or not. """
@@ -147,7 +158,8 @@ def has_job(job_name):
     f.close()
     return False
 
-def log_job_complete(job_name, score,params = None, values = None):
+
+def log_job_complete(job_name, score, params=None, values=None):
 
     """ Log reference to job being complete
     :param job_name The name of the job
@@ -157,8 +169,16 @@ def log_job_complete(job_name, score,params = None, values = None):
 
     """
     f = open(RESULTS_FILENAME, "a")
-    f.write("{}, {}, {}, {}\n".format(job_name, str(score), params if params is not None else "", values if values is not None else ""))
+    f.write(
+        "{}, {}, {}, {}\n".format(
+            job_name,
+            str(score),
+            params if params is not None else "",
+            values if values is not None else "",
+        )
+    )
     f.close()
+
 
 def run_job(job_name, **kwargs):
     """ Run a job with given hyper parameters, and log its results. """
@@ -173,7 +193,9 @@ def run_job(job_name, **kwargs):
 
     model = train_model("search/" + job_name, **kwargs)
 
-    log_job_complete(job_name, model.eval_score, list(kwargs.keys()), list(kwargs.values()))
+    log_job_complete(
+        job_name, model.eval_score, list(kwargs.keys()), list(kwargs.values())
+    )
 
 
 def axis_search():
@@ -190,7 +212,7 @@ def axis_search():
         open(RESULTS_FILENAME, "w").close()
 
     # run the reference job with default params
-    run_job('reference')
+    run_job("reference")
 
     # go through each job and process it.  Would be nice to be able to start a job and pick up where we left off.
     for param_name, param_values in SHORT_SEARCH_PARAMS.items():
@@ -206,11 +228,22 @@ def main():
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('name', default="unnammed", help='Name of training job, use "search" for hyper parameter search')
+    parser.add_argument(
+        "name",
+        default="unnammed",
+        help='Name of training job, use "search" for hyper parameter search',
+    )
 
-    parser.add_argument('-d', '--dataset', default="datasets", help='Enables preview MPEG files (can be slow)')
-    parser.add_argument('-e', '--epochs', default="30", help='Number of epochs to train for')
-    parser.add_argument('-p', '--params', default="{}", help='model parameters')
+    parser.add_argument(
+        "-d",
+        "--dataset",
+        default="datasets",
+        help="Enables preview MPEG files (can be slow)",
+    )
+    parser.add_argument(
+        "-e", "--epochs", default="30", help="Number of epochs to train for"
+    )
+    parser.add_argument("-p", "--params", default="{}", help="model parameters")
 
     args = parser.parse_args()
 

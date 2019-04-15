@@ -2,6 +2,7 @@ import numpy as np
 
 from ml_tools.tools import Rectangle
 
+
 class TestRectangle:
     def test_can_create_rectangle_from_width_and_height(self):
         rectangle = Rectangle(2, 3, 5, 6)
@@ -19,6 +20,7 @@ class TestRectangle:
 
         subimage = rectangle.subimage(image)
         assert np.array_equal(subimage, [[32, 33], [42, 43], [52, 53]])
+
 
 def assert_rectangle_values(rect):
     assert rect.left == 2

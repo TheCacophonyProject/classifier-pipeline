@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import itertools
 
+
 def show_saliency_map(model, X_in, y_in):
     """
     Plots saliency map for single segment via pyplot.
@@ -38,16 +39,23 @@ def show_saliency_map(model, X_in, y_in):
                 # for motion vectors it's better to use magnitude when drawing them
                 frame_data = np.abs(frame_data)
 
-            plt.imshow(frame_data, aspect='auto', vmin=-1, vmax=10)
-            plt.axis('off')
+            plt.imshow(frame_data, aspect="auto", vmin=-1, vmax=10)
+            plt.axis("off")
 
             plt.subplot(rows, cols, (cols * (channel + 4)) + frame + 1)
-            plt.imshow(saliency[frame, channel, :, :], vmin=0.0, vmax=1.0, cmap=plt.cm.hot, aspect='auto')
-            plt.axis('off')
+            plt.imshow(
+                saliency[frame, channel, :, :],
+                vmin=0.0,
+                vmax=1.0,
+                cmap=plt.cm.hot,
+                aspect="auto",
+            )
+            plt.axis("off")
 
     plt.subplots_adjust(wspace=0, hspace=0)
     plt.gcf().set_size_inches(cols * 3, rows * 3)
     plt.show()
+
 
 def show_segment(X_in):
     """
@@ -74,12 +82,13 @@ def show_segment(X_in):
                 # for motion vectors it's better to use magnitude when drawing them
                 frame_data = np.abs(frame_data) * 5
 
-            plt.imshow(frame_data, aspect='auto', vmin=-10, vmax=10)
-            plt.axis('off')
+            plt.imshow(frame_data, aspect="auto", vmin=-10, vmax=10)
+            plt.axis("off")
 
     plt.subplots_adjust(wspace=0, hspace=0)
     plt.gcf().set_size_inches(cols * 3, rows * 3)
     plt.show()
+
 
 def plot_confidence_by_class(predictions, true_class, labels):
     """
@@ -96,7 +105,7 @@ def plot_confidence_by_class(predictions, true_class, labels):
         class_conf_incorrect.append([])
 
     pred_class = [np.argmax(prediction) for prediction in predictions]
-    pred_conf = [predictions[i][x] for i,x in enumerate(pred_class)]
+    pred_conf = [predictions[i][x] for i, x in enumerate(pred_class)]
 
     for i, conf in enumerate(pred_conf):
         if true_class[i] == pred_class[i]:
@@ -114,19 +123,20 @@ def plot_confidence_by_class(predictions, true_class, labels):
     bar_width = 0.35
 
     values = [np.mean(class_conf_correct[i]) for i in range(len(labels))]
-    r1 = plt.bar(y_pos, values, bar_width, alpha=0.9, label='Correct')
+    r1 = plt.bar(y_pos, values, bar_width, alpha=0.9, label="Correct")
 
     values = [np.mean(class_conf_incorrect[i]) for i in range(len(labels))]
-    r2 = plt.bar(y_pos + bar_width, values, bar_width, alpha=0.9, label='Incorrect')
+    r2 = plt.bar(y_pos + bar_width, values, bar_width, alpha=0.9, label="Incorrect")
 
     plt.xticks(y_pos, labels)
-    plt.ylabel('Confidence')
-    plt.title('Confidence by Class on Correct Segments.')
+    plt.ylabel("Confidence")
+    plt.title("Confidence by Class on Correct Segments.")
     ax.set_ylim([0.0, 1.0])
     plt.legend()
 
     plt.tight_layout()
     return fig
+
 
 def fig_to_numpy(figure):
     """ Converts a matplotlib figure to a numpy array. """
@@ -135,6 +145,7 @@ def fig_to_numpy(figure):
     ncols, nrows = figure.canvas.get_width_height()
     return np.fromstring(data, dtype=np.uint8).reshape(nrows, ncols, 3)
 
+
 def plot_confusion_matrix(confusion_matrix, classes):
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111)
@@ -142,16 +153,23 @@ def plot_confusion_matrix(confusion_matrix, classes):
 
     plt.title("Classification Confusion Matrix")
 
-    thresh = confusion_matrix.max() / 2.
-    for i, j in itertools.product(range(confusion_matrix.shape[0]), range(confusion_matrix.shape[1])):
-        plt.text(j, i, "{:.2f}".format(confusion_matrix[i, j]),
-                 horizontalalignment="center",
-                 color="white" if confusion_matrix[i, j] > thresh else "black")
+    thresh = confusion_matrix.max() / 2.0
+    for i, j in itertools.product(
+        range(confusion_matrix.shape[0]), range(confusion_matrix.shape[1])
+    ):
+        plt.text(
+            j,
+            i,
+            "{:.2f}".format(confusion_matrix[i, j]),
+            horizontalalignment="center",
+            color="white" if confusion_matrix[i, j] > thresh else "black",
+        )
 
-    ax.set_xticklabels([''] + classes, rotation=45)
-    ax.set_yticklabels([''] + classes)
+    ax.set_xticklabels([""] + classes, rotation=45)
+    ax.set_yticklabels([""] + classes)
     ax.xaxis.set_tick_params(labeltop=False, labelbottom=True)
     return fig
+
 
 def compute_saliency_map(X_in, y_in, model):
     """
@@ -165,8 +183,10 @@ def compute_saliency_map(X_in, y_in, model):
     global tf
     import tensorflow as tf
 
-    correct_scores = tf.gather_nd(model.prediction,
-                                  tf.stack((tf.range(X_in.shape[0], dtype="int64"), model.y), axis=1))
+    correct_scores = tf.gather_nd(
+        model.prediction,
+        tf.stack((tf.range(X_in.shape[0], dtype="int64"), model.y), axis=1),
+    )
 
     feed_dict = model.get_feed_dict(X_in, y_in)
 

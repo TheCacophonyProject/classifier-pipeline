@@ -6,8 +6,12 @@ python:
 install:
 - pip install -r requirements.txt
 
+before_script:
+- pip install black
+
 script:
 - pytest
+- ./check-style
 
 before_deploy:
 - "pip install pex"

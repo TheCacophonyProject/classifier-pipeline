@@ -19,6 +19,7 @@ from ml_tools import visualise
 # folder to save model while it's training.  Make sure this isn't on a dropbox folder and it will cause a crash.
 CHECKPOINT_FOLDER = "c:\cac\checkpoints"
 
+
 class Model:
     """ Defines a deep learning model """
 
@@ -33,7 +34,7 @@ class Model:
         self.saver = None
 
         # datasets
-        self.datasets = namedtuple('Datasets', 'train, validation, test')
+        self.datasets = namedtuple("Datasets", "train, validation, test")
 
         # ------------------------------------------------------
         # placeholders, used to feed data to the model
@@ -95,8 +96,8 @@ class Model:
         self.enable_async_loading = True
 
         # folder to write tensorboard logs to
-        self.log_dir = './logs'
-        self.log_id = ''
+        self.log_dir = "./logs"
+        self.log_id = ""
 
         # number of frames per segment during training
         self.training_segment_frames = 27
@@ -106,13 +107,13 @@ class Model:
         # dictionary containing current hyper parameters
         self.params = {
             # augmentation
-            'augmentation': True,
-            'thermal_threshold': 10,
-            'scale_frequency': 0.5,
+            "augmentation": True,
+            "thermal_threshold": 10,
+            "scale_frequency": 0.5,
             # dropout
-            'keep_prob': 0.5,
+            "keep_prob": 0.5,
             # training
-            'batch_size': 16
+            "batch_size": 16,
         }
 
         """ List of labels this model can classifiy. """
@@ -130,12 +131,12 @@ class Model:
         :param ignore_labels: (optional) these labels will be removed from the dataset.
         :return:
         """
-        datasets = pickle.load(open(dataset_filename,'rb'))
+        datasets = pickle.load(open(dataset_filename, "rb"))
         self.datasets.train, self.datasets.validation, self.datasets.test = datasets
 
         # augmentation really helps with reducing over-fitting, but test set should be fixed so we don't apply it there.
-        self.datasets.train.enable_augmentation = self.params['augmentation']
-        self.datasets.train.scale_frequency = self.params['scale_frequency']
+        self.datasets.train.enable_augmentation = self.params["augmentation"]
+        self.datasets.train.scale_frequency = self.params["scale_frequency"]
         self.datasets.validation.enable_augmentation = False
         self.datasets.test.enable_augmentation = False
         for dataset in datasets:
@@ -145,19 +146,25 @@ class Model:
 
         self.labels = self.datasets.train.labels.copy()
 
-        logging.info("Training segments: {0:.1f}k".format(self.datasets.train.rows/1000))
-        logging.info("Validation segments: {0:.1f}k".format(self.datasets.validation.rows/1000))
-        logging.info("Test segments: {0:.1f}k".format(self.datasets.test.rows/1000))
+        logging.info(
+            "Training segments: {0:.1f}k".format(self.datasets.train.rows / 1000)
+        )
+        logging.info(
+            "Validation segments: {0:.1f}k".format(self.datasets.validation.rows / 1000)
+        )
+        logging.info("Test segments: {0:.1f}k".format(self.datasets.test.rows / 1000))
         logging.info("Labels: {}".format(self.datasets.train.labels))
 
-        label_strings = [",".join(self.datasets.train.labels),
-                         ",".join(self.datasets.validation.labels),
-                         ",".join(self.datasets.test.labels)]
-        assert len(set(label_strings)) == 1, 'dataset labels do not match.'
+        label_strings = [
+            ",".join(self.datasets.train.labels),
+            ",".join(self.datasets.validation.labels),
+            ",".join(self.datasets.test.labels),
+        ]
+        assert len(set(label_strings)) == 1, "dataset labels do not match."
 
     @property
     def batch_size(self):
-        return self.params['batch_size']
+        return self.params["batch_size"]
 
     @property
     def steps_per_epoch(self):
@@ -172,7 +179,9 @@ class Model:
     @property
     def hyperparams_string(self):
         """ Returns list of hyperparameters as a string. """
-        return "\n".join(["{}={}".format(param, value) for param, value in self.params.items()])
+        return "\n".join(
+            ["{}={}".format(param, value) for param, value in self.params.items()]
+        )
 
     def eval_batch(self, batch_X, batch_y, writer=None, include_detailed_summary=False):
         """
@@ -191,8 +200,8 @@ class Model:
         summary = None
 
         for i in range(batches):
-            Xm = batch_X[i*self.batch_size:(i+1)*self.batch_size]
-            ym = batch_y[i*self.batch_size:(i+1)*self.batch_size]
+            Xm = batch_X[i * self.batch_size : (i + 1) * self.batch_size]
+            ym = batch_y[i * self.batch_size : (i + 1) * self.batch_size]
             if len(Xm) == 0:
                 continue
             samples = Xm.shape[0]
@@ -201,9 +210,13 @@ class Model:
             # a better solution would be to accumulate and average the summaries which tensorflow sort of has support for.
             feed_dict = self.get_feed_dict(Xm, ym)
             if include_detailed_summary and writer is not None and i == 0:
-                summary, acc, ls = self.session.run([self.merged_summary, self.accuracy, self.loss], feed_dict=feed_dict)
+                summary, acc, ls = self.session.run(
+                    [self.merged_summary, self.accuracy, self.loss], feed_dict=feed_dict
+                )
             else:
-                acc, ls = self.session.run([self.accuracy, self.loss], feed_dict=feed_dict)
+                acc, ls = self.session.run(
+                    [self.accuracy, self.loss], feed_dict=feed_dict
+                )
 
             score += samples * acc
             loss += samples * ls
@@ -216,9 +229,9 @@ class Model:
                 writer.add_summary(summary, global_step=self.step)
             # we manually write out the aggretated values as we want to know the total score, not just the per batch
             # scores.
-            self.log_scalar('metric/accuracy', batch_accuracy, writer=writer)
-            self.log_scalar('metric/error', 1-batch_accuracy, writer=writer)
-            self.log_scalar('metric/loss', batch_loss, writer=writer)
+            self.log_scalar("metric/accuracy", batch_accuracy, writer=writer)
+            self.log_scalar("metric/error", 1 - batch_accuracy, writer=writer)
+            self.log_scalar("metric/loss", batch_loss, writer=writer)
 
         return batch_accuracy, batch_loss
 
@@ -232,10 +245,12 @@ class Model:
         :return:
         """
         result = {
-            self.X: X[:, 0:self.training_segment_frames],        # limit number of frames per segment passed to trainer
-            self.keep_prob: self.params['keep_prob'] if is_training else 1.0,
+            self.X: X[
+                :, 0 : self.training_segment_frames
+            ],  # limit number of frames per segment passed to trainer
+            self.keep_prob: self.params["keep_prob"] if is_training else 1.0,
             self.is_training: is_training,
-            self.global_step: self.step
+            self.global_step: self.step,
         }
         if y is not None:
             result[self.y] = y
@@ -270,7 +285,7 @@ class Model:
             output_lists[node] = []
 
         for i in range(batches):
-            Xm = batch_X[i*self.batch_size:(i+1)*self.batch_size]
+            Xm = batch_X[i * self.batch_size : (i + 1) * self.batch_size]
             if len(Xm) == 0:
                 continue
 
@@ -283,10 +298,16 @@ class Model:
 
     def eval_model(self, writer=None):
         """ Evaluates the model on the test set. """
-        print("-"*60)
+        print("-" * 60)
         self.datasets.test.load_all()
-        test_accuracy, _ = self.eval_batch(self.datasets.test.X, self.datasets.test.y, writer=writer)
-        logging.info("Test Accuracy %.2f (error %.2f%%)", test_accuracy * 100, (1.0 - test_accuracy) * 100)
+        test_accuracy, _ = self.eval_batch(
+            self.datasets.test.X, self.datasets.test.y, writer=writer
+        )
+        logging.info(
+            "Test Accuracy %.2f (error %.2f%%)",
+            test_accuracy * 100,
+            (1.0 - test_accuracy) * 100,
+        )
         return test_accuracy
 
     def benchmark_model(self):
@@ -294,7 +315,7 @@ class Model:
         Runs a benchmark on the model, getting runtime statistics and saving them to the tensorboard log folder.
         """
 
-        assert self.writer_train, 'Must init tensorboard writers before benchmarking.'
+        assert self.writer_train, "Must init tensorboard writers before benchmarking."
 
         # we actually train on this batch, which shouldn't hurt.
         # the reason this is necessary is we need to get the true performance cost of the back-prob.
@@ -307,15 +328,17 @@ class Model:
         # first run takes a while, so run this just to build the graph, then run again to get real performance.
         _, = self.session.run([self.train_op], feed_dict=feed_dict)
 
-        _, = self.session.run([self.train_op], feed_dict=feed_dict,
-                                            options=run_options,
-                                            run_metadata=run_metadata)
+        _, = self.session.run(
+            [self.train_op],
+            feed_dict=feed_dict,
+            options=run_options,
+            run_metadata=run_metadata,
+        )
 
         # write out hyper-params
-        self.log_text('hyperparams', self.hyperparams_string)
+        self.log_text("hyperparams", self.hyperparams_string)
         for writer in [self.writer_train, self.writer_val]:
-            writer.add_run_metadata(run_metadata, 'benchmark')
-
+            writer.add_run_metadata(run_metadata, "benchmark")
 
     def setup_summary_writers(self, run_name):
         """
@@ -323,8 +346,12 @@ class Model:
         :return:
         """
         os.makedirs(self.log_dir, exist_ok=True)
-        self.writer_train = tf.summary.FileWriter(os.path.join(self.log_dir, run_name + '/train'), graph=self.session.graph)
-        self.writer_val = tf.summary.FileWriter(os.path.join(self.log_dir, run_name + '/val'), graph=self.session.graph)
+        self.writer_train = tf.summary.FileWriter(
+            os.path.join(self.log_dir, run_name + "/train"), graph=self.session.graph
+        )
+        self.writer_val = tf.summary.FileWriter(
+            os.path.join(self.log_dir, run_name + "/val"), graph=self.session.graph
+        )
         merged = tf.summary.merge_all()
         self.merged_summary = merged
 
@@ -339,7 +366,8 @@ class Model:
             writer = self.writer_val
         writer.add_summary(
             tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)]),
-            global_step=self.step)
+            global_step=self.step,
+        )
 
     def log_histogram(self, tag, values, bins=1000, writer=None):
         """Logs the histogram of a list/vector of values."""
@@ -407,12 +435,14 @@ class Model:
 
         # Write the image to a string
         s = io.BytesIO()
-        plt.imsave(s, image, format='png')
+        plt.imsave(s, image, format="png")
 
         # Create an Image object
-        img_summary = tf.Summary.Image(encoded_image_string=s.getvalue(),
-                                   height=image.shape[0],
-                                   width=image.shape[1])
+        img_summary = tf.Summary.Image(
+            encoded_image_string=s.getvalue(),
+            height=image.shape[0],
+            width=image.shape[1],
+        )
         # Create a Summary value
         im_summary = tf.Summary.Value(tag=tag, image=img_summary)
 
@@ -432,19 +462,18 @@ class Model:
 
         # we can take a guess at a good threshold by looking at the examples from seen classes.  A threshold
         # that includes 75% of these examples seems to work well.
-        threshold_distance = np.percentile(seen_distances , q=75)
+        threshold_distance = np.percentile(seen_distances, q=75)
         threshold_scale = np.std(seen_distances)
 
         # write these values to the model
-        self.update_writeable_variable('novelty_threshold', threshold_distance)
-        self.update_writeable_variable('novelty_scale', threshold_scale)
+        self.update_writeable_variable("novelty_threshold", threshold_distance)
+        self.update_writeable_variable("novelty_scale", threshold_scale)
 
-        self.log_scalar('novelty/threshold', threshold_distance)
-        self.log_scalar('novelty/scale', threshold_scale)
-        self.log_histogram('novelty/distances', seen_distances, bins=40)
+        self.log_scalar("novelty/threshold", threshold_distance)
+        self.log_scalar("novelty/scale", threshold_scale)
+        self.log_histogram("novelty/distances", seen_distances, bins=40)
 
         return threshold_distance, threshold_scale
-
 
     def update_training_data_examples(self):
         """ Classifies given data and stores it in model.  This can be used to visualise the logit layout, or to
@@ -455,10 +484,14 @@ class Model:
         sample_X = self.train_samples[0]
 
         # evaluate the stored samples and fetch the logits and hidden states
-        data = self.classify_batch_extended(sample_X, [self.logits_out, self.hidden_out])
+        data = self.classify_batch_extended(
+            sample_X, [self.logits_out, self.hidden_out]
+        )
 
         # run the 'assign' operations that update the models stored varaibles
-        for var_name, node in zip(['sample_logits', 'sample_hidden'], [self.logits_out, self.hidden_out]):
+        for var_name, node in zip(
+            ["sample_logits", "sample_hidden"], [self.logits_out, self.hidden_out]
+        ):
             self.update_writeable_variable(var_name, data[node])
 
     def generate_report(self):
@@ -468,15 +501,21 @@ class Model:
         """
 
         # get some examples for evaluation
-        examples, true_classess = self.datasets.validation.next_batch(self.report_samples)
+        examples, true_classess = self.datasets.validation.next_batch(
+            self.report_samples
+        )
         predictions = self.classify_batch(examples)
         predicted_classes = [np.argmax(prediction) for prediction in predictions]
 
         pred_label = [self.labels[x] for x in predicted_classes]
         true_label = [self.labels[x] for x in true_classess]
 
-        cm = tools.get_confusion_matrix(pred_class=predicted_classes, true_class=true_classess, classes=self.labels)
-        f1_scores = metrics.f1_score(y_true=true_label, y_pred=pred_label, labels=self.labels, average=None)
+        cm = tools.get_confusion_matrix(
+            pred_class=predicted_classes, true_class=true_classess, classes=self.labels
+        )
+        f1_scores = metrics.f1_score(
+            y_true=true_label, y_pred=pred_label, labels=self.labels, average=None
+        )
 
         fig = visualise.plot_confusion_matrix(cm, self.labels)
         self.log_image("confusion_matrix", visualise.fig_to_numpy(fig))
@@ -494,7 +533,9 @@ class Model:
                 correct += 1
 
         # generate a graph to show confidence levels
-        fig = visualise.plot_confidence_by_class(predictions, true_classess, self.labels)
+        fig = visualise.plot_confidence_by_class(
+            predictions, true_classess, self.labels
+        )
         self.log_image("confidence_scores", visualise.fig_to_numpy(fig))
         plt.close()
 
@@ -526,8 +567,9 @@ class Model:
                 this_filter = i * n_plots + j
                 if this_filter < images.shape[0]:
                     this_img = images[this_filter]
-                    spriteimage[i * img_h:(i + 1) * img_h,
-                    j * img_w:(j + 1) * img_w] = this_img
+                    spriteimage[
+                        i * img_h : (i + 1) * img_h, j * img_w : (j + 1) * img_w
+                    ] = this_img
 
         return spriteimage
 
@@ -551,7 +593,7 @@ class Model:
         meta_path = os.path.join(log_dir, "examples.tsv")
 
         config = projector.ProjectorConfig()
-        for var_name in ['sample_logits', 'sample_hidden']:
+        for var_name in ["sample_logits", "sample_hidden"]:
             embedding = config.embeddings.add()
             embedding.tensor_name = var_name
             embedding.metadata_path = meta_path
@@ -561,7 +603,7 @@ class Model:
         projector.visualize_embeddings(writer, config)
 
         # save tsv file containing labels"
-        with open(meta_path, 'w') as f:
+        with open(meta_path, "w") as f:
             f.write("Index\tLabel\tSource\n")
             for index, segment in enumerate(segs):
                 f.write("{}\t{}\t{}\n".format(index, segment.label, segment.clip_id))
@@ -569,7 +611,7 @@ class Model:
         # save out image previews
         to_vis = X[:, self.training_segment_frames // 2, 0]
         sprite_image = self._create_sprite_image(to_vis)
-        plt.imsave(sprite_path, sprite_image, cmap='gray')
+        plt.imsave(sprite_path, sprite_image, cmap="gray")
 
         return data
 
@@ -581,8 +623,10 @@ class Model:
         :return:
         """
 
-        assert self.datasets.train, 'Training dataset found, must call import_dataset before training.'
-        assert self.train_op, 'Training operation has not been assigned.'
+        assert (
+            self.datasets.train
+        ), "Training dataset found, must call import_dataset before training."
+        assert self.train_op, "Training operation has not been assigned."
 
         if self.enable_async_loading:
             self.start_async_load()
@@ -601,7 +645,7 @@ class Model:
         examples_since_print = 0
         last_epoch_save = -1
         best_report_acc = 0
-        best_val_loss = float('inf')
+        best_val_loss = float("inf")
 
         # setup writers and run a quick benchmark
         print("Initialising summary writers at {}.".format(LOG_DIR))
@@ -627,38 +671,54 @@ class Model:
             # get a new batch
             start = time.time()
             batch = self.datasets.train.next_batch(self.batch_size)
-            prep_time += time.time()-start
+            prep_time += time.time() - start
 
             # evaluate every so often
-            if examples_since_print >= self.print_every or (i == iterations-1):
+            if examples_since_print >= self.print_every or (i == iterations - 1):
 
                 start = time.time()
 
                 val_batch = self.datasets.validation.next_batch(self.eval_samples)
-                train_batch = self.datasets.train.next_batch(self.eval_samples, force_no_augmentation=True)
+                train_batch = self.datasets.train.next_batch(
+                    self.eval_samples, force_no_augmentation=True
+                )
 
                 train_accuracy, train_loss = self.eval_batch(
-                    train_batch[0], train_batch[1],
-                    writer=self.writer_train)
+                    train_batch[0], train_batch[1], writer=self.writer_train
+                )
                 val_accuracy, val_loss = self.eval_batch(
-                    val_batch[0], val_batch[1],
-                    writer=self.writer_val, include_detailed_summary=True)
+                    val_batch[0],
+                    val_batch[1],
+                    writer=self.writer_val,
+                    include_detailed_summary=True,
+                )
 
                 epoch = (self.batch_size * i) / self.rows
 
-                eval_time += time.time()-start
+                eval_time += time.time() - start
 
-                steps_remaining = (iterations - i)
+                steps_remaining = iterations - i
                 step_time = prep_time + train_time + eval_time
-                eta = (steps_remaining * step_time / (examples_since_print / self.batch_size)) / 60
+                eta = (
+                    steps_remaining
+                    * step_time
+                    / (examples_since_print / self.batch_size)
+                ) / 60
 
-                print('[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] eta {9:.1f} min'.format(
-                    epoch, i, train_accuracy*100, train_loss * 10, val_accuracy*100, val_loss * 10,
-                    1000 * prep_time / examples_since_print,
-                    1000 * train_time / examples_since_print,
-                    1000 * eval_time / examples_since_print,
-                    eta
-                ))
+                print(
+                    "[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] eta {9:.1f} min".format(
+                        epoch,
+                        i,
+                        train_accuracy * 100,
+                        train_loss * 10,
+                        val_accuracy * 100,
+                        val_loss * 10,
+                        1000 * prep_time / examples_since_print,
+                        1000 * train_time / examples_since_print,
+                        1000 * eval_time / examples_since_print,
+                        eta,
+                    )
+                )
 
                 # create a save point
                 self.save(os.path.join(CHECKPOINT_FOLDER, "training-most-recent.sav"))
@@ -679,21 +739,37 @@ class Model:
 
                     print("Epoch report")
                     acc, f1 = self.generate_report()
-                    print("results: {:.1f} {}".format(acc*100,["{:.1f}".format(x*100) for x in f1]))
-                    print('Save epoch reference')
+                    print(
+                        "results: {:.1f} {}".format(
+                            acc * 100, ["{:.1f}".format(x * 100) for x in f1]
+                        )
+                    )
+                    print("Save epoch reference")
                     self.eval_score = acc
-                    self.save(os.path.join(CHECKPOINT_FOLDER, "training-epoch-{:02d}.sav".format(int(epoch))))
+                    self.save(
+                        os.path.join(
+                            CHECKPOINT_FOLDER,
+                            "training-epoch-{:02d}.sav".format(int(epoch)),
+                        )
+                    )
                     last_epoch_save = int(epoch)
 
                     if acc > best_report_acc:
-                        print('Save best epoch tested model.')
+                        print("Save best epoch tested model.")
                         # saving a copy in the log dir allows tensorboard to access some additional information such
                         # as the current training data varaibles.
                         self.save(os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
                         try:
-                            self.save(os.path.join(LOG_DIR, "training-epoch-{:02d}.sav".format(int(epoch))))
+                            self.save(
+                                os.path.join(
+                                    LOG_DIR,
+                                    "training-epoch-{:02d}.sav".format(int(epoch)),
+                                )
+                            )
                         except Exception as e:
-                            logging.warning("Could not write training checkpoint, probably TensorBoard is open.")
+                            logging.warning(
+                                "Could not write training checkpoint, probably TensorBoard is open."
+                            )
                         best_report_acc = acc
                         best_step = i
 
@@ -706,7 +782,7 @@ class Model:
             start = time.time()
             feed_dict = self.get_feed_dict(batch[0], batch[1], is_training=True)
             _ = self.session.run([self.train_op], feed_dict=feed_dict)
-            train_time += time.time()-start
+            train_time += time.time() - start
 
             examples_since_print += self.batch_size
 
@@ -717,7 +793,7 @@ class Model:
 
         self.eval_score = self.eval_model()
 
-        self.log_text('metric/final_score', self.eval_score)
+        self.log_text("metric/final_score", self.eval_score)
 
         if self.enable_async_loading:
             self.stop_async()
@@ -751,46 +827,48 @@ class Model:
             score_part = "{:.3f}".format(self.eval_score)
             while len(score_part) < 3:
                 score_part = score_part + "0"
-            filename = os.path.join("./models/", self.MODEL_NAME + '-' + score_part)
+            filename = os.path.join("./models/", self.MODEL_NAME + "-" + score_part)
 
         try:
             self.saver.save(self.session, filename)
         except Exception as e:
-            print("*"*60)
-            print("Warning, fail saved.  This is usally because the file was open (maybe dropbox was running?)")
+            print("*" * 60)
+            print(
+                "Warning, fail saved.  This is usally because the file was open (maybe dropbox was running?)"
+            )
             print("*" * 60)
             print(e)
 
         # save some additional data
         model_stats = {}
-        model_stats['name'] = self.MODEL_NAME
-        model_stats['description'] = self.MODEL_DESCRIPTION
-        model_stats['notes'] = ""
-        model_stats['labels'] = self.labels
-        model_stats['score'] = self.eval_score
-        model_stats['hyperparams'] = self.params
-        model_stats['log_id'] = self.log_id
-        model_stats['training_date'] = str(time.time())
-        model_stats['version'] = self.VERSION
+        model_stats["name"] = self.MODEL_NAME
+        model_stats["description"] = self.MODEL_DESCRIPTION
+        model_stats["notes"] = ""
+        model_stats["labels"] = self.labels
+        model_stats["score"] = self.eval_score
+        model_stats["hyperparams"] = self.params
+        model_stats["log_id"] = self.log_id
+        model_stats["training_date"] = str(time.time())
+        model_stats["version"] = self.VERSION
 
-        json.dump(model_stats, open(filename+ ".txt", 'w'), indent=4)
+        json.dump(model_stats, open(filename + ".txt", "w"), indent=4)
 
     def load(self, filename):
         """ Loads model and parameters from file. """
 
         logging.info("Loading model {}".format(filename))
 
-        saver = tf.train.import_meta_graph(filename+'.meta', clear_devices=True)
+        saver = tf.train.import_meta_graph(filename + ".meta", clear_devices=True)
         saver.restore(self.session, filename)
 
         # get additional hyper parameters
-        stats = json.load(open(filename+".txt",'r'))
+        stats = json.load(open(filename + ".txt", "r"))
 
-        self.MODEL_NAME = stats['name']
-        self.MODEL_DESCRIPTION = stats['description']
-        self.labels = stats['labels']
-        self.eval_score = stats['score']
-        self.params = stats['hyperparams']
+        self.MODEL_NAME = stats["name"]
+        self.MODEL_DESCRIPTION = stats["description"]
+        self.labels = stats["labels"]
+        self.eval_score = stats["score"]
+        self.params = stats["hyperparams"]
 
         # connect up nodes.
         self.attach_nodes()
@@ -811,7 +889,7 @@ class Model:
         :return: the tensor
         """
         try:
-            return self.session.graph.get_tensor_by_name(name+":0")
+            return self.session.graph.get_tensor_by_name(name + ":0")
         except Exception as e:
             if none_if_not_found:
                 return None
@@ -830,22 +908,24 @@ class Model:
         self.train_op = graph.get_operation_by_name("train_op")
 
         # novelty
-        self.novelty = self.get_tensor('novelty', none_if_not_found=True)
-        self.novelty_distance = self.get_tensor('novelty_distance', none_if_not_found=True)
+        self.novelty = self.get_tensor("novelty", none_if_not_found=True)
+        self.novelty_distance = self.get_tensor(
+            "novelty_distance", none_if_not_found=True
+        )
 
         # attach to IO tensors
-        self.X = self.get_tensor('X')
-        self.y = self.get_tensor('y')
-        self.keep_prob = self.get_tensor('keep_prob')
-        self.is_training = self.get_tensor('training')
-        self.global_step = self.get_tensor('global_step')
+        self.X = self.get_tensor("X")
+        self.y = self.get_tensor("y")
+        self.keep_prob = self.get_tensor("keep_prob")
+        self.is_training = self.get_tensor("training")
+        self.global_step = self.get_tensor("global_step")
 
-        self.state_out = self.get_tensor('state_out')
-        self.state_in = self.get_tensor('state_in')
+        self.state_out = self.get_tensor("state_out")
+        self.state_in = self.get_tensor("state_in")
 
-        self.logits_out = self.get_tensor('logits_out', none_if_not_found=True)
-        self.hidden_out = self.get_tensor('hidden_out', none_if_not_found=True)
-        self.lstm_out = self.get_tensor('lstm_out')
+        self.logits_out = self.get_tensor("logits_out", none_if_not_found=True)
+        self.hidden_out = self.get_tensor("hidden_out", none_if_not_found=True)
+        self.lstm_out = self.get_tensor("lstm_out")
 
     def freeze(self):
         """ Freezes graph so that no additional changes can be made. """
@@ -862,10 +942,12 @@ class Model:
             state_shape = self.state_in.shape
             state = np.zeros([1, state_shape[1], state_shape[2]], dtype=np.float32)
 
-        batch_X = frame[np.newaxis,np.newaxis,:]
+        batch_X = frame[np.newaxis, np.newaxis, :]
 
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
-        pred, state = self.session.run([self.prediction, self.state_out], feed_dict=feed_dict)
+        pred, state = self.session.run(
+            [self.prediction, self.state_out], feed_dict=feed_dict
+        )
         pred = pred[0]
 
         return pred, state
@@ -881,10 +963,12 @@ class Model:
             state_shape = self.state_in.shape
             state = np.zeros([1, state_shape[1], state_shape[2]], dtype=np.float32)
 
-        batch_X = frame[np.newaxis,np.newaxis,:]
+        batch_X = frame[np.newaxis, np.newaxis, :]
 
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
-        pred, novelty, state = self.session.run([self.prediction, self.novelty, self.state_out], feed_dict=feed_dict)
+        pred, novelty, state = self.session.run(
+            [self.prediction, self.novelty, self.state_out], feed_dict=feed_dict
+        )
 
         return pred[0], novelty[0], state
 
@@ -896,13 +980,13 @@ class Model:
         """
         with tf.name_scope(name):
             mean = tf.reduce_mean(var)
-            tf.summary.scalar('mean', mean)
-            with tf.name_scope('stddev'):
+            tf.summary.scalar("mean", mean)
+            with tf.name_scope("stddev"):
                 stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
-            tf.summary.scalar('stddev', stddev)
-            tf.summary.scalar('max', tf.reduce_max(var))
-            tf.summary.scalar('min', tf.reduce_min(var))
-            tf.summary.histogram('histogram', var)
+            tf.summary.scalar("stddev", stddev)
+            tf.summary.scalar("max", tf.reduce_max(var))
+            tf.summary.scalar("min", tf.reduce_min(var))
+            tf.summary.histogram("histogram", var)
 
     def save_input_summary(self, input, name, reference_level=None):
         """
@@ -919,7 +1003,9 @@ class Model:
         tf.summary.scalar(name + "/max", tf.reduce_max(input))
         tf.summary.scalar(name + "/min", tf.reduce_min(input))
         tf.summary.scalar(name + "/mean", mean)
-        tf.summary.scalar(name + "/std", tf.sqrt(tf.reduce_mean(tf.square(input - mean))))
+        tf.summary.scalar(
+            name + "/std", tf.sqrt(tf.reduce_mean(tf.square(input - mean)))
+        )
 
         if reference_level is not None:
             # this is so silly, we need to create a mask and do some tricks just to modify two pixels...
@@ -927,7 +1013,7 @@ class Model:
             levels = np.zeros([1, H, W, 1], dtype=np.float32)
             mask = np.ones([1, H, W, 1], dtype=np.float32)
             for i in range(W):
-                levels[0, 0, i, 0] = reference_level * (i/(W-1))
+                levels[0, 0, i, 0] = reference_level * (i / (W - 1))
                 mask[0, 0, i, 0] = 0
 
             input = input * mask + levels
@@ -937,8 +1023,13 @@ class Model:
 
     def create_writable_variable(self, name, shape):
         """ Creates a variable in the model that can be written to. """
-        var = tf.get_variable(name=name, initializer=tf.initializers.zeros, dtype=tf.float32, trainable=False,
-                              shape=shape)
+        var = tf.get_variable(
+            name=name,
+            initializer=tf.initializers.zeros,
+            dtype=tf.float32,
+            trainable=False,
+            shape=shape,
+        )
         input = tf.placeholder(name=name + "_in", dtype=tf.float32, shape=shape)
         assign_op = tf.assign(var, input, name=name + "_assign_op")
         return var
@@ -947,7 +1038,4 @@ class Model:
         """ Updates the contents of a writeable variable in the model. """
         assign_op = self.session.graph.get_operation_by_name(name + "_assign_op")
         var_input = self.session.graph.get_tensor_by_name(name + "_in:0")
-        self.session.run(assign_op, feed_dict={var_input:data})
-
-
-
+        self.session.run(assign_op, feed_dict={var_input: data})
