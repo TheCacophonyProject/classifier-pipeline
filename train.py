@@ -226,13 +226,6 @@ def main():
         default="unnammed",
         help='Name of training job, use "search" for hyper parameter search',
     )
-
-    parser.add_argument(
-        "-d",
-        "--dataset",
-        default="datasets",
-        help="Enables preview MPEG files (can be slow)",
-    )
     parser.add_argument(
         "-e", "--epochs", default="30", help="Number of epochs to train for"
     )
