@@ -11,7 +11,7 @@ before_script:
 
 script:
 - pytest
-- find -name '*.py' | xargs black --target-version py36 --check --diff
+- ./check-style
 
 before_deploy:
 - "pip install pex"
