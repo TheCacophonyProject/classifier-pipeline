@@ -6,8 +6,12 @@ python:
 install:
 - pip install -r requirements.txt
 
+before_script:
+- pip install black
+
 script:
 - pytest
+- find -name '*.py' | xargs black --target-version py36 --check --diff
 
 before_deploy:
 - "pip install pex"
