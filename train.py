@@ -36,20 +36,14 @@ import pickle
 import os
 import datetime
 import argparse
-
 import ast
 
 import tensorflow as tf
+
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
-
+from ml_tools.config import Config
+from ml_tools.dataset import dataset_db_path
 from ml_tools.logs import init_logging
-
-
-# folder to put tensor board logs into
-LOG_FOLDER = "c:/cac/logs/"
-
-# dataset folder to use
-DATASET_FOLDER = "c:/cac/datasets/fantail"
 
 # name of the file to write results to.
 RESULTS_FILENAME = "batch training results.txt"
@@ -85,22 +79,21 @@ SHORT_SEARCH_PARAMS = {
 }
 
 
-def train_model(rum_name, epochs=30.0, **kwargs):
-    """ Trains a model with the given hyper parameters. """
-
-    logging.basicConfig(level=0)
+def train_model(config, rum_name, epochs=30.0, **kwargs):
+    """Trains a model with the given hyper parameters. """
+    logging.basicConfig(level=0)  # FIXME: calling basicConfig twice is poor
     tf.logging.set_verbosity(3)
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
     # but we don't load the dataset till after that, so we load it here just to count the number of labels...
-    dataset_name = os.path.join(DATASET_FOLDER, "datasets.dat")
+    dataset_name = dataset_db_path(config)
     dsets = pickle.load(open(dataset_name, "rb"))
     labels = dsets[0].labels
 
     model = ModelCRNN_LQ(labels=len(labels), **kwargs)
 
     model.import_dataset(dataset_name)
-    model.log_dir = LOG_FOLDER
+    model.log_dir = config.logs_folder
 
     # display the data set summary
     print("Training on labels", labels)
@@ -244,6 +237,9 @@ def main():
         "-e", "--epochs", default="30", help="Number of epochs to train for"
     )
     parser.add_argument("-p", "--params", default="{}", help="model parameters")
+    parser.add_argument("-c", "--config-file", help="Path to config file to use")
+    args = parser.parse_args()
+    config = Config.load_from_file(args.config_file)
 
     args = parser.parse_args()
 
@@ -253,7 +249,7 @@ def main():
     else:
         # literal eval should be safe here.
         model_args = ast.literal_eval(args.params)
-        train_model("training/" + args.name, **model_args)
+        train_model(config, "training/" + args.name, **model_args)
 
 
 if __name__ == "__main__":

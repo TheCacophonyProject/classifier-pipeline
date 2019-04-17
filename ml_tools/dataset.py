@@ -982,3 +982,7 @@ def get_cropped_fraction(region: tools.Rectangle, width, height):
     """ Returns the fraction regions mass outside the rect ((0,0), (width, height)"""
     bounds = tools.Rectangle(0, 0, width - 1, height - 1)
     return 1 - (bounds.overlap_area(region) / region.area)
+
+
+def dataset_db_path(config):
+    return os.path.join(config.tracks_folder, "datasets.dat")

@@ -107,7 +107,7 @@ python build.py
 
 This will take a minute or so.
 
-By default only clips up to a certian date will be processed, so it may be necessary to edit the `build.py` and edit the line
+By default only clips up to a certain date will be processed, so it may be necessary to edit the `build.py` and edit the line
 
 ```python
 END_DATE = datetime(2018, 1, 31)
@@ -214,7 +214,8 @@ python train.py
 
 # 5.1 Using Tensorboard to monitor training
 
-To view a model while training you can run Tensorboard from the command prompt.  By default logs are placed in the folder 'c:/cac/logs'.
+To view a model while training you can run Tensorboard from the command prompt.  Logs are placed in the
+logs subdirectory of the base data directory.
 It is often a good idea to group logs from related runs together in a folder.  For example 'c:/cac/logs/v030/optical flow test/'
 
 ```commandline
