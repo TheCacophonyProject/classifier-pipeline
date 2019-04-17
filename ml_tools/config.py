@@ -16,6 +16,7 @@ CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
 class Config:
     source_folder = attr.ib()
     tracks_folder = attr.ib()
+    logs_folder = attr.ib()
     tracking = attr.ib()
     extract = attr.ib()
     classify_tracking = attr.ib()
@@ -44,6 +45,7 @@ class Config:
         return cls(
             source_folder=path.join(base_folder, raw["source_folder"]),
             tracks_folder=path.join(base_folder, raw.get("tracks_folder", "tracks")),
+            logs_folder=path.join(base_folder, "logs"),
             tracking=TrackingConfig.load(raw["tracking"]),
             extract=ExtractConfig.load(raw["extract"]),
             classify_tracking=TrackingConfig.load(raw["classify_tracking"]),

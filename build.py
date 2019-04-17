@@ -1,8 +1,7 @@
-"""
-Build a segment dataset for training.
-Segment headers will be extracted from a track database and balanced according to class.
-Some filtering occurs at this stage as well, for example tracks with low confidence are excluded.
-"""
+# Build a segment dataset for training.
+# Segment headers will be extracted from a track database and balanced
+# according to class. Some filtering occurs at this stage as well, for example
+# tracks with low confidence are excluded.
 
 import argparse
 import datetime
@@ -16,8 +15,7 @@ import numpy as np
 from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.config import Config
-from ml_tools.dataset import Dataset
-from ml_tools.trackdatabase import TrackDatabase
+from ml_tools.dataset import Dataset, dataset_db_path
 
 # uses split from previous run
 USE_PREVIOUS_SPLIT = True
@@ -80,7 +78,6 @@ filtered_stats = {"confidence": 0, "trap": 0, "banned": 0, "date": 0}
 
 
 def track_filter(clip_meta, track_meta):
-
     # some clips are banned for various reasons
     source = os.path.basename(clip_meta["filename"])
     if source in BANNED_CLIPS:
@@ -143,28 +140,26 @@ def show_segments_breakdown():
 
 
 def split_dataset_predefined():
-    """
-    Splits dataset into train / test / validation using a predefined set of camerea-label allocations.
+    """Splits dataset into train / test / validation using a predefined set of camera-label allocations.
 
-    This method puts all tracks into 'camera-label' bins and then assigns certian bins to the validation set.
+    This method puts all tracks into 'camera-label' bins and then assigns certain bins to the validation set.
     In this case the 'test' set is simply a subsample of the validation set. (as there are not enough unique cameras
     at this point for 3 sets).
 
     The advantages of this method are
 
     1/ The datasets are fixed, even as more footage comes through
-    2/ Learning an animal on one camera / enviroment and predicting it on another is a very good indicator that that
+    2/ Learning an animal on one camera / environment and predicting it on another is a very good indicator that that
         algorthim has generalised
-    3/ Some adjustment can be made to make sure that the cameras used in the test / validation sets contain 'resonable'
+    3/ Some adjustment can be made to make sure that the cameras used in the test / validation sets contain 'reasonable'
         footage. (i.e. footage that is close to what we want to classify.
 
     The disadvantages are that it requires seeing animals on multiple cameras, which we don't always have data for.
     It can also be a bit wasteful as we sometimes dedicate a substantial portion of the data to some animal types.
 
-    A posiable solution would be to note when (or if) the model over-fits then run on the entire dataset.
+    A possible solution would be to note when (or if) the model over-fits then run on the entire dataset.
 
     Another option would be k-fold validation.
-
     """
 
     validation_bins = [
@@ -367,7 +362,7 @@ def split_dataset_days(prefill_bins=None):
 
 
 def get_bin_split(filename):
-    """ Loads bin splits from previous database. """
+    """Loads bin splits from previous database. """
     train, validation, text = pickle.load(open(filename, "rb"))
     test_bins = {}
     for label in validation.labels:
@@ -427,9 +422,7 @@ def main():
     else:
         datasets = split_dataset_days()
 
-    pickle.dump(
-        datasets, open(os.path.join(config.tracks_folder, "datasets.dat"), "wb")
-    )
+    pickle.dump(datasets, open(dataset_db_path(config), "wb"))
 
 
 if __name__ == "__main__":
