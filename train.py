@@ -1,42 +1,41 @@
-"""
-Author Matthew Aitchison
-Date July 2018
+"""This script handles the training of models. It works in two different modes.
 
-This script handles the training of models.  It works in two different modes
-
-Single model training
------------------------
+# Single model training
 
 run the script with
->> train.py [model_name]
+$ train.py [model_name]
 
-to train a single model.  Right now the hyper-parameters need to be in the script before running
+to train a single model. Hyper-parameters are read from classifier.yaml.
 
-Search mode
------------------------
-Many models will be trained across a set of predified hyper parameters.  This can take days, but gives useful information.
-I have to dictionaryies, a SHORT_SERACH_PARAMS which has just a few interesting parameters to try, and FULL_SEARCH_PARAMS
-which is more comprehensive.
+# Search mode
 
-The results of the search are stored in the text file RESULTS_FILENAME, and jobs that have already been processed will
-not be redone (however cancelling partway through a job will cause it restart from the start of the job).
+Many models will be trained across a set of predified hyper
+parameters.  This can take days, but gives useful information.  I have
+two dictionaries, a SHORT_SEARCH_PARAMS which has just a few
+interesting parameters to try, and FULL_SEARCH_PARAMS which is more
+comprehensive.
 
-Checking the results
------------------------
-All the training results are stored in tensorboard.  To assess the training run tensorboard from the log directory.
+The results of the search are stored in "search_results.txt" in the
+"train" subdirectory of `base_data_folder`. Jobs that have already
+been processed will not be redone (however cancelling partway through
+a job will cause it restart from the start of the job).
+
+# Checking the results
+
+All the training results are stored in tensorboard.  To assess the
+training run tensorboard from the log directory.
 
 """
+
+import argparse
+import datetime
+import logging
+import os
+import pickle
 
 import matplotlib
 
 matplotlib.use("Agg")  # enable canvas drawing
-
-import logging
-import pickle
-import os
-import datetime
-import argparse
-import ast
 
 import tensorflow as tf
 
@@ -44,9 +43,6 @@ from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
 from ml_tools.config import Config
 from ml_tools.dataset import dataset_db_path
 from ml_tools.logs import init_logging
-
-# name of the file to write results to.
-RESULTS_FILENAME = "batch training results.txt"
 
 # this is a good list for a full search, but will take a long time to run (days)
 FULL_SEARCH_PARAMS = {
@@ -79,21 +75,23 @@ SHORT_SEARCH_PARAMS = {
 }
 
 
-def train_model(config, rum_name, epochs=30.0, **kwargs):
-    """Trains a model with the given hyper parameters. """
-    logging.basicConfig(level=0)  # FIXME: calling basicConfig twice is poor
-    tf.logging.set_verbosity(3)
+def train_model(run_name, conf, hyper_params):
+    """Trains a model with the given hyper parameters.
+    """
+
+    run_name = os.path.join("train", run_name)
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
     # but we don't load the dataset till after that, so we load it here just to count the number of labels...
-    dataset_name = dataset_db_path(config)
-    dsets = pickle.load(open(dataset_name, "rb"))
+    dataset_filename = dataset_db_path(conf)
+    with open(dataset_filename, "rb") as f:
+        dsets = pickle.load(f)
     labels = dsets[0].labels
 
-    model = ModelCRNN_LQ(labels=len(labels), **kwargs)
+    model = ModelCRNN_LQ(labels=len(labels), **hyper_params)
 
-    model.import_dataset(dataset_name)
-    model.log_dir = config.logs_folder
+    model.import_dataset(dataset_filename)
+    model.log_dir = os.path.join(conf.train.train_dir, "logs")
 
     # display the data set summary
     print("Training on labels", labels)
@@ -126,8 +124,8 @@ def train_model(config, rum_name, epochs=30.0, **kwargs):
     print("Found {0:.1f}K training examples".format(model.rows / 1000))
     print()
     model.train_model(
-        epochs=epochs,
-        run_name=rum_name + " " + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),
+        epochs=conf.train.epochs,
+        run_name=run_name + " " + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),
     )
     model.save()
     model.close()
@@ -139,112 +137,92 @@ def train_model(config, rum_name, epochs=30.0, **kwargs):
     return model
 
 
-def has_job(job_name):
-    """ Returns if this job has been processed before or not. """
-    f = open(RESULTS_FILENAME, "r")
-    for line in f:
-        words = line.split(",")
-        job = words[0] if len(words) >= 1 else ""
-        if job == job_name:
-            f.close()
-            return True
-    f.close()
-    return False
-
-
-def log_job_complete(job_name, score, params=None, values=None):
-
-    """ Log reference to job being complete
-    :param job_name The name of the job
-    :param score The final evaluation score
-    :param params [optional] A list of the parameters used to train this model
-    :param values [optional] A corresponding list of the parameter values used to train this model
-
-    """
-    f = open(RESULTS_FILENAME, "a")
-    f.write(
-        "{}, {}, {}, {}\n".format(
-            job_name,
-            str(score),
-            params if params is not None else "",
-            values if values is not None else "",
-        )
-    )
-    f.close()
-
-
-def run_job(job_name, **kwargs):
-    """ Run a job with given hyper parameters, and log its results. """
-
-    # check if we have done this job...
-    if has_job(job_name):
-        return
-
-    print("-" * 60)
-    print("Processing", job_name)
-    print("-" * 60)
-
-    model = train_model("search/" + job_name, **kwargs)
-
-    log_job_complete(
-        job_name, model.eval_score, list(kwargs.keys()), list(kwargs.values())
-    )
-
-
-def axis_search():
+def axis_search(conf):
     """
     Evaluate each hyper-parameter individually against a reference.
 
     The idea here is to assess each parameter individually while holding all other parameters at their default.
     For optimal results this will need to be done multiple times, each time updating the defaults to their optimal
     values.
-
     """
+    logging.info("Performing hyper parameter search.")
 
-    if not os.path.exists(RESULTS_FILENAME):
-        open(RESULTS_FILENAME, "w").close()
+    results_filename = os.path.join(conf.train.train_dir, "search-results.txt")
+    logging.info(f"Writing hyper-parameter search results to {results_filename}")
+    tracker = JobTracker(results_filename)
 
     # run the reference job with default params
-    run_job("reference")
+    run_job(tracker, "reference", conf)
 
-    # go through each job and process it.  Would be nice to be able to start a job and pick up where we left off.
     for param_name, param_values in SHORT_SEARCH_PARAMS.items():
-        # build the job
         for param_value in param_values:
-            job_name = param_name + "=" + str(param_value)
-            args = {param_name: param_value}
-            run_job(job_name, **args)
+            job_name = f"{param_name}={param_value}"
+            run_job(tracker, job_name, conf, {param_name: param_value})
 
 
-def main():
-    init_logging()
+def run_job(tracker, job_name, conf, hyper_params=None):
+    """Run a job with given hyper parameters, and log its results.
+    """
+    if tracker.is_done(job_name):
+        return
+    if not hyper_params:
+        hyper_params = {}
 
+    print("-" * 60)
+    print("Processing", job_name)
+    print("-" * 60)
+
+    model = train_model(job_name, conf, hyper_params)
+    tracker.mark_done(job_name, model.eval_score, hyper_params)
+
+
+class JobTracker:
+    def __init__(self, filename):
+        self.filename = filename
+        open(self.filename, "w").close()  # Create/truncate
+
+    def is_done(self, job_name):
+        """Returns True if this job has been processed before.
+        """
+        with open(self.filename, "r") as f:
+            return any(line.split(",", 1)[0] == job_name for line in f)
+
+    def mark_done(self, job_name, score, hyper_params):
+        with open(self.filename, "a") as f:
+            f.write(
+                "{}, {}: {}\n".format(
+                    job_name,
+                    score,
+                    " ".join(f"{k}={v}" for (k, v) in hyper_params.items()),
+                )
+            )
+
+
+def load_config():
     parser = argparse.ArgumentParser()
-
+    parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument(
         "name",
         default="unnammed",
-        help='Name of training job, use "search" for hyper parameter search',
+        help='Name of training job, use "search" for hyper-parameter search',
     )
-    parser.add_argument(
-        "-e", "--epochs", default="30", help="Number of epochs to train for"
-    )
-    parser.add_argument("-p", "--params", default="{}", help="model parameters")
-    parser.add_argument("-c", "--config-file", help="Path to config file to use")
     args = parser.parse_args()
-    config = Config.load_from_file(args.config_file)
+    return Config.load_from_file(args.config_file), args.name
 
-    args = parser.parse_args()
 
-    if args.name == "search":
-        print("Performing hyper parameter search.")
-        axis_search()
+def main():
+    conf, job_name = load_config()
+
+    init_logging()
+    tf.logging.set_verbosity(3)
+
+    os.makedirs(conf.train.train_dir, exist_ok=True)
+
+    if job_name == "search":
+        axis_search(conf)
     else:
-        # literal eval should be safe here.
-        model_args = ast.literal_eval(args.params)
-        train_model(config, "training/" + args.name, **model_args)
+        train_model(job_name, conf, conf.train.hyper_params)
 
 
 if __name__ == "__main__":
-    # execute only if run as a script
     main()

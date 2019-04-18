@@ -6,6 +6,7 @@ import yaml
 
 from track.trackingconfig import TrackingConfig
 from track.extractconfig import ExtractConfig
+from train.config import TrainConfig
 from classify.classifyconfig import ClassifyConfig
 
 CONFIG_FILENAME = "classifier.yaml"
@@ -19,6 +20,7 @@ class Config:
     logs_folder = attr.ib()
     tracking = attr.ib()
     extract = attr.ib()
+    train = attr.ib()
     classify_tracking = attr.ib()
     classify = attr.ib()
     excluded_folders = attr.ib()
@@ -48,6 +50,7 @@ class Config:
             logs_folder=path.join(base_folder, "logs"),
             tracking=TrackingConfig.load(raw["tracking"]),
             extract=ExtractConfig.load(raw["extract"]),
+            train=TrainConfig.load(raw["train"], base_folder),
             classify_tracking=TrackingConfig.load(raw["classify_tracking"]),
             classify=ClassifyConfig.load(raw["classify"], base_folder),
             excluded_folders=raw["excluded_folders"],
