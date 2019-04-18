@@ -5,6 +5,8 @@ import pickle
 import tensorflow as tf
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
 
+from ml_tools.dataset import dataset_db_path
+
 
 def train_model(run_name, conf, hyper_params):
     """Trains a model with the given hyper parameters.
@@ -14,7 +16,7 @@ def train_model(run_name, conf, hyper_params):
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
     # but we don't load the dataset till after that, so we load it here just to count the number of labels...
-    datasets_filename = os.path.join(conf.tracks_folder, "datasets.dat")
+    datasets_filename = dataset_db_path(conf)
     with open(datasets_filename, "rb") as f:
         dsets = pickle.load(f)
     labels = dsets[0].labels
