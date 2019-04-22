@@ -633,7 +633,7 @@ class Model:
 
         self.log_id = run_name
 
-        LOG_DIR = os.path.join(self.log_dir, run_name)
+        log_dir = os.path.join(self.log_dir, run_name)
 
         iterations = int(math.ceil(epochs * self.rows / self.batch_size))
         if run_name is None:
@@ -648,14 +648,14 @@ class Model:
         best_val_loss = float("inf")
 
         # setup writers and run a quick benchmark
-        print("Initialising summary writers at {}.".format(LOG_DIR))
+        print("Initialising summary writers at {}.".format(log_dir))
         self.setup_summary_writers(run_name)
 
         # Run the initializer
         init = tf.global_variables_initializer()
         self.session.run(init)
 
-        self.train_samples = self.setup_sample_training_data(LOG_DIR, self.writer_train)
+        self.train_samples = self.setup_sample_training_data(log_dir, self.writer_train)
 
         # setup a saver
         self.saver = tf.train.Saver(max_to_keep=1000)
@@ -762,7 +762,7 @@ class Model:
                         try:
                             self.save(
                                 os.path.join(
-                                    LOG_DIR,
+                                    log_dir,
                                     "training-epoch-{:02d}.sav".format(int(epoch)),
                                 )
                             )

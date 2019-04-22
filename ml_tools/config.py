@@ -6,6 +6,7 @@ import yaml
 
 from track.trackingconfig import TrackingConfig
 from track.extractconfig import ExtractConfig
+from train.config import TrainConfig
 from classify.classifyconfig import ClassifyConfig
 
 CONFIG_FILENAME = "classifier.yaml"
@@ -16,9 +17,9 @@ CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
 class Config:
     source_folder = attr.ib()
     tracks_folder = attr.ib()
-    logs_folder = attr.ib()
     tracking = attr.ib()
     extract = attr.ib()
+    train = attr.ib()
     classify_tracking = attr.ib()
     classify = attr.ib()
     excluded_folders = attr.ib()
@@ -45,9 +46,9 @@ class Config:
         return cls(
             source_folder=path.join(base_folder, raw["source_folder"]),
             tracks_folder=path.join(base_folder, raw.get("tracks_folder", "tracks")),
-            logs_folder=path.join(base_folder, "logs"),
             tracking=TrackingConfig.load(raw["tracking"]),
             extract=ExtractConfig.load(raw["extract"]),
+            train=TrainConfig.load(raw["train"], base_folder),
             classify_tracking=TrackingConfig.load(raw["classify_tracking"]),
             classify=ClassifyConfig.load(raw["classify"], base_folder),
             excluded_folders=raw["excluded_folders"],

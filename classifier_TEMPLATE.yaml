@@ -152,9 +152,35 @@ extract:
     # Note:  This is relative to the current directory of the application, not the base data folder
     hints_file: "hints.txt"
 
+train:
+    hyper_params:
+        # training
+        batch_size: 16
+        learning_rate: 1e-4
+        learning_rate_decay: 1.0
+        l2_reg: 0
+        label_smoothing: 0.1
+        keep_prob: 0.2
+
+        # model
+        batch_norm: true
+        lstm_units: 256
+        enable_flow: true
+
+        # augmentation
+        augmentation: true
+        thermal_threshold: 10
+        scale_frequency: 0.5
+
+    # Number of epochs to train for
+    epochs: 30
+
+    # Location to write various training outputs to. Relative to
+    # base_data_folder. Defaults to "training"
+    # train_dir: "training"
 
 classify_tracking:
-    # Note: frame_padding must be atleast 3 or some frames may be too small for classification
+    # Note: frame_padding must be at least 3 or some frames may be too small for classification
     frame_padding: 4
     high_quality_optical_flow: True
     filters:
