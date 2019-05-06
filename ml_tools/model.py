@@ -723,12 +723,16 @@ class Model:
                 )
 
                 # create a save point
-                self.save(os.path.join(self.checkpoint_folder, "training-most-recent.sav"))
+                self.save(
+                    os.path.join(self.checkpoint_folder, "training-most-recent.sav")
+                )
 
                 # save the best model if validation score was good
                 if val_loss < best_val_loss:
                     print("Saving best validation model.")
-                    self.save(os.path.join(self.checkpoint_folder, "training-best-val.sav"))
+                    self.save(
+                        os.path.join(self.checkpoint_folder, "training-best-val.sav")
+                    )
                     best_val_loss = val_loss
 
                 # save at epochs
@@ -760,7 +764,9 @@ class Model:
                         print("Save best epoch tested model.")
                         # saving a copy in the log dir allows tensorboard to access some additional information such
                         # as the current training data varaibles.
-                        self.save(os.path.join(self.checkpoint_folder, "training-best.sav"))
+                        self.save(
+                            os.path.join(self.checkpoint_folder, "training-best.sav")
+                        )
                         try:
                             self.save(
                                 os.path.join(
