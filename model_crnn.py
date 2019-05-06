@@ -271,7 +271,7 @@ class ModelCRNN_HQ(ConvModel):
         "scale_frequency": 0.5,
     }
 
-    def __init__(self, labels, **kwargs):
+    def __init__(self, labels, train_config, **kwargs):
         """
         Initialise the model
         :param labels: number of labels for model to predict
@@ -470,7 +470,7 @@ class ModelCRNN_LQ(ConvModel):
         "scale_frequency": 0.5,
     }
 
-    def __init__(self, labels, **kwargs):
+    def __init__(self, labels, train_config, **kwargs):
         """
         Initialise the model
         :param labels: number of labels for model to predict
