@@ -687,7 +687,7 @@ class TrackExtractor:
     def start_and_end_in_secs(self, track):
         return (
             self.frame_time_in_secs(track, 0),
-            self.frame_time_in_secs(track, len(track) - 1),
+            self.frame_time_in_secs(track, len(track)),
         )
 
     def frame_time_in_secs(self, track, frame_index=0):

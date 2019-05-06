@@ -16,9 +16,6 @@ from sklearn import metrics
 from ml_tools import tools
 from ml_tools import visualise
 
-# folder to save model while it's training.  Make sure this isn't on a dropbox folder and it will cause a crash.
-CHECKPOINT_FOLDER = "c:\cac\checkpoints"
-
 
 class Model:
     """ Defines a deep learning model """
@@ -27,7 +24,7 @@ class Model:
     MODEL_DESCRIPTION = ""
     VERSION = "0.3.0"
 
-    def __init__(self, session=None):
+    def __init__(self, train_config=None, session=None):
 
         self.name = "model"
         self.session = session or tools.get_session()
@@ -96,7 +93,12 @@ class Model:
         self.enable_async_loading = True
 
         # folder to write tensorboard logs to
-        self.log_dir = "./logs"
+        if train_config:
+            self.log_dir = os.path.join(train_config.train_dir, "logs")
+            self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
+        else:
+            self.log_dir = "./logs"
+            self.checkpoint_folder = "./checkpoints"
         self.log_id = ""
 
         # number of frames per segment during training
@@ -721,12 +723,12 @@ class Model:
                 )
 
                 # create a save point
-                self.save(os.path.join(CHECKPOINT_FOLDER, "training-most-recent.sav"))
+                self.save(os.path.join(self.checkpoint_folder, "training-most-recent.sav"))
 
                 # save the best model if validation score was good
                 if val_loss < best_val_loss:
                     print("Saving best validation model.")
-                    self.save(os.path.join(CHECKPOINT_FOLDER, "training-best-val.sav"))
+                    self.save(os.path.join(self.checkpoint_folder, "training-best-val.sav"))
                     best_val_loss = val_loss
 
                 # save at epochs
@@ -748,7 +750,7 @@ class Model:
                     self.eval_score = acc
                     self.save(
                         os.path.join(
-                            CHECKPOINT_FOLDER,
+                            self.checkpoint_folder,
                             "training-epoch-{:02d}.sav".format(int(epoch)),
                         )
                     )
@@ -758,7 +760,7 @@ class Model:
                         print("Save best epoch tested model.")
                         # saving a copy in the log dir allows tensorboard to access some additional information such
                         # as the current training data varaibles.
-                        self.save(os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
+                        self.save(os.path.join(self.checkpoint_folder, "training-best.sav"))
                         try:
                             self.save(
                                 os.path.join(
@@ -789,7 +791,7 @@ class Model:
         # restore previous best
         if self.use_best_weights:
             print("Using model from step", best_step)
-            self.load(os.path.join(CHECKPOINT_FOLDER, "training-best.sav"))
+            self.load(os.path.join(self.checkpoint_folder, "training-best.sav"))
 
         self.eval_score = self.eval_model()
 

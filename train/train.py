@@ -21,11 +21,8 @@ def train_model(run_name, conf, hyper_params):
         dsets = pickle.load(f)
     labels = dsets[0].labels
 
-    model = ModelCRNN_LQ(labels=len(labels), **hyper_params)
-
+    model = ModelCRNN_LQ(labels=len(labels), train_config=conf.train, **hyper_params)
     model.import_dataset(datasets_filename)
-    model.log_dir = os.path.join(conf.train.train_dir, "logs")
-
     # display the data set summary
     print("Training on labels", labels)
     print()
