@@ -159,8 +159,9 @@ class ClipClassifier(CPTVFileProcessor):
         if globs._classifier is None:
             t0 = datetime.now()
             logging.info("classifier loading")
-            globs._classifier = Model(train_config=self.config.train, 
-                session=tools.get_session(disable_gpu=not self.config.use_gpu)
+            globs._classifier = Model(
+                train_config=self.config.train,
+                session=tools.get_session(disable_gpu=not self.config.use_gpu),
             )
             globs._classifier.load(self.config.classify.model)
             logging.info("classifier loaded ({})".format(datetime.now() - t0))
