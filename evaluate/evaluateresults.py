@@ -10,7 +10,6 @@ null_tags = ["false-positive", "none", "no-tag"]
 class TrackResult:
     def __init__(self, track_record, clip_start, clip_end):
         """ Creates track result from track stats entry. """
-        # ops... must have lost time zone at some point, so I put it back here...
         self.start_time = clip_start + timedelta(seconds=track_record["start_s"])
         self.end_time = clip_end + timedelta(seconds=track_record["end_s"])
         self.label = track_record["label"]
@@ -31,9 +30,9 @@ class TrackResult:
     @property
     def confidence(self):
         """ The tracks 'confidence' level which is a combination of the score and clarity. """
-        score_uncertanity = 1 - self.score
+        score_uncertainty = 1 - self.score
         clarity_uncertainty = 1 - self.clarity
-        return 1 - ((score_uncertanity * clarity_uncertainty) ** 0.5)
+        return 1 - ((score_uncertainty * clarity_uncertainty) ** 0.5)
 
     def print_tree(self, level=0):
         print("\t" * level + "-" + str(self))
