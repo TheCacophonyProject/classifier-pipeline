@@ -276,7 +276,7 @@ class ModelCRNN_HQ(ConvModel):
         Initialise the model
         :param labels: number of labels for model to predict
         """
-        super().__init__()
+        super().__init__(train_config=train_config)
         self.params.update(self.DEFAULT_PARAMS)
         self.params.update(kwargs)
         self._build_model(labels)
@@ -475,7 +475,7 @@ class ModelCRNN_LQ(ConvModel):
         Initialise the model
         :param labels: number of labels for model to predict
         """
-        super().__init__()
+        super().__init__(train_config=train_config)
         self.params.update(self.DEFAULT_PARAMS)
         self.params.update(kwargs)
         self._build_model(labels)
