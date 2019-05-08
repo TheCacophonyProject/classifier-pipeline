@@ -60,7 +60,7 @@ class CPTVFileProcessor:
         """Processes all files within a folder."""
         if not os.path.exists(folder_path):
             return
-            
+
         logging.info("processing %s", folder_path)
 
         jobs = []

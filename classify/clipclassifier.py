@@ -203,8 +203,8 @@ class ClipClassifier(CPTVFileProcessor):
             return False
 
         # look to see of the destination file already exists.
-        base_name = self.get_base_name(filename)
-        meta_filename = base_name + ".txt"
+        classify_name = self.get_classify_filename(filename)
+        meta_filename = classify_name + ".txt"
 
         # if no stats file exists we haven't processed file, so reprocess
         if self.config.reprocess:
@@ -240,7 +240,7 @@ class ClipClassifier(CPTVFileProcessor):
         else:
             return None
 
-    def get_base_name(self, input_filename):
+    def get_classify_filename(self, input_filename):
         return os.path.splitext(
             os.path.join(
                 self.config.classify.classify_folder, os.path.basename(input_filename)
@@ -275,16 +275,16 @@ class ClipClassifier(CPTVFileProcessor):
         if len(tracker.tracks) > 0:
             tracker.generate_optical_flow()
 
-        base_name = self.get_base_name(filename)
-        destination_folder = os.path.dirname(base_name)
+        classify_name = self.get_classify_filename(filename)
+        destination_folder = os.path.dirname(classify_name)
 
         if not os.path.exists(destination_folder):
             logging.info("Creating folder {}".format(destination_folder))
             os.makedirs(destination_folder)
 
-        mpeg_filename = base_name + ".mp4"
+        mpeg_filename = classify_name + ".mp4"
 
-        meta_filename = base_name + ".txt"
+        meta_filename = classify_name + ".txt"
 
         # reset track predictions
         self.track_prediction = {}

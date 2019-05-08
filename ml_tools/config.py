@@ -8,7 +8,7 @@ from track.trackingconfig import TrackingConfig
 from track.extractconfig import ExtractConfig
 from train.config import TrainConfig
 from classify.classifyconfig import ClassifyConfig
-from eval.evaluateconfig import EvaluateConfig
+from evaluate.evaluateconfig import EvaluateConfig
 
 CONFIG_FILENAME = "classifier.yaml"
 CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]

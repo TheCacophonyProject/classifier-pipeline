@@ -16,8 +16,7 @@
 #
 # CPTV files with two or more different tags are excluded from analysis.
 #
+from evaluate.main import main
 
-from eval.evaluate import evaluate_main
 
-if __name__ == "__main__":
-    evaluate_main()
+main()
