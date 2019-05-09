@@ -9,7 +9,7 @@ from track.extractconfig import ExtractConfig
 from train.config import TrainConfig
 from classify.classifyconfig import ClassifyConfig
 from build.buildconfig import BuildConfig
-
+from evaluate.evaluateconfig import EvaluateConfig
 
 CONFIG_FILENAME = "classifier.yaml"
 CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
@@ -30,6 +30,7 @@ class Config:
     train = attr.ib()
     classify_tracking = attr.ib()
     classify = attr.ib()
+    evaluate = attr.ib()
     excluded_folders = attr.ib()
     reprocess = attr.ib()
     previews_colour_map = attr.ib()
@@ -65,6 +66,7 @@ class Config:
             train=TrainConfig.load(raw["train"], base_folder),
             classify_tracking=TrackingConfig.load(raw["classify_tracking"]),
             classify=ClassifyConfig.load(raw["classify"], base_folder),
+            evaluate=EvaluateConfig.load(raw["evaluate"], base_folder),
             excluded_folders=raw["excluded_folders"],
             reprocess=raw["reprocess"],
             previews_colour_map=raw["previews_colour_map"],

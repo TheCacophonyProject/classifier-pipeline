@@ -58,6 +58,11 @@ class CPTVFileProcessor:
 
     def process_folder(self, folder_path, worker_pool_args=None, **kwargs):
         """Processes all files within a folder."""
+        if not os.path.exists(folder_path):
+            logging.exception(
+                "Warning - folder {} does not exist anymore".format(folder_path)
+            )
+            return
 
         logging.info("processing %s", folder_path)
 
