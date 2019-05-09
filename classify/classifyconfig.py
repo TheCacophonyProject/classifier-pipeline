@@ -43,3 +43,12 @@ class ClassifyConfig:
             ),
             classify_folder=path.join(base_folder, classify["classify_folder"]),
         )
+
+    @classmethod
+    def get_defaults(cls):
+         return cls(
+            meta_to_stdout = False,
+            model=None,
+            preview="none",
+            classify_folder= "classify",
+        )

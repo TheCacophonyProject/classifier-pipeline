@@ -56,6 +56,7 @@ class TrackingConfig:
 
     @classmethod
     def load(cls, tracking):
+
         return cls(
             background_calc=ml_tools.config.parse_options_param(
                 "background_calc",
@@ -90,6 +91,38 @@ class TrackingConfig:
             aoi_min_mass=tracking["areas_of_interest"]["min_mass"],
             aoi_pixel_variance=tracking["areas_of_interest"]["pixel_variance"],
             verbose=tracking["verbose"],
+        )
+
+    @classmethod
+    def get_defaults(cls):
+        return cls(
+            background_calc="preview",
+            ignore_frames= 2,
+            temp_thresh= 2900,
+            delta_thresh= 20,
+            threshold_percentile= 99.9,
+            min_threshold= 30,
+            max_threshold= 50,
+            max_mean_temperature_threshold= 10000,
+            max_temperature_range_threshold= 10000,
+            static_background_threshold= 4.0,
+            edge_pixels= 1,
+            frame_padding= 4,
+            dilation_pixels= 2,
+            remove_track_after_frames= 9,
+            track_smoothing= False,
+            high_quality_optical_flow= False,
+            flow_threshold= 40,
+            max_tracks= 10,
+            aoi_min_mass=4.0,
+            aoi_pixel_variance= 2.0,
+            cropped_regions_strategy= "cautious",
+            track_overlap_ratio= 0.5,
+            min_duration_secs= 3.0,
+            track_min_offset= 4.0,
+            track_min_delta= 1.0,
+            track_min_mass= 2.0,
+            verbose= False,
         )
 
     def as_dict(self):

@@ -8,6 +8,8 @@ from track.trackingconfig import TrackingConfig
 from track.extractconfig import ExtractConfig
 from train.config import TrainConfig
 from classify.classifyconfig import ClassifyConfig
+from build.buildconfig import BuildConfig
+
 
 CONFIG_FILENAME = "classifier.yaml"
 CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
@@ -15,8 +17,14 @@ CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
 
 @attr.s
 class Config:
+
+    DEFAULT_LABELS = ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
+    EXCLUDED_FOLDERS = ['untagged', 'unidentified']
+
     source_folder = attr.ib()
     tracks_folder = attr.ib()
+    labels = attr.ib()
+    build = attr.ib()
     tracking = attr.ib()
     extract = attr.ib()
     train = attr.ib()
@@ -38,11 +46,17 @@ class Config:
     @classmethod
     def load_from_stream(cls, stream):
         raw = yaml.safe_load(stream)
-
+        default = Config.get_defaults()
         # "classify_tracking" params are overrides, add other parameters from "tracking"
         deep_copy_map_if_key_not_exist(raw["tracking"], raw["classify_tracking"])
-
-        base_folder = path.expanduser(raw["base_data_folder"])
+        deep_copy_map_if_key_not_exist(default.as_dict(), raw)
+        base_folder = raw.get("base_data_folder")
+        if base_folder is None:
+             raise FileNotFoundError(
+                "base_data_folder not found in configuration file"
+        )
+        base_folder = path.expanduser(base_folder)
+    
         return cls(
             source_folder=path.join(base_folder, raw["source_folder"]),
             tracks_folder=path.join(base_folder, raw.get("tracks_folder", "tracks")),
@@ -56,8 +70,36 @@ class Config:
             previews_colour_map=raw["previews_colour_map"],
             use_gpu=raw["use_gpu"],
             worker_threads=raw["worker_threads"],
+            labels=raw["labels"],
+            build=BuildConfig.load(raw["build"]),
         )
 
+
+    @classmethod
+    def get_defaults(cls):
+        return cls(
+            source_folder="",
+            tracks_folder="tracks",
+            labels=Config.DEFAULT_LABELS,
+            excluded_folders=Config.EXCLUDED_FOLDERS,
+            reprocess=True,
+            previews_colour_map="custom_colormap.dat",
+            use_gpu=False,
+            worker_threads=0,
+            build = BuildConfig.get_defaults(),
+            tracking=TrackingConfig.get_defaults(),
+            extract=None,
+            train=None,
+            classify_tracking=TrackingConfig.get_defaults(),
+            classify=ClassifyConfig.get_defaults(),
+         #   extract=ExtractConfig.load(raw["extract"]),
+         #   train=TrainConfig.load(raw["train"], base_folder),
+         #   classify_tracking=TrackingConfig.load(raw["classify_tracking"]),
+         #   classify=ClassifyConfig.load(raw["classify"], base_folder),
+        )
+
+    def as_dict(self):
+        return attr.asdict(self)
 
 def find_config():
     for directory in CONFIG_DIRS:
@@ -70,7 +112,6 @@ def find_config():
         )
     )
 
-
 def parse_options_param(name, value, options):
     if value.lower() not in options:
         raise Exception(
@@ -80,7 +121,6 @@ def parse_options_param(name, value, options):
         )
     return value.lower()
 
-
 def deep_copy_map_if_key_not_exist(from_map, to_map):
     for key in from_map:
         if isinstance(from_map[key], dict):
@@ -89,3 +129,4 @@ def deep_copy_map_if_key_not_exist(from_map, to_map):
             deep_copy_map_if_key_not_exist(from_map[key], to_map[key])
         elif key not in to_map:
             to_map[key] = from_map[key]
+
