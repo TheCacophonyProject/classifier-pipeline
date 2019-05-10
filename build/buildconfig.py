@@ -77,7 +77,7 @@ class BuildConfig:
             test_set_count=300,
             test_set_bins=10,
         )
-        
+
     def validate(self):
         return True
 

@@ -156,6 +156,6 @@ class TrackingConfig:
 
     def validate(self):
         return True
-        
+
     def as_dict(self):
         return attr.asdict(self)

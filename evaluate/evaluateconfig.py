@@ -47,6 +47,6 @@ class EvaluateConfig:
             new_visit_threshold=180,
             null_tags=["false-positive", "none", "no-tag"],
         )
-        
+
     def validate(self):
         return True

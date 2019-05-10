@@ -14,11 +14,12 @@ from evaluate.evaluateconfig import EvaluateConfig
 CONFIG_FILENAME = "classifier.yaml"
 CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
 
-class DefaultConfig:
 
-        def get_defaults(cls):
-            """ The function to get default config. """
-            raise Exception("get_defaults method must be overwritten in sub class.")
+class DefaultConfig:
+    def get_defaults(cls):
+        """ The function to get default config. """
+        raise Exception("get_defaults method must be overwritten in sub class.")
+
 
 @attr.s
 class Config(DefaultConfig):

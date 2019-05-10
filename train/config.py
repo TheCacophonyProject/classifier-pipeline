@@ -23,6 +23,7 @@ import attr
 
 import ml_tools.config
 
+
 @attr.s
 class TrainConfig:
     hyper_params = attr.ib()
@@ -57,6 +58,6 @@ class TrainConfig:
             train_dir="train",
             epochs=30,
         )
-        
+
     def validate(self):
         return True
