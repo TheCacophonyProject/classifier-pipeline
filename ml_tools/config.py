@@ -25,7 +25,6 @@ class DefaultConfig:
         raise Exception("validate method must be overwritten in sub class.")
 
 
-
 @attr.s
 class Config(DefaultConfig):
 
