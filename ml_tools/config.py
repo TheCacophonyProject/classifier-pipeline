@@ -20,6 +20,11 @@ class DefaultConfig:
         """ The function to get default config. """
         raise Exception("get_defaults method must be overwritten in sub class.")
 
+    def validate(self):
+        """ The function to get default config. """
+        raise Exception("validate method must be overwritten in sub class.")
+
+
 
 @attr.s
 class Config(DefaultConfig):
