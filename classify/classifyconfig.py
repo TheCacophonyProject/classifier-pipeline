@@ -46,9 +46,10 @@ class ClassifyConfig:
 
     @classmethod
     def get_defaults(cls):
-         return cls(
-            meta_to_stdout = False,
-            model=None,
-            preview="none",
-            classify_folder= "classify",
+        return cls(
+            meta_to_stdout=False, model=None, preview="none", classify_folder="classify"
         )
+
+    def validate(self):
+        if self.model is None:
+            raise KeyError("model not found in configuration file")

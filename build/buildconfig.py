@@ -24,8 +24,6 @@ import yaml
 
 from ml_tools.previewer import Previewer
 
-DEFAULT_BIN_CAP = 1.5
-
 
 @attr.s
 class BuildConfig:
@@ -45,36 +43,44 @@ class BuildConfig:
     @classmethod
     def load(cls, build):
         return cls(
-            banned_clips_file= build["banned_clips_file"],
-            clip_end_date = dateutil.parser.parse(build["clip_end_date"]) if build["clip_end_date"] else None,
-            cap_bin_weight =build["cap_bin_weight"],
-            use_previous_split = build["use_previous_split"],
-            banned_clips = load_banned_clips_file(build["banned_clips_file"]),
-            excluded_trap = build["excluded_trap"],
-            label_weights = build["label_weights"],
-            test_min_mass = build["test_min_mass"],
-            train_min_mass = build["train_min_mass"],
-            max_validation_set_track_duration = build["max_validation_set_track_duration"],
-            test_set_count = build["test_set_count"],
-            test_set_bins = build["test_set_bins"],
+            banned_clips_file=build["banned_clips_file"],
+            clip_end_date=dateutil.parser.parse(build["clip_end_date"])
+            if build["clip_end_date"]
+            else None,
+            cap_bin_weight=build["cap_bin_weight"],
+            use_previous_split=build["use_previous_split"],
+            banned_clips=load_banned_clips_file(build["banned_clips_file"]),
+            excluded_trap=build["excluded_trap"],
+            label_weights=build["label_weights"],
+            test_min_mass=build["test_min_mass"],
+            train_min_mass=build["train_min_mass"],
+            max_validation_set_track_duration=build[
+                "max_validation_set_track_duration"
+            ],
+            test_set_count=build["test_set_count"],
+            test_set_bins=build["test_set_bins"],
         )
 
     @classmethod
     def get_defaults(cls):
         return cls(
-            banned_clips_file= 1.5,
-            clip_end_date = None,
-            cap_bin_weight =1.5,
-            use_previous_split =True,
-            banned_clips =None,
-            excluded_trap =True,
-            label_weights =None,
-            test_min_mass = 30,
-            train_min_mass = 20,
-            max_validation_set_track_duration = 3* 60,
-            test_set_count = 300,
-            test_set_bins = 10,
+            banned_clips_file=None,
+            clip_end_date=None,
+            cap_bin_weight=1.5,
+            use_previous_split=True,
+            banned_clips=None,
+            excluded_trap=True,
+            label_weights=None,
+            test_min_mass=30,
+            train_min_mass=20,
+            max_validation_set_track_duration=3 * 60,
+            test_set_count=300,
+            test_set_bins=10,
         )
+        
+    def validate(self):
+        return True
+
 
 def load_banned_clips_file(filename):
     if not filename:
@@ -82,9 +88,7 @@ def load_banned_clips_file(filename):
     with open(filename) as stream:
         return load_banned_clips(stream)
 
+
 def load_banned_clips(stream):
     raw = yaml.safe_load(stream)
     return raw["clips"]
-
-
-

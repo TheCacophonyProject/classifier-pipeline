@@ -19,7 +19,6 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import attr
 
-
 @attr.s
 class ExtractConfig:
 
@@ -36,3 +35,15 @@ class ExtractConfig:
             preview=extract["preview"],
             hints_file=extract["hints_file"],
         )
+
+    @classmethod
+    def get_defaults(cls):
+        return cls(
+            enable_compression=False,
+            include_filtered_channel=False,
+            preview="tracking",
+            hints_file="hints.txt",
+        )
+
+    def validate(self):
+        return True

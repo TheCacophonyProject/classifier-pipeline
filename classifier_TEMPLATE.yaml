@@ -24,6 +24,10 @@ reprocess: True
 # Note: This is should be a full path. It is not relative to the # base_data_folder.
 # previews_colour_map: "custom_colormap.dat"
 
+
+# Labels 
+labels : ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
+
 # Number of worker threads to use.  0 disables worker pool and forces a single thread.
 worker_threads: 0
 
@@ -214,5 +218,48 @@ evaluate:
     # false positive's and 'none' can be mapped to the same label as they represent the same idea.
     null_tags: ["false-positive", "none", "no-tag"]
 
-    #classes
-    classes: ["bird", "possum", "rat", "hedgehog", "stoat", "none"]
+build:
+    #file containing clips to be banned relative to running path
+    banned_clips_file: "excluded_files.yml"
+
+    # uses split from previous run
+    use_previous_split: True
+
+
+    # if true removes any trapped animal footage from dataset.
+    # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
+    # however, bin weighting will generally take care of the excessive footage problem.
+    excluded_trap: True
+
+    # sets a maximum number of segments per bin, where the cap is this many standard deviations above the norm.
+    # bins with more than this number of segments will be weighted lower so that their segments are not lost, but
+    # will be sampled less frequently.
+    cap_bin_weight: 1.5
+
+    # adjusts the weight for each animal class.  Setting this lower for animals that are less represented can help
+    # with training, otherwise the few examples we have will be used excessively.  This also helps build a prior for
+    # the class suggesting that the class is more or less likely.  For example bumping up the human weighting will cause
+    # the classifier lean towards guessing human when it is not sure.
+
+    # xxx this doesn't actually work, and should be removed.
+    label_weights: {"bird-kiwi": 0.1}
+
+    # clips after this date will be ignored.
+    # note: this is based on the UTC date.
+    clip_end_date: "2019-12-31"
+
+    # minimum average mass for test segment
+    test_min_mass: 30
+
+    train_min_mass: 20
+
+    # any day with a track this number of second or longer will be excluded from the validation set.
+    # this is because it would be more useful to train on the long track, and we don't want the track to dominate the
+    # validation set (otherwise a single track could end up being 50% of the data)
+    max_validation_set_track_duration: 120
+
+    # number of segments to include in test set for each class (multiplied by label weights)
+    test_set_count: 300
+
+    # minimum number of bins used for test set
+    test_set_bins: 10

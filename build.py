@@ -18,13 +18,13 @@ from ml_tools.config import Config
 from ml_tools.dataset import Dataset, dataset_db_path
 
 
-filtered_stats = {"confidence": 0, "trap": 0, "banned": 0, "date": 0, "tags":0}
+filtered_stats = {"confidence": 0, "trap": 0, "banned": 0, "date": 0, "tags": 0}
 
 
 def ignore_track(clip_meta, track_meta):
     # some clips are banned for various reasons
     source = os.path.basename(clip_meta["filename"])
-    if source in banned_clips:
+    if banned_clips and source in banned_clips:
         filtered_stats["banned"] += 1
         return True
 
@@ -33,7 +33,10 @@ def ignore_track(clip_meta, track_meta):
         return True
 
     # filter by date
-    if dateutil.parser.parse(clip_meta["start_time"]).date() > clip_end_date.date():
+    if (
+        clip_end_date
+        and dateutil.parser.parse(clip_meta["start_time"]).date() > clip_end_date.date()
+    ):
         filtered_stats["date"] += 1
         return True
 
@@ -201,7 +204,11 @@ def split_dataset_days(build_config, prefill_bins=None):
                 if sample not in dataset.tracks_by_bin:
                     continue
                 # this happens if we changed what a 'heavy' bin is.
-                if is_heavy_bin(sample, max_bin_segments, build_config.max_validation_set_track_duration):
+                if is_heavy_bin(
+                    sample,
+                    max_bin_segments,
+                    build_config.max_validation_set_track_duration,
+                ):
                     continue
 
                 validation.add_tracks(dataset.tracks_by_bin[sample])
@@ -209,14 +216,18 @@ def split_dataset_days(build_config, prefill_bins=None):
                 validation.filter_segments(
                     build_config.test_min_mass, ignore_labels=["false-positive"]
                 )
-                test.filter_segments(build_config.test_min_mass, ignore_labels=["false-positive"])
+                test.filter_segments(
+                    build_config.test_min_mass, ignore_labels=["false-positive"]
+                )
 
                 available_bins.remove(sample)
                 used_bins[label].append(sample)
 
             for bin_id in available_bins:
                 train.add_tracks(dataset.tracks_by_bin[bin_id])
-                train.filter_segments(build_config.train_min_mass, ignore_labels=["false-positive"])
+                train.filter_segments(
+                    build_config.train_min_mass, ignore_labels=["false-positive"]
+                )
 
     # assign bins to test and validation sets
     # if we previously added bins from another dataset we are simply filling in the gaps here.
@@ -228,7 +239,9 @@ def split_dataset_days(build_config, prefill_bins=None):
         # set as they will be subfiltered down and there is no need to waste that much data.
         heavy_bins = set()
         for bin_id in available_bins:
-            if is_heavy_bin(bin_id, max_bin_segments, build_config.max_validation_set_track_duration):
+            if is_heavy_bin(
+                bin_id, max_bin_segments, build_config.max_validation_set_track_duration
+            ):
                 heavy_bins.add(bin_id)
 
         available_bins -= heavy_bins
@@ -241,9 +254,14 @@ def split_dataset_days(build_config, prefill_bins=None):
             )
         )
 
-        required_samples = build_config.test_set_count * build_config.label_weights.get(label, 1.0)
-        required_bins = build_config.test_set_bins * build_config.label_weights.get(
-            label, 1.0
+        weight = (
+            build_config.label_weights.get(label, 1.0)
+            if build_config.label_weights
+            else 1.0
+        )
+        required_samples = build_config.test_set_count * weight
+        required_bins = (
+            build_config.test_set_bins * weight
         )  # make sure there is some diversity
         required_bins = max(4, required_bins)
 
@@ -259,8 +277,12 @@ def split_dataset_days(build_config, prefill_bins=None):
             validation.add_tracks(dataset.tracks_by_bin[sample])
             test.add_tracks(dataset.tracks_by_bin[sample])
 
-            validation.filter_segments(build_config.test_min_mass, ignore_labels=["false-positive"])
-            test.filter_segments(build_config.test_min_mass, ignore_labels=["false-positive"])
+            validation.filter_segments(
+                build_config.test_min_mass, ignore_labels=["false-positive"]
+            )
+            test.filter_segments(
+                build_config.test_min_mass, ignore_labels=["false-positive"]
+            )
 
             available_bins.remove(sample)
             used_bins[label].append(sample)
@@ -272,7 +294,9 @@ def split_dataset_days(build_config, prefill_bins=None):
 
         for bin_id in available_bins:
             train.add_tracks(dataset.tracks_by_bin[bin_id])
-            train.filter_segments(build_config.train_min_mass, ignore_labels=["false-positive"])
+            train.filter_segments(
+                build_config.train_min_mass, ignore_labels=["false-positive"]
+            )
 
     print("Segments per class:")
     print("-" * 90)
@@ -282,13 +306,16 @@ def split_dataset_days(build_config, prefill_bins=None):
     # if we have lots of segments on a single day, reduce the weight so we don't overtrain on this specific
     # example.
     train.balance_bins(max_bin_segments)
-    validation.balance_bins(bin_segment_mean + bin_segment_std * build_config.cap_bin_weight)
+    validation.balance_bins(
+        bin_segment_mean + bin_segment_std * build_config.cap_bin_weight
+    )
 
     # balance out the classes
     train.balance_weights(weight_modifiers=build_config.label_weights)
     validation.balance_weights(weight_modifiers=build_config.label_weights)
     test.balance_resample(
-        weight_modifiers=build_config.label_weights, required_samples=build_config.test_set_count
+        weight_modifiers=build_config.label_weights,
+        required_samples=build_config.test_set_count,
     )
 
     # display the dataset summary
@@ -322,15 +349,17 @@ def load_config():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     args = parser.parse_args()
-    config =  Config.load_from_file(args.config_file)
+    config = Config.load_from_file(args.config_file)
     set_globals_from_config(config)
     return config
+
 
 def set_globals_from_config(config):
     global banned_clips, included_labels, clip_end_date
     banned_clips = config.build.banned_clips
     included_labels = config.labels
     clip_end_date = config.build.clip_end_date
+
 
 def main():
     init_logging()
@@ -367,7 +396,7 @@ def main():
     print("Splitting data set into train / validation")
     if build_config.use_previous_split:
         split = get_bin_split("template.dat")
-        datasets = split_dataset_days(build_config,split)
+        datasets = split_dataset_days(build_config, split)
     else:
         datasets = split_dataset_days(build_config)
 

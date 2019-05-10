@@ -31,7 +31,6 @@ class EvaluateConfig:
     show_extended_evaluation = attr.ib()
     new_visit_threshold = attr.ib()
     null_tags = attr.ib()
-    classes = attr.ib()
 
     @classmethod
     def load(cls, classify, base_folder):
@@ -39,5 +38,15 @@ class EvaluateConfig:
             show_extended_evaluation=classify["show_extended_evaluation"],
             new_visit_threshold=classify["new_visit_threshold"],
             null_tags=classify["null_tags"],
-            classes=classify["classes"],
         )
+
+    @classmethod
+    def get_defaults(cls):
+        return cls(
+            show_extended_evaluation=False,
+            new_visit_threshold=180,
+            null_tags=["false-positive", "none", "no-tag"],
+        )
+        
+    def validate(self):
+        return True
