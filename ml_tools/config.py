@@ -8,7 +8,7 @@ from track.trackingconfig import TrackingConfig
 from track.extractconfig import ExtractConfig
 from train.config import TrainConfig
 from classify.classifyconfig import ClassifyConfig
-from build.buildconfig import BuildConfig
+from build_data.buildconfig import BuildConfig
 from evaluate.evaluateconfig import EvaluateConfig
 
 CONFIG_FILENAME = "classifier.yaml"
