@@ -57,12 +57,22 @@ class Track:
 
         # the tag for this track
         self.tag = "unknown"
+        self.prev_frame = None
 
-    def add_frame(self, bounds: Region):
+    def load_meta(self, track_meta):
+        track.id = track_meta["id"]
+
+    def add_frame(self, bounds: Region, frame_number=None):
         """
         Adds a new point in time bounds and mass to track
         :param bounds: new bounds region
         """
+
+        if prev_frame and frame_number:
+            frame_diff = frame_number - prev_frame - 1
+            for _ in range(frame_diff):
+                self.add_black_frame()
+
         self.bounds_history.append(bounds.copy())
         self.frames_since_target_seen = 0
 

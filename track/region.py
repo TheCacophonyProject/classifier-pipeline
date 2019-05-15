@@ -59,3 +59,10 @@ class Region(Rectangle):
             self.frame_index,
             self.was_cropped,
         )
+
+
+def region_from_json(region_bounds):
+    width = region_bounds[2] - region_bounds[0]
+    height = region_bounds[3] - region_bounds[1]
+    bounds = Region(region_bounds[0], region_bounds[1], width, height)
+    return bounds
