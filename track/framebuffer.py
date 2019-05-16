@@ -36,6 +36,39 @@ class FrameBuffer:
     @property
     def has_flow(self):
         return self.flow is not None and len(self.flow) != 0
+ 
+    def get_frame_channels(self, region, frame_number):
+        """
+        Gets frame channels for track at given frame number.  If frame number outside of track's lifespan an exception
+        is thrown.  Requires the frame_buffer to be filled.
+        :param track: the track to get frames for.
+        :param frame_number: the frame number where 0 is the first frame of the track.
+        :return: numpy array of size [channels, height, width] where channels are thermal, filtered, u, v, mask
+        """
+
+        if frame_number < 0 or frame_number >= len(self.thermal):
+            raise ValueError(
+                "Frame {} is out of bounds for track with {} frames".format(
+                    frame_number, len(self.thermal)
+                )
+            )
+
+        thermal = region.subimage(self.thermal[frame_number])
+        filtered = region.subimage(self.filtered[frame_number])
+        flow = region.subimage(self.flow[frame_number])
+        mask = region.subimage(self.mask[frame_number])
+
+        # make sure only our pixels are included in the mask.
+        mask[mask != region.id] = 0
+        mask[mask > 0] = 1
+
+        # stack together into a numpy array.
+        # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
+        frame = np.int16(
+            np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0)
+        )
+
+        return frame
 
     def generate_optical_flow(self, opt_flow, flow_threshold=40):
         """

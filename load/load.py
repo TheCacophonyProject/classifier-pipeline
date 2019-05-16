@@ -3,17 +3,11 @@ Processes a CPTV file identifying and tracking regions of interest, and saving t
 """
 
 import argparse
-import logging
-import os
-
 import cv2
 
 from ml_tools.logs import init_logging
-from ml_tools import trackdatabase
-from ml_tools import tools
 from ml_tools.config import Config
-from track.cptvtrackextractor import CPTVTrackExtractor
-
+from .cliploader import ClipLoader
 
 def parse_params():
     parser = argparse.ArgumentParser()
@@ -59,48 +53,47 @@ def parse_params():
     if args.verbose:
         config.extract.verbose = True
 
-    return config
+    return config,args
 
 
+def load_clips(config, target):
 
-def load_clips(config, target)
-    
-    process_all(config.source_folder)
+    loader = ClipLoader(config, config.tracking)
+    loader.process_all(config.source_folder)
     # setup extractor
-    extractor = CPTVTrackExtractor(config, config.tracking)
+    # extractor = CPTVTrackExtractor(config, config.tracking)
 
+    # if os.path.splitext(args.target)[1].lower() == ".cptv":
+    #     # run single source
+    #     source_file = tools.find_file_from_cmd_line(config.source_folder, target)
+    #     if source_file is None:
+    #         return
+    #     logging.info("Processing file '" + source_file + "'")
+    #     tag = os.path.basename(os.path.dirname(source_file))
+    #     extractor.process_file(source_file, tag=tag)
+    #     return
 
-    if os.path.splitext(args.target)[1].lower() == ".cptv":
-        # run single source
-        source_file = tools.find_file_from_cmd_line(config.source_folder, target)
-        if source_file is None:
-            return
-        logging.info("Processing file '" + source_file + "'")
-        tag = os.path.basename(os.path.dirname(source_file))
-        extractor.process_file(source_file, tag=tag)
-        return
+    # if args.target.lower() == "test":
+    #     logging.info("Running test suite")
+    #     extractor.run_tests(args.source_folder, args.test_file)
+    #     return
 
-    if args.target.lower() == "test":
-        logging.info("Running test suite")
-        extractor.run_tests(args.source_folder, args.test_file)
-        return
+    # logging.info('Processing tag "{0}"'.format(args.target))
 
-    logging.info('Processing tag "{0}"'.format(args.target))
-
-    if args.target.lower() == "all":
-        extractor.clean_all()
-        extractor.process_all(config.source_folder)
-        return
-    if args.target.lower() == "clean":
-        extractor.clean_all()
-        return
-    else:
-        extractor.process_folder(
-            os.path.join(config.source_folder, args.target),
-            tag=args.target,
-            worker_pool_args=(trackdatabase.HDFS_LOCK,),
-        )
-        return
+    # if args.target.lower() == "all":
+    #     extractor.clean_all()
+    #     extractor.process_all(config.source_folder)
+    #     return
+    # if args.target.lower() == "clean":
+    #     extractor.clean_all()
+    #     return
+    # else:
+    #     extractor.process_folder(
+    #         os.path.join(config.source_folder, args.target),
+    #         tag=args.target,
+    #         worker_pool_args=(trackdatabase.HDFS_LOCK,),
+    #     )
+    #     return
 
 
 def print_opencl_info():
@@ -113,9 +106,8 @@ def print_opencl_info():
 
 
 def main():
-    config = parse_params()
+    config,args = parse_params()
     load_clips(config, args.target)
-
 
 
 if __name__ == "__main__":

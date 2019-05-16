@@ -1,16 +1,23 @@
 from cptv import CPTVReader
 import cv2
+import pytz
 import numpy as np
+import logging
+from ml_tools.tools import Rectangle
 from track.framebuffer import FrameBuffer
+from track.track import Track
+import datetime
+
 
 class Clip:
-  	PREVIEW = "preview"
+    PREVIEW = "preview"
+    FRAMES_PER_SECOND = 9
 
-  	FRAMES_PER_SECOND = 9
     def __init__(self, trackconfig):
-
+        self.tracks = []
+        self.background_is_preview = trackconfig.background_calc == Clip.PREVIEW
         self.config = trackconfig
-
+        self.frames_per_second = Clip.FRAMES_PER_SECOND
         # start time of video
         self.video_start_time = None
         # name of source file
@@ -24,6 +31,9 @@ class Clip:
 
         # this buffers store the entire video in memory and are required for fast track exporting
         self.frame_buffer = FrameBuffer()
+        self.background_stats = {}
+        self.disable_background_subtraction = {}
+        self.crop_rectangle = None
 
     def load_cptv(self, filename):
         """
@@ -36,10 +46,10 @@ class Clip:
             local_tz = pytz.timezone("Pacific/Auckland")
             self.video_start_time = reader.timestamp.astimezone(local_tz)
             self.preview_secs = reader.preview_secs
-            self.stats.update(self.get_video_stats())
+            # self.stats.update(self.get_video_stats())
             # we need to load the entire video so we can analyse the background.
-            frames = [frame.pix for frame in reader]
-            self.frame_buffer.thermal = frames
+            frames = [np.float32(frame.pix) for frame in reader]
+            self.frame_buffer.thermal = np.float32(frames)
             edge = self.config.edge_pixels
             self.crop_rectangle = Rectangle(
                 edge,
@@ -47,20 +57,24 @@ class Clip:
                 reader.x_resolution - 2 * edge,
                 reader.y_resolution - 2 * edge,
             )
-def parse_clip(self):
-    	    # for now just always calculate as we are using the stats...
-        background, background_stats = self.process_background(frames)
 
-        if self.config.background_calc == self.PREVIEW:
+    def parse_clip(self):
+        # for now just always calculate as we are using the stats...
+        frames = self.frame_buffer.thermal
+
+        # background np.float64[][] filtered calculated here and stats
+        background = self._background_from_whole_clip(frames)
+
+        if self.background_is_preview:
             if self.preview_secs > 0:
-                self.background_is_preview = True
-                background = self.calculate_preview(frames)
+                # background np.int32[][]
+                background = self._background_from_preview(frames)
             else:
                 logging.info(
                     "No preview secs defined for CPTV file - using statistical background measurement"
                 )
 
-   	# create optical flow
+        # create optical flow
         self.opt_flow = cv2.createOptFlow_DualTVL1()
         self.opt_flow.setUseInitialFlow(True)
         if not self.config.high_quality_optical_flow:
@@ -76,30 +90,23 @@ def parse_clip(self):
             self._process_frame(frame, background)
             self.frame_on += 1
 
-   def process_background(self, frames):
-        background, background_stats = self.analyse_background(frames)
-        is_static_background = (
-            background_stats.background_deviation
-            < self.config.static_background_threshold
+        self.generate_optical_flow()
+
+    def _background_from_preview(self, frame_list):
+        number_frames = (
+            self.preview_secs * self.frames_per_second - self.config.ignore_frames
         )
+        if not number_frames < len(frame_list):
+            logging.error("Video consists entirely of preview")
+            number_frames = len(frame_list)
+        frames = frame_list[0:number_frames]
+        background = np.average(frames, axis=0)
+        background = np.int32(np.rint(background))
+        self.mean_background_value = np.average(background)
+        self.threshold = self.config.delta_thresh
+        return background
 
-        self.stats["threshold"] = background_stats.threshold
-        self.stats["average_background_delta"] = background_stats.background_deviation
-        self.stats["average_delta"] = background_stats.average_delta
-        self.stats["mean_temp"] = background_stats.mean_temp
-        self.stats["max_temp"] = background_stats.max_temp
-        self.stats["min_temp"] = background_stats.min_temp
-        self.stats["is_static"] = is_static_background
-
-        self.threshold = background_stats.threshold
-
-        # if the clip is moving then remove the estimated background and just use a threshold.
-        if not is_static_background or self.disable_background_subtraction:
-            background = None
-
-        return background, background_stats
-
-    def analyse_background(self, frames):
+    def _background_from_whole_clip(self, frames):
         """
         Runs through all provided frames and estimates the background, consuming all the source frames.
         :param frames_list: a list of numpy array frames
@@ -110,9 +117,10 @@ def parse_clip(self):
         # for this reason we must return all the frames so they can be reused
 
         frames = np.float32(frames)
+        # [][] array
         background = np.percentile(frames, q=10, axis=0)
         filtered = np.float32(
-            [self.get_filtered(frame, background) for frame in frames]
+            [self._get_filtered_frame(frame, background) for frame in frames]
         )
 
         delta = np.asarray(frames[1:], dtype=np.float32) - np.asarray(
@@ -133,15 +141,49 @@ def parse_clip(self):
         if threshold > self.config.max_threshold:
             threshold = self.config.max_threshold
 
-        background_stats = BackgroundAnalysis()
-        background_stats.threshold = float(threshold)
-        background_stats.average_delta = float(average_delta)
-        background_stats.min_temp = float(np.min(frames))
-        background_stats.max_temp = float(np.max(frames))
-        background_stats.mean_temp = float(np.mean(frames))
-        background_stats.background_deviation = float(np.mean(np.abs(filtered)))
+        self.background_stats = BackgroundAnalysis()
+        self.background_stats.threshold = float(threshold)
+        self.background_stats.average_delta = float(average_delta)
+        self.background_stats.min_temp = float(np.min(frames))
+        self.background_stats.max_temp = float(np.max(frames))
+        self.background_stats.mean_temp = float(np.mean(frames))
+        self.background_stats.background_deviation = float(np.mean(np.abs(filtered)))
+        self.background_stats.is_static_background = (
+            self.background_stats.background_deviation
+            < self.config.static_background_threshold
+        )
 
-        return background, background_stats
+        if (
+            not self.background_stats.is_static_background
+            or self.disable_background_subtraction
+        ):
+            background = None
+
+        return background
+
+    def _get_filtered_frame(self, thermal, background=None):
+        """
+        Calculates filtered frame from thermal
+        :param thermal: the thermal frame
+        :param background: (optional) used for background subtraction
+        :return: the filtered frame
+        """
+
+        if background is None:
+            filtered = thermal - np.median(thermal) - 40
+            filtered[filtered < 0] = 0
+        elif self.background_is_preview:
+            avg_change = int(round(np.average(thermal) - self.mean_background_value))
+            filtered = thermal.copy()
+            filtered[filtered < self.config.temp_thresh] = 0
+            filtered = filtered - background - avg_change
+        else:
+            background = np.float32(background)
+            filtered = thermal - background
+            filtered[filtered < 0] = 0
+            filtered = filtered - np.median(filtered)
+            filtered[filtered < 0] = 0
+        return filtered
 
     def _process_frame(self, thermal, background=None):
         """
@@ -152,10 +194,30 @@ def parse_clip(self):
         """
 
         thermal = np.float32(thermal)
-        filtered = self.get_filtered(thermal, background)
+        filtered = self._get_filtered_frame(thermal, background)
+        frame_height, frame_width = filtered.shape
 
         mask = np.zeros(filtered.shape)
-        mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
+        edge = self.config.edge_pixels
+
+        # remove the edges of the frame as we know these pixels can be spurious value
+        edgeless_filtered = self.crop_rectangle.subimage(filtered)
+
+        thresh = np.uint8(
+            blur_and_return_as_mask(edgeless_filtered, threshold=self.threshold)
+        )
+
+        dilated = thresh
+
+        # Dilation groups interested pixels that are near to each other into one component(animal/track)
+        if self.config.dilation_pixels > 0:
+            size = self.config.dilation_pixels * 2 + 1
+            kernel = np.ones((size, size), np.uint8)
+            dilated = cv2.dilate(dilated, kernel, iterations=1)
+
+        _, small_mask, _, _ = cv2.connectedComponentsWithStats(dilated)
+
+        mask[edge: frame_height - edge, edge: frame_width - edge] = small_mask
 
         # save frame stats
         self.frame_stats_min.append(np.min(thermal))
@@ -173,52 +235,13 @@ def parse_clip(self):
                 self.opt_flow, self.config.flow_threshold
             )
 
-
-     def get_frame_channels(self, region, frame_number):
-        """
-        Gets frame channels for track at given frame number.  If frame number outside of track's lifespan an exception
-        is thrown.  Requires the frame_buffer to be filled.
-        :param track: the track to get frames for.
-        :param frame_number: the frame number where 0 is the first frame of the track.
-        :return: numpy array of size [channels, height, width] where channels are thermal, filtered, u, v, mask
-        """
-
-		# region_bounds = region_data[1]
-		# start_s = region_data[0]
-  #       bounds = Region(region_bounds[0],region_bounds[1],width,height)
-  #       frame_number = round(start_s * FRAMES_PER_SECOND) 
-
-        if frame_number < 0 or frame_number >= len(self.frame_buffer.thermal):
-            raise ValueError(
-                "Frame {} is out of bounds for track with {} frames".format(
-                    frame_number, len(self.frame_buffer.thermal)
-                )
-            )
-
-        thermal = bounds.subimage(self.frame_buffer.thermal[frame_number])
-        filtered = bounds.subimage(self.frame_buffer.filtered[frame_number])
-        flow = bounds.subimage(self.frame_buffer.flow[frame_number])
-        mask = bounds.subimage(self.frame_buffer.mask[frame_number])
-
-        # make sure only our pixels are included in the mask.
-        mask[mask != bounds.id] = 0
-        mask[mask > 0] = 1
-
-        # stack together into a numpy array.
-        # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
-        frame = np.int16(
-            np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0)
-        )
-
-        return frame
-
-    def start_and_end_time_absolute(self, start,end):
+    def start_and_end_time_absolute(self, start_s, end_s):
         return (
             self.video_start_time + datetime.timedelta(seconds=start_s),
             self.video_start_time + datetime.timedelta(seconds=end_s),
         )
 
- 	def get_stats(self):
+    def get_stats(self):
         """
         Returns statistics for this track, including how much it moves, and a score indicating how likely it is
         that this is a good track.
@@ -226,7 +249,7 @@ def parse_clip(self):
         """
 
         if len(self) <= 1:
-            return TrackMovementStatistics()
+            return track.TrackMovementStatistics()
 
         # get movement vectors
         mass_history = [int(bound.mass) for bound in self.bounds_history]
@@ -250,7 +273,7 @@ def parse_clip(self):
         delta_points = delta_std * 25.0
         score = min(movement_points, 100) + min(delta_points, 100)
 
-        stats = TrackMovementStatistics(
+        stats = track.TrackMovementStatistics(
             movement=float(movement),
             max_offset=float(max_offset),
             average_mass=float(np.mean(mass_history)),
@@ -260,3 +283,35 @@ def parse_clip(self):
         )
 
         return stats
+
+    def load_tracks(self, metadata):
+        tracks_meta = metadata["tracks"]
+        self.tracks = []
+        # get track data
+        for track_meta in tracks_meta:
+            track = Track()
+            track.load_track_from_meta(track_meta)
+
+def blur_and_return_as_mask(frame, threshold):
+    """
+    Creates a binary mask out of an image by applying a threshold.
+    Any pixels more than the threshold are set 1, all others are set to 0.
+    A blur is also applied as a filtering step
+    """
+    thresh = cv2.GaussianBlur(np.float32(frame), (5, 5), 0) - threshold
+    thresh[thresh < 0] = 0
+    thresh[thresh > 0] = 1
+    return thresh
+
+
+class BackgroundAnalysis:
+    """ Stores background analysis statistics. """
+
+    def __init__(self):
+        self.threshold = None
+        self.average_delta = None
+        self.max_temp = None
+        self.min_temp = None
+        self.mean_temp = None
+        self.background_deviation = None
+        self.is_static = True

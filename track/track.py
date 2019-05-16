@@ -20,9 +20,9 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import datetime
 import numpy as np
 from collections import namedtuple
-
 from track.region import Region
 from ml_tools.tools import Rectangle
+from ml_tools.dataset import TrackChannels
 
 
 class Track:
@@ -46,6 +46,7 @@ class Track:
 
         # frame number this track starts at
         self.start_frame = 0
+        self.end_frame = 0
         # our bounds over time
         self.bounds_history = []
         # number frames since we lost target.
@@ -54,13 +55,27 @@ class Track:
         self.vel_x = 0
         # our current estimated vertical velocity
         self.vel_y = 0
-
+        self.track_data = None
         # the tag for this track
         self.tag = "unknown"
         self.prev_frame = None
 
-    def load_meta(self, track_meta):
-        track.id = track_meta["id"]
+    def load_track_from_meta(self, track_meta, frames_per_second, buffer_frame, include_filtered_channel):
+        self.id = track_meta["id"]
+        self.track_data = []
+        regions = track_meta["positions"]
+
+        for region in regions:
+            bounds = region.region_from_json(region[1])
+            self.add_frame(bounds)
+            frame_number = round(region[0] * frames_per_second)
+
+            channels = buffer_frame.get_frame_channels(bounds, frame_number)
+
+            # zero out the filtered channel
+            if not include_filtered_channel:
+                channels[TrackChannels.filtered] = 0
+            self.track_data.append(channels)
 
     def add_frame(self, bounds: Region, frame_number=None):
         """
@@ -68,13 +83,15 @@ class Track:
         :param bounds: new bounds region
         """
 
-        if prev_frame and frame_number:
-            frame_diff = frame_number - prev_frame - 1
+        if self.prev_frame and frame_number:
+            frame_diff = frame_number - self.prev_frame - 1
             for _ in range(frame_diff):
-                self.add_black_frame()
+                self.add_blank_frame()
 
+        self.prev_frame = frame_number
         self.bounds_history.append(bounds.copy())
         self.frames_since_target_seen = 0
+        self.end_frame = frame_number
 
         if len(self) >= 2:
             self.vel_x = self.bounds_history[-1].mid_x - self.bounds_history[-2].mid_x

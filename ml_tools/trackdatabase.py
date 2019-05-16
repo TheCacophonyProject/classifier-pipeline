@@ -253,6 +253,8 @@ class TrackDatabase:
                 stats["tag"] = track.tag
                 stats["frames"] = frames
                 stats["start_frame"] = track.start_frame
+                stats["end_frame"] = track.end_frame
+
                 if start_time:
                     stats["start_time"] = start_time.isoformat()
                 if end_time:
