@@ -1,12 +1,34 @@
+"""
+classifier-pipeline - this is a server side component that manipulates cptv
+files and to create a classification model of animals present
+Copyright (C) 2018, The Cacophony Project
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+"""
+
+
+import datetime
+import logging
+import numpy as np
+import pytz
+
 from cptv import CPTVReader
 import cv2
-import pytz
-import numpy as np
-import logging
+
 from ml_tools.tools import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
-import datetime
 
 
 class Clip:
@@ -15,6 +37,8 @@ class Clip:
 
     def __init__(self, trackconfig):
         self.tracks = []
+        self._id = None
+        self.stats = {}
         self.background_is_preview = trackconfig.background_calc == Clip.PREVIEW
         self.config = trackconfig
         self.frames_per_second = Clip.FRAMES_PER_SECOND
@@ -22,7 +46,7 @@ class Clip:
         self.video_start_time = None
         # name of source file
         self.source_file = None
-
+        self.threshold = trackconfig.delta_thresh
         # per frame temperature statistics for thermal channel
         self.frame_stats_min = []
         self.frame_stats_max = []
@@ -34,6 +58,10 @@ class Clip:
         self.background_stats = {}
         self.disable_background_subtraction = {}
         self.crop_rectangle = None
+        self.mean_background_value = 0.0
+
+    def get_id(self):
+        return str(self._id)
 
     def load_cptv(self, filename):
         """
@@ -46,7 +74,7 @@ class Clip:
             local_tz = pytz.timezone("Pacific/Auckland")
             self.video_start_time = reader.timestamp.astimezone(local_tz)
             self.preview_secs = reader.preview_secs
-            # self.stats.update(self.get_video_stats())
+            self.stats.update(self.get_video_stats())
             # we need to load the entire video so we can analyse the background.
             frames = [np.float32(frame.pix) for frame in reader]
             self.frame_buffer.thermal = np.float32(frames)
@@ -58,7 +86,25 @@ class Clip:
                 reader.y_resolution - 2 * edge,
             )
 
-    def parse_clip(self):
+    def get_video_stats(self):
+        """
+        Extracts useful statics from video clip.
+        :returns: a dictionary containing the video statistics.
+        """
+        local_tz = pytz.timezone("Pacific/Auckland")
+        result = {}
+        result["date_time"] = self.video_start_time.astimezone(local_tz)
+        result["is_night"] = (
+            self.video_start_time.astimezone(local_tz).time().hour >= 21
+            or self.video_start_time.astimezone(local_tz).time().hour <= 4
+        )
+
+        return result
+
+    def parse_clip(self, metadata, include_filtered_channel):
+
+        self._id = metadata["id"]
+        self.load_tracks(metadata, include_filtered_channel)
         # for now just always calculate as we are using the stats...
         frames = self.frame_buffer.thermal
 
@@ -84,13 +130,12 @@ class Clip:
             self.opt_flow.setWarpingsNumber(3)
             self.opt_flow.setScaleStep(0.5)
 
+        self.generate_optical_flow()
         # process each frame
         self.frame_on = 0
         for frame in frames:
             self._process_frame(frame, background)
             self.frame_on += 1
-
-        self.generate_optical_flow()
 
     def _background_from_preview(self, frame_list):
         number_frames = (
@@ -103,7 +148,6 @@ class Clip:
         background = np.average(frames, axis=0)
         background = np.int32(np.rint(background))
         self.mean_background_value = np.average(background)
-        self.threshold = self.config.delta_thresh
         return background
 
     def _background_from_whole_clip(self, frames):
@@ -141,20 +185,19 @@ class Clip:
         if threshold > self.config.max_threshold:
             threshold = self.config.max_threshold
 
-        self.background_stats = BackgroundAnalysis()
-        self.background_stats.threshold = float(threshold)
-        self.background_stats.average_delta = float(average_delta)
-        self.background_stats.min_temp = float(np.min(frames))
-        self.background_stats.max_temp = float(np.max(frames))
-        self.background_stats.mean_temp = float(np.mean(frames))
-        self.background_stats.background_deviation = float(np.mean(np.abs(filtered)))
-        self.background_stats.is_static_background = (
-            self.background_stats.background_deviation
+        self.background_stats["threshold"] = float(threshold)
+        self.background_stats["average_delta"] = float(average_delta)
+        self.background_stats["min_temp"] = float(np.min(frames))
+        self.background_stats["max_temp"] = float(np.max(frames))
+        self.background_stats["mean_temp"] = float(np.mean(frames))
+        self.background_stats["background_deviation"] = float(np.mean(np.abs(filtered)))
+        self.background_stats["is_static_background"] = (
+            self.background_stats["background_deviation"]
             < self.config.static_background_threshold
         )
 
         if (
-            not self.background_stats.is_static_background
+            not self.background_stats["is_static_background"]
             or self.disable_background_subtraction
         ):
             background = None
@@ -168,7 +211,6 @@ class Clip:
         :param background: (optional) used for background subtraction
         :return: the filtered frame
         """
-
         if background is None:
             filtered = thermal - np.median(thermal) - 40
             filtered[filtered < 0] = 0
@@ -217,7 +259,7 @@ class Clip:
 
         _, small_mask, _, _ = cv2.connectedComponentsWithStats(dilated)
 
-        mask[edge: frame_height - edge, edge: frame_width - edge] = small_mask
+        mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
 
         # save frame stats
         self.frame_stats_min.append(np.min(thermal))
@@ -226,8 +268,15 @@ class Clip:
         self.frame_stats_mean.append(np.mean(thermal))
 
         # save history
-        self.frame_buffer.filtered.append(np.float32(filtered))
-        self.frame_buffer.mask.append(np.float32(mask))
+        self.frame_buffer.add_frame(np.float32(filtered), np.float32(mask))
+        # self.frame_buffer.filtered.append(np.float32(filtered))
+        # self.frame_buffer.mask.append(np.float32(mask))
+
+        activetracks = [
+            track.add_frame(self.frame_on, self.frame_buffer, self.threshold)
+            for track in self.tracks
+            if self.frame_on in track.frame_list
+        ]
 
     def generate_optical_flow(self):
         if not self.frame_buffer.has_flow:
@@ -284,13 +333,17 @@ class Clip:
 
         return stats
 
-    def load_tracks(self, metadata):
+    def load_tracks(self, metadata, include_filtered_channel):
         tracks_meta = metadata["tracks"]
         self.tracks = []
         # get track data
         for track_meta in tracks_meta:
-            track = Track()
-            track.load_track_from_meta(track_meta)
+            track = Track(self.get_id())
+            if track.load_track_from_meta(
+                track_meta, self.frames_per_second, include_filtered_channel
+            ):
+                self.tracks.append(track)
+
 
 def blur_and_return_as_mask(frame, threshold):
     """
@@ -302,16 +355,3 @@ def blur_and_return_as_mask(frame, threshold):
     thresh[thresh < 0] = 0
     thresh[thresh > 0] = 1
     return thresh
-
-
-class BackgroundAnalysis:
-    """ Stores background analysis statistics. """
-
-    def __init__(self):
-        self.threshold = None
-        self.average_delta = None
-        self.max_temp = None
-        self.min_temp = None
-        self.mean_temp = None
-        self.background_deviation = None
-        self.is_static = True

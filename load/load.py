@@ -9,6 +9,7 @@ from ml_tools.logs import init_logging
 from ml_tools.config import Config
 from .cliploader import ClipLoader
 
+
 def parse_params():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -53,7 +54,7 @@ def parse_params():
     if args.verbose:
         config.extract.verbose = True
 
-    return config,args
+    return config, args
 
 
 def load_clips(config, target):
@@ -106,7 +107,7 @@ def print_opencl_info():
 
 
 def main():
-    config,args = parse_params()
+    config, args = parse_params()
     load_clips(config, args.target)
 
 

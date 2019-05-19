@@ -1,3 +1,23 @@
+"""
+classifier-pipeline - this is a server side component that manipulates cptv
+files and to create a classification model of animals present
+Copyright (C) 2018, The Cacophony Project
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+"""
+
+
 import logging
 from os import path
 
@@ -7,8 +27,8 @@ from PIL import Image, ImageDraw, ImageFont
 from ml_tools import tools
 import ml_tools.globals as globs
 from ml_tools.mpeg_creator import MPEGCreator
-from track.trackextractor import TrackExtractor
 from track.region import Region
+from load.clip import Clip
 
 LOCAL_RESOURCES = path.join(path.dirname(path.dirname(__file__)), "resources")
 GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
@@ -84,9 +104,7 @@ class Previewer:
             )
         return globs._previewer_font_title
 
-    def export_clip_preview(
-        self, filename, tracker: TrackExtractor, track_predictions=None
-    ):
+    def export_clip_preview(self, filename, clip: Clip, track_predictions=None):
         """
         Exports a clip showing the tracking and predictions for objects within the clip.
         """
@@ -95,74 +113,78 @@ class Previewer:
 
         # increased resolution of video file.
         # videos look much better scaled up
-        if tracker.stats:
-            self.auto_max = tracker.stats["max_temp"]
-            self.auto_min = tracker.stats["min_temp"]
+        if clip.stats:
+            self.auto_max = clip.background_stats["max_temp"]
+            self.auto_min = clip.background_stats["min_temp"]
         else:
             logging.error("Do not have temperatures to use.")
             return
 
         if bool(track_predictions) and self.preview_type == self.PREVIEW_CLASSIFIED:
-            self.create_track_descriptions(tracker, track_predictions)
+            self.create_track_descriptions(clip, track_predictions)
 
-        if self.preview_type == self.PREVIEW_TRACKING and not tracker.frame_buffer.flow:
-            tracker.generate_optical_flow()
+        if self.preview_type == self.PREVIEW_TRACKING and not clip.frame_buffer.flow:
+            clip.generate_optical_flow()
 
         mpeg = MPEGCreator(filename)
 
-        for frame_number, thermal in enumerate(tracker.frame_buffer.thermal):
+        for frame_number, thermal in enumerate(clip.frame_buffer.thermal):
             if self.preview_type == self.PREVIEW_RAW:
                 image = self.convert_and_resize(thermal)
 
             if self.preview_type == self.PREVIEW_TRACKING:
-                image = self.create_four_tracking_image(
-                    tracker.frame_buffer, frame_number
-                )
+                image = self.create_four_tracking_image(clip.frame_buffer, frame_number)
                 image = self.convert_and_resize(image, 3.0, mode=Image.NEAREST)
                 draw = ImageDraw.Draw(image)
-                regions = tracker.region_history[frame_number]
-                self.add_regions(draw, regions)
-                self.add_regions(draw, regions, v_offset=120)
-                self.add_tracks(draw, tracker.tracks, frame_number)
+                # regions = [track.region_bounds for track in  clip.tracks]
+                # regions = tracker.region_history[frame_number]
+                # self.add_regions(draw, regions)
+                # self.add_regions(draw, regions, v_offset=120)
+                self.add_tracks(draw, clip.tracks, frame_number)
 
             if self.preview_type == self.PREVIEW_BOXES:
                 image = self.convert_and_resize(thermal, 4.0)
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
-                self.add_tracks(draw, tracker.tracks, frame_number)
+                self.add_tracks(draw, clip.tracks, frame_number)
 
             if self.preview_type == self.PREVIEW_CLASSIFIED:
                 image = self.convert_and_resize(thermal, 4.0)
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(
-                    draw, tracker.tracks, frame_number, track_predictions, screen_bounds
+                    draw, clip.tracks, frame_number, track_predictions, screen_bounds
                 )
 
             mpeg.next_frame(np.asarray(image))
 
             # we store the entire video in memory so we need to cap the frame count at some point.
-            if frame_number > 9 * 60 * 10:
+            if frame_number > clip.frames_per_second * 60 * 10:
                 break
         mpeg.close()
 
-    def create_individual_track_previews(self, filename, tracker: TrackExtractor):
+    def create_individual_track_previews(self, filename, clip: Clip):
         # resolution of video file.
         # videos look much better scaled up
         filename_format = path.splitext(filename)[0] + "-{}.mp4"
 
         FRAME_SIZE = 4 * 48
         frame_width, frame_height = FRAME_SIZE, FRAME_SIZE
-        for id, track in enumerate(tracker.tracks):
+        frame_buffer = clip.frame_buffer
+        for track in clip.tracks:
             video_frames = []
-            for frame_number in range(len(track.bounds_history)):
-                channels = tracker.get_track_channels(track, frame_number)
+            print(
+                "preview track {} #frames {}".format(
+                    track.get_id(), len(track.track_data)
+                )
+            )
+            for channels in track.track_data:
                 img = tools.convert_heat_to_img(channels[1], self.colourmap, 0, 350)
                 img = img.resize((frame_width, frame_height), Image.NEAREST)
                 video_frames.append(np.asarray(img))
 
-            logging.info("creating preview %s", filename_format.format(id + 1))
-            tools.write_mpeg(filename_format.format(id + 1), video_frames)
+            logging.info("creating preview %s", filename_format.format(track.get_id()))
+            tools.write_mpeg(filename_format.format(track.get_id()), video_frames)
 
     def convert_and_resize(self, image, size=None, mode=Image.BILINEAR):
         """ Converts the image to colour using colour map and resize """
@@ -180,9 +202,9 @@ class Previewer:
             )
         return image
 
-    def create_track_descriptions(self, tracker, track_predictions):
+    def create_track_descriptions(self, clip, track_predictions):
         # look for any tracks that occur on this frame
-        for _, track in enumerate(tracker.tracks):
+        for track in clip.tracks:
 
             prediction = track_predictions[track]
             # find a track description, which is the final guess of what this class is.
@@ -221,7 +243,9 @@ class Previewer:
         # look for any tracks that occur on this frame
         for index, track in enumerate(tracks):
             frame_offset = frame_number - track.start_frame
+            # if track.start_frame <= frame_number and frame_number <= track.end_frame:
             if frame_offset >= 0 and frame_offset < len(track.bounds_history) - 1:
+                # print("track {} has frame at {}".format(track.get_id(),frame_number/9.0))
                 rect = track.bounds_history[frame_offset]
                 draw.rectangle(
                     self.rect_points(rect),

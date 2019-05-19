@@ -36,7 +36,14 @@ class FrameBuffer:
     @property
     def has_flow(self):
         return self.flow is not None and len(self.flow) != 0
- 
+
+    def get_previous_filtered(self, region, frame_number):
+        previous = frame_number - 1
+        if previous < 0:
+            return None
+
+        return region.subimage(self.filtered[previous])
+
     def get_frame_channels(self, region, frame_number):
         """
         Gets frame channels for track at given frame number.  If frame number outside of track's lifespan an exception
@@ -70,6 +77,10 @@ class FrameBuffer:
 
         return frame
 
+    def add_frame(self, filtered, mask):
+        self.filtered.append(filtered)
+        self.mask.append(mask)
+
     def generate_optical_flow(self, opt_flow, flow_threshold=40):
         """
         Generate optical flow from thermal frames
@@ -78,20 +89,19 @@ class FrameBuffer:
 
         self.flow = []
 
-        height, width = self.filtered[0].shape
+        height, width = self.thermal[0].shape
         flow = np.zeros([height, width, 2], dtype=np.float32)
+        # for some reason openCV spins up lots of threads for this which really slows things down, so we
+        # cap the threads to 2
+        cv2.setNumThreads(2)
 
         current = None
         for frame in self.thermal:
-            frame = np.float32(frame)
             # strong filtering helps with the optical flow.
             threshold = np.median(frame) + flow_threshold
             next = np.uint8(np.clip(frame - threshold, 0, 255))
 
             if current is not None:
-                # for some reason openCV spins up lots of threads for this which really slows things down, so we
-                # cap the threads to 2
-                cv2.setNumThreads(2)
                 flow = opt_flow.calc(current, next, flow)
 
             current = next
