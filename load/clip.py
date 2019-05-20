@@ -233,7 +233,6 @@ class Clip:
             If specified background subtraction algorithm will be used.
         """
 
-        thermal = np.float32(thermal)
         filtered = self._get_filtered_frame(thermal, background)
         frame_height, frame_width = filtered.shape
 
@@ -267,13 +266,10 @@ class Clip:
 
         # save history
         self.frame_buffer.add_frame(filtered, mask)
-        # self.frame_buffer.filtered.append(np.float32(filtered))
-        # self.frame_buffer.mask.append(np.float32(mask))
 
         for track in self.tracks:
             if self.frame_on in track.frame_list:
                 track.add_frame(self.frame_on, self.frame_buffer, self.threshold)
-        # for track in self.tracks if self.frame_on in track.frame_list]
 
     def generate_optical_flow(self):
         if not self.frame_buffer.has_flow:

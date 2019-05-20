@@ -311,16 +311,6 @@ class Track:
         return len(self.bounds_history)
 
 
-def track_meta_is_valid(track_meta, min_confidence, excluded_tags):
-    track_data = track_meta.get("data")
-    if not track_data:
-        return False
-
-    tag = track_data.get("tag")
-    confidence = track_data.get("confidence", 0)
-    return tag and tag not in excluded_tags and confidence >= min_confidence
-
-
 TrackMovementStatistics = namedtuple(
     "TrackMovementStatistics",
     "movement max_offset score average_mass median_mass delta_std",
