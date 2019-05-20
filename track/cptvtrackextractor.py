@@ -87,8 +87,8 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         previous_filter_setting = self.disable_track_filters
         previous_background_setting = self.disable_background_subtraction
+        for folder_root, folders, _ in os.walk(root):
 
-        for _, folders, _ in os.walk(root):
             for folder in folders:
                 if folder not in self.config.excluded_folders:
                     if folder.lower() == "false-positive":
@@ -96,7 +96,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                         self.disable_background_subtraction = True
                         logging.info("Turning Track filters OFF.")
                     self.process_folder(
-                        os.path.join(root, folder),
+                        os.path.join(folder_root, folder),
                         tag=folder.lower(),
                         worker_pool_args=(trackdatabase.HDF5_LOCK,),
                     )

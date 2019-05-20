@@ -34,3 +34,14 @@ class LoadConfig:
             include_filtered_channel=extract["include_filtered_channel"],
             preview=extract["preview"],
         )
+
+    @classmethod
+    def get_defaults(cls):
+        return cls(
+            enable_compression=False,
+            include_filtered_channel=False,
+            preview="tracking",
+        )
+
+    def validate(self):
+        return True

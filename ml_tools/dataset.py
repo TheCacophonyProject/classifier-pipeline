@@ -521,13 +521,14 @@ class Dataset:
     def load_tracks(self, track_filter=None):
         """
         Loads track headers from track database with optional filter
-        :return: number of tracks added.
+        :return: [number of tracks added, total tracks].
         """
         counter = 0
-        for clip_id, track_number in self.db.get_all_track_ids():
+        track_ids = self.db.get_all_track_ids()
+        for clip_id, track_number in track_ids:
             if self.add_track(clip_id, track_number, track_filter):
                 counter += 1
-        return counter
+        return [counter, len(track_ids)]
 
     def add_tracks(self, tracks, track_filter=None):
         """

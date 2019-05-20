@@ -45,7 +45,7 @@ def main():
     args = parser.parse_args()
 
     config = Config.load_from_file(args.config_file)
-
+    config.validate()
     init_logging(args.timestamps)
 
     # parse command line arguments

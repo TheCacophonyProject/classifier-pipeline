@@ -21,6 +21,8 @@ from os import path
 
 import attr
 
+import ml_tools.config
+
 
 @attr.s
 class TrainConfig:
@@ -35,3 +37,27 @@ class TrainConfig:
             train_dir=path.join(base_data_folder, raw.get("train_dir", "train")),
             epochs=raw["epochs"],
         )
+
+    @classmethod
+    def get_defaults(cls):
+        return cls(
+            hyper_params={
+                "batch_size": 16,
+                "learning_rate": 0.0004,
+                "learning_rate_decay": 1.0,
+                "l2_reg": 0,
+                "label_smoothing": 0.1,
+                "keep_prob": 0.2,
+                "batch_norm": True,
+                "lstm_units": 256,
+                "enable_flow": True,
+                "augmentation": True,
+                "thermal_threshold": 10,
+                "scale_frequency": 0.5,
+            },
+            train_dir="train",
+            epochs=30,
+        )
+
+    def validate(self):
+        return True
