@@ -26,6 +26,7 @@ import pytz
 from cptv import CPTVReader
 import cv2
 
+import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
@@ -46,13 +47,12 @@ class Clip:
         self.video_start_time = None
         # name of source file
         self.source_file = None
-        self.threshold = trackconfig.delta_thresh
         # per frame temperature statistics for thermal channel
         self.frame_stats_min = []
         self.frame_stats_max = []
         self.frame_stats_median = []
         self.frame_stats_mean = []
-
+        self.threshold = trackconfig.delta_thresh
         # this buffers store the entire video in memory and are required for fast track exporting
         self.frame_buffer = FrameBuffer()
         self.background_stats = {}
@@ -160,7 +160,6 @@ class Clip:
         # note: unfortunately this must be done before any other processing, which breaks the streaming architecture
         # for this reason we must return all the frames so they can be reused
 
-        frames = np.float32(frames)
         # [][] array
         background = np.percentile(frames, q=10, axis=0)
         filtered = np.float32(
@@ -220,7 +219,6 @@ class Clip:
             filtered[filtered < self.config.temp_thresh] = 0
             filtered = filtered - background - avg_change
         else:
-            background = np.float32(background)
             filtered = thermal - background
             filtered[filtered < 0] = 0
             filtered = filtered - np.median(filtered)
@@ -246,7 +244,7 @@ class Clip:
         edgeless_filtered = self.crop_rectangle.subimage(filtered)
 
         thresh = np.uint8(
-            blur_and_return_as_mask(edgeless_filtered, threshold=self.threshold)
+            tools.blur_and_return_as_mask(edgeless_filtered, threshold=self.threshold)
         )
 
         dilated = thresh
@@ -268,15 +266,14 @@ class Clip:
         self.frame_stats_mean.append(np.mean(thermal))
 
         # save history
-        self.frame_buffer.add_frame(np.float32(filtered), np.float32(mask))
+        self.frame_buffer.add_frame(filtered, mask)
         # self.frame_buffer.filtered.append(np.float32(filtered))
         # self.frame_buffer.mask.append(np.float32(mask))
 
-        activetracks = [
-            track.add_frame(self.frame_on, self.frame_buffer, self.threshold)
-            for track in self.tracks
-            if self.frame_on in track.frame_list
-        ]
+        for track in self.tracks:
+            if self.frame_on in track.frame_list:
+                track.add_frame(self.frame_on, self.frame_buffer, self.threshold)
+        # for track in self.tracks if self.frame_on in track.frame_list]
 
     def generate_optical_flow(self):
         if not self.frame_buffer.has_flow:
@@ -339,19 +336,7 @@ class Clip:
         # get track data
         for track_meta in tracks_meta:
             track = Track(self.get_id())
-            if track.load_track_from_meta(
+            if track.load_track_meta(
                 track_meta, self.frames_per_second, include_filtered_channel
             ):
                 self.tracks.append(track)
-
-
-def blur_and_return_as_mask(frame, threshold):
-    """
-    Creates a binary mask out of an image by applying a threshold.
-    Any pixels more than the threshold are set 1, all others are set to 0.
-    A blur is also applied as a filtering step
-    """
-    thresh = cv2.GaussianBlur(np.float32(frame), (5, 5), 0) - threshold
-    thresh[thresh < 0] = 0
-    thresh[thresh > 0] = 1
-    return thresh

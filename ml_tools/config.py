@@ -4,6 +4,7 @@ import os.path as path
 import attr
 import yaml
 
+from load.loadconfig import LoadConfig
 from track.trackingconfig import TrackingConfig
 from track.extractconfig import ExtractConfig
 from train.config import TrainConfig
@@ -17,14 +18,14 @@ CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
 @attr.s
 class Config:
     source_folder = attr.ib()
+    loader = attr.ib()
     tracks_folder = attr.ib()
     tracking = attr.ib()
-    extract = attr.ib()
     train = attr.ib()
     classify_tracking = attr.ib()
     classify = attr.ib()
     evaluate = attr.ib()
-    excluded_folders = attr.ib()
+    excluded_tags = attr.ib()
     reprocess = attr.ib()
     previews_colour_map = attr.ib()
     use_gpu = attr.ib()
@@ -49,12 +50,12 @@ class Config:
             source_folder=path.join(base_folder, raw["source_folder"]),
             tracks_folder=path.join(base_folder, raw.get("tracks_folder", "tracks")),
             tracking=TrackingConfig.load(raw["tracking"]),
-            extract=ExtractConfig.load(raw["extract"]),
+            loader=LoadConfig.load(raw["load"]),
             train=TrainConfig.load(raw["train"], base_folder),
             classify_tracking=TrackingConfig.load(raw["classify_tracking"]),
             classify=ClassifyConfig.load(raw["classify"], base_folder),
             evaluate=EvaluateConfig.load(raw["evaluate"], base_folder),
-            excluded_folders=raw["excluded_folders"],
+            excluded_tags=raw["excluded_tags"],
             reprocess=raw["reprocess"],
             previews_colour_map=raw["previews_colour_map"],
             use_gpu=raw["use_gpu"],

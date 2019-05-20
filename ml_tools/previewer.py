@@ -173,11 +173,6 @@ class Previewer:
         frame_buffer = clip.frame_buffer
         for track in clip.tracks:
             video_frames = []
-            print(
-                "preview track {} #frames {}".format(
-                    track.get_id(), len(track.track_data)
-                )
-            )
             for channels in track.track_data:
                 img = tools.convert_heat_to_img(channels[1], self.colourmap, 0, 350)
                 img = img.resize((frame_width, frame_height), Image.NEAREST)
@@ -243,9 +238,7 @@ class Previewer:
         # look for any tracks that occur on this frame
         for index, track in enumerate(tracks):
             frame_offset = frame_number - track.start_frame
-            # if track.start_frame <= frame_number and frame_number <= track.end_frame:
             if frame_offset >= 0 and frame_offset < len(track.bounds_history) - 1:
-                # print("track {} has frame at {}".format(track.get_id(),frame_number/9.0))
                 rect = track.bounds_history[frame_offset]
                 draw.rectangle(
                     self.rect_points(rect),

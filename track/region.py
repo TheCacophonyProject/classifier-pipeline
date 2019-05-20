@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
+import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
 import cv2
 import numpy as np
@@ -49,16 +50,19 @@ class Region(Rectangle):
         # if this region was cropped or not
         self.was_cropped = was_cropped
 
+    @classmethod
+    def region_from_array(cls, region_bounds, frame_number=0):
+        width = region_bounds[2] - region_bounds[0]
+        height = region_bounds[3] - region_bounds[1]
+        return cls(
+            region_bounds[0], region_bounds[1], width, height, frame_index=frame_number
+        )
+
     def calculate_mass(self, filtered, threshold):
-        thresh = blur_and_return_as_mask(filtered, threshold=threshold)
-        self.mass = np.sum(thresh)
+        self.mass = tools.calculate_mass(filtered, threshold)
 
     def calculate_variance(self, filtered, prev_filtered):
-        # print("filtered {} prev_filtered {}".format(filtered, prev_filtered))
-        if prev_filtered is None:
-            return
-        delta_frame = np.abs(np.float32(filtered) - np.float32(prev_filtered))
-        self.pixel_variance = np.var(delta_frame)
+        self.pixel_variance = tools.calculate_variance(filtered, prev_filtered)
 
     def copy(self):
         return Region(
@@ -72,24 +76,3 @@ class Region(Rectangle):
             self.frame_index,
             self.was_cropped,
         )
-
-
-def blur_and_return_as_mask(frame, threshold):
-    """
-    Creates a binary mask out of an image by applying a threshold.
-    Any pixels more than the threshold are set 1, all others are set to 0.
-    A blur is also applied as a filtering step
-    """
-    thresh = cv2.GaussianBlur(np.float32(frame), (5, 5), 0) - threshold
-    thresh[thresh < 0] = 0
-    thresh[thresh > 0] = 1
-    return thresh
-
-
-def region_from_json(region_bounds, frame_number):
-    width = region_bounds[2] - region_bounds[0]
-    height = region_bounds[3] - region_bounds[1]
-    bounds = Region(
-        region_bounds[0], region_bounds[1], width, height, frame_index=frame_number
-    )
-    return bounds

@@ -20,10 +20,12 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import datetime
 import numpy as np
 from collections import namedtuple
-from track.region import Region
+
+
 from ml_tools.tools import Rectangle
 from ml_tools.dataset import TrackChannels
 import track.region
+from track.region import Region
 
 
 class Track:
@@ -71,9 +73,7 @@ class Track:
     def get_id(self):
         return self._id
 
-    def load_track_from_meta(
-        self, track_meta, frames_per_second, include_filtered_channel
-    ):
+    def load_track_meta(self, track_meta, frames_per_second, include_filtered_channel):
 
         self._id = track_meta["id"]
         self.include_filtered_channel = include_filtered_channel
@@ -94,33 +94,11 @@ class Track:
             if self.start_frame is None:
                 self.start_frame = frame_number
             self.end_frame = frame_number
-            region = track.region.region_from_json(position[1], frame_number)
+            region = Region.region_from_array(position[1], frame_number)
             self.bounds_history.append(region)
             self.frame_list.append(frame_number)
 
         return True
-
-    #     self.load_track_data(positions, frames_per_second, buffer_frame, include_filtered_channel, threshold)
-
-    # def load_track_data(self, positions,frames_per_second, buffer_frame, include_filtered_channel, threshold):
-    #     self.track_data = []
-    #     if not positions:
-    #         return
-
-    #     for position in positions:
-    #         bounds = track.region.region_from_json(position[1])
-    #         frame_number = round(position[0] * frames_per_second)
-    #         if self.start_frame is None:
-    #             self.start_frame = frame_number
-
-    #         channels = buffer_frame.get_frame_channels(bounds, frame_number)
-    #         bounds.calculate_mass(channels[TrackChannels.filtered], threshold)
-    #         self.add_frame(bounds, frame_number)
-
-    #         # zero out the filtered channel
-    #         if not include_filtered_channel:
-    #             channels[TrackChannels.filtered] = 0
-    #         self.track_data.append(channels)
 
     def add_frame(self, frame_number, buffer_frame, mass_delta_threshold):
 
@@ -135,7 +113,7 @@ class Track:
         if self.prev_frame and frame_number:
             frame_diff = frame_number - self.prev_frame - 1
             for _ in range(frame_diff):
-                self.add_blank_frame()
+                self._add_blank_frame()
 
         if len(self) >= 2:
             self.vel_x = self.bounds_history[-1].mid_x - self.bounds_history[-2].mid_x
@@ -151,29 +129,7 @@ class Track:
 
         self.track_data.append(channels)
 
-    # def add_frame(self, bounds: Region, frame_number=None):
-    #     """
-    #     Adds a new point in time bounds and mass to track
-    #     :param bounds: new bounds region
-    #     """
-
-    #     if self.prev_frame and frame_number:
-    #         frame_diff = frame_number - self.prev_frame - 1
-    #         for _ in range(frame_diff):
-    #             self.add_blank_frame()
-
-    #     self.prev_frame = frame_number
-    #     self.bounds_history.append(bounds.copy())
-    #     self.frames_since_target_seen = 0
-    #     self.end_frame = frame_number
-
-    #     if len(self) >= 2:
-    #         self.vel_x = self.bounds_history[-1].mid_x - self.bounds_history[-2].mid_x
-    #         self.vel_y = self.bounds_history[-1].mid_y - self.bounds_history[-2].mid_y
-    #     else:
-    #         self.vel_x = self.vel_y = 0
-
-    def add_blank_frame(self):
+    def _add_blank_frame(self):
         """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
         region = self.last_bound.copy()
         region.mass = 0
@@ -353,6 +309,16 @@ class Track:
 
     def __len__(self):
         return len(self.bounds_history)
+
+
+def track_meta_is_valid(track_meta, min_confidence, excluded_tags):
+    track_data = track_meta.get("data")
+    if not track_data:
+        return False
+
+    tag = track_data.get("tag")
+    confidence = track_data.get("confidence", 0)
+    return tag and tag not in excluded_tags and confidence >= min_confidence
 
 
 TrackMovementStatistics = namedtuple(

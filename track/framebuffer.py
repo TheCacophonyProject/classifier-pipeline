@@ -26,6 +26,7 @@ class FrameBuffer:
     """ Stores entire clip in memory, required for some operations such as track exporting. """
 
     def __init__(self):
+        # all arrays should be np.float32
         self.thermal = None
         self.filtered = None
         self.delta = None

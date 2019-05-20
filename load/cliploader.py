@@ -40,7 +40,7 @@ def process_job(job):
 
 
 class ClipLoader:
-    def __init__(self, config, tracker_config):
+    def __init__(self, config):
 
         self.config = config
         os.makedirs(self.config.tracks_folder, mode=0o775, exist_ok=True)
@@ -48,13 +48,12 @@ class ClipLoader:
             os.path.join(self.config.tracks_folder, "dataset.hdf5")
         )
 
-        self.enable_track_output = tracker_config.enable_track_output
         self.worker_pool_init = init_workers
-        self.track_config = tracker_config
+        self.track_config = config.tracking
         # number of threads to use when processing jobs.
         self.workers_threads = config.worker_threads
 
-        self.previewer = Previewer.create_if_required(config, config.extract.preview)
+        self.previewer = Previewer.create_if_required(config, config.loader.preview)
 
     def process_all(self, root=None):
         if root is None:
@@ -62,16 +61,14 @@ class ClipLoader:
 
         jobs = []
         for folder_path, _, files in os.walk(root):
-            if os.path.basename(folder_path) in self.config.excluded_folders:
-                return
             for name in files:
                 if os.path.splitext(name)[1] == ".cptv":
                     full_path = os.path.join(folder_path, name)
                     jobs.append((self, full_path))
 
-        self.process_jobs(jobs)
+        self._process_jobs(jobs)
 
-    def process_jobs(self, jobs):
+    def _process_jobs(self, jobs):
         if self.workers_threads == 0:
             for job in jobs:
                 process_job(job)
@@ -94,10 +91,10 @@ class ClipLoader:
             else:
                 pool.close()
 
-    def get_dest_folder(self, filename):
-        return self.config.tracks_folder
+    def _get_dest_folder(self, filename):
+        return os.path.join(self.config.tracks_folder, get_distributed_folder(filename))
 
-    def export_tracks(self, full_path, clip):
+    def _export_tracks(self, full_path, clip):
         """
         Writes tracks to a track database.
         :param database: database to write track to.
@@ -120,34 +117,70 @@ class ClipLoader:
                 end_time=end_time,
             )
 
+    def _filter_clip_tracks(self, clip_metadata):
+        """
+        Removes track metadata for tracks which are invalid. Tracks are invalid
+        if they aren't confident or they are in the excluded_tags list.
+        Returns valid tracks
+        """
+
+        tracks_meta = clip_metadata["tracks"]
+        valid_tracks = [
+            track for track in tracks_meta if self._track_meta_is_valid(track)
+        ]
+        clip_metadata["tracks"] = valid_tracks
+        return valid_tracks
+
+    def _track_meta_is_valid(self, track_meta):
+        """ 
+        Tracks are valid if their confidence meets the threshold and they are
+        not in the excluded_tags list, defined in the config.
+        """
+
+        min_confidence = self.track_config.min_tag_confidence
+        excluded_tags = self.config.excluded_tags
+        track_data = track_meta.get("data")
+        if not track_data:
+            return False
+
+        tag = track_data.get("tag")
+        confidence = track_data.get("confidence", 0)
+        return tag and tag not in excluded_tags and confidence >= min_confidence
+
     def process_file(self, filename):
-        # tag = kwargs["tag"]
         start = time.time()
         base_filename = os.path.splitext(os.path.basename(filename))[0]
 
         logging.info(f"processing %s", filename)
 
-        destination_folder = self.get_dest_folder(filename)
+        destination_folder = self._get_dest_folder(base_filename)
         os.makedirs(destination_folder, mode=0o775, exist_ok=True)
-
+        print("destring dir {} for {}".format(destination_folder, filename))
         # delete any previous files
         tools.purge(destination_folder, base_filename + "*.mp4")
 
-        clip = Clip(self.track_config)
-        clip.load_cptv(filename)
         # read metadata
         metadata_filename = os.path.join(
             os.path.dirname(filename), base_filename + ".txt"
         )
-        if os.path.isfile(metadata_filename):
-            metadata = tools.load_clip_metadata(metadata_filename)
-            clip.parse_clip(metadata, self.config.extract.include_filtered_channel)
-        else:
+
+        if not os.path.isfile(metadata_filename):
             logging.error("No meta data found for %s", metadata_filename)
             return
 
-        if self.enable_track_output:
-            self.export_tracks(filename, clip)
+        metadata = tools.load_clip_metadata(metadata_filename)
+        valid_tracks = self._filter_clip_tracks(metadata)
+
+        if len(valid_tracks) == 0:
+            logging.error("No valid track data found for %s", filename)
+            return
+
+        clip = Clip(self.track_config)
+        clip.load_cptv(filename)
+        clip.parse_clip(metadata, self.config.loader.include_filtered_channel)
+
+        if self.track_config.enable_track_output:
+            self._export_tracks(filename, clip)
 
         # write a preview
         if self.previewer:
@@ -159,14 +192,23 @@ class ClipLoader:
         if self.track_config.verbose:
             num_frames = len(clip.frame_buffer.thermal)
             ms_per_frame = (time.time() - start) * 1000 / max(1, num_frames)
-            self.log_message(
+            self._log_message(
                 "Tracks {}.  Frames: {}, Took {:.1f}ms per frame".format(
-                    len(tracker.tracks), num_frames, ms_per_frame
+                    len(clip.tracks), num_frames, ms_per_frame
                 )
             )
 
-    def log_message(self, message):
+    def _log_message(self, message):
         """ Record message in stdout.  Will be printed if verbose is enabled. """
         # note, python has really good logging... I should probably make use of this.
         if self.track_config.verbose:
             logging.info(message)
+
+
+def get_distributed_folder(name, num_folders=256, seed=31):
+    str_bytes = str.encode(name)
+    hash_code = 0
+    for byte in str_bytes:
+        hash_code = hash_code * seed + int(byte)
+
+    return str(hash_code % num_folders)
