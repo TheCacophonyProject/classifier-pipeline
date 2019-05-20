@@ -224,10 +224,8 @@ class Previewer:
         frame_number,
         track_predictions=None,
         screen_bounds=None,
-        colours=None,
+        colours=TRACK_COLOURS,
     ):
-        if not colours:
-            colours = self.TRACK_COLOURS
         # look for any tracks that occur on this frame
         for index, track in enumerate(tracks):
             frame_offset = frame_number - track.start_frame
