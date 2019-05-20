@@ -695,15 +695,16 @@ cm_blue_red = LinearSegmentedColormap("BlueRed2", color_dict)
 
 
 def calculate_mass(filtered, threshold):
+    """Calculates mass of filtered frame with threshold applied"""
     thresh = blur_and_return_as_mask(filtered, threshold=threshold)
     return np.sum(thresh)
 
 
 def calculate_variance(filtered, prev_filtered):
-    # print("filtered {} prev_filtered {}".format(filtered, prev_filtered))
+    """Calculates variance of filtered frame with previous frame"""
     if prev_filtered is None:
         return
-    delta_frame = np.abs(np.float32(filtered) - np.float32(prev_filtered))
+    delta_frame = np.abs(filtered - prev_filtered)
     return np.var(delta_frame)
 
 
@@ -713,7 +714,7 @@ def blur_and_return_as_mask(frame, threshold):
     Any pixels more than the threshold are set 1, all others are set to 0.
     A blur is also applied as a filtering step
     """
-    thresh = cv2.GaussianBlur(np.float32(frame), (5, 5), 0) - threshold
+    thresh = cv2.GaussianBlur(frame, (5, 5), 0) - threshold
     thresh[thresh < 0] = 0
     thresh[thresh > 0] = 1
     return thresh

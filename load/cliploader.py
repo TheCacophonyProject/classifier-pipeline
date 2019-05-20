@@ -206,6 +206,7 @@ class ClipLoader:
 
 
 def get_distributed_folder(name, num_folders=256, seed=31):
+    """Creates a hash of the name then returns the modulo num_folders"""
     str_bytes = str.encode(name)
     hash_code = 0
     for byte in str_bytes:
