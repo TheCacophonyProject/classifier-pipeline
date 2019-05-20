@@ -212,7 +212,7 @@ class ClipLoader:
             start = time.time()
             self.compression = tools.gzip_compression if z == 0 else None
             for i in range(100):
-                clip._id = z*1000 + i     
+                clip._id = z * 1000 + i
                 self.database.create_clip(clip)
 
                 for track in clip.tracks:
@@ -228,8 +228,13 @@ class ClipLoader:
                         end_time=end_time,
                     )
             end = time.time()
-            print("export tracks with compression {} took {}".format(self.compression, end-start))
-            
+            print(
+                "export tracks with compression {} took {}".format(
+                    self.compression, end - start
+                )
+            )
+
+
 def get_distributed_folder(name, num_folders=256, seed=31):
     """Creates a hash of the name then returns the modulo num_folders"""
     str_bytes = str.encode(name)
@@ -238,4 +243,3 @@ def get_distributed_folder(name, num_folders=256, seed=31):
         hash_code = hash_code * seed + int(byte)
 
     return str(hash_code % num_folders)
-
