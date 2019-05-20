@@ -13,7 +13,7 @@ source_folder: "cptv"
 tracks_folder: "tracks"
 
 # which folders (tags) to ignore when selecting cptv files from source_folder
-excluded_folders: ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit', 'hard', 'multi', 'moving',
+excluded_tags: ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit', 'hard', 'multi', 'moving',
                   'mouse', 'bird-kiwi', 'for_grant', 'missclassified', 'other']
 
 # Reprocess files which have already been processed.
@@ -131,9 +131,11 @@ tracking:
     # Add verbose logging about tracks generated
     verbose: False
 
-extract:
+    # Minimum confidence of track tag to accept
+    min_tag_confidence: 0.8
+load:
     # Use fast BLOSC compression (requires plugin), when saving tracks to database
-    enable_compression: False
+    # enable_compression: True
 
     # Includes the filtered channel in tracks database.  This is typically not used.  If compression is enabled the
     # filesize can be reduced by not including it.
@@ -146,12 +148,6 @@ extract:
     # classified - show tracks and classification values
     # tracking -  four frame video view, including thermal, filtered, mask and flow layers
     preview: "tracking"
-
-    # Hints file to loade.  Hints are a way to give extra information to the tracker about how many tracks to take.
-    # Note:  Set to 'False' is there is no hints file.
-    # Note:  This is relative to the current directory of the application, not the base data folder
-    hints_file: "hints.txt"
-
 train:
     hyper_params:
         # training

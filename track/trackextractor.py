@@ -246,7 +246,6 @@ class TrackExtractor:
             filtered[filtered < self.config.temp_thresh] = 0
             filtered = filtered - background - avg_change
         else:
-            background = np.float32(background)
             filtered = thermal - background
             filtered[filtered < 0] = 0
             filtered = filtered - np.median(filtered)
@@ -643,7 +642,6 @@ class TrackExtractor:
         # note: unfortunately this must be done before any other processing, which breaks the streaming architecture
         # for this reason we must return all the frames so they can be reused
 
-        frames = np.float32(frames)
         background = np.percentile(frames, q=10, axis=0)
         filtered = np.float32(
             [self.get_filtered(frame, background) for frame in frames]

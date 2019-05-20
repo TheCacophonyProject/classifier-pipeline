@@ -21,12 +21,11 @@ import attr
 
 
 @attr.s
-class ExtractConfig:
+class LoadConfig:
 
     enable_compression = attr.ib()
     include_filtered_channel = attr.ib()
     preview = attr.ib()
-    hints_file = attr.ib()
 
     @classmethod
     def load(cls, extract):
@@ -34,5 +33,4 @@ class ExtractConfig:
             enable_compression=extract["enable_compression"],
             include_filtered_channel=extract["include_filtered_channel"],
             preview=extract["preview"],
-            hints_file=extract["hints_file"],
         )

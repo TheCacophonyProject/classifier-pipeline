@@ -21,8 +21,11 @@ import datetime
 import numpy as np
 from collections import namedtuple
 
-from track.region import Region
+
 from ml_tools.tools import Rectangle
+from ml_tools.dataset import TrackChannels
+import track.region
+from track.region import Region
 
 
 class Track:
@@ -31,7 +34,7 @@ class Track:
     # keeps track of which id number we are up to.
     _track_id = 1
 
-    def __init__(self, id=None):
+    def __init__(self, clip_id, id=None):
         """
         Creates a new Track.
         :param id: id number for track, if not specified is provided by an auto-incrementer
@@ -39,13 +42,19 @@ class Track:
 
         # used to uniquely identify the track
         if not id:
-            self.id = self._track_id
+            self._id = self._track_id
             self._track_id += 1
         else:
-            self.id = id
+            self._id = id
 
+        self.clip_id = clip_id
         # frame number this track starts at
-        self.start_frame = 0
+        self.start_frame = None
+        self.end_frame = 0
+        self.start_s = 0
+        self.end_s = 0
+        self.current_frame = 0
+        self.frame_list = []
         # our bounds over time
         self.bounds_history = []
         # number frames since we lost target.
@@ -54,17 +63,57 @@ class Track:
         self.vel_x = 0
         # our current estimated vertical velocity
         self.vel_y = 0
-
+        self.track_data = None
         # the tag for this track
         self.tag = "unknown"
+        self.prev_frame = None
+        self.include_filtered_channel = True
+        self.confidence = ""
 
-    def add_frame(self, bounds: Region):
-        """
-        Adds a new point in time bounds and mass to track
-        :param bounds: new bounds region
-        """
-        self.bounds_history.append(bounds.copy())
-        self.frames_since_target_seen = 0
+    def get_id(self):
+        return self._id
+
+    def load_track_meta(self, track_meta, frames_per_second, include_filtered_channel):
+
+        self._id = track_meta["id"]
+        self.include_filtered_channel = include_filtered_channel
+        self.track_data = []
+        data = track_meta["data"]
+        self.start_s = data["start_s"]
+        self.end_s = data["end_s"]
+
+        self.tag = data.get("tag", "unknown")
+        self.confidence = data["confidence"]
+        positions = data.get("positions")
+        if not positions:
+            return False
+        self.bounds_history = []
+        self.frame_list = []
+        for position in positions:
+            frame_number = round(position[0] * frames_per_second)
+            if self.start_frame is None:
+                self.start_frame = frame_number
+            self.end_frame = frame_number
+            region = Region.region_from_array(position[1], frame_number)
+            self.bounds_history.append(region)
+            self.frame_list.append(frame_number)
+
+        return True
+
+    def add_frame(self, frame_number, buffer_frame, mass_delta_threshold):
+
+        region = self.bounds_history[self.current_frame]
+        prev_filtered = buffer_frame.get_previous_filtered(region, frame_number)
+        channels = buffer_frame.get_frame_channels(region, frame_number)
+        filtered = channels[TrackChannels.filtered]
+
+        region.calculate_mass(filtered, mass_delta_threshold)
+        region.calculate_variance(filtered, prev_filtered)
+
+        if self.prev_frame and frame_number:
+            frame_diff = frame_number - self.prev_frame - 1
+            for _ in range(frame_diff):
+                self._add_blank_frame()
 
         if len(self) >= 2:
             self.vel_x = self.bounds_history[-1].mid_x - self.bounds_history[-2].mid_x
@@ -72,12 +121,22 @@ class Track:
         else:
             self.vel_x = self.vel_y = 0
 
-    def add_blank_frame(self):
+        self.prev_frame = frame_number
+        self.current_frame += 1
+
+        if not self.include_filtered_channel:
+            channels[TrackChannels.filtered] = 0
+
+        self.track_data.append(channels)
+
+    def _add_blank_frame(self):
         """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
-        self.bounds_history.append(self.bounds.copy())
-        self.bounds.mass = 0
-        self.bounds.pixel_variance = 0
-        self.bounds.frame_index += 1
+        region = self.last_bound.copy()
+        region.mass = 0
+        region.pixel_variance = 0
+        region.frame_index += 1
+        self.bounds_history.append(region)
+
         self.vel_x = self.vel_y = 0
 
     def get_stats(self):
@@ -242,7 +301,7 @@ class Track:
         return self.bounds_history[-1].mass
 
     @property
-    def bounds(self) -> Region:
+    def last_bound(self) -> Region:
         return self.bounds_history[-1]
 
     def __repr__(self):

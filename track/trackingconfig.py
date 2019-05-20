@@ -53,6 +53,8 @@ class TrackingConfig:
     aoi_pixel_variance = attr.ib()
     cropped_regions_strategy = attr.ib()
     verbose = attr.ib()
+    enable_track_output = attr.ib()
+    min_tag_confidence = attr.ib()
 
     @classmethod
     def load(cls, tracking):
@@ -90,6 +92,8 @@ class TrackingConfig:
             aoi_min_mass=tracking["areas_of_interest"]["min_mass"],
             aoi_pixel_variance=tracking["areas_of_interest"]["pixel_variance"],
             verbose=tracking["verbose"],
+            enable_track_output=tracking["enable_track_output"],
+            min_tag_confidence=tracking["min_tag_confidence"],
         )
 
     def as_dict(self):

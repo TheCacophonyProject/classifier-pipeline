@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
+import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
 
 
@@ -46,6 +47,20 @@ class Region(Rectangle):
         self.frame_index = frame_index
         # if this region was cropped or not
         self.was_cropped = was_cropped
+
+    @classmethod
+    def region_from_array(cls, region_bounds, frame_number=0):
+        width = region_bounds[2] - region_bounds[0]
+        height = region_bounds[3] - region_bounds[1]
+        return cls(
+            region_bounds[0], region_bounds[1], width, height, frame_index=frame_number
+        )
+
+    def calculate_mass(self, filtered, threshold):
+        self.mass = tools.calculate_mass(filtered, threshold)
+
+    def calculate_variance(self, filtered, prev_filtered):
+        self.pixel_variance = tools.calculate_variance(filtered, prev_filtered)
 
     def copy(self):
         return Region(
