@@ -224,7 +224,7 @@ class Previewer:
         frame_number,
         track_predictions=None,
         screen_bounds=None,
-        colours=None
+        colours=None,
     ):
         if not colours:
             colours = self.TRACK_COLOURS
