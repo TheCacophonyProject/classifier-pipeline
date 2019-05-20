@@ -48,6 +48,9 @@ class ClipLoader:
             os.path.join(self.config.tracks_folder, "dataset.hdf5")
         )
 
+        self.compression = (
+            tools.gzip_compression if self.config.loader.enable_compression else None
+        )
         self.worker_pool_init = init_workers
         self.track_config = config.tracking
         # number of threads to use when processing jobs.
@@ -112,7 +115,7 @@ class ClipLoader:
             self.database.add_track(
                 clip.get_id(),
                 track,
-                # opts=self.compression,
+                opts=self.compression,
                 start_time=start_time,
                 end_time=end_time,
             )
@@ -204,7 +207,29 @@ class ClipLoader:
         if self.track_config.verbose:
             logging.info(message)
 
+    def _test_compression_time(self, full_path, clip):
+        for z in range(2):
+            start = time.time()
+            self.compression = tools.gzip_compression if z == 0 else None
+            for i in range(100):
+                clip._id = z*1000 + i     
+                self.database.create_clip(clip)
 
+                for track in clip.tracks:
+                    start_time, end_time = clip.start_and_end_time_absolute(
+                        track.start_s, track.end_s
+                    )
+
+                    self.database.add_track(
+                        clip.get_id(),
+                        track,
+                        opts=self.compression,
+                        start_time=start_time,
+                        end_time=end_time,
+                    )
+            end = time.time()
+            print("export tracks with compression {} took {}".format(self.compression, end-start))
+            
 def get_distributed_folder(name, num_folders=256, seed=31):
     """Creates a hash of the name then returns the modulo num_folders"""
     str_bytes = str.encode(name)
@@ -213,3 +238,4 @@ def get_distributed_folder(name, num_folders=256, seed=31):
         hash_code = hash_code * seed + int(byte)
 
     return str(hash_code % num_folders)
+

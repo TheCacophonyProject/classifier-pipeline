@@ -683,6 +683,7 @@ def get_confusion_matrix(pred_class, true_class, classes, normalize=True):
 
     return cm
 
+gzip_compression = {"compression": "gzip"}
 
 blosc_zstd = blosc_opts(complevel=9, complib="blosc:zstd", shuffle=True)
 

@@ -132,10 +132,10 @@ tracking:
     verbose: False
 
     # Minimum confidence of track tag to accept
-    min_tag_confidence: 0.99
+    min_tag_confidence: 0.8
 load:
     # Use fast BLOSC compression (requires plugin), when saving tracks to database
-    enable_compression: False
+    # enable_compression: True
 
     # Includes the filtered channel in tracks database.  This is typically not used.  If compression is enabled the
     # filesize can be reduced by not including it.
