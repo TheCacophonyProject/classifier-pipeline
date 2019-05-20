@@ -129,7 +129,9 @@ class Previewer:
                 image = self.convert_and_resize(thermal, 4.0)
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
-                self.add_tracks(draw, tracker.tracks, frame_number, colours=[(128, 255, 255)])
+                self.add_tracks(
+                    draw, tracker.tracks, frame_number, colours=[(128, 255, 255)]
+                )
 
             if self.preview_type == self.PREVIEW_CLASSIFIED:
                 image = self.convert_and_resize(thermal, 4.0)
@@ -216,7 +218,13 @@ class Previewer:
             draw.rectangle(self.rect_points(rect, v_offset), outline=(128, 128, 128))
 
     def add_tracks(
-        self, draw, tracks, frame_number, track_predictions=None, screen_bounds=None, colours=None
+        self,
+        draw,
+        tracks,
+        frame_number,
+        track_predictions=None,
+        screen_bounds=None,
+        colours=None
     ):
         if not colours:
             colours = self.TRACK_COLOURS
@@ -226,8 +234,7 @@ class Previewer:
             if frame_offset >= 0 and frame_offset < len(track.bounds_history) - 1:
                 rect = track.bounds_history[frame_offset]
                 draw.rectangle(
-                    self.rect_points(rect),
-                    outline=colours[index % len(colours)],
+                    self.rect_points(rect), outline=colours[index % len(colours)]
                 )
                 if track_predictions:
                     self.add_class_results(
