@@ -6,7 +6,6 @@ import yaml
 
 from load.loadconfig import LoadConfig
 from track.trackingconfig import TrackingConfig
-from track.extractconfig import ExtractConfig
 from train.config import TrainConfig
 from classify.classifyconfig import ClassifyConfig
 from evaluate.evaluateconfig import EvaluateConfig

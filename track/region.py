@@ -19,8 +19,6 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
-import cv2
-import numpy as np
 
 
 class Region(Rectangle):

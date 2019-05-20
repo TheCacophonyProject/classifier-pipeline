@@ -20,15 +20,15 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import logging
 from os import path
-
 import numpy as np
+
 from PIL import Image, ImageDraw, ImageFont
 
+from load.clip import Clip
 from ml_tools import tools
 import ml_tools.globals as globs
 from ml_tools.mpeg_creator import MPEGCreator
 from track.region import Region
-from load.clip import Clip
 
 LOCAL_RESOURCES = path.join(path.dirname(path.dirname(__file__)), "resources")
 GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
