@@ -92,16 +92,16 @@ class TrackDatabase:
             group = clips.create_group(clip_id)
 
             if clip is not None:
-                stats = group.attrs
+                group_attrs = group.attrs
 
-                stats.update(clip.background_stats)
-                stats["filename"] = clip.source_file
-                stats["start_time"] = clip.video_start_time.isoformat()
-                stats["threshold"] = clip.threshold
-                stats["frame_temp_min"] = clip.frame_stats_min
-                stats["frame_temp_max"] = clip.frame_stats_max
-                stats["frame_temp_median"] = clip.frame_stats_median
-                stats["frame_temp_mean"] = clip.frame_stats_mean
+                group_attrs.update(clip.background_stats)
+                group_attrs["filename"] = clip.source_file
+                group_attrs["start_time"] = clip.video_start_time.isoformat()
+                group_attrs["threshold"] = clip.threshold
+                group_attrs["frame_temp_min"] = clip.frame_stats_min
+                group_attrs["frame_temp_max"] = clip.frame_stats_max
+                group_attrs["frame_temp_median"] = clip.frame_stats_median
+                group_attrs["frame_temp_mean"] = clip.frame_stats_mean
 
             f.flush()
             group.attrs["finished"] = True
@@ -232,26 +232,26 @@ class TrackDatabase:
             # write out attributes
             if track:
                 track_stats = track.get_stats()
-                stats = track_node.attrs
-                stats["id"] = track_id
-                stats["tag"] = track.tag
-                stats["frames"] = frames
-                stats["start_frame"] = track.start_frame
-                stats["end_frame"] = track.end_frame
+                node_attrs = track_node.attrs
+                node_attrs["id"] = track_id
+                node_attrs["tag"] = track.tag
+                node_attrs["frames"] = frames
+                node_attrs["start_frame"] = track.start_frame
+                node_attrs["end_frame"] = track.end_frame
 
                 if start_time:
-                    stats["start_time"] = start_time.isoformat()
+                    node_attrs["start_time"] = start_time.isoformat()
                 if end_time:
-                    stats["end_time"] = end_time.isoformat()
+                    node_attrs["end_time"] = end_time.isoformat()
 
                 for name, value in track_stats._asdict().items():
-                    stats[name] = value
+                    node_attrs[name] = value
 
                 # frame history
-                stats["mass_history"] = np.int32(
+                node_attrs["mass_history"] = np.int32(
                     [bounds.mass for bounds in track.bounds_history]
                 )
-                stats["bounds_history"] = np.int16(
+                node_attrs["bounds_history"] = np.int16(
                     [
                         [bounds.left, bounds.top, bounds.right, bounds.bottom]
                         for bounds in track.bounds_history

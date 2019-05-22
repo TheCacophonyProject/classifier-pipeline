@@ -35,6 +35,7 @@ from track.track import Track
 class Clip:
     PREVIEW = "preview"
     FRAMES_PER_SECOND = 9
+    local_tz = pytz.timezone("Pacific/Auckland")
 
     def __init__(self, trackconfig):
         self.tracks = []
@@ -71,8 +72,7 @@ class Clip:
 
         with open(filename, "rb") as f:
             reader = CPTVReader(f)
-            local_tz = pytz.timezone("Pacific/Auckland")
-            self.video_start_time = reader.timestamp.astimezone(local_tz)
+            self.video_start_time = reader.timestamp.astimezone(Clip.local_tz)
             self.preview_secs = reader.preview_secs
             self.stats.update(self.get_video_stats())
             # we need to load the entire video so we can analyse the background.
@@ -91,12 +91,11 @@ class Clip:
         Extracts useful statics from video clip.
         :returns: a dictionary containing the video statistics.
         """
-        local_tz = pytz.timezone("Pacific/Auckland")
         result = {}
-        result["date_time"] = self.video_start_time.astimezone(local_tz)
+        result["date_time"] = self.video_start_time.astimezone(Clip.local_tz)
         result["is_night"] = (
-            self.video_start_time.astimezone(local_tz).time().hour >= 21
-            or self.video_start_time.astimezone(local_tz).time().hour <= 4
+            self.video_start_time.astimezone(Clip.local_tz).time().hour >= 21
+            or self.video_start_time.astimezone(Clip.local_tz).time().hour <= 4
         )
 
         return result
@@ -104,7 +103,7 @@ class Clip:
     def parse_clip(self, metadata, include_filtered_channel):
 
         self._id = metadata["id"]
-        self.load_tracks(metadata, include_filtered_channel)
+        self.tracks = self.load_tracks(metadata, include_filtered_channel)
         # for now just always calculate as we are using the stats...
         frames = self.frame_buffer.thermal
 
@@ -179,10 +178,8 @@ class Clip:
         )
 
         # cap the threshold to something reasonable
-        if threshold < self.config.min_threshold:
-            threshold = self.config.min_threshold
-        if threshold > self.config.max_threshold:
-            threshold = self.config.max_threshold
+        threshold = max(self.config.min_threshold, threshold)
+        threshold = min(self.config.max_threshold, threshold)
 
         self.background_stats["threshold"] = float(threshold)
         self.background_stats["average_delta"] = float(average_delta)
@@ -328,11 +325,12 @@ class Clip:
 
     def load_tracks(self, metadata, include_filtered_channel):
         tracks_meta = metadata["tracks"]
-        self.tracks = []
+        tracks = []
         # get track data
         for track_meta in tracks_meta:
             track = Track(self.get_id())
             if track.load_track_meta(
                 track_meta, self.frames_per_second, include_filtered_channel
             ):
-                self.tracks.append(track)
+                tracks.append(track)
+        return tracks
