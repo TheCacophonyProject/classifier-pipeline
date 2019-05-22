@@ -48,7 +48,7 @@ class Clip:
         self.video_start_time = None
         # name of source file
         self.source_file = None
-        self.location=None
+        self.location = None
         # per frame temperature statistics for thermal channel
         self.frame_stats_min = []
         self.frame_stats_max = []

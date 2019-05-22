@@ -18,9 +18,18 @@ from ml_tools.config import Config
 from ml_tools.dataset import Dataset, dataset_db_path
 
 
-filtered_stats = {"confidence": 0, "trap": 0, "banned": 0, "date": 0, "tags": 0, "segment_mass": 0}
+filtered_stats = {
+    "confidence": 0,
+    "trap": 0,
+    "banned": 0,
+    "date": 0,
+    "tags": 0,
+    "segment_mass": 0,
+}
 segment_min_mass = None
 MIN_BINS = 4
+
+
 def ignore_track(clip_meta, track_meta):
     # some clips are banned for various reasons
     source = os.path.basename(clip_meta["filename"])
@@ -60,11 +69,13 @@ def ignore_track(clip_meta, track_meta):
 
     return False
 
+
 def ignore_segment(segment):
     if segment_min_mass and segment.avg_mass < segment_min_mass:
         filtered_stats["segment_mass"] += 1
         return True
     return False
+
 
 def show_tracks_breakdown():
     print("Tracks breakdown:")
@@ -166,11 +177,11 @@ def split_dataset_days(build_config, prefill_bins=None):
         label = dataset.track_by_id[tracks[0].track_id].label
         bins_by_label[label].append(bin_id)
         counts.append(sum(len(track.segments) for track in tracks))
-# bins_by_label
-#     ["rat"]
-#         ["2019-20-10-gp-test-01-rat"]
-#     ["possum"]
-#         ["2019-20-10-gp-test-01-possum"]
+    # bins_by_label
+    #     ["rat"]
+    #         ["2019-20-10-gp-test-01-rat"]
+    #     ["possum"]
+    #         ["2019-20-10-gp-test-01-possum"]
     train = Dataset(db, "train")
     validation = Dataset(db, "validation")
     test = Dataset(db, "test")
@@ -220,7 +231,6 @@ def split_dataset_days(build_config, prefill_bins=None):
                     build_config.max_validation_set_track_duration,
                 ):
                     continue
-
 
                 validation.add_tracks(dataset.tracks_by_bin[sample])
                 test.add_tracks(dataset.tracks_by_bin[sample])
@@ -310,10 +320,7 @@ def split_dataset_days(build_config, prefill_bins=None):
     train.balance_weights()
     validation.balance_weights()
 
-    test.balance_resample(
-        required_samples=build_config.test_set_count,
-    )
-
+    test.balance_resample(required_samples=build_config.test_set_count)
     # display the dataset summary
     for label in dataset.labels:
         print(
@@ -365,7 +372,12 @@ def main():
     build_config = config.build
     segment_min_mass = build_config.test_min_mass
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
-    dataset = Dataset(db, "dataset",segment_length=build_config.segment_length, segment_spacing=build_config.segment_spacing)
+    dataset = Dataset(
+        db,
+        "dataset",
+        segment_length=build_config.segment_length,
+        segment_spacing=build_config.segment_spacing,
+    )
 
     tracks_loaded, total_tracks = dataset.load_tracks(ignore_track, ignore_segment)
 

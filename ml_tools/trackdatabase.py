@@ -265,6 +265,7 @@ class TrackDatabase:
             # this means if we are interupted part way through the track will be overwritten
             clip_node.attrs["finished"] = True
 
+
 def hdf5_attributes_dictionary(dataset):
     result = {}
     for key, value in dataset.attrs.items():

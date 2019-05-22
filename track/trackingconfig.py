@@ -101,7 +101,6 @@ class TrackingConfig:
             verbose=tracking["verbose"],
             enable_track_output=tracking["enable_track_output"],
             min_tag_confidence=tracking["min_tag_confidence"],
-
             preview=None,
             stats=None,
             filters=None,

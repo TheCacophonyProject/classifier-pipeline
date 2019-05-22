@@ -38,9 +38,7 @@ class LoadConfig:
     @classmethod
     def get_defaults(cls):
         return cls(
-            enable_compression=False,
-            include_filtered_channel=False,
-            preview="tracking",
+            enable_compression=False, include_filtered_channel=False, preview="tracking"
         )
 
     def validate(self):
