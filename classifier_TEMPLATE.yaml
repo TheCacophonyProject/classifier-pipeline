@@ -219,8 +219,9 @@ build:
     banned_clips_file: "excluded_files.yml"
 
     # uses split from previous run
-    use_previous_split: True
+    use_previous_split: False
 
+    ignore_labels: ["false-positive"]
 
     # if true removes any trapped animal footage from dataset.
     # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
@@ -259,3 +260,9 @@ build:
 
     # minimum number of bins used for test set
     test_set_bins: 10
+
+    # number of seconds each segment should be
+    segment_length: 3
+
+    # number of seconds segments are spaced apart
+    segment_spacing: 1

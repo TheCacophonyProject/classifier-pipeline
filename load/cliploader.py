@@ -158,7 +158,6 @@ class ClipLoader:
 
         destination_folder = self._get_dest_folder(base_filename)
         os.makedirs(destination_folder, mode=0o775, exist_ok=True)
-        print("destring dir {} for {}".format(destination_folder, filename))
         # delete any previous files
         tools.purge(destination_folder, base_filename + "*.mp4")
 

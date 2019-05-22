@@ -21,6 +21,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import datetime
 import logging
 import numpy as np
+import os
 import pytz
 
 from cptv import CPTVReader
@@ -47,6 +48,7 @@ class Clip:
         self.video_start_time = None
         # name of source file
         self.source_file = None
+        self.location=None
         # per frame temperature statistics for thermal channel
         self.frame_stats_min = []
         self.frame_stats_max = []
@@ -59,6 +61,7 @@ class Clip:
         self.disable_background_subtraction = {}
         self.crop_rectangle = None
         self.mean_background_value = 0.0
+        self.device = None
 
     def get_id(self):
         return str(self._id)
@@ -104,6 +107,15 @@ class Clip:
     def parse_clip(self, metadata, include_filtered_channel):
 
         self._id = metadata["id"]
+        device_meta = metadata.get("Device")
+        if device_meta:
+            self.device = device_meta.get("devicename")
+        else:
+            self.device = os.path.splitext(os.path.basename(self.source_file))[0].split(
+                "-"
+            )[-1]
+
+        self.location = metadata.get("location")
         self.load_tracks(metadata, include_filtered_channel)
         # for now just always calculate as we are using the stats...
         frames = self.frame_buffer.thermal
@@ -283,48 +295,48 @@ class Clip:
             self.video_start_time + datetime.timedelta(seconds=end_s),
         )
 
-    def get_stats(self):
-        """
-        Returns statistics for this track, including how much it moves, and a score indicating how likely it is
-        that this is a good track.
-        :return: a TrackMovementStatistics record
-        """
+    # def get_stats(self):
+    #     """
+    #     Returns statistics for this track, including how much it moves, and a score indicating how likely it is
+    #     that this is a good track.
+    #     :return: a TrackMovementStatistics record
+    #     """
 
-        if len(self) <= 1:
-            return track.TrackMovementStatistics()
+    #     if len(self) <= 1:
+    #         return track.TrackMovementStatistics()
 
-        # get movement vectors
-        mass_history = [int(bound.mass) for bound in self.bounds_history]
-        variance_history = [bound.pixel_variance for bound in self.bounds_history]
-        mid_x = [bound.mid_x for bound in self.bounds_history]
-        mid_y = [bound.mid_y for bound in self.bounds_history]
-        delta_x = [mid_x[0] - x for x in mid_x]
-        delta_y = [mid_y[0] - y for y in mid_y]
-        vel_x = [cur - prev for cur, prev in zip(mid_x[1:], mid_x[:-1])]
-        vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
+    #     # get movement vectors
+    #     mass_history = [int(bound.mass) for bound in self.bounds_history]
+    #     variance_history = [bound.pixel_variance for bound in self.bounds_history]
+    #     mid_x = [bound.mid_x for bound in self.bounds_history]
+    #     mid_y = [bound.mid_y for bound in self.bounds_history]
+    #     delta_x = [mid_x[0] - x for x in mid_x]
+    #     delta_y = [mid_y[0] - y for y in mid_y]
+    #     vel_x = [cur - prev for cur, prev in zip(mid_x[1:], mid_x[:-1])]
+    #     vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
 
-        movement = sum((vx ** 2 + vy ** 2) ** 0.5 for vx, vy in zip(vel_x, vel_y))
-        max_offset = max((dx ** 2 + dy ** 2) ** 0.5 for dx, dy in zip(delta_x, delta_y))
+    #     movement = sum((vx ** 2 + vy ** 2) ** 0.5 for vx, vy in zip(vel_x, vel_y))
+    #     max_offset = max((dx ** 2 + dy ** 2) ** 0.5 for dx, dy in zip(delta_x, delta_y))
 
-        # the standard deviation is calculated by averaging the per frame variances.
-        # this ends up being slightly different as I'm using /n rather than /(n-1) but that
-        # shouldn't make a big difference as n = width*height*frames which is large.
-        delta_std = float(np.mean(variance_history)) ** 0.5
+    #     # the standard deviation is calculated by averaging the per frame variances.
+    #     # this ends up being slightly different as I'm using /n rather than /(n-1) but that
+    #     # shouldn't make a big difference as n = width*height*frames which is large.
+    #     delta_std = float(np.mean(variance_history)) ** 0.5
 
-        movement_points = (movement ** 0.5) + max_offset
-        delta_points = delta_std * 25.0
-        score = min(movement_points, 100) + min(delta_points, 100)
+    #     movement_points = (movement ** 0.5) + max_offset
+    #     delta_points = delta_std * 25.0
+    #     score = min(movement_points, 100) + min(delta_points, 100)
 
-        stats = track.TrackMovementStatistics(
-            movement=float(movement),
-            max_offset=float(max_offset),
-            average_mass=float(np.mean(mass_history)),
-            median_mass=float(np.median(mass_history)),
-            delta_std=float(delta_std),
-            score=float(score),
-        )
+    #     stats = track.TrackMovementStatistics(
+    #         movement=float(movement),
+    #         max_offset=float(max_offset),
+    #         average_mass=float(np.mean(mass_history)),
+    #         median_mass=float(np.median(mass_history)),
+    #         delta_std=float(delta_std),
+    #         score=float(score),
+    #     )
 
-        return stats
+    #     return stats
 
     def load_tracks(self, metadata, include_filtered_channel):
         tracks_meta = metadata["tracks"]

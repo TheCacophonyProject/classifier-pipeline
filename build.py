@@ -18,9 +18,9 @@ from ml_tools.config import Config
 from ml_tools.dataset import Dataset, dataset_db_path
 
 
-filtered_stats = {"confidence": 0, "trap": 0, "banned": 0, "date": 0, "tags": 0}
-
-
+filtered_stats = {"confidence": 0, "trap": 0, "banned": 0, "date": 0, "tags": 0, "segment_mass": 0}
+segment_min_mass = None
+MIN_BINS = 4
 def ignore_track(clip_meta, track_meta):
     # some clips are banned for various reasons
     source = os.path.basename(clip_meta["filename"])
@@ -46,7 +46,7 @@ def ignore_track(clip_meta, track_meta):
         return False
 
     # for some reason we get some records with a None confidence?
-    if clip_meta.get("confidence", 0.0) <= 0.6:
+    if track_meta.get("confidence", 0.0) <= 0.6:
         filtered_stats["confidence"] += 1
         return True
 
@@ -60,6 +60,11 @@ def ignore_track(clip_meta, track_meta):
 
     return False
 
+def ignore_segment(segment):
+    if segment_min_mass and segment.avg_mass < segment_min_mass:
+        filtered_stats["segment_mass"] += 1
+        return True
+    return False
 
 def show_tracks_breakdown():
     print("Tracks breakdown:")
@@ -156,26 +161,31 @@ def split_dataset_days(build_config, prefill_bins=None):
     for label in dataset.labels:
         bins_by_label[label] = []
 
+    counts = []
     for bin_id, tracks in dataset.tracks_by_bin.items():
         label = dataset.track_by_id[tracks[0].track_id].label
         bins_by_label[label].append(bin_id)
-
+        counts.append(sum(len(track.segments) for track in tracks))
+# bins_by_label
+#     ["rat"]
+#         ["2019-20-10-gp-test-01-rat"]
+#     ["possum"]
+#         ["2019-20-10-gp-test-01-possum"]
     train = Dataset(db, "train")
     validation = Dataset(db, "validation")
     test = Dataset(db, "test")
 
-    train.labels = dataset.labels.copy()
-    validation.labels = dataset.labels.copy()
-    test.labels = dataset.labels.copy()
+    # train.labels = dataset.labels.copy()
+    # validation.labels = dataset.labels.copy()
+    # test.labels = dataset.labels.copy()
 
-    # check bins distribution
-    bin_segments = []
-    for bin, tracks in dataset.tracks_by_bin.items():
-        count = sum(len(track.segments) for track in tracks)
-        bin_segments.append((count, bin))
-    bin_segments.sort()
-
-    counts = [count for count, bin in bin_segments]
+    # check bins distribution don't need ?? GP
+    # bin_segments = []
+    # for bin, tracks in dataset.tracks_by_bin.items():
+    #     count = sum(len(track.segments) for track in tracks)
+    #     bin_segments.append((count, bin))
+    # bin_segments.sort()
+    # counts = [count for count, bin in bin_segments]
     bin_segment_mean = np.mean(counts)
     bin_segment_std = np.std(counts)
     max_bin_segments = bin_segment_mean + bin_segment_std * build_config.cap_bin_weight
@@ -210,6 +220,7 @@ def split_dataset_days(build_config, prefill_bins=None):
                     build_config.max_validation_set_track_duration,
                 ):
                     continue
+
 
                 validation.add_tracks(dataset.tracks_by_bin[sample])
                 test.add_tracks(dataset.tracks_by_bin[sample])
@@ -254,49 +265,37 @@ def split_dataset_days(build_config, prefill_bins=None):
             )
         )
 
-        weight = (
-            build_config.label_weights.get(label, 1.0)
-            if build_config.label_weights
-            else 1.0
-        )
+        weight = 1.0
+
         required_samples = build_config.test_set_count * weight
         required_bins = (
             build_config.test_set_bins * weight
         )  # make sure there is some diversity
-        required_bins = max(4, required_bins)
-
+        required_bins = max(MIN_BINS, required_bins)
+        print("required samples" + str(required_samples))
         # we assign bins to the test and validation sets randomly until we have enough segments + bins
         # the remaining bins can be used for training
         while len(available_bins) > 0 and (
-            validation.get_class_segments_count(label) < required_samples
+            validation.get_label_segments_count(label) < required_samples
             or len(used_bins[label]) < required_bins
         ):
 
-            sample = random.sample(available_bins, 1)[0]
+            bin_id = random.sample(available_bins, 1)[0]
+            tracks = dataset.tracks_by_bin[bin_id]
 
-            validation.add_tracks(dataset.tracks_by_bin[sample])
-            test.add_tracks(dataset.tracks_by_bin[sample])
+            validation.add_tracks(dataset.tracks_by_bin[bin_id])
+            test.add_tracks(dataset.tracks_by_bin[bin_id])
 
-            validation.filter_segments(
-                build_config.test_min_mass, ignore_labels=["false-positive"]
-            )
-            test.filter_segments(
-                build_config.test_min_mass, ignore_labels=["false-positive"]
-            )
-
-            available_bins.remove(sample)
-            used_bins[label].append(sample)
+            available_bins.remove(bin_id)
+            used_bins[label].append(bin_id)
 
             if prefill_bins is not None:
-                print(" - required added adddtional sample ", sample)
+                print(" - required added adddtional sample ", bin_id)
 
         available_bins.update(heavy_bins)
 
         for bin_id in available_bins:
             train.add_tracks(dataset.tracks_by_bin[bin_id])
-            train.filter_segments(
-                build_config.train_min_mass, ignore_labels=["false-positive"]
-            )
 
     print("Segments per class:")
     print("-" * 90)
@@ -306,15 +305,12 @@ def split_dataset_days(build_config, prefill_bins=None):
     # if we have lots of segments on a single day, reduce the weight so we don't overtrain on this specific
     # example.
     train.balance_bins(max_bin_segments)
-    validation.balance_bins(
-        bin_segment_mean + bin_segment_std * build_config.cap_bin_weight
-    )
-
+    validation.balance_bins(max_bin_segments)
     # balance out the classes
-    train.balance_weights(weight_modifiers=build_config.label_weights)
-    validation.balance_weights(weight_modifiers=build_config.label_weights)
+    train.balance_weights()
+    validation.balance_weights()
+
     test.balance_resample(
-        weight_modifiers=build_config.label_weights,
         required_samples=build_config.test_set_count,
     )
 
@@ -364,14 +360,14 @@ def set_globals_from_config(config):
 def main():
     init_logging()
 
-    global dataset, db
+    global dataset, db, segment_min_mass
     config = load_config()
     build_config = config.build
-
+    segment_min_mass = build_config.test_min_mass
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
-    dataset = Dataset(db, "dataset")
+    dataset = Dataset(db, "dataset",segment_length=build_config.segment_length, segment_spacing=build_config.segment_spacing)
 
-    tracks_loaded, total_tracks = dataset.load_tracks(ignore_track)
+    tracks_loaded, total_tracks = dataset.load_tracks(ignore_track, ignore_segment)
 
     print(
         "Loaded {}/{} tracks, found {:.1f}k segments".format(
@@ -383,8 +379,8 @@ def main():
             print("  {} filtered {}".format(key, value))
     print()
 
-    labels = sorted(list(set(dataset.tracks_by_label.keys())))
-    dataset.labels = labels
+    # labels = sorted(list(set(dataset.tracks_by_label.keys())))
+    # dataset.labels = labels
 
     show_tracks_breakdown()
     print()

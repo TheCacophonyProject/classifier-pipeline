@@ -102,7 +102,10 @@ class TrackDatabase:
                 stats["frame_temp_max"] = clip.frame_stats_max
                 stats["frame_temp_median"] = clip.frame_stats_median
                 stats["frame_temp_mean"] = clip.frame_stats_mean
-
+                stats["device"] = clip.device
+                stats["frames_per_second"] = clip.frames_per_second
+                if clip.location:
+                    stats["location"] = clip.location
             f.flush()
             group.attrs["finished"] = True
 
@@ -126,10 +129,8 @@ class TrackDatabase:
         :return:
         """
         with HDF5Manager(self.database) as f:
-            result = {}
-            for key, value in f["clips"][str(clip_id)][str(track_number)].attrs.items():
-                result[key] = value
-            # track number (id) is broken in the file (always 1) so we just read it off the node number
+            dataset = f["clips"][clip_id][str(track_number)]
+            result = hdf5_attributes_dictionary(dataset)
             result["id"] = track_number
         return result
 
@@ -139,11 +140,11 @@ class TrackDatabase:
         :param clip_id:
         :return:
         """
+
         with HDF5Manager(self.database) as f:
-            result = {}
-            for key, value in f["clips"][clip_id].attrs.items():
-                result[key] = value
-            result["tracks"] = len(f["clips"][clip_id])
+            dataset = f["clips"][clip_id]
+            result = hdf5_attributes_dictionary(dataset)
+            result["tracks"] = len(dataset)
         return result
 
     def get_track(self, clip_id, track_number, start_frame=None, end_frame=None):
@@ -238,7 +239,7 @@ class TrackDatabase:
                 stats["frames"] = frames
                 stats["start_frame"] = track.start_frame
                 stats["end_frame"] = track.end_frame
-
+                stats["confidence"] = track.confidence
                 if start_time:
                     stats["start_time"] = start_time.isoformat()
                 if end_time:
@@ -263,3 +264,9 @@ class TrackDatabase:
             # mark the record as have been writen to.
             # this means if we are interupted part way through the track will be overwritten
             clip_node.attrs["finished"] = True
+
+def hdf5_attributes_dictionary(dataset):
+    result = {}
+    for key, value in dataset.attrs.items():
+        result[key] = value
+    return result

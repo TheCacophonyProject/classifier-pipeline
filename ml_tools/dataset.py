@@ -23,11 +23,13 @@ import dateutil
 import numpy as np
 import scipy.ndimage
 
+# from load.clip import Clip
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 
 CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
+FRAMES_PER_SECOND = 9
 
 
 class TrackChannels:
@@ -44,7 +46,18 @@ class TrackHeader:
     """ Header for track. """
 
     def __init__(
-        self, clip_id, track_number, label, start_time, duration, camera, score
+        self,
+        clip_id,
+        track_number,
+        label,
+        start_time,
+        duration,
+        camera,
+        location,
+        score,
+        track_bounds,
+        frame_temp_median,
+        frames_per_second,
     ):
         # reference to clip this segment came from
         self.clip_id = clip_id
@@ -60,16 +73,83 @@ class TrackHeader:
         self.duration = duration
         # camera this track came from
         self.camera = camera
+
+        self.location = location
         # score of track
         self.score = score
         # thermal reference point for each frame.
-        self.thermal_reference_level = None
+        self.frame_temp_median = frame_temp_median
         # tracking frame movements for each frame, array of tuples (x-vel, y-vel)
         self.frame_velocity = None
         # original tracking bounds
-        self.track_bounds = []
+        self.track_bounds = track_bounds
         # what fraction of pixels are from out of bounds
         self.frame_crop = []
+
+        self.frames_per_second = frames_per_second
+        self.calculate_velocity()
+        self.calculate_frame_crop()
+
+    def calculate_frame_crop(self):
+        # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
+        # bounded rect and check it against frame size.
+        self.frame_crop = []
+        for rect in self.track_bounds:
+            rect = tools.Rectangle.from_ltrb(*rect)
+            rx, ry = rect.mid_x, rect.mid_y
+            size = max(rect.width, rect.height)
+            adjusted_rect = tools.Rectangle(rx - size / 2, ry - size / 2, size, size)
+            self.frame_crop.append(
+                get_cropped_fraction(adjusted_rect, CPTV_FILE_WIDTH, CPTV_FILE_HEIGHT)
+            )
+
+    def calculate_velocity(self):
+        frame_center = [
+            ((left + right) / 2, (top + bottom) / 2)
+            for left, top, right, bottom in self.track_bounds
+        ]
+        self.frame_velocity = []
+        prev = None
+        for x, y in frame_center:
+            if prev is None:
+                self.frame_velocity.append((0.0, 0.0))
+            else:
+                self.frame_velocity.append((x - prev[0], y - prev[1]))
+            prev = (x, y)
+
+    def calculate_segments(
+        self, mass_history, segment_frame_spacing, segment_width, segment_filter=None
+    ):
+        self.segments = []
+        segment_count = len(mass_history) // segment_frame_spacing
+        # scan through track looking for good segments to add to our datset
+        for i in range(segment_count):
+            segment_start = i * segment_frame_spacing
+            mass_slice = mass_history[segment_start : segment_start + segment_width]
+            segment_avg_mass = np.mean(mass_slice)
+            segment_frames = len(mass_slice)
+
+            if segment_frames != segment_width:
+                continue
+
+            # try to sample the better segments more often
+            if segment_avg_mass < 50:
+                segment_weight_factor = 0.75
+            elif segment_avg_mass < 100:
+                segment_weight_factor = 1
+            else:
+                segment_weight_factor = 1.2
+
+            segment = SegmentHeader(
+                track=self,
+                start_frame=segment_start,
+                frames=segment_width,
+                weight=segment_weight_factor,
+                avg_mass=segment_avg_mass,
+            )
+            if segment_filter and segment_filter(segment):
+                continue
+            self.segments.append(segment)
 
     @property
     def track_id(self):
@@ -79,7 +159,19 @@ class TrackHeader:
     @property
     def bin_id(self):
         # name of the bin to assign this track to.
-        return str(self.start_time.date()) + "-" + str(self.camera) + "-" + self.label
+        # .dat file has no location attribute
+        if self.__dict__.get("location"):
+            return (
+                self.location
+                + "-"
+                + str(self.start_time.date())
+                + "-"
+                + self.camera
+                + "-"
+                + self.label
+            )
+        else:
+            return str(self.start_time.date()) + "-" + self.camera + "-" + self.label
 
     @property
     def weight(self):
@@ -102,58 +194,33 @@ class TrackHeader:
         start_time = dateutil.parser.parse(track_meta["start_time"])
         end_time = dateutil.parser.parse(track_meta["end_time"])
         duration = (end_time - start_time).total_seconds()
+        location = clip_meta.get("location")
 
-        # kind of checky way to get camera name from clip_id, in the future camera will be included in the metadata.
-        camera = os.path.splitext(os.path.basename(clip_id))[0].split("-")[-1]
-
+        camera = clip_meta["device"]
+        frames_per_second = clip_meta.get("frames_per_second", FRAMES_PER_SECOND)
         # get the reference levels from clip_meta and load them into the track.
         track_start_frame = track_meta["start_frame"]
-        track_end_frame = track_meta["start_frame"] + int(round(duration * 9))
-        thermal_reference_level = np.float32(
+        track_end_frame = track_meta["end_frame"]
+        frame_temp_median = np.float32(
             clip_meta["frame_temp_median"][track_start_frame:track_end_frame]
         )
 
-        # calculate the frame velocities
         bounds_history = track_meta["bounds_history"]
-        frame_center = [
-            ((left + right) / 2, (top + bottom) / 2)
-            for left, top, right, bottom in bounds_history
-        ]
-        frame_velocity = []
-        prev = None
-        for x, y in frame_center:
-            if prev is None:
-                frame_velocity.append((0.0, 0.0))
-            else:
-                frame_velocity.append((x - prev[0], y - prev[1]))
-            prev = (x, y)
 
-        result = TrackHeader(
+        header = TrackHeader(
             clip_id=clip_id,
             track_number=track_meta["id"],
             label=track_meta["tag"],
             start_time=start_time,
             duration=duration,
             camera=camera,
+            location=location,
             score=float(track_meta["score"]),
+            track_bounds=np.asarray(bounds_history),
+            frame_temp_median=frame_temp_median,
+            frames_per_second=frames_per_second,
         )
-        result.thermal_reference_level = thermal_reference_level
-        result.frame_velocity = frame_velocity
-        result.track_bounds = np.asarray(bounds_history)
-
-        # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
-        # bounded rect and check it against frame size.
-        result.frame_crop = []
-        for rect in result.track_bounds:
-            rect = tools.Rectangle.from_ltrb(*rect)
-            rx, ry = rect.mid_x, rect.mid_y
-            size = max(rect.width, rect.height)
-            adjusted_rect = tools.Rectangle(rx - size / 2, ry - size / 2, size, size)
-            result.frame_crop.append(
-                get_cropped_fraction(adjusted_rect, CPTV_FILE_WIDTH, CPTV_FILE_HEIGHT)
-            )
-
-        return result
+        return header
 
     def __repr__(self):
         return self.track_id
@@ -397,7 +464,13 @@ class Dataset:
     # number of pixels to inset from frame edges by default
     DEFAULT_INSET = 2
 
-    def __init__(self, track_db: TrackDatabase, name="Dataset"):
+    def __init__(
+        self,
+        track_db: TrackDatabase,
+        name="Dataset",
+        segment_length=3,
+        segment_spacing=1,
+    ):
 
         # database holding track data
         self.db = track_db
@@ -423,10 +496,10 @@ class Dataset:
         # list of label names
         self.labels = []
 
-        # number of frames each segment should be
-        self.segment_width = 27
-        # number of frames segments are spaced apart
-        self.segment_spacing = 9
+        # number of seconds each segment should be
+        self.segment_length = segment_length
+        # number of seconds segments are spaced apart
+        self.segment_spacing = segment_spacing
         # minimum mass of a segment frame for it to be included
 
         # dictionary used to apply label remapping during track load
@@ -457,7 +530,7 @@ class Dataset:
         """
         label_tracks = self.tracks_by_label.get(label, [])
         segments = sum(len(track.segments) for track in label_tracks)
-        weight = self.get_class_weight(label)
+        weight = self.get_label_weight(label)
         tracks = len(label_tracks)
         bins = len(
             [
@@ -518,7 +591,7 @@ class Dataset:
 
         return batch_X, batch_y
 
-    def load_tracks(self, track_filter=None):
+    def load_tracks(self, track_filter=None, segment_filter=None):
         """
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
@@ -526,11 +599,11 @@ class Dataset:
         counter = 0
         track_ids = self.db.get_all_track_ids()
         for clip_id, track_number in track_ids:
-            if self.add_track(clip_id, track_number, track_filter):
+            if self.add_track(clip_id, track_number, track_filter, segment_filter):
                 counter += 1
         return [counter, len(track_ids)]
 
-    def add_tracks(self, tracks, track_filter=None):
+    def add_tracks(self, tracks, track_filter=None, segment_filter=None):
         """
         Adds list of tracks to dataset
         :param tracks: list of TrackHeader
@@ -538,11 +611,11 @@ class Dataset:
         """
         result = 0
         for track in tracks:
-            if self.add_track(track.clip_id, track.track_number, track_filter):
+            if self.add_track(track.clip_id, track.track_number, track_filter, segment_filter):
                 result += 1
         return result
 
-    def add_track(self, clip_id, track_number, track_filter=None):
+    def add_track(self, clip_id, track_number, track_filter=None, segment_filter=None):
         """
         Creates segments for track and adds them to the dataset
         :param clip_id: id of tracks clip
@@ -557,8 +630,10 @@ class Dataset:
         if TrackHeader.get_name(clip_id, track_number) in self.track_by_id:
             return False
 
+        print("add_track clip {} track {}".format(clip_id, track_number))
         clip_meta = self.db.get_clip_meta(clip_id)
         track_meta = self.db.get_track_meta(clip_id, track_number)
+
         if track_filter and track_filter(clip_meta, track_meta):
             return False
 
@@ -570,6 +645,7 @@ class Dataset:
         self.track_by_id[track_header.track_id] = track_header
 
         if track_header.label not in self.tracks_by_label:
+            self.labels.append(track_header.label)
             self.tracks_by_label[track_header.label] = []
         self.tracks_by_label[track_header.label].append(track_header)
 
@@ -578,41 +654,16 @@ class Dataset:
 
         self.tracks_by_bin[track_header.bin_id].append(track_header)
 
-        mass_history = track_meta["mass_history"]
-        segment_count = len(mass_history) // self.segment_spacing
+        segment_frame_spacing = self.segment_spacing * track_header.frames_per_second
+        segment_width = self.segment_length * track_header.frames_per_second
 
-        # scan through track looking for good segments to add to our datset
-
-        for i in range(segment_count):
-            segment_start = i * self.segment_spacing
-            mass_slice = mass_history[
-                segment_start : segment_start + self.segment_width
-            ]
-            segment_avg_mass = np.mean(mass_slice)
-            segment_frames = len(mass_slice)
-
-            if segment_frames != self.segment_width:
-                continue
-
-            # try to sample the better segments more often
-            if segment_avg_mass < 50:
-                segment_weight_factor = 0.75
-            elif segment_avg_mass < 100:
-                segment_weight_factor = 1
-            else:
-                segment_weight_factor = 1.2
-
-            segment = SegmentHeader(
-                track=track_header,
-                start_frame=segment_start,
-                frames=self.segment_width,
-                weight=segment_weight_factor,
-                avg_mass=segment_avg_mass,
-            )
-
-            self.segments.append(segment)
-            track_header.segments.append(segment)
-
+        track_header.calculate_segments(
+            track_meta["mass_history"],
+            segment_frame_spacing,
+            segment_width,
+            segment_filter,
+        )
+        self.segments.extend(track_header.segments)
         return True
 
     def filter_segments(self, avg_mass, ignore_labels=None):
@@ -630,7 +681,7 @@ class Dataset:
 
             pass_mass = segment.avg_mass >= avg_mass
 
-            if (ignore_labels and segment.label in ignore_labels) or (pass_mass):
+            if (not ignore_labels and segment.label in ignore_labels) or (pass_mass):
                 new_segments.append(segment)
             else:
                 num_filtered += 1
@@ -739,25 +790,25 @@ class Dataset:
         :return:
         """
 
-        class_weight = {}
-        mean_class_weight = 0
+        label_weight = {}
+        mean_label_weight = 0
 
-        for class_name in self.labels:
-            class_weight[class_name] = self.get_class_weight(class_name)
-            mean_class_weight += class_weight[class_name] / len(self.labels)
+        for label in self.labels:
+            label_weight[label] = self.get_label_weight(label)
+            mean_label_weight += label_weight[label] / len(self.labels)
 
         scale_factor = {}
-        for class_name in self.labels:
+        for label in self.labels:
             modifier = (
                 1.0
                 if weight_modifiers is None
-                else weight_modifiers.get(class_name, 1.0)
+                else weight_modifiers.get(label, 1.0)
             )
-            if class_weight[class_name] == 0:
-                scale_factor[class_name] = 1.0
+            if label_weight[label] == 0:
+                scale_factor[label] = 1.0
             else:
-                scale_factor[class_name] = (
-                    mean_class_weight / class_weight[class_name] * modifier
+                scale_factor[label] = (
+                    mean_label_weight / label_weight[label] * modifier
                 )
 
         for segment in self.segments:
@@ -786,19 +837,19 @@ class Dataset:
 
         new_segments = []
 
-        for class_name in self.labels:
-            segments = self.get_class_segments(class_name)
-            required_class_samples = required_samples
+        for label in self.labels:
+            segments = self.get_label_segments(label)
+            required_label_samples = required_samples
             if weight_modifiers:
-                required_class_samples = int(
+                required_label_samples = int(
                     math.ceil(
-                        required_class_samples * weight_modifiers.get(class_name, 1.0)
+                        required_label_samples * weight_modifiers.get(label, 1.0)
                     )
                 )
-            if len(segments) > required_class_samples:
+            if len(segments) > required_label_samples:
                 # resample down
                 segments = np.random.choice(
-                    segments, required_class_samples, replace=False
+                    segments, required_label_samples, replace=False
                 ).tolist()
             new_segments += segments
 
@@ -892,20 +943,19 @@ class Dataset:
             normalizer = self.segment_cdf[-1]
             self.segment_cdf = [x / normalizer for x in self.segment_cdf]
 
-    def get_class_weight(self, label):
+    def get_label_weight(self, label):
         """ Returns the total weight for all segments of given label. """
-        return sum(
-            segment.weight for segment in self.segments if segment.label == label
-        )
+        tracks = self.tracks_by_label.get(label)
+        return sum(track.weight for track in tracks) if tracks else 0
 
-    def get_class_segments_count(self, label):
+    def get_label_segments_count(self, label):
         """ Returns the total weight for all segments of given class. """
         result = 0
         for track in self.tracks_by_label.get(label, []):
             result += len(track.segments)
         return result
 
-    def get_class_segments(self, label):
+    def get_label_segments(self, label):
         """ Returns the total weight for all segments of given class. """
         result = []
         for track in self.tracks_by_label.get(label, []):

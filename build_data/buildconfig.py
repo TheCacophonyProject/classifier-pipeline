@@ -39,6 +39,8 @@ class BuildConfig:
     max_validation_set_track_duration = attr.ib()
     test_set_count = attr.ib()
     test_set_bins = attr.ib()
+    segment_length = attr.ib()
+    segment_spacing = attr.ib()
 
     @classmethod
     def load(cls, build):
@@ -59,6 +61,8 @@ class BuildConfig:
             ],
             test_set_count=build["test_set_count"],
             test_set_bins=build["test_set_bins"],
+            segment_length=build["segment_length"],
+            segment_spacing=build["segment_spacing"],
         )
 
     @classmethod
@@ -76,6 +80,8 @@ class BuildConfig:
             max_validation_set_track_duration=3 * 60,
             test_set_count=300,
             test_set_bins=10,
+            segment_length=3,
+            segment_spacing=1,
         )
 
     def validate(self):
