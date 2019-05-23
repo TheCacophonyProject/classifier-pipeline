@@ -22,11 +22,12 @@ import attr
 import dateutil.parser
 import yaml
 
+from ml_tools.defaultconfig import DefaultConfig
 from ml_tools.previewer import Previewer
 
 
 @attr.s
-class BuildConfig:
+class BuildConfig(DefaultConfig):
     banned_clips_file = attr.ib()
     banned_clips = attr.ib()
     clip_end_date = attr.ib()

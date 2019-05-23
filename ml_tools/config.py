@@ -10,19 +10,10 @@ from train.config import TrainConfig
 from classify.classifyconfig import ClassifyConfig
 from build_data.buildconfig import BuildConfig
 from evaluate.evaluateconfig import EvaluateConfig
+from .defaultconfig import DefaultConfig
 
 CONFIG_FILENAME = "classifier.yaml"
 CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
-
-
-class DefaultConfig:
-    def get_defaults(cls):
-        """ The function to get default config. """
-        raise Exception("get_defaults method must be overwritten in sub class.")
-
-    def validate(self):
-        """ The function to get default config. """
-        raise Exception("validate method must be overwritten in sub class.")
 
 
 @attr.s
@@ -110,7 +101,7 @@ class Config(DefaultConfig):
     def validate(self):
         self.build.validate()
         self.tracking.validate()
-        self.loader.validate()
+        self.load.validate()
         self.train.validate()
         self.classify.validate()
         self.evaluate.validate()

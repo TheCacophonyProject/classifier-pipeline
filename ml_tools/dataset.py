@@ -156,6 +156,12 @@ class TrackHeader:
                 continue
             self.segments.append(segment)
 
+    def ignore_segment(self, segment):
+        if segment_min_mass and segment.avg_mass < segment_min_mass:
+            filtered_stats["segment_mass"] += 1
+            return True
+        return False
+        
     @property
     def track_id(self):
         """ Unique name of this track. """

@@ -127,7 +127,7 @@ class ClipLoader:
         Returns valid tracks
         """
 
-        tracks_meta = clip_metadata["tracks"]
+        tracks_meta = clip_metadata.get("tracks", [])
         valid_tracks = [
             track for track in tracks_meta if self._track_meta_is_valid(track)
         ]

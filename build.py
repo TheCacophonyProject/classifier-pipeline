@@ -367,7 +367,8 @@ def set_globals_from_config(config):
 def main():
     init_logging()
 
-    global dataset, db, segment_min_mass
+    # global dataset, db, segment_min_mass
+    
     config = load_config()
     build_config = config.build
     segment_min_mass = build_config.test_min_mass

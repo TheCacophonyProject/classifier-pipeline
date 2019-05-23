@@ -20,11 +20,12 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import attr
 
 import ml_tools.config
+from ml_tools.defaultconfig import DefaultConfig
 from track.trackextractor import TrackExtractor
 
 
 @attr.s
-class TrackingConfig:
+class TrackingConfig(DefaultConfig):
 
     background_calc = attr.ib()
     temp_thresh = attr.ib()

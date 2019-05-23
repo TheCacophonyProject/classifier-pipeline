@@ -16,17 +16,16 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
-
+import attr
 import os.path as path
 
-import attr
-
 import ml_tools.config
+from ml_tools.defaultconfig import DefaultConfig
 from ml_tools.previewer import Previewer
 
 
 @attr.s
-class EvaluateConfig:
+class EvaluateConfig(DefaultConfig):
 
     show_extended_evaluation = attr.ib()
     new_visit_threshold = attr.ib()

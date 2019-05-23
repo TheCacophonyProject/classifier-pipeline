@@ -22,11 +22,12 @@ import os.path as path
 import attr
 
 import ml_tools.config
+from ml_tools.defaultconfig import DefaultConfig
 from ml_tools.previewer import Previewer
 
 
 @attr.s
-class ClassifyConfig:
+class ClassifyConfig(DefaultConfig):
 
     model = attr.ib()
     meta_to_stdout = attr.ib()

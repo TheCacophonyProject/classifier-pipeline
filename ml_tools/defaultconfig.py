@@ -17,31 +17,14 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import attr
 
-from ml_tools.defaultconfig import DefaultConfig
+class DefaultConfig:
 
+	@classmethod
+	def get_defaults(cls):
+		""" The function to get default config. """
+		raise Exception("get_defaults method must be overwritten in sub class.")
 
-@attr.s
-class LoadConfig(DefaultConfig):
-
-    enable_compression = attr.ib()
-    include_filtered_channel = attr.ib()
-    preview = attr.ib()
-
-    @classmethod
-    def load(cls, extract):
-        return cls(
-            enable_compression=extract["enable_compression"],
-            include_filtered_channel=extract["include_filtered_channel"],
-            preview=extract["preview"],
-        )
-
-    @classmethod
-    def get_defaults(cls):
-        return cls(
-            enable_compression=False, include_filtered_channel=False, preview="tracking"
-        )
-
-    def validate(self):
-        return True
+	def validate(self):
+		""" The function to get default config. """
+		raise Exception("validate method must be overwritten in sub class.")
