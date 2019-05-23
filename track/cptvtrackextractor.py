@@ -270,7 +270,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         return tracker
 
     def export_tracks(
-        self, full_path, tracker: TrackExtractor, database: TrackDatabase
+        self, full_path, tracks, tracker: TrackExtractor, database: TrackDatabase
     ):
         """
         Writes tracks to a track database.

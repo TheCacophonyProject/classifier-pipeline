@@ -684,6 +684,8 @@ def get_confusion_matrix(pred_class, true_class, classes, normalize=True):
     return cm
 
 
+gzip_compression = {"compression": "gzip"}
+
 blosc_zstd = blosc_opts(complevel=9, complib="blosc:zstd", shuffle=True)
 
 color_dict = {
@@ -692,3 +694,29 @@ color_dict = {
     "blue": ((0.0, 0.3, 0.3), (0.5, 0.0, 0.0), (1.0, 0.1, 0.1)),
 }
 cm_blue_red = LinearSegmentedColormap("BlueRed2", color_dict)
+
+
+def calculate_mass(filtered, threshold):
+    """Calculates mass of filtered frame with threshold applied"""
+    thresh = blur_and_return_as_mask(filtered, threshold=threshold)
+    return np.sum(thresh)
+
+
+def calculate_variance(filtered, prev_filtered):
+    """Calculates variance of filtered frame with previous frame"""
+    if prev_filtered is None:
+        return
+    delta_frame = np.abs(filtered - prev_filtered)
+    return np.var(delta_frame)
+
+
+def blur_and_return_as_mask(frame, threshold):
+    """
+    Creates a binary mask out of an image by applying a threshold.
+    Any pixels more than the threshold are set 1, all others are set to 0.
+    A blur is also applied as a filtering step
+    """
+    thresh = cv2.GaussianBlur(frame, (5, 5), 0) - threshold
+    thresh[thresh < 0] = 0
+    thresh[thresh > 0] = 1
+    return thresh

@@ -26,6 +26,7 @@ class FrameBuffer:
     """ Stores entire clip in memory, required for some operations such as track exporting. """
 
     def __init__(self):
+        # all arrays should be np.float32
         self.thermal = None
         self.filtered = None
         self.delta = None
@@ -37,6 +38,50 @@ class FrameBuffer:
     def has_flow(self):
         return self.flow is not None and len(self.flow) != 0
 
+    def get_previous_filtered(self, region, frame_number):
+        previous = frame_number - 1
+        if previous < 0:
+            return None
+
+        return region.subimage(self.filtered[previous])
+
+    def get_frame_channels(self, region, frame_number):
+        """
+        Gets frame channels for track at given frame number.  If frame number outside of track's lifespan an exception
+        is thrown.  Requires the frame_buffer to be filled.
+        :param track: the track to get frames for.
+        :param frame_number: the frame number where 0 is the first frame of the track.
+        :return: numpy array of size [channels, height, width] where channels are thermal, filtered, u, v, mask
+        """
+
+        if frame_number < 0 or frame_number >= len(self.thermal):
+            raise ValueError(
+                "Frame {} is out of bounds for track with {} frames".format(
+                    frame_number, len(self.thermal)
+                )
+            )
+
+        thermal = region.subimage(self.thermal[frame_number])
+        filtered = region.subimage(self.filtered[frame_number])
+        flow = region.subimage(self.flow[frame_number])
+        mask = region.subimage(self.mask[frame_number])
+
+        # make sure only our pixels are included in the mask.
+        mask[mask != region.id] = 0
+        mask[mask > 0] = 1
+
+        # stack together into a numpy array.
+        # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
+        frame = np.int16(
+            np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0)
+        )
+
+        return frame
+
+    def add_frame(self, filtered, mask):
+        self.filtered.append(filtered)
+        self.mask.append(mask)
+
     def generate_optical_flow(self, opt_flow, flow_threshold=40):
         """
         Generate optical flow from thermal frames
@@ -45,20 +90,19 @@ class FrameBuffer:
 
         self.flow = []
 
-        height, width = self.filtered[0].shape
+        height, width = self.thermal[0].shape
         flow = np.zeros([height, width, 2], dtype=np.float32)
+        # for some reason openCV spins up lots of threads for this which really slows things down, so we
+        # cap the threads to 2
+        cv2.setNumThreads(2)
 
         current = None
         for frame in self.thermal:
-            frame = np.float32(frame)
             # strong filtering helps with the optical flow.
             threshold = np.median(frame) + flow_threshold
             next = np.uint8(np.clip(frame - threshold, 0, 255))
 
             if current is not None:
-                # for some reason openCV spins up lots of threads for this which really slows things down, so we
-                # cap the threads to 2
-                cv2.setNumThreads(2)
                 flow = opt_flow.calc(current, next, flow)
 
             current = next
