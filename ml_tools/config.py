@@ -32,7 +32,7 @@ class Config(DefaultConfig):
     EXCLUDED_TAGS = ["untagged", "unidentified"]
 
     source_folder = attr.ib()
-    loader = attr.ib()
+    load = attr.ib()
     tracks_folder = attr.ib()
     labels = attr.ib()
     build = attr.ib()
@@ -73,7 +73,7 @@ class Config(DefaultConfig):
             source_folder=path.join(base_folder, raw["source_folder"]),
             tracks_folder=path.join(base_folder, raw.get("tracks_folder", "tracks")),
             tracking=TrackingConfig.load(raw["tracking"]),
-            loader=LoadConfig.load(raw["load"]),
+            load=LoadConfig.load(raw["load"]),
             train=TrainConfig.load(raw["train"], base_folder),
             classify_tracking=TrackingConfig.load(raw["classify_tracking"]),
             classify=ClassifyConfig.load(raw["classify"], base_folder),
@@ -100,7 +100,7 @@ class Config(DefaultConfig):
             worker_threads=0,
             build=BuildConfig.get_defaults(),
             tracking=TrackingConfig.get_defaults(),
-            loader=LoadConfig.get_defaults(),
+            load=LoadConfig.get_defaults(),
             train=TrainConfig.get_defaults(),
             classify_tracking=TrackingConfig.get_defaults(),
             classify=ClassifyConfig.get_defaults(),

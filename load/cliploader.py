@@ -49,14 +49,14 @@ class ClipLoader:
         )
 
         self.compression = (
-            tools.gzip_compression if self.config.loader.enable_compression else None
+            tools.gzip_compression if self.config.load.enable_compression else None
         )
         self.worker_pool_init = init_workers
         self.track_config = config.tracking
         # number of threads to use when processing jobs.
         self.workers_threads = config.worker_threads
 
-        self.previewer = Previewer.create_if_required(config, config.loader.preview)
+        self.previewer = Previewer.create_if_required(config, config.load.preview)
 
     def process_all(self, root=None):
         if root is None:
@@ -179,7 +179,7 @@ class ClipLoader:
 
         clip = Clip(self.track_config)
         clip.load_cptv(filename)
-        clip.parse_clip(metadata, self.config.loader.include_filtered_channel)
+        clip.parse_clip(metadata, self.config.load.include_filtered_channel)
 
         if self.track_config.enable_track_output:
             self._export_tracks(filename, clip)

@@ -51,6 +51,7 @@ class TrackHeader:
         track_number,
         label,
         start_time,
+        frames,
         duration,
         camera,
         location,
@@ -85,7 +86,7 @@ class TrackHeader:
         self.track_bounds = track_bounds
         # what fraction of pixels are from out of bounds
         self.frame_crop = []
-
+        self.frames = frames
         self.frames_per_second = frames_per_second
         self.calculate_velocity()
         self.calculate_frame_crop()
@@ -182,11 +183,6 @@ class TrackHeader:
         """ Returns total weight for all segments in this track"""
         return sum(segment.weight for segment in self.segments)
 
-    @property
-    def frames(self):
-        """ Returns number of frames in this track"""
-        return int(round(self.duration * 9))
-
     @staticmethod
     def get_name(clip_id, track_number):
         return str(clip_id) + "-" + str(track_number)
@@ -199,7 +195,7 @@ class TrackHeader:
         end_time = dateutil.parser.parse(track_meta["end_time"])
         duration = (end_time - start_time).total_seconds()
         location = clip_meta.get("location")
-
+        frames = track_meta["frames"]
         camera = clip_meta["device"]
         frames_per_second = clip_meta.get("frames_per_second", FRAMES_PER_SECOND)
         # get the reference levels from clip_meta and load them into the track.
@@ -216,6 +212,7 @@ class TrackHeader:
             track_number=track_meta["id"],
             label=track_meta["tag"],
             start_time=start_time,
+            frames=frames,
             duration=duration,
             camera=camera,
             location=location,
