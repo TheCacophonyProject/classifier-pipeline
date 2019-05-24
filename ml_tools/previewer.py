@@ -113,7 +113,7 @@ class Previewer:
 
         # increased resolution of video file.
         # videos look much better scaled up
-        if clip.stats:
+        if clip.background_stats:
             self.auto_max = clip.background_stats["max_temp"]
             self.auto_min = clip.background_stats["min_temp"]
         else:
@@ -136,10 +136,6 @@ class Previewer:
                 image = self.create_four_tracking_image(clip.frame_buffer, frame_number)
                 image = self.convert_and_resize(image, 3.0, mode=Image.NEAREST)
                 draw = ImageDraw.Draw(image)
-                # regions = [track.region_bounds for track in  clip.tracks]
-                # regions = tracker.region_history[frame_number]
-                # self.add_regions(draw, regions)
-                # self.add_regions(draw, regions, v_offset=120)
                 self.add_tracks(draw, clip.tracks, frame_number)
 
             if self.preview_type == self.PREVIEW_BOXES:

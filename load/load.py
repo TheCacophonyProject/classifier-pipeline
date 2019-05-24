@@ -13,7 +13,7 @@ from .cliploader import ClipLoader
 def parse_params():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "target",
+        "-target",
         default="all",
         help='Target to process, "all" processes all folders, "test" runs test cases, "clean" to remove banned clips from db, or a "cptv" file to run a single source.',
     )
