@@ -18,73 +18,17 @@ from ml_tools.config import Config
 from ml_tools.dataset import Dataset, dataset_db_path
 
 
-filtered_stats = {
-    "confidence": 0,
-    "trap": 0,
-    "banned": 0,
-    "date": 0,
-    "tags": 0,
-    "segment_mass": 0,
-}
-segment_min_mass = None
 MIN_BINS = 4
 
 
-def ignore_track(clip_meta, track_meta):
-    # some clips are banned for various reasons
-    source = os.path.basename(clip_meta["filename"])
-    if banned_clips and source in banned_clips:
-        filtered_stats["banned"] += 1
-        return True
-
-    if track_meta["tag"] not in included_labels:
-        filtered_stats["tags"] += 1
-        return True
-
-    # filter by date
-    if (
-        clip_end_date
-        and dateutil.parser.parse(clip_meta["start_time"]).date() > clip_end_date.date()
-    ):
-        filtered_stats["date"] += 1
-        return True
-
-    # always let the false-positives through as we need them even though they would normally
-    # be filtered out.
-    if track_meta["tag"] == "false-positive":
-        return False
-
-    # for some reason we get some records with a None confidence?
-    if track_meta.get("confidence", 0.0) <= 0.6:
-        filtered_stats["confidence"] += 1
-        return True
-
-    # remove tracks of trapped animals
-    if (
-        "trap" in clip_meta.get("event", "").lower()
-        or "trap" in clip_meta.get("trap", "").lower()
-    ):
-        filtered_stats["trap"] += 1
-        return True
-
-    return False
-
-
-def ignore_segment(segment):
-    if segment_min_mass and segment.avg_mass < segment_min_mass:
-        filtered_stats["segment_mass"] += 1
-        return True
-    return False
-
-
-def show_tracks_breakdown():
+def show_tracks_breakdown(dataset):
     print("Tracks breakdown:")
     for label in dataset.labels:
         count = len([track for track in dataset.tracks_by_label[label]])
         print("  {:<20} {} tracks".format(label, count))
 
 
-def show_cameras_breakdown():
+def show_cameras_breakdown(dataset):
     print("Cameras breakdown")
     tracks_by_camera = {}
     for track in dataset.tracks:
@@ -96,7 +40,7 @@ def show_cameras_breakdown():
         print("{:<20} {}".format(camera, len(tracks)))
 
 
-def show_segments_breakdown():
+def show_segments_breakdown(dataset):
     print("Segments breakdown:")
     for label in dataset.labels:
         count = sum([len(track.segments) for track in dataset.tracks_by_label[label]])
@@ -149,16 +93,31 @@ def split_dataset_predefined():
     raise Exception("not implemented yet.")
 
 
-def is_heavy_bin(bin_id, max_bin_segments, max_validation_set_track_duration):
-    bin_segments = sum(len(track.segments) for track in dataset.tracks_by_bin[bin_id])
-    max_track_duration = max(track.duration for track in dataset.tracks_by_bin[bin_id])
-    return (
-        bin_segments > max_bin_segments
-        or max_track_duration > max_validation_set_track_duration
-    )
+def prefill_bins(
+    dataset,
+    fill_datasets,
+    prefill_bins,
+    used_bins,
+    max_bin_segments,
+    max_validation_track_duration,
+):
+    print("Reusing bins from previous split:")
+
+    for label in dataset.labels:
+        if label not in prefill_bins:
+            continue
+        normal_bins, heavy_bins = dataset.split_heavy_bins(
+            prefill_bins[label], max_bin_segments, max_validation_track_duration
+        )
+
+        for sample in normal_bins:
+            tracks = dataset.tracks_by_bin[sample]
+            for ds in fill_datasets:
+                ds.add_tracks(tracks)
+        used_bins[label].extend(normal_bins)
 
 
-def split_dataset_days(build_config, prefill_bins=None):
+def split_dataset(db, dataset, build_config, prefill_dataset=None):
     """
     Randomly selects tracks to be used as the train, validation, and test sets
     :param prefill_bins: if given will use these bins for the test set
@@ -169,38 +128,119 @@ def split_dataset_days(build_config, prefill_bins=None):
 
     # pick out groups to use for the various sets
     bins_by_label = {}
+    used_bins = {}
+
     for label in dataset.labels:
         bins_by_label[label] = []
+        used_bins[label] = []
 
     counts = []
     for bin_id, tracks in dataset.tracks_by_bin.items():
-        label = dataset.track_by_id[tracks[0].track_id].label
-        bins_by_label[label].append(bin_id)
+        label = tracks[0].label
+        bins_by_label[tracks[0].label].append(bin_id)
         counts.append(sum(len(track.segments) for track in tracks))
-    # bins_by_label
-    #     ["rat"]
-    #         ["2019-20-10-gp-test-01-rat"]
-    #     ["possum"]
-    #         ["2019-20-10-gp-test-01-possum"]
+
     train = Dataset(db, "train")
     validation = Dataset(db, "validation")
     test = Dataset(db, "test")
 
-    # train.labels = dataset.labels.copy()
-    # validation.labels = dataset.labels.copy()
-    # test.labels = dataset.labels.copy()
-
-    # check bins distribution don't need ?? GP
-    # bin_segments = []
-    # for bin, tracks in dataset.tracks_by_bin.items():
-    #     count = sum(len(track.segments) for track in tracks)
-    #     bin_segments.append((count, bin))
-    # bin_segments.sort()
-    # counts = [count for count, bin in bin_segments]
     bin_segment_mean = np.mean(counts)
     bin_segment_std = np.std(counts)
     max_bin_segments = bin_segment_mean + bin_segment_std * build_config.cap_bin_weight
 
+    print_bin_segment_stats(bin_segment_mean, bin_segment_std, max_bin_segments)
+
+    max_track_duration = build_config.max_validation_set_track_duration
+    if prefill_dataset is not None:
+        prefill_bins(
+            dataset,
+            [validation, test],
+            prefill_dataset,
+            used_bins,
+            max_bin_segments,
+            max_track_duration,
+        )
+
+    required_samples = build_config.test_set_count
+    required_bins = max(MIN_BINS, build_config.test_set_bins)
+
+    # assign bins to test and validation sets
+    # if we previously added bins from another dataset we are simply filling in the gaps here.
+    for label in dataset.labels:
+        available_bins = set(bins_by_label[label]) - set(used_bins[label])
+
+        normal_bins, heavy_bins = dataset.split_heavy_bins(
+            available_bins, max_bin_segments, max_track_duration
+        )
+
+        print_bin_stats(label, normal_bins, heavy_bins, used_bins)
+
+        add_random_samples(
+            dataset,
+            [validation, test],
+            normal_bins,
+            used_bins[label],
+            label,
+            required_samples,
+            required_bins,
+        )
+
+        normal_bins.extend(heavy_bins)
+        for bin_id in normal_bins:
+            train.add_tracks(dataset.tracks_by_bin[bin_id])
+
+    # if we have lots of segments on a single day, reduce the weight
+    # so we don't overtrain on this specific example.
+    train.balance_bins(max_bin_segments)
+    validation.balance_bins(max_bin_segments)
+    # balance out the classes
+    train.balance_weights()
+    validation.balance_weights()
+
+    test.balance_resample(required_samples=build_config.test_set_count)
+
+    print_segments(dataset, train, validation, test)
+
+    return train, validation, test
+
+
+def add_random_samples(
+    dataset,
+    fill_datasets,
+    sample_set,
+    used_bins,
+    label,
+    required_samples,
+    required_bins,
+):
+    """
+        add random samples from the sample_set to every dataset in 
+        fill_datasets until the bin requirements are met
+        Updates the bins in sample_set and used_bins
+        """
+    while sample_set and needs_more_bins(
+        fill_datasets[0], label, used_bins, required_samples, required_bins
+    ):
+
+        bin_id = random.sample(sample_set, 1)[0]
+        tracks = dataset.tracks_by_bin[bin_id]
+
+        tracks = dataset.tracks_by_bin[bin_id]
+        for ds in fill_datasets:
+            ds.add_tracks(tracks)
+
+        sample_set.remove(bin_id)
+        used_bins.append(bin_id)
+
+
+def needs_more_bins(dataset, label, used_bins, required_samples, required_bins):
+    return (
+        dataset.get_label_segments_count(label) < required_samples
+        or len(used_bins) < required_bins
+    )
+
+
+def print_bin_segment_stats(bin_segment_mean, bin_segment_std, max_bin_segments):
     print()
     print(
         "Bin segment mean:{:.1f} std:{:.1f} auto max segments:{:.1f}".format(
@@ -209,118 +249,21 @@ def split_dataset_days(build_config, prefill_bins=None):
     )
     print()
 
-    used_bins = {}
 
-    for label in dataset.labels:
-        used_bins[label] = []
-
-    if prefill_bins is not None:
-        print("Reusing bins from previous split:")
-        for label in dataset.labels:
-            available_bins = set(bins_by_label[label])
-            if label not in prefill_bins:
-                continue
-            for sample in prefill_bins[label]:
-                # this happens if we have banned/deleted the clip, but it was previously used.
-                if sample not in dataset.tracks_by_bin:
-                    continue
-                # this happens if we changed what a 'heavy' bin is.
-                if is_heavy_bin(
-                    sample,
-                    max_bin_segments,
-                    build_config.max_validation_set_track_duration,
-                ):
-                    continue
-
-                validation.add_tracks(dataset.tracks_by_bin[sample])
-                test.add_tracks(dataset.tracks_by_bin[sample])
-                validation.filter_segments(
-                    build_config.test_min_mass, ignore_labels=["false-positive"]
-                )
-                test.filter_segments(
-                    build_config.test_min_mass, ignore_labels=["false-positive"]
-                )
-
-                available_bins.remove(sample)
-                used_bins[label].append(sample)
-
-            for bin_id in available_bins:
-                train.add_tracks(dataset.tracks_by_bin[bin_id])
-                train.filter_segments(
-                    build_config.train_min_mass, ignore_labels=["false-positive"]
-                )
-
-    # assign bins to test and validation sets
-    # if we previously added bins from another dataset we are simply filling in the gaps here.
-    for label in dataset.labels:
-
-        available_bins = set(bins_by_label[label])
-
-        # heavy bins are bins with an unsually high number of examples on a day.  We exclude these from the test/validation
-        # set as they will be subfiltered down and there is no need to waste that much data.
-        heavy_bins = set()
-        for bin_id in available_bins:
-            if is_heavy_bin(
-                bin_id, max_bin_segments, build_config.max_validation_set_track_duration
-            ):
-                heavy_bins.add(bin_id)
-
-        available_bins -= heavy_bins
-        available_bins -= set(used_bins[label])
-
-        # print bin statistics
-        print(
-            "{}: normal {} heavy {} pre-filled {}".format(
-                label, len(available_bins), len(heavy_bins), len(used_bins[label])
-            )
+def print_bin_stats(label, available_bins, heavy_bins, used_bins):
+    print(
+        "{}: normal {} heavy {} pre-filled {}".format(
+            label, len(available_bins), len(heavy_bins), len(used_bins[label])
         )
+    )
 
-        weight = 1.0
 
-        required_samples = build_config.test_set_count * weight
-        required_bins = (
-            build_config.test_set_bins * weight
-        )  # make sure there is some diversity
-        required_bins = max(MIN_BINS, required_bins)
-        print("required samples" + str(required_samples))
-        # we assign bins to the test and validation sets randomly until we have enough segments + bins
-        # the remaining bins can be used for training
-        while len(available_bins) > 0 and (
-            validation.get_label_segments_count(label) < required_samples
-            or len(used_bins[label]) < required_bins
-        ):
-
-            bin_id = random.sample(available_bins, 1)[0]
-            tracks = dataset.tracks_by_bin[bin_id]
-
-            validation.add_tracks(dataset.tracks_by_bin[bin_id])
-            test.add_tracks(dataset.tracks_by_bin[bin_id])
-
-            available_bins.remove(bin_id)
-            used_bins[label].append(bin_id)
-
-            if prefill_bins is not None:
-                print(" - required added adddtional sample ", bin_id)
-
-        available_bins.update(heavy_bins)
-
-        for bin_id in available_bins:
-            train.add_tracks(dataset.tracks_by_bin[bin_id])
+def print_segments(dataset, train, validation, test):
 
     print("Segments per class:")
     print("-" * 90)
     print("{:<20} {:<21} {:<21} {:<21}".format("Class", "Train", "Validation", "Test"))
     print("-" * 90)
-
-    # if we have lots of segments on a single day, reduce the weight so we don't overtrain on this specific
-    # example.
-    train.balance_bins(max_bin_segments)
-    validation.balance_bins(max_bin_segments)
-    # balance out the classes
-    train.balance_weights()
-    validation.balance_weights()
-
-    test.balance_resample(required_samples=build_config.test_set_count)
     # display the dataset summary
     for label in dataset.labels:
         print(
@@ -333,11 +276,9 @@ def split_dataset_days(build_config, prefill_bins=None):
         )
     print()
 
-    return train, validation, test
 
-
-def get_bin_split(filename):
-    """Loads bin splits from previous database. """
+def get_previous_validation_bins(filename):
+    """Loads bin from previous database. """
     train, validation, text = pickle.load(open(filename, "rb"))
     test_bins = {}
     for label in validation.labels:
@@ -353,41 +294,25 @@ def load_config():
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     args = parser.parse_args()
     config = Config.load_from_file(args.config_file)
-    set_globals_from_config(config)
     return config
-
-
-def set_globals_from_config(config):
-    global banned_clips, included_labels, clip_end_date
-    banned_clips = config.build.banned_clips
-    included_labels = config.labels
-    clip_end_date = config.build.clip_end_date
 
 
 def main():
     init_logging()
 
-    # global dataset, db, segment_min_mass
-    
     config = load_config()
     build_config = config.build
-    segment_min_mass = build_config.test_min_mass
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
-    dataset = Dataset(
-        db,
-        "dataset",
-        segment_length=build_config.segment_length,
-        segment_spacing=build_config.segment_spacing,
-    )
+    dataset = Dataset(db, "dataset", config)
 
-    tracks_loaded, total_tracks = dataset.load_tracks(ignore_track, ignore_segment)
+    tracks_loaded, total_tracks = dataset.load_tracks()
 
     print(
         "Loaded {}/{} tracks, found {:.1f}k segments".format(
             tracks_loaded, total_tracks, len(dataset.segments) / 1000
         )
     )
-    for key, value in filtered_stats.items():
+    for key, value in dataset.filtered_stats.items():
         if value != 0:
             print("  {} filtered {}".format(key, value))
     print()
@@ -395,19 +320,19 @@ def main():
     # labels = sorted(list(set(dataset.tracks_by_label.keys())))
     # dataset.labels = labels
 
-    show_tracks_breakdown()
+    show_tracks_breakdown(dataset)
     print()
-    show_segments_breakdown()
+    show_segments_breakdown(dataset)
     print()
-    show_cameras_breakdown()
+    show_cameras_breakdown(dataset)
     print()
 
     print("Splitting data set into train / validation")
     if build_config.use_previous_split:
-        split = get_bin_split("template.dat")
-        datasets = split_dataset_days(build_config, split)
+        split = get_previous_validation_bins(build_config.previous_split)
+        datasets = split_dataset(db, dataset, build_config, split)
     else:
-        datasets = split_dataset_days(build_config)
+        datasets = split_dataset(db, dataset, build_config)
 
     pickle.dump(datasets, open(dataset_db_path(config), "wb"))
 

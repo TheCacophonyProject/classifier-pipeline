@@ -42,6 +42,7 @@ class BuildConfig(DefaultConfig):
     test_set_bins = attr.ib()
     segment_length = attr.ib()
     segment_spacing = attr.ib()
+    previous_split = attr.ib()
 
     @classmethod
     def load(cls, build):
@@ -64,6 +65,7 @@ class BuildConfig(DefaultConfig):
             test_set_bins=build["test_set_bins"],
             segment_length=build["segment_length"],
             segment_spacing=build["segment_spacing"],
+            previous_split=build["previous_split"],
         )
 
     @classmethod
@@ -83,6 +85,7 @@ class BuildConfig(DefaultConfig):
             test_set_bins=10,
             segment_length=3,
             segment_spacing=1,
+            previous_split="template.dat",
         )
 
     def validate(self):
@@ -92,10 +95,8 @@ class BuildConfig(DefaultConfig):
 def load_banned_clips_file(filename):
     if not filename:
         return None
+    files = []
     with open(filename) as stream:
-        return load_banned_clips(stream)
-
-
-def load_banned_clips(stream):
-    raw = yaml.safe_load(stream)
-    return raw["clips"]
+        for line in stream:
+            files.append(line.strip())
+    return files

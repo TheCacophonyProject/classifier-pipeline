@@ -216,11 +216,15 @@ evaluate:
 
 build:
     #file containing clips to be banned relative to running path
-    banned_clips_file: "excluded_files.yml"
+    banned_clips_file: "excluded_clips.txt"
 
     # uses split from previous run
     use_previous_split: False
 
+    # file to load previous split from
+    previous_split: template.dat
+
+    # labels to ignore
     ignore_labels: ["false-positive"]
 
     # if true removes any trapped animal footage from dataset.

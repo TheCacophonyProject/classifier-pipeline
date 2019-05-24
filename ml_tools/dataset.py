@@ -60,6 +60,8 @@ class TrackHeader:
         frame_temp_median,
         frames_per_second,
     ):
+
+        self.filtered_stats = {"segment_mass": 0}
         # reference to clip this segment came from
         self.clip_id = clip_id
         # reference to track this segment came from
@@ -119,7 +121,7 @@ class TrackHeader:
             prev = (x, y)
 
     def calculate_segments(
-        self, mass_history, segment_frame_spacing, segment_width, segment_filter=None
+        self, mass_history, segment_frame_spacing, segment_width, segment_min_mass=None
     ):
         self.segments = []
         if len(mass_history) < segment_width:
@@ -137,6 +139,9 @@ class TrackHeader:
             if segment_frames != segment_width:
                 continue
 
+            if segment_min_mass and segment_avg_mass < segment_min_mass:
+                self.filtered_stats["segment_mass"] += 1
+                continue
             # try to sample the better segments more often
             if segment_avg_mass < 50:
                 segment_weight_factor = 0.75
@@ -152,16 +157,9 @@ class TrackHeader:
                 weight=segment_weight_factor,
                 avg_mass=segment_avg_mass,
             )
-            if segment_filter and segment_filter(segment):
-                continue
+
             self.segments.append(segment)
 
-    def ignore_segment(self, segment):
-        if segment_min_mass and segment.avg_mass < segment_min_mass:
-            filtered_stats["segment_mass"] += 1
-            return True
-        return False
-        
     @property
     def track_id(self):
         """ Unique name of this track. """
@@ -471,8 +469,12 @@ class Dataset:
         self,
         track_db: TrackDatabase,
         name="Dataset",
-        segment_length=3,
-        segment_spacing=1,
+        config=None
+        # segment_length=3,
+        # segment_spacing=1,
+        # banned_clips=None,
+        # included_labels=None,
+        # clip_before_date=None,
     ):
 
         # database holding track data
@@ -499,10 +501,6 @@ class Dataset:
         # list of label names
         self.labels = []
 
-        # number of seconds each segment should be
-        self.segment_length = segment_length
-        # number of seconds segments are spaced apart
-        self.segment_spacing = segment_spacing
         # minimum mass of a segment frame for it to be included
 
         # dictionary used to apply label remapping during track load
@@ -520,6 +518,30 @@ class Dataset:
         # a copy of our entire dataset, if loaded.
         self.X = None
         self.y = None
+
+        if config:
+            # number of seconds each segment should be
+            self.segment_length = config.build.segment_length
+            # number of seconds segments are spaced apart
+            self.segment_spacing = config.build.segment_spacing
+            self.banned_clips = config.build.banned_clips
+            self.included_labels = config.labels
+            self.clip_before_date = config.build.clip_end_date
+            self.segment_min_mass = config.build.test_min_mass
+        else:
+            # number of seconds each segment should be
+            self.segment_length = 3
+            # number of seconds segments are spaced apart
+            self.segment_spacing = 1
+
+        self.filtered_stats = {
+            "confidence": 0,
+            "trap": 0,
+            "banned": 0,
+            "date": 0,
+            "tags": 0,
+            "segment_mass": 0,
+        }
 
     @property
     def rows(self):
@@ -593,7 +615,7 @@ class Dataset:
 
         return batch_X, batch_y
 
-    def load_tracks(self, track_filter=None, segment_filter=None):
+    def load_tracks(self):
         """
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
@@ -601,7 +623,7 @@ class Dataset:
         counter = 0
         track_ids = self.db.get_all_track_ids()
         for clip_id, track_number in track_ids:
-            if self.add_track(clip_id, track_number, track_filter, segment_filter):
+            if self.add_track(clip_id, track_number):
                 counter += 1
         return [counter, len(track_ids)]
 
@@ -625,7 +647,7 @@ class Dataset:
         self.segments.extend(track_header.segments)
         return True
 
-    def add_track(self, clip_id, track_number, track_filter=None, segment_filter=None):
+    def add_track(self, clip_id, track_number):
         """
         Creates segments for track and adds them to the dataset
         :param clip_id: id of tracks clip
@@ -644,7 +666,7 @@ class Dataset:
         clip_meta = self.db.get_clip_meta(clip_id)
         track_meta = self.db.get_track_meta(clip_id, track_number)
 
-        if track_filter and track_filter(clip_meta, track_meta):
+        if self.filter_track(clip_meta, track_meta):
             return False
 
         track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
@@ -658,10 +680,54 @@ class Dataset:
             track_meta["mass_history"],
             segment_frame_spacing,
             segment_width,
-            segment_filter,
+            self.segment_min_mass,
         )
+
+        self.filtered_stats["segment_mass"] += track_header.filtered_stats[
+            "segment_mass"
+        ]
         self.segments.extend(track_header.segments)
         return True
+
+    def filter_track(self, clip_meta, track_meta):
+        # some clips are banned for various reasons
+        source = os.path.basename(clip_meta["filename"])
+        if self.banned_clips and source in self.banned_clips:
+            self.filtered_stats["banned"] += 1
+            return True
+
+        if track_meta["tag"] not in self.included_labels:
+            self.filtered_stats["tags"] += 1
+            return True
+
+        # filter by date
+        if (
+            self.clip_before_date
+            and dateutil.parser.parse(clip_meta["start_time"]).date()
+            > self.clip_before_date.date()
+        ):
+            self.filtered_stats["date"] += 1
+            return True
+
+        # always let the false-positives through as we need them even though they would normally
+        # be filtered out.
+        if track_meta["tag"] == "false-positive":
+            return False
+
+        # for some reason we get some records with a None confidence?
+        if track_meta.get("confidence", 0.0) <= 0.6:
+            self.filtered_stats["confidence"] += 1
+            return True
+
+        # remove tracks of trapped animals
+        if (
+            "trap" in clip_meta.get("event", "").lower()
+            or "trap" in clip_meta.get("trap", "").lower()
+        ):
+            self.filtered_stats["trap"] += 1
+            return True
+
+        return False
 
     def add_track_to_mappings(self, track_header):
         if self.label_mapping and track_header.label in self.label_mapping:
@@ -785,6 +851,8 @@ class Dataset:
 
     def sample_segment(self):
         """ Returns a random segment from weighted list. """
+        if not self.segments:
+            return None
         roll = random.random()
         index = bisect(self.segment_cdf, roll)
         return self.segments[index]
@@ -839,6 +907,40 @@ class Dataset:
                         segment.weight *= scale_factor
 
         self.rebuild_cdf()
+
+    def get_bin_segments_count(self, bin_id):
+        return sum(len(track.segments) for track in self.tracks_by_bin[bin_id])
+
+    def get_bin_max_track_duration(self, bin_id):
+        return max(track.duration for track in self.tracks_by_bin[bin_id])
+
+    def is_heavy_bin(self, bin_id, max_bin_segments, max_validation_set_track_duration):
+        """
+            heavy bins are bins with more tracks whiche xceed track duration or max bin_segments
+            """
+        bin_segments = self.get_bin_segments_count(bin_id)
+        max_track_duration = self.get_bin_max_track_duration(bin_id)
+        return (
+            bin_segments > max_bin_segments
+            or max_track_duration > max_validation_set_track_duration
+        )
+
+    def split_heavy_bins(
+        self, bins, max_bin_segments, max_validation_set_track_duration
+    ):
+        """
+            heavy bins are bins with more tracks whiche xceed track duration or max bin_segments
+            """
+        heavy_bins, normal_bins = [], []
+        for bin_id in bins:
+            if bin_id in self.tracks_by_bin:
+                if self.is_heavy_bin(
+                    bin_id, max_bin_segments, max_validation_set_track_duration
+                ):
+                    heavy_bins.append(bin_id)
+                else:
+                    normal_bins.append(bin_id)
+        return normal_bins, heavy_bins
 
     def balance_resample(self, required_samples, weight_modifiers=None):
         """ Removes segments until all classes have given number of samples (or less)"""
@@ -956,9 +1058,8 @@ class Dataset:
 
     def get_label_segments_count(self, label):
         """ Returns the total weight for all segments of given class. """
-        result = 0
-        for track in self.tracks_by_label.get(label, []):
-            result += len(track.segments)
+        tracks = self.tracks_by_label.get(label, [])
+        result = sum([track.segments for track in tracks])
         return result
 
     def get_label_segments(self, label):

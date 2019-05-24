@@ -19,12 +19,11 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 
 class DefaultConfig:
+    @classmethod
+    def get_defaults(cls):
+        """ The function to get default config. """
+        raise Exception("get_defaults method must be overwritten in sub class.")
 
-	@classmethod
-	def get_defaults(cls):
-		""" The function to get default config. """
-		raise Exception("get_defaults method must be overwritten in sub class.")
-
-	def validate(self):
-		""" The function to get default config. """
-		raise Exception("validate method must be overwritten in sub class.")
+    def validate(self):
+        """ The function to get default config. """
+        raise Exception("validate method must be overwritten in sub class.")
