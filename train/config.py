@@ -22,10 +22,11 @@ from os import path
 import attr
 
 import ml_tools.config
+from ml_tools.defaultconfig import DefaultConfig
 
 
 @attr.s
-class TrainConfig:
+class TrainConfig(DefaultConfig):
     hyper_params = attr.ib()
     train_dir = attr.ib()
     epochs = attr.ib()
