@@ -2,7 +2,7 @@ import logging
 import multiprocessing
 import os
 import time
-import traceback
+from datetime import datetime
 
 
 def process_job(job):
@@ -33,6 +33,8 @@ class CPTVFileProcessor:
         """
         A base class for processing large sets of CPTV video files.
         """
+        self.start_date = None
+        self.end_date = None
 
         # folder to output files to
         self.output_folder = None
@@ -52,33 +54,67 @@ class CPTVFileProcessor:
         """ The function to process an individual file. """
         raise Exception("Process file method must be overwritten in sub class.")
 
-    def needs_processing(self, filename):
-        """ Checks if source file needs processing. """
-        return True
-
-    def process_folder(self, folder_path, worker_pool_args=None, **kwargs):
-        """Processes all files within a folder."""
-        if not os.path.exists(folder_path):
-            logging.exception(
-                "Warning - folder {} does not exist anymore".format(folder_path)
-            )
-            return
-
-        logging.info("processing %s", folder_path)
+    def process_all(self, root, **kwargs):
+        if root is None:
+            root = self.config.source_folder
 
         jobs = []
-        for file_name in os.listdir(folder_path):
-            full_path = os.path.join(folder_path, file_name)
-            if (
-                os.path.isfile(full_path)
-                and os.path.splitext(full_path)[1].lower() == ".cptv"
-            ):
-                if self.needs_processing(full_path):
-                    jobs.append((self, full_path, kwargs))
+        for folder_path, _, files in os.walk(root):
+            for name in files:
+                if os.path.splitext(name)[1] == ".cptv":
+                    full_path = os.path.join(folder_path, name)
+                    if self.needs_processing(full_path):
+                        jobs.append((self, full_path, kwargs))
 
-        self.process_job_list(jobs, worker_pool_args)
+        self._process_job_list(jobs)
 
-    def process_job_list(self, jobs, worker_pool_args=None):
+    def needs_processing(self, filename):
+        """
+        Returns True if this file needs to be processed, false otherwise.
+        :param filename: the full path and filename of the cptv file in question.
+        :return: returns true if file should be processed, false otherwise
+        """
+
+        # check date filters
+        date_part = str(os.path.basename(filename).split("-")[0])
+        date = datetime.strptime(date_part, "%Y%m%d")
+        if self.start_date and date < self.start_date:
+            return False
+        if self.end_date and date > self.end_date:
+            return False
+
+        # look to see of the destination file already exists.
+        classify_name = self.get_classify_filename(filename)
+        meta_filename = classify_name + ".txt"
+
+        # if no stats file exists we haven't processed file, so reprocess
+        if self.config.reprocess:
+            return True
+        else:
+            return not os.path.exists(meta_filename)
+
+    # def process_folder(self, folder_path, worker_pool_args=None, **kwargs):
+    #     """Processes all files within a folder."""
+    #     if not os.path.exists(folder_path):
+    #         logging.exception(
+    #             "Warning - folder {} does not exist anymore".format(folder_path)
+    #         )
+    #         return
+
+    #     logging.info("processing %s", folder_path)
+
+    #     jobs = []
+    #     for file_name in os.listdir(folder_path):
+    #         full_path = os.path.join(folder_path, file_name)
+    #         if (
+    #             os.path.isfile(full_path)
+    #             and os.path.splitext(full_path)[1].lower() == ".cptv"
+    #         ):
+    #             jobs.append((self, full_path, kwargs))
+
+    #     self._process_job_list(jobs, worker_pool_args)
+
+    def _process_job_list(self, jobs, worker_pool_args=None):
         """
         Processes a list of jobs. Supports worker threads.
         :param jobs: List of jobs to process

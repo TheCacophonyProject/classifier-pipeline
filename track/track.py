@@ -42,17 +42,17 @@ class Track:
 
         # used to uniquely identify the track
         if not id:
-            self._id = self._track_id
-            self._track_id += 1
+            self._id = Track._track_id
+            Track._track_id += 1
         else:
             self._id = id
 
         self.clip_id = clip_id
         # frame number this track starts at
         self.start_frame = None
-        self.end_frame = 0
-        self.start_s = 0
-        self.end_s = 0
+        self.end_frame = None
+        self.start_s = None
+        self.end_s = None
         self.current_frame = 0
         self.frame_list = []
         # our bounds over time
@@ -63,18 +63,19 @@ class Track:
         self.vel_x = 0
         # our current estimated vertical velocity
         self.vel_y = 0
-        self.track_data = None
+        self.track_data = []
         # the tag for this track
         self.tag = "unknown"
         self.prev_frame = None
         self.include_filtered_channel = True
         self.confidence = None
+        self.from_metadata = False
 
     def get_id(self):
         return self._id
 
     def load_track_meta(self, track_meta, frames_per_second, include_filtered_channel):
-
+        self.from_metadata = True
         self._id = track_meta["id"]
         self.include_filtered_channel = include_filtered_channel
         self.track_data = []
@@ -100,6 +101,13 @@ class Track:
 
         return True
 
+    def add_frame_from_region(self, region, buffer_frame):
+        self.bounds_history.append(region)
+        channels = buffer_frame.get_frame_channels(region, region.frame_number)
+        self.track_data.append(channels)
+        self.end_frame = region.frame_number
+        self.current_frame += 1
+
     def add_frame(self, frame_number, buffer_frame, mass_delta_threshold):
 
         region = self.bounds_history[self.current_frame]
@@ -113,7 +121,7 @@ class Track:
         if self.prev_frame and frame_number:
             frame_diff = frame_number - self.prev_frame - 1
             for _ in range(frame_diff):
-                self._add_blank_frame()
+                self.add_blank_frame()
 
         if len(self) >= 2:
             self.vel_x = self.bounds_history[-1].mid_x - self.bounds_history[-2].mid_x
@@ -129,14 +137,16 @@ class Track:
 
         self.track_data.append(channels)
 
-    def _add_blank_frame(self):
+    def add_blank_frame(self, buffer_frame=None):
         """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
         region = self.last_bound.copy()
         region.mass = 0
         region.pixel_variance = 0
-        region.frame_index += 1
+        region.frame_number += 1
         self.bounds_history.append(region)
-
+        if buffer_frame:
+            channels = buffer_frame.get_frame_channels(region, region.frame_number)
+            self.track_data.append(channels)
         self.vel_x = self.vel_y = 0
 
     def get_stats(self):
@@ -226,7 +236,6 @@ class Track:
         Removes empty frames from start and end of track
         """
         mass_history = [int(bound.mass) for bound in self.bounds_history]
-
         start = 0
         while start < len(self) and mass_history[start] <= 2:
             start += 1
@@ -237,17 +246,19 @@ class Track:
         if end < start:
             self.start_frame = 0
             self.bounds_history = []
+            self.track_data = []
         else:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
+            self.track_data = self.track_data[start : end + 1]
 
     def get_track_region_score(self, region: Region):
         """
         Calculates a score between this track and a region of interest.  Regions that are close the the expected
         location for this track are given high scores, as are regions of a similar size.
         """
-        expected_x = int(self.bounds.mid_x + self.vel_x)
-        expected_y = int(self.bounds.mid_y + self.vel_y)
+        expected_x = int(self.last_bound.mid_x + self.vel_x)
+        expected_y = int(self.last_bound.mid_y + self.vel_y)
 
         distance = (
             (region.mid_x - expected_x) ** 2 + (region.mid_y - expected_y) ** 2
@@ -256,7 +267,7 @@ class Track:
         # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
         # area is padded with 50 pixels so small regions don't change too much
         size_difference = (
-            abs(region.area - self.bounds.area) / (self.bounds.area + 50)
+            abs(region.area - self.last_bound.area) / (self.last_bound.area + 50)
         ) * 100
 
         return distance, size_difference
@@ -273,9 +284,7 @@ class Track:
             return 0.0
 
         start = max(self.start_frame, other_track.start_frame)
-        end = min(
-            self.start_frame + len(self), other_track.start_frame + len(other_track)
-        )
+        end = min(self.end_frame, other_track.end_frame)
 
         frames_overlapped = 0
 
@@ -297,7 +306,7 @@ class Track:
         return frames_overlapped / len(self)
 
     @property
-    def mass(self):
+    def last_mass(self):
         return self.bounds_history[-1].mass
 
     @property

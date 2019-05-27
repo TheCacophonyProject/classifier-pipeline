@@ -381,7 +381,7 @@ class Preprocessor:
 
             scaled_frame = [
                 cv2.resize(
-                    np.float32(cropped_frame[channel]),
+                    cropped_frame[channel],
                     dsize=(Preprocessor.FRAME_SIZE, Preprocessor.FRAME_SIZE),
                     interpolation=cv2.INTER_LINEAR
                     if channel != TrackChannels.mask
@@ -395,7 +395,6 @@ class Preprocessor:
 
         # convert back into [F,C,H,W] array.
         data = np.float32(scaled_frames)
-
         # -------------------------------------------
         # next adjust temperature and flow levels
 

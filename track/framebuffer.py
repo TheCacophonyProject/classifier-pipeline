@@ -38,12 +38,18 @@ class FrameBuffer:
     def has_flow(self):
         return self.flow is not None and len(self.flow) != 0
 
-    def get_previous_filtered(self, region, frame_number):
-        previous = frame_number - 1
+    def get_previous_filtered(self, region=None, frame_number=None):
+        if frame_number:
+            previous = frame_number - 1
+        else:
+            previous = -2
+
         if previous < 0:
             return None
-
-        return region.subimage(self.filtered[previous])
+        if region:
+            return region.subimage(self.filtered[previous])
+        else:
+            return self.filtered[previous]
 
     def get_frame_channels(self, region, frame_number):
         """

@@ -136,6 +136,10 @@ class Previewer:
                 image = self.create_four_tracking_image(clip.frame_buffer, frame_number)
                 image = self.convert_and_resize(image, 3.0, mode=Image.NEAREST)
                 draw = ImageDraw.Draw(image)
+                if clip.region_history:
+                    regions = clip.region_history[frame_number]
+                    self.add_regions(draw, regions)
+                    self.add_regions(draw, regions, v_offset=120)
                 self.add_tracks(draw, clip.tracks, frame_number)
 
             if self.preview_type == self.PREVIEW_BOXES:

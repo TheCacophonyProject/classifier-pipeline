@@ -33,7 +33,7 @@ class Region(Rectangle):
         mass=0,
         pixel_variance=0,
         id=0,
-        frame_index=0,
+        frame_number=0,
         was_cropped=False,
     ):
         super().__init__(topleft_x, topleft_y, width, height)
@@ -44,7 +44,7 @@ class Region(Rectangle):
         # an identifier for this region
         self.id = id
         # frame index from clip
-        self.frame_index = frame_index
+        self.frame_number = frame_number
         # if this region was cropped or not
         self.was_cropped = was_cropped
 
@@ -53,7 +53,7 @@ class Region(Rectangle):
         width = region_bounds[2] - region_bounds[0]
         height = region_bounds[3] - region_bounds[1]
         return cls(
-            region_bounds[0], region_bounds[1], width, height, frame_index=frame_number
+            region_bounds[0], region_bounds[1], width, height, frame_number=frame_number
         )
 
     def calculate_mass(self, filtered, threshold):
@@ -71,6 +71,6 @@ class Region(Rectangle):
             self.mass,
             self.pixel_variance,
             self.id,
-            self.frame_index,
+            self.frame_number,
             self.was_cropped,
         )
