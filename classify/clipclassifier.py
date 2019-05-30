@@ -6,6 +6,7 @@ from typing import Dict
 
 from datetime import datetime, timedelta
 import numpy as np
+import h5py
 
 from classify.trackprediction import TrackPrediction
 from ml_tools import tools
@@ -16,6 +17,26 @@ from ml_tools.previewer import Previewer
 from ml_tools.model import Model
 from track.track import Track
 from track.trackextractor import TrackExtractor
+
+from memory_profiler import profile
+
+
+class HDF5Manager:
+    """ Class to handle locking of HDF5 files. """
+
+    def __init__(self, db, mode="r"):
+        self.mode = mode
+        self.f = None
+        self.db = db
+
+    def __enter__(self):
+        # note: we might not have to lock when in read only mode?
+        # this could improve performance
+        self.f = h5py.File(self.db, self.mode)
+        return self.f
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.f.close()
 
 
 class ClipClassifier(CPTVFileProcessor):
@@ -79,74 +100,78 @@ class ClipClassifier(CPTVFileProcessor):
 
         prediction = 0.0
         novelty = 0.0
-
-        fp_index = self.classifier.labels.index("false-positive")
+        fp_index = None
+        if "false-positive" in self.classifier.labels:
+            fp_index = self.classifier.labels.index("false-positive")
 
         # go through making clas sifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         state = None
-        for i in range(len(track)):
-            # note: would be much better for the tracker to store the thermal references as it goes.
-            thermal_reference = np.median(
-                tracker.frame_buffer.thermal[track.start_frame + i]
-            )
+        with HDF5Manager("save.h5py", "a") as f:
+            framedb = f["frames"]
+            for i in range(len(track)):
+                # note: would be much better for the tracker to store the thermal references as it goes.
+                track_data = framedb[str(track.start_frame + i)]
+                thermal_reference = np.median(track_data[0])
+                frame = tracker.get_track_sized_channeld(track, track_data, i)
 
-            frame = tracker.get_track_channels(track, i)
+                if i % self.FRAME_SKIP == 0:
 
-            if i % self.FRAME_SKIP == 0:
+                    # we use a tigher cropping here so we disable the default 2 pixel inset
+                    frames = Preprocessor.apply(
+                        [frame], [thermal_reference], default_inset=0
+                    )
 
-                # we use a tigher cropping here so we disable the default 2 pixel inset
-                frames = Preprocessor.apply(
-                    [frame], [thermal_reference], default_inset=0
-                )
+                    if frames is None:
+                        logging.info(
+                            "Frame {} of track could not be classified.".format(i)
+                        )
+                        return
 
-                if frames is None:
-                    logging.info("Frame {} of track could not be classified.".format(i))
-                    return
+                    frame = frames[0]
+                    prediction, novelty, state = self.classifier.classify_frame_with_novelty(
+                        frame, state
+                    )
 
-                frame = frames[0]
-                prediction, novelty, state = self.classifier.classify_frame_with_novelty(
-                    frame, state
-                )
+                    # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
+                    # score
+                    if fp_index:
+                        prediction[fp_index] *= 0.8
 
-                # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
-                # score
-                prediction[fp_index] *= 0.8
+                    # a little weight decay helps the model not lock into an initial impression.
+                    # 0.98 represents a half life of around 3 seconds.
+                    state *= 0.98
 
-                # a little weight decay helps the model not lock into an initial impression.
-                # 0.98 represents a half life of around 3 seconds.
-                state *= 0.98
+                    # precondition on weight,  segments with small mass are weighted less as we can assume the error is
+                    # higher here.
+                    mass = track.bounds_history[i].mass
 
-                # precondition on weight,  segments with small mass are weighted less as we can assume the error is
-                # higher here.
-                mass = track.bounds_history[i].mass
+                    # we use the square-root here as the mass is in units squared.
+                    # this effectively means we are giving weight based on the diameter
+                    # of the object rather than the mass.
+                    mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
 
-                # we use the square-root here as the mass is in units squared.
-                # this effectively means we are giving weight based on the diameter
-                # of the object rather than the mass.
-                mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
+                    # cropped frames don't do so well so restrict their score
+                    cropped_weight = 0.7 if track.bounds_history[i].was_cropped else 1.0
 
-                # cropped frames don't do so well so restrict their score
-                cropped_weight = 0.7 if track.bounds_history[i].was_cropped else 1.0
+                    prediction *= mass_weight * cropped_weight
 
-                prediction *= mass_weight * cropped_weight
-
-            if smooth_prediction is None:
-                if UNIFORM_PRIOR:
-                    smooth_prediction = np.ones([num_labels]) * (1 / num_labels)
+                if smooth_prediction is None:
+                    if UNIFORM_PRIOR:
+                        smooth_prediction = np.ones([num_labels]) * (1 / num_labels)
+                    else:
+                        smooth_prediction = prediction
+                    smooth_novelty = 0.5
                 else:
-                    smooth_prediction = prediction
-                smooth_novelty = 0.5
-            else:
-                smooth_prediction = (
-                    1 - prediction_smooth
-                ) * smooth_prediction + prediction_smooth * prediction
-                smooth_novelty = (
-                    1 - prediction_smooth
-                ) * smooth_novelty + prediction_smooth * novelty
+                    smooth_prediction = (
+                        1 - prediction_smooth
+                    ) * smooth_prediction + prediction_smooth * prediction
+                    smooth_novelty = (
+                        1 - prediction_smooth
+                    ) * smooth_novelty + prediction_smooth * novelty
 
-            predictions.append(smooth_prediction)
-            novelties.append(smooth_novelty)
+                predictions.append(smooth_prediction)
+                novelties.append(smooth_novelty)
 
         return TrackPrediction(predictions, novelties)
 
@@ -254,6 +279,7 @@ class ClipClassifier(CPTVFileProcessor):
                 if folder not in self.config.excluded_folders:
                     self.process_folder(os.path.join(root, folder), tag=folder.lower())
 
+    @profile
     def process_file(self, filename, **kwargs):
         """
         Process a file extracting tracks and identifying them.
@@ -267,15 +293,15 @@ class ClipClassifier(CPTVFileProcessor):
         logging.info("Processing file '{}'".format(filename))
 
         start = time.time()
-
-        tracker = TrackExtractor(self.tracker_config)
+        all_channels = True
+        tracker = TrackExtractor(self.tracker_config, all_channels)
         tracker.load(filename)
 
         tracker.extract_tracks()
-
-        if len(tracker.tracks) > 0:
-            tracker.generate_optical_flow()
-
+        # return
+        # if len(tracker.tracks) > 0 and all_channels:
+        # tracker.generate_optical_flow()
+        print("extracted tracks")
         classify_name = self.get_classify_filename(filename)
         destination_folder = os.path.dirname(classify_name)
 

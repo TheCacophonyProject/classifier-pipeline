@@ -43,10 +43,10 @@ class TrackExtractor:
     # version number.  Recorded into stats file when a clip is processed.
     VERSION = 6
 
-    def __init__(self, trackconfig):
+    def __init__(self, trackconfig, save_all_channels):
 
         self.config = trackconfig
-
+        self.save_all_channels = save_all_channels
         # start time of video
         self.video_start_time = None
         # name of source file
@@ -188,16 +188,6 @@ class TrackExtractor:
         self.active_tracks = []
         self.region_history = []
 
-        # create optical flow
-        self.opt_flow = cv2.createOptFlow_DualTVL1()
-        self.opt_flow.setUseInitialFlow(True)
-        if not self.config.high_quality_optical_flow:
-            # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
-            self.opt_flow.setTau(1 / 4)
-            self.opt_flow.setScalesNumber(3)
-            self.opt_flow.setWarpingsNumber(3)
-            self.opt_flow.setScaleStep(0.5)
-
         # process each frame
         self.frame_on = 0
         for frame in frames:
@@ -272,9 +262,12 @@ class TrackExtractor:
         self.frame_stats_median.append(np.median(thermal))
         self.frame_stats_mean.append(np.mean(thermal))
 
-        # save history
-        self.frame_buffer.filtered.append(np.float32(filtered))
-        self.frame_buffer.mask.append(np.float32(mask))
+        if self.save_all_channels:
+            self.frame_buffer.add_frame(thermal, filtered, mask)
+            # return
+            # save history
+            # self.frame_buffer.filtered.append(np.float32(filtered))
+            # self.frame_buffer.mask.append(np.float32(mask))
 
         self.region_history.append(regions)
 
@@ -282,6 +275,29 @@ class TrackExtractor:
         # do we need to copy?
         self._prev_filtered = filtered.copy()
 
+    def get_track_sized_channeld(self, track: Track, frame, frame_number):
+        bounds = track.bounds_history[frame_number]
+        thermal = bounds.subimage(frame[0])
+        if self.save_all_channels:
+            filtered = bounds.subimage(frame[1])
+            mask = bounds.subimage(frame[2])
+            flow = bounds.subimage(frame[3])
+            flow2 = bounds.subimage(frame[4])
+
+            # make sure only our pixels are included in the mask.
+            mask[mask != bounds.id] = 0
+            mask[mask > 0] = 1
+
+            # stack together into a numpy array.
+            # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
+            frame = np.int16(
+                np.stack(
+                    (thermal, filtered, flow, flow2, mask), axis=0
+                )
+            )
+        else:
+            frame = np.int16([thermal])
+        return frame
     def get_track_channels(self, track: Track, frame_number):
         """
         Gets frame channels for track at given frame number.  If frame number outside of track's lifespan an exception
@@ -307,23 +323,27 @@ class TrackExtractor:
                     tracker_frame, len(self.frame_buffer.thermal) - 1
                 )
             )
-
         thermal = bounds.subimage(self.frame_buffer.thermal[tracker_frame])
-        filtered = bounds.subimage(self.frame_buffer.filtered[tracker_frame])
-        flow = bounds.subimage(self.frame_buffer.flow[tracker_frame])
-        mask = bounds.subimage(self.frame_buffer.mask[tracker_frame])
+        if self.save_all_channels:
+            filtered = bounds.subimage(self.frame_buffer.filtered[tracker_frame])
+            flow = bounds.subimage(self.frame_buffer.flow[tracker_frame])
+            mask = bounds.subimage(self.frame_buffer.mask[tracker_frame])
 
-        # make sure only our pixels are included in the mask.
-        mask[mask != bounds.id] = 0
-        mask[mask > 0] = 1
+            # make sure only our pixels are included in the mask.
+            mask[mask != bounds.id] = 0
+            mask[mask > 0] = 1
 
-        # stack together into a numpy array.
-        # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
-        frame = np.int16(
-            np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0)
-        )
-
+            # stack together into a numpy array.
+            # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
+            frame = np.int16(
+                np.stack(
+                    (thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0
+                )
+            )
+        else:
+            frame = np.int16([thermal])
         return frame
+
 
     def apply_matchings(self, regions):
         """
@@ -679,6 +699,18 @@ class TrackExtractor:
         return background, background_stats
 
     def generate_optical_flow(self):
+        return
+        # create optical flow
+        if not self.opt_flow:
+            self.opt_flow = cv2.createOptFlow_DualTVL1()
+            self.opt_flow.setUseInitialFlow(True)
+            if not self.config.high_quality_optical_flow:
+                # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
+                self.opt_flow.setTau(1 / 4)
+                self.opt_flow.setScalesNumber(3)
+                self.opt_flow.setWarpingsNumber(3)
+                self.opt_flow.setScaleStep(0.5)
+
         if not self.frame_buffer.has_flow:
             self.frame_buffer.generate_optical_flow(
                 self.opt_flow, self.config.flow_threshold
