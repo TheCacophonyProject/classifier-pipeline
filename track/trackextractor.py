@@ -294,7 +294,7 @@ class TrackExtractor:
             )
 
         if not frame_number:
-            frame_number = track.track_start + track_offset
+            frame_number = track.start_frame + track_offset
 
         if frame_number < 0 or frame_number >= len(self.frame_buffer.thermal):
             raise ValueError(
