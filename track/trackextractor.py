@@ -277,6 +277,34 @@ class TrackExtractor:
         # do we need to copy?
         self._prev_filtered = filtered.copy()
 
+    def get_track_channels(self, track, track_offset, frame_number=None):
+        """
+        Gets frame channels for track at given frame number.  If frame number outside of track's lifespan an exception
+        is thrown.  Requires the frame_buffer to be filled.
+        :param track: the track to get frames for.
+        :param frame_number: the frame number where 0 is the first frame of the track.
+        :return: numpy array of size [channels, height, width] where channels are thermal, filtered, u, v, mask
+        """
+
+        if track_offset < 0 or track_offset >= len(track):
+            raise ValueError(
+                "Frame {} is out of bounds for track with {} frames".format(
+                    track_offset, len(track)
+                )
+            )
+
+        if not frame_number:
+            frame_number = track.track_start + track_offset
+
+        if frame_number < 0 or frame_number >= len(self.frame_buffer.thermal):
+            raise ValueError(
+                "Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
+                    frame_number, len(self.frame_buffer.thermal) - 1
+                )
+            )
+        frame = self.frame_buffer.get_frame(frame_number)
+        return track.get_track_frame(frame, track_offset)
+
     def apply_matchings(self, regions):
         """
         Work out the best matchings between tracks and regions of interest for the current frame.

@@ -20,6 +20,7 @@ from track.trackextractor import TrackExtractor
 
 from memory_profiler import profile
 
+
 class ClipClassifier(CPTVFileProcessor):
     """ Classifies tracks within CPTV files. """
 
@@ -90,11 +91,11 @@ class ClipClassifier(CPTVFileProcessor):
         state = None
 
         for i in range(len(track)):
-            frame_number = track.start_frame +i
+            frame_number = track.start_frame + i
             # note: would be much better for the tracker to store the thermal references as it goes.
             frame = tracker.frame_buffer.get_frame(frame_number)
             thermal = frame[0]
-            track_data = track.get_track_frame(frame,i)
+            track_data = track.get_track_frame(frame, i)
             thermal_reference = np.median(thermal)
             if i % self.FRAME_SKIP == 0:
                 # we use a tigher cropping here so we disable the default 2 pixel inset
@@ -103,9 +104,7 @@ class ClipClassifier(CPTVFileProcessor):
                 )
 
                 if frames is None:
-                    logging.info(
-                        "Frame {} of track could not be classified.".format(i)
-                    )
+                    logging.info("Frame {} of track could not be classified.".format(i))
                     return
 
                 frame = frames[0]
@@ -154,7 +153,7 @@ class ClipClassifier(CPTVFileProcessor):
             novelties.append(smooth_novelty)
 
         # if self.cache_to_disk:
-            # tracker.frame_buffer.close_db()
+        # tracker.frame_buffer.close_db()
         return TrackPrediction(predictions, novelties)
 
     @property
@@ -335,6 +334,7 @@ class ClipClassifier(CPTVFileProcessor):
 
         if self.cache_to_disk:
             tracker.frame_buffer.remove_cache()
+
     def save_metadata(self, filename, meta_filename, tracker):
         # read in original metadata
         meta_data = self.get_meta_data(filename)

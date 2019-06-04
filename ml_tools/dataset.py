@@ -349,11 +349,10 @@ class Preprocessor:
                 for y in range(-2, 2 + 1):
                     data[:, 2 : 3 + 1, H // 2 + y, W // 2 + x] = frame_velocity[:, :]
 
-        if len(data[0]) > 1:
-            # set filtered track to delta frames
-            reference = np.clip(data[:, 0], 20, 999)
-            data[0, 1] = 0
-            data[1:, 1] = reference[1:] - reference[:-1]
+        # set filtered track to delta frames
+        reference = np.clip(data[:, 0], 20, 999)
+        data[0, 1] = 0
+        data[1:, 1] = reference[1:] - reference[:-1]
 
         # -------------------------------------------
         # finally apply and additional augmentation

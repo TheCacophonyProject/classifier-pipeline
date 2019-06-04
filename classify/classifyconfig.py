@@ -33,6 +33,7 @@ class ClassifyConfig:
     preview = attr.ib()
     classify_folder = attr.ib()
     cache_to_disk = attr.ib()
+
     @classmethod
     def load(cls, classify, base_folder):
         return cls(
@@ -42,5 +43,5 @@ class ClassifyConfig:
                 "preview", classify["preview"], Previewer.PREVIEW_OPTIONS
             ),
             classify_folder=path.join(base_folder, classify["classify_folder"]),
-            cache_to_disk = classify.get("cache_to_disk",True)
+            cache_to_disk=classify.get("cache_to_disk", True),
         )
