@@ -101,14 +101,7 @@ class TrackExtractor:
         self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
 
         self.cache_to_disk = cache_to_disk
-        self.opt_flow = cv2.createOptFlow_DualTVL1()
-        self.opt_flow.setUseInitialFlow(True)
-        if not self.config.high_quality_optical_flow:
-            # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
-            self.opt_flow.setTau(1 / 4)
-            self.opt_flow.setScalesNumber(3)
-            self.opt_flow.setWarpingsNumber(3)
-            self.opt_flow.setScaleStep(0.5)
+        self.set_optical_flow_function()
 
         # this buffers store the entire video in memory and are required for fast track exporting
         self.frame_buffer = None
@@ -657,10 +650,7 @@ class TrackExtractor:
 
         return background, background_stats
 
-    def generate_optical_flow(self):
-        if self.cache_to_disk:
-            return
-        # create optical flow
+    def set_optical_flow_function(self):
         if not self.opt_flow:
             self.opt_flow = cv2.createOptFlow_DualTVL1()
             self.opt_flow.setUseInitialFlow(True)
@@ -670,6 +660,12 @@ class TrackExtractor:
                 self.opt_flow.setScalesNumber(3)
                 self.opt_flow.setWarpingsNumber(3)
                 self.opt_flow.setScaleStep(0.5)
+
+    def generate_optical_flow(self):
+        if self.cache_to_disk:
+            return
+        # create optical flow
+        self.set_optical_flow_function()
 
         if not self.frame_buffer.has_flow:
             self.frame_buffer.generate_optical_flow(
