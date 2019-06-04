@@ -215,7 +215,7 @@ class Previewer:
             np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
             + self.auto_min
         )
-
+        
         return np.hstack(
             (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
         )

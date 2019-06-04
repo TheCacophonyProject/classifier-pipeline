@@ -94,9 +94,8 @@ class ClipClassifier(CPTVFileProcessor):
             frame_number = track.start_frame + i
             # note: would be much better for the tracker to store the thermal references as it goes.
             frame = tracker.frame_buffer.get_frame(frame_number)
-            thermal = frame[0]
+            thermal_reference = np.median(frame[0])
             track_data = track.get_track_frame(frame, i)
-            thermal_reference = np.median(thermal)
             if i % self.FRAME_SKIP == 0:
                 # we use a tigher cropping here so we disable the default 2 pixel inset
                 frames = Preprocessor.apply(
