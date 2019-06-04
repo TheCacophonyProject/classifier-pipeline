@@ -20,43 +20,21 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
 import cv2
-import pickle
 import h5py
-from multiprocessing import Lock
 import numpy as np
-
-HDF5_LOCK = Lock()
-
-
-class HDF5Manager:
-    """ Class to handle locking of HDF5 files. """
-
-    def __init__(self, db, mode="r"):
-        self.mode = mode
-        self.f = None
-        self.db = db
-
-    def __enter__(self):
-        # note: we might not have to lock when in read only mode?
-        # this could improve performance
-        HDF5_LOCK.acquire()
-        self.f = h5py.File(self.db, self.mode)
-        return self.f
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.f.close()
-        HDF5_LOCK.release()
+from ml_tools.buffercache import BufferCache
 
 
 class Frame:
-    def __init__(self, thermal, filtered, mask):
+    def __init__(self, thermal, filtered, mask, frame_number):
         self.thermal = thermal
         self.filtered = filtered
+        self.frame_number = frame_number
         self.mask = mask
         self.flow = None
-        self.flow_temp = None
+        self.clipped_temp = None
 
-    def generate_optical_flow(self, opt_flow, last_frame, flow_threshold=40):
+    def generate_optical_flow(self, opt_flow, prev_frame, flow_threshold=40):
         """
         Generate optical flow from thermal frames
         :param opt_flow: An optical flow algorithm
@@ -65,8 +43,8 @@ class Frame:
         height, width = self.thermal.shape
         flow = np.zeros([height, width, 2], dtype=np.float32)
 
-        prev = last_frame.flow_temp if last_frame else None
-        prev_flow = last_frame.flow if last_frame else None
+        prev = prev_frame.clipped_temp if prev_frame else None
+        prev_flow = prev_frame.flow if prev_frame else None
 
         frame = self.thermal
         threshold = np.median(frame) + flow_threshold
@@ -78,33 +56,40 @@ class Frame:
             cv2.setNumThreads(2)
             flow = opt_flow.calc(prev, current, prev_flow)
 
-        self.flow_temp = current
+        self.clipped_temp = current
         self.flow = flow
 
 
 class FrameBuffer:
     """ Stores entire clip in memory, required for some operations such as track exporting. """
 
-    def __init__(self):
-        self.opt_flow = cv2.createOptFlow_DualTVL1()
-        self.opt_flow.setUseInitialFlow(True)
+    def __init__(self, cptv_name, opt_flow, cache_to_disk):
+        self.cache = BufferCache(cptv_name) if cache_to_disk else None
+        self.opt_flow = opt_flow
         self.frames = None
         self.thermal = None
         self.filtered = None
         self.delta = None
         self.mask = None
         self.flow = None
-
-        f = h5py.File("save.h5py", "w")
-        f.create_group("frames")
-        f.close()
-        self.number = 0
+        self.frame_number = 0
         self.prev_frame = None
         self.reset()
 
+    def add_frame(self, thermal, filtered, mask):
+        if self.cache:
+            frame = Frame(thermal, filtered, mask, self.frame_number)
+            frame.generate_optical_flow(self.opt_flow, self.prev_frame)
+            self.cache.add_frame(frame)
+            self.prev_frame = frame
+            self.frame_number += 1
+        else:
+            self.filtered.append(filtered)
+            self.mask.append(mask)
+
     @property
     def has_flow(self):
-        return self.flow is not None and len(self.flow) != 0
+        return self.cache or (self.flow is not None and len(self.flow) != 0)
 
     def generate_optical_flow(self, opt_flow, flow_threshold=40):
         """
@@ -137,33 +122,53 @@ class FrameBuffer:
             scaled_flow = np.clip(flow * 256, -16000, 16000)
             self.flow.append(scaled_flow)
 
-    def add_frame(self, thermal, filtered, mask):
-        frame = Frame(thermal, filtered, mask)
-        frame.generate_optical_flow(self.opt_flow, self.prev_frame)
-        with HDF5Manager("save.h5py", "a") as f:
-            frames = f["frames"]
-            channels = 5
-            height, width = frame.thermal.shape
+    def get_track_channels(self, track, track_offset, frame_number=None):
+        """
+        Gets frame channels for track at given frame number.  If frame number outside of track's lifespan an exception
+        is thrown.  Requires the frame_buffer to be filled.
+        :param track: the track to get frames for.
+        :param frame_number: the frame number where 0 is the first frame of the track.
+        :return: numpy array of size [channels, height, width] where channels are thermal, filtered, u, v, mask
+        """
 
-            # using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
-            chunks = (1, height, width)
-
-            dims = (5, height, width)
-            frame_node = frames.create_dataset(
-                str(self.number), dims, chunks=chunks, dtype=np.float16
+        if track_offset < 0 or track_offset >= len(track):
+            raise ValueError(
+                "Frame {} is out of bounds for track with {} frames".format(
+                    track_offset, len(track)
+                )
             )
 
-            frame_val = (
-                np.float16(frame.thermal),
-                np.float16(frame.filtered),
-                np.float16(frame.mask),
-                np.float16(frame.flow[:, :, 0]),
-                np.float16(frame.flow[:, :, 1]),
-            )
-            frame_node[:, :, :] = frame_val
+        if not frame_number:
+            frame_number = track.track_start + track_offset
 
-        self.prev_frame = frame
-        self.number += 1
+        if frame_number < 0 or frame_number >= len(self.thermal):
+            raise ValueError(
+                "Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
+                    frame_number, len(self.thermal) - 1
+                )
+            )
+        frame = self.get_frame(frame_number)
+        track.get_region_frame(frame, track_offset)
+        return frame
+
+    def get_frame(self, frame_number):
+        if self.cache:
+            frame = self.cache.get_frame(frame_number)
+        else:
+            thermal = self.thermal[frame_number]
+            filtered = self.filtered[frame_number]
+            flow = self.flow[frame_number]
+            mask = self.mask[frame_number]
+            frame = [thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask]
+        return frame
+
+    def close_db(self):
+        if self.cache:
+            self.cache.close()
+
+    def remove_cache(self):
+        if self.cache:
+            self.cache.delete()
 
     def reset(self):
         """

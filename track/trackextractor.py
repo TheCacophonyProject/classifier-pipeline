@@ -29,7 +29,6 @@ from ml_tools.tools import Rectangle
 from track.track import Track
 from track.region import Region
 from track.framebuffer import FrameBuffer
-
 from cptv import CPTVReader
 
 
@@ -43,10 +42,9 @@ class TrackExtractor:
     # version number.  Recorded into stats file when a clip is processed.
     VERSION = 6
 
-    def __init__(self, trackconfig, save_all_channels):
+    def __init__(self, trackconfig, cache_to_disk=False):
 
         self.config = trackconfig
-        self.save_all_channels = save_all_channels
         # start time of video
         self.video_start_time = None
         # name of source file
@@ -91,9 +89,6 @@ class TrackExtractor:
         # rejects any videos that have non static backgrounds
         self.reject_non_static_clips = False
 
-        # this buffers store the entire video in memory and are required for fast track exporting
-        self.frame_buffer = FrameBuffer()
-
         # the previous filtered frame
         self._prev_filtered = None
 
@@ -105,12 +100,25 @@ class TrackExtractor:
         # the dilation effectively also pads the frame so take it into consideration.
         self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
 
+        self.cache_to_disk = cache_to_disk
+        self.opt_flow = cv2.createOptFlow_DualTVL1()
+        self.opt_flow.setUseInitialFlow(True)
+        if not self.config.high_quality_optical_flow:
+            # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
+            self.opt_flow.setTau(1 / 4)
+            self.opt_flow.setScalesNumber(3)
+            self.opt_flow.setWarpingsNumber(3)
+            self.opt_flow.setScaleStep(0.5)
+
+        # this buffers store the entire video in memory and are required for fast track exporting
+        self.frame_buffer = None
+
     def load(self, filename):
         """
         Loads a cptv file, and prepares for track extraction.
         """
         self.source_file = filename
-
+        self.frame_buffer = FrameBuffer(filename, self.opt_flow, self.cache_to_disk)
         with open(filename, "rb") as f:
             reader = CPTVReader(f)
             local_tz = pytz.timezone("Pacific/Auckland")
@@ -251,7 +259,6 @@ class TrackExtractor:
             If specified background subtraction algorithm will be used.
         """
 
-        thermal = np.float32(thermal)
         filtered = self.get_filtered(thermal, background)
 
         regions, mask = self.get_regions_of_interest(filtered, self._prev_filtered)
@@ -262,88 +269,13 @@ class TrackExtractor:
         self.frame_stats_median.append(np.median(thermal))
         self.frame_stats_mean.append(np.mean(thermal))
 
-        if self.save_all_channels:
-            self.frame_buffer.add_frame(thermal, filtered, mask)
-            # return
-            # save history
-            # self.frame_buffer.filtered.append(np.float32(filtered))
-            # self.frame_buffer.mask.append(np.float32(mask))
+        self.frame_buffer.add_frame(thermal, filtered, mask)
 
         self.region_history.append(regions)
 
         self.apply_matchings(regions)
         # do we need to copy?
         self._prev_filtered = filtered.copy()
-
-    def get_track_sized_channeld(self, track: Track, frame, frame_number):
-        bounds = track.bounds_history[frame_number]
-        thermal = bounds.subimage(frame[0])
-        if self.save_all_channels:
-            filtered = bounds.subimage(frame[1])
-            mask = bounds.subimage(frame[2])
-            flow = bounds.subimage(frame[3])
-            flow2 = bounds.subimage(frame[4])
-
-            # make sure only our pixels are included in the mask.
-            mask[mask != bounds.id] = 0
-            mask[mask > 0] = 1
-
-            # stack together into a numpy array.
-            # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
-            frame = np.int16(
-                np.stack(
-                    (thermal, filtered, flow, flow2, mask), axis=0
-                )
-            )
-        else:
-            frame = np.int16([thermal])
-        return frame
-    def get_track_channels(self, track: Track, frame_number):
-        """
-        Gets frame channels for track at given frame number.  If frame number outside of track's lifespan an exception
-        is thrown.  Requires the frame_buffer to be filled.
-        :param track: the track to get frames for.
-        :param frame_number: the frame number where 0 is the first frame of the track.
-        :return: numpy array of size [channels, height, width] where channels are thermal, filtered, u, v, mask
-        """
-
-        if frame_number < 0 or frame_number >= len(track):
-            raise ValueError(
-                "Frame {} is out of bounds for track with {} frames".format(
-                    frame_number, len(track)
-                )
-            )
-
-        bounds = track.bounds_history[frame_number]
-        tracker_frame = track.start_frame + frame_number
-
-        if tracker_frame < 0 or tracker_frame >= len(self.frame_buffer.thermal):
-            raise ValueError(
-                "Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
-                    tracker_frame, len(self.frame_buffer.thermal) - 1
-                )
-            )
-        thermal = bounds.subimage(self.frame_buffer.thermal[tracker_frame])
-        if self.save_all_channels:
-            filtered = bounds.subimage(self.frame_buffer.filtered[tracker_frame])
-            flow = bounds.subimage(self.frame_buffer.flow[tracker_frame])
-            mask = bounds.subimage(self.frame_buffer.mask[tracker_frame])
-
-            # make sure only our pixels are included in the mask.
-            mask[mask != bounds.id] = 0
-            mask[mask > 0] = 1
-
-            # stack together into a numpy array.
-            # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
-            frame = np.int16(
-                np.stack(
-                    (thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0
-                )
-            )
-        else:
-            frame = np.int16([thermal])
-        return frame
-
 
     def apply_matchings(self, regions):
         """
@@ -543,9 +475,8 @@ class TrackExtractor:
 
         # make mask go back to full frame size without edges chopped
         edge = self.config.edge_pixels
-        mask = np.zeros(filtered.shape)
+        mask = np.zeros(filtered.shape, dtype=np.int32)
         mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
-
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.frame_padding
 
@@ -663,7 +594,7 @@ class TrackExtractor:
         # note: unfortunately this must be done before any other processing, which breaks the streaming architecture
         # for this reason we must return all the frames so they can be reused
 
-        frames = np.float32(frames)
+        # frames = np.float32(frames)
         background = np.percentile(frames, q=10, axis=0)
         filtered = np.float32(
             [self.get_filtered(frame, background) for frame in frames]
@@ -699,7 +630,8 @@ class TrackExtractor:
         return background, background_stats
 
     def generate_optical_flow(self):
-        return
+        if self.cache_to_disk:
+            return
         # create optical flow
         if not self.opt_flow:
             self.opt_flow = cv2.createOptFlow_DualTVL1()

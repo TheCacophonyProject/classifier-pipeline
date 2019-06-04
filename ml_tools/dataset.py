@@ -352,7 +352,6 @@ class Preprocessor:
         if len(data[0]) > 1:
             # set filtered track to delta frames
             reference = np.clip(data[:, 0], 20, 999)
-            print("scaled frames shape {}".format(data.shape))
             data[0, 1] = 0
             data[1:, 1] = reference[1:] - reference[:-1]
 
