@@ -151,8 +151,6 @@ class ClipClassifier(CPTVFileProcessor):
             predictions.append(smooth_prediction)
             novelties.append(smooth_novelty)
 
-        # if self.cache_to_disk:
-        # tracker.frame_buffer.close_db()
         return TrackPrediction(predictions, novelties)
 
     @property

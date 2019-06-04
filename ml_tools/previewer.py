@@ -149,7 +149,7 @@ class Previewer:
             if frame_number > 9 * 60 * 10:
                 break
 
-        tracker.frame_buffer.close_db()
+        tracker.frame_buffer.close_cache()
         mpeg.close()
 
     def create_individual_track_previews(self, filename, tracker: TrackExtractor):

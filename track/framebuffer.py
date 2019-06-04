@@ -133,7 +133,7 @@ class FrameBuffer:
             frame = [thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask]
         return frame
 
-    def close_db(self):
+    def close_cache(self):
         if self.cache:
             self.cache.close()
 
