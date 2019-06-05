@@ -3,11 +3,11 @@ import os
 import logging
 from datetime import datetime
 
+from .clipclassifier import ClipClassifier
 from ml_tools.logs import init_logging
 from ml_tools import tools
 from ml_tools.config import Config
 from ml_tools.previewer import Previewer
-from .clipclassifier import ClipClassifier
 
 
 def main():

@@ -237,6 +237,23 @@ class Track:
 
         return frames_overlapped / len(self)
 
+    def get_track_frame(self, frame, track_frame_number):
+        bounds = self.bounds_history[track_frame_number]
+        thermal = bounds.subimage(frame[0])
+        filtered = bounds.subimage(frame[1])
+        mask = bounds.subimage(frame[2])
+        flow = bounds.subimage(frame[3])
+        flow2 = bounds.subimage(frame[4])
+
+        # make sure only our pixels are included in the mask.
+        mask[mask != bounds.id] = 0
+        mask[mask > 0] = 1
+
+        # stack together into a numpy array.
+        # by using int16 we lose a little precision on the filtered frames, but not much (only 1 bit)
+        frame = np.int16(np.stack((thermal, filtered, flow, flow2, mask), axis=0))
+        return frame
+
     @property
     def mass(self):
         return self.bounds_history[-1].mass
