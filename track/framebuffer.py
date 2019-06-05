@@ -22,7 +22,7 @@ import numpy as np
 import cv2
 import h5py
 import numpy as np
-from ml_tools.buffercache import BufferCache
+from ml_tools.framecache import FrameCache
 
 
 class Frame:
@@ -64,7 +64,7 @@ class FrameBuffer:
     """ Stores entire clip in memory, required for some operations such as track exporting. """
 
     def __init__(self, cptv_name, opt_flow, cache_to_disk):
-        self.cache = BufferCache(cptv_name) if cache_to_disk else None
+        self.cache = FrameCache(cptv_name) if cache_to_disk else None
         self.opt_flow = opt_flow
         self.frames = None
         self.thermal = None
@@ -89,7 +89,7 @@ class FrameBuffer:
 
     @property
     def has_flow(self):
-        return self.cache or (self.flow is not None and len(self.flow) != 0)
+        return self.cache or self.flow
 
     def generate_optical_flow(self, opt_flow, flow_threshold=40):
         """
@@ -124,14 +124,13 @@ class FrameBuffer:
 
     def get_frame(self, frame_number):
         if self.cache:
-            frame = self.cache.get_frame(frame_number)
-        else:
-            thermal = self.thermal[frame_number]
-            filtered = self.filtered[frame_number]
-            flow = self.flow[frame_number]
-            mask = self.mask[frame_number]
-            frame = [thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask]
-        return frame
+            return self.cache.get_frame(frame_number)
+
+        thermal = self.thermal[frame_number]
+        filtered = self.filtered[frame_number]
+        flow = self.flow[frame_number]
+        mask = self.mask[frame_number]
+        return [thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask]
 
     def close_cache(self):
         if self.cache:

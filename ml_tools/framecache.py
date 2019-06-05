@@ -4,18 +4,16 @@ import numpy as np
 from multiprocessing import Lock
 
 
-class BufferCache:
+class FrameCache:
     def __init__(self, cptv_name, keep_open=True, delete_if_exists=True):
-        basename = os.path.splitext(os.path.basename(cptv_name))[0]
-        self.filename = "cache-tmp/" + basename + ".tmp"
+        basename = os.path.splitext(cptv_name)[0]
+        self.filename = basename + ".cache"
         self.db = None
         self.keep_open = keep_open
 
         if delete_if_exists:
             self.delete()
 
-        if not os.path.exists("cache-tmp"):
-            os.makedirs("cache-tmp")
         f = h5py.File(self.filename, "w")
         f.create_group("frames")
         f.close()

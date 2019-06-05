@@ -6,19 +6,16 @@ from typing import Dict
 
 from datetime import datetime, timedelta
 import numpy as np
-import h5py
 
 from classify.trackprediction import TrackPrediction
 from ml_tools import tools
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
-from ml_tools.dataset import Preprocessor
 import ml_tools.globals as globs
-from ml_tools.previewer import Previewer
 from ml_tools.model import Model
+from ml_tools.dataset import Preprocessor
+from ml_tools.previewer import Previewer
 from track.track import Track
 from track.trackextractor import TrackExtractor
-
-from memory_profiler import profile
 
 
 class ClipClassifier(CPTVFileProcessor):
@@ -82,9 +79,10 @@ class ClipClassifier(CPTVFileProcessor):
 
         prediction = 0.0
         novelty = 0.0
-        fp_index = None
-        if "false-positive" in self.classifier.labels:
+        try:
             fp_index = self.classifier.labels.index("false-positive")
+        except ValueError:
+            fp_index = None
 
         # go through making clas sifications at each frame
         # note: we should probably be doing this every 9 frames or so.
@@ -113,7 +111,7 @@ class ClipClassifier(CPTVFileProcessor):
 
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
-                if fp_index:
+                if fp_index is not None:
                     prediction[fp_index] *= 0.8
 
                 # a little weight decay helps the model not lock into an initial impression.

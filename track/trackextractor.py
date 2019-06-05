@@ -18,18 +18,16 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 import pytz
 import datetime
-import os
-
 import numpy as np
 import cv2
 import logging
 
-from ml_tools.tools import Rectangle
+from cptv import CPTVReader
 
+from ml_tools.tools import Rectangle
 from track.track import Track
 from track.region import Region
 from track.framebuffer import FrameBuffer
-from cptv import CPTVReader
 
 
 class TrackExtractor:
@@ -615,7 +613,6 @@ class TrackExtractor:
         # note: unfortunately this must be done before any other processing, which breaks the streaming architecture
         # for this reason we must return all the frames so they can be reused
 
-        # frames = np.float32(frames)
         background = np.percentile(frames, q=10, axis=0)
         filtered = np.float32(
             [self.get_filtered(frame, background) for frame in frames]

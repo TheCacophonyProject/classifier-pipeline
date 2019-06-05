@@ -250,7 +250,7 @@ class Track:
         mask[mask > 0] = 1
 
         # stack together into a numpy array.
-        # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
+        # by using int16 we lose a little precision on the filtered frames, but not much (only 1 bit)
         frame = np.int16(np.stack((thermal, filtered, flow, flow2, mask), axis=0))
         return frame
 
