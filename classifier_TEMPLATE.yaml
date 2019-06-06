@@ -204,7 +204,7 @@ classify:
     # folder is where classifier output and mp4s will be created.  It is specified relative to the base_data_folder
     classify_folder: "classify"
 
-    #cahce buffer frame to disk reducing memory usage
+    #cache buffer frame to disk reducing memory usage
     cache_to_disk: True
 evaluate:
     # Evalulates results against pre-tagged ground truth.
