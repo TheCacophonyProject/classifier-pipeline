@@ -93,27 +93,6 @@ class CPTVFileProcessor:
         else:
             return not os.path.exists(meta_filename)
 
-    # def process_folder(self, folder_path, worker_pool_args=None, **kwargs):
-    #     """Processes all files within a folder."""
-    #     if not os.path.exists(folder_path):
-    #         logging.exception(
-    #             "Warning - folder {} does not exist anymore".format(folder_path)
-    #         )
-    #         return
-
-    #     logging.info("processing %s", folder_path)
-
-    #     jobs = []
-    #     for file_name in os.listdir(folder_path):
-    #         full_path = os.path.join(folder_path, file_name)
-    #         if (
-    #             os.path.isfile(full_path)
-    #             and os.path.splitext(full_path)[1].lower() == ".cptv"
-    #         ):
-    #             jobs.append((self, full_path, kwargs))
-
-    #     self._process_job_list(jobs, worker_pool_args)
-
     def _process_job_list(self, jobs, worker_pool_args=None):
         """
         Processes a list of jobs. Supports worker threads.

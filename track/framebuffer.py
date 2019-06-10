@@ -41,11 +41,11 @@ class FrameBuffer:
     def get_previous_filtered(self, region=None, frame_number=None):
         if frame_number:
             previous = frame_number - 1
+            if previous < 0:
+                return None
         else:
             previous = -2
 
-        if previous < 0:
-            return None
         if region:
             return region.subimage(self.filtered[previous])
         else:

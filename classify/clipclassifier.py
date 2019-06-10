@@ -76,9 +76,10 @@ class ClipClassifier(CPTVFileProcessor):
 
         prediction = 0.0
         novelty = 0.0
-        fp_index = None
-        if "false-positive" in self.classifier.labels:
+        try:
             fp_index = self.classifier.labels.index("false-positive")
+        except ValueError:
+            fp_index = None
 
         # go through making clas sifications at each frame
         # note: we should probably be doing this every 9 frames or so.
@@ -94,7 +95,6 @@ class ClipClassifier(CPTVFileProcessor):
                 clip.frame_buffer.thermal[track.start_frame + i]
             )
             frame = track.track_data[i]
-            # frame = clip.frame_buffer.get_track_channels(track, i)
 
             if i % self.FRAME_SKIP == 0:
 
@@ -114,7 +114,7 @@ class ClipClassifier(CPTVFileProcessor):
 
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
-                if fp_index:
+                if fp_index is not None:
                     prediction[fp_index] *= 0.8
 
                 # a little weight decay helps the model not lock into an initial impression.
