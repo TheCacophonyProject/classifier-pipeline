@@ -465,12 +465,7 @@ class Dataset:
     # number of pixels to inset from frame edges by default
     DEFAULT_INSET = 2
 
-    def __init__(
-        self,
-        track_db: TrackDatabase,
-        name="Dataset",
-        config=None
-    ):
+    def __init__(self, track_db: TrackDatabase, name="Dataset", config=None):
 
         # database holding track data
         self.db = track_db
