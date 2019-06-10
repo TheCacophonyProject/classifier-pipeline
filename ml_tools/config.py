@@ -8,17 +8,25 @@ from load.loadconfig import LoadConfig
 from track.trackingconfig import TrackingConfig
 from train.config import TrainConfig
 from classify.classifyconfig import ClassifyConfig
+from build.buildconfig import BuildConfig
 from evaluate.evaluateconfig import EvaluateConfig
+from .defaultconfig import DefaultConfig
 
 CONFIG_FILENAME = "classifier.yaml"
 CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
 
 
 @attr.s
-class Config:
+class Config(DefaultConfig):
+
+    DEFAULT_LABELS = ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
+    EXCLUDED_TAGS = ["untagged", "unidentified"]
+
     source_folder = attr.ib()
-    loader = attr.ib()
+    load = attr.ib()
     tracks_folder = attr.ib()
+    labels = attr.ib()
+    build = attr.ib()
     tracking = attr.ib()
     train = attr.ib()
     classify_tracking = attr.ib()
@@ -40,16 +48,23 @@ class Config:
     @classmethod
     def load_from_stream(cls, stream):
         raw = yaml.safe_load(stream)
-
-        # "classify_tracking" params are overrides, add other parameters from "tracking"
+        default = Config.get_defaults()
+        if raw is None:
+            raw = {}
+        deep_copy_map_if_key_not_exist(default.as_dict(), raw)
+        # "tracking" params are overrides, add other parameters from "classify_tracking"
         deep_copy_map_if_key_not_exist(raw["tracking"], raw["classify_tracking"])
 
-        base_folder = path.expanduser(raw["base_data_folder"])
+        base_folder = raw.get("base_data_folder")
+        if base_folder is None:
+            raise KeyError("base_data_folder not found in configuration file")
+        base_folder = path.expanduser(base_folder)
+
         return cls(
             source_folder=path.join(base_folder, raw["source_folder"]),
             tracks_folder=path.join(base_folder, raw.get("tracks_folder", "tracks")),
             tracking=TrackingConfig.load(raw["tracking"]),
-            loader=LoadConfig.load(raw["load"]),
+            load=LoadConfig.load(raw["load"]),
             train=TrainConfig.load(raw["train"], base_folder),
             classify_tracking=TrackingConfig.load(raw["classify_tracking"]),
             classify=ClassifyConfig.load(raw["classify"], base_folder),
@@ -59,7 +74,41 @@ class Config:
             previews_colour_map=raw["previews_colour_map"],
             use_gpu=raw["use_gpu"],
             worker_threads=raw["worker_threads"],
+            labels=raw["labels"],
+            build=BuildConfig.load(raw["build"]),
         )
+
+    @classmethod
+    def get_defaults(cls):
+        return cls(
+            source_folder="",
+            tracks_folder="tracks",
+            labels=Config.DEFAULT_LABELS,
+            excluded_tags=Config.EXCLUDED_TAGS,
+            reprocess=True,
+            previews_colour_map="custom_colormap.dat",
+            use_gpu=False,
+            worker_threads=0,
+            build=BuildConfig.get_defaults(),
+            tracking=TrackingConfig.get_defaults(),
+            load=LoadConfig.get_defaults(),
+            train=TrainConfig.get_defaults(),
+            classify_tracking=TrackingConfig.get_defaults(),
+            classify=ClassifyConfig.get_defaults(),
+            evaluate=EvaluateConfig.get_defaults(),
+        )
+
+    def validate(self):
+        self.build.validate()
+        self.tracking.validate()
+        self.load.validate()
+        self.train.validate()
+        self.classify.validate()
+        self.evaluate.validate()
+        return True
+
+    def as_dict(self):
+        return attr.asdict(self)
 
 
 def find_config():

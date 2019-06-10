@@ -22,11 +22,12 @@ import os.path as path
 import attr
 
 import ml_tools.config
+from ml_tools.defaultconfig import DefaultConfig
 from ml_tools.previewer import Previewer
 
 
 @attr.s
-class ClassifyConfig:
+class ClassifyConfig(DefaultConfig):
 
     model = attr.ib()
     meta_to_stdout = attr.ib()
@@ -43,3 +44,13 @@ class ClassifyConfig:
             ),
             classify_folder=path.join(base_folder, classify["classify_folder"]),
         )
+
+    @classmethod
+    def get_defaults(cls):
+        return cls(
+            meta_to_stdout=False, model=None, preview="none", classify_folder="classify"
+        )
+
+    def validate(self):
+        if self.model is None:
+            raise KeyError("model not found in configuration file")

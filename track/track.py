@@ -68,7 +68,7 @@ class Track:
         self.tag = "unknown"
         self.prev_frame = None
         self.include_filtered_channel = True
-        self.confidence = ""
+        self.confidence = None
 
     def get_id(self):
         return self._id

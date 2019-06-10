@@ -486,7 +486,7 @@ def main():
 
     global null_tags, classes
     null_tags = conf.evaluate.null_tags
-    classes = conf.evaluate.classes
+    classes = conf.labels
 
     visits = get_visits(
         conf.classify.classify_folder, conf.evaluate.new_visit_threshold

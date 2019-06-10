@@ -19,9 +19,11 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import attr
 
+from ml_tools.defaultconfig import DefaultConfig
+
 
 @attr.s
-class LoadConfig:
+class LoadConfig(DefaultConfig):
 
     enable_compression = attr.ib()
     include_filtered_channel = attr.ib()
@@ -34,3 +36,12 @@ class LoadConfig:
             include_filtered_channel=extract["include_filtered_channel"],
             preview=extract["preview"],
         )
+
+    @classmethod
+    def get_defaults(cls):
+        return cls(
+            enable_compression=False, include_filtered_channel=False, preview="tracking"
+        )
+
+    def validate(self):
+        return True
