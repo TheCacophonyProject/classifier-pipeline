@@ -317,9 +317,6 @@ def main():
             print("  {} filtered {}".format(key, value))
     print()
 
-    # labels = sorted(list(set(dataset.tracks_by_label.keys())))
-    # dataset.labels = labels
-
     show_tracks_breakdown(dataset)
     print()
     show_segments_breakdown(dataset)

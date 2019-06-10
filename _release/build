@@ -17,12 +17,12 @@ fi
 version=${version/#v/}
 
 src=`pwd`
-rm -rf build
-mkdir build
+rm -rf dist
+mkdir dist
 
-echo "copying source to build directory ..."
-ls | grep -v build | xargs cp -t build -r
-cd build
+echo "copying source to dist directory ..."
+ls | grep -v dist | xargs cp -t dist -r
+cd dist
 rm -rf *.pex _release
 find -name __pycache__ | xargs rm -rf
 
@@ -34,5 +34,5 @@ cd "$src"
 
 echo "building deb package..."
 # Generate a nfpm.yaml with the right version.
-perl -p -e "s/^version:.+/version: \"$version\"/" _release/nfpm.yaml > build/nfpm.yaml
-nfpm pkg --config=build/nfpm.yaml --target="build/classifier-pipeline_${version}_amd64.deb"
+perl -p -e "s/^version:.+/version: \"$version\"/" _release/nfpm.yaml > dist/nfpm.yaml
+nfpm pkg --config=dist/nfpm.yaml --target="dist/classifier-pipeline_${version}_amd64.deb"
