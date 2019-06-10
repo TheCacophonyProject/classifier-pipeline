@@ -470,11 +470,6 @@ class Dataset:
         track_db: TrackDatabase,
         name="Dataset",
         config=None
-        # segment_length=3,
-        # segment_spacing=1,
-        # banned_clips=None,
-        # included_labels=None,
-        # clip_before_date=None,
     ):
 
         # database holding track data

@@ -8,7 +8,7 @@ from load.loadconfig import LoadConfig
 from track.trackingconfig import TrackingConfig
 from train.config import TrainConfig
 from classify.classifyconfig import ClassifyConfig
-from build_data.buildconfig import BuildConfig
+from build.buildconfig import BuildConfig
 from evaluate.evaluateconfig import EvaluateConfig
 from .defaultconfig import DefaultConfig
 
