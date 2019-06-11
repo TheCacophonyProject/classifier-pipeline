@@ -84,15 +84,16 @@ def main():
     # just fetch the classifier now so it doesn't impact the benchmarking on the first clip analysed.
     _ = clip_classifier.classifier
 
-    if args.source == "all":
-        clip_classifier.process_all(config.source_folder)
-    elif os.path.splitext(args.source)[-1].lower() == ".cptv":
+    if os.path.splitext(args.source)[-1].lower() == ".cptv":
         source_file = tools.find_file_from_cmd_line(config.source_folder, args.source)
         if source_file is None:
             return
         clip_classifier.process_file(source_file)
     else:
-        clip_classifier.process_folder(os.path.join(config.source_folder, args.source))
+        folder = config.source_folder
+        if args.source != "all":
+            os.path.join(config.source_folder, folder)
+        clip_classifier.process_all(folder)
 
 
 if __name__ == "__main__":
