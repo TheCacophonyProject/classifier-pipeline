@@ -26,22 +26,18 @@ from ml_tools.previewer import Previewer
 
 
 @attr.s
-class ClassifyConfig:
+class EvaluateConfig:
 
-    model = attr.ib()
-    meta_to_stdout = attr.ib()
-    preview = attr.ib()
-    classify_folder = attr.ib()
-    cache_to_disk = attr.ib()
+    show_extended_evaluation = attr.ib()
+    new_visit_threshold = attr.ib()
+    null_tags = attr.ib()
+    classes = attr.ib()
 
     @classmethod
     def load(cls, classify, base_folder):
         return cls(
-            model=classify["model"],
-            meta_to_stdout=classify["meta_to_stdout"],
-            preview=ml_tools.config.parse_options_param(
-                "preview", classify["preview"], Previewer.PREVIEW_OPTIONS
-            ),
-            classify_folder=path.join(base_folder, classify["classify_folder"]),
-            cache_to_disk=classify.get("cache_to_disk", True),
+            show_extended_evaluation=classify["show_extended_evaluation"],
+            new_visit_threshold=classify["new_visit_threshold"],
+            null_tags=classify["null_tags"],
+            classes=classify["classes"],
         )

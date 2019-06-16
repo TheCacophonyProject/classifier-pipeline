@@ -323,7 +323,6 @@ class Preprocessor:
 
         # convert back into [F,C,H,W] array.
         data = np.float32(scaled_frames)
-
         # the segment will be processed in float32 so we may as well convert it here.
         # also optical flow is stored as a scaled integer, but we want it in float32 format.
         data = np.asarray(data, dtype=np.float32)
@@ -375,7 +374,6 @@ class Preprocessor:
                 # when we flip the frame remember to flip the horizontal velocity as well
                 data = np.flip(data, axis=3)
                 data[:, 2] = -data[:, 2]
-
         return data
 
 

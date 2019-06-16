@@ -156,7 +156,7 @@ train:
     hyper_params:
         # training
         batch_size: 16
-        learning_rate: 1e-4
+        learning_rate: 0.0004
         learning_rate_decay: 1.0
         l2_reg: 0
         label_smoothing: 0.1
@@ -204,4 +204,17 @@ classify:
     # folder is where classifier output and mp4s will be created.  It is specified relative to the base_data_folder
     classify_folder: "classify"
 
+    #cache buffer frame to disk reducing memory usage
+    cache_to_disk: True
+evaluate:
+    # Evalulates results against pre-tagged ground truth.
+    show_extended_evaluation: False
 
+    # number of seconds between clips required to trigger a a new visit
+    new_visit_threshold: 180
+
+    # false positive's and 'none' can be mapped to the same label as they represent the same idea.
+    null_tags: ["false-positive", "none", "no-tag"]
+
+    #classes
+    classes: ["bird", "possum", "rat", "hedgehog", "stoat", "none"]

@@ -10,10 +10,10 @@ import numpy as np
 from classify.trackprediction import TrackPrediction
 from ml_tools import tools
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
-from ml_tools.dataset import Preprocessor
 import ml_tools.globals as globs
-from ml_tools.previewer import Previewer
 from ml_tools.model import Model
+from ml_tools.dataset import Preprocessor
+from ml_tools.previewer import Previewer
 from track.track import Track
 from track.trackextractor import TrackExtractor
 
@@ -36,7 +36,7 @@ class ClipClassifier(CPTVFileProcessor):
 
         self.start_date = None
         self.end_date = None
-
+        self.cache_to_disk = self.config.classify.cache_to_disk
         # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
         self.enable_per_track_information = False
 
@@ -79,25 +79,25 @@ class ClipClassifier(CPTVFileProcessor):
 
         prediction = 0.0
         novelty = 0.0
-
-        fp_index = self.classifier.labels.index("false-positive")
+        try:
+            fp_index = self.classifier.labels.index("false-positive")
+        except ValueError:
+            fp_index = None
 
         # go through making clas sifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         state = None
+
         for i in range(len(track)):
+            frame_number = track.start_frame + i
             # note: would be much better for the tracker to store the thermal references as it goes.
-            thermal_reference = np.median(
-                tracker.frame_buffer.thermal[track.start_frame + i]
-            )
-
-            frame = tracker.get_track_channels(track, i)
-
+            frame = tracker.frame_buffer.get_frame(frame_number)
+            thermal_reference = np.median(frame[0])
+            track_data = track.get_track_frame(frame, i)
             if i % self.FRAME_SKIP == 0:
-
                 # we use a tigher cropping here so we disable the default 2 pixel inset
                 frames = Preprocessor.apply(
-                    [frame], [thermal_reference], default_inset=0
+                    [track_data], [thermal_reference], default_inset=0
                 )
 
                 if frames is None:
@@ -111,7 +111,8 @@ class ClipClassifier(CPTVFileProcessor):
 
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
-                prediction[fp_index] *= 0.8
+                if fp_index is not None:
+                    prediction[fp_index] *= 0.8
 
                 # a little weight decay helps the model not lock into an initial impression.
                 # 0.98 represents a half life of around 3 seconds.
@@ -160,7 +161,8 @@ class ClipClassifier(CPTVFileProcessor):
             t0 = datetime.now()
             logging.info("classifier loading")
             globs._classifier = Model(
-                tools.get_session(disable_gpu=not self.config.use_gpu)
+                train_config=self.config.train,
+                session=tools.get_session(disable_gpu=not self.config.use_gpu),
             )
             globs._classifier.load(self.config.classify.model)
             logging.info("classifier loaded ({})".format(datetime.now() - t0))
@@ -203,8 +205,8 @@ class ClipClassifier(CPTVFileProcessor):
             return False
 
         # look to see of the destination file already exists.
-        base_name = self.get_base_name(filename)
-        meta_filename = base_name + ".txt"
+        classify_name = self.get_classify_filename(filename)
+        meta_filename = classify_name + ".txt"
 
         # if no stats file exists we haven't processed file, so reprocess
         if self.config.reprocess:
@@ -240,7 +242,7 @@ class ClipClassifier(CPTVFileProcessor):
         else:
             return None
 
-    def get_base_name(self, input_filename):
+    def get_classify_filename(self, input_filename):
         return os.path.splitext(
             os.path.join(
                 self.config.classify.classify_folder, os.path.basename(input_filename)
@@ -266,25 +268,24 @@ class ClipClassifier(CPTVFileProcessor):
         logging.info("Processing file '{}'".format(filename))
 
         start = time.time()
-
-        tracker = TrackExtractor(self.tracker_config)
+        tracker = TrackExtractor(self.tracker_config, self.cache_to_disk)
         tracker.load(filename)
-
         tracker.extract_tracks()
 
-        if len(tracker.tracks) > 0:
+        # cache to disk already calculates optical flow
+        if len(tracker.tracks) > 0 and not self.cache_to_disk:
             tracker.generate_optical_flow()
 
-        base_name = self.get_base_name(filename)
-        destination_folder = os.path.dirname(base_name)
+        classify_name = self.get_classify_filename(filename)
+        destination_folder = os.path.dirname(classify_name)
 
         if not os.path.exists(destination_folder):
             logging.info("Creating folder {}".format(destination_folder))
             os.makedirs(destination_folder)
 
-        mpeg_filename = base_name + ".mp4"
+        mpeg_filename = classify_name + ".mp4"
 
-        meta_filename = base_name + ".txt"
+        meta_filename = classify_name + ".txt"
 
         # reset track predictions
         self.track_prediction = {}
@@ -325,6 +326,9 @@ class ClipClassifier(CPTVFileProcessor):
                 (time.time() - start) * 1000 / max(1, len(tracker.frame_buffer.thermal))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
+
+        if self.cache_to_disk:
+            tracker.frame_buffer.remove_cache()
 
     def save_metadata(self, filename, meta_filename, tracker):
         # read in original metadata

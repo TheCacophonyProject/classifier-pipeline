@@ -9,6 +9,7 @@ import ml_tools.globals as globs
 from ml_tools.mpeg_creator import MPEGCreator
 from track.trackextractor import TrackExtractor
 from track.region import Region
+from .dataset import TrackChannels
 
 LOCAL_RESOURCES = path.join(path.dirname(path.dirname(__file__)), "resources")
 GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
@@ -111,6 +112,7 @@ class Previewer:
         mpeg = MPEGCreator(filename)
 
         for frame_number, thermal in enumerate(tracker.frame_buffer.thermal):
+
             if self.preview_type == self.PREVIEW_RAW:
                 image = self.convert_and_resize(thermal)
 
@@ -129,7 +131,9 @@ class Previewer:
                 image = self.convert_and_resize(thermal, 4.0)
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
-                self.add_tracks(draw, tracker.tracks, frame_number)
+                self.add_tracks(
+                    draw, tracker.tracks, frame_number, colours=[(128, 255, 255)]
+                )
 
             if self.preview_type == self.PREVIEW_CLASSIFIED:
                 image = self.convert_and_resize(thermal, 4.0)
@@ -144,6 +148,8 @@ class Previewer:
             # we store the entire video in memory so we need to cap the frame count at some point.
             if frame_number > 9 * 60 * 10:
                 break
+
+        tracker.frame_buffer.close_cache()
         mpeg.close()
 
     def create_individual_track_previews(self, filename, tracker: TrackExtractor):
@@ -199,12 +205,15 @@ class Previewer:
             self.track_descs[track] = track_description
 
     def create_four_tracking_image(self, frame_buffer, frame_number):
-        thermal = frame_buffer.thermal[frame_number]
-        filtered = frame_buffer.filtered[frame_number] + self.auto_min
-        mask = frame_buffer.mask[frame_number] * 10000
-        flow = frame_buffer.flow[frame_number]
+        frame = frame_buffer.get_frame(frame_number)
+        thermal = frame[TrackChannels.thermal]
+        filtered = frame[TrackChannels.filtered] + self.auto_min
+        mask = frame[TrackChannels.mask] * 10000
+        flow_h = frame[TrackChannels.flow_h]
+        flow_v = frame[TrackChannels.flow_v]
         flow_magnitude = (
-            np.linalg.norm(np.float32(flow), ord=2, axis=2) / 4.0 + self.auto_min
+            np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
+            + self.auto_min
         )
 
         return np.hstack(
@@ -216,7 +225,13 @@ class Previewer:
             draw.rectangle(self.rect_points(rect, v_offset), outline=(128, 128, 128))
 
     def add_tracks(
-        self, draw, tracks, frame_number, track_predictions=None, screen_bounds=None
+        self,
+        draw,
+        tracks,
+        frame_number,
+        track_predictions=None,
+        screen_bounds=None,
+        colours=TRACK_COLOURS,
     ):
         # look for any tracks that occur on this frame
         for index, track in enumerate(tracks):
@@ -224,8 +239,7 @@ class Previewer:
             if frame_offset >= 0 and frame_offset < len(track.bounds_history) - 1:
                 rect = track.bounds_history[frame_offset]
                 draw.rectangle(
-                    self.rect_points(rect),
-                    outline=self.TRACK_COLOURS[index % len(self.TRACK_COLOURS)],
+                    self.rect_points(rect), outline=colours[index % len(colours)]
                 )
                 if track_predictions:
                     self.add_class_results(
