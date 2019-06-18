@@ -18,17 +18,16 @@ import time
 
 from kalman.main import main
 
-class Predator_tracker:
+class PredatorTracker:
     """Predator tracker class: - Finds centroid of animal
                                - Uses kalman filter to smooth effects of occlusion
                                - Determines direction vector of animal
                                - Predicts future position of animal"""
-    Green = (0,255,0)
-    Red = (0,0,255)
-    Blue = (255,0,0)
+    GREEN = (0,255,0)
+    RED = (0,0,255)
+    BLUE = (255,0,0)
     
     def __init__(self, filename):
-        # Initialisation
         self.filename = filename
 
 
@@ -82,14 +81,14 @@ class Predator_tracker:
         
     def plot_results(self, real_x, real_y, estimated_x, estimated_y):
         # plot Animals real location and estimated location
-        Real, = plt.plot(real_x[3:], real_y[3:], 'b-', label='Line 1')
-        Estimate, = plt.plot(estimated_x[3:], estimated_y[3:], 'r-', label='Line 2')
+        real, = plt.plot(real_x[3:], real_y[3:], 'b-', label='Line 1')
+        estimate, = plt.plot(estimated_x[3:], estimated_y[3:], 'r-', label='Line 2')
         plt.xlim(0, 500)
         plt.ylim(360, 0)
         plt.title('Real vs Estimated Position')
         plt.xlabel('Pixel x')
         plt.ylabel('Pixel y')   
-        plt.legend([Real, Estimate], ['Real', 'Estimate'])
+        plt.legend([real, estimate], ['Real', 'Estimate'])
         plt.grid(True)
         
         plt.savefig('results.png')    
@@ -98,14 +97,14 @@ class Predator_tracker:
         
     def plot_prediction_results(self, estimated_x, estimated_y, predicted_x, predicted_y):
         # plot Animals real location and estimated location
-        Estimate, = plt.plot(estimated_x[5:], estimated_y[5:], 'b-', label='Line 1')
-        Prediction, = plt.plot(predicted_x[5:], predicted_y[5:], 'r-', label='Line 2')
+        estimate, = plt.plot(estimated_x[5:], estimated_y[5:], 'b-', label='Line 1')
+        prediction, = plt.plot(predicted_x[5:], predicted_y[5:], 'r-', label='Line 2')
         plt.xlim(0, 500)
         plt.ylim(360, 0)
         plt.title('Real vs Estimated Position')
         plt.xlabel('Pixel x')
         plt.ylabel('Pixel y')   
-        plt.legend([Estimate, Prediction], ['Estimate', 'Prediction'])
+        plt.legend([estimate, prediction], ['Estimate', 'Prediction'])
         plt.grid(True)
         
         plt.savefig('Prediction.png')         
@@ -131,8 +130,8 @@ class Predator_tracker:
         #print('Future location: ', location)
         
         # Plot line between current center and projected point
-        cv2.circle(frame, tuple(location), 5, self.Red, thickness=-1)   
-        cv2.circle(frame, tuple(location), 10, self.Red, thickness=2) 
+        cv2.circle(frame, tuple(location), 5, self.RED, thickness=-1)   
+        cv2.circle(frame, tuple(location), 10, self.RED, thickness=2) 
         
         return location
     
@@ -145,13 +144,13 @@ class Predator_tracker:
         font_thickness = 1
         
         # Plot real, estimated and predicted position of animal
-        #cv2.circle(frame, tuple(center), 5, self.Red, -1) 
-        cv2.circle(frame, tuple(estimated_center), 5, self.Blue, -1) 
-        #cv2.circle(frame, tuple(predicted_center), 5, self.Green, -1) 
+        #cv2.circle(frame, tuple(center), 5, self.RED, -1) 
+        cv2.circle(frame, tuple(estimated_center), 5, self.BLUE, -1) 
+        #cv2.circle(frame, tuple(predicted_center), 5, self.GREEN, -1) 
         
-        #cv2.putText(frame,'Predicted', (predicted_center[0]+10, predicted_center[1]), font, fontsize, self.Green, font_thickness, cv2.LINE_AA)
-        #cv2.putText(frame,'Center', (center[0]-60, center[1]), font, fontsize, self.Red, font_thickness, cv2.LINE_AA)
-        cv2.putText(frame,'Estimated', (int(estimated_center[0]-30), int(estimated_center[1]+20)), font, fontsize, self.Blue, font_thickness, cv2.LINE_AA)        
+        #cv2.putText(frame,'Predicted', (predicted_center[0]+10, predicted_center[1]), font, fontsize, self.GREEN, font_thickness, cv2.LINE_AA)
+        #cv2.putText(frame,'Center', (center[0]-60, center[1]), font, fontsize, self.RED, font_thickness, cv2.LINE_AA)
+        cv2.putText(frame,'Estimated', (int(estimated_center[0]-30), int(estimated_center[1]+20)), font, fontsize, self.BLUE, font_thickness, cv2.LINE_AA)        
     
     
     
@@ -254,8 +253,8 @@ class Predator_tracker:
             #predicted_loc = self.predict_location(frame, estimated_center, angle, estimated_velocity)
             print("predicted_loc: ", predicted_loc)
             
-            cv2.circle(original_frame, tuple(predicted_loc), 5, self.Red, thickness=-1)   
-            cv2.circle(original_frame, tuple(predicted_loc), 10, self.Red, thickness=2)                
+            cv2.circle(original_frame, tuple(predicted_loc), 5, self.RED, thickness=-1)   
+            cv2.circle(original_frame, tuple(predicted_loc), 10, self.RED, thickness=2)                
 
             # Plot real, estimated and predicted position of animal
             self.plot_position(frame, center, estimated_center, predicted_center)
@@ -317,5 +316,4 @@ class Predator_tracker:
         out.release()
         cv2.destroyAllWindows()
         
-main()     
-#Predator_tracker('../images/possum.mp4').kalman_filter()
+main()
