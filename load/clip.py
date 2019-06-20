@@ -469,7 +469,7 @@ class Clip:
             )
 
     def load_tracks(self, metadata, include_filtered_channel):
-        tracks_meta = metadata["tracks"]
+        tracks_meta = metadata["Tracks"]
         tracks = []
         # get track data
         for track_meta in tracks_meta:

@@ -345,16 +345,16 @@ def load_tracker_stats(filename):
 def load_clip_metadata(filename):
     """
     Loads a metadata file for a clip.
-    :param filename: full path and filename to stats file
+    :param filename: full path and filename to meta file
     :return: returns the stats file
     """
     with open(filename, "r") as t:
         # add in some metadata stats
-        stats = json.load(t)
+        meta = json.load(t)
 
-    stats["recordingDateTime"] = dateutil.parser.parse(stats["recordingDateTime"])
+    meta["recordingDateTime"] = dateutil.parser.parse(meta["recordingDateTime"])
 
-    return stats
+    return meta
 
 
 def load_track_stats(filename):

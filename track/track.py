@@ -74,6 +74,17 @@ class Track:
     def get_id(self):
         return self._id
 
+    def get_human_track(track_meta):
+        """ returns highest confidence non AI tag from the metadata """
+
+        track_tags = track_meta.get("TrackTags", [])
+        track_tags = [tag for tag in track_tags if not tag.get("automatic", False)]
+        track_tags = sorted(track_tags, key=lambda k: k["confidence"])
+        tag = None
+        if track_tags:
+            tag = track_tags[0]
+        return tag
+
     def load_track_meta(self, track_meta, frames_per_second, include_filtered_channel):
         self.from_metadata = True
         self._id = track_meta["id"]
@@ -83,8 +94,13 @@ class Track:
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
 
-        self.tag = data.get("tag", "unknown")
-        self.confidence = data["confidence"]
+        tag = Track.get_human_track(track_meta)
+        if tag:
+            self.tag = tag["what"]
+            self.confidence = tag["confidence"]
+        else:
+            return False
+
         positions = data.get("positions")
         if not positions:
             return False
