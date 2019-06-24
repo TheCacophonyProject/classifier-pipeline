@@ -42,7 +42,7 @@ class LoadConfig(DefaultConfig):
         ],
         1: ["unidentified", "other"],
         2: ["part", "bad track"],
-        3: ["default"]
+        3: ["default"],
     }
 
     enable_compression = attr.ib()
@@ -76,7 +76,7 @@ class LoadConfig(DefaultConfig):
                 tag_rec[tag] = order
 
         if tag_rec.get("default") is None:
-            tag_rec["default"] = max(config)+1
+            tag_rec["default"] = max(config) + 1
         return tag_rec
 
     def validate(self):

@@ -235,7 +235,9 @@ class TrackDatabase:
                 node_attrs = track_node.attrs
                 node_attrs["id"] = track_id
                 if track.track_tags:
-                    node_attrs["track_tags"] = [track["what"] for track in track.track_tags]
+                    node_attrs["track_tags"] = [
+                        track["what"] for track in track.track_tags
+                    ]
                 node_attrs["tag"] = track.tag
                 node_attrs["frames"] = frames
                 node_attrs["start_frame"] = track.start_frame

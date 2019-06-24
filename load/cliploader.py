@@ -146,7 +146,9 @@ class ClipLoader:
         if not track_data:
             return False
 
-        track_tag = Track.get_best_human_track(track_meta, self.config.load.tag_precedence, min_confidence)
+        track_tag = Track.get_best_human_track(
+            track_meta, self.config.load.tag_precedence, min_confidence
+        )
         if track_tag is None:
             return False
         tag = track_tag.get("what")
@@ -182,7 +184,11 @@ class ClipLoader:
 
         clip = Clip(self.track_config)
         clip.load_cptv(filename)
-        clip.parse_clip(metadata, self.config.load.include_filtered_channel, self.config.load.tag_precedence)
+        clip.parse_clip(
+            metadata,
+            self.config.load.include_filtered_channel,
+            self.config.load.tag_precedence,
+        )
 
         if self.track_config.enable_track_output:
             self._export_tracks(filename, clip)
