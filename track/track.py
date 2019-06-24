@@ -70,22 +70,14 @@ class Track:
         self.include_filtered_channel = True
         self.confidence = None
         self.from_metadata = False
+        self.track_tags = None
 
     def get_id(self):
         return self._id
 
-    def get_human_track(track_meta):
-        """ returns highest confidence non AI tag from the metadata """
-
-        track_tags = track_meta.get("TrackTags", [])
-        track_tags = [tag for tag in track_tags if not tag.get("automatic", False)]
-        track_tags = sorted(track_tags, key=lambda k: k["confidence"])
-        tag = None
-        if track_tags:
-            tag = track_tags[0]
-        return tag
-
-    def load_track_meta(self, track_meta, frames_per_second, include_filtered_channel):
+    def load_track_meta(
+        self, track_meta, frames_per_second, include_filtered_channel, tag_precedence
+    ):
         self.from_metadata = True
         self._id = track_meta["id"]
         self.include_filtered_channel = include_filtered_channel
@@ -93,8 +85,8 @@ class Track:
         data = track_meta["data"]
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
-
-        tag = Track.get_human_track(track_meta)
+        self.track_tags = track_meta.get("TrackTags")
+        tag = Track.get_best_human_track(track_meta, tag_precedence)
         if tag:
             self.tag = tag["what"]
             self.confidence = tag["confidence"]
@@ -334,6 +326,30 @@ class Track:
 
     def __len__(self):
         return len(self.bounds_history)
+
+    def get_best_human_track(track_meta, tag_precedence):
+        """ returns highest precidence non AI tag from the metadata """
+
+        track_tags = track_meta.get("TrackTags")
+        if not track_tags:
+            return None
+        track_tags = [tag for tag in track_tags if not tag.get("automatic", False)]
+        tag = None
+        if track_tags:
+            default_prec = tag_precedence.get("default", 100)
+            tag = min(
+                track_tags,
+                key=lambda tag: Track.tag_order(tag, tag_precedence, default_prec),
+            )
+        return tag
+
+    def tag_order(track_tag, precedence, default_prec):
+        """ returns a ranking of tags based of what they are and confidence """
+
+        what = track_tag.get("what")
+        confidence = 1 - track_tag.get("confidence", 0)
+        prec = precedence.get(what, default_prec)
+        return prec + confidence
 
 
 TrackMovementStatistics = namedtuple(

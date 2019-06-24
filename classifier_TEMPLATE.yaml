@@ -24,7 +24,6 @@ reprocess: True
 # Note: This is should be a full path. It is not relative to the # base_data_folder.
 # previews_colour_map: "custom_colormap.dat"
 
-
 # Labels 
 labels : ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
 
@@ -138,6 +137,12 @@ tracking:
     # Minimum confidence of track tag to accept
     min_tag_confidence: 0.8
 load:
+    # precidence of tags (lower first)
+    tag_precedence:
+        0: ["bird", "false-positive", "hedgehog", "possum", "rodent", "mustelid", "cat", "kiwi", "dog", "leporidae", "human", "insect", "pest"]
+        1: ["unidentified", "other"]
+        2: ["part","bad track"]
+    
     # Use fast BLOSC compression (requires plugin), when saving tracks to database
     # enable_compression: True
 
