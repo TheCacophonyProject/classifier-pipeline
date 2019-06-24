@@ -155,7 +155,9 @@ class Clip:
             )[-1]
 
         self.location = metadata.get("location")
-        self.tracks = self.load_tracks(metadata, include_filtered_channel, tag_precedence)
+        self.tracks = self.load_tracks(
+            metadata, include_filtered_channel, tag_precedence
+        )
         self.from_metadata = True
         self.extract_tracks()
 
@@ -475,7 +477,11 @@ class Clip:
         for track_meta in tracks_meta:
             track = Track(self.get_id())
             if track.load_track_meta(
-                track_meta, self.frames_per_second, include_filtered_channel, tag_precedence
+                track_meta,
+                self.frames_per_second,
+                include_filtered_channel,
+                tag_precedence,
+                self.config.min_tag_confidence,
             ):
                 tracks.append(track)
         return tracks

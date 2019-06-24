@@ -76,7 +76,12 @@ class Track:
         return self._id
 
     def load_track_meta(
-        self, track_meta, frames_per_second, include_filtered_channel, tag_precedence
+        self,
+        track_meta,
+        frames_per_second,
+        include_filtered_channel,
+        tag_precedence,
+        min_confidence,
     ):
         self.from_metadata = True
         self._id = track_meta["id"]
@@ -86,7 +91,7 @@ class Track:
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
         self.track_tags = track_meta.get("TrackTags")
-        tag = Track.get_best_human_track(track_meta, tag_precedence)
+        tag = Track.get_best_human_track(track_meta, tag_precedence, min_confidence)
         if tag:
             self.tag = tag["what"]
             self.confidence = tag["confidence"]
@@ -327,13 +332,18 @@ class Track:
     def __len__(self):
         return len(self.bounds_history)
 
-    def get_best_human_track(track_meta, tag_precedence):
+    def get_best_human_track(track_meta, tag_precedence, min_confidence=-1):
         """ returns highest precidence non AI tag from the metadata """
 
         track_tags = track_meta.get("TrackTags")
         if not track_tags:
             return None
-        track_tags = [tag for tag in track_tags if not tag.get("automatic", False)]
+        track_tags = [
+            tag
+            for tag in track_tags
+            if not tag.get("automatic", False)
+            and tag.get("confidence") > min_confidence
+        ]
         tag = None
         if track_tags:
             default_prec = tag_precedence.get("default", 100)
