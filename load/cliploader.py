@@ -146,7 +146,7 @@ class ClipLoader:
         if not track_data:
             return False
 
-        track_tag = Track.get_best_human_track(
+        track_tag = Track.get_best_human_tag(
             track_meta, self.config.load.tag_precedence, min_confidence
         )
         if track_tag is None:

@@ -91,7 +91,7 @@ class Track:
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
         self.track_tags = track_meta.get("TrackTags")
-        tag = Track.get_best_human_track(track_meta, tag_precedence, min_confidence)
+        tag = Track.get_best_human_tag(track_meta, tag_precedence, min_confidence)
         if tag:
             self.tag = tag["what"]
             self.confidence = tag["confidence"]
@@ -332,28 +332,37 @@ class Track:
     def __len__(self):
         return len(self.bounds_history)
 
-    def get_best_human_track(track_meta, tag_precedence, min_confidence=-1):
+    @classmethod
+    def get_best_human_tag(cls, track_meta, tag_precedence, min_confidence=-1):
         """ returns highest precidence non AI tag from the metadata """
 
-        track_tags = track_meta.get("TrackTags")
-        if not track_tags:
-            return None
+        track_tags = track_meta.get("TrackTags", [])
         track_tags = [
             tag
             for tag in track_tags
             if not tag.get("automatic", False)
             and tag.get("confidence") > min_confidence
         ]
+
+        if not track_tags:
+            return None
+
         tag = None
-        if track_tags:
-            default_prec = tag_precedence.get("default", 100)
-            tag = min(
-                track_tags,
-                key=lambda tag: Track.tag_order(tag, tag_precedence, default_prec),
-            )
+        default_prec = tag_precedence.get("default", 100)
+        best = None
+        for track_tag in track_tags:
+            ranking = cls.tag_ranking(track_tag, tag_precedence, default_prec)
+
+            # if 2 track_tags have same confidence ignore both
+            if ranking == best:
+                tag = None
+            elif best is None or ranking < best:
+                best = ranking
+                tag = track_tag
         return tag
 
-    def tag_order(track_tag, precedence, default_prec):
+    @classmethod
+    def tag_ranking(cls, track_tag, precedence, default_prec):
         """ returns a ranking of tags based of what they are and confidence """
 
         what = track_tag.get("what")
