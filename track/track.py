@@ -361,8 +361,8 @@ class Track:
                 tag = track_tag
         return tag
 
-    @classmethod
-    def tag_ranking(cls, track_tag, precedence, default_prec):
+    @staticmethod
+    def tag_ranking(track_tag, precedence, default_prec):
         """ returns a ranking of tags based of what they are and confidence """
 
         what = track_tag.get("what")
