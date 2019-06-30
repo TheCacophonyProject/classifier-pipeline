@@ -291,20 +291,20 @@ class Clip:
         self.frame_stats_mean.append(np.mean(thermal))
 
         # save history
-        prev_filtered = self.frame_buffer.get_previous_filtered()
+        prev_filtered = self.frame_buffer.get_last_filtered()
         self.frame_buffer.add_frame(thermal, filtered, mask)
         if self.from_metadata:
             for track in self.tracks:
                 if frame_number in track.frame_list:
                     track.add_frame(
-                        self.frame_buffer.get_previous_frame(),
+                        self.frame_buffer.get_last_frame(),
                         self.frame_buffer,
                         self.threshold,
                         prev_filtered,
                     )
         else:
             regions = self._get_regions_of_interest(
-                labels, stats, thresh, filtered, frame_number
+                labels, stats, thresh, filtered, prev_filtered, frame_number
             )
             self.region_history.append(regions)
             self._apply_region_matchings(regions, frame_number)
@@ -383,7 +383,9 @@ class Clip:
             if track.frames_since_target_seen < self.config.remove_track_after_frames
         ]
 
-    def _get_regions_of_interest(self, labels, stats, thresh, filtered, frame_number):
+    def _get_regions_of_interest(
+        self, labels, stats, thresh, filtered, prev_filtered, frame_number
+    ):
         """
         Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
         rectangles.
@@ -392,7 +394,6 @@ class Clip:
         """
 
         frame_height, frame_width = filtered.shape
-        prev_filtered = self.frame_buffer.get_previous_filtered()
         # get frames change
         if prev_filtered is not None:
             # we need a lot of precision because the values are squared.  Float32 should work.
@@ -465,14 +466,14 @@ class Clip:
         return regions
 
     def generate_optical_flow(self):
-        if self.cache_to_disk:
+        if self.cache_to_disk or self.frame_buffer.has_flow:
             return
-        # create optical flow
-        self.set_optical_flow_function()
 
         if not self.frame_buffer.has_flow:
             self.frame_buffer.generate_optical_flow(
-                self.opt_flow, self.config.flow_threshold
+                self.opt_flow,
+                self.config.flow_threshold,
+                self.config.high_quality_optical_flow,
             )
 
     def load_tracks(self, metadata, include_filtered_channel, tag_precedence):

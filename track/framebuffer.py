@@ -137,12 +137,13 @@ class FrameBuffer:
     def has_flow(self):
         return self.cache or self.flow
 
-    def generate_optical_flow(self, opt_flow, flow_threshold=40):
+    def generate_optical_flow(self, flow_threshold=40, high_quality=False):
         """
         Generate optical flow from thermal frames
         :param opt_flow: An optical flow algorithm
         """
-
+        if self.opt_flow is None:
+            self.set_optical_flow(high_quality)
         self.flow = []
 
         height, width = self.thermal[0].shape
@@ -187,11 +188,10 @@ class FrameBuffer:
         if self.cache:
             self.cache.delete()
 
-    def get_previous_frame(self):
+    def get_last_frame(self):
         return self.prev_frame
-       
 
-    def get_previous_filtered(self, region=None):
+    def get_last_filtered(self, region=None):
 
         if self.cache:
             prev = self.prev_frame.filtered

@@ -396,10 +396,6 @@ class Preprocessor:
         # convert back into [F,C,H,W] array.
         data = np.float32(scaled_frames)
 
-        # the segment will be processed in float32 so we may as well convert it here.
-        # also optical flow is stored as a scaled integer, but we want it in float32 format.
-        data = np.asarray(data, dtype=np.float32)
-
         # -------------------------------------------
         # next adjust temperature and flow levels
 

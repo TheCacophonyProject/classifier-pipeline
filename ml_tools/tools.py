@@ -722,6 +722,7 @@ def blur_and_return_as_mask(frame, threshold):
     thresh[thresh > 0] = 1
     return thresh
 
+
 def get_optical_flow_function(high_quality=False):
     opt_flow = cv2.createOptFlow_DualTVL1()
     opt_flow.setUseInitialFlow(True)
