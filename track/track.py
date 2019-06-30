@@ -124,7 +124,9 @@ class Track:
     def add_frame(self, frame, buffer_frame, mass_delta_threshold, prev_filtered):
 
         region = self.bounds_history[self.current_frame]
-        prev_filtered = region.subimage(prev_filtered)
+        if prev_filtered is not None:
+            prev_filtered = region.subimage(prev_filtered)
+        
         channels = self.crop_by_region(frame.as_array(True), region=region)
         # frame.get_frame_channels(region)
         filtered = channels[TrackChannels.filtered]

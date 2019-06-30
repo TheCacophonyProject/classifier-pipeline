@@ -75,7 +75,6 @@ class Clip:
         self.region_history = []
         self.cache_to_disk = cache_to_disk
         self.opt_flow = None
-        self.set_optical_flow_function()
 
     def get_id(self):
         return str(self._id)

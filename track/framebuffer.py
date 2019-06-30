@@ -196,8 +196,8 @@ class FrameBuffer:
         if self.cache:
             prev = self.prev_frame.filtered
         else:
-            if len(self.filtered) > 1:
-                prev = self.filtered[-2]
+            if len(self.filtered) > 0:
+                prev = self.filtered[-1]
             else:
                 return None
 

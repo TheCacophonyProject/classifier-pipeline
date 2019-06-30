@@ -20,7 +20,6 @@ def train_model(run_name, conf, hyper_params):
     with open(datasets_filename, "rb") as f:
         dsets = pickle.load(f)
     labels = dsets[0].labels
-
     model = ModelCRNN_LQ(labels=len(labels), train_config=conf.train, **hyper_params)
     model.import_dataset(datasets_filename)
     # display the data set summary
