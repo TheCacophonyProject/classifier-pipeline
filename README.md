@@ -71,4 +71,33 @@ A pre-trained model can be used to classify objects within a CPTV video
 
 `python classify.py [cptv filename] -p`
 
-This will generate a text file listing the animals identified, and create an MPEG preview file.   `
+This will generate a text file listing the animals identified, and create an MPEG preview file.
+
+## Release and Update
+
+1. Create a release on GitHub (https://github.com/TheCacophonyProject/Project-Overview/wiki/Releases)
+
+2. SSH into server
+
+3. wget latest installer from GitHub
+
+	`wget https://github.com/TheCacophonyProject/classifier-pipeline/releases/download/vx.x.x/classifier-pipeline_x.x.x_amd64.deb`
+
+4. Install downloaded deb
+
+	`sudo apt install ./classifier-pipeline_x.x.x_amd64.deb`
+
+5. Make changes to config file if needed
+
+	`/etc/cacophony/classifier.yaml`
+
+6. Restart service
+
+	`systemctl restart cacophony-processing.thermal@xx.service`
+
+7. View logs
+
+	`journalctl -u cacophony-processing.thermal@xx.service -f`
+
+
+

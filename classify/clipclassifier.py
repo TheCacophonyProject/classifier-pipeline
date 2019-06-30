@@ -11,10 +11,10 @@ from classify.trackprediction import TrackPrediction
 from load.clip import Clip
 from ml_tools import tools
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
-from ml_tools.dataset import Preprocessor
 import ml_tools.globals as globs
-from ml_tools.previewer import Previewer
 from ml_tools.model import Model
+from ml_tools.dataset import Preprocessor
+from ml_tools.previewer import Previewer
 from track.track import Track
 
 
@@ -34,6 +34,9 @@ class ClipClassifier(CPTVFileProcessor):
 
         self.previewer = Previewer.create_if_required(config, config.classify.preview)
 
+        self.start_date = None
+        self.end_date = None
+        self.cache_to_disk = self.config.classify.cache_to_disk
         # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
         self.enable_per_track_information = False
 
@@ -89,18 +92,17 @@ class ClipClassifier(CPTVFileProcessor):
                 track.get_id(), len(track), len(track.track_data)
             )
         )
+
         for i in range(len(track)):
+            frame_number = track.start_frame + i
             # note: would be much better for the tracker to store the thermal references as it goes.
-            thermal_reference = np.median(
-                clip.frame_buffer.thermal[track.start_frame + i]
-            )
-            frame = track.track_data[i]
-
+            frame = tracker.frame_buffer.get_frame(frame_number)
+            thermal_reference = np.median(frame[0])
+            track_data = track.crop_by_region_at_trackframe(frame, i)
             if i % self.FRAME_SKIP == 0:
-
                 # we use a tigher cropping here so we disable the default 2 pixel inset
                 frames = Preprocessor.apply(
-                    [frame], [thermal_reference], default_inset=0
+                    [track_data], [thermal_reference], default_inset=0
                 )
 
                 if frames is None:
@@ -240,8 +242,7 @@ class ClipClassifier(CPTVFileProcessor):
         logging.info("Processing file '{}'".format(filename))
 
         start = time.time()
-
-        clip = Clip(self.tracker_config)
+        clip = Clip(self.tracker_config, self.cache_to_disk)
         clip.load_cptv(filename)
         clip.extract_tracks()
 
@@ -295,6 +296,9 @@ class ClipClassifier(CPTVFileProcessor):
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
 
     def save_metadata(self, filename, meta_filename, clip):
+        if self.cache_to_disk:
+            clip.frame_buffer.remove_cache()
+
         # read in original metadata
         meta_data = self.get_meta_data(filename)
 

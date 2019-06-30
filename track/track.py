@@ -121,18 +121,19 @@ class Track:
         self.end_frame = region.frame_number
         self.current_frame += 1
 
-    def add_frame(self, frame_number, buffer_frame, mass_delta_threshold):
+    def add_frame(self, frame, buffer_frame, mass_delta_threshold, prev_filtered):
 
         region = self.bounds_history[self.current_frame]
-        prev_filtered = buffer_frame.get_previous_filtered(region, frame_number)
-        channels = buffer_frame.get_frame_channels(region, frame_number)
+        prev_filtered = region.subimage(prev_filtered)
+        channels = self.crop_by_region(frame.as_array(True), region=region)
+        # frame.get_frame_channels(region)
         filtered = channels[TrackChannels.filtered]
 
         region.calculate_mass(filtered, mass_delta_threshold)
         region.calculate_variance(filtered, prev_filtered)
 
-        if self.prev_frame and frame_number:
-            frame_diff = frame_number - self.prev_frame - 1
+        if self.prev_frame and buffer_frame.frame_number:
+            frame_diff = buffer_frame.frame_number - self.prev_frame - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
 
@@ -142,7 +143,7 @@ class Track:
         else:
             self.vel_x = self.vel_y = 0
 
-        self.prev_frame = frame_number
+        self.prev_frame = buffer_frame.frame_number
         self.current_frame += 1
 
         if not self.include_filtered_channel:
@@ -317,6 +318,26 @@ class Track:
                     frames_overlapped += 1
 
         return frames_overlapped / len(self)
+
+    def crop_by_region_at_trackframe(self, frame, track_frame_number):
+        bounds = self.bounds_history[track_frame_number]
+        return self.crop_by_region(frame, bounds)
+
+    def crop_by_region(self, frame, region):
+        thermal = region.subimage(frame[TrackChannels.thermal])
+        filtered = region.subimage(frame[TrackChannels.filtered])
+        flow = region.subimage(frame[TrackChannels.flow_h])
+        flow2 = region.subimage(frame[TrackChannels.flow_v])
+        mask = region.subimage(frame[TrackChannels.mask])
+
+        # make sure only our pixels are included in the mask.
+        mask[mask != region.id] = 0
+        mask[mask > 0] = 1
+
+        # stack together into a numpy array.
+        # by using int16 we lose a little precision on the filtered frames, but not much (only 1 bit)
+        frame = np.int16(np.stack((thermal, filtered, flow, flow2, mask), axis=0))
+        return frame
 
     @property
     def last_mass(self):

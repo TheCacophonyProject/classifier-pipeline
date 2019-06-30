@@ -716,7 +716,19 @@ def blur_and_return_as_mask(frame, threshold):
     Any pixels more than the threshold are set 1, all others are set to 0.
     A blur is also applied as a filtering step
     """
+
     thresh = cv2.GaussianBlur(frame, (5, 5), 0) - threshold
     thresh[thresh < 0] = 0
     thresh[thresh > 0] = 1
     return thresh
+
+def get_optical_flow_function(high_quality=False):
+    opt_flow = cv2.createOptFlow_DualTVL1()
+    opt_flow.setUseInitialFlow(True)
+    if not high_quality:
+        # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
+        opt_flow.setTau(1 / 4)
+        opt_flow.setScalesNumber(3)
+        opt_flow.setWarpingsNumber(3)
+        opt_flow.setScaleStep(0.5)
+    return opt_flow

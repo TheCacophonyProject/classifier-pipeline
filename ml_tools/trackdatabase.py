@@ -7,13 +7,10 @@ Date December 2017
 Handles reading and writing tracks (or segments) to a large database.  Uses HDF5 as a backing store.
 
 """
-
+import h5py
 import os
 import logging
 from multiprocessing import Lock
-
-import h5py
-import tables  # required for blosc compression to work
 import numpy as np
 
 # default lock for safe database writes.

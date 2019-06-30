@@ -40,7 +40,7 @@ class Clip:
     local_tz = pytz.timezone("Pacific/Auckland")
     VERSION = 7
 
-    def __init__(self, trackconfig):
+    def __init__(self, trackconfig, cache_to_disk=False):
         self._id = None
         self.max_tracks = trackconfig.max_tracks
         self.active_tracks = []
@@ -62,7 +62,7 @@ class Clip:
         self.frame_stats_mean = []
         self.threshold = trackconfig.delta_thresh
         # this buffers store the entire video in memory and are required for fast track exporting
-        self.frame_buffer = FrameBuffer()
+        self.frame_buffer = None
         self.background_stats = {}
         self.disable_background_subtraction = {}
         self.crop_rectangle = None
@@ -73,6 +73,9 @@ class Clip:
         # the dilation effectively also pads the frame so take it into consideration.
         self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
         self.region_history = []
+        self.cache_to_disk = cache_to_disk
+        self.opt_flow = None
+        self.set_optical_flow_function()
 
     def get_id(self):
         return str(self._id)
@@ -82,6 +85,7 @@ class Clip:
         Loads a cptv file, and prepares for track extraction.
         """
         self.source_file = filename
+        self.frame_buffer = FrameBuffer(filename, self.opt_flow, self.cache_to_disk)
 
         with open(filename, "rb") as f:
             reader = CPTVReader(f)
@@ -90,7 +94,7 @@ class Clip:
             self.stats.update(self.get_video_stats())
             # we need to load the entire video so we can analyse the background.
             frames = [np.float32(frame.pix) for frame in reader]
-            self.frame_buffer.thermal = np.float32(frames)
+            self.frame_buffer.thermal = frames
             edge = self.config.edge_pixels
             self.crop_rectangle = Rectangle(
                 edge,
@@ -115,6 +119,7 @@ class Clip:
 
     def extract_tracks(self):
 
+        self.frame_buffer.set_optical_flow(self.config.high_quality_optical_flow)
         # for now just always calculate as we are using the stats...
         frames = self.frame_buffer.thermal
 
@@ -130,7 +135,6 @@ class Clip:
                     "No preview secs defined for CPTV file - using statistical background measurement"
                 )
 
-        self.generate_optical_flow()
         # process each frame
         for frame_number, frame in enumerate(frames):
             self._process_frame(frame, frame_number, background)
@@ -279,8 +283,6 @@ class Clip:
         labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(dilated)
 
         mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
-        # save history
-        self.frame_buffer.add_frame(filtered, mask)
 
         # save frame stats
         self.frame_stats_min.append(np.min(thermal))
@@ -288,10 +290,18 @@ class Clip:
         self.frame_stats_median.append(np.median(thermal))
         self.frame_stats_mean.append(np.mean(thermal))
 
+        # save history
+        prev_filtered = self.frame_buffer.get_previous_filtered()
+        self.frame_buffer.add_frame(thermal, filtered, mask)
         if self.from_metadata:
             for track in self.tracks:
                 if frame_number in track.frame_list:
-                    track.add_frame(frame_number, self.frame_buffer, self.threshold)
+                    track.add_frame(
+                        self.frame_buffer.get_previous_frame(),
+                        self.frame_buffer,
+                        self.threshold,
+                        prev_filtered,
+                    )
         else:
             regions = self._get_regions_of_interest(
                 labels, stats, thresh, filtered, frame_number
@@ -382,7 +392,7 @@ class Clip:
         """
 
         frame_height, frame_width = filtered.shape
-        prev_filtered = self.frame_buffer.get_previous_filtered(frame_number)
+        prev_filtered = self.frame_buffer.get_previous_filtered()
         # get frames change
         if prev_filtered is not None:
             # we need a lot of precision because the values are squared.  Float32 should work.
@@ -455,15 +465,10 @@ class Clip:
         return regions
 
     def generate_optical_flow(self):
+        if self.cache_to_disk:
+            return
         # create optical flow
-        self.opt_flow = cv2.createOptFlow_DualTVL1()
-        self.opt_flow.setUseInitialFlow(True)
-        if not self.config.high_quality_optical_flow:
-            # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
-            self.opt_flow.setTau(1 / 4)
-            self.opt_flow.setScalesNumber(3)
-            self.opt_flow.setWarpingsNumber(3)
-            self.opt_flow.setScaleStep(0.5)
+        self.set_optical_flow_function()
 
         if not self.frame_buffer.has_flow:
             self.frame_buffer.generate_optical_flow(
