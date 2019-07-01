@@ -70,11 +70,19 @@ class Track:
         self.include_filtered_channel = True
         self.confidence = None
         self.from_metadata = False
+        self.track_tags = None
 
     def get_id(self):
         return self._id
 
-    def load_track_meta(self, track_meta, frames_per_second, include_filtered_channel):
+    def load_track_meta(
+        self,
+        track_meta,
+        frames_per_second,
+        include_filtered_channel,
+        tag_precedence,
+        min_confidence,
+    ):
         self.from_metadata = True
         self._id = track_meta["id"]
         self.include_filtered_channel = include_filtered_channel
@@ -82,9 +90,14 @@ class Track:
         data = track_meta["data"]
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
+        self.track_tags = track_meta.get("TrackTags")
+        tag = Track.get_best_human_tag(track_meta, tag_precedence, min_confidence)
+        if tag:
+            self.tag = tag["what"]
+            self.confidence = tag["confidence"]
+        else:
+            return False
 
-        self.tag = data.get("tag", "unknown")
-        self.confidence = data["confidence"]
         positions = data.get("positions")
         if not positions:
             return False
@@ -318,6 +331,44 @@ class Track:
 
     def __len__(self):
         return len(self.bounds_history)
+
+    @classmethod
+    def get_best_human_tag(cls, track_meta, tag_precedence, min_confidence=-1):
+        """ returns highest precidence non AI tag from the metadata """
+
+        track_tags = track_meta.get("TrackTags", [])
+        track_tags = [
+            tag
+            for tag in track_tags
+            if not tag.get("automatic", False)
+            and tag.get("confidence") > min_confidence
+        ]
+
+        if not track_tags:
+            return None
+
+        tag = None
+        default_prec = tag_precedence.get("default", 100)
+        best = None
+        for track_tag in track_tags:
+            ranking = cls.tag_ranking(track_tag, tag_precedence, default_prec)
+
+            # if 2 track_tags have same confidence ignore both
+            if ranking == best:
+                tag = None
+            elif best is None or ranking < best:
+                best = ranking
+                tag = track_tag
+        return tag
+
+    @staticmethod
+    def tag_ranking(track_tag, precedence, default_prec):
+        """ returns a ranking of tags based of what they are and confidence """
+
+        what = track_tag.get("what")
+        confidence = 1 - track_tag.get("confidence", 0)
+        prec = precedence.get(what, default_prec)
+        return prec + confidence
 
 
 TrackMovementStatistics = namedtuple(

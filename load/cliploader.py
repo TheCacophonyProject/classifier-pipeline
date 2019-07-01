@@ -28,6 +28,7 @@ from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import trackdatabase
 from ml_tools.previewer import Previewer
 from .clip import Clip
+from track.track import Track
 
 
 def init_workers(lock):
@@ -127,11 +128,11 @@ class ClipLoader:
         Returns valid tracks
         """
 
-        tracks_meta = clip_metadata.get("tracks", [])
+        tracks_meta = clip_metadata.get("Tracks", [])
         valid_tracks = [
             track for track in tracks_meta if self._track_meta_is_valid(track)
         ]
-        clip_metadata["tracks"] = valid_tracks
+        clip_metadata["Tracks"] = valid_tracks
         return valid_tracks
 
     def _track_meta_is_valid(self, track_meta):
@@ -139,15 +140,19 @@ class ClipLoader:
         Tracks are valid if their confidence meets the threshold and they are
         not in the excluded_tags list, defined in the config.
         """
-
         min_confidence = self.track_config.min_tag_confidence
         excluded_tags = self.config.excluded_tags
         track_data = track_meta.get("data")
         if not track_data:
             return False
 
-        tag = track_data.get("tag")
-        confidence = track_data.get("confidence", 0)
+        track_tag = Track.get_best_human_tag(
+            track_meta, self.config.load.tag_precedence, min_confidence
+        )
+        if track_tag is None:
+            return False
+        tag = track_tag.get("what")
+        confidence = track_tag.get("confidence", 0)
         return tag and tag not in excluded_tags and confidence >= min_confidence
 
     def process_file(self, filename):
@@ -179,7 +184,11 @@ class ClipLoader:
 
         clip = Clip(self.track_config)
         clip.load_cptv(filename)
-        clip.parse_clip(metadata, self.config.load.include_filtered_channel)
+        clip.parse_clip(
+            metadata,
+            self.config.load.include_filtered_channel,
+            self.config.load.tag_precedence,
+        )
 
         if self.track_config.enable_track_output:
             self._export_tracks(filename, clip)

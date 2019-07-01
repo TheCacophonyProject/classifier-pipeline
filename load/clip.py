@@ -143,7 +143,7 @@ class Clip:
                 for track in self.tracks:
                     track.smooth(Rectangle(0, 0, frame_width, frame_height))
 
-    def parse_clip(self, metadata, include_filtered_channel):
+    def parse_clip(self, metadata, include_filtered_channel, tag_precedence):
 
         self._id = metadata["id"]
         device_meta = metadata.get("Device")
@@ -155,7 +155,9 @@ class Clip:
             )[-1]
 
         self.location = metadata.get("location")
-        self.tracks = self.load_tracks(metadata, include_filtered_channel)
+        self.tracks = self.load_tracks(
+            metadata, include_filtered_channel, tag_precedence
+        )
         self.from_metadata = True
         self.extract_tracks()
 
@@ -468,14 +470,18 @@ class Clip:
                 self.opt_flow, self.config.flow_threshold
             )
 
-    def load_tracks(self, metadata, include_filtered_channel):
-        tracks_meta = metadata["tracks"]
+    def load_tracks(self, metadata, include_filtered_channel, tag_precedence):
+        tracks_meta = metadata["Tracks"]
         tracks = []
         # get track data
         for track_meta in tracks_meta:
             track = Track(self.get_id())
             if track.load_track_meta(
-                track_meta, self.frames_per_second, include_filtered_channel
+                track_meta,
+                self.frames_per_second,
+                include_filtered_channel,
+                tag_precedence,
+                self.config.min_tag_confidence,
             ):
                 tracks.append(track)
         return tracks

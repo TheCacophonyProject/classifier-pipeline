@@ -24,24 +24,60 @@ from ml_tools.defaultconfig import DefaultConfig
 
 @attr.s
 class LoadConfig(DefaultConfig):
+    DEFAULT_GROUPS = {
+        0: [
+            "bird",
+            "false-positive",
+            "hedgehog",
+            "possum",
+            "rodent",
+            "mustelid",
+            "cat",
+            "kiwi",
+            "dog",
+            "leporidae",
+            "human",
+            "insect",
+            "pest",
+        ],
+        1: ["unidentified", "other"],
+        2: ["part", "bad track"],
+        3: ["default"],
+    }
 
     enable_compression = attr.ib()
     include_filtered_channel = attr.ib()
     preview = attr.ib()
+    tag_precedence = attr.ib()
 
     @classmethod
-    def load(cls, extract):
+    def load(cls, config):
         return cls(
-            enable_compression=extract["enable_compression"],
-            include_filtered_channel=extract["include_filtered_channel"],
-            preview=extract["preview"],
+            enable_compression=config["enable_compression"],
+            include_filtered_channel=config["include_filtered_channel"],
+            preview=config["preview"],
+            tag_precedence=LoadConfig.get_tag_precedence(config),
         )
 
     @classmethod
     def get_defaults(cls):
         return cls(
-            enable_compression=False, include_filtered_channel=False, preview="tracking"
+            enable_compression=False,
+            include_filtered_channel=False,
+            preview="tracking",
+            tag_precedence=LoadConfig.DEFAULT_GROUPS,
         )
+
+    def get_tag_precedence(config):
+        config_prec = config.get("tag_precedence")
+        tag_rec = {}
+        for order, tags in config_prec.items():
+            for tag in tags:
+                tag_rec[tag] = order
+
+        if tag_rec.get("default") is None:
+            tag_rec["default"] = max(config) + 1
+        return tag_rec
 
     def validate(self):
         return True
