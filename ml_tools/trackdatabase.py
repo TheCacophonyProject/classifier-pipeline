@@ -10,40 +10,35 @@ Handles reading and writing tracks (or segments) to a large database.  Uses HDF5
 import h5py
 import os
 import logging
+import filelock
 from multiprocessing import Lock
 import numpy as np
-
-# default lock for safe database writes.
-#
-# note for multiprocessing this will need to be overwritten with a shared lock for each process.
-# which can be done via
-#
-# def init_workers(lock):
-#    trackdatabase.HDF5_LOCK = lock
-#
-# pool = multiprocessing.Pool(self.workers_threads, initializer=init_workers, initargs=(shared_lock,))
-
-HDF5_LOCK = Lock()
 
 
 class HDF5Manager:
     """ Class to handle locking of HDF5 files. """
 
+    LOCK_FILE = "/var/lock/classifier-hdf5.lock"
+
     def __init__(self, db, mode="r"):
         self.mode = mode
         self.f = None
         self.db = db
+        self.lock = filelock.FileLock(HDF5Manager.LOCK_FILE, timeout=60 * 3)
+        filelock.logger().setLevel(logging.ERROR)
 
     def __enter__(self):
         # note: we might not have to lock when in read only mode?
         # this could improve performance
-        HDF5_LOCK.acquire()
+        self.lock.acquire()
         self.f = h5py.File(self.db, self.mode)
         return self.f
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.f.close()
-        HDF5_LOCK.release()
+        try:
+            self.f.close()
+        finally:
+            self.lock.release()
 
 
 class TrackDatabase:
