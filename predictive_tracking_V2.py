@@ -39,7 +39,7 @@ class PredatorTracker:
         gray_image = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         # convert the grayscale image to binary image
-        ret, thresh = cv2.threshold(gray_image, 127, 255, 0)
+        _, thresh = cv2.threshold(gray_image, 127, 255, 0)
 
         # calculate moments of binary image
         M = cv2.moments(thresh)
@@ -52,7 +52,6 @@ class PredatorTracker:
             cX, cY = 0, 0
 
         center = np.array([int(cX), int(cY)])
-        radius = 1
 
         return center, frame
 
@@ -115,8 +114,8 @@ class PredatorTracker:
         distance = np.array([0, 0])
 
         # determine offset distance
-        time = 4
-        distance = velocity * time
+        t = 4
+        distance = velocity * t
         # print('distance: ', distance)
         length = np.linalg.norm(distance)
         # print('length: ', length)
@@ -165,8 +164,6 @@ class PredatorTracker:
 
         timestep = 1 / 9
 
-        sum_x = 0
-        sum_y = 0
         count = 0
 
         initial_time = time.time()
@@ -176,8 +173,6 @@ class PredatorTracker:
 
         # Initialise arrays
         center = np.array([[0, 0]])
-        previous_center = np.array([0, 0])
-        previous_prediction = np.array([0, 0])
 
         previous_estimated = np.array([0, 0])
         estimated_state = np.array([0, 0])
@@ -190,7 +185,6 @@ class PredatorTracker:
         estimated_y = np.array([[0]])
 
         velocity = np.array([[0, 0], [0, 0]])
-        velocity_current = np.array([[0, 0]])
 
         velocity_x = 0
         velocity_y = 0
@@ -258,7 +252,6 @@ class PredatorTracker:
             velocity_x = (estimated_center[0] - previous_estimated[0]) / timestep
             velocity_y = (estimated_center[1] - previous_estimated[1]) / timestep
 
-            velocity_current = np.array([[velocity_x, velocity_y]])
             if ((velocity_x != 0) and (velocity_y != 0)) and (
                 (abs(velocity_x) < 100) and (abs(velocity_y) < 100)
             ):
@@ -309,9 +302,7 @@ class PredatorTracker:
                 estimated_x, estimated_y, predicted_x, predicted_y
             )
 
-            previous_center = center
             previous_estimated = estimated_center
-            previous_prediction = predicted_center
 
             # Close the script if q is pressed.
             if cv2.waitKey(50) & 0xFF == ord("q"):
@@ -329,7 +320,6 @@ class PredatorTracker:
 
                 predictionSumX = sum(predicted_x[1:])
                 predictionSumY = sum(predicted_y[1:])
-                predictionLength = len(estimated_x[1:])
 
                 errorX = abs(sumX - predictionSumX) / length
                 errorY = abs(sumY - predictionSumY) / length
