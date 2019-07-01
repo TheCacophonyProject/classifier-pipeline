@@ -48,8 +48,6 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             os.path.join(self.config.tracks_folder, "dataset.hdf5")
         )
 
-        self.worker_pool_init = None
-
         # load hints.  Hints are a way to give extra information to the tracker when necessary.
         # if os.path.exists(config.extract.hints_file):
         if config.extract.hints_file:

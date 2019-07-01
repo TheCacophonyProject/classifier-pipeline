@@ -24,7 +24,7 @@ class HDF5Manager:
         self.mode = mode
         self.f = None
         self.db = db
-        self.lock = filelock.FileLock(HDF5Manager.LOCK_FILE, timeout=10)
+        self.lock = filelock.FileLock(HDF5Manager.LOCK_FILE, timeout=60 * 3)
         filelock.logger().setLevel(logging.ERROR)
 
     def __enter__(self):
@@ -35,8 +35,10 @@ class HDF5Manager:
         return self.f
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.f.close()
-        self.lock.release()
+        try:
+            self.f.close()
+        finally:
+            self.lock.release()
 
 
 class TrackDatabase:
