@@ -88,8 +88,7 @@ def parse_params():
         return
     else:
         extractor.process_folder(
-            os.path.join(config.source_folder, args.target),
-            tag=args.target,
+            os.path.join(config.source_folder, args.target), tag=args.target
         )
         return
 
