@@ -90,7 +90,6 @@ def parse_params():
         extractor.process_folder(
             os.path.join(config.source_folder, args.target),
             tag=args.target,
-            worker_pool_args=(trackdatabase.HDFS_LOCK,),
         )
         return
 
