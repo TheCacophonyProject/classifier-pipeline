@@ -150,6 +150,12 @@ class TrackExtractor:
                 logging.info(
                     "No preview secs defined for CPTV file - using statistical background measurement"
                 )
+        delta_temp = background_stats.max_temp - background_stats.min_temp
+        if delta_temp < 550:
+            self.config.temp_thresh = max(
+                self.config.temp_thresh - delta_temp / 2.0, background_stats.mean_temp
+            )
+            print(f"sensitive track setting thresh to {self.config.temp_thresh}")
 
         if len(frames) <= 9:
             self.reject_reason = "Clip too short {} frames".format(len(frames))
@@ -212,7 +218,7 @@ class TrackExtractor:
             logging.error("Video consists entirely of preview")
             number_frames = len(frame_list)
         frames = np.int32(frame_list[0:number_frames])
-        background = np.average(frames, axis=0)
+        background = np.min(frames, axis=0)
         background = np.int32(np.rint(background))
         self.mean_background_value = np.average(background)
         self.threshold = self.config.delta_thresh

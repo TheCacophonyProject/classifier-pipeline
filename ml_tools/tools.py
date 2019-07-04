@@ -10,19 +10,17 @@ import pickle
 import math
 import matplotlib.pyplot as plt
 import logging
-import io
-import itertools
-import gzip
 from sklearn import metrics
 import json
 import dateutil
 import binascii
-import time
 import datetime
 import glob
 import cv2
 from matplotlib.colors import LinearSegmentedColormap
 import subprocess
+from PIL import ImageFont
+from PIL import ImageDraw
 
 EPISON = 1e-5
 
@@ -692,3 +690,44 @@ color_dict = {
     "blue": ((0.0, 0.3, 0.3), (0.5, 0.0, 0.0), (1.0, 0.1, 0.1)),
 }
 cm_blue_red = LinearSegmentedColormap("BlueRed2", color_dict)
+
+
+def frame_to_img(frame, filename, colourmap_file, min, max):
+    colourmap = _load_colourmap(colourmap_file)
+    # print(f"min color {min(frame)} max {max(frame)} {frame.shape}")
+    img = convert_heat_to_img(frame, colourmap, min, max)
+    img.save(filename + ".jpg", "JPEG")
+
+
+LOCAL_RESOURCES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources")
+GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
+
+
+def _load_colourmap(colourmap_path):
+    if not os.path.exists(colourmap_path):
+        colourmap_path = resource_path("colourmap.dat")
+    return load_colourmap(colourmap_path)
+
+
+def resource_path(name):
+    for base in [LOCAL_RESOURCES, GLOBAL_RESOURCES]:
+        p = os.path.join(base, name)
+        if os.path.exists(p):
+            return p
+    raise OSError(f"unable to locate {name!r} resource")
+
+
+def add_heat_number(img, frame, scale):
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("FreeSans.ttf", 8)
+
+    for y, row in enumerate(frame):
+        if y % 4 == 0:
+            min_v = np.amin(row)
+            min_i = np.where(row == min_v)[0][0]
+            max_v = np.amax(row)
+            max_i = np.where(row == max_v)[0][0]
+            min_v = int(min_v)
+            max_v = int(max_v)
+            draw.text((min_i * scale, y * scale), str(min_v), (0, 0, 0), font=font)
+            draw.text((max_i * scale, y * scale), str(max_v), (0, 0, 0), font=font)

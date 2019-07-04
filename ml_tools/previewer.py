@@ -172,6 +172,7 @@ class Previewer:
 
     def convert_and_resize(self, image, size=None, mode=Image.BILINEAR):
         """ Converts the image to colour using colour map and resize """
+        thermal = image[:120, :160].copy()
         image = tools.convert_heat_to_img(
             image, self.colourmap, self.auto_min, self.auto_max
         )
@@ -184,6 +185,9 @@ class Previewer:
                 ),
                 mode,
             )
+
+        tools.add_heat_number(image, thermal, self.frame_scale)
+
         return image
 
     def create_track_descriptions(self, tracker, track_predictions):
