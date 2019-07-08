@@ -11,17 +11,6 @@ from track.trackextractor import TrackExtractor
 from track.region import Region
 from .dataset import TrackChannels
 
-LOCAL_RESOURCES = path.join(path.dirname(path.dirname(__file__)), "resources")
-GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
-
-
-def resource_path(name):
-    for base in [LOCAL_RESOURCES, GLOBAL_RESOURCES]:
-        p = path.join(base, name)
-        if path.exists(p):
-            return p
-    raise OSError(f"unable to locate {name!r} resource")
-
 
 class Previewer:
 
@@ -66,7 +55,7 @@ class Previewer:
     def _load_colourmap(self):
         colourmap_path = self.config.previews_colour_map
         if not path.exists(colourmap_path):
-            colourmap_path = resource_path("colourmap.dat")
+            colourmap_path = tools.resource_path("colourmap.dat")
         return tools.load_colourmap(colourmap_path)
 
     @property
@@ -74,7 +63,7 @@ class Previewer:
         """ gets default font. """
         if not globs._previewer_font:
             globs._previewer_font = ImageFont.truetype(
-                resource_path("Ubuntu-R.ttf"), 12
+                tools.resource_path("Ubuntu-R.ttf"), 12
             )
         return globs._previewer_font
 
@@ -83,7 +72,7 @@ class Previewer:
         """ gets default title font. """
         if not globs._previewer_font_title:
             globs._previewer_font_title = ImageFont.truetype(
-                resource_path("Ubuntu-B.ttf"), 14
+                tools.resource_path("Ubuntu-B.ttf"), 14
             )
         return globs._previewer_font_title
 
@@ -127,10 +116,10 @@ class Previewer:
                 image = self.convert_and_resize(image, 3.0, mode=Image.NEAREST)
                 draw = ImageDraw.Draw(image)
                 regions = tracker.region_history[frame_number]
-                # self.add_regions(draw, regions)
-                # self.add_regions(draw, regions, v_offset=120)
                 self.add_filtered_tracks(draw, tracker.filtered_tracks, frame_number)
-                self.add_filtered_tracks(draw, tracker.filtered_tracks, v_offset=120)
+                self.add_filtered_tracks(
+                    draw, tracker.filtered_tracks, frame_number, v_offset=120
+                )
                 self.add_tracks(draw, tracker.tracks, frame_number)
 
             if self.preview_type == self.PREVIEW_BOXES:
@@ -178,11 +167,11 @@ class Previewer:
             logging.info("creating preview %s", filename_format.format(id + 1))
             tools.write_mpeg(filename_format.format(id + 1), video_frames)
 
-    def convert_and_resize(self, image, size=None, mode=Image.BILINEAR):
+    def convert_and_resize(self, frame, size=None, mode=Image.BILINEAR):
         """ Converts the image to colour using colour map and resize """
-        thermal = image[:120, :160].copy()
+        thermal = frame[:120, :160].copy()
         image = tools.convert_heat_to_img(
-            image, self.colourmap, self.auto_min, self.auto_max
+            frame, self.colourmap, self.auto_min, self.auto_max
         )
         if size:
             self.frame_scale = size

@@ -24,9 +24,8 @@ from PIL import ImageDraw
 
 EPISON = 1e-5
 
-# the coldest value to display when rendering previews
-TEMPERATURE_MIN = 2800
-TEMPERATURE_MAX = 4200
+LOCAL_RESOURCES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources")
+GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
 
 
 class Rectangle:
@@ -694,13 +693,8 @@ cm_blue_red = LinearSegmentedColormap("BlueRed2", color_dict)
 
 def frame_to_img(frame, filename, colourmap_file, min, max):
     colourmap = _load_colourmap(colourmap_file)
-    # print(f"min color {min(frame)} max {max(frame)} {frame.shape}")
     img = convert_heat_to_img(frame, colourmap, min, max)
     img.save(filename + ".jpg", "JPEG")
-
-
-LOCAL_RESOURCES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources")
-GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
 
 
 def _load_colourmap(colourmap_path):
@@ -710,6 +704,7 @@ def _load_colourmap(colourmap_path):
 
 
 def resource_path(name):
+
     for base in [LOCAL_RESOURCES, GLOBAL_RESOURCES]:
         p = os.path.join(base, name)
         if os.path.exists(p):
@@ -727,10 +722,9 @@ def add_heat_number(img, frame, scale):
             min_i = np.where(row == min_v)[0][0]
             max_v = np.amax(row)
             max_i = np.where(row == max_v)[0][0]
-            min_v = int(min_v)
-            max_v = int(max_v)
-            draw.text((min_i * scale, y * scale), str(min_v), (0, 0, 0), font=font)
-            draw.text((max_i * scale, y * scale), str(max_v), (0, 0, 0), font=font)
+            draw.text((min_i * scale, y * scale), str(int(min_v)), (0, 0, 0), font=font)
+            draw.text((max_i * scale, y * scale), str(int(max_v)), (0, 0, 0), font=font)
+
 
 def eucl_distance(first, second):
     return ((first[0] - second[0]) ** 2 + (first[1] - second[1]) ** 2) ** 0.5
