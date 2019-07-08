@@ -28,6 +28,7 @@ class TrackingConfig:
 
     background_calc = attr.ib()
     temp_thresh = attr.ib()
+    dynamic_thresh = attr.ib()
     delta_thresh = attr.ib()
     ignore_frames = attr.ib()
     threshold_percentile = attr.ib()
@@ -53,6 +54,7 @@ class TrackingConfig:
     aoi_pixel_variance = attr.ib()
     cropped_regions_strategy = attr.ib()
     verbose = attr.ib()
+    moving_vel_thresh = attr.ib()
 
     @classmethod
     def load(cls, tracking):
@@ -62,6 +64,7 @@ class TrackingConfig:
                 tracking["background_calc"],
                 [TrackExtractor.PREVIEW, "stats"],
             ),
+            dynamic_thresh=tracking["preview"]["dynamic_thresh"],
             temp_thresh=tracking["preview"]["temp_thresh"],
             delta_thresh=tracking["preview"]["delta_thresh"],
             ignore_frames=tracking["preview"]["ignore_frames"],
@@ -79,6 +82,7 @@ class TrackingConfig:
             max_threshold=tracking["stats"]["max_threshold"],
             flow_threshold=tracking["flow_threshold"],
             max_tracks=tracking["max_tracks"],
+            moving_vel_thresh=tracking["filters"]["moving_vel_thresh"],
             track_overlap_ratio=tracking["filters"]["track_overlap_ratio"],
             min_duration_secs=tracking["filters"]["min_duration_secs"],
             track_min_offset=tracking["filters"]["track_min_offset"],

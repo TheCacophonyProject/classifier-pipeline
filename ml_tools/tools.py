@@ -731,3 +731,6 @@ def add_heat_number(img, frame, scale):
             max_v = int(max_v)
             draw.text((min_i * scale, y * scale), str(min_v), (0, 0, 0), font=font)
             draw.text((max_i * scale, y * scale), str(max_v), (0, 0, 0), font=font)
+
+def eucl_distance(first, second):
+    return ((first[0] - second[0]) ** 2 + (first[1] - second[1]) ** 2) ** 0.5

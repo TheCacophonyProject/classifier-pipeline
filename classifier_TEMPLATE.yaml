@@ -1,3 +1,6 @@
+# Output debug information e.g. heat numbers on preview
+debug: False
+
 # root folder where the source and output folders belong
 base_data_folder: "<full path>"
 
@@ -39,6 +42,9 @@ tracking:
 
     # these parameters are associated with the preview background method
     preview:
+        # Temp_thresh is calculated based on the preview min, max and mean, and temp_thresh value
+        dynamic_thresh: True
+        
         # When calculating the background ignore the last frames of the preview as the motion detection
         # will still be triggering during this time.
         ignore_frames: 2
@@ -113,6 +119,9 @@ tracking:
         cropped_regions_strategy: "cautious"
 
     filters:
+        # regions with a movement less than this are have tracking scored based of x,y matching, rathen than mid points
+        moving_vel_thresh: 4
+        
         # discard any tracks that overlap with other tracks more than this.   T than this length in seconds
         track_overlap_ratio: 0.5
 

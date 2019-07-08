@@ -39,7 +39,6 @@ class Frame:
         Generate optical flow from thermal frames
         :param opt_flow: An optical flow algorithm
         """
-
         height, width = self.thermal.shape
         flow = np.zeros([height, width, 2], dtype=np.float32)
 
@@ -96,7 +95,6 @@ class FrameBuffer:
         Generate optical flow from thermal frames
         :param opt_flow: An optical flow algorithm
         """
-
         self.flow = []
 
         height, width = self.filtered[0].shape
@@ -128,9 +126,12 @@ class FrameBuffer:
 
         thermal = self.thermal[frame_number]
         filtered = self.filtered[frame_number]
-        flow = self.flow[frame_number]
         mask = self.mask[frame_number]
-        return [thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask]
+        if self.flow:
+            flow = self.flow[frame_number]
+            return [thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask]
+        else:
+            return [thermal, filtered, None, None, mask]
 
     def close_cache(self):
         if self.cache:

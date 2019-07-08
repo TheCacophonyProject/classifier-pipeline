@@ -23,7 +23,7 @@ from collections import namedtuple
 
 from track.region import Region
 from ml_tools.tools import Rectangle
-
+from ml_tools.tools import eucl_distance
 
 class Track:
     """ Bounds of a tracked object over time. """
@@ -39,8 +39,8 @@ class Track:
 
         # used to uniquely identify the track
         if not id:
-            self.id = self._track_id
-            self._track_id += 1
+            self.id = Track._track_id
+            Track._track_id += 1
         else:
             self.id = id
 
@@ -182,18 +182,26 @@ class Track:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
 
-    def get_track_region_score(self, region: Region):
+    def get_track_region_score(self, region: Region, moving_vel_thresh):
         """
         Calculates a score between this track and a region of interest.  Regions that are close the the expected
         location for this track are given high scores, as are regions of a similar size.
         """
-        expected_x = int(self.bounds.mid_x + self.vel_x)
-        expected_y = int(self.bounds.mid_y + self.vel_y)
 
-        distance = (
-            (region.mid_x - expected_x) ** 2 + (region.mid_y - expected_y) ** 2
-        ) ** 0.5
-
+        if abs(self.vel_x) + abs(self.vel_y) >= moving_vel_thresh:
+            expected_x = int(self.bounds.mid_x + self.vel_x)
+            expected_y = int(self.bounds.mid_y + self.vel_y)
+            distance = eucl_distance((expected_x, expected_y), (region.mid_x, region.mid_y))
+        else:
+            expected_x = int(self.bounds.x + self.vel_x)
+            expected_y = int(self.bounds.y + self.vel_y)
+            distance = eucl_distance((expected_x, expected_y), (region.x, region.y))
+            distance += eucl_distance(
+                (expected_x + self.bounds.width, expected_y + self.bounds.height),
+                (region.x + region.width, region.y + region.height),
+            )
+            distance /= 2.0
+            
         # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
         # area is padded with 50 pixels so small regions don't change too much
         size_difference = (
