@@ -96,7 +96,6 @@ class FrameBuffer:
         :param opt_flow: An optical flow algorithm
         """
         self.flow = []
-        print("gen clipped")
         height, width = self.filtered[0].shape
         flow = np.zeros([height, width, 2], dtype=np.float32)
 
