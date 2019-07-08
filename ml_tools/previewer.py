@@ -275,7 +275,13 @@ class Previewer:
                     if tracks_text and len(tracks_text) > index:
                         text = tracks_text[index]
                     self.add_debug_text(
-                        draw, track, frame_offset, region, screen_bounds, text=text, v_offset=v_offset
+                        draw,
+                        track,
+                        frame_offset,
+                        region,
+                        screen_bounds,
+                        text=text,
+                        v_offset=v_offset,
                     )
 
     def add_footer(self, draw, width, height, text):

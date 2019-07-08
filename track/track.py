@@ -25,6 +25,7 @@ from track.region import Region
 from ml_tools.tools import Rectangle
 from ml_tools.tools import eucl_distance
 
+
 class Track:
     """ Bounds of a tracked object over time. """
 
@@ -191,7 +192,9 @@ class Track:
         if abs(self.vel_x) + abs(self.vel_y) >= moving_vel_thresh:
             expected_x = int(self.bounds.mid_x + self.vel_x)
             expected_y = int(self.bounds.mid_y + self.vel_y)
-            distance = eucl_distance((expected_x, expected_y), (region.mid_x, region.mid_y))
+            distance = eucl_distance(
+                (expected_x, expected_y), (region.mid_x, region.mid_y)
+            )
         else:
             expected_x = int(self.bounds.x + self.vel_x)
             expected_y = int(self.bounds.y + self.vel_y)
@@ -201,7 +204,7 @@ class Track:
                 (region.x + region.width, region.y + region.height),
             )
             distance /= 2.0
-            
+
         # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
         # area is padded with 50 pixels so small regions don't change too much
         size_difference = (
