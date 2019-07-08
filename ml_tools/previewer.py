@@ -115,10 +115,24 @@ class Previewer:
                 )
                 image = self.convert_and_resize(image, 3.0, mode=Image.NEAREST)
                 draw = ImageDraw.Draw(image)
-                regions = tracker.region_history[frame_number]
-                self.add_filtered_tracks(draw, tracker.filtered_tracks, frame_number)
-                self.add_filtered_tracks(
-                    draw, tracker.filtered_tracks, frame_number, v_offset=120
+
+                filtered = [track[1] for track in tracker.filtered_tracks]
+                filtered_reasons = [track[0] for track in tracker.filtered_tracks]
+
+                self.add_tracks(
+                    draw,
+                    filtered,
+                    frame_number,
+                    colours=Previewer.FILTERED_COLOURS,
+                    tracks_text=filtered_reasons,
+                )
+                self.add_tracks(
+                    draw,
+                    filtered,
+                    frame_number,
+                    v_offset=120,
+                    colours=Previewer.FILTERED_COLOURS,
+                    tracks_text=filtered_reasons,
                 )
                 self.add_tracks(draw, tracker.tracks, frame_number)
 
@@ -225,39 +239,6 @@ class Previewer:
         for rect in regions:
             draw.rectangle(self.rect_points(rect, v_offset), outline=(128, 128, 128))
 
-    def add_filtered_tracks(
-        self,
-        draw,
-        tracks,
-        frame_number,
-        track_predictions=None,
-        screen_bounds=None,
-        colours=FILTERED_COLOURS,
-        v_offset=0,
-    ):
-        # look for any tracks that occur on this frame
-        for index, filtered_track in enumerate(tracks):
-            track = filtered_track[1]
-
-            frame_offset = frame_number - track.start_frame
-            if frame_offset >= 0 and frame_offset < len(track.bounds_history) - 1:
-                rect = track.bounds_history[frame_offset]
-                draw.rectangle(
-                    self.rect_points(rect, v_offset),
-                    outline=colours[index % len(colours)],
-                )
-
-                if self.debug:
-                    self.add_debug_text(
-                        draw,
-                        track,
-                        frame_offset,
-                        rect,
-                        screen_bounds,
-                        text=f"Filtered {filtered_track[0]}",
-                        v_offset=v_offset,
-                    )
-
     def add_tracks(
         self,
         draw,
@@ -266,14 +247,18 @@ class Previewer:
         track_predictions=None,
         screen_bounds=None,
         colours=TRACK_COLOURS,
+        tracks_text=None,
+        v_offset=0,
     ):
+
         # look for any tracks that occur on this frame
         for index, track in enumerate(tracks):
             frame_offset = frame_number - track.start_frame
             if frame_offset >= 0 and frame_offset < len(track.bounds_history) - 1:
                 region = track.bounds_history[frame_offset]
                 draw.rectangle(
-                    self.rect_points(region), outline=colours[index % len(colours)]
+                    self.rect_points(region, v_offset),
+                    outline=colours[index % len(colours)],
                 )
                 if track_predictions:
                     self.add_class_results(
@@ -283,10 +268,14 @@ class Previewer:
                         region,
                         track_predictions,
                         screen_bounds,
+                        v_offset=v_offset,
                     )
                 if self.debug:
+                    text = None
+                    if tracks_text and len(tracks_text) > index:
+                        text = tracks_text[index]
                     self.add_debug_text(
-                        draw, track, frame_offset, region, screen_bounds
+                        draw, track, frame_offset, region, screen_bounds, text=text, v_offset=v_offset
                     )
 
     def add_footer(self, draw, width, height, text):
@@ -306,7 +295,7 @@ class Previewer:
 
         footer_rect = Region(
             region.left * self.frame_scale + footer_center,
-            region.bottom + v_offset * self.frame_scale,
+            (v_offset + region.bottom) * self.frame_scale,
             footer_size[0],
             footer_size[1],
         )
@@ -315,7 +304,14 @@ class Previewer:
         draw.text((footer_rect.x, footer_rect.y), text, font=self.font)
 
     def add_class_results(
-        self, draw, track, frame_offset, rect, track_predictions, screen_bounds
+        self,
+        draw,
+        track,
+        frame_offset,
+        rect,
+        track_predictions,
+        screen_bounds,
+        v_offset=0,
     ):
         prediction = track_predictions[track]
         if track not in track_predictions:
@@ -333,14 +329,14 @@ class Previewer:
         # figure out where to draw everything
         header_rect = Region(
             rect.left * self.frame_scale,
-            rect.top * self.frame_scale - header_size[1],
+            (v_offset + rect.top) * self.frame_scale - header_size[1],
             header_size[0],
             header_size[1],
         )
         footer_center = ((rect.width * self.frame_scale) - footer_size[0]) / 2
         footer_rect = Region(
             rect.left * self.frame_scale + footer_center,
-            rect.bottom * self.frame_scale,
+            (v_offset + rect.bottom) * self.frame_scale,
             footer_size[0],
             footer_size[1],
         )
