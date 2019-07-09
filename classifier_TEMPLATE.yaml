@@ -119,7 +119,7 @@ tracking:
         cropped_regions_strategy: "cautious"
 
     filters:
-        # regions with a movement less than this are have tracking scored based of x,y matching, rathen than mid points
+        # regions with a movement less than this have their tracking scored based of x,y matching, instead of than mid points
         moving_vel_thresh: 4
         
         # discard any tracks that overlap with other tracks more than this.   T than this length in seconds
