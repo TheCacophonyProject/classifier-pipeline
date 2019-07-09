@@ -73,6 +73,7 @@ class TrackExtractor:
         self.active_tracks = []
         # a list of all tracks
         self.tracks = []
+        self.filtered_tracks = []
         # list of regions for each frame
         self.region_history = []
 
@@ -141,7 +142,6 @@ class TrackExtractor:
 
         # for now just always calculate as we are using the stats...
         background, background_stats = self.process_background(frames)
-
         if self.config.background_calc == self.PREVIEW:
             if self.preview_secs > 0:
                 self.background_is_preview = True
@@ -150,6 +150,12 @@ class TrackExtractor:
                 logging.info(
                     "No preview secs defined for CPTV file - using statistical background measurement"
                 )
+
+        if self.config.dynamic_thresh:
+            self.config.temp_thresh = min(
+                self.config.temp_thresh, background_stats.mean_temp
+            )
+        self.stats["temp_thresh"] = self.config.temp_thresh
 
         if len(frames) <= 9:
             self.reject_reason = "Clip too short {} frames".format(len(frames))
@@ -212,7 +218,7 @@ class TrackExtractor:
             logging.error("Video consists entirely of preview")
             number_frames = len(frame_list)
         frames = np.int32(frame_list[0:number_frames])
-        background = np.average(frames, axis=0)
+        background = np.min(frames, axis=0)
         background = np.int32(np.rint(background))
         self.mean_background_value = np.average(background)
         self.threshold = self.config.delta_thresh
@@ -304,8 +310,9 @@ class TrackExtractor:
         scores = []
         for track in self.active_tracks:
             for region in regions:
-                distance, size_change = track.get_track_region_score(region)
-
+                distance, size_change = track.get_track_region_score(
+                    region, self.config.moving_vel_thresh
+                )
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
                 max_distance = np.clip(7 * (track.mass ** 0.5), 30, 95)
                 size_change = np.clip(track.mass, 50, 500)
@@ -414,6 +421,9 @@ class TrackExtractor:
                         track_overlap_ratio[track]
                     )
                 )
+                self.filtered_tracks.append(
+                    ("Track filtered.  Too much overlap", track)
+                )
                 continue
 
             # discard any tracks that are less min_duration
@@ -422,16 +432,19 @@ class TrackExtractor:
                 self.print_if_verbose(
                     "Track filtered. Too short, {}".format(len(track))
                 )
+                self.filtered_tracks.append(("Track filtered.  Too short", track))
                 continue
 
             # discard tracks that do not move enough
             if stats.max_offset < self.config.track_min_offset:
                 self.print_if_verbose("Track filtered.  Didn't move")
+                self.filtered_tracks.append(("Track filtered.  Didn't move", track))
                 continue
 
             # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
             if stats.delta_std < self.config.track_min_delta:
                 self.print_if_verbose("Track filtered.  Too static")
+                self.filtered_tracks.append(("Track filtered.  Too static", track))
                 continue
 
             # discard tracks that do not have enough enough average mass.
@@ -439,6 +452,7 @@ class TrackExtractor:
                 self.print_if_verbose(
                     "Track filtered.  Mass too small ({})".format(stats.average_mass)
                 )
+                self.filtered_tracks.append(("Track filtered.  Mass too small", track))
                 continue
 
             good_tracks.append(track)
@@ -457,6 +471,9 @@ class TrackExtractor:
                 )
             )
             self.tracks = self.tracks[: self.max_tracks]
+            self.filter_tracks.extend(
+                [("Too many tracks", track) for track in self.tracks[self.max_tracks :]]
+            )
 
     def get_regions_of_interest(self, filtered, prev_filtered=None):
         """
@@ -513,7 +530,6 @@ class TrackExtractor:
                 i,
                 self.frame_on,
             )
-
             # want the real mass calculated from before the dilation
             region.mass = np.sum(region.subimage(thresh))
 

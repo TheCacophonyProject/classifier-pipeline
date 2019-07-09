@@ -11,17 +11,6 @@ from track.trackextractor import TrackExtractor
 from track.region import Region
 from .dataset import TrackChannels
 
-LOCAL_RESOURCES = path.join(path.dirname(path.dirname(__file__)), "resources")
-GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
-
-
-def resource_path(name):
-    for base in [LOCAL_RESOURCES, GLOBAL_RESOURCES]:
-        p = path.join(base, name)
-        if path.exists(p):
-            return p
-    raise OSError(f"unable to locate {name!r} resource")
-
 
 class Previewer:
 
@@ -44,6 +33,7 @@ class Previewer:
     ]
 
     TRACK_COLOURS = [(255, 0, 0), (0, 255, 0), (255, 255, 0), (128, 255, 255)]
+    FILTERED_COLOURS = [(128, 128, 128)]
 
     def __init__(self, config, preview_type):
         self.config = config
@@ -55,6 +45,7 @@ class Previewer:
         self.font_title
         self.preview_type = preview_type
         self.frame_scale = 1
+        self.debug = config.debug
 
     @classmethod
     def create_if_required(self, config, preview_type):
@@ -64,7 +55,7 @@ class Previewer:
     def _load_colourmap(self):
         colourmap_path = self.config.previews_colour_map
         if not path.exists(colourmap_path):
-            colourmap_path = resource_path("colourmap.dat")
+            colourmap_path = tools.resource_path("colourmap.dat")
         return tools.load_colourmap(colourmap_path)
 
     @property
@@ -72,7 +63,7 @@ class Previewer:
         """ gets default font. """
         if not globs._previewer_font:
             globs._previewer_font = ImageFont.truetype(
-                resource_path("Ubuntu-R.ttf"), 12
+                tools.resource_path("Ubuntu-R.ttf"), 12
             )
         return globs._previewer_font
 
@@ -81,7 +72,7 @@ class Previewer:
         """ gets default title font. """
         if not globs._previewer_font_title:
             globs._previewer_font_title = ImageFont.truetype(
-                resource_path("Ubuntu-B.ttf"), 14
+                tools.resource_path("Ubuntu-B.ttf"), 14
             )
         return globs._previewer_font_title
 
@@ -103,6 +94,8 @@ class Previewer:
             logging.error("Do not have temperatures to use.")
             return
 
+        if self.debug:
+            footer = Previewer.stats_footer(tracker.stats)
         if bool(track_predictions) and self.preview_type == self.PREVIEW_CLASSIFIED:
             self.create_track_descriptions(tracker, track_predictions)
 
@@ -122,9 +115,25 @@ class Previewer:
                 )
                 image = self.convert_and_resize(image, 3.0, mode=Image.NEAREST)
                 draw = ImageDraw.Draw(image)
-                regions = tracker.region_history[frame_number]
-                self.add_regions(draw, regions)
-                self.add_regions(draw, regions, v_offset=120)
+
+                filtered = [track[1] for track in tracker.filtered_tracks]
+                filtered_reasons = [track[0] for track in tracker.filtered_tracks]
+
+                self.add_tracks(
+                    draw,
+                    filtered,
+                    frame_number,
+                    colours=Previewer.FILTERED_COLOURS,
+                    tracks_text=filtered_reasons,
+                )
+                self.add_tracks(
+                    draw,
+                    filtered,
+                    frame_number,
+                    v_offset=120,
+                    colours=Previewer.FILTERED_COLOURS,
+                    tracks_text=filtered_reasons,
+                )
                 self.add_tracks(draw, tracker.tracks, frame_number)
 
             if self.preview_type == self.PREVIEW_BOXES:
@@ -143,6 +152,8 @@ class Previewer:
                     draw, tracker.tracks, frame_number, track_predictions, screen_bounds
                 )
 
+            if self.debug:
+                self.add_footer(draw, image.width, image.height, footer)
             mpeg.next_frame(np.asarray(image))
 
             # we store the entire video in memory so we need to cap the frame count at some point.
@@ -170,10 +181,11 @@ class Previewer:
             logging.info("creating preview %s", filename_format.format(id + 1))
             tools.write_mpeg(filename_format.format(id + 1), video_frames)
 
-    def convert_and_resize(self, image, size=None, mode=Image.BILINEAR):
+    def convert_and_resize(self, frame, size=None, mode=Image.BILINEAR):
         """ Converts the image to colour using colour map and resize """
+        thermal = frame[:120, :160].copy()
         image = tools.convert_heat_to_img(
-            image, self.colourmap, self.auto_min, self.auto_max
+            frame, self.colourmap, self.auto_min, self.auto_max
         )
         if size:
             self.frame_scale = size
@@ -184,6 +196,9 @@ class Previewer:
                 ),
                 mode,
             )
+
+        if self.debug:
+            tools.add_heat_number(image, thermal, self.frame_scale)
         return image
 
     def create_track_descriptions(self, tracker, track_predictions):
@@ -232,27 +247,77 @@ class Previewer:
         track_predictions=None,
         screen_bounds=None,
         colours=TRACK_COLOURS,
+        tracks_text=None,
+        v_offset=0,
     ):
+
         # look for any tracks that occur on this frame
         for index, track in enumerate(tracks):
             frame_offset = frame_number - track.start_frame
             if frame_offset >= 0 and frame_offset < len(track.bounds_history) - 1:
-                rect = track.bounds_history[frame_offset]
+                region = track.bounds_history[frame_offset]
                 draw.rectangle(
-                    self.rect_points(rect), outline=colours[index % len(colours)]
+                    self.rect_points(region, v_offset),
+                    outline=colours[index % len(colours)],
                 )
                 if track_predictions:
                     self.add_class_results(
                         draw,
                         track,
                         frame_offset,
-                        rect,
+                        region,
                         track_predictions,
                         screen_bounds,
+                        v_offset=v_offset,
+                    )
+                if self.debug:
+                    text = None
+                    if tracks_text and len(tracks_text) > index:
+                        text = tracks_text[index]
+                    self.add_debug_text(
+                        draw,
+                        track,
+                        frame_offset,
+                        region,
+                        screen_bounds,
+                        text=text,
+                        v_offset=v_offset,
                     )
 
+    def add_footer(self, draw, width, height, text):
+        footer_size = self.font.getsize(text)
+        center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
+        draw.text((center[0], center[1]), text, font=self.font)
+
+    def add_debug_text(
+        self, draw, track, frame_offset, region, screen_bounds, text=None, v_offset=0
+    ):
+        if text is None:
+            text = (
+                f"id {track.id} mass {region.mass} var {round(region.pixel_variance,2)}"
+            )
+        footer_size = self.font.getsize(text)
+        footer_center = ((region.width * self.frame_scale) - footer_size[0]) / 2
+
+        footer_rect = Region(
+            region.left * self.frame_scale + footer_center,
+            (v_offset + region.bottom) * self.frame_scale,
+            footer_size[0],
+            footer_size[1],
+        )
+        self.fit_to_image(footer_rect, screen_bounds)
+
+        draw.text((footer_rect.x, footer_rect.y), text, font=self.font)
+
     def add_class_results(
-        self, draw, track, frame_offset, rect, track_predictions, screen_bounds
+        self,
+        draw,
+        track,
+        frame_offset,
+        rect,
+        track_predictions,
+        screen_bounds,
+        v_offset=0,
     ):
         prediction = track_predictions[track]
         if track not in track_predictions:
@@ -270,14 +335,14 @@ class Previewer:
         # figure out where to draw everything
         header_rect = Region(
             rect.left * self.frame_scale,
-            rect.top * self.frame_scale - header_size[1],
+            (v_offset + rect.top) * self.frame_scale - header_size[1],
             header_size[0],
             header_size[1],
         )
         footer_center = ((rect.width * self.frame_scale) - footer_size[0]) / 2
         footer_rect = Region(
             rect.left * self.frame_scale + footer_center,
-            rect.bottom * self.frame_scale,
+            (v_offset + rect.bottom) * self.frame_scale,
             footer_size[0],
             footer_size[1],
         )
@@ -296,6 +361,8 @@ class Previewer:
 
     def fit_to_image(self, rect: Region, screen_bounds: Region):
         """ Modifies rect so that rect is visible within bounds. """
+        if screen_bounds is None:
+            return
         if rect.left < screen_bounds.left:
             rect.x = screen_bounds.left
         if rect.top < screen_bounds.top:
@@ -316,3 +383,14 @@ class Previewer:
             s * (rect.bottom + v_offset) - 1,
         ]
         return
+
+    @staticmethod
+    def stats_footer(stats):
+        return "max {}, min{}, mean{}, back delta {}, avg delta{}, temp_thresh {}".format(
+            round(stats["max_temp"], 2),
+            round(stats["min_temp"], 2),
+            round(stats["mean_temp"], 2),
+            round(stats["average_background_delta"], 2),
+            round(stats["average_delta"], 2),
+            stats["temp_thresh"],
+        )

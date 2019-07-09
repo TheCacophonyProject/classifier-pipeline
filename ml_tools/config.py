@@ -29,6 +29,7 @@ class Config:
     previews_colour_map = attr.ib()
     use_gpu = attr.ib()
     worker_threads = attr.ib()
+    debug = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename=None):
@@ -59,6 +60,7 @@ class Config:
             previews_colour_map=raw["previews_colour_map"],
             use_gpu=raw["use_gpu"],
             worker_threads=raw["worker_threads"],
+            debug=raw["debug"],
         )
 
 
