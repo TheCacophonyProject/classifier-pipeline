@@ -471,7 +471,7 @@ class TrackExtractor:
                 )
             )
             self.tracks = self.tracks[: self.max_tracks]
-            self.filter_tracks.extend(
+            self.filtered_tracks.extend(
                 [("Too many tracks", track) for track in self.tracks[self.max_tracks :]]
             )
 
