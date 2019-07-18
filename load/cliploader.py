@@ -58,7 +58,6 @@ class ClipLoader:
         self.workers_threads = config.worker_threads
 
         self.previewer = Previewer.create_if_required(config, config.load.preview)
-
     def process_all(self, root=None):
         if root is None:
             root = self.config.source_folder

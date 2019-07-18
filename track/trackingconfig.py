@@ -29,6 +29,7 @@ class TrackingConfig(DefaultConfig):
 
     background_calc = attr.ib()
     temp_thresh = attr.ib()
+    dynamic_thresh = attr.ib()
     delta_thresh = attr.ib()
     ignore_frames = attr.ib()
     threshold_percentile = attr.ib()
@@ -56,12 +57,15 @@ class TrackingConfig(DefaultConfig):
     verbose = attr.ib()
     enable_track_output = attr.ib()
     min_tag_confidence = attr.ib()
+    moving_vel_thresh = attr.ib()
 
     # used to provide defaults
     preview = attr.ib()
     stats = attr.ib()
     filters = attr.ib()
     areas_of_interest = attr.ib()
+
+
 
     @classmethod
     def load(cls, tracking):
@@ -72,6 +76,7 @@ class TrackingConfig(DefaultConfig):
                 tracking["background_calc"],
                 [TrackExtractor.PREVIEW, "stats"],
             ),
+            dynamic_thresh=tracking["preview"]["dynamic_thresh"],
             temp_thresh=tracking["preview"]["temp_thresh"],
             delta_thresh=tracking["preview"]["delta_thresh"],
             ignore_frames=tracking["preview"]["ignore_frames"],
@@ -89,6 +94,7 @@ class TrackingConfig(DefaultConfig):
             high_quality_optical_flow=tracking["high_quality_optical_flow"],
             flow_threshold=tracking["flow_threshold"],
             max_tracks=tracking["max_tracks"],
+            moving_vel_thresh=tracking["filters"]["moving_vel_thresh"],
             track_overlap_ratio=tracking["filters"]["track_overlap_ratio"],
             min_duration_secs=tracking["filters"]["min_duration_secs"],
             track_min_offset=tracking["filters"]["track_min_offset"],
@@ -157,8 +163,10 @@ class TrackingConfig(DefaultConfig):
             max_threshold=None,
             track_overlap_ratio=None,
             min_duration_secs=None,
-            min_tag_confidence=0.9,
+            min_tag_confidence=0.8,
             enable_track_output=True,
+            dynamic_thresh=True,
+            moving_vel_thresh=4,
         )
 
     def validate(self):

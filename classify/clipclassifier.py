@@ -96,7 +96,7 @@ class ClipClassifier(CPTVFileProcessor):
         for i in range(len(track)):
             frame_number = track.start_frame + i
             # note: would be much better for the tracker to store the thermal references as it goes.
-            frame = tracker.frame_buffer.get_frame(frame_number)
+            frame = clip.frame_buffer.get_frame(frame_number)
             thermal_reference = np.median(frame[0])
             track_data = track.crop_by_region_at_trackframe(frame, i)
             if i % self.FRAME_SKIP == 0:

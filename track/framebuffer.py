@@ -72,33 +72,6 @@ class Frame:
         self.clipped_temp = current
         self.flow = flow
 
-    # def get_frame_channels(self, region):
-    #     """
-    #     Gets frame channels for track at given frame number.  If frame number outside of track's lifespan an exception
-    #     is thrown.  Requires the frame_buffer to be filled.
-    #     :param track: the track to get frames for.
-    #     :param frame_number: the frame number where 0 is the first frame of the track.
-    #     :return: numpy array of size [channels, height, width] where channels are thermal, filtered, u, v, mask
-    #     """
-
-    #     thermal = region.subimage(self.thermal)
-    #     filtered = region.subimage(self.filtered)
-    #     flow = region.subimage(self.flow)
-    #     mask = region.subimage(self.mask)
-
-    #     # make sure only our pixels are included in the mask.
-    #     mask[mask != region.id] = 0
-    #     mask[mask > 0] = 1
-
-    #     # stack together into a numpy array.
-    #     # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
-    #     frame = np.int16(
-    #         np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0)
-    #     )
-
-    #     return frame
-
-
 class FrameBuffer:
     """ Stores entire clip in memory, required for some operations such as track exporting. """
 
@@ -159,7 +132,7 @@ class FrameBuffer:
             next = np.uint8(np.clip(frame - threshold, 0, 255))
 
             if current is not None:
-                flow = opt_flow.calc(current, next, flow)
+                flow = self.opt_flow.calc(current, next, flow)
 
             current = next
 
@@ -176,9 +149,12 @@ class FrameBuffer:
 
         thermal = self.thermal[frame_number]
         filtered = self.filtered[frame_number]
-        flow = self.flow[frame_number]
         mask = self.mask[frame_number]
-        return [thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask]
+        if self.flow:
+            flow = self.flow[frame_number]
+            return [thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask]
+        else:
+            return [thermal, filtered, None, None, mask]
 
     def close_cache(self):
         if self.cache:

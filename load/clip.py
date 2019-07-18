@@ -63,7 +63,6 @@ class Clip:
         self.threshold = trackconfig.delta_thresh
         # this buffers store the entire video in memory and are required for fast track exporting
         self.frame_buffer = None
-        self.background_stats = {}
         self.disable_background_subtraction = {}
         self.crop_rectangle = None
         self.mean_background_value = 0.0
@@ -75,6 +74,7 @@ class Clip:
         self.region_history = []
         self.cache_to_disk = cache_to_disk
         self.opt_flow = None
+        self.filtered_tracks = []
 
     def get_id(self):
         return str(self._id)
@@ -134,6 +134,12 @@ class Clip:
                     "No preview secs defined for CPTV file - using statistical background measurement"
                 )
 
+        if self.config.dynamic_thresh:
+            self.config.temp_thresh = min(
+                self.config.temp_thresh, self.stats["mean_temp"]
+            )
+        self.stats["temp_thresh"] = self.config.temp_thresh
+
         # process each frame
         for frame_number, frame in enumerate(frames):
             self._process_frame(frame, frame_number, background)
@@ -181,7 +187,7 @@ class Clip:
         """
         Runs through all provided frames and estimates the background, consuming all the source frames.
         :param frames_list: a list of numpy array frames
-        :return: background, background_stats
+        :return: background
         """
 
         # note: unfortunately this must be done before any other processing, which breaks the streaming architecture
@@ -209,19 +215,18 @@ class Clip:
         threshold = max(self.config.min_threshold, threshold)
         threshold = min(self.config.max_threshold, threshold)
 
-        self.background_stats["threshold"] = float(threshold)
-        self.background_stats["average_delta"] = float(average_delta)
-        self.background_stats["min_temp"] = float(np.min(frames))
-        self.background_stats["max_temp"] = float(np.max(frames))
-        self.background_stats["mean_temp"] = float(np.mean(frames))
-        self.background_stats["background_deviation"] = float(np.mean(np.abs(filtered)))
-        self.background_stats["is_static_background"] = (
-            self.background_stats["background_deviation"]
-            < self.config.static_background_threshold
+        self.stats["threshold"] = float(threshold)
+        self.stats["average_delta"] = float(average_delta)
+        self.stats["min_temp"] = float(np.min(frames))
+        self.stats["max_temp"] = float(np.max(frames))
+        self.stats["mean_temp"] = float(np.mean(frames))
+        self.stats["background_deviation"] = float(np.mean(np.abs(filtered)))
+        self.stats["is_static_background"] = (
+            self.stats["background_deviation"] < self.config.static_background_threshold
         )
 
         if (
-            not self.background_stats["is_static_background"]
+            not self.stats["is_static_background"]
             or self.disable_background_subtraction
         ):
             background = None
@@ -323,7 +328,9 @@ class Clip:
         matched_tracks = []
         for track in self.active_tracks:
             for region in regions:
-                distance, size_change = track.get_track_region_score(region)
+                distance, size_change = track.get_track_region_score(
+                    region, self.config.moving_vel_thresh
+                )
 
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
                 max_distance = np.clip(7 * (track.last_mass ** 0.5), 30, 95)
@@ -339,7 +346,7 @@ class Clip:
         for (score, track, region) in scores:
             if track in matched_tracks or region in used_regions:
                 continue
-            track.add_frame_from_region(region, self.frame_buffer)
+            track.add_frame_from_region(region, self.frame_buffer.prev_frame)
             matched_tracks.append(track)
             used_regions.append(region)
 
@@ -360,7 +367,7 @@ class Clip:
 
             track = Track(self.get_id())
             track.start_frame = frame_number
-            track.add_frame_from_region(region, self.frame_buffer)
+            track.add_frame_from_region(region, self.frame_buffer.prev_frame)
             new_tracks.append(track)
             self.active_tracks.append(track)
             self.tracks.append(track)
@@ -535,6 +542,9 @@ class Clip:
                     self.max_tracks, len(self.tracks)
                 )
             )
+            self.filtered_tracks.extend(
+                [("Too many tracks", track) for track in self.tracks[self.max_tracks :]]
+            )
             self.tracks = self.tracks[: self.max_tracks]
 
     def filter_track(self, track, stats):
@@ -542,16 +552,20 @@ class Clip:
         # these are probably glitches anyway, or don't contain enough information.
         if len(track) < self.config.min_duration_secs * 9:
             self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
+            self.filtered_tracks.append(("Track filtered.  Too much overlap", track))
             return True
 
         # discard tracks that do not move enough
         if stats.max_offset < self.config.track_min_offset:
             self.print_if_verbose("Track filtered.  Didn't move")
+            self.filtered_tracks.append(("Track filtered.  Didn't move", track))
+
             return True
 
         # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
         if stats.delta_std < self.config.track_min_delta:
             self.print_if_verbose("Track filtered.  Too static")
+            self.filtered_tracks.append(("Track filtered.  Too static", track))
             return True
 
         # discard tracks that do not have enough enough average mass.
@@ -559,6 +573,8 @@ class Clip:
             self.print_if_verbose(
                 "Track filtered.  Mass too small ({})".format(stats.average_mass)
             )
+            self.filtered_tracks.append(("Track filtered.  Mass too small", track))
+
             return True
 
         highest_ratio = 0
@@ -571,6 +587,7 @@ class Clip:
             self.print_if_verbose(
                 "Track filtered.  Too much overlap {}".format(highest_ratio)
             )
+            self.filtered_tracks.append(("Track filtered.  Too much overlap", track))
             return True
 
         return False

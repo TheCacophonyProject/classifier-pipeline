@@ -21,11 +21,12 @@ import datetime
 import numpy as np
 from collections import namedtuple
 
-
 from ml_tools.tools import Rectangle
 from ml_tools.dataset import TrackChannels
 import track.region
 from track.region import Region
+
+from ml_tools.tools import eucl_distance
 
 
 class Track:
@@ -116,7 +117,7 @@ class Track:
 
     def add_frame_from_region(self, region, buffer_frame):
         self.bounds_history.append(region)
-        channels = buffer_frame.get_frame_channels(region, region.frame_number)
+        channels = self.crop_by_region(buffer_frame.as_array(), region)
         self.track_data.append(channels)
         self.end_frame = region.frame_number
         self.current_frame += 1
@@ -126,11 +127,10 @@ class Track:
         region = self.bounds_history[self.current_frame]
         if prev_filtered is not None:
             prev_filtered = region.subimage(prev_filtered)
-        
+
         channels = self.crop_by_region(frame.as_array(True), region=region)
         # frame.get_frame_channels(region)
         filtered = channels[TrackChannels.filtered]
-
         region.calculate_mass(filtered, mass_delta_threshold)
         region.calculate_variance(filtered, prev_filtered)
 
@@ -161,7 +161,9 @@ class Track:
         region.frame_number += 1
         self.bounds_history.append(region)
         if buffer_frame:
-            channels = buffer_frame.get_frame_channels(region, region.frame_number)
+            frame = buffer_frame.get_frame(region.frame_number)
+            channels = self.crop_by_region(frame, region)
+            # channels = buffer_frame.get_frame_channels(region, region.frame_number)
             self.track_data.append(channels)
         self.vel_x = self.vel_y = 0
 
@@ -174,10 +176,13 @@ class Track:
 
         if len(self) <= 1:
             return TrackMovementStatistics()
-
         # get movement vectors
         mass_history = [int(bound.mass) for bound in self.bounds_history]
-        variance_history = [bound.pixel_variance for bound in self.bounds_history]
+        variance_history = [
+            bound.pixel_variance
+            for bound in self.bounds_history
+            if bound.pixel_variance
+        ]
         mid_x = [bound.mid_x for bound in self.bounds_history]
         mid_y = [bound.mid_y for bound in self.bounds_history]
         delta_x = [mid_x[0] - x for x in mid_x]
@@ -268,17 +273,30 @@ class Track:
             self.bounds_history = self.bounds_history[start : end + 1]
             self.track_data = self.track_data[start : end + 1]
 
-    def get_track_region_score(self, region: Region):
+    def get_track_region_score(self, region: Region, moving_vel_thresh):
         """
         Calculates a score between this track and a region of interest.  Regions that are close the the expected
         location for this track are given high scores, as are regions of a similar size.
         """
-        expected_x = int(self.last_bound.mid_x + self.vel_x)
-        expected_y = int(self.last_bound.mid_y + self.vel_y)
 
-        distance = (
-            (region.mid_x - expected_x) ** 2 + (region.mid_y - expected_y) ** 2
-        ) ** 0.5
+        if abs(self.vel_x) + abs(self.vel_y) >= moving_vel_thresh:
+            expected_x = int(self.last_bound.mid_x + self.vel_x)
+            expected_y = int(self.last_bound.mid_y + self.vel_y)
+            distance = eucl_distance(
+                (expected_x, expected_y), (region.mid_x, region.mid_y)
+            )
+        else:
+            expected_x = int(self.last_bound.x + self.vel_x)
+            expected_y = int(self.last_bound.y + self.vel_y)
+            distance = eucl_distance((expected_x, expected_y), (region.x, region.y))
+            distance += eucl_distance(
+                (
+                    expected_x + self.last_bound.width,
+                    expected_y + self.last_bound.height,
+                ),
+                (region.x + region.width, region.y + region.height),
+            )
+            distance /= 2.0
 
         # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
         # area is padded with 50 pixels so small regions don't change too much

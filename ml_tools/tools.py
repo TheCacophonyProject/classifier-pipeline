@@ -10,25 +10,22 @@ import pickle
 import math
 import matplotlib.pyplot as plt
 import logging
-import io
-import itertools
-import gzip
 from sklearn import metrics
 import json
 import dateutil
 import binascii
-import time
 import datetime
 import glob
 import cv2
 from matplotlib.colors import LinearSegmentedColormap
 import subprocess
+from PIL import ImageFont
+from PIL import ImageDraw
 
 EPISON = 1e-5
 
-# the coldest value to display when rendering previews
-TEMPERATURE_MIN = 2800
-TEMPERATURE_MAX = 4200
+LOCAL_RESOURCES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources")
+GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
 
 
 class Rectangle:
@@ -733,3 +730,42 @@ def get_optical_flow_function(high_quality=False):
         opt_flow.setWarpingsNumber(3)
         opt_flow.setScaleStep(0.5)
     return opt_flow
+
+
+def frame_to_img(frame, filename, colourmap_file, min, max):
+    colourmap = _load_colourmap(colourmap_file)
+    img = convert_heat_to_img(frame, colourmap, min, max)
+    img.save(filename + ".jpg", "JPEG")
+
+
+def _load_colourmap(colourmap_path):
+    if not os.path.exists(colourmap_path):
+        colourmap_path = resource_path("colourmap.dat")
+    return load_colourmap(colourmap_path)
+
+
+def resource_path(name):
+
+    for base in [LOCAL_RESOURCES, GLOBAL_RESOURCES]:
+        p = os.path.join(base, name)
+        if os.path.exists(p):
+            return p
+    raise OSError(f"unable to locate {name!r} resource")
+
+
+def add_heat_number(img, frame, scale):
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("FreeSans.ttf", 8)
+
+    for y, row in enumerate(frame):
+        if y % 4 == 0:
+            min_v = np.amin(row)
+            min_i = np.where(row == min_v)[0][0]
+            max_v = np.amax(row)
+            max_i = np.where(row == max_v)[0][0]
+            draw.text((min_i * scale, y * scale), str(int(min_v)), (0, 0, 0), font=font)
+            draw.text((max_i * scale, y * scale), str(int(max_v)), (0, 0, 0), font=font)
+
+
+def eucl_distance(first, second):
+    return ((first[0] - second[0]) ** 2 + (first[1] - second[1]) ** 2) ** 0.5

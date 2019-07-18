@@ -37,6 +37,7 @@ class Config(DefaultConfig):
     previews_colour_map = attr.ib()
     use_gpu = attr.ib()
     worker_threads = attr.ib()
+    debug = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename=None):
@@ -76,6 +77,7 @@ class Config(DefaultConfig):
             worker_threads=raw["worker_threads"],
             labels=raw["labels"],
             build=BuildConfig.load(raw["build"]),
+            debug=raw["debug"],
         )
 
     @classmethod
@@ -96,6 +98,7 @@ class Config(DefaultConfig):
             classify_tracking=TrackingConfig.get_defaults(),
             classify=ClassifyConfig.get_defaults(),
             evaluate=EvaluateConfig.get_defaults(),
+            debug=False,
         )
 
     def validate(self):

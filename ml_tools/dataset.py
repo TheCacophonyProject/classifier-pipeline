@@ -1048,7 +1048,7 @@ class Dataset:
     def get_label_segments_count(self, label):
         """ Returns the total weight for all segments of given class. """
         tracks = self.tracks_by_label.get(label, [])
-        result = sum([track.segments for track in tracks])
+        result = sum([len(track.segments) for track in tracks])
         return result
 
     def get_label_segments(self, label):
