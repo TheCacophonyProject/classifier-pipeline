@@ -4,6 +4,9 @@ import numpy as np
 from multiprocessing import Lock
 
 
+from ml_tools.tools import get_clipped_flow
+
+
 class FrameCache:
     def __init__(self, cptv_name, keep_open=True, delete_if_exists=True):
         basename = os.path.splitext(cptv_name)[0]
@@ -29,7 +32,7 @@ class FrameCache:
         frame_node = frames.create_dataset(
             str(frame.frame_number), dims, chunks=chunks, dtype=np.float16
         )
-        scaled_flow = np.clip(frame.flow * 256, -16000, 16000)
+        scaled_flow = get_clipped_flow(frame.flow)
         frame_val = (
             np.float16(frame.thermal),
             np.float16(frame.filtered),

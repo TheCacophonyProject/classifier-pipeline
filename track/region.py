@@ -57,9 +57,27 @@ class Region(Rectangle):
         )
 
     def calculate_mass(self, filtered, threshold):
+        """ 
+            calculates mass on this frame for this region 
+            filtered is assumed to be cropped to the region
+        """
+        height, width = filtered.shape
+        assert (
+            width == self.width and height == self.height
+        ), "calculating variance on incorrectly sized filtered"
+
         self.mass = tools.calculate_mass(filtered, threshold)
 
     def calculate_variance(self, filtered, prev_filtered):
+        """ 
+            calculates variance on this frame for this region 
+            filtered is assumed to be cropped to the region
+        """
+        height, width = filtered.shape
+        assert (
+            width == self.width and height == self.height
+        ), "calculating variance on incorrectly sized filtered"
+
         self.pixel_variance = tools.calculate_variance(filtered, prev_filtered)
 
     def copy(self):

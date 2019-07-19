@@ -24,25 +24,39 @@ import h5py
 import numpy as np
 from ml_tools.framecache import FrameCache
 from ml_tools.dataset import TrackChannels
-from ml_tools.tools import get_optical_flow_function
+from ml_tools.tools import get_optical_flow_function, get_clipped_flow
 
 
 class Frame:
-    def __init__(self, thermal, filtered, mask, frame_number, flow=None):
+    def __init__(
+        self, thermal, filtered, mask, frame_number, flow=None, flow_clipped=False
+    ):
         self.thermal = thermal
         self.filtered = filtered
         self.frame_number = frame_number
         self.mask = mask
         self.flow = flow
         self.clipped_temp = None
+        self.flow_clipped = flow_clipped
+
+    @classmethod
+    def from_array(cls, frame_arr, frame_number, flow_clipped=False):
+        return cls(
+            frame_arr[TrackChannels.thermal],
+            frame_arr[TrackChannels.filtered],
+            frame_arr[TrackChannels.mask],
+            frame_number,
+            flow=frame_arr[TrackChannels.thermal],
+            flow_clipped=flow_clipped,
+        )
 
     def as_array(self, split_flow=True):
         if split_flow:
             return [
                 self.thermal,
                 self.filtered,
-                self.flow[:, :, 0],
-                self.flow[:, :, 1],
+                self.flow[:, :, 0] if self.flow else None,
+                self.flow[:, :, 1] if self.flow else None,
                 self.mask,
             ]
 
@@ -71,25 +85,54 @@ class Frame:
 
         self.clipped_temp = current
         self.flow = flow
+        if prev_frame:
+            prev_frame.clipped_temp = None
+
+    def clip_flow(self):
+        self.flow = get_clipped_flow(self.flow)
+        self.flow_clipped = True
+
+    def get_flow_split(self, clip_flow=False):
+        if self.flow.any():
+            if self.clip_flow and not self.flow_clipped:
+                flow_c = get_clipped_flow(self.flow)
+                return flow_c[:, :, 0], flow_c[:, :, 1]
+
+            else:
+                return self.flow_h, self.flow_v
+        return None, None
+
+    @property
+    def flow_h(self):
+        return self.flow[:, :, 0]
+
+    @property
+    def flow_v(self):
+        return self.flow[:, :, 1]
+
 
 class FrameBuffer:
     """ Stores entire clip in memory, required for some operations such as track exporting. """
 
-    def __init__(self, cptv_name, opt_flow, cache_to_disk):
+    def __init__(self, cptv_name, high_quality_flow, cache_to_disk, calc_flow):
         self.cache = FrameCache(cptv_name) if cache_to_disk else None
-        self.opt_flow = opt_flow
+        self.opt_flow = None
+        self.high_quality_flow = high_quality_flow
         self.frames = None
-        self.thermal = None
-        self.filtered = None
-        self.delta = None
-        self.mask = None
-        self.flow = None
+        # self.thermal = None
+        # self.filtered = None
+        # self.delta = None
+        # self.mask = None
+        # self.flow = None
         self.frame_number = 0
         self.prev_frame = None
+        self.calc_flow = calc_flow
+        if cache_to_disk or calc_flow:
+            self.set_optical_flow()
         self.reset()
 
-    def set_optical_flow(self, high_quality=False):
-        self.opt_flow = get_optical_flow_function(high_quality)
+    def set_optical_flow(self):
+        self.opt_flow = get_optical_flow_function(self.high_quality_flow)
 
     def add_frame(self, thermal, filtered, mask):
         frame = Frame(thermal, filtered, mask, self.frame_number)
@@ -101,60 +144,21 @@ class FrameBuffer:
         if self.cache:
             self.cache.add_frame(frame)
         else:
-            self.filtered.append(filtered)
-            self.mask.append(mask)
-            if self.opt_flow:
-                self.flow.append(np.clip(frame.flow * 256, -16000, 16000))
+            self.frames.append(frame)
 
     @property
     def has_flow(self):
-        return self.cache or self.flow
-
-    def generate_optical_flow(self, flow_threshold=40, high_quality=False):
-        """
-        Generate optical flow from thermal frames
-        :param opt_flow: An optical flow algorithm
-        """
-        if self.opt_flow is None:
-            self.set_optical_flow(high_quality)
-        self.flow = []
-
-        height, width = self.thermal[0].shape
-        flow = np.zeros([height, width, 2], dtype=np.float32)
-        # for some reason openCV spins up lots of threads for this which really slows things down, so we
-        # cap the threads to 2
-        cv2.setNumThreads(2)
-
-        current = None
-        for frame in self.thermal:
-            # strong filtering helps with the optical flow.
-            threshold = np.median(frame) + flow_threshold
-            next = np.uint8(np.clip(frame - threshold, 0, 255))
-
-            if current is not None:
-                flow = self.opt_flow.calc(current, next, flow)
-
-            current = next
-
-            # scale up the motion vectors so that we get some additional precision
-            # but also make sure they fit within an int16
-            scaled_flow = np.clip(flow * 256, -16000, 16000)
-            self.flow.append(scaled_flow)
+        return self.cache or self.opt_flow
 
     def get_frame(self, frame_number):
         if self.prev_frame.frame_number == frame_number:
-            return self.prev_frame.as_array()
+            return self.prev_frame
         elif self.cache:
-            return self.cache.get_frame(frame_number)
+            return Frame.from_array(
+                self.cache.get_frame(frame_number), frame_number, True
+            )
 
-        thermal = self.thermal[frame_number]
-        filtered = self.filtered[frame_number]
-        mask = self.mask[frame_number]
-        if self.flow:
-            flow = self.flow[frame_number]
-            return [thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask]
-        else:
-            return [thermal, filtered, None, None, mask]
+        return self.frames[frame_number]
 
     def close_cache(self):
         if self.cache:
@@ -172,8 +176,8 @@ class FrameBuffer:
         if self.cache:
             prev = self.prev_frame.filtered
         else:
-            if len(self.filtered) > 0:
-                prev = self.filtered[-1]
+            if len(self.frames) > 0:
+                prev = self.frames[-1].filtered
             else:
                 return None
 
@@ -186,12 +190,7 @@ class FrameBuffer:
         """
         Empties buffer
         """
-        self.thermal = []
-        self.filtered = []
-        self.delta = []
-        self.mask = []
-        self.flow = []
         self.frames = []
 
     def __len__(self):
-        return len(self.thermal)
+        return len(self.frames)

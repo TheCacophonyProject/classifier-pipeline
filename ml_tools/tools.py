@@ -769,3 +769,6 @@ def add_heat_number(img, frame, scale):
 
 def eucl_distance(first, second):
     return ((first[0] - second[0]) ** 2 + (first[1] - second[1]) ** 2) ** 0.5
+
+def get_clipped_flow(flow):
+    return np.clip(flow * 256, -16000, 16000)

@@ -21,7 +21,7 @@ import datetime
 import numpy as np
 from collections import namedtuple
 
-from ml_tools.tools import Rectangle
+from ml_tools.tools import Rectangle, get_clipped_flow
 from ml_tools.dataset import TrackChannels
 import track.region
 from track.region import Region
@@ -64,7 +64,6 @@ class Track:
         self.vel_x = 0
         # our current estimated vertical velocity
         self.vel_y = 0
-        self.track_data = []
         # the tag for this track
         self.tag = "unknown"
         self.prev_frame = None
@@ -87,7 +86,6 @@ class Track:
         self.from_metadata = True
         self._id = track_meta["id"]
         self.include_filtered_channel = include_filtered_channel
-        self.track_data = []
         data = track_meta["data"]
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
@@ -117,8 +115,8 @@ class Track:
 
     def add_frame_from_region(self, region, buffer_frame):
         self.bounds_history.append(region)
-        channels = self.crop_by_region(buffer_frame.as_array(), region)
-        self.track_data.append(channels)
+        # channels = self.crop_by_region(buffer_frame.as_array(), region)
+        # self.track_data.append(channels)
         self.end_frame = region.frame_number
         self.current_frame += 1
 
@@ -128,9 +126,10 @@ class Track:
         if prev_filtered is not None:
             prev_filtered = region.subimage(prev_filtered)
 
-        channels = self.crop_by_region(frame.as_array(True), region=region)
+        # channels = self.crop_by_region(frame.as_array(True), region=region)
         # frame.get_frame_channels(region)
-        filtered = channels[TrackChannels.filtered]
+        filtered = region.subimage(frame.filtered)
+        # channels[TrackChannels.filtered]
         region.calculate_mass(filtered, mass_delta_threshold)
         region.calculate_variance(filtered, prev_filtered)
 
@@ -148,10 +147,10 @@ class Track:
         self.prev_frame = buffer_frame.frame_number
         self.current_frame += 1
 
-        if not self.include_filtered_channel:
-            channels[TrackChannels.filtered] = 0
+        # if not self.include_filtered_channel:
+        #     channels[TrackChannels.filtered] = 0
 
-        self.track_data.append(channels)
+        # self.track_data.append(channels)
 
     def add_blank_frame(self, buffer_frame=None):
         """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
@@ -160,11 +159,11 @@ class Track:
         region.pixel_variance = 0
         region.frame_number += 1
         self.bounds_history.append(region)
-        if buffer_frame:
-            frame = buffer_frame.get_frame(region.frame_number)
-            channels = self.crop_by_region(frame, region)
-            # channels = buffer_frame.get_frame_channels(region, region.frame_number)
-            self.track_data.append(channels)
+        # if buffer_frame:
+        #     frame = buffer_frame.get_frame(region.frame_number)
+        #     channels = self.crop_by_region(frame, region)
+        #     # channels = buffer_frame.get_frame_channels(region, region.frame_number)
+        #     self.track_data.append(channels)
         self.vel_x = self.vel_y = 0
 
     def get_stats(self):
@@ -267,11 +266,11 @@ class Track:
         if end < start:
             self.start_frame = 0
             self.bounds_history = []
-            self.track_data = []
+            # self.track_data = []
         else:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
-            self.track_data = self.track_data[start : end + 1]
+            # self.track_data = self.track_data[start : end + 1]
 
     def get_track_region_score(self, region: Region, moving_vel_thresh):
         """
@@ -339,16 +338,24 @@ class Track:
 
         return frames_overlapped / len(self)
 
-    def crop_by_region_at_trackframe(self, frame, track_frame_number):
+    def crop_by_region_at_trackframe(self, frame, track_frame_number, clip_flow=True):
         bounds = self.bounds_history[track_frame_number]
         return self.crop_by_region(frame, bounds)
 
-    def crop_by_region(self, frame, region):
-        thermal = region.subimage(frame[TrackChannels.thermal])
-        filtered = region.subimage(frame[TrackChannels.filtered])
-        flow = region.subimage(frame[TrackChannels.flow_h])
-        flow2 = region.subimage(frame[TrackChannels.flow_v])
-        mask = region.subimage(frame[TrackChannels.mask])
+    def crop_by_region(self, frame, region, clip_flow=True):
+        thermal = region.subimage(frame.thermal)
+        filtered = region.subimage(frame.filtered)
+        if frame.flow.any():
+            flow_h = region.subimage(frame.flow_h)
+            flow_v = region.subimage(frame.flow_v)
+            if clip_flow and not frame.flow_clipped:
+                flow_h = get_clipped_flow(flow_h)
+                flow_v = get_clipped_flow(flow_v)
+        else:
+            flow_h = None
+            flow_v = None
+
+        mask = region.subimage(frame.mask)
 
         # make sure only our pixels are included in the mask.
         mask[mask != region.id] = 0
@@ -356,7 +363,10 @@ class Track:
 
         # stack together into a numpy array.
         # by using int16 we lose a little precision on the filtered frames, but not much (only 1 bit)
-        frame = np.int16(np.stack((thermal, filtered, flow, flow2, mask), axis=0))
+        if flow_h.any() and flow_v.any():
+            return np.int16(np.stack((thermal, filtered, flow_h, flow_v, mask), axis=0))
+        else:
+            return np.int16(np.stack((thermal, filtered, mask), axis=0))
         return frame
 
     @property

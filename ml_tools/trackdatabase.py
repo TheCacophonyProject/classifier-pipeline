@@ -86,20 +86,31 @@ class TrackDatabase:
 
             if clip is not None:
                 group_attrs = group.attrs
-                for key, value in clip.stats.items():
-                    if isinstance(value, datetime.date):
-                        group_attrs[key] = value.isoformat()
-                    else:
-                        group_attrs[key] = value
 
                 # group_attrs.update(clip.stats)
                 group_attrs["filename"] = clip.source_file
                 group_attrs["start_time"] = clip.video_start_time.isoformat()
                 group_attrs["threshold"] = clip.threshold
-                group_attrs["frame_temp_min"] = clip.frame_stats_min
-                group_attrs["frame_temp_max"] = clip.frame_stats_max
-                group_attrs["frame_temp_median"] = clip.frame_stats_median
-                group_attrs["frame_temp_mean"] = clip.frame_stats_mean
+
+                group_attrs["mean_background_value"] = clip.stats.mean_background_value
+                group_attrs["threshold"] = clip.stats.threshold
+                group_attrs["max_temp"] = clip.stats.max_temp
+                group_attrs["min_temp"] = clip.stats.min_temp
+                group_attrs["mean_temp"] = clip.stats.mean_temp
+                group_attrs["filtered_deviation"] = clip.stats.filtered_deviation
+                group_attrs["filtered_sum"] = clip.stats.filtered_sum
+                group_attrs["temp_thresh"] = clip.stats.temp_thresh
+                group_attrs["threshold"] = clip.stats.threshold
+
+                if not clip.background_is_preview:
+                    group_attrs["average_delta"] = clip.stats.average_delta
+                    group_attrs["is_static"] = clip.stats.is_static_background
+
+                group_attrs["frame_temp_min"] = clip.stats.frame_stats_min
+                group_attrs["frame_temp_max"] = clip.stats.frame_stats_max
+                group_attrs["frame_temp_median"] = clip.stats.frame_stats_median
+                group_attrs["frame_temp_mean"] = clip.stats.frame_stats_mean
+
                 group_attrs["device"] = clip.device
                 group_attrs["frames_per_second"] = clip.frames_per_second
                 if clip.location:
@@ -187,7 +198,9 @@ class TrackDatabase:
             else:
                 return False
 
-    def add_track(self, clip_id, track=None, opts=None, start_time=None, end_time=None):
+    def add_track(
+        self, clip_id, track, track_data, opts=None, start_time=None, end_time=None
+    ):
         """
         Adds track to database.
         :param clip_id: id of the clip to add track to write
@@ -198,8 +211,7 @@ class TrackDatabase:
 
         track_id = str(track.get_id())
 
-        track_data = track.track_data
-        frames = len(track.track_data)
+        frames = len(track_data)
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
             clip_node = clips[clip_id]

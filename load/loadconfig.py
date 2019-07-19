@@ -49,6 +49,7 @@ class LoadConfig(DefaultConfig):
     include_filtered_channel = attr.ib()
     preview = attr.ib()
     tag_precedence = attr.ib()
+    cache_to_disk = attr.ib()
 
     @classmethod
     def load(cls, config):
@@ -57,6 +58,7 @@ class LoadConfig(DefaultConfig):
             include_filtered_channel=config["include_filtered_channel"],
             preview=config["preview"],
             tag_precedence=LoadConfig.get_tag_precedence(config),
+            cache_to_disk=config["cache_to_disk"],
         )
 
     @classmethod
@@ -66,6 +68,7 @@ class LoadConfig(DefaultConfig):
             include_filtered_channel=False,
             preview="tracking",
             tag_precedence=LoadConfig.DEFAULT_GROUPS,
+            cache_to_disk=False,
         )
 
     def get_tag_precedence(config):

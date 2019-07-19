@@ -1,3 +1,5 @@
+use_opt_flow: False
+
 # Output debug information e.g. heat numbers on preview
 debug: False
 
@@ -166,6 +168,9 @@ load:
     # classified - show tracks and classification values
     # tracking -  four frame video view, including thermal, filtered, mask and flow layers
     preview: "tracking"
+
+    #cache buffer frame to disk reducing memory usage
+    cache_to_disk: True
 train:
     hyper_params:
         # training
@@ -179,7 +184,6 @@ train:
         # model
         batch_norm: true
         lstm_units: 256
-        enable_flow: true
 
         # augmentation
         augmentation: true

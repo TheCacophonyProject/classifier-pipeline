@@ -106,8 +106,8 @@ class Previewer:
         # increased resolution of video file.
         # videos look much better scaled up
         if clip.stats:
-            self.auto_max = clip.stats["max_temp"]
-            self.auto_min = clip.stats["min_temp"]
+            self.auto_max = clip.stats.max_temp
+            self.auto_min = clip.stats.min_temp
         else:
             logging.error("Do not have temperatures to use.")
             return
@@ -117,17 +117,20 @@ class Previewer:
         if bool(track_predictions) and self.preview_type == self.PREVIEW_CLASSIFIED:
             self.create_track_descriptions(clip, track_predictions)
 
-        if self.preview_type == self.PREVIEW_TRACKING and not clip.frame_buffer.flow:
+        if (
+            self.preview_type == self.PREVIEW_TRACKING
+            and not clip.track_extractor.frame_buffer.has_flow
+        ):
             clip.generate_optical_flow()
 
         mpeg = MPEGCreator(filename)
 
-        for frame_number, thermal in enumerate(clip.frame_buffer.thermal):
+        for frame_number, frame in enumerate(clip.track_extractor.frame_buffer.frames):
             if self.preview_type == self.PREVIEW_RAW:
-                image = self.convert_and_resize(thermal)
+                image = self.convert_and_resize(frame.thermal)
 
             if self.preview_type == self.PREVIEW_TRACKING:
-                image = self.create_four_tracking_image(clip.frame_buffer, frame_number)
+                image = self.create_four_tracking_image(frame)
                 image = self.convert_and_resize(image, 3.0, mode=Image.NEAREST)
                 draw = ImageDraw.Draw(image)
 
@@ -155,22 +158,29 @@ class Previewer:
                 #     colours=Previewer.FILTERED_COLOURS,
                 #     tracks_text=filtered_reasons,
                 # )
-                self.add_tracks(draw, clip.tracks, frame_number)
+                self.add_tracks(draw, clip.track_extractor.tracks, frame_number)
 
             if self.preview_type == self.PREVIEW_BOXES:
-                image = self.convert_and_resize(thermal, 4.0)
+                image = self.convert_and_resize(frame.thermal, 4.0)
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(
-                    draw, clip.tracks, frame_number, colours=[(128, 255, 255)]
+                    draw,
+                    clip.track_extractor.tracks,
+                    frame_number,
+                    colours=[(128, 255, 255)],
                 )
 
             if self.preview_type == self.PREVIEW_CLASSIFIED:
-                image = self.convert_and_resize(thermal, 4.0)
+                image = self.convert_and_resize(frame.thermal, 4.0)
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(
-                    draw, clip.tracks, frame_number, track_predictions, screen_bounds
+                    draw,
+                    clip.track_extractor.tracks,
+                    frame_number,
+                    track_predictions,
+                    screen_bounds,
                 )
             if self.debug:
                 self.add_footer(draw, image.width, image.height, footer)
@@ -180,7 +190,7 @@ class Previewer:
             if frame_number > clip.frames_per_second * 60 * 10:
                 break
 
-        clip.frame_buffer.close_cache()
+        clip.track_extractor.frame_buffer.close_cache()
         mpeg.close()
 
     def create_individual_track_previews(self, filename, clip: Clip):
@@ -190,16 +200,21 @@ class Previewer:
 
         FRAME_SIZE = 4 * 48
         frame_width, frame_height = FRAME_SIZE, FRAME_SIZE
-        frame_buffer = clip.frame_buffer
-        for track in clip.tracks:
+        frame_buffer = clip.track_extractor.frame_buffer
+
+        for id, track in enumerate(clip.track_extractor.tracks):
             video_frames = []
-            for channels in track.track_data:
-                img = tools.convert_heat_to_img(channels[1], self.colourmap, 0, 350)
+            for region in track.bounds_history:
+                frame = clip.track_extractor.frame_buffer.get_frame(region.frame_number)
+                frame = track.crop_by_region(frame, region)
+                img = tools.convert_heat_to_img(
+                    frame[TrackChannels.thermal], self.colourmap, 0, 350
+                )
                 img = img.resize((frame_width, frame_height), Image.NEAREST)
                 video_frames.append(np.asarray(img))
 
-            logging.info("creating preview %s", filename_format.format(track.get_id()))
-            tools.write_mpeg(filename_format.format(track.get_id()), video_frames)
+            logging.info("creating preview %s", filename_format.format(id + 1))
+            tools.write_mpeg(filename_format.format(id + 1), video_frames)
 
     def convert_and_resize(self, frame, size=None, mode=Image.BILINEAR):
         """ Converts the image to colour using colour map and resize """
@@ -239,13 +254,13 @@ class Previewer:
             track_description.strip()
             self.track_descs[track] = track_description
 
-    def create_four_tracking_image(self, frame_buffer, frame_number):
-        frame = frame_buffer.get_frame(frame_number)
-        thermal = frame[TrackChannels.thermal]
-        filtered = frame[TrackChannels.filtered] + self.auto_min
-        mask = frame[TrackChannels.mask] * 10000
-        flow_h = frame[TrackChannels.flow_h]
-        flow_v = frame[TrackChannels.flow_v]
+    def create_four_tracking_image(self, frame):
+
+        thermal = frame.thermal
+        filtered = frame.filtered + self.auto_min
+        mask = frame.mask * 10000
+        flow_h, flow_v = frame.get_flow_split(clip_flow=True)
+
         flow_magnitude = (
             np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
             + self.auto_min
@@ -313,7 +328,9 @@ class Previewer:
         self, draw, track, frame_offset, region, screen_bounds, text=None, v_offset=0
     ):
         if text is None:
-            text = f"id {track.get_id()} mass {region.mass} var {round(region.pixel_variance,2)}"
+            text = f"id {track.get_id()}"
+            if region.pixel_variance:
+                text += f" mass {region.mass} var {round(region.pixel_variance,2)}"
         footer_size = self.font.getsize(text)
         footer_center = ((region.width * self.frame_scale) - footer_size[0]) / 2
 
@@ -404,11 +421,11 @@ class Previewer:
 
     @staticmethod
     def stats_footer(stats):
-        return "max {}, min{}, mean{}, back delta {}, avg delta{}, temp_thresh {}".format(
-            round(stats.get("max_temp", 0), 2),
-            round(stats.get("min_temp", 0), 2),
-            round(stats.get("mean_temp", 0), 2),
-            round(stats.get("average_background_delta", 0), 2),
-            round(stats.get("average_delta", 0), 2),
-            stats.get("temp_thresh", 0),
+        return "max {}, min{}, mean{}, filtered deviation {}, avg delta{}, temp_thresh {}".format(
+            stats.max_temp,
+            stats.min_temp,
+            stats.mean_temp,
+            stats.filtered_deviation,
+            stats.average_delta,
+            stats.temp_thresh,
         )

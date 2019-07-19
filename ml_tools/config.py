@@ -38,6 +38,7 @@ class Config(DefaultConfig):
     use_gpu = attr.ib()
     worker_threads = attr.ib()
     debug = attr.ib()
+    use_opt_flow = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename=None):
@@ -78,6 +79,7 @@ class Config(DefaultConfig):
             labels=raw["labels"],
             build=BuildConfig.load(raw["build"]),
             debug=raw["debug"],
+            use_opt_flow=raw["use_opt_flow"],
         )
 
     @classmethod
@@ -99,6 +101,7 @@ class Config(DefaultConfig):
             classify=ClassifyConfig.get_defaults(),
             evaluate=EvaluateConfig.get_defaults(),
             debug=False,
+            use_opt_flow=False,
         )
 
     def validate(self):

@@ -40,13 +40,10 @@ class Clip:
     local_tz = pytz.timezone("Pacific/Auckland")
     VERSION = 7
 
-    def __init__(self, trackconfig, cache_to_disk=False):
+    def __init__(self, trackconfig, cache_to_disk=False, calc_flow=False):
         self._id = None
-        self.max_tracks = trackconfig.max_tracks
-        self.active_tracks = []
-        self.tracks = []
+        self.preview_secs = None
         self.from_metadata = False
-        self.stats = {}
         self.background_is_preview = trackconfig.background_calc == Clip.PREVIEW
         self.config = trackconfig
         self.frames_per_second = Clip.FRAMES_PER_SECOND
@@ -55,90 +52,224 @@ class Clip:
         # name of source file
         self.source_file = None
         self.location = None
+        self.stats = ClipStats()
         # per frame temperature statistics for thermal channel
-        self.frame_stats_min = []
-        self.frame_stats_max = []
-        self.frame_stats_median = []
-        self.frame_stats_mean = []
-        self.threshold = trackconfig.delta_thresh
+
         # this buffers store the entire video in memory and are required for fast track exporting
-        self.frame_buffer = None
-        self.disable_background_subtraction = {}
-        self.crop_rectangle = None
         self.mean_background_value = 0.0
         self.device = None
-        # frame_padding < 3 causes problems when we get small areas...
-        self.frame_padding = max(3, self.config.frame_padding)
-        # the dilation effectively also pads the frame so take it into consideration.
-        self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
-        self.region_history = []
         self.cache_to_disk = cache_to_disk
-        self.opt_flow = None
-        self.filtered_tracks = []
+        self.track_extractor = None
+        self.frames = 0
+        self.threshold = trackconfig.delta_thresh
+        self.flow = calc_flow
 
     def get_id(self):
         return str(self._id)
 
-    def load_cptv(self, filename):
+    def parse_clip_meta(
+        self, filename, metadata, include_filtered_channel, tag_precedence
+    ):
+        tracks = self.load_metadata(metadata, include_filtered_channel, tag_precedence)
+        self.parse_clip(filename, tracks)
+
+    def parse_clip(self, filename, tracks=None):
         """
         Loads a cptv file, and prepares for track extraction.
         """
-        self.source_file = filename
-        self.frame_buffer = FrameBuffer(filename, self.opt_flow, self.cache_to_disk)
 
+        self.track_extractor = ClipTrackExtractor(
+            self,
+            self.config,
+            self.cache_to_disk,
+            self.from_metadata,
+            self.config.high_quality_optical_flow,
+            meta_tracks=tracks,
+        )
+
+        self.source_file = filename
+        res_x = None
+        res_y = None
+        # self.frame_buffer = FrameBuffer(filename, self.opt_flow, self.cache_to_disk)
         with open(filename, "rb") as f:
             reader = CPTVReader(f)
             self.video_start_time = reader.timestamp.astimezone(Clip.local_tz)
             self.preview_secs = reader.preview_secs
-            self.stats.update(self.get_video_stats())
+            self.set_video_stats()
             # we need to load the entire video so we can analyse the background.
-            frames = [np.float32(frame.pix) for frame in reader]
-            self.frame_buffer.thermal = frames
             edge = self.config.edge_pixels
-            self.crop_rectangle = Rectangle(
-                edge,
-                edge,
-                reader.x_resolution - 2 * edge,
-                reader.y_resolution - 2 * edge,
-            )
+            res_x = reader.x_resolution
+            res_y = reader.y_resolution
+            crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
+            self.track_extractor.crop_rectangle = crop_rectangle
+            if self.background_is_preview:
+                for frame in reader:
+                    self.track_extractor.process_frame(frame.pix)
+            else:
+                self.track_extractor.extract_tracks(
+                    [np.float32(frame.pix) for frame in reader]
+                )
+            # frames = [np.float32(frame.pix) for frame in reader]
+            # self.frame_buffer.thermal = frames
+        self.stats.completed(self.track_extractor.frame_on, res_y, res_x)
 
-    def get_video_stats(self):
+    def set_video_stats(self):
         """
         Extracts useful statics from video clip.
-        :returns: a dictionary containing the video statistics.
         """
-        result = {}
-        result["date_time"] = self.video_start_time.astimezone(Clip.local_tz)
-        result["is_night"] = (
-            self.video_start_time.astimezone(Clip.local_tz).time().hour >= 21
-            or self.video_start_time.astimezone(Clip.local_tz).time().hour <= 4
+        self.stats.date_time = self.video_start_time.astimezone(Clip.local_tz)
+        self.stats.is_night = (
+            self.video_start_time.astimezone(Clip.local_tz).time().hour >= 2
         )
 
-        return result
+    def load_metadata(self, metadata, include_filtered_channel, tag_precedence):
+        self._id = metadata["id"]
+        device_meta = metadata.get("Device")
+        if device_meta:
+            self.device = device_meta.get("devicename")
+        else:
+            self.device = os.path.splitext(os.path.basename(self.source_file))[0].split(
+                "-"
+            )[-1]
 
-    def extract_tracks(self):
+        self.location = metadata.get("location")
+        tracks = self.load_tracks_meta(
+            metadata, include_filtered_channel, tag_precedence
+        )
+        self.from_metadata = True
+        return tracks
 
-        self.frame_buffer.set_optical_flow(self.config.high_quality_optical_flow)
+    def load_tracks_meta(self, metadata, include_filtered_channel, tag_precedence):
+        tracks_meta = metadata["Tracks"]
+        tracks = []
+        # get track data
+        for track_meta in tracks_meta:
+            track = Track(self.get_id())
+            if track.load_track_meta(
+                track_meta,
+                self.frames_per_second,
+                include_filtered_channel,
+                tag_precedence,
+                self.config.min_tag_confidence,
+            ):
+                tracks.append(track)
+        return tracks
+
+    def start_and_end_in_secs(self, track):
+        if not track.start_s:
+            track.start_s = track.start_frame / self.frames_per_second
+
+        if not track.end_s:
+            track.end_s = (track.end_frame + 1) / self.frames_per_second
+
+        return (track.start_s, track.end_s)
+
+    def start_and_end_time_absolute(self, start_s=0, end_s=None):
+        if not end_s:
+            end_s = len(self.frames) / self.frames_per_second
+        return (
+            self.video_start_time + datetime.timedelta(seconds=start_s),
+            self.video_start_time + datetime.timedelta(seconds=end_s),
+        )
+
+    def print_if_verbose(self, info_string):
+        if self.config.verbose:
+            logging.info(info_string)
+
+
+class ClipTrackExtractor:
+    def __init__(
+        self,
+        clip,
+        config,
+        cache_to_disk,
+        from_metadata,
+        high_quality_flow,
+        meta_tracks=None,
+    ):
+        self.clip = clip
+        self.cache_to_disk = cache_to_disk
+        self.from_metadata = from_metadata
+        self.frame_buffer = FrameBuffer(
+            clip.source_file, high_quality_flow, cache_to_disk, clip.flow
+        )
+        self.frame_on = 0
+        self.preview_frames = []
+        self.background = None
+        self.config = config
+        self.stats = clip.stats
+        self.tracks = meta_tracks if meta_tracks else []
+        self.active_tracks = []
+        self.crop_rectangle = None
+        self.max_tracks = config.max_tracks
+        self.filtered_tracks = []
+        self.threshold = config.delta_thresh
+        self.stats.threshold = self.threshold
+        self.region_history = []
+
+        # frame_padding < 3 causes problems when we get small areas...
+        self.frame_padding = max(3, self.config.frame_padding)
+        # the dilation effectively also pads the frame so take it into consideration.
+        self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
+
+    def process_frame(self, frame):
+        if self.clip.preview_secs > 0 and self.frame_on < self.clip.preview_secs:
+            self._calculate_preview_from_frame(frame)
+        else:
+            self._process_frame(frame, self.frame_on, self.background)
+
+        self.frame_on += 1
+
+    def _calculate_preview_from_frame(self, frame):
+        self.preview_frames.append(frame)
+        if self.background is None:
+            self.background = frame
+        else:
+            self.background = np.minimum(self.background, frame)
+
+        if self.frame_on == (self.clip.preview_secs - 1):
+            self.stats.mean_background_value = np.average(self.background)
+            self.set_config_from_background()
+            for i, back_frame in enumerate(self.preview_frames):
+                self._process_frame(back_frame, i, self.background)
+
+            self.preview_frames = None
+
+    def _background_from_preview(self, frame_list):
+        number_frames = (
+            self.clip.preview_secs * self.clip.frames_per_second
+            - self.clip.config.ignore_frames
+        )
+        if not number_frames < len(frame_list):
+            logging.error("Video consists entirely of preview")
+            number_frames = len(frame_list)
+        frames = frame_list[0:number_frames]
+        background = np.min(frames, axis=0)
+        background = np.int32(np.rint(background))
+        self.stats.mean_background_value = np.average(background)
+        self.set_config_from_background()
+        return background
+
+    def set_config_from_background(self):
+        if self.config.dynamic_thresh:
+            self.config.temp_thresh = min(
+                self.config.temp_thresh, self.stats.mean_background_value
+            )
+        self.stats.temp_thresh = self.config.temp_thresh
+
+    def extract_tracks(self, frames):
         # for now just always calculate as we are using the stats...
-        frames = self.frame_buffer.thermal
-
         # background np.float64[][] filtered calculated here and stats
         background = self._background_from_whole_clip(frames)
 
-        if self.background_is_preview:
-            if self.preview_secs > 0:
+        if self.clip.background_is_preview:
+            if self.clip.preview_secs > 0:
                 # background np.int32[][]
                 background = self._background_from_preview(frames)
             else:
                 logging.info(
                     "No preview secs defined for CPTV file - using statistical background measurement"
                 )
-
-        if self.config.dynamic_thresh:
-            self.config.temp_thresh = min(
-                self.config.temp_thresh, self.stats["mean_temp"]
-            )
-        self.stats["temp_thresh"] = self.config.temp_thresh
 
         # process each frame
         for frame_number, frame in enumerate(frames):
@@ -151,37 +282,6 @@ class Clip:
                 frame_height, frame_width = frames[0].shape
                 for track in self.tracks:
                     track.smooth(Rectangle(0, 0, frame_width, frame_height))
-
-    def parse_clip(self, metadata, include_filtered_channel, tag_precedence):
-
-        self._id = metadata["id"]
-        device_meta = metadata.get("Device")
-        if device_meta:
-            self.device = device_meta.get("devicename")
-        else:
-            self.device = os.path.splitext(os.path.basename(self.source_file))[0].split(
-                "-"
-            )[-1]
-
-        self.location = metadata.get("location")
-        self.tracks = self.load_tracks(
-            metadata, include_filtered_channel, tag_precedence
-        )
-        self.from_metadata = True
-        self.extract_tracks()
-
-    def _background_from_preview(self, frame_list):
-        number_frames = (
-            self.preview_secs * self.frames_per_second - self.config.ignore_frames
-        )
-        if not number_frames < len(frame_list):
-            logging.error("Video consists entirely of preview")
-            number_frames = len(frame_list)
-        frames = frame_list[0:number_frames]
-        background = np.average(frames, axis=0)
-        background = np.int32(np.rint(background))
-        self.mean_background_value = np.average(background)
-        return background
 
     def _background_from_whole_clip(self, frames):
         """
@@ -215,22 +315,21 @@ class Clip:
         threshold = max(self.config.min_threshold, threshold)
         threshold = min(self.config.max_threshold, threshold)
 
-        self.stats["threshold"] = float(threshold)
-        self.stats["average_delta"] = float(average_delta)
-        self.stats["min_temp"] = float(np.min(frames))
-        self.stats["max_temp"] = float(np.max(frames))
-        self.stats["mean_temp"] = float(np.mean(frames))
-        self.stats["background_deviation"] = float(np.mean(np.abs(filtered)))
-        self.stats["is_static_background"] = (
-            self.stats["background_deviation"] < self.config.static_background_threshold
+        self.threshold = threshold
+        self.stats.threshold = threshold
+        self.stats.temp_thresh = self.config.temp_thresh
+        self.stats.average_delta = float(average_delta)
+        self.stats.filtered_deviation = float(np.mean(np.abs(filtered)))
+        self.stats.is_static_background = (
+            self.stats.filtered_deviation < self.config.static_background_threshold
         )
 
         if (
-            not self.stats["is_static_background"]
-            or self.disable_background_subtraction
+            not self.stats.is_static_background
+            or self.clip.disable_background_subtraction
         ):
             background = None
-
+        self.set_config_from_background()
         return background
 
     def _get_filtered_frame(self, thermal, background=None):
@@ -243,17 +342,19 @@ class Clip:
         if background is None:
             filtered = thermal - np.median(thermal) - 40
             filtered[filtered < 0] = 0
-        elif self.background_is_preview:
-            avg_change = int(round(np.average(thermal) - self.mean_background_value))
+        elif self.clip.background_is_preview:
+            avg_change = int(
+                round(np.average(thermal) - self.stats.mean_background_value)
+            )
             filtered = thermal.copy()
-            filtered[filtered < self.config.temp_thresh] = 0
+            filtered[filtered < self.stats.temp_thresh] = 0
             filtered = filtered - background - avg_change
         else:
             filtered = thermal - background
             filtered[filtered < 0] = 0
             filtered = filtered - np.median(filtered)
             filtered[filtered < 0] = 0
-        return filtered
+        return np.uint16(filtered)
 
     def _process_frame(self, thermal, frame_number, background=None):
         """
@@ -271,7 +372,6 @@ class Clip:
 
         # remove the edges of the frame as we know these pixels can be spurious value
         edgeless_filtered = self.crop_rectangle.subimage(filtered)
-
         thresh = np.uint8(
             tools.blur_and_return_as_mask(edgeless_filtered, threshold=self.threshold)
         )
@@ -288,12 +388,7 @@ class Clip:
 
         mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
 
-        # save frame stats
-        self.frame_stats_min.append(np.min(thermal))
-        self.frame_stats_max.append(np.max(thermal))
-        self.frame_stats_median.append(np.median(thermal))
-        self.frame_stats_mean.append(np.mean(thermal))
-
+        self.stats.add_frame(thermal, filtered)
         # save history
         prev_filtered = self.frame_buffer.get_last_filtered()
         self.frame_buffer.add_frame(thermal, filtered, mask)
@@ -365,7 +460,7 @@ class Clip:
             if len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
                 continue
 
-            track = Track(self.get_id())
+            track = Track(self.clip.get_id())
             track.start_frame = frame_number
             track.add_frame_from_region(region, self.frame_buffer.prev_frame)
             new_tracks.append(track)
@@ -471,33 +566,6 @@ class Clip:
             regions.append(region)
         return regions
 
-    def generate_optical_flow(self):
-        if self.cache_to_disk or self.frame_buffer.has_flow:
-            return
-
-        if not self.frame_buffer.has_flow:
-            self.frame_buffer.generate_optical_flow(
-                self.opt_flow,
-                self.config.flow_threshold,
-                self.config.high_quality_optical_flow,
-            )
-
-    def load_tracks(self, metadata, include_filtered_channel, tag_precedence):
-        tracks_meta = metadata["Tracks"]
-        tracks = []
-        # get track data
-        for track_meta in tracks_meta:
-            track = Track(self.get_id())
-            if track.load_track_meta(
-                track_meta,
-                self.frames_per_second,
-                include_filtered_channel,
-                tag_precedence,
-                self.config.min_tag_confidence,
-            ):
-                tracks.append(track)
-        return tracks
-
     def filter_tracks(self):
 
         for track in self.tracks:
@@ -508,7 +576,7 @@ class Clip:
 
         if self.config.verbose:
             for stats, track in track_stats:
-                start_s, end_s = self.start_and_end_in_secs(track)
+                start_s, end_s = self.clip.start_and_end_in_secs(track)
                 logging.info(
                     " - track duration: %.1fsec, number of frames:%s, offset:%.1fpx, delta:%.1f, mass:%.1fpx",
                     end_s - start_s,
@@ -592,23 +660,57 @@ class Clip:
 
         return False
 
-    def start_and_end_in_secs(self, track):
-        if not track.start_s:
-            track.start_s = track.start_frame / self.frames_per_second
-
-        if not track.end_s:
-            track.end_s = (track.end_frame + 1) / self.frames_per_second
-
-        return (track.start_s, track.end_s)
-
-    def start_and_end_time_absolute(self, start_s=0, end_s=None):
-        if not end_s:
-            end_s = len(self.frame_buffer.thermal) / self.frames_per_second
-        return (
-            self.video_start_time + datetime.timedelta(seconds=start_s),
-            self.video_start_time + datetime.timedelta(seconds=end_s),
-        )
-
     def print_if_verbose(self, info_string):
         if self.config.verbose:
             logging.info(info_string)
+
+
+class ClipStats:
+    """ Stores background analysis statistics. """
+
+    def __init__(self):
+        self.mean_background_value = 0
+        self.average_delta = None
+        self.max_temp = None
+        self.min_temp = None
+        self.mean_temp = None
+        self.frame_stats_min = []
+        self.frame_stats_max = []
+        self.frame_stats_median = []
+        self.frame_stats_mean = []
+        self.filtered_deviation = None
+        self.filtered_sum = 0
+        self.temp_thresh = 0
+        self.threshold = None
+        self.average_delta = None
+        self.is_static_background = None
+
+    def add_frame(self, thermal, filtered):
+        f_median = np.median(thermal)
+        f_max = np.max(thermal)
+        f_min = np.min(thermal)
+        f_mean = np.mean(thermal)
+        self.max_temp = null_safe_compare(self.max_temp, f_max, max)
+        self.min_temp = null_safe_compare(self.min_temp, f_min, min)
+
+        self.frame_stats_min.append(f_min)
+        self.frame_stats_max.append(f_max)
+        self.frame_stats_median.append(f_median)
+        self.frame_stats_mean.append(f_mean)
+        self.filtered_sum += np.sum(np.abs(filtered))
+
+    def completed(self, num_frames, height, width):
+        if num_frames == 0:
+            return
+        total = num_frames * height * width
+        self.filtered_deviation = self.filtered_sum / float(total)
+        self.mean_temp = (height * width * sum(self.frame_stats_mean)) / float(total)
+
+
+def null_safe_compare(a, b, cmp):
+    if a is None:
+        return b
+    elif b:
+        return cmp(a, b)
+    else:
+        return None
