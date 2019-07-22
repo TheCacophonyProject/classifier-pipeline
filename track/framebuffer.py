@@ -36,7 +36,7 @@ class Frame:
         self.frame_number = frame_number
         self.mask = mask
         self.flow = flow
-        self.clipped_temp = None
+        self.scaled_thermal = None
         self.flow_clipped = flow_clipped
 
     @classmethod
@@ -69,31 +69,24 @@ class Frame:
         """
         height, width = self.thermal.shape
         flow = np.zeros([height, width, 2], dtype=np.float32)
-
-        prev = prev_frame.clipped_temp if prev_frame else None
-        prev_flow = prev_frame.flow if prev_frame else None
-
-        frame = self.thermal
-        threshold = np.median(frame) + flow_threshold
-        current = np.uint8(np.clip(frame - threshold, 0, 255))
-
-        if prev is not None:
+        threshold = np.median(self.thermal) + flow_threshold
+        scaled_thermal = np.uint8(np.clip(self.thermal - threshold, 0, 255))
+        if prev_frame is not None:
             # for some reason openCV spins up lots of threads for this which really slows things down, so we
             # cap the threads to 2
             cv2.setNumThreads(2)
-            flow = opt_flow.calc(prev, current, prev_flow)
-
-        self.clipped_temp = current
+            flow = opt_flow.calc(prev_frame.scaled_thermal, scaled_thermal, flow)
+        self.scaled_thermal = scaled_thermal
         self.flow = flow
         if prev_frame:
-            prev_frame.clipped_temp = None
+            prev_frame.scaled_thermal = None
 
     def clip_flow(self):
         self.flow = get_clipped_flow(self.flow)
         self.flow_clipped = True
 
     def get_flow_split(self, clip_flow=False):
-        if self.flow.any():
+        if self.flow is not None:
             if self.clip_flow and not self.flow_clipped:
                 flow_c = get_clipped_flow(self.flow)
                 return flow_c[:, :, 0], flow_c[:, :, 1]
@@ -140,7 +133,6 @@ class FrameBuffer:
             frame.generate_optical_flow(self.opt_flow, self.prev_frame)
         self.prev_frame = frame
         self.frame_number += 1
-
         if self.cache:
             self.cache.add_frame(frame)
         else:
@@ -151,13 +143,12 @@ class FrameBuffer:
         return self.cache or self.opt_flow
 
     def get_frame(self, frame_number):
-        if self.prev_frame.frame_number == frame_number:
+        if self.prev_frame and self.prev_frame.frame_number == frame_number:
             return self.prev_frame
         elif self.cache:
             return Frame.from_array(
                 self.cache.get_frame(frame_number), frame_number, True
             )
-
         return self.frames[frame_number]
 
     def close_cache(self):

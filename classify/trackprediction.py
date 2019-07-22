@@ -1,6 +1,22 @@
 import numpy as np
 
 
+class RollingTrackPrediction:
+    def __init__(self, track_id):
+        self.track_prediction = None
+        self.state = None
+        self.track_id = track_id
+        self.predictions = []
+        self.novelties = []
+        self.uniform_prior = False
+        self.class_best_score = []
+        self.track_prediction = None
+
+    def get_prediction(self, classes):
+        self.track_prediction = TrackPrediction(self.predictions, self.novelties)
+        return self.track_prediction.description(classes)
+
+
 class TrackPrediction:
     """
     Class to hold the information about the predicted class of a track.

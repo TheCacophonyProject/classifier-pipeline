@@ -739,7 +739,7 @@ def frame_to_img(frame, filename, colourmap_file, min, max):
 
 
 def _load_colourmap(colourmap_path):
-    if not os.path.exists(colourmap_path):
+    if colourmap_path is None or not os.path.exists(colourmap_path):
         colourmap_path = resource_path("colourmap.dat")
     return load_colourmap(colourmap_path)
 

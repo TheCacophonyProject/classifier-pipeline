@@ -42,7 +42,7 @@ class Clip:
 
     def __init__(self, trackconfig, cache_to_disk=False, calc_flow=False):
         self._id = None
-        self.preview_secs = None
+        self.preview_frames = None
         self.from_metadata = False
         self.background_is_preview = trackconfig.background_calc == Clip.PREVIEW
         self.config = trackconfig
@@ -94,12 +94,16 @@ class Clip:
         with open(filename, "rb") as f:
             reader = CPTVReader(f)
             self.video_start_time = reader.timestamp.astimezone(Clip.local_tz)
-            self.preview_secs = reader.preview_secs
+            self.preview_frames = (
+                reader.preview_secs * self.frames_per_second - self.config.ignore_frames
+            )
             self.set_video_stats()
             # we need to load the entire video so we can analyse the background.
             edge = self.config.edge_pixels
             res_x = reader.x_resolution
             res_y = reader.y_resolution
+            edge = self.config.edge_pixels
+
             crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
             self.track_extractor.crop_rectangle = crop_rectangle
             if self.background_is_preview:
@@ -166,7 +170,9 @@ class Clip:
 
     def start_and_end_time_absolute(self, start_s=0, end_s=None):
         if not end_s:
-            end_s = len(self.frames) / self.frames_per_second
+            end_s = (
+                len(self.track_extractor.frame_buffer.frames) / self.frames_per_second
+            )
         return (
             self.video_start_time + datetime.timedelta(seconds=start_s),
             self.video_start_time + datetime.timedelta(seconds=end_s),
@@ -213,11 +219,10 @@ class ClipTrackExtractor:
         self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
 
     def process_frame(self, frame):
-        if self.clip.preview_secs > 0 and self.frame_on < self.clip.preview_secs:
+        if self.clip.preview_frames > 0 and self.frame_on < self.clip.preview_frames:
             self._calculate_preview_from_frame(frame)
         else:
             self._process_frame(frame, self.frame_on, self.background)
-
         self.frame_on += 1
 
     def _calculate_preview_from_frame(self, frame):
@@ -227,19 +232,15 @@ class ClipTrackExtractor:
         else:
             self.background = np.minimum(self.background, frame)
 
-        if self.frame_on == (self.clip.preview_secs - 1):
+        if self.frame_on == (self.clip.preview_frames - 1):
             self.stats.mean_background_value = np.average(self.background)
             self.set_config_from_background()
             for i, back_frame in enumerate(self.preview_frames):
                 self._process_frame(back_frame, i, self.background)
-
             self.preview_frames = None
 
     def _background_from_preview(self, frame_list):
-        number_frames = (
-            self.clip.preview_secs * self.clip.frames_per_second
-            - self.clip.config.ignore_frames
-        )
+        number_frames = self.clip.preview_frames
         if not number_frames < len(frame_list):
             logging.error("Video consists entirely of preview")
             number_frames = len(frame_list)
@@ -263,7 +264,7 @@ class ClipTrackExtractor:
         background = self._background_from_whole_clip(frames)
 
         if self.clip.background_is_preview:
-            if self.clip.preview_secs > 0:
+            if self.clip.preview_frames > 0:
                 # background np.int32[][]
                 background = self._background_from_preview(frames)
             else:
@@ -339,22 +340,26 @@ class ClipTrackExtractor:
         :param background: (optional) used for background subtraction
         :return: the filtered frame
         """
+
+        # has to be a signed int so we dont get overflow
+        filtered = np.float32(thermal.copy())
         if background is None:
-            filtered = thermal - np.median(thermal) - 40
+            filtered = filtered - np.median(filtered) - 40
             filtered[filtered < 0] = 0
         elif self.clip.background_is_preview:
             avg_change = int(
                 round(np.average(thermal) - self.stats.mean_background_value)
             )
-            filtered = thermal.copy()
             filtered[filtered < self.stats.temp_thresh] = 0
             filtered = filtered - background - avg_change
+            # filtered[filtered < 0] = 0
         else:
-            filtered = thermal - background
+            filtered = filtered - background
             filtered[filtered < 0] = 0
             filtered = filtered - np.median(filtered)
             filtered[filtered < 0] = 0
-        return np.uint16(filtered)
+
+        return filtered
 
     def _process_frame(self, thermal, frame_number, background=None):
         """
@@ -387,7 +392,6 @@ class ClipTrackExtractor:
         labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(dilated)
 
         mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
-
         self.stats.add_frame(thermal, filtered)
         # save history
         prev_filtered = self.frame_buffer.get_last_filtered()
@@ -397,7 +401,6 @@ class ClipTrackExtractor:
                 if frame_number in track.frame_list:
                     track.add_frame(
                         self.frame_buffer.get_last_frame(),
-                        self.frame_buffer,
                         self.threshold,
                         prev_filtered,
                     )
@@ -462,6 +465,7 @@ class ClipTrackExtractor:
 
             track = Track(self.clip.get_id())
             track.start_frame = frame_number
+            track.start_s = frame_number * self.clip.frames_per_second
             track.add_frame_from_region(region, self.frame_buffer.prev_frame)
             new_tracks.append(track)
             self.active_tracks.append(track)
@@ -670,7 +674,6 @@ class ClipStats:
 
     def __init__(self):
         self.mean_background_value = 0
-        self.average_delta = None
         self.max_temp = None
         self.min_temp = None
         self.mean_temp = None

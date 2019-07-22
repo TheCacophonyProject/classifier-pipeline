@@ -111,7 +111,8 @@ class TrackDatabase:
                 group_attrs["frame_temp_median"] = clip.stats.frame_stats_median
                 group_attrs["frame_temp_mean"] = clip.stats.frame_stats_mean
 
-                group_attrs["device"] = clip.device
+                if clip.device:
+                    group_attrs["device"] = clip.device
                 group_attrs["frames_per_second"] = clip.frames_per_second
                 if clip.location:
                     group_attrs["location"] = clip.location
@@ -253,7 +254,8 @@ class TrackDatabase:
                 node_attrs["frames"] = frames
                 node_attrs["start_frame"] = track.start_frame
                 node_attrs["end_frame"] = track.end_frame
-                node_attrs["confidence"] = track.confidence
+                if track.confidence:
+                    node_attrs["confidence"] = track.confidence
                 if start_time:
                     node_attrs["start_time"] = start_time.isoformat()
                 if end_time:

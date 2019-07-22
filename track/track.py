@@ -120,7 +120,7 @@ class Track:
         self.end_frame = region.frame_number
         self.current_frame += 1
 
-    def add_frame(self, frame, buffer_frame, mass_delta_threshold, prev_filtered):
+    def add_frame(self, frame, mass_delta_threshold, prev_filtered):
 
         region = self.bounds_history[self.current_frame]
         if prev_filtered is not None:
@@ -133,8 +133,8 @@ class Track:
         region.calculate_mass(filtered, mass_delta_threshold)
         region.calculate_variance(filtered, prev_filtered)
 
-        if self.prev_frame and buffer_frame.frame_number:
-            frame_diff = buffer_frame.frame_number - self.prev_frame - 1
+        if self.prev_frame and frame.frame_number:
+            frame_diff = frame.frame_number - self.prev_frame - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
 
@@ -144,7 +144,7 @@ class Track:
         else:
             self.vel_x = self.vel_y = 0
 
-        self.prev_frame = buffer_frame.frame_number
+        self.prev_frame = frame.frame_number
         self.current_frame += 1
 
         # if not self.include_filtered_channel:
@@ -345,7 +345,7 @@ class Track:
     def crop_by_region(self, frame, region, clip_flow=True):
         thermal = region.subimage(frame.thermal)
         filtered = region.subimage(frame.filtered)
-        if frame.flow.any():
+        if frame.flow is not None:
             flow_h = region.subimage(frame.flow_h)
             flow_v = region.subimage(frame.flow_v)
             if clip_flow and not frame.flow_clipped:
@@ -355,15 +355,14 @@ class Track:
             flow_h = None
             flow_v = None
 
-        mask = region.subimage(frame.mask)
-
+        mask = region.subimage(frame.mask).copy()
         # make sure only our pixels are included in the mask.
         mask[mask != region.id] = 0
         mask[mask > 0] = 1
 
         # stack together into a numpy array.
         # by using int16 we lose a little precision on the filtered frames, but not much (only 1 bit)
-        if flow_h.any() and flow_v.any():
+        if flow_h is not None and flow_v is not None:
             return np.int16(np.stack((thermal, filtered, flow_h, flow_v, mask), axis=0))
         else:
             return np.int16(np.stack((thermal, filtered, mask), axis=0))

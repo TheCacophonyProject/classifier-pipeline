@@ -89,16 +89,18 @@ class ClipClassifier(CPTVFileProcessor):
         state = None
         print(
             "track {} has {} frames and {} data".format(
-                track.get_id(), len(track), len(track.track_data)
+                track.get_id(), len(track), len(track)
             )
         )
 
-        for i in range(len(track)):
-            frame_number = track.start_frame + i
+        for i, region in enumerate(track.bounds_history):
+            frame = clip.track_extractor.frame_buffer.get_frame(region.frame_number)
+            track_data = track.crop_by_region(frame, region)
+
             # note: would be much better for the tracker to store the thermal references as it goes.
-            frame = clip.frame_buffer.get_frame(frame_number)
-            thermal_reference = np.median(frame[0])
-            track_data = track.crop_by_region_at_trackframe(frame, i)
+            # frame = clip.frame_buffer.get_frame(frame_number)
+            thermal_reference = np.median(frame.thermal)
+            # track_data = track.crop_by_region_at_trackframe(frame, i)
             if i % self.FRAME_SKIP == 0:
                 # we use a tigher cropping here so we disable the default 2 pixel inset
                 frames = Preprocessor.apply(
@@ -106,7 +108,7 @@ class ClipClassifier(CPTVFileProcessor):
                 )
 
                 if frames is None:
-                    logging.info("Frame {} of track could not be classified.".format(i))
+                    logging.info("Frame {} of track could not be classified.".format(region.frame_number))
                     return
 
                 frame = frames[0]
@@ -125,7 +127,7 @@ class ClipClassifier(CPTVFileProcessor):
 
                 # precondition on weight,  segments with small mass are weighted less as we can assume the error is
                 # higher here.
-                mass = track.bounds_history[i].mass
+                mass = region.mass
 
                 # we use the square-root here as the mass is in units squared.
                 # this effectively means we are giving weight based on the diameter
@@ -133,7 +135,7 @@ class ClipClassifier(CPTVFileProcessor):
                 mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
 
                 # cropped frames don't do so well so restrict their score
-                cropped_weight = 0.7 if track.bounds_history[i].was_cropped else 1.0
+                cropped_weight = 0.7 if region.was_cropped else 1.0
 
                 prediction *= mass_weight * cropped_weight
 
@@ -242,9 +244,8 @@ class ClipClassifier(CPTVFileProcessor):
         logging.info("Processing file '{}'".format(filename))
 
         start = time.time()
-        clip = Clip(self.tracker_config, self.cache_to_disk)
-        clip.load_cptv(filename)
-        clip.extract_tracks()
+        clip = Clip(self.tracker_config, self.cache_to_disk, self.config.use_opt_flow)
+        clip.parse_clip(filename)
 
         classify_name = self.get_classify_filename(filename)
         destination_folder = os.path.dirname(classify_name)
@@ -263,7 +264,7 @@ class ClipClassifier(CPTVFileProcessor):
         logging.info(os.path.basename(filename) + ":")
 
         # identify each track
-        for i, track in enumerate(clip.tracks):
+        for i, track in enumerate(clip.track_extractor.tracks):
 
             prediction = self.identify_track(clip, track)
 
@@ -272,7 +273,7 @@ class ClipClassifier(CPTVFileProcessor):
             description = prediction.description(self.classifier.labels)
 
             logging.info(
-                " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
+                " - [{}/{}] prediction: {}".format(i + 1, len(clip.track_extractor.tracks), description)
             )
 
         if self.previewer:
@@ -291,7 +292,7 @@ class ClipClassifier(CPTVFileProcessor):
 
         if self.tracker_config.verbose:
             ms_per_frame = (
-                (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.thermal))
+                (time.time() - start) * 1000 / max(1, len(clip.track_extractor.frame_buffer.frames))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
 
