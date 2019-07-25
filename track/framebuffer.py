@@ -112,20 +112,16 @@ class FrameBuffer:
         self.opt_flow = None
         self.high_quality_flow = high_quality_flow
         self.frames = None
-        # self.thermal = None
-        # self.filtered = None
-        # self.delta = None
-        # self.mask = None
-        # self.flow = None
         self.frame_number = 0
         self.prev_frame = None
         self.calc_flow = calc_flow
         if cache_to_disk or calc_flow:
             self.set_optical_flow()
         self.reset()
-
+        
     def set_optical_flow(self):
-        self.opt_flow = get_optical_flow_function(self.high_quality_flow)
+        if self.opt_flow is None:
+            self.opt_flow = get_optical_flow_function(self.high_quality_flow)
 
     def add_frame(self, thermal, filtered, mask):
         frame = Frame(thermal, filtered, mask, self.frame_number)

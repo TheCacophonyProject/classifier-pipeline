@@ -119,13 +119,13 @@ class Previewer:
 
         if (
             self.preview_type == self.PREVIEW_TRACKING
-            and not clip.track_extractor.frame_buffer.has_flow
+            and not clip.frame_buffer.has_flow
         ):
-            clip.generate_optical_flow()
+            clip.frame_buffer.generate_optical_flow()
 
         mpeg = MPEGCreator(filename)
 
-        for frame_number, frame in enumerate(clip.track_extractor.frame_buffer.frames):
+        for frame_number, frame in enumerate(clip.frame_buffer.frames):
             if self.preview_type == self.PREVIEW_RAW:
                 image = self.convert_and_resize(frame.thermal)
 
@@ -158,17 +158,14 @@ class Previewer:
                 #     colours=Previewer.FILTERED_COLOURS,
                 #     tracks_text=filtered_reasons,
                 # )
-                self.add_tracks(draw, clip.track_extractor.tracks, frame_number)
+                self.add_tracks(draw, clip.tracks, frame_number)
 
             if self.preview_type == self.PREVIEW_BOXES:
                 image = self.convert_and_resize(frame.thermal, 4.0)
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(
-                    draw,
-                    clip.track_extractor.tracks,
-                    frame_number,
-                    colours=[(128, 255, 255)],
+                    draw, clip.tracks, frame_number, colours=[(128, 255, 255)]
                 )
 
             if self.preview_type == self.PREVIEW_CLASSIFIED:
@@ -177,7 +174,7 @@ class Previewer:
                 screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(
                     draw,
-                    clip.track_extractor.tracks,
+                    clip.tracks,
                     frame_number,
                     track_predictions,
                     screen_bounds,
@@ -190,7 +187,7 @@ class Previewer:
             if frame_number > clip.frames_per_second * 60 * 10:
                 break
 
-        clip.track_extractor.frame_buffer.close_cache()
+        clip.frame_buffer.close_cache()
         mpeg.close()
 
     def create_individual_track_previews(self, filename, clip: Clip):
@@ -200,12 +197,11 @@ class Previewer:
 
         FRAME_SIZE = 4 * 48
         frame_width, frame_height = FRAME_SIZE, FRAME_SIZE
-        frame_buffer = clip.track_extractor.frame_buffer
 
-        for id, track in enumerate(clip.track_extractor.tracks):
+        for id, track in enumerate(clip.tracks):
             video_frames = []
             for region in track.bounds_history:
-                frame = clip.track_extractor.frame_buffer.get_frame(region.frame_number)
+                frame = clip.frame_buffer.get_frame(region.frame_number)
                 frame = track.crop_by_region(frame, region)
                 img = tools.convert_heat_to_img(
                     frame[TrackChannels.thermal], self.colourmap, 0, 350

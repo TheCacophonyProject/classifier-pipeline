@@ -8,7 +8,7 @@ from datetime import datetime
 import numpy as np
 
 from classify.trackprediction import TrackPrediction
-from load.clip import Clip
+from load.clip import Clip, ClipTrackExtractor
 from ml_tools import tools
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 import ml_tools.globals as globs
@@ -39,6 +39,12 @@ class ClipClassifier(CPTVFileProcessor):
         self.cache_to_disk = self.config.classify.cache_to_disk
         # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
         self.enable_per_track_information = False
+        self.track_extractor = ClipTrackExtractor(
+            self.config.tracking,
+            self.config.use_opt_flow
+            or config.classify.preview == Previewer.PREVIEW_TRACKING,
+            self.config.classify.cache_to_disk,
+        )
 
     def preprocess(self, frame, thermal_reference):
         """
@@ -94,7 +100,7 @@ class ClipClassifier(CPTVFileProcessor):
         )
 
         for i, region in enumerate(track.bounds_history):
-            frame = clip.track_extractor.frame_buffer.get_frame(region.frame_number)
+            frame = clip.frame_buffer.get_frame(region.frame_number)
             track_data = track.crop_by_region(frame, region)
 
             # note: would be much better for the tracker to store the thermal references as it goes.
@@ -108,7 +114,11 @@ class ClipClassifier(CPTVFileProcessor):
                 )
 
                 if frames is None:
-                    logging.info("Frame {} of track could not be classified.".format(region.frame_number))
+                    logging.info(
+                        "Frame {} of track could not be classified.".format(
+                            region.frame_number
+                        )
+                    )
                     return
 
                 frame = frames[0]
@@ -244,8 +254,8 @@ class ClipClassifier(CPTVFileProcessor):
         logging.info("Processing file '{}'".format(filename))
 
         start = time.time()
-        clip = Clip(self.tracker_config, self.cache_to_disk, self.config.use_opt_flow)
-        clip.parse_clip(filename)
+        clip = Clip(self.tracker_config, filename)
+        self.track_extractor.parse_clip(clip)
 
         classify_name = self.get_classify_filename(filename)
         destination_folder = os.path.dirname(classify_name)
@@ -264,7 +274,7 @@ class ClipClassifier(CPTVFileProcessor):
         logging.info(os.path.basename(filename) + ":")
 
         # identify each track
-        for i, track in enumerate(clip.track_extractor.tracks):
+        for i, track in enumerate(clip.tracks):
 
             prediction = self.identify_track(clip, track)
 
@@ -273,7 +283,7 @@ class ClipClassifier(CPTVFileProcessor):
             description = prediction.description(self.classifier.labels)
 
             logging.info(
-                " - [{}/{}] prediction: {}".format(i + 1, len(clip.track_extractor.tracks), description)
+                " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
             )
 
         if self.previewer:
@@ -292,7 +302,7 @@ class ClipClassifier(CPTVFileProcessor):
 
         if self.tracker_config.verbose:
             ms_per_frame = (
-                (time.time() - start) * 1000 / max(1, len(clip.track_extractor.frame_buffer.frames))
+                (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
 

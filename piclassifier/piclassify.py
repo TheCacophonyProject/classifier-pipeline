@@ -96,24 +96,22 @@ class PiClassifier:
         except ValueError:
             self.fp_index = None
 
-        self.clip = Clip(
-            self.config.tracking, self.cache_to_disk, self.config.use_opt_flow
-        )
+        self.clip = Clip(self.config.tracking, "stream")
 
-        self.clip.preview_frames = 7
-        self.clip.track_extractor = ClipTrackExtractor(
-            self.clip,
+        self.track_extractor = ClipTrackExtractor(
             self.config.tracking,
-            self.cache_to_disk,
-            False,
-            self.config.tracking.high_quality_optical_flow,
+            self.config.use_opt_flow,
+            self.config.classify.cache_to_disk,
         )
+        self.clip.num_preview_frames = 7
+
         edge = self.config.tracking.edge_pixels
         res_x = 160
         res_y = 120
         crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
-
-        self.clip.track_extractor.crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
+        self.clip.crop_rectangle = Rectangle(
+            edge, edge, res_x - 2 * edge, res_y - 2 * edge
+        )
 
     def identify_last_frame(self):
         """
@@ -131,8 +129,8 @@ class PiClassifier:
         prediction = 0.0
         novelty = 0.0
 
-        active_tracks = self.clip.track_extractor.active_tracks
-        frame = self.clip.track_extractor.frame_buffer.get_last_frame()
+        active_tracks = self.clip.active_tracks
+        frame = self.clip.frame_buffer.get_last_frame()
         if frame is None:
             return
         thermal_reference = np.median(frame.thermal)
@@ -222,7 +220,7 @@ class PiClassifier:
         :param enable_preview: if true an MPEG preview file is created.
         """
         print("processing")
-        self.clip.track_extractor.process_frame(thermal_frame)
+        self.track_extractor.process_frame(self.clip, thermal_frame)
         self.identify_last_frame()
         for key, value in self.prediction_per_track.items():
             print(f"Track {key} is {value.get_prediction(self.classifier.labels)}")

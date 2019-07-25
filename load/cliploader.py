@@ -29,7 +29,7 @@ from ml_tools import trackdatabase
 from ml_tools.trackdatabase import TrackDatabase
 
 from ml_tools.previewer import Previewer
-from .clip import Clip
+from .clip import Clip, ClipTrackExtractor
 from track.track import Track
 
 
@@ -53,6 +53,13 @@ class ClipLoader:
         # number of threads to use when processing jobs.
         self.workers_threads = config.worker_threads
         self.previewer = Previewer.create_if_required(config, config.load.preview)
+        self.track_extractor = ClipTrackExtractor(
+            self.config.tracking,
+            self.config.use_opt_flow
+            or config.load.preview == Previewer.PREVIEW_TRACKING,
+            self.config.load.cache_to_disk,
+        )
+
     def process_all(self, root=None):
         if root is None:
             root = self.config.source_folder
@@ -98,14 +105,14 @@ class ClipLoader:
         # that we have processed it.
         self.database.create_clip(clip)
 
-        for track in clip.track_extractor.tracks:
+        for track in clip.tracks:
             start_time, end_time = clip.start_and_end_time_absolute(
                 track.start_s, track.end_s
             )
 
             track_data = []
             for region in track.bounds_history:
-                frame = clip.track_extractor.frame_buffer.get_frame(region.frame_number)
+                frame = clip.frame_buffer.get_frame(region.frame_number)
                 frame = track.crop_by_region(frame, region)
                 # zero out the filtered channel
                 if not self.config.load.include_filtered_channel:
@@ -182,15 +189,15 @@ class ClipLoader:
             logging.error("No valid track data found for %s", filename)
             return
 
-        clip = Clip(
-            self.track_config, self.config.load.cache_to_disk, self.config.use_opt_flow
-        )
-        clip.parse_clip_meta(
-            filename,
+        clip = Clip(self.track_config, filename)
+        clip.load_metadata(
             metadata,
             self.config.load.include_filtered_channel,
             self.config.load.tag_precedence,
         )
+
+        self.track_extractor.parse_clip(clip)
+        # , self.config.load.cache_to_disk, self.config.use_opt_flow
 
         if self.track_config.enable_track_output:
             self._export_tracks(filename, clip)
@@ -203,11 +210,11 @@ class ClipLoader:
             self.previewer.export_clip_preview(preview_filename, clip)
 
         if self.track_config.verbose:
-            num_frames = len(clip.track_extractor.frame_buffer.frames)
+            num_frames = len(clip.frame_buffer.frames)
             ms_per_frame = (time.time() - start) * 1000 / max(1, num_frames)
             self._log_message(
                 "Tracks {}.  Frames: {}, Took {:.1f}ms per frame".format(
-                    len(clip.track_extractor.tracks), num_frames, ms_per_frame
+                    len(clip.tracks), num_frames, ms_per_frame
                 )
             )
 
