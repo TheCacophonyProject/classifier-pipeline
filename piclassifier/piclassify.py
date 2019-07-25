@@ -51,8 +51,6 @@ def main():
     classifier = get_classifier(config)
 
     clip_classifier = PiClassifier(config, config.classify_tracking, classifier)
-
-    clip = Clip(config.tracking, config.load.cache_to_disk, config.use_opt_flow)
     img_dtype = np.uint16
     i = 0
     try:
@@ -108,9 +106,11 @@ class PiClassifier:
         edge = self.config.tracking.edge_pixels
         res_x = 160
         res_y = 120
-        crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
-        self.clip.crop_rectangle = Rectangle(
-            edge, edge, res_x - 2 * edge, res_y - 2 * edge
+        self.clip.set_crop_rectangle(res_x, res_y)
+        self.clip.set_frame_buffer(
+            tracking_config.high_quality_optical_flow,
+            self.cache_to_disk,
+            config.use_opt_flow,
         )
 
     def identify_last_frame(self):

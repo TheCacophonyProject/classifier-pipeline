@@ -140,6 +140,16 @@ class Clip:
 
         return (track.start_s, track.end_s)
 
+    def set_frame_buffer(self, high_quality_flow, cache_to_disk, use_flow):
+        self.frame_buffer = FrameBuffer(
+            self.source_file, high_quality_flow, cache_to_disk, use_flow
+        )
+
+    def set_crop_rectangle(self, res_x, res_y):
+
+        edge = self.config.edge_pixels
+        self.crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
+
     def start_and_end_time_absolute(self, start_s=0, end_s=None):
         if not end_s:
             end_s = len(self.frame_buffer.frames) / self.frames_per_second
@@ -172,11 +182,8 @@ class ClipTrackExtractor:
         Loads a cptv file, and prepares for track extraction.
         """
 
-        clip.frame_buffer = FrameBuffer(
-            clip.source_file,
-            self.config.high_quality_optical_flow,
-            self.cache_to_disk,
-            self.use_opt_flow,
+        clip.set_frame_buffer(
+            self.config.high_quality_optical_flow, self.cache_to_disk, self.use_opt_flow
         )
 
         res_x = None
@@ -186,11 +193,7 @@ class ClipTrackExtractor:
             reader = CPTVReader(f)
             res_x = reader.x_resolution
             res_y = reader.y_resolution
-            edge = self.config.edge_pixels
-            clip.crop_rectangle = Rectangle(
-                edge, edge, res_x - 2 * edge, res_y - 2 * edge
-            )
-
+            clip.set_crop_rectangle(res_x, res_y)
             video_start_time = reader.timestamp.astimezone(Clip.local_tz)
             clip.num_preview_frames = (
                 reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
