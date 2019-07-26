@@ -365,7 +365,7 @@ class Track:
         if flow_h is not None and flow_v is not None:
             return np.int16(np.stack((thermal, filtered, flow_h, flow_v, mask), axis=0))
         else:
-            return np.int16(np.stack((thermal, filtered, mask), axis=0))
+            return np.int16(np.stack((thermal, filtered, filtered, filtered, mask), axis=0))
         return frame
 
     @property
