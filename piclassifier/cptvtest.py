@@ -17,7 +17,7 @@ def send_cptv(filename, connection):
         reader = CPTVReader(f)
         for i, frame in enumerate(reader):
             connection.sendall(frame.pix)
-            print(f"sending frame {i}")
+            print("sending frame {}".format(i))
 
 
 # Make sure the socket does not already exist

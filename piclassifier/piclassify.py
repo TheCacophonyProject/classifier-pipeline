@@ -60,7 +60,7 @@ def main():
             thermal_frame = np.empty((120, 160), dtype=img_dtype)
             p = sock.recv_into(thermal_frame, 0, socket.MSG_WAITALL)
             if p != 120 * 160 * 2:
-                print(f"got{p} expecting {120 * 160 * 2}")
+                print("got{} expecting {}".format(p, 120 * 160 * 2))
             else:
                 clip_classifier.process_frame(thermal_frame)
     finally:
@@ -78,7 +78,7 @@ class PiClassifier:
         """ Create an instance of a clip classifier"""
         # prediction record for each track
         self.config = config
-        self.track_prediction: Dict[Track, TrackPrediction] = {}
+        self.track_prediction = {}
         self.classifier = classifier
         self.previewer = Previewer.create_if_required(config, config.classify.preview)
         self.num_labels = len(classifier.labels)
@@ -134,7 +134,7 @@ class PiClassifier:
         if frame is None:
             return
         thermal_reference = np.median(frame.thermal)
-        print(f"active tracks {len(active_tracks)}")
+        print("active tracks {}".format(len(active_tracks)))
         for i, track in enumerate(active_tracks):
             track_prediction = self.prediction_per_track.setdefault(
                 track.get_id(), RollingTrackPrediction(track.get_id())
@@ -223,4 +223,8 @@ class PiClassifier:
         self.track_extractor.process_frame(self.clip, thermal_frame)
         self.identify_last_frame()
         for key, value in self.prediction_per_track.items():
-            print(f"Track {key} is {value.get_prediction(self.classifier.labels)}")
+            print(
+                "Track {} is {}".format(
+                    key, value.get_prediction(self.classifier.labels)
+                )
+            )

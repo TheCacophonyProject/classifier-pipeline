@@ -750,7 +750,7 @@ def resource_path(name):
         p = os.path.join(base, name)
         if os.path.exists(p):
             return p
-    raise OSError(f"unable to locate {name!r} resource")
+    raise OSError("unable to locate {} resource".format(name))
 
 
 def add_heat_number(img, frame, scale):

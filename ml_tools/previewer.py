@@ -173,11 +173,7 @@ class Previewer:
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(
-                    draw,
-                    clip.tracks,
-                    frame_number,
-                    track_predictions,
-                    screen_bounds,
+                    draw, clip.tracks, frame_number, track_predictions, screen_bounds
                 )
             if self.debug:
                 self.add_footer(draw, image.width, image.height, footer)
@@ -322,9 +318,11 @@ class Previewer:
         self, draw, track, frame_offset, region, screen_bounds, text=None, v_offset=0
     ):
         if text is None:
-            text = f"id {track.get_id()}"
+            text = "id {}".format(track.get_id())
             if region.pixel_variance:
-                text += f" mass {region.mass} var {round(region.pixel_variance,2)}"
+                text += "mass {} var {}".format(
+                    region.mass, round(region.pixel_variance, 2)
+                )
         footer_size = self.font.getsize(text)
         footer_center = ((region.width * self.frame_scale) - footer_size[0]) / 2
 
