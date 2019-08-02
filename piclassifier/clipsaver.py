@@ -3,15 +3,16 @@ import h5py
 import numpy as np
 import time
 import os
+from pathlib import Path
 from datetime import datetime
 
 
 class ClipSaver:
     def __init__(self, name, keep_open=True, delete_if_exists=True):
-        basename = os.path.splitext(name)[0] + datetime.now().strftime(
-            "%Y-%m-%d-%H%M%S"
+
+        self.filename = Path(__file__).parent / (
+            name + datetime.now().strftime("%Y-%m-%d-%H%M%S") + ".h5py"
         )
-        self.filename = basename + ".h5py"
         self.db = None
         self.keep_open = keep_open
 
