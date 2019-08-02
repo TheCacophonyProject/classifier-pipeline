@@ -11,8 +11,7 @@ class ClipSaver:
     def __init__(self, name, keep_open=True, delete_if_exists=True):
 
         file = name + datetime.now().strftime("%Y-%m-%d-%H%M%S") + ".h5py"
-        self.filename = os.path.join(Path(__file__).parent.resolve(), file)
-        print(self.filename)
+        self.filename = os.path.join(os.path.dirname(os.path.realpath(__file__)), file)
         self.db = None
         self.keep_open = keep_open
 
