@@ -69,6 +69,9 @@ class Track:
         self.prev_frame = None
         self.include_filtered_channel = True
         self.confidence = None
+        self.max_novelty = None
+        self.avg_novelty = None
+
         self.from_metadata = False
         self.track_tags = None
 
@@ -365,7 +368,8 @@ class Track:
         if flow_h is not None and flow_v is not None:
             return np.int16(np.stack((thermal, filtered, flow_h, flow_v, mask), axis=0))
         else:
-            return np.int16(np.stack((thermal, filtered, filtered, filtered, mask), axis=0))
+            empty = np.zeros(filtered.shape)
+            return np.int16(np.stack((thermal, filtered,empty,empty, mask), axis=0))
         return frame
 
     @property

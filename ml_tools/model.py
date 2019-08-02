@@ -923,6 +923,7 @@ class Model:
 
         # attach to IO tensors
         self.X = self.get_tensor("X")
+
         self.y = self.get_tensor("y")
         self.keep_prob = self.get_tensor("keep_prob")
         self.is_training = self.get_tensor("training")
@@ -973,6 +974,30 @@ class Model:
 
         batch_X = frame[np.newaxis, np.newaxis, :]
 
+        # partitions = [1, 1, 1, 48, 48]
+        # num_partitions = 5
+        # partitioned = tf.dynamic_partition(
+        #     self.X, partitions, num_partitions, name="dynamic_unstack"
+        # )
+        # print(len(partitioned))
+        # print(partitioned[2])
+
+        # # a_new = tf.concat(partitioned[0],partitioned[1], partitioned[4])
+        # del partitioned[2]
+        # del partitioned[3]
+        # # print(batch_X.shape)
+        # # print(tf.shape(self.X))
+
+        # # therml, filtered,a, b, c = tf.split(self.X,[1,1,1,48,48])
+        # # print(tf.shape(therml.shape))
+
+        # # del a
+        # # del b
+        # # ok = tf.concat(therml, filtered, c)
+        # # print(tf.shape(therml.shape))
+        # self.X = tf.reshape(self.X, batch_X.shape, name=None)
+        # # print(tf.shape(self.X))
+        # # print(self.X.op)
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
         pred, novelty, state = self.session.run(
             [self.prediction, self.novelty, self.state_out], feed_dict=feed_dict

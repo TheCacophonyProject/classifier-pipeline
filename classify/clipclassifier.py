@@ -163,6 +163,7 @@ class ClipClassifier(CPTVFileProcessor):
                     1 - prediction_smooth
                 ) * smooth_novelty + prediction_smooth * novelty
 
+            print(max(smooth_prediction))
             predictions.append(smooth_prediction)
             novelties.append(smooth_novelty)
 

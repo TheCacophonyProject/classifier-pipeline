@@ -17,27 +17,24 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-
-import numpy as np
+import attr
 import cv2
-import h5py
 import numpy as np
 from ml_tools.framecache import FrameCache
 from ml_tools.dataset import TrackChannels
 from ml_tools.tools import get_optical_flow_function, get_clipped_flow
 
 
+@attr.s(slots=True)
 class Frame:
-    def __init__(
-        self, thermal, filtered, mask, frame_number, flow=None, flow_clipped=False
-    ):
-        self.thermal = thermal
-        self.filtered = filtered
-        self.frame_number = frame_number
-        self.mask = mask
-        self.flow = flow
-        self.scaled_thermal = None
-        self.flow_clipped = flow_clipped
+
+    thermal = attr.ib()
+    filtered = attr.ib()
+    mask = attr.ib()
+    frame_number = attr.ib()
+    flow = attr.ib(default=None)
+    flow_clipped = attr.ib(default=False)
+    scaled_thermal = attr.ib(default=None)
 
     @classmethod
     def from_array(cls, frame_arr, frame_number, flow_clipped=False):
@@ -107,7 +104,9 @@ class Frame:
 class FrameBuffer:
     """ Stores entire clip in memory, required for some operations such as track exporting. """
 
-    def __init__(self, cptv_name, high_quality_flow, cache_to_disk, calc_flow):
+    def __init__(
+        self, cptv_name, high_quality_flow, cache_to_disk, calc_flow, keep_frames
+    ):
         self.cache = FrameCache(cptv_name) if cache_to_disk else None
         self.opt_flow = None
         self.high_quality_flow = high_quality_flow
@@ -115,10 +114,11 @@ class FrameBuffer:
         self.frame_number = 0
         self.prev_frame = None
         self.calc_flow = calc_flow
+        self.keep_frames = keep_frames
         if cache_to_disk or calc_flow:
             self.set_optical_flow()
         self.reset()
-        
+
     def set_optical_flow(self):
         if self.opt_flow is None:
             self.opt_flow = get_optical_flow_function(self.high_quality_flow)
@@ -129,10 +129,11 @@ class FrameBuffer:
             frame.generate_optical_flow(self.opt_flow, self.prev_frame)
         self.prev_frame = frame
         self.frame_number += 1
-        if self.cache:
-            self.cache.add_frame(frame)
-        else:
-            self.frames.append(frame)
+        if self.keep_frames:
+            if self.cache:
+                self.cache.add_frame(frame)
+            else:
+                self.frames.append(frame)
 
     @property
     def has_flow(self):

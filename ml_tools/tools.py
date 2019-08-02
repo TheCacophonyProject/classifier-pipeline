@@ -17,6 +17,7 @@ import binascii
 import datetime
 import glob
 import cv2
+import timezonefinder
 from matplotlib.colors import LinearSegmentedColormap
 import subprocess
 from PIL import ImageFont
@@ -695,8 +696,8 @@ cm_blue_red = LinearSegmentedColormap("BlueRed2", color_dict)
 
 def calculate_mass(filtered, threshold):
     """Calculates mass of filtered frame with threshold applied"""
-    thresh = blur_and_return_as_mask(filtered, threshold=threshold)
-    return np.sum(thresh)
+    _, mass = blur_and_return_as_mask(filtered, threshold=threshold)
+    return mass
 
 
 def calculate_variance(filtered, prev_filtered):
@@ -713,11 +714,12 @@ def blur_and_return_as_mask(frame, threshold):
     Any pixels more than the threshold are set 1, all others are set to 0.
     A blur is also applied as a filtering step
     """
-
-    thresh = cv2.GaussianBlur(frame, (5, 5), 0) - threshold
-    thresh[thresh < 0] = 0
-    thresh[thresh > 0] = 1
-    return thresh
+    thresh = cv2.GaussianBlur(frame, (5, 5), 0)
+    thresh[thresh - threshold < 0] = 0
+    values = thresh[thresh > 0]
+    mass = len(values)
+    values = 1
+    return thresh, mass
 
 
 def get_optical_flow_function(high_quality=False):
@@ -732,7 +734,7 @@ def get_optical_flow_function(high_quality=False):
     return opt_flow
 
 
-def frame_to_img(frame, filename, colourmap_file, min, max):
+def frame_to_jpg(frame, filename, colourmap_file, min, max):
     colourmap = _load_colourmap(colourmap_file)
     img = convert_heat_to_img(frame, colourmap, min, max)
     img.save(filename + ".jpg", "JPEG")
@@ -755,8 +757,7 @@ def resource_path(name):
 
 def add_heat_number(img, frame, scale):
     draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype("FreeSans.ttf", 8)
-
+    font = ImageFont.truetype(resource_path("Ubuntu-R.ttf"), 8)
     for y, row in enumerate(frame):
         if y % 4 == 0:
             min_v = np.amin(row)
@@ -768,7 +769,20 @@ def add_heat_number(img, frame, scale):
 
 
 def eucl_distance(first, second):
-    return ((first[0] - second[0]) ** 2 + (first[1] - second[1]) ** 2) ** 0.5
+    first_sq = (first[0] - second[0]) ** 2
+    second_sq = (first[1] - second[1]) ** 2
+    return first_sq + second_sq
+    # return ((first[0] - second[0]) ** 2 + (first[1] - second[1]) ** 2) ** 0.5
+
 
 def get_clipped_flow(flow):
     return np.clip(flow * 256, -16000, 16000)
+
+
+def get_timezone_str(lat, lng):
+    tf = timezonefinder.TimezoneFinder()
+    timezone_str = tf.certain_timezone_at(lat=lat, lng=lng)
+
+    if timezone_str is None:
+        timezone_str = "Pacific/Auckland"
+    return timezone_str

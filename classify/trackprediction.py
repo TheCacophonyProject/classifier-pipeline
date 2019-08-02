@@ -12,9 +12,34 @@ class RollingTrackPrediction:
         self.class_best_score = []
         self.track_prediction = None
 
-    def get_prediction(self, classes):
+    def get_prediction(self, labels):
         self.track_prediction = TrackPrediction(self.predictions, self.novelties)
-        return self.track_prediction.description(classes)
+        return self.track_prediction.description(labels)
+
+    def get_classified_footer(self, labels):
+        # self.track_prediction = TrackPrediction(self.predictions, self.novelties)
+        class_best_score = np.max(self.predictions, axis=0).tolist()
+        score = max(class_best_score)
+        label = labels[np.argmax(class_best_score)]
+        max_novelty = max(self.novelties)
+        return "({:.1f} {})\nnovelty={:.2f}".format(score * 10, label, max_novelty)
+
+    def get_result(self, labels):
+        class_best_score = np.max(self.predictions, axis=0).tolist()
+        score = max(class_best_score)
+        label = labels[np.argmax(class_best_score)]
+        avg_novelty = sum(self.novelties) / len(self.novelties)
+        max_novelty = max(self.novelties)
+
+        return TrackResult(label, avg_novelty, max_novelty, score)
+
+
+class TrackResult:
+    def __init__(self, label, avg_novelty, max_novelty, score):
+        self.what = label
+        self.avg_novelty = avg_novelty
+        self.max_novelty = max_novelty
+        self.confidence = score
 
 
 class TrackPrediction:

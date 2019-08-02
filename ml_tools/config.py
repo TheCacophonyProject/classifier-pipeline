@@ -53,9 +53,9 @@ class Config(DefaultConfig):
         default = Config.get_defaults()
         if raw is None:
             raw = {}
-        deep_copy_map_if_key_not_exist(default.as_dict(), raw)
         # "tracking" params are overrides, add other parameters from "classify_tracking"
         deep_copy_map_if_key_not_exist(raw["tracking"], raw["classify_tracking"])
+        deep_copy_map_if_key_not_exist(default.as_dict(), raw)
 
         base_folder = raw.get("base_data_folder")
         if base_folder is None:
@@ -120,6 +120,7 @@ class Config(DefaultConfig):
 def find_config():
     for directory in CONFIG_DIRS:
         p = directory / CONFIG_FILENAME
+        print(p)
         if p.is_file():
             return str(p)
     raise FileNotFoundError(

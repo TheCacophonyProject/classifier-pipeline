@@ -39,9 +39,12 @@ class Clip:
     FRAMES_PER_SECOND = 9
     local_tz = pytz.timezone("Pacific/Auckland")
     VERSION = 7
+    CLIP_ID = 1
 
     def __init__(self, trackconfig, sourcefile):
-        self._id = None
+        self._id = Clip.CLIP_ID
+        Clip.CLIP_ID += 1
+
         self.frame_on = 0
         self.crop_rectangle = None
         self.num_preview_frames = 0
@@ -50,7 +53,6 @@ class Clip:
         self.active_tracks = []
         self.tracks = []
         self.filtered_tracks = []
-
         self.from_metadata = False
         self.background_is_preview = trackconfig.background_calc == Clip.PREVIEW
         self.config = trackconfig
@@ -69,6 +71,9 @@ class Clip:
         # this buffers store the entire video in memory and are required for fast track exporting
         self.device = None
         self.background = None
+        self.temp_thresh = self.config.temp_thresh
+        self.res_x = None
+        self.res_y = None
 
     def get_id(self):
         return str(self._id)
@@ -133,22 +138,29 @@ class Clip:
 
     def start_and_end_in_secs(self, track):
         if not track.start_s:
-            track.start_s = track.start_frame / self.frames_per_second
+            print("track start frame setting from {}".format(track.start_frame))
 
         if not track.end_s:
             track.end_s = (track.end_frame + 1) / self.frames_per_second
 
         return (track.start_s, track.end_s)
 
-    def set_frame_buffer(self, high_quality_flow, cache_to_disk, use_flow):
+    def set_frame_buffer(self, high_quality_flow, cache_to_disk, use_flow, keep_frames):
         self.frame_buffer = FrameBuffer(
-            self.source_file, high_quality_flow, cache_to_disk, use_flow
+            self.source_file, high_quality_flow, cache_to_disk, use_flow, keep_frames
         )
 
-    def set_crop_rectangle(self, res_x, res_y):
+    def set_res(self, res_x, res_y):
+        self.res_x = res_x
+        self.res_y = res_y
+        self._set_crop_rectangle()
+
+    def _set_crop_rectangle(self):
 
         edge = self.config.edge_pixels
-        self.crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
+        self.crop_rectangle = Rectangle(
+            edge, edge, self.res_x - 2 * edge, self.res_y - 2 * edge
+        )
 
     def start_and_end_time_absolute(self, start_s=0, end_s=None):
         if not end_s:
@@ -164,7 +176,9 @@ class Clip:
 
 
 class ClipTrackExtractor:
-    def __init__(self, config, use_opt_flow, cache_to_disk):
+    def __init__(
+        self, config, use_opt_flow, cache_to_disk, keep_frames=True, calc_stats=True
+    ):
 
         self.background = None
         self.config = config
@@ -176,6 +190,8 @@ class ClipTrackExtractor:
         self.frame_padding = max(3, self.config.frame_padding)
         # the dilation effectively also pads the frame so take it into consideration.
         self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
+        self.keep_frames = keep_frames
+        self.calc_stats = calc_stats
 
     def parse_clip(self, clip):
         """
@@ -183,17 +199,16 @@ class ClipTrackExtractor:
         """
 
         clip.set_frame_buffer(
-            self.config.high_quality_optical_flow, self.cache_to_disk, self.use_opt_flow
+            self.config.high_quality_optical_flow,
+            self.cache_to_disk,
+            self.use_opt_flow,
+            self.keep_frames,
         )
 
-        res_x = None
-        res_y = None
         # self.frame_buffer = FrameBuffer(filename, self.opt_flow, self.cache_to_disk)
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
-            res_x = reader.x_resolution
-            res_y = reader.y_resolution
-            clip.set_crop_rectangle(res_x, res_y)
+            clip.set_res(reader.x_resolution, reader.y_resolution)
             video_start_time = reader.timestamp.astimezone(Clip.local_tz)
             clip.num_preview_frames = (
                 reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
@@ -208,7 +223,8 @@ class ClipTrackExtractor:
             else:
                 self.process_frames([np.float32(frame.pix) for frame in reader])
 
-        clip.stats.completed(clip.frame_on, res_y, res_x)
+        if self.calc_stats:
+            clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
 
     def process_frame(self, clip, frame):
         if clip.num_preview_frames > 0 and clip.frame_on < clip.num_preview_frames:
@@ -226,6 +242,7 @@ class ClipTrackExtractor:
 
         if clip.frame_on == (clip.num_preview_frames - 1):
             clip.stats.mean_background_value = np.average(clip.background)
+
             clip.set_temp_thresh()
             for i, back_frame in enumerate(clip.preview_frames):
                 clip.frame_on = i
@@ -240,6 +257,7 @@ class ClipTrackExtractor:
         frames = frame_list[0:number_frames]
         clip.background = np.min(frames, axis=0)
         clip.background = np.int32(np.rint(clip.background))
+
         clip.stats.mean_background_value = np.average(clip.background)
         clip.set_temp_thresh()
 
@@ -262,12 +280,14 @@ class ClipTrackExtractor:
             self._process_frame(clip, frame, frame_number)
 
         if not clip.from_metadata:
-            self.filter_tracks(clip)
-            # apply smoothing if required
-            if self.config.track_smoothing and len(frames) > 0:
-                frame_height, frame_width = frames[0].shape
-                for track in clip.active_tracks:
-                    track.smooth(Rectangle(0, 0, frame_width, frame_height))
+            self.apply_track_filtering(clip)
+
+    def apply_track_filtering(self, clip):
+        self.filter_tracks(clip)
+        # apply smoothing if required
+        if self.config.track_smoothing and clip.frame_on > 0:
+            for track in clip.active_tracks:
+                track.smooth(Rectangle(0, 0, clip.res_x, clip.res_y))
 
     def _background_from_whole_clip(self, clip, frames):
         """
@@ -302,19 +322,23 @@ class ClipTrackExtractor:
         threshold = min(self.config.max_threshold, threshold)
 
         clip.threshold = threshold
-        clip.stats.threshold = threshold
-        clip.stats.temp_thresh = self.config.temp_thresh
-        clip.stats.average_delta = float(average_delta)
-        clip.stats.filtered_deviation = float(np.mean(np.abs(filtered)))
-        clip.stats.is_static_background = (
-            clip.stats.filtered_deviation < clip.config.static_background_threshold
-        )
+        if self.calc_stats:
+            clip.stats.threshold = threshold
+            clip.stats.temp_thresh = self.config.temp_thresh
+            clip.stats.average_delta = float(average_delta)
+            clip.stats.filtered_deviation = float(np.mean(np.abs(filtered)))
+            clip.stats.is_static_background = (
+                clip.stats.filtered_deviation < clip.config.static_background_threshold
+            )
 
-        if not clip.stats.is_static_background or clip.disable_background_subtraction:
-            clip.background = None
+            if (
+                not clip.stats.is_static_background
+                or clip.disable_background_subtraction
+            ):
+                clip.background = None
         clip.set_temp_thresh()
 
-    def _get_filtered_frame(self, clip, thermal, background=None):
+    def _get_filtered_frame(self, clip, thermal):
         """
         Calculates filtered frame from thermal
         :param thermal: the thermal frame
@@ -324,22 +348,19 @@ class ClipTrackExtractor:
 
         # has to be a signed int so we dont get overflow
         filtered = np.float32(thermal.copy())
-        if background is None:
+        if clip.background is None:
             filtered = filtered - np.median(filtered) - 40
             filtered[filtered < 0] = 0
         elif clip.background_is_preview:
             avg_change = int(
-                round(np.average(thermal) - self.stats.mean_background_value)
+                round(np.average(thermal) - clip.stats.mean_background_value)
             )
-            filtered[filtered < self.stats.temp_thresh] = 0
-            filtered = filtered - background - avg_change
-            # filtered[filtered < 0] = 0
+            filtered[filtered < clip.temp_thresh] = 0
+            np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
         else:
-            filtered = filtered - background
-            filtered[filtered < 0] = 0
+            filtered = filtered - clip.background
             filtered = filtered - np.median(filtered)
             filtered[filtered < 0] = 0
-
         return filtered
 
     def _process_frame(self, clip, thermal):
@@ -352,16 +373,16 @@ class ClipTrackExtractor:
 
         filtered = self._get_filtered_frame(clip, thermal)
         frame_height, frame_width = filtered.shape
-
+        # print(filtered)
         mask = np.zeros(filtered.shape)
         edge = self.config.edge_pixels
 
         # remove the edges of the frame as we know these pixels can be spurious value
         edgeless_filtered = clip.crop_rectangle.subimage(filtered)
-        thresh = np.uint8(
-            tools.blur_and_return_as_mask(edgeless_filtered, threshold=clip.threshold)
+        thresh, mass = tools.blur_and_return_as_mask(
+            edgeless_filtered, threshold=clip.threshold
         )
-
+        thresh = np.uint8(thresh)
         dilated = thresh
 
         # Dilation groups interested pixels that are near to each other into one component(animal/track)
@@ -373,7 +394,8 @@ class ClipTrackExtractor:
         labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(dilated)
 
         mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
-        clip.stats.add_frame(thermal, filtered)
+        if self.calc_stats:
+            clip.stats.add_frame(thermal, filtered)
         # save history
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.frame_buffer.add_frame(thermal, filtered, mask)
@@ -387,7 +409,7 @@ class ClipTrackExtractor:
                     )
         else:
             regions = self._get_regions_of_interest(
-                clip, labels, stats, thresh, filtered, prev_filtered
+                clip, labels, stats, thresh, filtered, prev_filtered, mass
             )
             clip.region_history.append(regions)
             self._apply_region_matchings(clip, regions)
@@ -407,25 +429,25 @@ class ClipTrackExtractor:
         matched_tracks = []
         for track in clip.active_tracks:
             for region in regions:
-                distance, size_change = track.get_track_region_score(
+                score, size_change = track.get_track_region_score(
                     region, self.config.moving_vel_thresh
                 )
 
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
-                max_distance = np.clip(7 * (track.last_mass ** 0.5), 30, 95)
+                max_distance = np.clip(7 * track.last_mass, 900, 9025)
                 max_size_change = np.clip(track.last_mass, 50, 500)
-                if distance > max_distance:
+                if score > max_distance:
                     continue
                 if size_change > max_size_change:
                     continue
-                scores.append((distance, track, region))
+                scores.append((score, track, region))
 
         scores.sort(key=lambda record: record[0])
 
         for (score, track, region) in scores:
             if track in matched_tracks or region in used_regions:
                 continue
-            track.add_frame_from_region(region, clip.frame_buffer.prev_frame)
+            track.add_frame_from_region(region, clip.frame_buffer.get_last_frame())
             matched_tracks.append(track)
             used_regions.append(region)
 
@@ -446,31 +468,28 @@ class ClipTrackExtractor:
 
             track = Track(clip.get_id())
             track.start_frame = clip.frame_on
-            track.start_s = clip.frame_on * clip.frames_per_second
-            track.add_frame_from_region(region, clip.frame_buffer.prev_frame)
+            track.start_s = clip.frame_on / float(clip.frames_per_second)
+            track.add_frame_from_region(region, clip.frame_buffer.get_last_frame())
             new_tracks.append(track)
             clip.active_tracks.append(track)
             clip.tracks.append(track)
 
-        # check if any tracks did not find a matched region
-        for track in [
-            track
-            for track in clip.active_tracks
-            if track not in matched_tracks and track not in new_tracks
-        ]:
-            # we lost this track.  start a count down, and if we don't get it back soon remove it
-            track.frames_since_target_seen += 1
-            track.add_blank_frame(clip.frame_buffer)
-
-        # remove any tracks that have not seen their target in a while
-        clip.active_tracks = [
-            track
-            for track in clip.active_tracks
-            if track.frames_since_target_seen < self.config.remove_track_after_frames
-        ]
+        still_active = []
+        for track in clip.active_tracks:
+            if track not in matched_tracks and track not in new_tracks:
+                track.frames_since_target_seen += 1
+                if (
+                    track.frames_since_target_seen
+                    < self.config.remove_track_after_frames
+                ):
+                    track.add_blank_frame(clip.frame_buffer)
+                    still_active.append(track)
+            else:
+                still_active.append(track)
+        clip.active_tracks = still_active
 
     def _get_regions_of_interest(
-        self, clip, labels, stats, thresh, filtered, prev_filtered
+        self, clip, labels, stats, thresh, filtered, prev_filtered, mass
     ):
         """
         Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
@@ -507,8 +526,8 @@ class ClipTrackExtractor:
             )
 
             # want the real mass calculated from before the dilation
-            region.mass = np.sum(region.subimage(thresh))
-
+            # region.mass = np.sum(region.subimage(thresh))
+            region.mass = mass
             # Add padding to region and change coordinates from edgeless image -> full image
             region.x += edge - padding
             region.y += edge - padding
@@ -690,10 +709,10 @@ class ClipStats:
         self.mean_temp = (height * width * sum(self.frame_stats_mean)) / float(total)
 
 
-def null_safe_compare(a, b, cmp):
+def null_safe_compare(a, b, cmp_fn):
     if a is None:
         return b
-    elif b:
-        return cmp(a, b)
+    elif b is not None:
+        return cmp_fn(a, b)
     else:
         return None

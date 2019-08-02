@@ -4,52 +4,35 @@ import socket
 import time
 import os
 from cptv import CPTVReader
+import sys
+import numpy as np
 
 SOCKET_NAME = "/var/run/lepton-frames"
 test_cptv = "test.cptv"
 
 
-def send_cptv(filename, connection):
+def send_cptv(filename, socket):
     """
     Loads a cptv file, and prepares for track extraction.
     """
     with open(filename, "rb") as f:
         reader = CPTVReader(f)
         for i, frame in enumerate(reader):
-            connection.sendall(frame.pix)
+            f = np.uint16(frame.pix).byteswap()
+
+            socket.sendall(f)
             print("sending frame {}".format(i))
 
 
-# Make sure the socket does not already exist
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+
 try:
-    os.unlink(SOCKET_NAME)
-except OSError:
-    if os.path.exists(SOCKET_NAME):
-        raise
-
-# Create a UDS socket
-sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-
-# Bind the socket to the address
-print("starting up on {}".format(SOCKET_NAME))
-sock.bind(SOCKET_NAME)
-
-# Listen for incoming connections
-sock.listen(1)
-
-while True:
-    # Wait for a connection
-    print("waiting for a connection")
-    connection, client_address = sock.accept()
-    try:
-        print("connection from", client_address)
-
-        # Receive the data in small chunks and retransmit it
-        # while True:
-        print("sending cptv file")
-        send_cptv(test_cptv, connection)
-        # time.sleep(20)
-
-    finally:
-        # Clean up the connection
-        connection.close()
+    sock.connect(SOCKET_NAME)
+    print("sending cptv file")
+    send_cptv(test_cptv, sock)
+except socket.error as msg:
+    print(msg)
+    sys.exit(1)
+finally:
+    # Clean up the connection
+    sock.close()

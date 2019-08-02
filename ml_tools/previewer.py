@@ -105,10 +105,7 @@ class Previewer:
 
         # increased resolution of video file.
         # videos look much better scaled up
-        if clip.stats:
-            self.auto_max = clip.stats.max_temp
-            self.auto_min = clip.stats.min_temp
-        else:
+        if not clip.stats:
             logging.error("Do not have temperatures to use.")
             return
 
@@ -127,11 +124,19 @@ class Previewer:
 
         for frame_number, frame in enumerate(clip.frame_buffer.frames):
             if self.preview_type == self.PREVIEW_RAW:
-                image = self.convert_and_resize(frame.thermal)
+                image = self.convert_and_resize(
+                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp
+                )
 
             if self.preview_type == self.PREVIEW_TRACKING:
-                image = self.create_four_tracking_image(frame)
-                image = self.convert_and_resize(image, 3.0, mode=Image.NEAREST)
+                image = self.create_four_tracking_image(frame, clip.stats.min_temp)
+                image = self.convert_and_resize(
+                    image,
+                    clip.stats.min_temp,
+                    clip.stats.max_temp,
+                    3.0,
+                    mode=Image.NEAREST,
+                )
                 draw = ImageDraw.Draw(image)
 
                 # old
@@ -161,7 +166,9 @@ class Previewer:
                 self.add_tracks(draw, clip.tracks, frame_number)
 
             if self.preview_type == self.PREVIEW_BOXES:
-                image = self.convert_and_resize(frame.thermal, 4.0)
+                image = self.convert_and_resize(
+                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp, 4.0
+                )
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(
@@ -169,7 +176,9 @@ class Previewer:
                 )
 
             if self.preview_type == self.PREVIEW_CLASSIFIED:
-                image = self.convert_and_resize(frame.thermal, 4.0)
+                image = self.convert_and_resize(
+                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp, 4.0
+                )
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(
@@ -208,12 +217,10 @@ class Previewer:
             logging.info("creating preview %s", filename_format.format(id + 1))
             tools.write_mpeg(filename_format.format(id + 1), video_frames)
 
-    def convert_and_resize(self, frame, size=None, mode=Image.BILINEAR):
+    def convert_and_resize(self, frame, h_min, h_max, size=None, mode=Image.BILINEAR):
         """ Converts the image to colour using colour map and resize """
         thermal = frame[:120, :160].copy()
-        image = tools.convert_heat_to_img(
-            frame, self.colourmap, self.auto_min, self.auto_max
-        )
+        image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
         if size:
             self.frame_scale = size
             image = image.resize(
@@ -245,20 +252,6 @@ class Previewer:
             track_description = "\n".join(guesses)
             track_description.strip()
             self.track_descs[track] = track_description
-
-    def create_four_tracking_image(self, frame):
-
-        thermal = frame.thermal
-        filtered = frame.filtered + self.auto_min
-        mask = frame.mask * 10000
-        flow_h, flow_v = frame.get_flow_split(clip_flow=True)
-        flow_magnitude = (
-            np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
-            + self.auto_min
-        )
-        return np.hstack(
-            (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
-        )
 
     def add_regions(self, draw, regions, v_offset=0):
         for rect in regions:
@@ -300,13 +293,7 @@ class Previewer:
                     if tracks_text and len(tracks_text) > index:
                         text = tracks_text[index]
                     self.add_debug_text(
-                        draw,
-                        track,
-                        frame_offset,
-                        region,
-                        screen_bounds,
-                        text=text,
-                        v_offset=v_offset,
+                        draw, track, region, screen_bounds, text=text, v_offset=v_offset
                     )
 
     def add_footer(self, draw, width, height, text):
@@ -314,9 +301,7 @@ class Previewer:
         center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
         draw.text((center[0], center[1]), text, font=self.font)
 
-    def add_debug_text(
-        self, draw, track, frame_offset, region, screen_bounds, text=None, v_offset=0
-    ):
+    def add_debug_text(self, draw, track, region, screen_bounds, text=None, v_offset=0):
         if text is None:
             text = "id {}".format(track.get_id())
             if region.pixel_variance:
@@ -355,9 +340,20 @@ class Previewer:
         novelty = prediction.novelty_history[frame_offset]
         prediction_format = "({:.1f} {})\nnovelty={:.2f}"
         current_prediction_string = prediction_format.format(score * 10, label, novelty)
+        self.add_text_to_track(
+            draw,
+            track,
+            self.track_descs[track],
+            current_prediction_string,
+            screen_bounds,
+            v_offset,
+        )
 
-        header_size = self.font_title.getsize(self.track_descs[track])
-        footer_size = self.font.getsize(current_prediction_string)
+    def add_text_to_track(
+        self, draw, rect, header_text, footer_text, screen_bounds, v_offset=0
+    ):
+        header_size = self.font_title.getsize(header_text)
+        footer_size = self.font.getsize(footer_text)
 
         # figure out where to draw everything
         header_rect = Region(
@@ -377,14 +373,8 @@ class Previewer:
         self.fit_to_image(header_rect, screen_bounds)
         self.fit_to_image(footer_rect, screen_bounds)
 
-        draw.text(
-            (header_rect.x, header_rect.y),
-            self.track_descs[track],
-            font=self.font_title,
-        )
-        draw.text(
-            (footer_rect.x, footer_rect.y), current_prediction_string, font=self.font
-        )
+        draw.text((header_rect.x, header_rect.y), header_text, font=self.font_title)
+        draw.text((footer_rect.x, footer_rect.y), footer_text, font=self.font)
 
     def fit_to_image(self, rect: Region, screen_bounds: Region):
         """ Modifies rect so that rect is visible within bounds. """
@@ -410,6 +400,64 @@ class Previewer:
             s * (rect.bottom + v_offset) - 1,
         ]
         return
+
+    def add_last_frame_tracking(
+        self,
+        img,
+        tracks,
+        labels,
+        track_predictions=None,
+        screen_bounds=None,
+        colours=TRACK_COLOURS,
+        tracks_text=None,
+        v_offset=0,
+    ):
+        draw = ImageDraw.Draw(img)
+
+        # look for any tracks that occur on this frame
+        for index, track in enumerate(tracks):
+            region = track.bounds_history[-1]
+            draw.rectangle(
+                self.rect_points(region, v_offset),
+                outline=colours[index % len(colours)],
+            )
+            if track_predictions:
+                footer_text = track_predictions.get_classified_footer(labels)
+                self.add_text_to_track(
+                    draw,
+                    track,
+                    str(track.get_id()),
+                    footer_text,
+                    screen_bounds,
+                    v_offset,
+                )
+
+            if self.debug:
+                text = None
+                if tracks_text and len(tracks_text) > index:
+                    text = tracks_text[index]
+                self.add_debug_text(
+                    draw, track, region, screen_bounds, text=text, v_offset=v_offset
+                )
+
+    @staticmethod
+    def create_four_tracking_image(frame, min_temp):
+
+        thermal = frame.thermal
+        filtered = frame.filtered + min_temp
+        mask = frame.mask * 10000
+        flow_h, flow_v = frame.get_flow_split(clip_flow=True)
+        if flow_h is None and flow_v is None:
+            flow_magnitude = filtered
+        else:
+            flow_magnitude = (
+                np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
+                + min_temp
+            )
+
+        return np.hstack(
+            (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
+        )
 
     @staticmethod
     def stats_footer(stats):
