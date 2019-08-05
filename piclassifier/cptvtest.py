@@ -19,7 +19,6 @@ def send_cptv(filename, socket):
         reader = CPTVReader(f)
         for i, frame in enumerate(reader):
             f = np.uint16(frame.pix).byteswap()
-
             socket.sendall(f)
             print("sending frame {}".format(i))
 

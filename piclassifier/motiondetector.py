@@ -40,8 +40,17 @@ class SlidingWindow:
                 self.oldest_index = (self.oldest_index + 1) % self.size
         self.frames[self.last_index] = frame
 
+    def reset(self):
+        self.last_index = None
+        self.oldest_index = None
+
 
 class MotionDetector:
+    FFC_PERIOD = 10
+
+    # every n frames recalculate background for threshold
+    BACKGROUND_RECULATE = 100
+
     def __init__(self, res_x, res_y, config, location_config, dynamic_thresh):
         # self.preview_frames_count = motion_config.preview_frames
         self.config = config
@@ -110,7 +119,12 @@ class MotionDetector:
 
     def calc_temp_thresh(self, thermal_frame):
         if self.dynamic_thresh:
-            self.background = np.minimum(self.background, thermal_frame)
+            if self.processed & (
+                self.processed % MotionDetector.BACKGROUND_RECULATE == 0
+            ):
+                self.background = np.minimum(self.thermal_window.frames)
+            else:
+                self.background = np.minimum(self.background, thermal_frame)
             self.temp_thresh = min(self.config.temp_thresh, np.average(self.background))
         else:
             self.temp_thresh = self.config.temp_thresh
@@ -144,10 +158,16 @@ class MotionDetector:
                 ] = self.config.delta_thresh
 
         self.diff_window.add(delta_frame)
+
         if diff > self.config.count_thresh:
             print("movement detected at frame {}".format(self.num_frames))
             return True
         return False
+
+    def is_affected_by_ffc(lepton_frame):
+        return (
+            lepton_frame.telemetry.time_on - lepton_frame.telemetry.last_ffc_time
+        ) < MotionDetector.FFC_PERIOD
 
     def can_record(self):
         if self.use_sunrise:
@@ -162,19 +182,26 @@ class MotionDetector:
     def stop_recording(self):
         self.recording = False
 
-    def process_frame(self, thermal_frame):
+    def reset_windows(self):
+        self.clipped_window.reset()
+        self.thermal_window.reset()
+        self.diff_window.reset()
+        self.processed = 0
+
+    def process_frame(self, lepton_frame):
         if self.can_record() or self.recording:
-            if self.num_frames < 9 * 10:
-                self.num_frames += 1
+            if is_affected_by_ffc(lepton_frame):
+                print("affected by ffc")
+                self.movement_detected = False
                 return
-            frame = np.int32(self.crop_rectangle.subimage(thermal_frame))
+            frame = np.int32(self.crop_rectangle.subimage(lepton_frame.pix))
             clipped_frame = np.clip(np.int32(frame), self.config.temp_thresh, None)
             self.clipped_window.add(clipped_frame)
-            self.thermal_window.add(thermal_frame)
+            self.thermal_window.add(lepton_frame.pix)
             if self.processed == 0:
-                self.background = thermal_frame
+                self.background = lepton_frame.pix
             else:
-                self.calc_temp_thresh(thermal_frame)
+                self.calc_temp_thresh(lepton_frame.pix)
                 self.movement_detected = self.detect(clipped_frame)
             self.processed += 1
         else:

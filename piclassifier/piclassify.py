@@ -15,10 +15,12 @@ from ml_tools import tools
 from ml_tools.model import Model
 from ml_tools.dataset import Preprocessor
 from ml_tools.previewer import Previewer
-
+from .leptonframe import Telemetry, LeptonFrame
 from ml_tools.config import Config
 
 SOCKET_NAME = "/var/run/lepton-frames"
+VOSPI_DATA_SIZE = 160
+TELEMETRY_PACKET_COUNT = 4
 
 
 def get_classifier(config):
@@ -73,15 +75,24 @@ def handle_connection(connection, clip_classifier):
     thermal_frame = np.empty(
         (clip_classifier.res_y, clip_classifier.res_x), dtype=img_dtype
     )
+
     while True:
-        p = connection.recv_into(thermal_frame, 0, socket.MSG_WAITALL)
-        # data = connection.recv(clip_classifier.res_y * clip_classifier.res_x * 2)
-        if not p:
+        data = connection.recv(400 * 400 * 2 + TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE)
+
+        if not data:
             print("disconnected from camera")
             return
         else:
-            # thermal_frame = np.frombuffer(data, dtype=img_dtype).reshape(120, 160)
-            clip_classifier.process_frame(thermal_frame)
+            telemetry = Telemetry.parse_telemetry(
+                data[: TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE]
+            )
+
+            thermal_frame = np.frombuffer(
+                data, dtype=img_dtype, offset=TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE
+            ).reshape(clip_classifier.res_y, clip_classifier.res_x)
+
+            lepton_frame = LeptonFrame(telemetry, thermal_frame)
+            clip_classifier.process_frame(lepton_frame)
 
 
 class PiClassifier:
@@ -260,13 +271,13 @@ class PiClassifier:
 
         return results
 
-    def process_frame(self, thermal_frame):
+    def process_frame(self, lepton_frame):
         """
         Process a file extracting tracks and identifying them.
         :param filename: filename to process
         :param enable_preview: if true an MPEG preview file is created.
         """
-        self.motion_detector.process_frame(thermal_frame)
+        self.motion_detector.process_frame(lepton_frame)
         if self.tracking is False:
             if self.motion_detector.movement_detected:
                 self.tracking = True
@@ -277,7 +288,7 @@ class PiClassifier:
                 self.tracking = self.motion_detector.movement_detected
 
             if self.tracking:
-                self.track_extractor.process_frame(self.clip, thermal_frame)
+                self.track_extractor.process_frame(self.clip, lepton_frame.pix)
                 if self.clip.active_tracks and (
                     self.clip.frame_on % PiClassifier.PROCESS_FRAME == 0
                     or self.clip.frame_on == self.preview_frames

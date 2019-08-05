@@ -5,6 +5,10 @@ import time
 import os
 from pathlib import Path
 from datetime import datetime
+from PIL import Image
+
+from ml_tools.mpeg_creator import MPEGCreator
+from ml_tools import tools
 
 
 class ClipSaver:
@@ -18,9 +22,10 @@ class ClipSaver:
         if delete_if_exists:
             self.delete()
 
-        f = h5py.File(self.filename, "w")
-        f.create_group("clips")
-        f.close()
+        if os.path.isfile(self.filename) is False:
+            f = h5py.File(self.filename, "w")
+            f.create_group("clips")
+            f.close()
 
     def add_clip(self, clip):
         self.open()
@@ -99,3 +104,36 @@ class ClipSaver:
             self.close()
         if os.path.exists(self.filename):
             os.remove(self.filename)
+
+
+def clip_to_mp4(db_name, clip_id, filename):
+    db = h5py.File(db_name, mode="a")
+    clips = db["clips"]
+    print(clips)
+    if str(clip_id) in clips:
+        clip = clips[str(clip_id)]
+        frames = clip["frames"]
+
+        thermals = []
+        for frame_id in frames:
+            thermals.append(np.uint16(frames[frame_id]))
+            print(thermals[-1][0])
+        print(thermals[0])
+        mpeg = MPEGCreator(filename + str(clip_id) + ".mp4")
+        t_min = np.amin(thermals)
+        t_max = np.amax(thermals)
+        t_min=3000
+        t_max=3400
+        for thermal in thermals:
+            image = convert_and_resize(thermal, t_min, t_max, 4)
+            mpeg.next_frame(np.asarray(image))
+        mpeg.close()
+
+
+def convert_and_resize(frame, h_min, h_max, size=None, mode=Image.BILINEAR):
+    """ Converts the image to colour using colour map and resize """
+    thermal = frame[:120, :160].copy()
+    image = tools.convert_heat_to_img(frame, None, h_min, h_max)
+    if size:
+        image = image.resize((int(image.width * size), int(image.height * size)), mode)
+    return image
