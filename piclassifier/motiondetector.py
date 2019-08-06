@@ -164,11 +164,6 @@ class MotionDetector:
             return True
         return False
 
-    def is_affected_by_ffc(lepton_frame):
-        return (
-            lepton_frame.telemetry.time_on - lepton_frame.telemetry.last_ffc_time
-        ) < MotionDetector.FFC_PERIOD
-
     def can_record(self):
         if self.use_sunrise:
             self.set_sunrise_sunet()
@@ -190,7 +185,7 @@ class MotionDetector:
 
     def process_frame(self, lepton_frame):
         if self.can_record() or self.recording:
-            if is_affected_by_ffc(lepton_frame):
+            if MotionDetector.is_affected_by_ffc(lepton_frame):
                 print("affected by ffc")
                 self.movement_detected = False
                 return
@@ -207,3 +202,9 @@ class MotionDetector:
         else:
             self.movement_detected = False
         self.num_frames += 1
+
+    @staticmethod
+    def is_affected_by_ffc(lepton_frame):
+        return (
+            lepton_frame.telemetry.time_on - lepton_frame.telemetry.last_ffc_time
+        ) < MotionDetector.FFC_PERIOD
