@@ -1,10 +1,12 @@
 from struct import unpack_from
 
+
 class LeptonFrame:
-     def __init__(self, telemetry, frame):
+    def __init__(self, telemetry, frame):
         self.telemetry = telemetry
         self.pix = frame
-        
+
+
 class Telemetry:
     def __init__(self):
         self.telemetry_revision = None
@@ -55,12 +57,12 @@ class Telemetry:
         t.last_ffc_time = time_counter_last_ffc
         return t
 
-@staticmethod
+
 def get_uint16(raw, offset):
     return unpack_from(">I", raw, offset)
     # return raw[offset + 1] | (raw[offset] << 8) | (raw[offset + 3] << 16) | (raw[offset + 2] << 24)
 
-@staticmethod
+
 def get_uint32(raw, offset):
     return (
         raw[offset + 1]
@@ -69,7 +71,7 @@ def get_uint32(raw, offset):
         | (raw[offset + 2] << 24)
     )
 
-@staticmethod
+
 def get_uint64(raw, offset):
     return (
         raw[offset + 1]
