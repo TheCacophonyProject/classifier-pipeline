@@ -90,7 +90,15 @@ def handle_connection(connection, clip_classifier):
             thermal_frame = np.frombuffer(
                 data, dtype=img_dtype, offset=TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE
             ).reshape(clip_classifier.res_y, clip_classifier.res_x)
-
+            if len(thermal_frame[thermal_frame > 10000]):
+                print(
+                    "data is {}, thermal frame max {} thermal frame min {} telemetry time_on {}".format(
+                        len(data),
+                        np.amax(thermal_frame),
+                        np.amin(thermal_frame),
+                        telemetry.time_on / 1000.0,
+                    )
+                )
             lepton_frame = LeptonFrame(telemetry, thermal_frame)
             clip_classifier.process_frame(lepton_frame)
 
@@ -289,6 +297,14 @@ class PiClassifier:
 
             if self.tracking:
                 self.track_extractor.process_frame(self.clip, lepton_frame.pix)
+                if len(lepton_frame.pix[lepton_frame.pix > 10000]):
+                    print(
+                        "thermal frame max {} thermal frame min {} frame {}".format(
+                            np.amax(lepton_frame.pix),
+                            np.amin(lepton_frame.pix),
+                            self.clip.frame_on,
+                        )
+                    )
                 if self.clip.active_tracks and (
                     self.clip.frame_on % PiClassifier.PROCESS_FRAME == 0
                     or self.clip.frame_on == self.preview_frames

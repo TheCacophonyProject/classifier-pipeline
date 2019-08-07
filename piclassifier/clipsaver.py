@@ -53,7 +53,13 @@ class ClipSaver:
             frame_node = frames_node.create_dataset(
                 str(frame.frame_number), dims, chunks=chunks, dtype=np.uint16
             )
-
+            therm = frame.thermal
+            if len(therm[therm > 10000]):
+                print(
+                    "thermal frame max {} thermal frame min {} frame {}".format(
+                        np.amax(therm), np.amin(therm), frame.frame_number
+                    )
+                )
             frame_node[:, :] = frame.thermal
         clip_node.attrs["finished"] = True
 
@@ -107,9 +113,11 @@ class ClipSaver:
 
 
 def clip_to_mp4(db_name, clip_id, filename):
-    db = h5py.File(db_name, mode="a")
+    db = h5py.File(db_name, mode="r")
     clips = db["clips"]
-    print(clips)
+    # print(clips)
+    for clip in clips:
+        print(clip)
     if str(clip_id) in clips:
         clip = clips[str(clip_id)]
         frames = clip["frames"]
@@ -117,13 +125,31 @@ def clip_to_mp4(db_name, clip_id, filename):
         thermals = []
         for frame_id in frames:
             thermals.append(np.uint16(frames[frame_id]))
-            print(thermals[-1][0])
-        print(thermals[0])
+            f = np.uint16(thermals[-1])
+
+            if len(f[f > 10000]):
+                rows = f.shape[0]
+                cols = f.shape[1]
+                for x in range(0, rows):
+                    row = ""
+                    rowValues = f[x]
+                    if len(rowValues[rowValues > 10000]):
+                        for y in range(0, cols):
+                            row += "," + str(f[x, y])
+                        print("row {} of frame {}".format(x, frame_id))
+                        print(row)
+                # print(f[f> 10000])
+
+            # print(thermals[-1][0])
+        # print(thermals[0])
         mpeg = MPEGCreator(filename + str(clip_id) + ".mp4")
-        t_min = np.amin(thermals)
-        t_max = np.amax(thermals)
-        t_min=3000
-        t_max=3400
+        thermals = np.uint16(thermals)
+        t_min = np.amin(thermals[thermals > 2000])
+        t_max = np.amax(thermals[thermals < 12000])
+        # t_min = 3000
+        # t_max = 7400
+        print(t_min)
+        print(t_max)
         for thermal in thermals:
             image = convert_and_resize(thermal, t_min, t_max, 4)
             mpeg.next_frame(np.asarray(image))
