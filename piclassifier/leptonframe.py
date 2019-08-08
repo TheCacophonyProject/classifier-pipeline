@@ -42,7 +42,7 @@ class Telemetry:
         offset += 2 * (1 + 1 + 1 + 4)
         fpa_temp_last_ffc = get_uint16(raw_bytes, offset)
         offset += 2
-        time_counter_last_ffc = get_uint16(raw_bytes, offset)
+        time_counter_last_ffc = get_uint32(raw_bytes, offset)
         # 60
         t = cls()
         t.telemetry_revision = revision

@@ -309,17 +309,18 @@ class PiClassifier:
                     self.clip.frame_on % PiClassifier.PROCESS_FRAME == 0
                     or self.clip.frame_on == self.preview_frames
                 ):
-                    self.identify_last_frame()
-                    for track in self.clip.active_tracks:
-                        prediction = self.prediction_per_track[track.get_id()]
-                        print(
-                            "Track {} is {}".format(
-                                track.get_id(),
-                                prediction.get_classified_footer(
-                                    self.classifier.labels
-                                ),
-                            )
-                        )
+                    pass
+                    # self.identify_last_frame()
+                    # for track in self.clip.active_tracks:
+                    #     prediction = self.prediction_per_track[track.get_id()]
+                    #     print(
+                    #         "Track {} is {}".format(
+                    #             track.get_id(),
+                    #             prediction.get_classified_footer(
+                    #                 self.classifier.labels
+                    #             ),
+                    #         )
+                    #     )
             elif self.tracking is False or self.clip.frame_on == self.max_frames:
                 # finish recording
                 print("finishing recording")
