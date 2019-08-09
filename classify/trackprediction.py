@@ -2,7 +2,7 @@ import numpy as np
 
 
 class RollingTrackPrediction:
-    def __init__(self, track_id):
+    def __init__(self, track_id, start_frame):
         self.track_prediction = None
         self.state = None
         self.track_id = track_id
@@ -11,6 +11,23 @@ class RollingTrackPrediction:
         self.uniform_prior = False
         self.class_best_score = []
         self.track_prediction = None
+        self.last_frame_classified = start_frame
+        self.num_frames_classified = 0
+
+    def get_priority(self, frame_number):
+        skipepd_frames = frame_number - self.last_frame_classified
+        priority = skipepd_frames / 9
+        if self.num_frames_classified == 0:
+            priority += 2
+        elif self.num_frames_classified > 30:
+            priority -= 1
+        return priority
+
+    def classified(self, frame_number, prediction, novelty):
+        self.last_frame_classified = frame_number
+        self.num_frames_classified += 1
+        self.predictions.append(prediction)
+        self.novelties.append(novelty)
 
     def get_prediction(self, labels):
         self.track_prediction = TrackPrediction(self.predictions, self.novelties)
@@ -18,20 +35,25 @@ class RollingTrackPrediction:
 
     def get_classified_footer(self, labels):
         # self.track_prediction = TrackPrediction(self.predictions, self.novelties)
-        class_best_score = np.max(self.predictions, axis=0).tolist()
-        score = max(class_best_score)
-        label = labels[np.argmax(class_best_score)]
-        max_novelty = max(self.novelties)
-        return "({:.1f} {})\nnovelty={:.2f}".format(score * 10, label, max_novelty)
+        if len(self.predictions):
+            class_best_score = np.max(self.predictions, axis=0).tolist()
+            score = max(class_best_score)
+            label = labels[np.argmax(class_best_score)]
+            max_novelty = max(self.novelties)
+            return "({:.1f} {})\nnovelty={:.2f}".format(score * 10, label, max_novelty)
+        else:
+            return "no classification"
 
     def get_result(self, labels):
-        class_best_score = np.max(self.predictions, axis=0).tolist()
-        score = max(class_best_score)
-        label = labels[np.argmax(class_best_score)]
-        avg_novelty = sum(self.novelties) / len(self.novelties)
-        max_novelty = max(self.novelties)
-
-        return TrackResult(label, avg_novelty, max_novelty, score)
+        if len(self.predictions):
+            class_best_score = np.max(self.predictions, axis=0).tolist()
+            score = max(class_best_score)
+            label = labels[np.argmax(class_best_score)]
+            avg_novelty = sum(self.novelties) / len(self.novelties)
+            max_novelty = max(self.novelties)
+            return TrackResult(label, avg_novelty, max_novelty, score)
+        else:
+            return None
 
 
 class TrackResult:

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from astral import Astral, Location
+import logging
 import numpy as np
 import timezonefinder, pytz
 from ml_tools import tools
@@ -18,6 +19,17 @@ class SlidingWindow:
         if self.last_index is not None:
             return self.frames[self.last_index]
         return None
+
+    def get_frames(self):
+        if self.last_index is None:
+            return []
+        frames = []
+        cur = self.oldest_index
+        end_index = (self.last_index + 1) % self.size
+        while len(frames) == 0 or cur != end_index:
+            frames.append(self.frames[cur])
+            cur = (cur + 1) % self.size
+        return frames
 
     def get(self, i):
         i = i % self.size
@@ -160,7 +172,7 @@ class MotionDetector:
         self.diff_window.add(delta_frame)
 
         if diff > self.config.count_thresh:
-            print("movement detected at frame {}".format(self.num_frames))
+            logging.info("movement detected at frame {}".format(self.num_frames))
             return True
         return False
 
@@ -205,6 +217,12 @@ class MotionDetector:
 
     @staticmethod
     def is_affected_by_ffc(lepton_frame):
+        if (
+            lepton_frame.telemetry.time_on is None
+            or lepton_frame.telemetry.last_ffc_time is None
+        ):
+            return False
+
         return (
             lepton_frame.telemetry.time_on - lepton_frame.telemetry.last_ffc_time
         ) < MotionDetector.FFC_PERIOD

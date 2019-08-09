@@ -41,7 +41,7 @@ class Clip:
     VERSION = 7
     CLIP_ID = 1
 
-    def __init__(self, trackconfig, sourcefile):
+    def __init__(self, trackconfig, sourcefile, background=None):
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
 
@@ -71,9 +71,63 @@ class Clip:
         # this buffers store the entire video in memory and are required for fast track exporting
         self.device = None
         self.background = None
+        self.background_calculated = False
+
         self.temp_thresh = self.config.temp_thresh
         self.res_x = None
         self.res_y = None
+        if background is not None:
+            self.background = background
+            self._set_from_background()
+
+    def _set_from_background(self):
+        self.stats.mean_background_value = np.average(self.background)
+        self.set_temp_thresh()
+        self.background_calculated = True
+
+    def on_preview(self):
+        if (
+            self.background is not None
+            or self.background_calculated
+            or self.frame_on >= self.num_preview_frames
+        ):
+            return False
+        return True
+
+    def calculate_preview_from_frame(self, frame):
+        self.preview_frames.append(frame)
+        if self.background is None:
+            self.background = frame
+        else:
+            self.background = np.minimum(self.background, frame)
+
+        if self.frame_on == (self.num_preview_frames - 1):
+            self._set_from_background()
+
+    def background_from_frames(self, frame_list):
+        number_frames = self.num_preview_frames
+        if not number_frames < len(frame_list):
+            logging.error("Video consists entirely of preview")
+            number_frames = len(frame_list)
+        frames = frame_list[0:number_frames]
+        self.background = np.min(frames, axis=0)
+        self.background = np.int32(np.rint(self.background))
+
+        self._set_from_background()
+
+    def background_from_whole_clip(self, clip, frames):
+        """
+        Runs through all provided frames and estimates the background, consuming all the source frames.
+        :param frames_list: a list of numpy array frames
+        :return: background
+        """
+
+        # note: unfortunately this must be done before any other processing, which breaks the streaming architecture
+        # for this reason we must return all the frames so they can be reused
+
+        # [][] array
+        self.background = np.percentile(frames, q=10, axis=0)
+        self._set_from_background()
 
     def get_id(self):
         return str(self._id)
@@ -180,7 +234,6 @@ class ClipTrackExtractor:
         self, config, use_opt_flow, cache_to_disk, keep_frames=True, calc_stats=True
     ):
 
-        self.background = None
         self.config = config
         self.use_opt_flow = use_opt_flow
         self.stats = None
@@ -227,80 +280,18 @@ class ClipTrackExtractor:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
 
     def process_frame(self, clip, frame):
-        if clip.num_preview_frames > 0 and clip.frame_on < clip.num_preview_frames:
-            self._calculate_preview_from_frame(clip, frame)
+        if clip.on_preview():
+            clip.calculate_preview_from_frame(frame)
+            if clip.background_calculated:
+                for i, back_frame in enumerate(clip.preview_frames):
+                    clip.frame_on = i
+                    self._process_frame(clip, back_frame)
+                clip.preview_frames = None
         else:
             self._process_frame(clip, frame)
         clip.frame_on += 1
 
-    def _calculate_preview_from_frame(self, clip, frame):
-        clip.preview_frames.append(frame)
-        if clip.background is None:
-            clip.background = frame
-        else:
-            clip.background = np.minimum(clip.background, frame)
-
-        if clip.frame_on == (clip.num_preview_frames - 1):
-            clip.stats.mean_background_value = np.average(clip.background)
-
-            clip.set_temp_thresh()
-            for i, back_frame in enumerate(clip.preview_frames):
-                clip.frame_on = i
-                self._process_frame(clip, back_frame)
-            clip.preview_frames = None
-
-    def _background_from_preview(self, clip, frame_list):
-        number_frames = clip.preview_frames
-        if not number_frames < len(frame_list):
-            logging.error("Video consists entirely of preview")
-            number_frames = len(frame_list)
-        frames = frame_list[0:number_frames]
-        clip.background = np.min(frames, axis=0)
-        clip.background = np.int32(np.rint(clip.background))
-
-        clip.stats.mean_background_value = np.average(clip.background)
-        clip.set_temp_thresh()
-
-    def process_frames(self, clip, frames):
-        # for now just always calculate as we are using the stats...
-        # background np.float64[][] filtered calculated here and stats
-        self._background_from_whole_clip(clip, frames)
-
-        if clip.background_is_preview:
-            if clip.preview_frames > 0:
-                # background np.int32[][]
-                self._background_from_preview(clip, frames)
-            else:
-                logging.info(
-                    "No preview secs defined for CPTV file - using statistical background measurement"
-                )
-
-        # process each frame
-        for frame_number, frame in enumerate(frames):
-            self._process_frame(clip, frame, frame_number)
-
-        if not clip.from_metadata:
-            self.apply_track_filtering(clip)
-
-    def apply_track_filtering(self, clip):
-        self.filter_tracks(clip)
-        # apply smoothing if required
-        if self.config.track_smoothing and clip.frame_on > 0:
-            for track in clip.active_tracks:
-                track.smooth(Rectangle(0, 0, clip.res_x, clip.res_y))
-
-    def _background_from_whole_clip(self, clip, frames):
-        """
-        Runs through all provided frames and estimates the background, consuming all the source frames.
-        :param frames_list: a list of numpy array frames
-        :return: background
-        """
-
-        # note: unfortunately this must be done before any other processing, which breaks the streaming architecture
-        # for this reason we must return all the frames so they can be reused
-
-        # [][] array
-        clip.background = np.percentile(frames, q=10, axis=0)
+    def _whole_clip_stats(self, clip, frames):
         filtered = np.float32(
             [self._get_filtered_frame(clip, frame) for frame in frames]
         )
@@ -336,7 +327,34 @@ class ClipTrackExtractor:
                 or clip.disable_background_subtraction
             ):
                 clip.background = None
-        clip.set_temp_thresh()
+
+    def process_frames(self, clip, frames):
+        # for now just always calculate as we are using the stats...
+        # background np.float64[][] filtered calculated here and stats
+        clip.background_from_whole_clip(frames)
+        self._whole_clip_stats(clip, frames)
+        if clip.background_is_preview:
+            if clip.preview_frames > 0:
+                # background np.int32[][]
+                clip.background_from_frames(frames)
+            else:
+                logging.info(
+                    "No preview secs defined for CPTV file - using statistical background measurement"
+                )
+
+        # process each frame
+        for frame_number, frame in enumerate(frames):
+            self._process_frame(clip, frame, frame_number)
+
+        if not clip.from_metadata:
+            self.apply_track_filtering(clip)
+
+    def apply_track_filtering(self, clip):
+        self.filter_tracks(clip)
+        # apply smoothing if required
+        if self.config.track_smoothing and clip.frame_on > 0:
+            for track in clip.active_tracks:
+                track.smooth(Rectangle(0, 0, clip.res_x, clip.res_y))
 
     def _get_filtered_frame(self, clip, thermal):
         """
