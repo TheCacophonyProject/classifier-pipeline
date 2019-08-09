@@ -202,14 +202,16 @@ class PiClassifier:
         print(len(active_tracks))
         if len(active_tracks) <= PiClassifier.NUM_CONCURRENT_TRACKS:
             return active_tracks
+        active_predictions = []
         for track in active_tracks:
-            self.prediction_per_track.setdefault(
+            prediction = self.prediction_per_track.setdefault(
                 track.get_id(),
                 RollingTrackPrediction(track.get_id(), track.start_frame),
             )
+            active_predictions.append(prediction)
 
         top_priority = sorted(
-            self.prediction_per_track.values(),
+            active_predictions,
             key=lambda i: i.get_priority(self.clip.frame_on),
             reverse=True,
         )
@@ -221,7 +223,7 @@ class PiClassifier:
         classify_tracks = [
             track for track in active_tracks if track.get_id() in top_priority
         ]
-        print("filtereing active tracks ****************")
+        print("filtereing active tracks {} ****************".format(top_priority))
         return classify_tracks
 
     @profile

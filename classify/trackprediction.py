@@ -19,8 +19,17 @@ class RollingTrackPrediction:
         priority = skipepd_frames / 9
         if self.num_frames_classified == 0:
             priority += 2
-        elif self.num_frames_classified > 30:
-            priority -= 1
+        # elif self.num_frames_classified > 30:
+        #     priority -= 1
+        print(
+            "priority {} is {} num_frames {} last classified {} frame {} ".format(
+                priority,
+                self.track_id,
+                self.num_frames_classified,
+                self.last_frame_classified,
+                frame_number,
+            )
+        )
         return priority
 
     def classified(self, frame_number, prediction, novelty):
