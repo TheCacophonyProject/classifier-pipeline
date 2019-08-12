@@ -20,6 +20,8 @@ from ml_tools.model import Model
 from ml_tools.dataset import Preprocessor, TrackChannels
 from ml_tools.previewer import Previewer
 from ml_tools.config import Config
+import absl.logging
+
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -45,6 +47,8 @@ def get_classifier(config):
 
 
 def main():
+    logging.root.removeHandler(absl.logging._absl_handler)
+    absl.logging._warn_preinit_stderr = False
     init_logging()
     try:
         os.unlink(SOCKET_NAME)
