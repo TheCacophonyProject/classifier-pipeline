@@ -63,7 +63,6 @@ class MotionDetector:
     BACKGROUND_RECULATE = 100
 
     def __init__(self, res_x, res_y, config, location_config, dynamic_thresh):
-        # self.preview_frames_count = motion_config.preview_frames
         self.config = config
         self.location_config = location_config
         self.preview_frames = config.preview_secs * config.frame_rate
@@ -142,7 +141,6 @@ class MotionDetector:
 
     def detect(self, clipped_frame):
         oldest = self.clipped_window.oldest
-
         delta_frame = clipped_frame - oldest
 
         if not self.config.warmer_only:
@@ -152,15 +150,9 @@ class MotionDetector:
         else:
             if self.processed > 2:
                 delta_frame2 = self.diff_window.oldest
-
-                # delta_frame2[
-                #     delta_frame2 >= self.config.delta_thresh
-                # ] = self.config.delta_thresh
-
                 delta_frame[
                     delta_frame >= self.config.delta_thresh
                 ] = self.config.delta_thresh
-
                 delta_frame = delta_frame2 + delta_frame
                 diff = len(delta_frame[delta_frame == self.config.delta_thresh * 2])
             else:

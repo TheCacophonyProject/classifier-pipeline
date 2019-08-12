@@ -43,7 +43,7 @@ class Telemetry:
         fpa_temp_last_ffc = get_uint16(raw_bytes, offset)
         offset += 2
         time_counter_last_ffc = get_uint32(raw_bytes, offset)
-        # 60
+        # 60th byte
         t = cls()
         t.telemetry_revision = revision
         t.time_on = time_counter
@@ -60,7 +60,6 @@ class Telemetry:
 
 def get_uint16(raw, offset):
     return unpack_from(">I", raw, offset)
-    # return raw[offset + 1] | (raw[offset] << 8) | (raw[offset + 3] << 16) | (raw[offset + 2] << 24)
 
 
 def get_uint32(raw, offset):

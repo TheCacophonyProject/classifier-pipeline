@@ -120,7 +120,6 @@ class Config(DefaultConfig):
 def find_config():
     for directory in CONFIG_DIRS:
         p = directory / CONFIG_FILENAME
-        print(p)
         if p.is_file():
             return str(p)
     raise FileNotFoundError(

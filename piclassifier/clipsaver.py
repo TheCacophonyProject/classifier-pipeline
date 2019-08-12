@@ -125,31 +125,11 @@ def clip_to_mp4(db_name, clip_id, filename):
         thermals = []
         for frame_id in frames:
             thermals.append(np.uint16(frames[frame_id]))
-            f = np.uint16(thermals[-1])
 
-            if len(f[f > 10000]):
-                rows = f.shape[0]
-                cols = f.shape[1]
-                for x in range(0, rows):
-                    row = ""
-                    rowValues = f[x]
-                    if len(rowValues[rowValues > 10000]):
-                        for y in range(0, cols):
-                            row += "," + str(f[x, y])
-                        print("row {} of frame {}".format(x, frame_id))
-                        print(row)
-                # print(f[f> 10000])
-
-            # print(thermals[-1][0])
-        # print(thermals[0])
         mpeg = MPEGCreator(filename + str(clip_id) + ".mp4")
         thermals = np.uint16(thermals)
-        t_min = np.amin(thermals[thermals > 2000])
-        t_max = np.amax(thermals[thermals < 12000])
-        # t_min = 3000
-        # t_max = 7400
-        print(t_min)
-        print(t_max)
+        t_min = np.amin(thermals)
+        t_max = np.amax(thermals)
         for thermal in thermals:
             image = convert_and_resize(thermal, t_min, t_max, 4)
             mpeg.next_frame(np.asarray(image))
