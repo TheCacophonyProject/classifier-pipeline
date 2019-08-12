@@ -41,7 +41,6 @@ class Track:
         :param id: id number for track, if not specified is provided by an auto-incrementer
         """
 
-        # used to uniquely identify the track
         if not id:
             self._id = Track._track_id
             Track._track_id += 1
@@ -49,12 +48,11 @@ class Track:
             self._id = id
 
         self.clip_id = clip_id
-        # frame number this track starts at
         self.start_frame = None
         self.end_frame = None
         self.start_s = None
         self.end_s = None
-        self.current_frame = 0
+        self.current_frame_num = None
         self.frame_list = []
         # our bounds over time
         self.bounds_history = []
@@ -66,7 +64,7 @@ class Track:
         self.vel_y = 0
         # the tag for this track
         self.tag = "unknown"
-        self.prev_frame = None
+        self.prev_frame_num = None
         self.include_filtered_channel = True
         self.confidence = None
         self.max_novelty = None
@@ -113,47 +111,47 @@ class Track:
             region = Region.region_from_array(position[1], frame_number)
             self.bounds_history.append(region)
             self.frame_list.append(frame_number)
-
+        self.current_frame_num = 0
         return True
 
-    def add_frame_from_region(self, region, buffer_frame):
-        self.bounds_history.append(region)
-        # channels = self.crop_by_region(buffer_frame.as_array(), region)
-        # self.track_data.append(channels)
-        self.end_frame = region.frame_number
-        self.current_frame += 1
-
-    def add_frame(self, frame, mass_delta_threshold, prev_filtered):
-
-        region = self.bounds_history[self.current_frame]
-        if prev_filtered is not None:
-            prev_filtered = region.subimage(prev_filtered)
-
-        # channels = self.crop_by_region(frame.as_array(True), region=region)
-        # frame.get_frame_channels(region)
-        filtered = region.subimage(frame.filtered)
-        # channels[TrackChannels.filtered]
-        region.calculate_mass(filtered, mass_delta_threshold)
-        region.calculate_variance(filtered, prev_filtered)
-
-        if self.prev_frame and frame.frame_number:
-            frame_diff = frame.frame_number - self.prev_frame - 1
+    def add_frame_from_region(self, region):
+        if self.prev_frame_num and region.frame_number:
+            frame_diff = region.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
 
-        if len(self) >= 2:
+        self.bounds_history.append(region)
+        self.end_frame = region.frame_number
+        self.prev_frame_num = region.frame_number
+        self.update_velocity()
+        self.frames_since_target_seen = 0
+
+    def update_velocity(self):
+        if len(self.bounds_history) >= 2:
             self.vel_x = self.bounds_history[-1].mid_x - self.bounds_history[-2].mid_x
             self.vel_y = self.bounds_history[-1].mid_y - self.bounds_history[-2].mid_y
         else:
             self.vel_x = self.vel_y = 0
 
-        self.prev_frame = frame.frame_number
-        self.current_frame += 1
+    def add_frame_for_existing_region(self, frame, mass_delta_threshold, prev_filtered):
+        region = self.bounds_history[self.current_frame_num]
+        if prev_filtered is not None:
+            prev_filtered = region.subimage(prev_filtered)
 
-        # if not self.include_filtered_channel:
-        #     channels[TrackChannels.filtered] = 0
+        filtered = region.subimage(frame.filtered)
+        region.calculate_mass(filtered, mass_delta_threshold)
+        region.calculate_variance(filtered, prev_filtered)
 
-        # self.track_data.append(channels)
+        if self.prev_frame_num and frame.frame_number:
+            frame_diff = frame.frame_number - self.prev_frame_num - 1
+            for _ in range(frame_diff):
+                self.add_blank_frame()
+
+        self.update_velocity()
+
+        self.prev_frame_num = frame.frame_number
+        self.current_frame_num += 1
+        self.frames_since_target_seen = 0
 
     def add_blank_frame(self, buffer_frame=None):
         """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
@@ -162,12 +160,8 @@ class Track:
         region.pixel_variance = 0
         region.frame_number += 1
         self.bounds_history.append(region)
-        # if buffer_frame:
-        #     frame = buffer_frame.get_frame(region.frame_number)
-        #     channels = self.crop_by_region(frame, region)
-        #     # channels = buffer_frame.get_frame_channels(region, region.frame_number)
-        #     self.track_data.append(channels)
         self.vel_x = self.vel_y = 0
+        self.frames_since_target_seen += 1
 
     def get_stats(self):
         """
@@ -269,11 +263,9 @@ class Track:
         if end < start:
             self.start_frame = 0
             self.bounds_history = []
-            # self.track_data = []
         else:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
-            # self.track_data = self.track_data[start : end + 1]
 
     def get_track_region_score(self, region: Region, moving_vel_thresh):
         """
@@ -369,8 +361,12 @@ class Track:
             return np.int16(np.stack((thermal, filtered, flow_h, flow_v, mask), axis=0))
         else:
             empty = np.zeros(filtered.shape)
-            return np.int16(np.stack((thermal, filtered,empty,empty, mask), axis=0))
+            return np.int16(np.stack((thermal, filtered, empty, empty, mask), axis=0))
         return frame
+
+    @property
+    def frames(self):
+        return self.end_frame + 1 - self.start_frame
 
     @property
     def last_mass(self):

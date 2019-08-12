@@ -1,8 +1,7 @@
 from datetime import datetime, timedelta
-from astral import Astral, Location
+from astral import Location
 import logging
 import numpy as np
-import timezonefinder, pytz
 from ml_tools import tools
 from ml_tools.tools import Rectangle
 
@@ -123,7 +122,7 @@ class MotionDetector:
                 sun["sunset"] + timedelta(minutes=self.config.sunset_offset)
             ).time()
             self.last_sunrise_check = date
-            print(
+            logging.info(
                 "sunrise is {} sunset is {} next check is {}".format(
                     self.sunrise, self.sunset, self.last_sunrise_check
                 )
@@ -184,7 +183,7 @@ class MotionDetector:
         return True
 
     def start_recording(self):
-        self.recoridng = True
+        self.recording = True
 
     def stop_recording(self):
         self.recording = False
@@ -198,7 +197,7 @@ class MotionDetector:
     def process_frame(self, lepton_frame):
         if self.can_record() or self.recording:
             if MotionDetector.is_affected_by_ffc(lepton_frame):
-                print("affected by ffc")
+                logging.info("affected by ffc - skipping frame")
                 self.movement_detected = False
                 return
             frame = np.int32(self.crop_rectangle.subimage(lepton_frame.pix))

@@ -420,7 +420,7 @@ class ClipTrackExtractor:
         if clip.from_metadata:
             for track in clip.active_tracks:
                 if clip.frame_on in track.frame_list:
-                    track.add_frame(
+                    track.add_frame_for_existing_region(
                         clip.frame_buffer.get_last_frame(),
                         clip.threshold,
                         prev_filtered,
@@ -465,7 +465,7 @@ class ClipTrackExtractor:
         for (score, track, region) in scores:
             if track in matched_tracks or region in used_regions:
                 continue
-            track.add_frame_from_region(region, clip.frame_buffer.get_last_frame())
+            track.add_frame_from_region(region)
             matched_tracks.append(track)
             used_regions.append(region)
 
@@ -487,7 +487,7 @@ class ClipTrackExtractor:
             track = Track(clip.get_id())
             track.start_frame = clip.frame_on
             track.start_s = clip.frame_on / float(clip.frames_per_second)
-            track.add_frame_from_region(region, clip.frame_buffer.get_last_frame())
+            track.add_frame_from_region(region)
             new_tracks.append(track)
             clip.active_tracks.append(track)
             clip.tracks.append(track)
@@ -495,9 +495,8 @@ class ClipTrackExtractor:
         still_active = []
         for track in clip.active_tracks:
             if track not in matched_tracks and track not in new_tracks:
-                track.frames_since_target_seen += 1
                 if (
-                    track.frames_since_target_seen
+                    track.frames_since_target_seen + 1
                     < self.config.remove_track_after_frames
                 ):
                     track.add_blank_frame(clip.frame_buffer)

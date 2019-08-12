@@ -74,7 +74,7 @@ class ClipSaver:
         # write out attributes
         start_time, end_time = clip.start_and_end_in_secs(track)
         node_attrs["id"] = track_id
-        node_attrs["frames"] = track.current_frame
+        node_attrs["frames"] = track.frames
         node_attrs["start_frame"] = track.start_frame
         node_attrs["end_frame"] = track.end_frame
         if track.avg_novelty:
