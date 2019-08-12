@@ -67,7 +67,7 @@ def main():
     while True:
         logging.info("waiting for a connection")
         connection, client_address = sock.accept()
-        logging.info("connection from", client_address)
+        logging.info("connection from %s", client_address)
         try:
             handle_connection(connection, clip_classifier)
         finally:
