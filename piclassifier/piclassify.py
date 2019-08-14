@@ -107,12 +107,12 @@ def handle_connection(connection, clip_classifier):
                 thermal_frame = np.frombuffer(data, dtype=img_dtype, offset=0).reshape(
                     clip_classifier.res_y, clip_classifier.res_x
                 )
-            if len(thermal_frame[thermal_frame > 10000]):
+            t_max = np.amax(thermal_frame)
+            t_min = np.amin(thermal_frame)
+            if t_max > 10000 or t_min == 0:
                 logging.warning(
                     "received frame has odd values skipping thermal frame max {} thermal frame min {} telemetry time_on {}".format(
-                        np.amax(thermal_frame),
-                        np.amin(thermal_frame),
-                        telemetry.time_on / 1000.0,
+                        t_max, t_min, telemetry.time_on / 1000.0
                     )
                 )
                 # this frame has bad data probably from lack of cpu
@@ -326,7 +326,8 @@ class PiClassifier:
         self.motion_detector.reset_windows()
 
     def skip_frame(self):
-        self.clip.frame_on += 1
+        if self.clip:
+            self.clip.frame_on += 1
 
     def process_frame(self, lepton_frame):
         """
