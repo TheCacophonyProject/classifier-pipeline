@@ -35,7 +35,7 @@ class ClipSaver:
         group_attrs = clip_node.attrs
         group_attrs["start_time"] = clip.video_start_time.isoformat()
         group_attrs["threshold"] = clip.threshold
-        group_attrs["frames"] = clip.frame_on
+        group_attrs["num_frames"] = clip.frame_on
         group_attrs["threshold"] = clip.temp_thresh
         group_attrs["preview_frames"] = clip.num_preview_frames
 
@@ -112,29 +112,43 @@ class ClipSaver:
             os.remove(self.filename)
 
 
-def clip_to_mp4(db_name, clip_id, filename):
+def saveall_to_mp4(db_name, filename):
     db = h5py.File(db_name, mode="r")
     clips = db["clips"]
-    # print(clips)
-    for clip in clips:
-        print(clip)
+    for clip_id in clips:
+        print("saving {}".format(clip_id))
+        clip_to_mp4(db_name, clip_id, filename, db=db)
+
+
+def clip_to_mp4(db_name, clip_id, filename, db=None):
+    if db is None:
+        db = h5py.File(db_name, mode="r")
+    clips = db["clips"]
+
     if str(clip_id) in clips:
         clip = clips[str(clip_id)]
         frames = clip["frames"]
-
         thermals = []
-        for frame_id in frames:
-            thermals.append(np.uint16(frames[frame_id]))
+        frame_ids  =[]
+        for frame in frames:
+            frame_ids.append(int(frame))
+        frame_ids.sort()
+        print(frame_ids)
+        for frame_id in frame_ids:
+            # print("adding frame {}".format(frame_id))
+            thermals.append(np.uint16(frames[str(frame_id)]))
+        frames_to_mp4(thermals, clip_id, filename )
 
+def frames_to_mp4(thermals, clip_id, filename):
         mpeg = MPEGCreator(filename + str(clip_id) + ".mp4")
         thermals = np.uint16(thermals)
         t_min = np.amin(thermals)
         t_max = np.amax(thermals)
         for thermal in thermals:
+
             image = convert_and_resize(thermal, t_min, t_max, 4)
             mpeg.next_frame(np.asarray(image))
         mpeg.close()
-
 
 def convert_and_resize(frame, h_min, h_max, size=None, mode=Image.BILINEAR):
     """ Converts the image to colour using colour map and resize """

@@ -86,13 +86,7 @@ class Clip:
         self.background_calculated = True
 
     def on_preview(self):
-        if (
-            self.background is not None
-            or self.background_calculated
-            or self.frame_on >= self.num_preview_frames
-        ):
-            return False
-        return True
+        return not self.background_calculated
 
     def calculate_preview_from_frame(self, frame):
         self.preview_frames.append(frame)
@@ -100,7 +94,6 @@ class Clip:
             self.background = frame
         else:
             self.background = np.minimum(self.background, frame)
-
         if self.frame_on == (self.num_preview_frames - 1):
             self._set_from_background()
 
@@ -375,6 +368,7 @@ class ClipTrackExtractor:
             )
             filtered[filtered < clip.temp_thresh] = 0
             np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
+
         else:
             filtered = filtered - clip.background
             filtered = filtered - np.median(filtered)
@@ -390,8 +384,8 @@ class ClipTrackExtractor:
         """
 
         filtered = self._get_filtered_frame(clip, thermal)
+
         frame_height, frame_width = filtered.shape
-        # print(filtered)
         mask = np.zeros(filtered.shape)
         edge = self.config.edge_pixels
 
@@ -408,7 +402,6 @@ class ClipTrackExtractor:
             size = self.config.dilation_pixels * 2 + 1
             kernel = np.ones((size, size), np.uint8)
             dilated = cv2.dilate(dilated, kernel, iterations=1)
-
         labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(dilated)
 
         mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
@@ -514,7 +507,6 @@ class ClipTrackExtractor:
         :param filtered: The filtered frame
 =        :return: regions of interest, mask frame
         """
-
         frame_height, frame_width = filtered.shape
         # get frames change
         if prev_filtered is not None:
@@ -541,7 +533,6 @@ class ClipTrackExtractor:
                 i,
                 clip.frame_on,
             )
-
             # want the real mass calculated from before the dilation
             # region.mass = np.sum(region.subimage(thresh))
             region.mass = mass

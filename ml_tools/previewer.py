@@ -120,15 +120,18 @@ class Previewer:
         ):
             clip.frame_buffer.generate_optical_flow()
 
+        if clip.stats.min_temp is None or clip.stats.max_temp is None:
+            thermals = [frame.thermal for frame in clip.frame_buffer.frames]
+            clip.stats.min_temp = np.amin(thermals)
+            clip.stats.max_temp = np.amax(thermals)
         mpeg = MPEGCreator(filename)
-
         for frame_number, frame in enumerate(clip.frame_buffer.frames):
             if self.preview_type == self.PREVIEW_RAW:
                 image = self.convert_and_resize(
                     frame.thermal, clip.stats.min_temp, clip.stats.max_temp
                 )
-
-            if self.preview_type == self.PREVIEW_TRACKING:
+                draw = ImageDraw.Draw(image)
+            elif self.preview_type == self.PREVIEW_TRACKING:
                 image = self.create_four_tracking_image(frame, clip.stats.min_temp)
                 image = self.convert_and_resize(
                     image,
@@ -165,7 +168,7 @@ class Previewer:
                 # )
                 self.add_tracks(draw, clip.tracks, frame_number)
 
-            if self.preview_type == self.PREVIEW_BOXES:
+            elif self.preview_type == self.PREVIEW_BOXES:
                 image = self.convert_and_resize(
                     frame.thermal, clip.stats.min_temp, clip.stats.max_temp, 4.0
                 )
@@ -174,8 +177,9 @@ class Previewer:
                 self.add_tracks(
                     draw, clip.tracks, frame_number, colours=[(128, 255, 255)]
                 )
+                image.save("test1.jpg")
 
-            if self.preview_type == self.PREVIEW_CLASSIFIED:
+            elif self.preview_type == self.PREVIEW_CLASSIFIED:
                 image = self.convert_and_resize(
                     frame.thermal, clip.stats.min_temp, clip.stats.max_temp, 4.0
                 )
@@ -184,7 +188,7 @@ class Previewer:
                 self.add_tracks(
                     draw, clip.tracks, frame_number, track_predictions, screen_bounds
                 )
-            if self.debug:
+            if self.debug and draw:
                 self.add_footer(draw, image.width, image.height, footer)
             mpeg.next_frame(np.asarray(image))
 

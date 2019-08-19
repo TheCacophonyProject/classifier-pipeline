@@ -121,7 +121,7 @@ class TrackPrediction:
 
         if second_score > 0.5:
             second_guess = "[second guess - {} {:.1f}]".format(
-                labels[self.label_index], second_score * 10
+                labels[self.label_index(2)], second_score * 10
             )
         else:
             second_guess = ""

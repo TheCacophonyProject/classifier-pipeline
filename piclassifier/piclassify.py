@@ -5,10 +5,10 @@ import os
 import logging
 import socket
 import time
-
+import sys
 from classify.trackprediction import Predictions
 from load.clip import Clip, ClipTrackExtractor
-from .clipsaver import ClipSaver
+from .clipsaver import ClipSaver, frames_to_mp4
 from .leptonframe import Telemetry, LeptonFrame
 from .locationconfig import LocationConfig
 from .motionconfig import MotionConfig
@@ -118,7 +118,7 @@ def handle_connection(connection, clip_classifier):
                 # this frame has bad data probably from lack of cpu
                 clip_classifier.skip_frame()
                 continue
-            lepton_frame = LeptonFrame(telemetry, thermal_frame)
+            lepton_frame = LeptonFrame(telemetry, thermal_frame.copy())
             clip_classifier.process_frame(lepton_frame)
 
 
@@ -176,6 +176,7 @@ class PiClassifier:
 
         self.clip_saver = ClipSaver("piclips")
         self.startup_classifier()
+        self.previewer = Previewer.create_if_required(config, config.classify.preview)
 
     def new_clip(self):
         self.clip = Clip(
@@ -194,7 +195,7 @@ class PiClassifier:
         # process preview_frames
         frames = self.motion_detector.thermal_window.get_frames()
         for frame in frames:
-            self.track_extractor.process_frame(self.clip, frame)
+            self.track_extractor.process_frame(self.clip, frame.copy())
 
     def startup_classifier(self):
         p_frame = np.zeros((5, 48, 48), np.float32)

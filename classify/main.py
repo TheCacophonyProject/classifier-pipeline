@@ -8,9 +8,12 @@ from ml_tools.logs import init_logging
 from ml_tools import tools
 from ml_tools.config import Config
 from ml_tools.previewer import Previewer
+import absl.logging
 
 
 def main():
+    logging.root.removeHandler(absl.logging._absl_handler)
+    absl.logging._warn_preinit_stderr = False
     parser = argparse.ArgumentParser()
 
     parser.add_argument(

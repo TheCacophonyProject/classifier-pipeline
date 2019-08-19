@@ -41,6 +41,7 @@ class SlidingWindow:
         return None
 
     def add(self, frame):
+
         if self.last_index is None:
             self.last_index = 0
             self.oldest_index = 0
@@ -49,7 +50,7 @@ class SlidingWindow:
             self.last_index = (self.last_index + 1) % self.size
             if self.last_index == self.oldest_index:
                 self.oldest_index = (self.oldest_index + 1) % self.size
-        self.frames[self.last_index] = frame
+            self.frames[self.last_index] = frame
 
     def reset(self):
         self.last_index = None
@@ -58,9 +59,8 @@ class SlidingWindow:
 
 class MotionDetector:
     FFC_PERIOD = 10
-
-    # every n frames recalculate background for threshold
-    BACKGROUND_RECULATE = 100
+    BACKGROUND_WEIGHTING_PER_FRAME = 0.99
+    BACKGROUND_WEIGHT_EVERY = 3
 
     def __init__(self, res_x, res_y, config, location_config, dynamic_thresh):
         self.config = config
@@ -83,6 +83,8 @@ class MotionDetector:
         self.num_frames = 0
         self.thermal_thresh = 0
         self.background = None
+        self.last_background_change = None
+        self.background_weight = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
         self.movement_detected = False
         self.dynamic_thresh = dynamic_thresh
         self.temp_thresh = config.temp_thresh
@@ -102,7 +104,6 @@ class MotionDetector:
         self.location = Location()
         self.location.latitude = location_config.latitude
         self.location.longitude = location_config.longitude
-        print(self.location)
 
         self.location.altitude = location_config.altitude
         self.location.timezone = tools.get_timezone_str(
@@ -129,13 +130,35 @@ class MotionDetector:
 
     def calc_temp_thresh(self, thermal_frame):
         if self.dynamic_thresh:
-            if self.processed & (
-                self.processed % MotionDetector.BACKGROUND_RECULATE == 0
-            ):
-                self.background = np.minimum(self.thermal_window.frames)
-            else:
-                self.background = np.minimum(self.background, thermal_frame)
-            self.temp_thresh = min(self.config.temp_thresh, np.average(self.background))
+
+            new_background = np.minimum(
+                self.background, thermal_frame * self.background_weight
+            )
+            changed = np.amax(self.background != new_background)
+            if changed:
+                self.last_background_change = self.processed
+                self.background = new_background
+
+                self.background_weight = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
+                old_temp = self.temp_thresh
+                self.temp_thresh = int(
+                    min(self.config.temp_thresh, np.average(self.background))
+                )
+                if self.temp_thresh != old_temp:
+                    logging.info(
+                        "motion detector threshold changed from {} to {} new backgroung average is {} weighting was {}".format(
+                            old_temp,
+                            self.temp_thresh,
+                            np.average(self.background),
+                            self.background_weight,
+                        )
+                    )
+            elif self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0:
+                self.background_weight = (
+                    self.background_weight
+                    * MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
+                )
+
         else:
             self.temp_thresh = self.config.temp_thresh
 
@@ -163,7 +186,6 @@ class MotionDetector:
         self.diff_window.add(delta_frame)
 
         if diff > self.config.count_thresh:
-            logging.info("movement detected at frame {}".format(self.num_frames))
             return True
         return False
 
@@ -198,6 +220,7 @@ class MotionDetector:
             self.thermal_window.add(lepton_frame.pix)
             if self.processed == 0:
                 self.background = lepton_frame.pix
+                self.last_background_change = self.processed
             else:
                 self.calc_temp_thresh(lepton_frame.pix)
                 self.movement_detected = self.detect(clipped_frame)

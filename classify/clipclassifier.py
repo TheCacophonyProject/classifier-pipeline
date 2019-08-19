@@ -98,7 +98,7 @@ class ClipClassifier(CPTVFileProcessor):
                 track.get_id(), len(track), len(track)
             )
         )
-
+        track_prediction = TrackPrediction(track.get_id(), track.start_frame)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
             track_data = track.crop_by_region(frame, region)
@@ -162,12 +162,9 @@ class ClipClassifier(CPTVFileProcessor):
                 smooth_novelty = (
                     1 - prediction_smooth
                 ) * smooth_novelty + prediction_smooth * novelty
+            track_prediction.classified_frame(region.frame_number, smooth_prediction, smooth_novelty)
 
-            print(max(smooth_prediction))
-            predictions.append(smooth_prediction)
-            novelties.append(smooth_novelty)
-
-        return TrackPrediction(predictions, novelties)
+        return track_prediction
 
     @property
     def classifier(self):
@@ -308,6 +305,7 @@ class ClipClassifier(CPTVFileProcessor):
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
 
     def save_metadata(self, filename, meta_filename, clip):
+        return
         if self.cache_to_disk:
             clip.frame_buffer.remove_cache()
 
@@ -339,7 +337,7 @@ class ClipClassifier(CPTVFileProcessor):
             track_info["num_frames"] = prediction.num_frames
             track_info["frame_start"] = track.start_frame
             track_info["frame_end"] = track.end_frame
-            track_info["label"] = self.classifier.labels[prediction.label()]
+            track_info["label"] = self.classifier.labels[prediction.best_label_index]
             track_info["confidence"] = round(prediction.score(), 2)
             track_info["clarity"] = round(prediction.clarity, 3)
             track_info["average_novelty"] = round(prediction.average_novelty, 2)
