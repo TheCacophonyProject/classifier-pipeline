@@ -54,12 +54,6 @@ class ClipSaver:
                 str(frame.frame_number), dims, chunks=chunks, dtype=np.uint16
             )
             therm = frame.thermal
-            if len(therm[therm > 10000]):
-                print(
-                    "thermal frame max {} thermal frame min {} frame {}".format(
-                        np.amax(therm), np.amin(therm), frame.frame_number
-                    )
-                )
             frame_node[:, :] = frame.thermal
         clip_node.attrs["finished"] = True
 
@@ -118,6 +112,36 @@ def saveall_to_mp4(db_name, filename):
     for clip_id in clips:
         print("saving {}".format(clip_id))
         clip_to_mp4(db_name, clip_id, filename, db=db)
+
+
+def extract_clip(db_name, clip_id, filename, db=None):
+    if db is None:
+        db = h5py.File(db_name, mode="r")
+    clips = db["clips"]
+
+    if str(clip_id) in clips:
+        clip = clips[str(clip_id)]
+        frames = clip["frames"]
+
+        rawh5 = h5py.File(filename +".h5py", "w")
+        rawclip = rawh5.create_group("clips")
+
+        clip_node = rawclip.create_group(str(clip_id))
+        frames_node = clip_node.create_group("frames")
+        for frame in frames:
+            thermal = frames[frame]
+            height, width = thermal.shape
+
+            chunks = (height, width)
+
+            dims = (height, width)
+            frame_node = frames_node.create_dataset(
+                frame, dims, chunks=chunks, dtype=np.uint16
+            )
+
+            frame_node[:, :] = thermal
+        rawh5.close()
+    db.close()
 
 
 def clip_to_mp4(db_name, clip_id, filename, db=None):

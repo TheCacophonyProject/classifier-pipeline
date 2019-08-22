@@ -8,6 +8,7 @@ if len(sys.argv) < 2:
 db_name = sys.argv[1]
 print("showing clips and tracks in {}".format(db_name))
 db = h5py.File(db_name, mode="r")
+
 clips = db["clips"]
 for clip_id in clips:
     clip = clips[clip_id]

@@ -1,6 +1,6 @@
 import sys
 
-from piclassifier.clipsaver import clip_to_mp4
+from piclassifier.clipsaver import clip_to_mp4, extract_clip
 
 
 def main():
@@ -10,8 +10,12 @@ def main():
 
     db_name = sys.argv[1]
     clip_id = sys.argv[2]
-
-    clip_to_mp4(db_name, clip_id, "pithermal")
+    
+    raw = sys.argv[3]
+    if raw == "t":
+     	extract_clip(db_name, clip_id, "pithermal")
+    else:	
+    	clip_to_mp4(db_name, clip_id, "pithermal")
 
 
 if __name__ == "__main__":

@@ -174,7 +174,7 @@ class PiClassifier:
             self.config.tracking.dynamic_thresh,
         )
 
-        self.clip_saver = ClipSaver("piclips")
+        self.clip_saver = ClipSaver("piclips", keep_open=False)
         self.startup_classifier()
         self.previewer = Previewer.create_if_required(config, config.classify.preview)
 
