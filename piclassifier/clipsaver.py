@@ -129,26 +129,26 @@ def clip_to_mp4(db_name, clip_id, filename, db=None):
         clip = clips[str(clip_id)]
         frames = clip["frames"]
         thermals = []
-        frame_ids  =[]
+        frame_ids = []
         for frame in frames:
             frame_ids.append(int(frame))
         frame_ids.sort()
-        print(frame_ids)
         for frame_id in frame_ids:
-            # print("adding frame {}".format(frame_id))
             thermals.append(np.uint16(frames[str(frame_id)]))
-        frames_to_mp4(thermals, clip_id, filename )
+        frames_to_mp4(thermals, clip_id, filename)
+
 
 def frames_to_mp4(thermals, clip_id, filename):
-        mpeg = MPEGCreator(filename + str(clip_id) + ".mp4")
-        thermals = np.uint16(thermals)
-        t_min = np.amin(thermals)
-        t_max = np.amax(thermals)
-        for thermal in thermals:
+    mpeg = MPEGCreator(filename + str(clip_id) + ".mp4")
+    thermals = np.uint16(thermals)
+    t_min = np.amin(thermals)
+    t_max = np.amax(thermals)
+    for thermal in thermals:
 
-            image = convert_and_resize(thermal, t_min, t_max, 4)
-            mpeg.next_frame(np.asarray(image))
-        mpeg.close()
+        image = convert_and_resize(thermal, t_min, t_max, 4)
+        mpeg.next_frame(np.asarray(image))
+    mpeg.close()
+
 
 def convert_and_resize(frame, h_min, h_max, size=None, mode=Image.BILINEAR):
     """ Converts the image to colour using colour map and resize """
