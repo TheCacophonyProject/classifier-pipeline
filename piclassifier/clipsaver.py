@@ -71,6 +71,7 @@ class ClipSaver:
         node_attrs["frames"] = track.frames
         node_attrs["start_frame"] = track.start_frame
         node_attrs["end_frame"] = track.end_frame
+
         if track.avg_novelty:
             node_attrs["avg_novelty"] = track.avg_novelty
         if track.tag:
@@ -123,7 +124,7 @@ def extract_clip(db_name, clip_id, filename, db=None):
         clip = clips[str(clip_id)]
         frames = clip["frames"]
 
-        rawh5 = h5py.File(filename +".h5py", "w")
+        rawh5 = h5py.File(filename + ".h5py", "w")
         rawclip = rawh5.create_group("clips")
 
         clip_node = rawclip.create_group(str(clip_id))

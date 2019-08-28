@@ -50,7 +50,7 @@ class Clip:
         self.num_preview_frames = 0
         self.preview_frames = []
         self.region_history = []
-        self.active_tracks = []
+        self.active_tracks = set()
         self.tracks = []
         self.filtered_tracks = []
         self.from_metadata = False
@@ -122,6 +122,10 @@ class Clip:
         self.background = np.percentile(frames, q=10, axis=0)
         self._set_from_background()
 
+    def _add_active_track(self, track):
+        self.active_tracks.add(track)
+        self.tracks.append(track)
+
     def get_id(self):
         return str(self._id)
 
@@ -165,7 +169,7 @@ class Clip:
             metadata, include_filtered_channel, tag_precedence
         )
         self.from_metadata = True
-        self.active_tracks = tracks
+        self.active_tracks = set(tracks)
 
     def load_tracks_meta(self, metadata, include_filtered_channel, tag_precedence):
         tracks_meta = metadata["Tracks"]
@@ -267,7 +271,7 @@ class ClipTrackExtractor:
                 for frame in reader:
                     self.process_frame(clip, frame.pix)
             else:
-                self.process_frames([np.float32(frame.pix) for frame in reader])
+                self.process_frames(clip, [np.float32(frame.pix) for frame in reader])
 
         if self.calc_stats:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
@@ -337,7 +341,7 @@ class ClipTrackExtractor:
 
         # process each frame
         for frame_number, frame in enumerate(frames):
-            self._process_frame(clip, frame, frame_number)
+            self._process_frame(clip, frame_number)
 
         if not clip.from_metadata:
             self.apply_track_filtering(clip)
@@ -430,46 +434,67 @@ class ClipTrackExtractor:
         Work out the best matchings between tracks and regions of interest for the current frame.
         Create any new tracks required.
         """
-        used_regions, matched_tracks = self._match_existing_tracks(clip, regions)
-        self._create_new_tracks(clip, regions, used_regions, matched_tracks)
+        unmatched_regions, matched_tracks = self._match_existing_tracks(clip, regions)
+        self._create_new_tracks(clip, unmatched_regions, matched_tracks)
+
+    def get_max_size_change(self, track, region):
+        exiting = region.is_along_border and track.last_bound.is_along_border == False
+        entering = exiting == False and track.last_bound.is_along_border
+
+        min_change = 50
+        if entering or exiting:
+            self.print_if_verbose("entering {} or exiting {}".format(entering, exiting))
+            min_change = 100
+        max_size_change = np.clip(track.last_mass, min_change, 500)
+        return max_size_change
 
     def _match_existing_tracks(self, clip, regions):
 
         scores = []
-        used_regions = []
-        matched_tracks = []
+        used_regions = set()
+        unmatched_regions = set(regions)
         for track in clip.active_tracks:
             for region in regions:
                 score, size_change = track.get_track_region_score(
                     region, self.config.moving_vel_thresh
                 )
-
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
                 max_distance = np.clip(7 * track.last_mass, 900, 9025)
-                max_size_change = np.clip(track.last_mass, 50, 500)
+                max_size_change = self.get_max_size_change(track, region)
+
                 if score > max_distance:
+                    self.print_if_verbose(
+                        "track {} distance score {} bigger than max score {}".format(
+                            track.get_id(), score, max_distance
+                        )
+                    )
+
                     continue
                 if size_change > max_size_change:
+                    self.print_if_verbose(
+                        "track {} size_change {} bigger than max size_change {}".format(
+                            track.get_id(), score, max_distance
+                        )
+                    )
                     continue
                 scores.append((score, track, region))
-
         scores.sort(key=lambda record: record[0])
 
+        matched_tracks = set()
         for (score, track, region) in scores:
             if track in matched_tracks or region in used_regions:
                 continue
-            track.add_frame_from_region(region)
-            matched_tracks.append(track)
-            used_regions.append(region)
+            track.add_region(region)
+            matched_tracks.add(track)
+            used_regions.add(region)
+            unmatched_regions.remove(region)
 
-        return used_regions, matched_tracks
+        return unmatched_regions, matched_tracks
 
-    def _create_new_tracks(self, clip, regions, used_regions, matched_tracks):
+    def _create_new_tracks(self, clip, unmatched_regions, matched_tracks):
         """ Create new tracks for any unmatched regions """
-        new_tracks = []
-        for region in regions:
-            if region in used_regions:
-                continue
+        new_tracks = set()
+        for region in unmatched_regions:
             # make sure we don't overlap with existing tracks.  This can happen if a tail gets tracked as a new object
             overlaps = [
                 track.last_bound.overlap_area(region) for track in clip.active_tracks
@@ -477,26 +502,29 @@ class ClipTrackExtractor:
             if len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
                 continue
 
-            track = Track(clip.get_id())
-            track.start_frame = clip.frame_on
-            track.start_s = clip.frame_on / float(clip.frames_per_second)
-            track.add_frame_from_region(region)
-            new_tracks.append(track)
-            clip.active_tracks.append(track)
-            clip.tracks.append(track)
+            track = Track.from_region(clip, region)
+            new_tracks.add(track)
+            clip._add_active_track(track)
+            self.print_if_verbose(
+                "Creating a new track {} with region {} mass{} area {}".format(
+                    track.get_id(), region, track.last_bound.mass, track.last_bound.area
+                )
+            )
 
-        still_active = []
-        for track in clip.active_tracks:
-            if track not in matched_tracks and track not in new_tracks:
-                if (
-                    track.frames_since_target_seen + 1
-                    < self.config.remove_track_after_frames
-                ):
-                    track.add_blank_frame(clip.frame_buffer)
-                    still_active.append(track)
-            else:
-                still_active.append(track)
-        clip.active_tracks = still_active
+        unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
+        clip.active_tracks = matched_tracks | new_tracks
+        for track in unactive_tracks:
+            if (
+                track.frames_since_target_seen + 1
+                < self.config.remove_track_after_frames
+            ):
+                track.add_blank_frame(clip.frame_buffer)
+                clip.active_tracks.add(track)
+                self.print_if_verbose(
+                    "frame {} adding a blacnk frame to {} ".format(
+                        clip.frame_on, track.get_id()
+                    )
+                )
 
     def _get_regions_of_interest(
         self, clip, labels, stats, thresh, filtered, prev_filtered, mass
@@ -507,7 +535,6 @@ class ClipTrackExtractor:
         :param filtered: The filtered frame
 =        :return: regions of interest, mask frame
         """
-        frame_height, frame_width = filtered.shape
         # get frames change
         if prev_filtered is not None:
             # we need a lot of precision because the values are squared.  Float32 should work.
@@ -545,7 +572,7 @@ class ClipTrackExtractor:
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)
-
+            region.set_is_along_border(clip.crop_rectangle)
             if self.config.cropped_regions_strategy == "cautious":
                 crop_width_fraction = (
                     old_region.width - region.width

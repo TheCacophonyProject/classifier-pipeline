@@ -73,6 +73,14 @@ class Track:
         self.from_metadata = False
         self.track_tags = None
 
+    @classmethod
+    def from_region(cls, clip, region):
+        track = cls(clip.get_id())
+        track.start_frame = region.frame_number
+        track.start_s = region.frame_number / float(clip.frames_per_second)
+        track.add_region(region)
+        return track
+
     def get_id(self):
         return self._id
 
@@ -114,7 +122,7 @@ class Track:
         self.current_frame_num = 0
         return True
 
-    def add_frame_from_region(self, region):
+    def add_region(self, region):
         if self.prev_frame_num and region.frame_number:
             frame_diff = region.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
