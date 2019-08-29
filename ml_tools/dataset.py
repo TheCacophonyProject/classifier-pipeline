@@ -305,6 +305,7 @@ class SegmentHeader:
     def __str__(self):
         return "offset:{0} weight:{1:.1f}".format(self.start_frame, self.weight)
 
+
 class Preprocessor:
     """ Handles preprocessing of track data. """
 

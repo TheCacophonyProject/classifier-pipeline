@@ -111,7 +111,7 @@ def handle_connection(connection, clip_classifier):
             t_min = np.amin(thermal_frame)
             if t_max > 10000 or t_min == 0:
                 logging.warning(
-                    "received frame has odd values skipping thermal frame max {} thermal frame min {} telemetry time_on".format(
+                    "received frame has odd values skipping thermal frame max {} thermal frame min {}".format(
                         t_max, t_min
                     )
                 )
@@ -385,7 +385,7 @@ class PiClassifier:
                     track.avg_novelty = track_result.avg_novelty
         # write clip to h5py for now
         self.clip_saver.add_clip(self.clip)
-        self.previewer.export_clip_preview(self.clip.get_id()+"clip.mp4", self.clip)
+        self.previewer.export_clip_preview(self.clip.get_id() + "clip.mp4", self.clip)
 
     def reset(self):
         self.predictions.clear_predictions()

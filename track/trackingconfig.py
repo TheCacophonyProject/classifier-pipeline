@@ -65,8 +65,6 @@ class TrackingConfig(DefaultConfig):
     filters = attr.ib()
     areas_of_interest = attr.ib()
 
-
-
     @classmethod
     def load(cls, tracking):
 

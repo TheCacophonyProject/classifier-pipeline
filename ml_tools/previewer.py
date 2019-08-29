@@ -177,7 +177,6 @@ class Previewer:
                 self.add_tracks(
                     draw, clip.tracks, frame_number, colours=[(128, 255, 255)]
                 )
-                image.save("test1.jpg")
 
             elif self.preview_type == self.PREVIEW_CLASSIFIED:
                 image = self.convert_and_resize(

@@ -162,7 +162,9 @@ class ClipClassifier(CPTVFileProcessor):
                 smooth_novelty = (
                     1 - prediction_smooth
                 ) * smooth_novelty + prediction_smooth * novelty
-            track_prediction.classified_frame(region.frame_number, smooth_prediction, smooth_novelty)
+            track_prediction.classified_frame(
+                region.frame_number, smooth_prediction, smooth_novelty
+            )
 
         return track_prediction
 

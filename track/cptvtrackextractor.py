@@ -88,7 +88,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                         self.disable_track_filters = True
                         self.disable_background_subtraction = True
                         logging.info("Turning Track filters OFF.")
-                        
+
                     self.process_folder(
                         os.path.join(folder_root, folder), tag=folder.lower()
                     )

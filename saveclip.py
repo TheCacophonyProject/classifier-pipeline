@@ -10,12 +10,12 @@ def main():
 
     db_name = sys.argv[1]
     clip_id = sys.argv[2]
-    
+
     raw = sys.argv[3]
     if raw == "t":
-     	extract_clip(db_name, clip_id, "pithermal")
-    else:	
-    	clip_to_mp4(db_name, clip_id, "pithermal")
+        extract_clip(db_name, clip_id, "pithermal")
+    else:
+        clip_to_mp4(db_name, clip_id, "pithermal")
 
 
 if __name__ == "__main__":
