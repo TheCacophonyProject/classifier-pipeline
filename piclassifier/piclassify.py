@@ -5,14 +5,14 @@ import os
 import logging
 import socket
 import time
-import sys
 from classify.trackprediction import Predictions
 from load.clip import Clip, ClipTrackExtractor
-from .clipsaver import ClipSaver, frames_to_mp4
+from .clipsaver import ClipSaver
 from .leptonframe import Telemetry, LeptonFrame
 from .locationconfig import LocationConfig
 from .motionconfig import MotionConfig
 from .motiondetector import MotionDetector
+from .cptvrecorder import CPTVRecorder
 
 from ml_tools.logs import init_logging
 from ml_tools import tools
@@ -21,6 +21,7 @@ from ml_tools.dataset import Preprocessor, TrackChannels
 from ml_tools.previewer import Previewer
 from ml_tools.config import Config
 import absl.logging
+import yaml
 
 
 SOCKET_NAME = "/var/run/lepton-frames"
@@ -173,10 +174,10 @@ class PiClassifier:
             location_config,
             self.config.tracking.dynamic_thresh,
         )
-
         self.clip_saver = ClipSaver("piclips", keep_open=False)
         self.startup_classifier()
         self.previewer = Previewer.create_if_required(config, config.classify.preview)
+        self.recorder = CPTVRecorder(location_config, motion_config)
 
     def new_clip(self):
         self.clip = Clip(
@@ -321,8 +322,11 @@ class PiClassifier:
         return results
 
     def disconnected(self):
-        if self.tracking and self.clip.frame_on > self.min_frames:
-            self.write_clip()
+        if self.recorder.recording:
+            if self.clip.frame_on > self.min_frames:
+                self.recorder.stop_recording()
+            else:
+                self.recorder.delete_recording()
         self.reset()
         self.motion_detector.reset_windows()
 
@@ -341,9 +345,11 @@ class PiClassifier:
         if self.tracking is False:
             if self.motion_detector.movement_detected:
                 self.tracking = True
-                self.motion_detector.start_recording()
+                self.motion_detector.start_recording(self.clip)
+                self.recorder.write_frame(lepton_frame)
                 self.new_clip()
         else:
+            self.recorder.write_frame(lepton_frame)
             if self.clip.frame_on > self.min_frames:
                 self.tracking = self.motion_detector.movement_detected
             if self.tracking:
@@ -356,7 +362,8 @@ class PiClassifier:
                     for track in self.clip.active_tracks:
                         self.predictions.print_prediction(track.get_id())
             elif self.tracking is False or self.clip.frame_on == self.max_frames:
-                self.write_clip()
+                self.recorder.write_frame(lepton_frame)
+                self.recorder.stop_recording()
                 self.reset()
 
         self.frame_num += 1

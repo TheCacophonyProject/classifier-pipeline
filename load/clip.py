@@ -189,7 +189,7 @@ class Clip:
 
     def start_and_end_in_secs(self, track):
         if not track.start_s:
-            print("track start frame setting from {}".format(track.start_frame))
+            logging.info("track start frame setting from {}".format(track.start_frame))
 
         if not track.end_s:
             track.end_s = (track.end_frame + 1) / self.frames_per_second

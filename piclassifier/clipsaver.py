@@ -71,7 +71,6 @@ class ClipSaver:
         node_attrs["frames"] = track.frames
         node_attrs["start_frame"] = track.start_frame
         node_attrs["end_frame"] = track.end_frame
-
         if track.avg_novelty:
             node_attrs["avg_novelty"] = track.avg_novelty
         if track.tag:

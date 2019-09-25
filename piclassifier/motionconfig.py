@@ -24,6 +24,7 @@ class MotionConfig:
     use_sunrise_sunset = attr.ib()
     sunrise_offset = attr.ib()
     sunset_offset = attr.ib()
+    output_dir = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename=None):
@@ -40,6 +41,7 @@ class MotionConfig:
         motion = raw.get("motion", {})
         recorder = raw.get("recorder", {})
         return cls(
+            output_dir = raw["output-dir"],
             temp_thresh=motion.get("temp-thresh", 2000),
             delta_thresh=motion.get("delta-thresh", 20),
             count_thresh=motion.get("count-thresh", 1),

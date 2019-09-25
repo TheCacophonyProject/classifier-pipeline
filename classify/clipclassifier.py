@@ -93,11 +93,6 @@ class ClipClassifier(CPTVFileProcessor):
         # go through making clas sifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         state = None
-        print(
-            "track {} has {} frames and {} data".format(
-                track.get_id(), len(track), len(track)
-            )
-        )
         track_prediction = TrackPrediction(track.get_id(), track.start_frame)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
@@ -297,7 +292,7 @@ class ClipClassifier(CPTVFileProcessor):
             self.previewer.export_clip_preview(
                 mpeg_filename, clip, self.track_prediction
             )
-
+        logging.info("saving meta data")
         self.save_metadata(filename, meta_filename, clip)
 
         if self.tracker_config.verbose:
@@ -307,7 +302,6 @@ class ClipClassifier(CPTVFileProcessor):
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
 
     def save_metadata(self, filename, meta_filename, clip):
-        return
         if self.cache_to_disk:
             clip.frame_buffer.remove_cache()
 
@@ -347,7 +341,7 @@ class ClipClassifier(CPTVFileProcessor):
             track_info["all_class_confidences"] = {}
             for i, value in enumerate(prediction.class_best_score):
                 label = self.classifier.labels[i]
-                track_info["all_class_confidences"][label] = round(value, 3)
+                track_info["all_class_confidences"][label] = round(float(value), 3)
 
             positions = []
             for region in track.bounds_history:

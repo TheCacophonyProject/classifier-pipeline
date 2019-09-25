@@ -163,6 +163,7 @@ class MotionDetector:
             self.temp_thresh = self.config.temp_thresh
 
     def detect(self, clipped_frame):
+
         oldest = self.clipped_window.oldest
         delta_frame = clipped_frame - oldest
 
@@ -186,6 +187,7 @@ class MotionDetector:
         self.diff_window.add(delta_frame)
 
         if diff > self.config.count_thresh:
+            print("motion detected")
             return True
         return False
 
