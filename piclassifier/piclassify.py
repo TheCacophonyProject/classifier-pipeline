@@ -11,6 +11,7 @@ from cptv import Frame
 from classify.trackprediction import Predictions
 from load.clip import Clip, ClipTrackExtractor
 from .leptonframe import Telemetry
+from .locationconfig import LocationConfig
 from .motionconfig import MotionConfig
 from .motiondetector import MotionDetector
 from .cptvrecorder import CPTVRecorder
@@ -371,10 +372,9 @@ class PiClassifier:
             elif self.tracking is False or self.clip.frame_on == self.max_frames:
                 self.recorder.write_frame(lepton_frame)
                 self.recorder.stop_recording()
-                self.previewer.export_clip_preview(
-                    self.clip.get_id() + "clip.mp4", self.clip
-                )
-
+                # self.previewer.export_clip_preview(
+                #     self.clip.get_id() + "clip.mp4", self.clip
+                # )
                 self.reset()
 
         self.frame_num += 1
