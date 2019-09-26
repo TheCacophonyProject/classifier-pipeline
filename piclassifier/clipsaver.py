@@ -1,11 +1,11 @@
 #!/usr/bin/python3
 import h5py
 import numpy as np
-import time
 import os
-from pathlib import Path
 from datetime import datetime
 from PIL import Image
+
+from cptv import CPTVReader
 
 from ml_tools.mpeg_creator import MPEGCreator
 from ml_tools import tools
@@ -172,6 +172,23 @@ def frames_to_mp4(thermals, clip_id, filename):
         image = convert_and_resize(thermal, t_min, t_max, 4)
         mpeg.next_frame(np.asarray(image))
     mpeg.close()
+
+
+def cptv_to_mp4(filename):
+    # self.frame_buffer = FrameBuffer(filename, self.opt_flow, self.cache_to_disk)
+    print("parsing: " + filename)
+
+    with open(filename, "rb") as f:
+        reader = CPTVReader(f)
+        mpeg = MPEGCreator(filename + ".mp4")
+        frames = [np.float32(frame.pix) for frame in reader]
+        t_min = np.amin(frames)
+        t_max = np.amax(frames)
+        print("t_min {} t_max {}".format(t_min, t_max))
+        for frame in frames:
+            image = convert_and_resize(frame, t_min, t_max, 4)
+            mpeg.next_frame(np.asarray(image))
+        mpeg.close()
 
 
 def convert_and_resize(frame, h_min, h_max, size=None, mode=Image.BILINEAR):

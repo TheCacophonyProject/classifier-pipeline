@@ -137,7 +137,7 @@ class FrameBuffer:
 
     @property
     def has_flow(self):
-        return self.cache or self.opt_flow
+        return self.cache or self.opt_flow or  not self.calc_flow
 
     def get_frame(self, frame_number):
         if self.prev_frame and self.prev_frame.frame_number == frame_number:

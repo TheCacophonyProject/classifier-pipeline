@@ -3,7 +3,7 @@ from datetime import datetime
 import os
 import yaml
 
-CPTV_TEMP_EXT = "cptv.temp"
+CPTV_TEMP_EXT = ".cptv.temp"
 
 
 class CPTVRecorder:
@@ -14,12 +14,12 @@ class CPTVRecorder:
         self.filename = None
         self.recording = False
 
-    def start_recording(self, clip):
+    def start_recording(self, lepton_frame):
         self.filename = new_temp_name()
         self.filename = os.path.join(self.motion_config.output_dir, self.filename)
 
         f = open(self.filename, "wb")
-        self.writer = CPTVWriter(self.filename)
+        self.writer = CPTVWriter(f)
         self.writer.timestamp = datetime.now()
         self.writer.device_name = b"gp-test-01"
         self.writer.latitude = self.location_config.latitude
@@ -27,7 +27,7 @@ class CPTVRecorder:
         self.writer.preview_secs = self.motion_config.preview_secs
         self.writer.motion_config = b""
         self.writer.write_header()
-
+        self.write_frame(lepton_frame)
         self.recording = True
 
     def write_frame(self, frame):

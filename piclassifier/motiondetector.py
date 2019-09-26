@@ -58,7 +58,7 @@ class SlidingWindow:
 
 
 class MotionDetector:
-    FFC_PERIOD = 10
+    FFC_PERIOD = timedelta(seconds=10)
     BACKGROUND_WEIGHTING_PER_FRAME = 0.99
     BACKGROUND_WEIGHT_EVERY = 3
 
@@ -234,11 +234,11 @@ class MotionDetector:
     @staticmethod
     def is_affected_by_ffc(lepton_frame):
         if (
-            lepton_frame.telemetry.time_on is None
-            or lepton_frame.telemetry.last_ffc_time is None
+            lepton_frame.time_on is None
+            or lepton_frame.last_ffc_time is None
         ):
             return False
 
         return (
-            lepton_frame.telemetry.time_on - lepton_frame.telemetry.last_ffc_time
+            lepton_frame.time_on - lepton_frame.last_ffc_time
         ) < MotionDetector.FFC_PERIOD

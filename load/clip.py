@@ -84,6 +84,7 @@ class Clip:
         self.stats.mean_background_value = np.average(self.background)
         self.set_temp_thresh()
         self.background_calculated = True
+        tools.frame_to_jpg(self.background, self.get_id()+".jpg", None,np.amin(self.background),np.amax(self.background))
 
     def on_preview(self):
         return not self.background_calculated
@@ -473,7 +474,7 @@ class ClipTrackExtractor:
                 if size_change > max_size_change:
                     self.print_if_verbose(
                         "track {} size_change {} bigger than max size_change {}".format(
-                            track.get_id(), score, max_distance
+                            track.get_id(), size_change, max_size_change
                         )
                     )
                     continue

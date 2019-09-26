@@ -1,15 +1,16 @@
 #!/usr/bin/python3
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 import os
 import logging
 import socket
 import time
+
+from cptv import Frame
+
 from classify.trackprediction import Predictions
 from load.clip import Clip, ClipTrackExtractor
-from .clipsaver import ClipSaver
-from .leptonframe import Telemetry, LeptonFrame
-from .locationconfig import LocationConfig
+from .leptonframe import Telemetry
 from .motionconfig import MotionConfig
 from .motiondetector import MotionDetector
 from .cptvrecorder import CPTVRecorder
@@ -21,7 +22,6 @@ from ml_tools.dataset import Preprocessor, TrackChannels
 from ml_tools.previewer import Previewer
 from ml_tools.config import Config
 import absl.logging
-import yaml
 
 
 SOCKET_NAME = "/var/run/lepton-frames"
@@ -78,13 +78,12 @@ def main():
 
 def handle_connection(connection, clip_classifier):
     img_dtype = np.dtype("uint16")
-    # big endian > little endian < from lepton3 is big endian while python is little endian
-    img_dtype = img_dtype.newbyteorder(">")
+    # big endian > little endian <
+    # lepton3 is big endian while python is little endian
 
     thermal_frame = np.empty(
         (clip_classifier.res_y, clip_classifier.res_x), dtype=img_dtype
     )
-
     while True:
         data = connection.recv(400 * 400 * 2 + TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE)
 
@@ -105,11 +104,21 @@ def handle_connection(connection, clip_classifier):
                 ).reshape(clip_classifier.res_y, clip_classifier.res_x)
             else:
                 telemetry = Telemetry()
+                telemetry.last_ffc_time = timedelta(milliseconds=time.time())
+                telemetry.time_on = timedelta(
+                    milliseconds=time.time(),
+                    seconds=MotionDetector.FFC_PERIOD.seconds + 1,
+                )
                 thermal_frame = np.frombuffer(data, dtype=img_dtype, offset=0).reshape(
                     clip_classifier.res_y, clip_classifier.res_x
                 )
-            t_max = np.amax(thermal_frame)
-            t_min = np.amin(thermal_frame)
+
+            # swap from big to little
+            lepton_frame = Frame(
+                thermal_frame.byteswap(), telemetry.time_on, telemetry.last_ffc_time
+            )
+            t_max = np.amax(lepton_frame.pix)
+            t_min = np.amin(lepton_frame.pix)
             if t_max > 10000 or t_min == 0:
                 logging.warning(
                     "received frame has odd values skipping thermal frame max {} thermal frame min {}".format(
@@ -119,7 +128,6 @@ def handle_connection(connection, clip_classifier):
                 # this frame has bad data probably from lack of cpu
                 clip_classifier.skip_frame()
                 continue
-            lepton_frame = LeptonFrame(telemetry, thermal_frame.copy())
             clip_classifier.process_frame(lepton_frame)
 
 
@@ -174,7 +182,6 @@ class PiClassifier:
             location_config,
             self.config.tracking.dynamic_thresh,
         )
-        self.clip_saver = ClipSaver("piclips", keep_open=False)
         self.startup_classifier()
         self.previewer = Previewer.create_if_required(config, config.classify.preview)
         self.recorder = CPTVRecorder(location_config, motion_config)
@@ -345,9 +352,9 @@ class PiClassifier:
         if self.tracking is False:
             if self.motion_detector.movement_detected:
                 self.tracking = True
-                self.motion_detector.start_recording(self.clip)
-                self.recorder.write_frame(lepton_frame)
                 self.new_clip()
+                self.motion_detector.start_recording()
+                self.recorder.start_recording(lepton_frame)
         else:
             self.recorder.write_frame(lepton_frame)
             if self.clip.frame_on > self.min_frames:
@@ -364,6 +371,10 @@ class PiClassifier:
             elif self.tracking is False or self.clip.frame_on == self.max_frames:
                 self.recorder.write_frame(lepton_frame)
                 self.recorder.stop_recording()
+                self.previewer.export_clip_preview(
+                    self.clip.get_id() + "clip.mp4", self.clip
+                )
+
                 self.reset()
 
         self.frame_num += 1
@@ -375,24 +386,24 @@ class PiClassifier:
             )
         )
 
-    def write_clip(self):
-        for track in self.clip.tracks:
-            logging.debug(
-                "track start {} track finish {}".format(
-                    track.start_frame, track.end_frame
-                )
-            )
-            track_prediction = self.predictions.prediction_for(track.get_id())
-            if track_prediction:
-                track_result = track_prediction.get_result(self.classifier.labels)
-                if track_result:
-                    track.confidence = track_result.confidence
-                    track.tag = track_result.what
-                    track.max_novelty = track_result.max_novelty
-                    track.avg_novelty = track_result.avg_novelty
-        # write clip to h5py for now
-        self.clip_saver.add_clip(self.clip)
-        self.previewer.export_clip_preview(self.clip.get_id() + "clip.mp4", self.clip)
+    # def write_clip(self):
+    #     for track in self.clip.tracks:
+    #         logging.debug(
+    #             "track start {} track finish {}".format(
+    #                 track.start_frame, track.end_frame
+    #             )
+    #         )
+    #         track_prediction = self.predictions.prediction_for(track.get_id())
+    #         if track_prediction:
+    #             track_result = track_prediction.get_result(self.classifier.labels)
+    #             if track_result:
+    #                 track.confidence = track_result.confidence
+    #                 track.tag = track_result.what
+    #                 track.max_novelty = track_result.max_novelty
+    #                 track.avg_novelty = track_result.avg_novelty
+    #     # write clip to h5py for now
+    #     self.clip_saver.add_clip(self.clip)
+    #     self.previewer.export_clip_preview(self.clip.get_id() + "clip.mp4", self.clip)
 
     def reset(self):
         self.predictions.clear_predictions()
