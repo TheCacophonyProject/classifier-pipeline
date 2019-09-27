@@ -62,10 +62,12 @@ class MotionDetector:
     BACKGROUND_WEIGHTING_PER_FRAME = 0.99
     BACKGROUND_WEIGHT_EVERY = 3
 
-    def __init__(self, res_x, res_y, config, location_config, dynamic_thresh):
+    def __init__(
+        self, res_x, res_y, config, location_config, recorder_config, dynamic_thresh
+    ):
         self.config = config
         self.location_config = location_config
-        self.preview_frames = config.preview_secs * config.frame_rate
+        self.preview_frames = recorder_config.preview_secs * recorder_config.frame_rate
         self.compare_gap = config.frame_compare_gap + 1
         edge = config.edge_pixels
 
@@ -88,16 +90,17 @@ class MotionDetector:
         self.movement_detected = False
         self.dynamic_thresh = dynamic_thresh
         self.temp_thresh = config.temp_thresh
-
         self.crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
+        self.use_sunrise = recorder_config.use_sunrise_sunset
 
         self.last_sunrise_check = None
         self.location = None
-        self.use_sunrise = self.config.use_sunrise_sunset
         self.sunrise = None
         self.sunset = None
         self.recording = False
         if self.use_sunrise:
+            self.sunrise_offset = recorder_config.sunrise_offset
+            self.sunset_offset = recorder_config.sunset_offset
             self.set_location(location_config)
 
     def set_location(self, location_config):
@@ -116,11 +119,9 @@ class MotionDetector:
             sun = self.location.sun()
 
             self.sunrise = (
-                sun["sunrise"] + timedelta(minutes=self.config.sunrise_offset)
+                sun["sunrise"] + timedelta(minutes=self.sunrise_offset)
             ).time()
-            self.sunset = (
-                sun["sunset"] + timedelta(minutes=self.config.sunset_offset)
-            ).time()
+            self.sunset = (sun["sunset"] + timedelta(minutes=self.sunset_offset)).time()
             self.last_sunrise_check = date
             logging.info(
                 "sunrise is {} sunset is {} next check is {}".format(
@@ -233,10 +234,7 @@ class MotionDetector:
 
     @staticmethod
     def is_affected_by_ffc(lepton_frame):
-        if (
-            lepton_frame.time_on is None
-            or lepton_frame.last_ffc_time is None
-        ):
+        if lepton_frame.time_on is None or lepton_frame.last_ffc_time is None:
             return False
 
         return (

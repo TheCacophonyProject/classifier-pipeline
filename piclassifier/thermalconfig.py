@@ -17,31 +17,10 @@ class MotionConfig:
     verbose = attr.ib()
     edge_pixels = attr.ib()
     warmer_only = attr.ib()
-    preview_secs = attr.ib()
-    min_secs = attr.ib()
-    max_secs = attr.ib()
-    frame_rate = attr.ib()
-    use_sunrise_sunset = attr.ib()
-    sunrise_offset = attr.ib()
-    sunset_offset = attr.ib()
-    output_dir = attr.ib()
 
     @classmethod
-    def load_from_file(cls, filename=None):
-        if not filename:
-            filename = MotionConfig.find_config()
-        with open(filename) as stream:
-            return cls.load_from_stream(stream)
-
-    @classmethod
-    def load_from_stream(cls, stream):
-        raw = yaml.safe_load(stream)
-        if raw is None:
-            raw = {}
-        motion = raw.get("motion", {})
-        recorder = raw.get("recorder", {})
+    def load(cls, motion):
         return cls(
-            output_dir = raw["output-dir"],
             temp_thresh=motion.get("temp-thresh", 2000),
             delta_thresh=motion.get("delta-thresh", 20),
             count_thresh=motion.get("count-thresh", 1),
@@ -51,6 +30,22 @@ class MotionConfig:
             verbose=motion.get("verbose", True),
             edge_pixels=motion.get("edge-pixels", 3),
             warmer_only=motion.get("warmer-only", False),
+        )
+
+
+@attr.s
+class RecorderConfig:
+    preview_secs = attr.ib()
+    min_secs = attr.ib()
+    max_secs = attr.ib()
+    frame_rate = attr.ib()
+    use_sunrise_sunset = attr.ib()
+    sunrise_offset = attr.ib()
+    sunset_offset = attr.ib()
+
+    @classmethod
+    def load(cls, recorder):
+        return cls(
             min_secs=recorder.get("min-secs", 2),
             max_secs=recorder.get("max-secs", 10),
             preview_secs=recorder.get("preview-secs", 5),
@@ -58,6 +53,31 @@ class MotionConfig:
             use_sunrise_sunset=recorder.get("sunrise-sunset", False),
             sunrise_offset=recorder.get("sunrise-offset", 0),
             sunset_offset=recorder.get("sunset-offset", 0),
+        )
+
+
+@attr.s
+class ThermalConfig:
+    motion = attr.ib()
+    recorder = attr.ib()
+    output_dir = attr.ib()
+
+    @classmethod
+    def load_from_file(cls, filename=None):
+        if not filename:
+            filename = ThermalConfig.find_config()
+        with open(filename) as stream:
+            return cls.load_from_stream(stream)
+
+    @classmethod
+    def load_from_stream(cls, stream):
+        raw = yaml.safe_load(stream)
+        if raw is None:
+            raw = {}
+        return cls(
+            output_dir=raw["output-dir"],
+            motion=MotionConfig.load(raw.get("motion", {})),
+            recorder=RecorderConfig.load(raw.get("recorder", {})),
         )
 
     def validate(self):
