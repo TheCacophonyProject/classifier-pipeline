@@ -185,8 +185,6 @@ class PiClassifier:
             self.config.tracking.dynamic_thresh,
             CPTVRecorder(location_config, thermal_config),
         )
-        # self.previewer = Previewer.create_if_required(config, config.classify.preview)
-        # self.recorder = CPTVRecorder(location_config, thermal_config)
         self.startup_classifier()
 
     def new_clip(self):
