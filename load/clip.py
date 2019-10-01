@@ -44,7 +44,7 @@ class Clip:
     def __init__(self, trackconfig, sourcefile, background=None, calc_stats=True):
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
-
+        Track._track_id = 1
         self.frame_on = 0
         self.crop_rectangle = None
         self.num_preview_frames = 0
@@ -229,7 +229,6 @@ class Clip:
         self.frame_buffer.add_frame(thermal, filtered, mask)
         if self.calc_stats:
             self.stats.add_frame(thermal, filtered)
-
 
 
 class ClipStats:

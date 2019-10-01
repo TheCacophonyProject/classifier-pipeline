@@ -1,6 +1,7 @@
 from struct import unpack_from
 from datetime import timedelta
 
+
 class Telemetry:
     def __init__(self):
         self.telemetry_revision = None
@@ -40,7 +41,7 @@ class Telemetry:
         # 60th byte
         t = cls()
         t.telemetry_revision = revision
-        t.time_on = timedelta(milliseconds =time_counter)
+        t.time_on = timedelta(milliseconds=time_counter)
         t.status_bits = status_bits
         t.software_revision = software_revision
         t.frame_counter = frame_counter
@@ -48,7 +49,7 @@ class Telemetry:
         t.fpa_temp_counts = fpa_temp_counts
         t.fpa_temp = fpa_temp
         t.fpa_temp_last_ffc = fpa_temp_last_ffc
-        t.last_ffc_time = timedelta(milliseconds =time_counter_last_ffc)
+        t.last_ffc_time = timedelta(milliseconds=time_counter_last_ffc)
         return t
 
 

@@ -183,9 +183,10 @@ class PiClassifier:
             location_config,
             thermal_config.recorder,
             self.config.tracking.dynamic_thresh,
+            CPTVRecorder(location_config, thermal_config),
         )
         # self.previewer = Previewer.create_if_required(config, config.classify.preview)
-        self.recorder = CPTVRecorder(location_config, thermal_config)
+        # self.recorder = CPTVRecorder(location_config, thermal_config)
         self.startup_classifier()
 
     def new_clip(self):
@@ -316,46 +317,27 @@ class PiClassifier:
                 track_prediction.print_prediction(self.predictions.labels)
 
     def disconnected(self):
-        if self.recorder.recording:
-            if self.clip.frame_on > self.min_frames:
-                self.recorder.stop_recording()
-            else:
-                self.recorder.delete_recording()
-        self.reset()
-        self.motion_detector.reset_windows()
+        self.end_clip()
+        self.motion_detector.force_stop()
 
     def skip_frame(self):
         if self.clip:
             self.clip.frame_on += 1
 
-    def start_recording(self, lepton_frame):
-        self.tracking = True
-        self.new_clip()
-        self.motion_detector.start_recording()
-        self.recorder.start_recording(lepton_frame)
-
-    def stop_recording(self, lepton_frame):
-        self.recorder.write_frame(lepton_frame)
-        self.reset()
-
     def process_frame(self, lepton_frame):
         start = time.time()
         self.motion_detector.process_frame(lepton_frame)
-        if self.tracking is False and self.motion_detector.movement_detected:
-            self.start_recording(lepton_frame)
-        elif self.tracking:
-            self.recorder.write_frame(lepton_frame)
-            if self.clip.frame_on > self.min_frames:
-                self.tracking = self.motion_detector.movement_detected
-            if self.tracking:
-                self.track_extractor.process_frame(self.clip, lepton_frame.pix)
-                if self.clip.active_tracks and (
-                    self.clip.frame_on % PiClassifier.PROCESS_FRAME == 0
-                    or self.clip.frame_on == self.preview_frames
-                ):
-                    self.identify_last_frame()
-            elif self.tracking is False or self.clip.frame_on == self.max_frames:
-                self.stop_recording(lepton_frame)
+        if self.motion_detector.recorder.recording:
+            if self.clip is None:
+                self.new_clip()
+            self.track_extractor.process_frame(self.clip, lepton_frame.pix)
+            if self.clip.active_tracks and (
+                self.clip.frame_on % PiClassifier.PROCESS_FRAME == 0
+                or self.clip.frame_on == self.preview_frames
+            ):
+                self.identify_last_frame()
+        elif self.clip is not None:
+            self.end_clip()
 
         self.frame_num += 1
         end = time.time()
@@ -366,9 +348,7 @@ class PiClassifier:
             )
         )
 
-    def reset(self):
+    def end_clip(self):
         self.predictions.clear_predictions()
         self.clip = None
         self.tracking = False
-        self.motion_detector.stop_recording()
-        self.recorder.stop_recording()

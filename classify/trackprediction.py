@@ -23,6 +23,7 @@ class Predictions:
     def print_prediction(self, track_id):
         self.prediction_for(track_id).print_prediction(self.labels)
 
+
 class TrackPrediction:
     """
     Class to hold the information about the predicted class of a track.
@@ -180,13 +181,11 @@ class TrackPrediction:
             return None
         return float(sorted(self.predictions[frame_number])[-n])
 
-
     def print_prediction(self, labels):
         logging.info(
-            "Track {} is {}".format(
-                self.track_id, self.get_classified_footer(labels)
-            )
+            "Track {} is {}".format(self.track_id, self.get_classified_footer(labels))
         )
+
 
 @attr.s(slots=True)
 class TrackResult:

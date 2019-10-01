@@ -15,8 +15,39 @@ class CPTVRecorder:
         self.writer = None
         self.filename = None
         self.recording = False
+        self.frames = 0
+        self.min_frames = (
+            thermal_config.recorder.min_secs * thermal_config.recorder.frame_rate
+        )
+        self.max_frames = (
+            thermal_config.recorder.max_secs * thermal_config.recorder.frame_rate
+        )
 
-    def start_recording(self, lepton_frame):
+    def force_stop(self):
+        if not self.recording:
+            return
+
+        if self.has_minimum():
+            self.stop_recording()
+        else:
+            self.delete_recording()
+
+    def process_frame(self, movement_detected, lepton_frame):
+        if movement_detected:
+            self.write_frame(lepton_frame)
+            if self.frames == self.max_frames:
+                self.stop_recording()
+        elif self.recording:
+            if not self.has_minimum():
+                self.write_frame(lepton_frame)
+            if self.frames == self.min_frames:
+                self.stop_recording()
+
+    def has_minimum(self):
+        return self.frames >= self.min_frames
+
+    def start_recording(self):
+        self.frames = 0
         self.filename = new_temp_name()
         self.filename = os.path.join(self.output_dir, self.filename)
         f = open(self.filename, "wb")
@@ -28,11 +59,13 @@ class CPTVRecorder:
         self.writer.preview_secs = self.preview_secs
         self.writer.motion_config = yaml.dump(self.motion_config).encode()
         self.writer.write_header()
-        self.write_frame(lepton_frame)
         self.recording = True
 
-    def write_frame(self, frame):
-        self.writer.write_frame(frame)
+    def write_frame(self, lepton_frame):
+        if self.writer is None:
+            self.start_recording()
+        self.writer.write_frame(lepton_frame)
+        self.frames += 1
 
     def stop_recording(self):
         if self.writer is None:

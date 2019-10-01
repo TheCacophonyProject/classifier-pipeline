@@ -63,14 +63,22 @@ class MotionDetector:
     BACKGROUND_WEIGHT_EVERY = 3
 
     def __init__(
-        self, res_x, res_y, config, location_config, recorder_config, dynamic_thresh
+        self,
+        res_x,
+        res_y,
+        config,
+        location_config,
+        recorder_config,
+        dynamic_thresh,
+        recorder,
     ):
         self.config = config
         self.location_config = location_config
         self.preview_frames = recorder_config.preview_secs * recorder_config.frame_rate
         self.compare_gap = config.frame_compare_gap + 1
         edge = config.edge_pixels
-
+        self.min_frames = recorder_config.min_secs * recorder_config.frame_rate
+        self.max_frames = recorder_config.max_secs * recorder_config.frame_rate
         self.clipped_window = SlidingWindow(
             (self.compare_gap, res_y - edge * 2, res_x - edge * 2), np.int32
         )
@@ -102,6 +110,8 @@ class MotionDetector:
             self.sunrise_offset = recorder_config.sunrise_offset
             self.sunset_offset = recorder_config.sunset_offset
             self.set_location(location_config)
+
+        self.recorder = recorder
 
     def set_location(self, location_config):
         self.location = Location()
@@ -199,35 +209,31 @@ class MotionDetector:
             return time > self.sunset or time < self.sunrise
         return True
 
-    def start_recording(self):
-        self.recording = True
-
-    def stop_recording(self):
-        self.recording = False
-
-    def reset_windows(self):
+    def force_stop(self):
         self.clipped_window.reset()
         self.thermal_window.reset()
         self.diff_window.reset()
         self.processed = 0
+        self.recorder.force_stop()
 
     def process_frame(self, lepton_frame):
-        if self.can_record() or self.recording:
+        if self.can_record() or self.recorder.recording:
             if MotionDetector.is_affected_by_ffc(lepton_frame):
                 logging.info("affected by ffc - skipping frame")
                 self.movement_detected = False
-                return
-            frame = np.int32(self.crop_rectangle.subimage(lepton_frame.pix))
-            clipped_frame = np.clip(np.int32(frame), self.config.temp_thresh, None)
-            self.clipped_window.add(clipped_frame)
-            self.thermal_window.add(lepton_frame.pix)
-            if self.processed == 0:
-                self.background = lepton_frame.pix
-                self.last_background_change = self.processed
             else:
-                self.calc_temp_thresh(lepton_frame.pix)
-                self.movement_detected = self.detect(clipped_frame)
-            self.processed += 1
+                frame = np.int32(self.crop_rectangle.subimage(lepton_frame.pix))
+                clipped_frame = np.clip(np.int32(frame), self.config.temp_thresh, None)
+                self.clipped_window.add(clipped_frame)
+                self.thermal_window.add(lepton_frame.pix)
+                if self.processed == 0:
+                    self.background = lepton_frame.pix
+                    self.last_background_change = self.processed
+                else:
+                    self.calc_temp_thresh(lepton_frame.pix)
+                    self.movement_detected = self.detect(clipped_frame)
+                self.processed += 1
+            self.recorder.process_frame(self.movement_detected, lepton_frame)
         else:
             self.movement_detected = False
         self.num_frames += 1
