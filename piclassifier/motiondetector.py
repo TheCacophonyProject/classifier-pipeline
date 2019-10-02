@@ -155,6 +155,7 @@ class MotionDetector:
                 self.temp_thresh = int(
                     min(self.config.temp_thresh, np.average(self.background))
                 )
+                self.config.dynamic_thresh = self.temp_thresh
                 if self.temp_thresh != old_temp:
                     logging.info(
                         "motion detector threshold changed from {} to {} new backgroung average is {} weighting was {}".format(

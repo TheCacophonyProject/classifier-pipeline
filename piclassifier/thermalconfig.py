@@ -17,11 +17,12 @@ class MotionConfig:
     verbose = attr.ib()
     edge_pixels = attr.ib()
     warmer_only = attr.ib()
+    dynamic_thresh = attr.ib()
 
     @classmethod
     def load(cls, motion):
         return cls(
-            temp_thresh=motion.get("temp-thresh", 2000),
+            temp_thresh=motion.get("temp-thresh", 2750),
             delta_thresh=motion.get("delta-thresh", 20),
             count_thresh=motion.get("count-thresh", 1),
             frame_compare_gap=motion.get("frame-compare-gap", 45),
@@ -30,6 +31,7 @@ class MotionConfig:
             verbose=motion.get("verbose", True),
             edge_pixels=motion.get("edge-pixels", 3),
             warmer_only=motion.get("warmer-only", False),
+            dynamic_thresh =motion.get("temp-thresh", 2750),
         )
 
 
