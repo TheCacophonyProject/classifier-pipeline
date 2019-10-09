@@ -87,7 +87,7 @@ class MotionDetector:
         )
 
         self.thermal_window = SlidingWindow(
-            (self.preview_frames, res_y, res_x), np.uint16
+            (self.preview_frames, res_y - edge * 2, res_x - edge * 2), np.uint16
         )
         self.processed = 0
         self.num_frames = 0
@@ -142,30 +142,42 @@ class MotionDetector:
     def calc_temp_thresh(self, thermal_frame):
         if self.dynamic_thresh:
 
-            new_background = np.minimum(
-                self.background, thermal_frame * self.background_weight
+            new_background = np.where(
+                self.background < thermal_frame * self.background_weight,
+                self.background,
+                thermal_frame,
             )
-            changed = np.amax(self.background != new_background)
-            if changed:
+            temp_changed = False
+
+            back_changed = np.amax(self.background != new_background)
+            if back_changed:
                 self.last_background_change = self.processed
                 self.background = new_background
 
-                self.background_weight = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
                 old_temp = self.temp_thresh
                 self.temp_thresh = int(
-                    min(self.config.temp_thresh, np.average(self.background))
+                    round(min(self.config.temp_thresh, np.average(self.background)))
                 )
-                self.config.dynamic_thresh = self.temp_thresh
                 if self.temp_thresh != old_temp:
-                    logging.info(
-                        "motion detector threshold changed from {} to {} new backgroung average is {} weighting was {}".format(
-                            old_temp,
-                            self.temp_thresh,
-                            np.average(self.background),
-                            self.background_weight,
-                        )
+                    # logging.info(
+                    #     "motion detector {} threshold changed from {} to {} new backgroung average is {} weighting was {}".format(
+                    #         self.num_frames,
+                    #         old_temp,
+                    #         self.temp_thresh,
+                    #         np.average(self.background),
+                    #         self.background_weight,
+                    #     )
+                    # )
+                    temp_changed = True
+                    self.background_weight = (
+                        MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
                     )
-            elif self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0:
+                    # print("{} temp thresh {}".format(self.num_frames, self.temp_thresh))
+
+            if (
+                temp_changed is False
+                and self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0
+            ):
                 self.background_weight = (
                     self.background_weight
                     * MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
@@ -182,7 +194,7 @@ class MotionDetector:
         if not self.config.warmer_only:
             delta_frame = abs(delta_frame)
         if self.config.one_diff_only:
-            diff = len(delta_frame[delta_frame >= self.config.delta_thresh])
+            diff = len(delta_frame[delta_frame > self.config.delta_thresh])
         else:
             if self.processed > 2:
                 delta_frame2 = self.diff_window.oldest
@@ -199,6 +211,12 @@ class MotionDetector:
         self.diff_window.add(delta_frame)
 
         if diff > self.config.count_thresh:
+            tdelta = timedelta(seconds=self.num_frames / 9)
+            print(
+                "{} motion detected thresh {} count {}".format(
+                    tdelta, self.temp_thresh, diff
+                )
+            )
             return True
         return False
 
@@ -217,23 +235,27 @@ class MotionDetector:
         self.recorder.force_stop()
 
     def process_frame(self, lepton_frame):
-        if self.can_record() or self.recorder.recording:
-            if MotionDetector.is_affected_by_ffc(lepton_frame):
-                logging.info("affected by ffc - skipping frame")
-                self.movement_detected = False
-            else:
-                frame = np.int32(self.crop_rectangle.subimage(lepton_frame.pix))
-                clipped_frame = np.clip(np.int32(frame), self.config.temp_thresh, None)
-                self.clipped_window.add(clipped_frame)
-                self.thermal_window.add(lepton_frame.pix)
-                if self.processed == 0:
-                    self.background = lepton_frame.pix
+        if self.can_record() or self.recording:
+            cropped_frame = self.crop_rectangle.subimage(lepton_frame.pix)
+            frame = np.int32(cropped_frame)
+            ffc_affected = MotionDetector.is_affected_by_ffc(lepton_frame)
+            if not ffc_affected:
+                self.thermal_window.add(cropped_frame)
+                if self.background is None:
+                    self.background = cropped_frame
                     self.last_background_change = self.processed
                 else:
-                    self.calc_temp_thresh(lepton_frame.pix)
-                    self.movement_detected = self.detect(clipped_frame)
-                self.processed += 1
-            self.recorder.process_frame(self.movement_detected, lepton_frame)
+                    self.calc_temp_thresh(cropped_frame)
+
+            clipped_frame = np.clip(np.int32(frame), a_min=self.temp_thresh, a_max=None)
+            self.clipped_window.add(clipped_frame)
+
+            if ffc_affected:
+                self.movement_detected = False
+                self.clipped_window.oldest_index = self.clipped_window.last_index
+            elif self.processed != 0:
+                self.movement_detected = self.detect(clipped_frame)
+            self.processed += 1
         else:
             self.movement_detected = False
         self.num_frames += 1
