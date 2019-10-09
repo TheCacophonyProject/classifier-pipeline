@@ -6,7 +6,7 @@ import logging
 import socket
 import time
 import absl.logging
-
+import json
 from cptv import Frame
 
 from classify.trackprediction import Predictions
@@ -347,6 +347,50 @@ class PiClassifier:
         )
 
     def end_clip(self):
-        self.predictions.clear_predictions()
-        self.clip = None
-        self.tracking = False
+        if self.clip:
+            self.save_metadata()
+            self.predictions.clear_predictions()
+            self.clip = None
+            self.tracking = False
+
+    def save_metadata(self):
+        filename =  datetime.now().strftime("%Y%m%d.%H%M%S.%f.meta")
+
+        # record results in text file.
+        save_file = {}
+        start, end = self.clip.start_and_end_time_absolute()
+        save_file["start_time"] = start.isoformat()
+        save_file["end_time"] = end.isoformat()
+        save_file["algorithm"] = {}
+        save_file["algorithm"]["model"] = self.config.classify.model
+        save_file["algorithm"]["tracker_version"] = self.clip.VERSION
+        save_file["tracks"] = []
+        for track in self.clip.tracks:
+            track_info = {}
+            prediction = self.predictions.prediction_for(track.get_id())
+            start_s, end_s = self.clip.start_and_end_in_secs(track)
+            save_file["tracks"].append(track_info)
+            track_info["start_s"] = round(start_s, 2)
+            track_info["end_s"] = round(end_s, 2)
+            track_info["num_frames"] = prediction.num_frames
+            track_info["frame_start"] = track.start_frame
+            track_info["frame_end"] = track.end_frame
+            if prediction.best_label_index is not None:
+                track_info["label"] = self.classifier.labels[prediction.best_label_index]
+                track_info["confidence"] = round(prediction.score(), 2)
+                track_info["clarity"] = round(prediction.clarity, 3)
+                track_info["average_novelty"] = round(prediction.average_novelty, 2)
+                track_info["max_novelty"] = round(prediction.max_novelty, 2)
+                track_info["all_class_confidences"] = {}
+                for i, value in enumerate(prediction.class_best_score):
+                    label = self.classifier.labels[i]
+                    track_info["all_class_confidences"][label] = round(float(value), 3)
+
+            positions = []
+            for region in track.bounds_history:
+                track_time = round(region.frame_number / self.clip.frames_per_second, 2)
+                positions.append([track_time, region])
+            track_info["positions"] = positions
+
+        with open("metadata/"+filename, "w") as f:
+            json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)

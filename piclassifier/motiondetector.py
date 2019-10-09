@@ -87,7 +87,7 @@ class MotionDetector:
         )
 
         self.thermal_window = SlidingWindow(
-            (self.preview_frames, res_y - edge * 2, res_x - edge * 2), np.uint16
+            (self.preview_frames, res_y, res_x ), np.uint16
         )
         self.processed = 0
         self.num_frames = 0
@@ -212,11 +212,11 @@ class MotionDetector:
 
         if diff > self.config.count_thresh:
             tdelta = timedelta(seconds=self.num_frames / 9)
-            print(
-                "{} motion detected thresh {} count {}".format(
-                    tdelta, self.temp_thresh, diff
-                )
-            )
+            # print(
+            #     "{} motion detected thresh {} count {}".format(
+            #         tdelta, self.temp_thresh, diff
+            #     )
+            # )
             return True
         return False
 
@@ -240,12 +240,12 @@ class MotionDetector:
             frame = np.int32(cropped_frame)
             ffc_affected = MotionDetector.is_affected_by_ffc(lepton_frame)
             if not ffc_affected:
-                self.thermal_window.add(cropped_frame)
+                self.thermal_window.add(lepton_frame.pix)
                 if self.background is None:
-                    self.background = cropped_frame
+                    self.background = lepton_frame.pix
                     self.last_background_change = self.processed
                 else:
-                    self.calc_temp_thresh(cropped_frame)
+                    self.calc_temp_thresh(lepton_frame.pix)
 
             clipped_frame = np.clip(np.int32(frame), a_min=self.temp_thresh, a_max=None)
             self.clipped_window.add(clipped_frame)
@@ -256,6 +256,8 @@ class MotionDetector:
             elif self.processed != 0:
                 self.movement_detected = self.detect(clipped_frame)
             self.processed += 1
+            self.recorder.process_frame(self.movement_detected, lepton_frame)
+
         else:
             self.movement_detected = False
         self.num_frames += 1
