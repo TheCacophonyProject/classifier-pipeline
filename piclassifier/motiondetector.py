@@ -212,11 +212,11 @@ class MotionDetector:
 
         if diff > self.config.count_thresh:
             tdelta = timedelta(seconds=self.num_frames / 9)
-            # print(
-            #     "{} motion detected thresh {} count {}".format(
-            #         tdelta, self.temp_thresh, diff
-            #     )
-            # )
+            print(
+                "{} motion detected thresh {} count {}".format(
+                    tdelta, self.temp_thresh, diff
+                )
+            )
             return True
         return False
 
@@ -235,7 +235,8 @@ class MotionDetector:
         self.recorder.force_stop()
 
     def process_frame(self, lepton_frame):
-        if self.can_record() or self.recording:
+        ffc_affected = False
+        if self.can_record() or self.recorder.recording:
             cropped_frame = self.crop_rectangle.subimage(lepton_frame.pix)
             frame = np.int32(cropped_frame)
             ffc_affected = MotionDetector.is_affected_by_ffc(lepton_frame)
@@ -257,10 +258,10 @@ class MotionDetector:
                 self.movement_detected = self.detect(clipped_frame)
             self.processed += 1
             self.recorder.process_frame(self.movement_detected, lepton_frame)
-
         else:
             self.movement_detected = False
         self.num_frames += 1
+        return ffc_affected
 
     @staticmethod
     def is_affected_by_ffc(lepton_frame):

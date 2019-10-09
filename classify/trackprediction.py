@@ -23,7 +23,8 @@ class Predictions:
     def print_prediction(self, track_id):
         self.prediction_for(track_id).print_prediction(self.labels)
 
-
+    def prediction_description(self, track_id):
+         return self.prediction_per_track.get(track_id).description(self.labels)
 class TrackPrediction:
     """
     Class to hold the information about the predicted class of a track.

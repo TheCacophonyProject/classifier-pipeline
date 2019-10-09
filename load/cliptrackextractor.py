@@ -84,16 +84,16 @@ class ClipTrackExtractor:
         if self.calc_stats:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
 
-    def process_frame(self, clip, frame):
+    def process_frame(self, clip, frame, ffc_affected=False):
         if clip.on_preview():
-            clip.calculate_preview_from_frame(frame)
+            clip.calculate_preview_from_frame(frame, ffc_affected)
             if clip.background_calculated:
                 for i, back_frame in enumerate(clip.preview_frames):
                     clip.frame_on = i
-                    self._process_frame(clip, back_frame)
+                    self._process_frame(clip, back_frame[0], back_frame[1])
                 clip.preview_frames = None
         else:
-            self._process_frame(clip, frame)
+            self._process_frame(clip, frame, ffc_affected)
         clip.frame_on += 1
 
     def _whole_clip_stats(self, clip, frames):
@@ -187,7 +187,7 @@ class ClipTrackExtractor:
             filtered[filtered < 0] = 0
         return filtered
 
-    def _process_frame(self, clip, thermal):
+    def _process_frame(self, clip, thermal, ffc_affected=False):
         """
         Tracks objects through frame
         :param thermal: A numpy array of shape (height, width) and type uint16
@@ -215,7 +215,12 @@ class ClipTrackExtractor:
         mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
 
         clip.add_frame(thermal, filtered, mask)
-
+        if ffc_affected:
+            if len(clip.region_history) == 0:
+                clip.region_history.append([])
+            else:
+                clip.region_history.append(clip.region_history[-1])
+            return
         prev_filtered = clip.frame_buffer.get_last_filtered()
         if clip.from_metadata:
             for track in clip.active_tracks:

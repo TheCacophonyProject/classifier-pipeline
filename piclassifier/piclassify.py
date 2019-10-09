@@ -326,14 +326,20 @@ class PiClassifier:
 
     def process_frame(self, lepton_frame):
         start = time.time()
-        self.motion_detector.process_frame(lepton_frame)
+        ffc_affected = self.motion_detector.process_frame(lepton_frame)
         if self.motion_detector.recorder.recording:
             if self.clip is None:
                 self.new_clip()
-            self.track_extractor.process_frame(self.clip, lepton_frame.pix)
-            if self.clip.active_tracks and (
-                self.clip.frame_on % PiClassifier.PROCESS_FRAME == 0
-                or self.clip.frame_on == self.preview_frames
+            self.track_extractor.process_frame(
+                self.clip, lepton_frame.pix, ffc_affected
+            )
+            if (
+                ffc_affected is False
+                and self.clip.active_tracks
+                and (
+                    self.clip.frame_on % PiClassifier.PROCESS_FRAME == 0
+                    or self.clip.frame_on == self.preview_frames
+                )
             ):
                 self.identify_last_frame()
         elif self.clip is not None:
@@ -356,7 +362,7 @@ class PiClassifier:
             self.tracking = False
 
     def save_metadata(self):
-        filename =  datetime.now().strftime("%Y%m%d.%H%M%S.%f.meta")
+        filename = datetime.now().strftime("%Y%m%d.%H%M%S.%f.meta")
 
         # record results in text file.
         save_file = {}
@@ -378,7 +384,9 @@ class PiClassifier:
             track_info["frame_start"] = track.start_frame
             track_info["frame_end"] = track.end_frame
             if prediction.best_label_index is not None:
-                track_info["label"] = self.classifier.labels[prediction.best_label_index]
+                track_info["label"] = self.classifier.labels[
+                    prediction.best_label_index
+                ]
                 track_info["confidence"] = round(prediction.score(), 2)
                 track_info["clarity"] = round(prediction.clarity, 3)
                 track_info["average_novelty"] = round(prediction.average_novelty, 2)
@@ -394,5 +402,5 @@ class PiClassifier:
                 positions.append([track_time, region])
             track_info["positions"] = positions
 
-        with open("metadata/"+filename, "w") as f:
+        with open("metadata/" + filename, "w") as f:
             json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)

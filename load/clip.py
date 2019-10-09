@@ -62,7 +62,7 @@ class Clip:
         self.background_calculated = False
         self.res_x = None
         self.res_y = None
-
+        self.background_frames = 0
         self.background_is_preview = trackconfig.background_calc == Clip.PREVIEW
         self.config = trackconfig
         self.frames_per_second = Clip.FRAMES_PER_SECOND
@@ -83,25 +83,21 @@ class Clip:
         self.stats.mean_background_value = np.average(self.background)
         self.set_temp_thresh()
         self.background_calculated = True
-        tools.frame_to_jpg(
-            self.background,
-            self.get_id() + ".jpg",
-            None,
-            np.amin(self.background),
-            np.amax(self.background),
-        )
 
     def on_preview(self):
         return not self.background_calculated
 
-    def calculate_preview_from_frame(self, frame):
-        self.preview_frames.append(frame)
+    def calculate_preview_from_frame(self, frame, ffc_affected=False):
+        self.preview_frames.append((frame, ffc_affected))
+        if ffc_affected:
+            return
         if self.background is None:
             self.background = frame
         else:
             self.background = np.minimum(self.background, frame)
-        if self.frame_on == (self.num_preview_frames - 1):
+        if self.background_frames == (self.num_preview_frames - 1):
             self._set_from_background()
+        self.background_frames +=1
 
     def background_from_frames(self, frame_list):
         number_frames = self.num_preview_frames
