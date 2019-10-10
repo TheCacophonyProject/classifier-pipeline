@@ -8,6 +8,7 @@ from piclassifier.motiondetector import MotionDetector
 from piclassifier.locationconfig import LocationConfig
 from piclassifier.thermalconfig import ThermalConfig
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("cptv", help="a CPTV file to detect motion")

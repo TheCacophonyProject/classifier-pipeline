@@ -369,6 +369,7 @@ class PiClassifier:
         start, end = self.clip.start_and_end_time_absolute()
         save_file["start_time"] = start.isoformat()
         save_file["end_time"] = end.isoformat()
+        save_file["temp_thresh"] = self.clip.temp_thresh
         save_file["algorithm"] = {}
         save_file["algorithm"]["model"] = self.config.classify.model
         save_file["algorithm"]["tracker_version"] = self.clip.VERSION
