@@ -157,12 +157,10 @@ class Model:
         logging.info("Test segments: {0:.1f}k".format(self.datasets.test.rows / 1000))
         logging.info("Labels: {}".format(self.datasets.train.labels))
 
-        label_strings = [
-            ",".join(self.datasets.train.labels),
-            ",".join(self.datasets.validation.labels),
-            ",".join(self.datasets.test.labels),
-        ]
-        assert len(set(label_strings)) == 1, "dataset labels do not match."
+        assert set(self.datasets.train.labels).issubset(
+            set(self.datasets.validation.labels)
+        )
+        assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
 
     @property
     def batch_size(self):
