@@ -726,7 +726,6 @@ class Model:
                 self.save(
                     os.path.join(self.checkpoint_folder, "training-most-recent.sav")
                 )
-
                 # save the best model if validation score was good
                 if val_loss < best_val_loss:
                     print("Saving best validation model.")

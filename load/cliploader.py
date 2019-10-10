@@ -29,7 +29,8 @@ from ml_tools import trackdatabase
 from ml_tools.trackdatabase import TrackDatabase
 
 from ml_tools.previewer import Previewer
-from .clip import Clip, ClipTrackExtractor
+from .clip import Clip
+from .cliptrackextractor import ClipTrackExtractor
 from track.track import Track
 
 
@@ -109,7 +110,6 @@ class ClipLoader:
             start_time, end_time = clip.start_and_end_time_absolute(
                 track.start_s, track.end_s
             )
-
             track_data = []
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
@@ -184,7 +184,6 @@ class ClipLoader:
 
         metadata = tools.load_clip_metadata(metadata_filename)
         valid_tracks = self._filter_clip_tracks(metadata)
-
         if not valid_tracks:
             logging.error("No valid track data found for %s", filename)
             return

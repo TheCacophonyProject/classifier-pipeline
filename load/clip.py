@@ -165,7 +165,7 @@ class Clip:
             metadata, include_filtered_channel, tag_precedence
         )
         self.from_metadata = True
-        self.active_tracks = set(tracks)
+        self.tracks = set(tracks)
 
     def load_tracks_meta(self, metadata, include_filtered_channel, tag_precedence):
         tracks_meta = metadata["Tracks"]

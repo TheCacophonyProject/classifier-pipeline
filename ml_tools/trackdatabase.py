@@ -105,7 +105,6 @@ class TrackDatabase:
                 if not clip.background_is_preview:
                     group_attrs["average_delta"] = clip.stats.average_delta
                     group_attrs["is_static"] = clip.stats.is_static_background
-
                 group_attrs["frame_temp_min"] = clip.stats.frame_stats_min
                 group_attrs["frame_temp_max"] = clip.stats.frame_stats_max
                 group_attrs["frame_temp_median"] = clip.stats.frame_stats_median
@@ -114,8 +113,8 @@ class TrackDatabase:
                 if clip.device:
                     group_attrs["device"] = clip.device
                 group_attrs["frames_per_second"] = clip.frames_per_second
-                if clip.location:
-                    group_attrs["location"] = clip.location
+                if clip.location and clip.location.get("coordinates") is not None:
+                    group_attrs["location"] = clip.location["coordinates"]
             f.flush()
             group.attrs["finished"] = True
 
@@ -176,7 +175,6 @@ class TrackDatabase:
                 end_frame = track_node["frames"]
 
             result = []
-
             for frame_number in range(start_frame, end_frame):
                 # we use [:,:,:] to force loading of all data.
                 result.append(track_node[str(frame_number)][:, :, :])
@@ -263,7 +261,6 @@ class TrackDatabase:
 
                 for name, value in track_stats._asdict().items():
                     node_attrs[name] = value
-
                 # frame history
                 node_attrs["mass_history"] = np.int32(
                     [bounds.mass for bounds in track.bounds_history]

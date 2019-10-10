@@ -223,8 +223,9 @@ class ClipTrackExtractor:
             return
         prev_filtered = clip.frame_buffer.get_last_filtered()
         if clip.from_metadata:
-            for track in clip.active_tracks:
+            for track in clip.tracks:
                 if clip.frame_on in track.frame_list:
+
                     track.add_frame_for_existing_region(
                         clip.frame_buffer.get_last_frame(),
                         clip.threshold,
