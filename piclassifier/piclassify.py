@@ -326,15 +326,15 @@ class PiClassifier:
 
     def process_frame(self, lepton_frame):
         start = time.time()
-        ffc_affected = self.motion_detector.process_frame(lepton_frame)
+        self.motion_detector.process_frame(lepton_frame)
         if self.motion_detector.recorder.recording:
             if self.clip is None:
                 self.new_clip()
             self.track_extractor.process_frame(
-                self.clip, lepton_frame.pix, ffc_affected
+                self.clip, lepton_frame.pix, self.motion_detector.ffc_affected
             )
             if (
-                ffc_affected is False
+                self.motion_detector.ffc_affected is False
                 and self.clip.active_tracks
                 and (
                     self.clip.frame_on % PiClassifier.PROCESS_FRAME == 0

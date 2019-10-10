@@ -1,12 +1,12 @@
-from piclassifier.motiondetector import MotionDetector
 import argparse
-from piclassifier.locationconfig import LocationConfig
-from piclassifier.thermalconfig import ThermalConfig
-from piclassifier.cptvrecorder import CPTVRecorder
 
 from cptv import CPTVReader
-from ml_tools.config import Config
 
+from ml_tools.config import Config
+from ml_tools.logs import init_logging
+from piclassifier.motiondetector import MotionDetector
+from piclassifier.locationconfig import LocationConfig
+from piclassifier.thermalconfig import ThermalConfig
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -17,6 +17,8 @@ def parse_args():
 
 def main():
     args = parse_args()
+    init_logging()
+
     config = Config.load_from_file()
     thermal_config = ThermalConfig.load_from_file()
     location_config = LocationConfig.load_from_file()
@@ -30,7 +32,7 @@ def main():
         location_config,
         thermal_config.recorder,
         config.tracking.dynamic_thresh,
-        CPTVRecorder(location_config, thermal_config),
+        None,
     )
     with open(args.cptv, "rb") as f:
         reader = CPTVReader(f)
