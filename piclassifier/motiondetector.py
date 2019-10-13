@@ -263,6 +263,7 @@ class MotionDetector:
             self.clipped_window.add(clipped_frame)
 
             if self.ffc_affected or prev_ffc:
+                print("FFC")
                 logging.debug("{} MotionDetector FFC".format(self.num_frames))
                 self.movement_detected = False
                 self.clipped_window.oldest_index = self.clipped_window.last_index

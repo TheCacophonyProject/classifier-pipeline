@@ -7,6 +7,8 @@ import socket
 import time
 import absl.logging
 import json
+import psutil
+
 from cptv import Frame
 
 from classify.trackprediction import Predictions
@@ -137,6 +139,7 @@ class PiClassifier:
 
     PROCESS_FRAME = 3
     NUM_CONCURRENT_TRACKS = 1
+    DEBUG_EVERY = 100
 
     def __init__(self, config, thermal_config, location_config, classifier):
         self.frame_num = 0
@@ -348,11 +351,15 @@ class PiClassifier:
         self.frame_num += 1
         end = time.time()
         timetaken = end - start
-        logging.debug(
-            "fps {}/sec time to process {}ms".format(
-                round(1 / timetaken, 2), round(timetaken * 1000, 2)
+        if self.frame_num % PiClassifier.DEBUG_EVERY == 0:
+            logging.info(
+                "fps {}/sec time to process {}ms cpu % {} memory % {}".format(
+                    round(1 / timetaken, 2),
+                    round(timetaken * 1000, 2),
+                    psutil.cpu_percent(),
+                    psutil.virtual_memory()[2],
+                )
             )
-        )
 
     def end_clip(self):
         if self.clip:
@@ -381,7 +388,7 @@ class PiClassifier:
             save_file["tracks"].append(track_info)
             track_info["start_s"] = round(start_s, 2)
             track_info["end_s"] = round(end_s, 2)
-            track_info["num_frames"] = prediction.num_frames
+            track_info["num_frames"] = track.frames
             track_info["frame_start"] = track.start_frame
             track_info["frame_end"] = track.end_frame
             if prediction.best_label_index is not None:
