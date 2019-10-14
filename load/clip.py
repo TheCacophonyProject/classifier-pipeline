@@ -97,7 +97,7 @@ class Clip:
             self.background = np.minimum(self.background, frame)
         if self.background_frames == (self.num_preview_frames - 1):
             self._set_from_background()
-        self.background_frames +=1
+        self.background_frames += 1
 
     def background_from_frames(self, frame_list):
         number_frames = self.num_preview_frames

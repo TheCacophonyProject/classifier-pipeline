@@ -111,7 +111,11 @@ class Previewer:
 
         if self.debug:
             footer = Previewer.stats_footer(clip.stats)
-        if predictions and self.preview_type == self.PREVIEW_CLASSIFIED or self.preview_type == self.PREVIEW_TRACKING:
+        if (
+            predictions
+            and self.preview_type == self.PREVIEW_CLASSIFIED
+            or self.preview_type == self.PREVIEW_TRACKING
+        ):
             self.create_track_descriptions(clip, predictions)
 
         if clip.stats.min_temp is None or clip.stats.max_temp is None:

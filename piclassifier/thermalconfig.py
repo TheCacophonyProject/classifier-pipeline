@@ -31,7 +31,7 @@ class MotionConfig:
             verbose=motion.get("verbose", True),
             edge_pixels=motion.get("edge-pixels", 3),
             warmer_only=motion.get("warmer-only", False),
-            dynamic_thresh =motion.get("temp-thresh", 2750),
+            dynamic_thresh=motion.get("temp-thresh", 2750),
         )
 
 

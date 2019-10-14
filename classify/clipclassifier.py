@@ -75,7 +75,6 @@ class ClipClassifier(CPTVFileProcessor):
         # faster, but potentially more unstable predictions.
         UNIFORM_PRIOR = False
 
-
         num_labels = len(self.classifier.labels)
         prediction_smooth = 0.1
 
@@ -253,9 +252,7 @@ class ClipClassifier(CPTVFileProcessor):
 
         if self.previewer:
             logging.info("Exporting preview to '{}'".format(mpeg_filename))
-            self.previewer.export_clip_preview(
-                mpeg_filename, clip, self.predictions
-            )
+            self.previewer.export_clip_preview(mpeg_filename, clip, self.predictions)
         logging.info("saving meta data")
         self.save_metadata(filename, meta_filename, clip)
         self.predictions.clear_predictions()
