@@ -35,7 +35,6 @@ class ClipTrackExtractor:
     def __init__(
         self, config, use_opt_flow, cache_to_disk, keep_frames=True, calc_stats=True
     ):
-
         self.config = config
         self.use_opt_flow = use_opt_flow
         self.stats = None

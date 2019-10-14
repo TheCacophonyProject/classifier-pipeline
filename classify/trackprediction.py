@@ -20,11 +20,19 @@ class Predictions:
     def prediction_for(self, track_id):
         return self.prediction_per_track.get(track_id)
 
+    def guesses_for(self, track_id):
+        prediction = self.prediction_per_track.get(track_id)
+        if prediction:
+            return prediction.guesses(self.labels)
+        return []
+
     def print_prediction(self, track_id):
         self.prediction_for(track_id).print_prediction(self.labels)
 
     def prediction_description(self, track_id):
-         return self.prediction_per_track.get(track_id).description(self.labels)
+        return self.prediction_per_track.get(track_id).description(self.labels)
+
+
 class TrackPrediction:
     """
     Class to hold the information about the predicted class of a track.
@@ -79,11 +87,17 @@ class TrackPrediction:
     def get_prediction(self, labels):
         return self.description(labels)
 
-    def get_classified_footer(self, labels):
+    def get_classified_footer(self, labels, frame_number=None):
         # self.track_prediction = TrackPrediction(self.predictions, self.novelties)
-        if self.predictions:
+        if frame_number is None or frame_number >= len(self.novelties):
             return "({:.1f} {})\nnovelty={:.2f}".format(
                 self.max_score * 10, labels[self.best_label_index], self.max_novelty
+            )
+        if self.predictions:
+            return "({:.1f} {})\nnovelty={:.2f}".format(
+                self.score_at_time(frame_number) * 10,
+                labels[self.label_at_time(frame_number)],
+                self.novelty_at(frame_number),
             )
         else:
             return "no classification"
@@ -128,6 +142,14 @@ class TrackPrediction:
     def num_frames(self):
         return len(self.predictions)
 
+    def novelty_at(self, n=None):
+        if n is None:
+            return self.max_novelty
+
+        if self.novelties is None:
+            return None
+        return self.novelties[n]
+
     @property
     def best_label_index(self):
         if self.class_best_score is None:
@@ -158,27 +180,33 @@ class TrackPrediction:
             return None
         return self.max_score - self.score(2)
 
-    def label_index(self, n=1):
-        """ idnex of label of nth best guess. """
+    def label_index(self, n=None):
+        """ index of label of nth best guess. """
+
+        if n is None:
+            return self.best_label_index
         if self.class_best_score is None:
             return None
         return int(np.argsort(self.class_best_score)[-n])
 
-    def score(self, n=1):
+    def score(self, n=None):
         """ class score of nth best guess. """
+        if n is None:
+            return self.max_score
         if self.class_best_score is None:
             return None
         return float(sorted(self.class_best_score)[-n])
 
-    def label_at_time(self, frame_number, n=1):
+    def label_at_time(self, frame_number, n=-1):
         """ class label of nth best guess at a point in time."""
-        if len(self.predictions < n):
+
+        if n is None:
             return None
         return int(np.argsort(self.predictions[frame_number])[-n])
 
-    def score_at_time(self, frame_number, n=1):
+    def score_at_time(self, frame_number, n=-1):
         """ class label of nth best guess at a point in time."""
-        if len(self.predictions < n):
+        if n is None:
             return None
         return float(sorted(self.predictions[frame_number])[-n])
 
@@ -186,6 +214,14 @@ class TrackPrediction:
         logging.info(
             "Track {} is {}".format(self.track_id, self.get_classified_footer(labels))
         )
+
+    def guesses(self, labels):
+        guesses = [
+            "{} ({:.1f})".format(labels[self.label_index(i)], self.score(i) * 10)
+            for i in range(1, 4)
+            if self.score(i) > 0.5
+        ]
+        return guesses
 
 
 @attr.s(slots=True)

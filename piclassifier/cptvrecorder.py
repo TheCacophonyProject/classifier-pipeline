@@ -22,6 +22,7 @@ class CPTVRecorder:
         self.max_frames = (
             thermal_config.recorder.max_secs * thermal_config.recorder.frame_rate
         )
+        self.write_until = 0
 
     def force_stop(self):
         if not self.recording:
@@ -34,17 +35,19 @@ class CPTVRecorder:
 
     def process_frame(self, movement_detected, lepton_frame):
         if movement_detected:
+            self.write_until = self.frames + self.min_frames
             self.write_frame(lepton_frame)
-            if self.frames == self.max_frames:
-                self.stop_recording()
         elif self.recording:
-            if not self.has_minimum():
-                self.write_frame(lepton_frame)
-            if self.frames == self.min_frames:
+            if self.has_minimum():
                 self.stop_recording()
+            else:
+                self.write_frame(lepton_frame)
+
+        if self.frames == self.max_frames:
+            self.stop_recording()
 
     def has_minimum(self):
-        return self.frames >= self.min_frames
+        return self.frames > self.write_until
 
     def start_recording(self):
         self.frames = 0

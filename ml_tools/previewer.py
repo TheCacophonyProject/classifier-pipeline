@@ -96,7 +96,7 @@ class Previewer:
             )
         return globs._previewer_font_title
 
-    def export_clip_preview(self, filename, clip: Clip, track_predictions=None):
+    def export_clip_preview(self, filename, clip: Clip, predictions=None):
         """
         Exports a clip showing the tracking and predictions for objects within the clip.
         """
@@ -111,14 +111,8 @@ class Previewer:
 
         if self.debug:
             footer = Previewer.stats_footer(clip.stats)
-        if bool(track_predictions) and self.preview_type == self.PREVIEW_CLASSIFIED:
-            self.create_track_descriptions(clip, track_predictions)
-
-        if (
-            self.preview_type == self.PREVIEW_TRACKING
-            and not clip.frame_buffer.has_flow
-        ):
-            clip.frame_buffer.generate_optical_flow()
+        if predictions and self.preview_type == self.PREVIEW_CLASSIFIED or self.preview_type == self.PREVIEW_TRACKING:
+            self.create_track_descriptions(clip, predictions)
 
         if clip.stats.min_temp is None or clip.stats.max_temp is None:
             thermals = [frame.thermal for frame in clip.frame_buffer.frames]
@@ -166,7 +160,7 @@ class Previewer:
                 #     colours=Previewer.FILTERED_COLOURS,
                 #     tracks_text=filtered_reasons,
                 # )
-                self.add_tracks(draw, clip.tracks, frame_number)
+                self.add_tracks(draw, clip.tracks, frame_number, predictions)
 
             elif self.preview_type == self.PREVIEW_BOXES:
                 image = self.convert_and_resize(
@@ -185,7 +179,7 @@ class Previewer:
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(
-                    draw, clip.tracks, frame_number, track_predictions, screen_bounds
+                    draw, clip.tracks, frame_number, predictions, screen_bounds
                 )
             if self.debug and draw:
                 self.add_footer(draw, image.width, image.height, footer)
@@ -238,20 +232,10 @@ class Previewer:
             tools.add_heat_number(image, thermal, self.frame_scale)
         return image
 
-    def create_track_descriptions(self, clip, track_predictions):
+    def create_track_descriptions(self, clip, predictions):
         # look for any tracks that occur on this frame
         for track in clip.tracks:
-
-            prediction = track_predictions[track]
-            # find a track description, which is the final guess of what this class is.
-            guesses = [
-                "{} ({:.1f})".format(
-                    globs._classifier.labels[prediction.label(i)],
-                    prediction.score(i) * 10,
-                )
-                for i in range(1, 4)
-                if prediction.score(i) > 0.5
-            ]
+            guesses = predictions.guesses_for(track.get_id())
             track_description = "\n".join(guesses)
             track_description.strip()
             self.track_descs[track] = track_description
@@ -275,7 +259,7 @@ class Previewer:
         # look for any tracks that occur on this frame
         for index, track in enumerate(tracks):
             frame_offset = frame_number - track.start_frame
-            if frame_offset >= 0 and frame_offset < len(track.bounds_history) - 1:
+            if frame_offset >= 0 and frame_offset < len(track.bounds_history):
                 region = track.bounds_history[frame_offset]
                 draw.rectangle(
                     self.rect_points(region, v_offset),
@@ -315,7 +299,7 @@ class Previewer:
         footer_center = ((region.width * self.frame_scale) - footer_size[0]) / 2
 
         footer_rect = Region(
-            region.left * self.frame_scale + footer_center,
+            region.right * self.frame_scale - footer_center / 2.0,
             (v_offset + region.bottom) * self.frame_scale,
             footer_size[0],
             footer_size[1],
@@ -334,18 +318,16 @@ class Previewer:
         screen_bounds,
         v_offset=0,
     ):
-        prediction = track_predictions[track]
-        if track not in track_predictions:
+        prediction = track_predictions.prediction_for(track.get_id())
+        if prediction is None:
             return
 
-        label = globs._classifier.labels[prediction.label_at_time(frame_offset)]
-        score = prediction.score_at_time(frame_offset) * 10
-        novelty = prediction.novelty_history[frame_offset]
-        prediction_format = "({:.1f} {})\nnovelty={:.2f}"
-        current_prediction_string = prediction_format.format(score * 10, label, novelty)
+        current_prediction_string = prediction.get_classified_footer(
+            track_predictions.labels, frame_offset
+        )
         self.add_text_to_track(
             draw,
-            track,
+            rect,
             self.track_descs[track],
             current_prediction_string,
             screen_bounds,
@@ -357,7 +339,6 @@ class Previewer:
     ):
         header_size = self.font_title.getsize(header_text)
         footer_size = self.font.getsize(footer_text)
-
         # figure out where to draw everything
         header_rect = Region(
             rect.left * self.frame_scale,
@@ -428,7 +409,7 @@ class Previewer:
                 footer_text = track_predictions.get_classified_footer(labels)
                 self.add_text_to_track(
                     draw,
-                    track,
+                    region,
                     str(track.get_id()),
                     footer_text,
                     screen_bounds,

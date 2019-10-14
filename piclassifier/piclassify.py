@@ -25,7 +25,7 @@ from ml_tools import tools
 from ml_tools.model import Model
 from ml_tools.dataset import Preprocessor, TrackChannels
 from ml_tools.config import Config
-
+from ml_tools.previewer import Previewer
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -193,9 +193,7 @@ class PiClassifier:
         self.startup_classifier()
 
     def new_clip(self):
-        self.clip = Clip(
-            self.config.tracking, "stream", self.motion_detector.background
-        )
+        self.clip = Clip(self.config.tracking, "stream")
         self.clip.video_start_time = datetime.now()
         self.clip.num_preview_frames = self.preview_frames
         self.clip.set_res(self.res_x, self.res_y)
@@ -258,7 +256,6 @@ class PiClassifier:
 
         prediction = 0.0
         novelty = 0.0
-
         active_tracks = self.get_active_tracks()
         frame = self.clip.frame_buffer.get_last_frame()
         if frame is None:
@@ -283,8 +280,7 @@ class PiClassifier:
                         )
                     )
                     continue
-
-                p_frame = frames[TrackChannels.thermal]
+                p_frame = frames[0]
                 prediction, novelty, state = self.classifier.classify_frame_with_novelty(
                     p_frame, track_prediction.state
                 )
@@ -299,7 +295,7 @@ class PiClassifier:
 
                 prediction *= mass_weight * cropped_weight
 
-                if smooth_prediction is None:
+                if len(track_prediction.predictions) == 0:
                     if track_prediction.uniform_prior:
                         smooth_prediction = np.ones([self.num_labels]) * (
                             1 / self.num_labels
@@ -308,6 +304,8 @@ class PiClassifier:
                         smooth_prediction = prediction
                     smooth_novelty = 0.5
                 else:
+                    smooth_prediction = track_prediction.predictions[-1]
+                    smooth_novelty = track_prediction.novelties[-1]
                     smooth_prediction = (
                         1 - prediction_smooth
                     ) * smooth_prediction + prediction_smooth * prediction
@@ -361,6 +359,12 @@ class PiClassifier:
                 )
             )
 
+    def create_mp4(self):
+        previewer = Previewer(self.config, "classified")
+        previewer.export_clip_preview(
+            self.clip.get_id() + ".mp4", self.clip, self.predictions
+        )
+
     def end_clip(self):
         if self.clip:
             self.save_metadata()
@@ -391,7 +395,7 @@ class PiClassifier:
             track_info["num_frames"] = track.frames
             track_info["frame_start"] = track.start_frame
             track_info["frame_end"] = track.end_frame
-            if prediction.best_label_index is not None:
+            if prediction and prediction.best_label_index is not None:
                 track_info["label"] = self.classifier.labels[
                     prediction.best_label_index
                 ]
