@@ -140,6 +140,7 @@ class PiClassifier:
     PROCESS_FRAME = 3
     NUM_CONCURRENT_TRACKS = 1
     DEBUG_EVERY = 100
+    MAX_CONSEC = 3
 
     def __init__(self, config, thermal_config, location_config, classifier):
         self.frame_num = 0
@@ -147,7 +148,8 @@ class PiClassifier:
         self.tracking = False
         self.enable_per_track_information = False
         self.rolling_track_classify = {}
-
+        self.skip_classifying = 0
+        self.classified_consec = 0
         self.config = config
         self.classifier = classifier
         self.num_labels = len(classifier.labels)
@@ -196,6 +198,7 @@ class PiClassifier:
         self.clip = Clip(self.config.tracking, "stream")
         self.clip.video_start_time = datetime.now()
         self.clip.num_preview_frames = self.preview_frames
+
         self.clip.set_res(self.res_x, self.res_y)
         self.clip.set_frame_buffer(
             self.config.classify_tracking.high_quality_optical_flow,
@@ -315,13 +318,15 @@ class PiClassifier:
                 track_prediction.classified_frame(
                     self.clip.frame_on, smooth_prediction, smooth_novelty
                 )
-                track_prediction.print_prediction(self.predictions.labels)
+                # track_prediction.print_prediction(self.predictions.labels)
 
     def disconnected(self):
         self.end_clip()
         self.motion_detector.force_stop()
 
     def skip_frame(self):
+        self.skip_classifying -= 1
+
         if self.clip:
             self.clip.frame_on += 1
 
@@ -337,15 +342,22 @@ class PiClassifier:
             if (
                 self.motion_detector.ffc_affected is False
                 and self.clip.active_tracks
-                and (
-                    self.clip.frame_on % PiClassifier.PROCESS_FRAME == 0
-                    or self.clip.frame_on == self.preview_frames
-                )
+                and self.skip_classifying <= 0
+                # and (
+                #     self.clip.frame_on % PiClassifier.PROCESS_FRAME == 0
+                #     or self.clip.frame_on == self.preview_frames
+                # )
             ):
                 self.identify_last_frame()
+                self.classified_consec += 1
+                if self.classified_consec == PiClassifier.MAX_CONSEC:
+                    self.skip_classifying = 7
+                    self.classified_consec = 0
+
         elif self.clip is not None:
             self.end_clip()
 
+        self.skip_classifying -= 1
         self.frame_num += 1
         end = time.time()
         timetaken = end - start
@@ -367,6 +379,8 @@ class PiClassifier:
 
     def end_clip(self):
         if self.clip:
+            for _, prediction in self.predictions.prediction_per_track.items():
+                logging.info(prediction.description(self.predictions.labels))
             self.save_metadata()
             self.predictions.clear_predictions()
             self.clip = None
