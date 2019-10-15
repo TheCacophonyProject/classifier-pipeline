@@ -361,7 +361,7 @@ class PiClassifier:
         self.frame_num += 1
         end = time.time()
         timetaken = end - start
-        if self.frame_num % PiClassifier.DEBUG_EVERY == 0:
+        if self.motion_detector.can_record() and self.frame_num % PiClassifier.DEBUG_EVERY == 0:
             logging.info(
                 "fps {}/sec time to process {}ms cpu % {} memory % {}".format(
                     round(1 / timetaken, 2),

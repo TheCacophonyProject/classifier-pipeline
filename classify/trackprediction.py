@@ -120,6 +120,9 @@ class TrackPrediction:
         :return:
         """
         score = self.max_score
+        if score is None:
+            return None
+
         if score > 0.5:
             first_guess = "{} {:.1f} (clarity {:.1f})".format(
                 labels[self.best_label_index], score * 10, self.clarity * 10
