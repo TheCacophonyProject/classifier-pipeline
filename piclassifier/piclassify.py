@@ -23,7 +23,7 @@ from .cptvrecorder import CPTVRecorder
 from ml_tools.logs import init_logging
 from ml_tools import tools
 from ml_tools.model import Model
-from ml_tools.dataset import Preprocessor, TrackChannels
+from ml_tools.dataset import Preprocessor
 from ml_tools.config import Config
 from ml_tools.previewer import Previewer
 
@@ -124,8 +124,8 @@ def handle_connection(connection, clip_classifier):
         t_min = np.amin(lepton_frame.pix)
         if t_max > 10000 or t_min == 0:
             logging.warning(
-                "received frame has odd values skipping thermal frame max {} thermal frame min {}".format(
-                    t_max, t_min
+                "received frame has odd values skipping thermal frame max {} thermal frame min {} cpu % {} memory % {}".format(
+                    t_max, t_min, psutil.cpu_percent(), psutil.virtual_memory()[2]
                 )
             )
             # this frame has bad data probably from lack of CPU
@@ -361,7 +361,10 @@ class PiClassifier:
         self.frame_num += 1
         end = time.time()
         timetaken = end - start
-        if self.motion_detector.can_record() and self.frame_num % PiClassifier.DEBUG_EVERY == 0:
+        if (
+            self.motion_detector.can_record()
+            and self.frame_num % PiClassifier.DEBUG_EVERY == 0
+        ):
             logging.info(
                 "fps {}/sec time to process {}ms cpu % {} memory % {}".format(
                     round(1 / timetaken, 2),

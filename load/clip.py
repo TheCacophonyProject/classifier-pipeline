@@ -222,7 +222,7 @@ class Clip:
             logging.info(info_string)
 
     def add_frame(self, thermal, filtered, mask):
-        self.frame_buffer.add_frame(thermal, filtered, mask)
+        self.frame_buffer.add_frame(thermal, filtered, mask, self.frame_on)
         if self.calc_stats:
             self.stats.add_frame(thermal, filtered)
 

@@ -265,7 +265,7 @@ class TrackExtractor:
         self.frame_stats_median.append(np.median(thermal))
         self.frame_stats_mean.append(np.mean(thermal))
 
-        self.frame_buffer.add_frame(thermal, filtered, mask)
+        self.frame_buffer.add_frame(thermal, filtered, mask, self.frame_on)
 
         self.region_history.append(regions)
 
