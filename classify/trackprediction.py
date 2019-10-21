@@ -10,8 +10,7 @@ class Predictions:
 
     def get_or_create_prediction(self, track, keep_all=True):
         prediction = self.prediction_per_track.setdefault(
-            track.get_id(),
-            TrackPrediction(track.get_id(), track.start_frame, keep_all),
+            track.get_id(), TrackPrediction(track.get_id(), track.start_frame, keep_all)
         )
         return prediction
 

@@ -227,7 +227,9 @@ class PiClassifier:
             return active_tracks
         active_predictions = []
         for track in active_tracks:
-            prediction = self.predictions.get_or_create_prediction(track, keep_all=False)
+            prediction = self.predictions.get_or_create_prediction(
+                track, keep_all=False
+            )
             active_predictions.append(prediction)
 
         top_priority = sorted(
@@ -266,7 +268,9 @@ class PiClassifier:
         thermal_reference = np.median(frame.thermal)
 
         for i, track in enumerate(active_tracks):
-            track_prediction = self.predictions.get_or_create_prediction(track, keep_all=False)
+            track_prediction = self.predictions.get_or_create_prediction(
+                track, keep_all=False
+            )
             region = track.bounds_history[-1]
             if region.frame_number != frame.frame_number:
                 logging.warning("frame doesn't match last frame")
