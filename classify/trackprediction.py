@@ -8,9 +8,10 @@ class Predictions:
         self.labels = labels
         self.prediction_per_track = {}
 
-    def get_or_create_prediction(self, track):
+    def get_or_create_prediction(self, track, keep_all=True):
         prediction = self.prediction_per_track.setdefault(
-            track.get_id(), TrackPrediction(track.get_id(), track.start_frame)
+            track.get_id(),
+            TrackPrediction(track.get_id(), track.start_frame, keep_all),
         )
         return prediction
 
@@ -40,7 +41,7 @@ class TrackPrediction:
     track.
     """
 
-    def __init__(self, track_id, start_frame):
+    def __init__(self, track_id, start_frame, keep_all=True):
         self.track_prediction = None
         self.state = None
         self.track_id = track_id
@@ -51,6 +52,9 @@ class TrackPrediction:
         self.track_prediction = None
         self.last_frame_classified = start_frame
         self.num_frames_classified = 0
+        self.keep_all = keep_all
+        self.max_novelty = 0
+        self.novelty_sum = 0
 
     def classified_clip(self, predictions, novelties, last_frame):
         self.last_frame_classified = last_frame
@@ -58,12 +62,23 @@ class TrackPrediction:
         self.predictions = predictions
         self.novelties = novelties
         self.class_best_score = np.max(self.predictions, axis=0)
+        self.max_novelty = max(self.novelties)
+        self.novelty_sum = sum(self.novelties)
 
     def classified_frame(self, frame_number, prediction, novelty):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
-        self.predictions.append(prediction)
-        self.novelties.append(novelty)
+
+        self.max_novelty = max(self.max_novelty, novelty)
+        self.novelty_sum += novelty
+
+        if self.keep_all:
+            self.predictions.append(prediction)
+            self.novelties.append(novelty)
+        else:
+            self.predictions = [prediction]
+            self.novelties = [novelty]
+
         if self.class_best_score is None:
             self.class_best_score = prediction
         else:
@@ -143,7 +158,7 @@ class TrackPrediction:
 
     @property
     def num_frames(self):
-        return len(self.predictions)
+        return self.num_frames_classified
 
     def novelty_at(self, n=None):
         if n is None:
@@ -160,11 +175,6 @@ class TrackPrediction:
         return np.argmax(self.class_best_score)
 
     @property
-    def max_novelty(self):
-        """ maximum novelty for this track """
-        return max(self.novelties)
-
-    @property
     def max_score(self):
         if self.class_best_score is None:
             return None
@@ -174,7 +184,7 @@ class TrackPrediction:
     @property
     def average_novelty(self):
         """ average novelty for this track """
-        return sum(self.novelties) / len(self.novelties)
+        return self.novelty_sum / self.num_frames_classified
 
     @property
     def clarity(self):

@@ -227,7 +227,7 @@ class PiClassifier:
             return active_tracks
         active_predictions = []
         for track in active_tracks:
-            prediction = self.predictions.get_or_create_prediction(track)
+            prediction = self.predictions.get_or_create_prediction(track, keep_all=False)
             active_predictions.append(prediction)
 
         top_priority = sorted(
@@ -266,7 +266,7 @@ class PiClassifier:
         thermal_reference = np.median(frame.thermal)
 
         for i, track in enumerate(active_tracks):
-            track_prediction = self.predictions.get_or_create_prediction(track)
+            track_prediction = self.predictions.get_or_create_prediction(track, keep_all=False)
             region = track.bounds_history[-1]
             if region.frame_number != frame.frame_number:
                 logging.warning("frame doesn't match last frame")
@@ -361,7 +361,10 @@ class PiClassifier:
         self.frame_num += 1
         end = time.time()
         timetaken = end - start
-        if self.motion_detector.can_record() and self.frame_num % PiClassifier.DEBUG_EVERY == 0:
+        if (
+            self.motion_detector.can_record()
+            and self.frame_num % PiClassifier.DEBUG_EVERY == 0
+        ):
             logging.info(
                 "fps {}/sec time to process {}ms cpu % {} memory % {}".format(
                     round(1 / timetaken, 2),
@@ -380,7 +383,8 @@ class PiClassifier:
     def end_clip(self):
         if self.clip:
             for _, prediction in self.predictions.prediction_per_track.items():
-                logging.info(prediction.description(self.predictions.labels))
+                if prediction.max_score:
+                    logging.info(prediction.description(self.predictions.labels))
             self.save_metadata()
             self.predictions.clear_predictions()
             self.clip = None
