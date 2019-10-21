@@ -265,7 +265,7 @@ class TrackExtractor:
         self.frame_stats_median.append(np.median(thermal))
         self.frame_stats_mean.append(np.mean(thermal))
 
-        self.frame_buffer.add_frame(thermal, filtered, mask)
+        self.frame_buffer.add_frame(thermal, filtered, mask, self.frame_on)
 
         self.region_history.append(regions)
 
@@ -314,11 +314,11 @@ class TrackExtractor:
                 )
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
                 max_distance = np.clip(7 * (track.mass ** 0.5), 30, 95)
-                size_change = np.clip(track.mass, 50, 500)
+                max_size_change = np.clip(track.mass, 50, 500)
 
                 if distance > max_distance:
                     continue
-                if size_change > size_change:
+                if size_change > max_size_change:
                     continue
                 scores.append((distance, track, region))
 
