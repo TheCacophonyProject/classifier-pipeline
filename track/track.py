@@ -168,6 +168,7 @@ class Track:
         region.pixel_variance = 0
         region.frame_number += 1
         self.bounds_history.append(region)
+        self.prev_frame_num = region.frame_number
         self.vel_x = self.vel_y = 0
         self.frames_since_target_seen += 1
 
