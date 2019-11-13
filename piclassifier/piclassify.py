@@ -8,6 +8,7 @@ import time
 import absl.logging
 import json
 import psutil
+import argparse
 
 from cptv import Frame
 
@@ -26,10 +27,18 @@ from ml_tools.model import Model
 from ml_tools.dataset import Preprocessor
 from ml_tools.config import Config
 from ml_tools.previewer import Previewer
+from cptv import CPTVReader
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
 TELEMETRY_PACKET_COUNT = 4
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cptv", help="a CPTV file to send", default=None)
+    args = parser.parse_args()
+    return args
 
 
 def get_classifier(config):
@@ -55,6 +64,22 @@ def main():
     logging.root.removeHandler(absl.logging._absl_handler)
     absl.logging._warn_preinit_stderr = False
     init_logging()
+    args = parse_args()
+
+    config = Config.load_from_file()
+    thermal_config = ThermalConfig.load_from_file()
+    location_config = LocationConfig.load_from_file()
+    classifier = get_classifier(config)
+
+    clip_classifier = PiClassifier(config, thermal_config, location_config, classifier)
+    if args.cptv:
+        with open(args.cptv, "rb") as f:
+            reader = CPTVReader(f)
+            for frame in reader:
+                clip_classifier.process_frame(frame)
+
+        clip_classifier.disconnected()
+        return
     try:
         os.unlink(SOCKET_NAME)
     except OSError:
@@ -65,12 +90,6 @@ def main():
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     sock.bind(SOCKET_NAME)
     sock.listen(1)
-    config = Config.load_from_file()
-    thermal_config = ThermalConfig.load_from_file()
-    location_config = LocationConfig.load_from_file()
-    classifier = get_classifier(config)
-
-    clip_classifier = PiClassifier(config, thermal_config, location_config, classifier)
     while True:
         logging.info("waiting for a connection")
         connection, client_address = sock.accept()
@@ -273,7 +292,11 @@ class PiClassifier:
             )
             region = track.bounds_history[-1]
             if region.frame_number != frame.frame_number:
-                logging.warning("frame doesn't match last frame")
+                logging.warning(
+                    "frame doesn't match last frame {} and {}".format(
+                        region.frame_number, frame.frame_number
+                    )
+                )
             else:
                 track_data = track.crop_by_region(frame, region)
                 # we use a tighter cropping here so we disable the default 2 pixel inset
@@ -343,14 +366,14 @@ class PiClassifier:
             self.track_extractor.process_frame(
                 self.clip, lepton_frame.pix, self.motion_detector.ffc_affected
             )
-            if (
+            if self.motion_detector.ffc_affected or self.clip.on_preview():
+                self.skip_classifying = 7
+                self.classified_consec = 0
+            elif (
                 self.motion_detector.ffc_affected is False
                 and self.clip.active_tracks
                 and self.skip_classifying <= 0
-                # and (
-                #     self.clip.frame_on % PiClassifier.PROCESS_FRAME == 0
-                #     or self.clip.frame_on == self.preview_frames
-                # )
+                and not self.clip.on_preview()
             ):
                 self.identify_last_frame()
                 self.classified_consec += 1
@@ -388,7 +411,12 @@ class PiClassifier:
         if self.clip:
             for _, prediction in self.predictions.prediction_per_track.items():
                 if prediction.max_score:
-                    logging.info(prediction.description(self.predictions.labels))
+                    logging.info(
+                        "Clip {} {}".format(
+                            self.clip.get_id(),
+                            prediction.description(self.predictions.labels),
+                        )
+                    )
             self.save_metadata()
             self.predictions.clear_predictions()
             self.clip = None

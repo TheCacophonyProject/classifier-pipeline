@@ -29,6 +29,7 @@ import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
+from piclassifier.motiondetector import is_affected_by_ffc
 
 
 class ClipTrackExtractor:
@@ -76,7 +77,7 @@ class ClipTrackExtractor:
 
             if clip.background_is_preview:
                 for frame in reader:
-                    self.process_frame(clip, frame.pix)
+                    self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
             else:
                 self.process_frames(clip, [np.float32(frame.pix) for frame in reader])
 
@@ -84,12 +85,20 @@ class ClipTrackExtractor:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
 
     def process_frame(self, clip, frame, ffc_affected=False):
+        if clip.ffc_affected and not ffc_affected:
+            clip.reset_preview()
+        if ffc_affected:
+            self.print_if_verbose("{} ffc_affected".format(clip.frame_on))
+
+        clip.ffc_affected = ffc_affected
         if clip.on_preview():
             clip.calculate_preview_from_frame(frame, ffc_affected)
             if clip.background_calculated:
+                clip.frame_on -= len(clip.preview_frames)
                 for i, back_frame in enumerate(clip.preview_frames):
-                    clip.frame_on = i
+                    clip.frame_on += 1
                     self._process_frame(clip, back_frame[0], back_frame[1])
+
                 clip.preview_frames = None
         else:
             self._process_frame(clip, frame, ffc_affected)
@@ -252,7 +261,6 @@ class ClipTrackExtractor:
 
         min_change = 50
         if entering or exiting:
-            self.print_if_verbose("entering {} or exiting {}".format(entering, exiting))
             min_change = 100
         max_size_change = np.clip(track.last_mass, min_change, 500)
         return max_size_change
@@ -357,7 +365,6 @@ class ClipTrackExtractor:
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.frame_padding
         edge = self.config.edge_pixels
-
         # find regions of interest
         regions = []
         for i in range(1, labels):

@@ -46,6 +46,7 @@ class Clip:
         Clip.CLIP_ID += 1
         Track._track_id = 1
         self.frame_on = 0
+        self.ffc_affected = False
         self.crop_rectangle = None
         self.num_preview_frames = 0
         self.preview_frames = []
@@ -78,6 +79,13 @@ class Clip:
         if background is not None:
             self.background = background
             self._set_from_background()
+
+    def reset_preview(self):
+        self.background_calculated = False
+        self.background_frames = 0
+        self.background = None
+        self.temp_thresh = self.config.temp_thresh
+        self.preview_frames = []
 
     def _set_from_background(self):
         self.stats.mean_background_value = np.average(self.background)

@@ -250,7 +250,7 @@ class MotionDetector:
             cropped_frame = self.crop_rectangle.subimage(lepton_frame.pix)
             frame = np.int32(cropped_frame)
             prev_ffc = self.ffc_affected
-            self.ffc_affected = MotionDetector.is_affected_by_ffc(lepton_frame)
+            self.ffc_affected = is_affected_by_ffc(lepton_frame)
             if not self.ffc_affected:
                 self.thermal_window.add(lepton_frame.pix)
                 if self.background is None:
@@ -263,7 +263,6 @@ class MotionDetector:
             self.clipped_window.add(clipped_frame)
 
             if self.ffc_affected or prev_ffc:
-                print("FFC")
                 logging.debug("{} MotionDetector FFC".format(self.num_frames))
                 self.movement_detected = False
                 self.clipped_window.oldest_index = self.clipped_window.last_index
@@ -276,11 +275,11 @@ class MotionDetector:
             self.movement_detected = False
         self.num_frames += 1
 
-    @staticmethod
-    def is_affected_by_ffc(lepton_frame):
-        if lepton_frame.time_on is None or lepton_frame.last_ffc_time is None:
-            return False
 
-        return (
-            lepton_frame.time_on - lepton_frame.last_ffc_time
-        ) < MotionDetector.FFC_PERIOD
+def is_affected_by_ffc(lepton_frame):
+    if lepton_frame.time_on is None or lepton_frame.last_ffc_time is None:
+        return False
+
+    return (
+        lepton_frame.time_on - lepton_frame.last_ffc_time
+    ) < MotionDetector.FFC_PERIOD
