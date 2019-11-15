@@ -160,9 +160,7 @@ class MotionDetector:
                 self.background = new_background
 
                 old_temp = self.temp_thresh
-                self.temp_thresh = int(
-                    round(min(self.config.temp_thresh, np.average(self.background)))
-                )
+                self.temp_thresh = int(round(np.average(self.background)))
                 if self.temp_thresh != old_temp:
                     logging.debug(
                         "{} MotionDetector temp threshold changed from {} to {} new backgroung average is {} weighting was {}".format(
@@ -216,6 +214,11 @@ class MotionDetector:
 
         if diff > self.config.count_thresh:
             if not self.movement_detected:
+                print(
+                    "{} MotionDetector motion detected thresh {} count {}".format(
+                        timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
+                    )
+                )
                 logging.debug(
                     "{} MotionDetector motion detected thresh {} count {}".format(
                         timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
@@ -224,6 +227,11 @@ class MotionDetector:
             return True
 
         if self.movement_detected:
+            print(
+                "{} MotionDetector motion stopped thresh {} count {}".format(
+                    timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
+                )
+            )
             logging.debug(
                 "{} MotionDetector motion stopped thresh {} count {}".format(
                     timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
@@ -270,7 +278,7 @@ class MotionDetector:
                 self.movement_detected = self.detect(clipped_frame)
             self.processed += 1
             if self.recorder:
-                self.recorder.process_frame(self.movement_detected, lepton_frame)
+                self.recorder.process_frame(self.movement_detected, lepton_frame, self.temp_thresh)
         else:
             self.movement_detected = False
         self.num_frames += 1

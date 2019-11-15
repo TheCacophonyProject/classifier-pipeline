@@ -33,15 +33,15 @@ class CPTVRecorder:
         else:
             self.delete_recording()
 
-    def process_frame(self, movement_detected, lepton_frame):
+    def process_frame(self, movement_detected, lepton_frame, temp_thresh):
         if movement_detected:
             self.write_until = self.frames + self.min_frames
-            self.write_frame(lepton_frame)
+            self.write_frame(lepton_frame, temp_thresh)
         elif self.recording:
             if self.has_minimum():
                 self.stop_recording()
             else:
-                self.write_frame(lepton_frame)
+                self.write_frame(lepton_frame, temp_thresh)
 
         if self.frames == self.max_frames:
             self.stop_recording()
@@ -49,7 +49,7 @@ class CPTVRecorder:
     def has_minimum(self):
         return self.frames > self.write_until
 
-    def start_recording(self):
+    def start_recording(self, temp_thresh):
         self.frames = 0
         self.filename = new_temp_name()
         self.filename = os.path.join(self.output_dir, self.filename)
@@ -60,13 +60,16 @@ class CPTVRecorder:
         self.writer.latitude = self.location_config.latitude
         self.writer.longitude = self.location_config.longitude
         self.writer.preview_secs = self.preview_secs
+        default_thresh = self.motion_config.temp_thresh
+        self.motion_config.temp_thresh = temp_thresh
         self.writer.motion_config = yaml.dump(self.motion_config).encode()
+        self.motion_config.temp_thresh = default_thresh
         self.writer.write_header()
         self.recording = True
 
-    def write_frame(self, lepton_frame):
+    def write_frame(self, lepton_frame, temp_thresh):
         if self.writer is None:
-            self.start_recording()
+            self.start_recording(temp_thresh)
         self.writer.write_frame(lepton_frame)
         self.frames += 1
 
