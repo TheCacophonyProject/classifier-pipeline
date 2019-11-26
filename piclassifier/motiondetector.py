@@ -116,13 +116,12 @@ class MotionDetector:
 
     def set_location(self, location_config):
         self.location = Location()
-        self.location.latitude = location_config.latitude
-        self.location.longitude = location_config.longitude
+        lat, lng = location_config.get_lat_long(use_default=True)
+        self.location.latitude = lat
+        self.location.longitude = lng
 
         self.location.altitude = location_config.altitude
-        self.location.timezone = tools.get_timezone_str(
-            location_config.latitude, location_config.longitude
-        )
+        self.location.timezone = tools.get_timezone_str(lat, lng)
 
     def get_sunrise_sunet(self):
         date = datetime.now().date()
