@@ -80,8 +80,8 @@ class PredatorTracker:
 
     def plot_results(self, real_x, real_y, estimated_x, estimated_y):
         # plot Animals real location and estimated location
-        real, = plt.plot(real_x[3:], real_y[3:], "b-", label="Line 1")
-        estimate, = plt.plot(estimated_x[3:], estimated_y[3:], "r-", label="Line 2")
+        (real,) = plt.plot(real_x[3:], real_y[3:], "b-", label="Line 1")
+        (estimate,) = plt.plot(estimated_x[3:], estimated_y[3:], "r-", label="Line 2")
         plt.xlim(0, 500)
         plt.ylim(360, 0)
         plt.title("Real vs Estimated Position")
@@ -96,8 +96,8 @@ class PredatorTracker:
         self, estimated_x, estimated_y, predicted_x, predicted_y
     ):
         # plot Animals real location and estimated location
-        estimate, = plt.plot(estimated_x[5:], estimated_y[5:], "b-", label="Line 1")
-        prediction, = plt.plot(predicted_x[5:], predicted_y[5:], "r-", label="Line 2")
+        (estimate,) = plt.plot(estimated_x[5:], estimated_y[5:], "b-", label="Line 1")
+        (prediction,) = plt.plot(predicted_x[5:], predicted_y[5:], "r-", label="Line 2")
         plt.xlim(0, 500)
         plt.ylim(360, 0)
         plt.title("Real vs Estimated Position")

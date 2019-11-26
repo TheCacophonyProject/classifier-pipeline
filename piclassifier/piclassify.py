@@ -313,7 +313,11 @@ class PiClassifier:
                     )
                     continue
                 p_frame = frames[0]
-                prediction, novelty, state = self.classifier.classify_frame_with_novelty(
+                (
+                    prediction,
+                    novelty,
+                    state,
+                ) = self.classifier.classify_frame_with_novelty(
                     p_frame, track_prediction.state
                 )
                 track_prediction.state = state

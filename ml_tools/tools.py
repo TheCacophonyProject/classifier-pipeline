@@ -390,8 +390,8 @@ def get_session(disable_gpu=False):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         config.gpu_options.per_process_gpu_memory_fraction = (
-            0.8
-        )  # save some ram for other applications.
+            0.8  # save some ram for other applications.
+        )
         session = tf.Session(config=config)
 
     return session

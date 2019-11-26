@@ -326,9 +326,9 @@ class Model:
         run_metadata = tf.RunMetadata()
 
         # first run takes a while, so run this just to build the graph, then run again to get real performance.
-        _, = self.session.run([self.train_op], feed_dict=feed_dict)
+        (_,) = self.session.run([self.train_op], feed_dict=feed_dict)
 
-        _, = self.session.run(
+        (_,) = self.session.run(
             [self.train_op],
             feed_dict=feed_dict,
             options=run_options,
