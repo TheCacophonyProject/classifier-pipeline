@@ -34,8 +34,6 @@ class ClassifyConfig(DefaultConfig):
     preview = attr.ib()
     classify_folder = attr.ib()
     cache_to_disk = attr.ib()
-    res_x = attr.ib()
-    res_y = attr.ib()
 
     @classmethod
     def load(cls, classify, base_folder):
@@ -47,8 +45,6 @@ class ClassifyConfig(DefaultConfig):
             ),
             classify_folder=path.join(base_folder, classify["classify_folder"]),
             cache_to_disk=classify["cache_to_disk"],
-            res_x=classify["res_x"],
-            res_y=classify["res_y"],
         )
 
     @classmethod
@@ -59,8 +55,6 @@ class ClassifyConfig(DefaultConfig):
             preview="none",
             classify_folder="classify",
             cache_to_disk=True,
-            res_x=160,
-            res_y=120,
         )
 
     def validate(self):

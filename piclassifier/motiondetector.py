@@ -124,7 +124,7 @@ class MotionDetector:
             location_config.latitude, location_config.longitude
         )
 
-    def set_sunrise_sunet(self):
+    def get_sunrise_sunet(self):
         date = datetime.now().date()
         if self.last_sunrise_check is None or date > self.last_sunrise_check:
             sun = self.location.sun()
@@ -163,7 +163,7 @@ class MotionDetector:
                 self.temp_thresh = int(round(np.average(self.background)))
                 if self.temp_thresh != old_temp:
                     logging.debug(
-                        "{} MotionDetector temp threshold changed from {} to {} new backgroung average is {} weighting was {}".format(
+                        "{} MotionDetector temp threshold changed from {} to {} new background average is {} weighting was {}".format(
                             self.num_frames,
                             old_temp,
                             self.temp_thresh,
@@ -177,7 +177,7 @@ class MotionDetector:
                     )
 
             if (
-                temp_changed is False
+                not temp_changed
                 and self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0
             ):
                 self.background_weight = (
@@ -189,7 +189,6 @@ class MotionDetector:
             self.temp_thresh = self.config.temp_thresh
 
     def detect(self, clipped_frame):
-
         oldest = self.clipped_window.oldest
         delta_frame = clipped_frame - oldest
 
@@ -241,7 +240,7 @@ class MotionDetector:
 
     def can_record(self):
         if self.use_sunrise:
-            self.set_sunrise_sunet()
+            self.get_sunrise_sunet()
             time = datetime.now().time()
             return time > self.sunset or time < self.sunrise
         return True
@@ -278,7 +277,9 @@ class MotionDetector:
                 self.movement_detected = self.detect(clipped_frame)
             self.processed += 1
             if self.recorder:
-                self.recorder.process_frame(self.movement_detected, lepton_frame, self.temp_thresh)
+                self.recorder.process_frame(
+                    self.movement_detected, lepton_frame, self.temp_thresh
+                )
         else:
             self.movement_detected = False
         self.num_frames += 1

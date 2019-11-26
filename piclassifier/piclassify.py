@@ -5,6 +5,8 @@ import os
 import logging
 import socket
 import time
+
+# fixes logging not showing up in tensorflow
 import absl.logging
 import json
 import psutil
@@ -172,8 +174,8 @@ class PiClassifier:
         self.config = config
         self.classifier = classifier
         self.num_labels = len(classifier.labels)
-        self.res_x = self.config.classify.res_x
-        self.res_y = self.config.classify.res_y
+        self.res_x = self.config.res_x
+        self.res_y = self.config.res_y
         self.predictions = Predictions(classifier.labels)
         self.preview_frames = (
             thermal_config.recorder.preview_secs * thermal_config.recorder.frame_rate
@@ -345,7 +347,6 @@ class PiClassifier:
                 track_prediction.classified_frame(
                     self.clip.frame_on, smooth_prediction, smooth_novelty
                 )
-                # track_prediction.print_prediction(self.predictions.labels)
 
     def disconnected(self):
         self.end_clip()

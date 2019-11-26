@@ -35,6 +35,10 @@ labels : ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
 # Number of worker threads to use.  0 disables worker pool and forces a single thread.
 worker_threads: 0
 
+# x and y resolution of thermal camera
+res_x: 160
+res_y: 120
+
 tracking:
     #
     #  Tracking algorithm
@@ -209,9 +213,6 @@ classify_tracking:
         track_min_mass: 0.0
 
 classify:
-    # x and y resolution of thermal camera
-    res_x: 160
-    res_y: 120
     # Writes metadata to standard out instead of a file with extension .txt
     meta_to_stdout : False
 

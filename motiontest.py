@@ -23,8 +23,8 @@ def main():
     config = Config.load_from_file()
     thermal_config = ThermalConfig.load_from_file()
     location_config = LocationConfig.load_from_file()
-    res_x = config.classify.res_x
-    res_y = config.classify.res_y
+    res_x = config.res_x
+    res_y = config.res_y
     print("detecting on  " + args.cptv)
     motion_detector = MotionDetector(
         res_x,
