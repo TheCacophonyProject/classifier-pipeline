@@ -229,8 +229,10 @@ class Clip:
         if self.config.verbose:
             logging.info(info_string)
 
-    def add_frame(self, thermal, filtered, mask):
-        self.frame_buffer.add_frame(thermal, filtered, mask, self.frame_on)
+    def add_frame(self, thermal, filtered, mask, ffc_affected=False):
+        self.frame_buffer.add_frame(
+            thermal, filtered, mask, self.frame_on, ffc_affected
+        )
         if self.calc_stats:
             self.stats.add_frame(thermal, filtered)
 

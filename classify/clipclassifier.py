@@ -54,7 +54,7 @@ class ClipClassifier(CPTVFileProcessor):
         :return: preprocessed numpy array
         """
 
-        # note, would be much better if the model did this, as only the model knows how preprocessing occured during
+        # note, would be much better if the model did this, as only the model knows how preprocessing occurred during
         # training
         frame = np.float32(frame)
         frame[2 : 3 + 1] *= 1 / 256
@@ -88,7 +88,7 @@ class ClipClassifier(CPTVFileProcessor):
         except ValueError:
             fp_index = None
 
-        # go through making clas sifications at each frame
+        # go through making classifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         state = None
         track_prediction = self.predictions.get_or_create_prediction(track)
@@ -101,7 +101,7 @@ class ClipClassifier(CPTVFileProcessor):
             thermal_reference = np.median(frame.thermal)
             # track_data = track.crop_by_region_at_trackframe(frame, i)
             if i % self.FRAME_SKIP == 0:
-                # we use a tigher cropping here so we disable the default 2 pixel inset
+                # we use a tighter cropping here so we disable the default 2 pixel inset
                 frames = Preprocessor.apply(
                     [track_data], [thermal_reference], default_inset=0
                 )

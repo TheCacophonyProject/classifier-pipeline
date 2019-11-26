@@ -35,16 +35,23 @@ class Frame:
     flow = attr.ib(default=None)
     flow_clipped = attr.ib(default=False)
     scaled_thermal = attr.ib(default=None)
+    ffc_affected = attr.ib(default=False)
 
     @classmethod
-    def from_array(cls, frame_arr, frame_number, flow_clipped=False):
+    def from_array(
+        cls, frame_arr, frame_number, flow_clipped=False, ffc_affected=False
+    ):
+        flow_h = frame_arr[TrackChannels.flow_h][:, :, np.newaxis]
+        flow_v = frame_arr[TrackChannels.flow_v][:, :, np.newaxis]
+        flow = np.concatenate((flow_h, flow_v), axis=2)
         return cls(
             frame_arr[TrackChannels.thermal],
             frame_arr[TrackChannels.filtered],
             frame_arr[TrackChannels.mask],
             frame_number,
-            flow=frame_arr[TrackChannels.thermal],
+            flow=flow,
             flow_clipped=flow_clipped,
+            ffc_affected=ffc_affected,
         )
 
     def as_array(self, split_flow=True):
@@ -114,6 +121,7 @@ class FrameBuffer:
         self.prev_frame = None
         self.calc_flow = calc_flow
         self.keep_frames = keep_frames
+        self.current_frame = 0
         if cache_to_disk or calc_flow:
             self.set_optical_flow()
         self.reset()
@@ -122,8 +130,8 @@ class FrameBuffer:
         if self.opt_flow is None:
             self.opt_flow = get_optical_flow_function(self.high_quality_flow)
 
-    def add_frame(self, thermal, filtered, mask, frame_number):
-        frame = Frame(thermal, filtered, mask, frame_number)
+    def add_frame(self, thermal, filtered, mask, frame_number, ffc_affected=False):
+        frame = Frame(thermal, filtered, mask, frame_number, ffc_affected=ffc_affected)
         if self.opt_flow:
             frame.generate_optical_flow(self.opt_flow, self.prev_frame)
         self.prev_frame = frame
@@ -141,10 +149,18 @@ class FrameBuffer:
         if self.prev_frame and self.prev_frame.frame_number == frame_number:
             return self.prev_frame
         elif self.cache:
-            return Frame.from_array(
-                self.cache.get_frame(frame_number), frame_number, True
-            )
-        return self.frames[frame_number]
+            cache_frame, ffc_affected = self.cache.get_frame(frame_number)
+            if cache_frame:
+                return Frame.from_array(
+                    cache_frame,
+                    frame_number,
+                    flow_clipped=True,
+                    ffc_affected=ffc_affected,
+                )
+            return None
+        if len(self.frames) > frame_number:
+            return self.frames[frame_number]
+        return None
 
     def close_cache(self):
         if self.cache:
@@ -180,3 +196,16 @@ class FrameBuffer:
 
     def __len__(self):
         return len(self.frames)
+
+    def __iter__(self):
+        if self.cache:
+            self.cache.open(mode="r")
+        return self
+
+    def __next__(self):
+        frame = self.get_frame(self.current_frame)
+        if frame is None:
+            raise StopIteration
+
+        self.current_frame += 1
+        return frame

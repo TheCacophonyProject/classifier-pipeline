@@ -123,7 +123,7 @@ class Previewer:
             clip.stats.min_temp = np.amin(thermals)
             clip.stats.max_temp = np.amax(thermals)
         mpeg = MPEGCreator(filename)
-        for frame_number, frame in enumerate(clip.frame_buffer.frames):
+        for frame_number, frame in enumerate(clip.frame_buffer):
             if self.preview_type == self.PREVIEW_RAW:
                 image = self.convert_and_resize(
                     frame.thermal, clip.stats.min_temp, clip.stats.max_temp
@@ -139,31 +139,6 @@ class Previewer:
                     mode=Image.NEAREST,
                 )
                 draw = ImageDraw.Draw(image)
-
-                # old
-                # if clip.region_history:
-                #     regions = clip.region_history[frame_number]
-                #     self.add_regions(draw, regions)
-                #     self.add_regions(draw, regions, v_offset=120)
-
-                # filtered = [track[1] for track in clip.filtered_tracks]
-                # filtered_reasons = [track[0] for track in clip.filtered_tracks]
-
-                # self.add_tracks(
-                #     draw,
-                #     filtered,
-                #     frame_number,
-                #     colours=Previewer.FILTERED_COLOURS,
-                #     tracks_text=filtered_reasons,
-                # )
-                # self.add_tracks(
-                #     draw,
-                #     filtered,
-                #     frame_number,
-                #     v_offset=120,
-                #     colours=Previewer.FILTERED_COLOURS,
-                #     tracks_text=filtered_reasons,
-                # )
                 self.add_tracks(draw, clip.tracks, frame_number, predictions)
 
             elif self.preview_type == self.PREVIEW_BOXES:
@@ -186,13 +161,14 @@ class Previewer:
                     draw, clip.tracks, frame_number, predictions, screen_bounds
                 )
             if self.debug and draw:
-                self.add_footer(draw, image.width, image.height, footer)
+                self.add_footer(
+                    draw, image.width, image.height, footer, frame.ffc_affected
+                )
             mpeg.next_frame(np.asarray(image))
 
             # we store the entire video in memory so we need to cap the frame count at some point.
             if frame_number > clip.frames_per_second * 60 * 10:
                 break
-
         clip.frame_buffer.close_cache()
         mpeg.close()
 
@@ -287,10 +263,11 @@ class Previewer:
                         draw, track, region, screen_bounds, text=text, v_offset=v_offset
                     )
 
-    def add_footer(self, draw, width, height, text):
-        footer_size = self.font.getsize(text)
+    def add_footer(self, draw, width, height, text, ffc_affected):
+        footer_text = "FFC {} {}".format(ffc_affected, text)
+        footer_size = self.font.getsize(footer_text)
         center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
-        draw.text((center[0], center[1]), text, font=self.font)
+        draw.text((center[0], center[1]), footer_text, font=self.font)
 
     def add_debug_text(self, draw, track, region, screen_bounds, text=None, v_offset=0):
         if text is None:
@@ -450,10 +427,17 @@ class Previewer:
     @staticmethod
     def stats_footer(stats):
         return "max {}, min{}, mean{}, filtered deviation {}, avg delta{}, temp_thresh {}".format(
-            stats.max_temp,
-            stats.min_temp,
-            stats.mean_temp,
-            stats.filtered_deviation,
-            stats.average_delta,
-            stats.temp_thresh,
+            none_or_round(stats.max_temp),
+            none_or_round(stats.min_temp),
+            none_or_round(stats.mean_temp),
+            none_or_round(stats.filtered_deviation, 2),
+            none_or_round(stats.average_delta, 1),
+            none_or_round(stats.temp_thresh),
         )
+
+
+def none_or_round(value, decimals=0):
+    if value:
+        return round(value, decimals)
+    else:
+        return value

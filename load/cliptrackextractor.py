@@ -222,13 +222,8 @@ class ClipTrackExtractor:
         labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(dilated)
         mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
 
-        clip.add_frame(thermal, filtered, mask)
-        if ffc_affected:
-            if len(clip.region_history) == 0:
-                clip.region_history.append([])
-            else:
-                clip.region_history.append(clip.region_history[-1])
-            return
+        clip.add_frame(thermal, filtered, mask, ffc_affected)
+
         prev_filtered = clip.frame_buffer.get_last_filtered()
         if clip.from_metadata:
             for track in clip.tracks:
@@ -244,15 +239,20 @@ class ClipTrackExtractor:
                 clip, labels, stats, thresh, filtered, prev_filtered, mass
             )
             clip.region_history.append(regions)
-            self._apply_region_matchings(clip, regions)
+            self._apply_region_matchings(
+                clip, regions, create_new_tracks=not ffc_affected
+            )
 
-    def _apply_region_matchings(self, clip, regions):
+    def _apply_region_matchings(self, clip, regions, create_new_tracks=True):
         """
         Work out the best matchings between tracks and regions of interest for the current frame.
         Create any new tracks required.
         """
         unmatched_regions, matched_tracks = self._match_existing_tracks(clip, regions)
-        new_tracks = self._create_new_tracks(clip, unmatched_regions)
+        if create_new_tracks:
+            new_tracks = self._create_new_tracks(clip, unmatched_regions)
+        else:
+            new_tracks = set()
         self._filter_inactive_tracks(clip, new_tracks, matched_tracks)
 
     def get_max_size_change(self, track, region):

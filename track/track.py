@@ -386,7 +386,7 @@ class Track:
         return self.bounds_history[-1]
 
     def __repr__(self):
-        return "Track:{} frames".format(len(self))
+        return "Track: frames# {}".format(self.get_id(), len(self))
 
     def __len__(self):
         return len(self.bounds_history)
