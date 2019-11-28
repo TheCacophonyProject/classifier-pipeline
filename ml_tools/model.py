@@ -157,12 +157,10 @@ class Model:
         logging.info("Test segments: {0:.1f}k".format(self.datasets.test.rows / 1000))
         logging.info("Labels: {}".format(self.datasets.train.labels))
 
-        label_strings = [
-            ",".join(self.datasets.train.labels),
-            ",".join(self.datasets.validation.labels),
-            ",".join(self.datasets.test.labels),
-        ]
-        assert len(set(label_strings)) == 1, "dataset labels do not match."
+        assert set(self.datasets.train.labels).issubset(
+            set(self.datasets.validation.labels)
+        )
+        assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
 
     @property
     def batch_size(self):
@@ -328,9 +326,9 @@ class Model:
         run_metadata = tf.RunMetadata()
 
         # first run takes a while, so run this just to build the graph, then run again to get real performance.
-        _, = self.session.run([self.train_op], feed_dict=feed_dict)
+        (_,) = self.session.run([self.train_op], feed_dict=feed_dict)
 
-        _, = self.session.run(
+        (_,) = self.session.run(
             [self.train_op],
             feed_dict=feed_dict,
             options=run_options,
@@ -726,7 +724,6 @@ class Model:
                 self.save(
                     os.path.join(self.checkpoint_folder, "training-most-recent.sav")
                 )
-
                 # save the best model if validation score was good
                 if val_loss < best_val_loss:
                     print("Saving best validation model.")
@@ -923,6 +920,7 @@ class Model:
 
         # attach to IO tensors
         self.X = self.get_tensor("X")
+
         self.y = self.get_tensor("y")
         self.keep_prob = self.get_tensor("keep_prob")
         self.is_training = self.get_tensor("training")
@@ -972,7 +970,6 @@ class Model:
             state = np.zeros([1, state_shape[1], state_shape[2]], dtype=np.float32)
 
         batch_X = frame[np.newaxis, np.newaxis, :]
-
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
         pred, novelty, state = self.session.run(
             [self.prediction, self.novelty, self.state_out], feed_dict=feed_dict

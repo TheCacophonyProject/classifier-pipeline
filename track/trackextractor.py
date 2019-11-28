@@ -241,7 +241,6 @@ class TrackExtractor:
             filtered[filtered < self.config.temp_thresh] = 0
             filtered = filtered - background - avg_change
         else:
-            background = np.float32(background)
             filtered = thermal - background
             filtered[filtered < 0] = 0
             filtered = filtered - np.median(filtered)
@@ -266,7 +265,7 @@ class TrackExtractor:
         self.frame_stats_median.append(np.median(thermal))
         self.frame_stats_mean.append(np.mean(thermal))
 
-        self.frame_buffer.add_frame(thermal, filtered, mask)
+        self.frame_buffer.add_frame(thermal, filtered, mask, self.frame_on)
 
         self.region_history.append(regions)
 
@@ -315,11 +314,11 @@ class TrackExtractor:
                 )
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
                 max_distance = np.clip(7 * (track.mass ** 0.5), 30, 95)
-                size_change = np.clip(track.mass, 50, 500)
+                max_size_change = np.clip(track.mass, 50, 500)
 
                 if distance > max_distance:
                     continue
-                if size_change > size_change:
+                if size_change > max_size_change:
                     continue
                 scores.append((distance, track, region))
 
@@ -664,15 +663,17 @@ class TrackExtractor:
         return background, background_stats
 
     def set_optical_flow_function(self):
-        if not self.opt_flow:
-            self.opt_flow = cv2.createOptFlow_DualTVL1()
-            self.opt_flow.setUseInitialFlow(True)
-            if not self.config.high_quality_optical_flow:
-                # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
-                self.opt_flow.setTau(1 / 4)
-                self.opt_flow.setScalesNumber(3)
-                self.opt_flow.setWarpingsNumber(3)
-                self.opt_flow.setScaleStep(0.5)
+        if self.opt_flow:
+            return
+
+        self.opt_flow = cv2.createOptFlow_DualTVL1()
+        self.opt_flow.setUseInitialFlow(True)
+        if not self.config.high_quality_optical_flow:
+            # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
+            self.opt_flow.setTau(1 / 4)
+            self.opt_flow.setScalesNumber(3)
+            self.opt_flow.setWarpingsNumber(3)
+            self.opt_flow.setScaleStep(0.5)
 
     def generate_optical_flow(self):
         if self.cache_to_disk:

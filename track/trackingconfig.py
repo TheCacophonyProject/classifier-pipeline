@@ -20,11 +20,12 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import attr
 
 import ml_tools.config
+from ml_tools.defaultconfig import DefaultConfig
 from track.trackextractor import TrackExtractor
 
 
 @attr.s
-class TrackingConfig:
+class TrackingConfig(DefaultConfig):
 
     background_calc = attr.ib()
     temp_thresh = attr.ib()
@@ -54,10 +55,19 @@ class TrackingConfig:
     aoi_pixel_variance = attr.ib()
     cropped_regions_strategy = attr.ib()
     verbose = attr.ib()
+    enable_track_output = attr.ib()
+    min_tag_confidence = attr.ib()
     moving_vel_thresh = attr.ib()
+
+    # used to provide defaults
+    preview = attr.ib()
+    stats = attr.ib()
+    filters = attr.ib()
+    areas_of_interest = attr.ib()
 
     @classmethod
     def load(cls, tracking):
+
         return cls(
             background_calc=ml_tools.config.parse_options_param(
                 "background_calc",
@@ -69,6 +79,8 @@ class TrackingConfig:
             delta_thresh=tracking["preview"]["delta_thresh"],
             ignore_frames=tracking["preview"]["ignore_frames"],
             threshold_percentile=tracking["stats"]["threshold_percentile"],
+            min_threshold=tracking["stats"]["min_threshold"],
+            max_threshold=tracking["stats"]["max_threshold"],
             static_background_threshold=tracking["static_background_threshold"],
             max_mean_temperature_threshold=tracking["max_mean_temperature_threshold"],
             max_temperature_range_threshold=tracking["max_temperature_range_threshold"],
@@ -78,8 +90,6 @@ class TrackingConfig:
             track_smoothing=tracking["track_smoothing"],
             remove_track_after_frames=tracking["remove_track_after_frames"],
             high_quality_optical_flow=tracking["high_quality_optical_flow"],
-            min_threshold=tracking["stats"]["min_threshold"],
-            max_threshold=tracking["stats"]["max_threshold"],
             flow_threshold=tracking["flow_threshold"],
             max_tracks=tracking["max_tracks"],
             moving_vel_thresh=tracking["filters"]["moving_vel_thresh"],
@@ -94,7 +104,71 @@ class TrackingConfig:
             aoi_min_mass=tracking["areas_of_interest"]["min_mass"],
             aoi_pixel_variance=tracking["areas_of_interest"]["pixel_variance"],
             verbose=tracking["verbose"],
+            enable_track_output=tracking["enable_track_output"],
+            min_tag_confidence=tracking["min_tag_confidence"],
+            preview=None,
+            stats=None,
+            filters=None,
+            areas_of_interest=None,
         )
+
+    @classmethod
+    def get_defaults(cls):
+        return cls(
+            background_calc=TrackExtractor.PREVIEW,
+            preview={"ignore_frames": 2, "temp_thresh": 2900, "delta_thresh": 20},
+            stats={
+                "threshold_percentile": 99.9,
+                "min_threshold": 30,
+                "max_threshold": 50,
+            },
+            max_mean_temperature_threshold=10000,
+            max_temperature_range_threshold=10000,
+            static_background_threshold=4.0,
+            edge_pixels=1,
+            frame_padding=4,
+            dilation_pixels=2,
+            remove_track_after_frames=9,
+            track_smoothing=False,
+            high_quality_optical_flow=False,
+            flow_threshold=40,
+            max_tracks=10,
+            filters={
+                "track_overlap_ratio": 0.5,
+                "min_duration_secs": 3.0,
+                "track_min_offset": 4.0,
+                "track_min_delta": 1.0,
+                "track_min_mass": 2.0,
+            },
+            areas_of_interest={
+                "min_mass": 4.0,
+                "pixel_variance": 2.0,
+                "cropped_regions_strategy": "cautious",
+            },
+            verbose=False,
+            # defaults provided in dictionaries, placesholders to stop init complaining
+            aoi_min_mass=None,
+            aoi_pixel_variance=None,
+            cropped_regions_strategy=None,
+            track_min_offset=None,
+            track_min_delta=None,
+            track_min_mass=None,
+            ignore_frames=None,
+            temp_thresh=None,
+            delta_thresh=None,
+            threshold_percentile=None,
+            min_threshold=None,
+            max_threshold=None,
+            track_overlap_ratio=None,
+            min_duration_secs=None,
+            min_tag_confidence=0.8,
+            enable_track_output=True,
+            dynamic_thresh=True,
+            moving_vel_thresh=4,
+        )
+
+    def validate(self):
+        return True
 
     def as_dict(self):
         return attr.asdict(self)

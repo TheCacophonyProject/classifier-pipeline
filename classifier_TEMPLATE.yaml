@@ -1,3 +1,5 @@
+use_opt_flow: False
+
 # Output debug information e.g. heat numbers on preview
 debug: False
 
@@ -16,7 +18,7 @@ source_folder: "cptv"
 tracks_folder: "tracks"
 
 # which folders (tags) to ignore when selecting cptv files from source_folder
-excluded_folders: ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit', 'hard', 'multi', 'moving',
+excluded_tags: ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit', 'hard', 'multi', 'moving',
                   'mouse', 'bird-kiwi', 'for_grant', 'missclassified', 'other']
 
 # Reprocess files which have already been processed.
@@ -27,8 +29,15 @@ reprocess: True
 # Note: This is should be a full path. It is not relative to the # base_data_folder.
 # previews_colour_map: "custom_colormap.dat"
 
+# Labels 
+labels : ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
+
 # Number of worker threads to use.  0 disables worker pool and forces a single thread.
 worker_threads: 0
+
+# x and y resolution of thermal camera
+res_x: 160
+res_y: 120
 
 tracking:
     #
@@ -140,9 +149,17 @@ tracking:
     # Add verbose logging about tracks generated
     verbose: False
 
-extract:
+    # Minimum confidence of track tag to accept
+    min_tag_confidence: 0.8
+load:
+    # precidence of tags (lower first)
+    tag_precedence:
+        0: ["bird", "false-positive", "hedgehog", "possum", "rodent", "mustelid", "cat", "kiwi", "dog", "leporidae", "human", "insect", "pest"]
+        1: ["unidentified", "other"]
+        2: ["part","bad track"]
+    
     # Use fast BLOSC compression (requires plugin), when saving tracks to database
-    enable_compression: False
+    # enable_compression: True
 
     # Includes the filtered channel in tracks database.  This is typically not used.  If compression is enabled the
     # filesize can be reduced by not including it.
@@ -156,11 +173,8 @@ extract:
     # tracking -  four frame video view, including thermal, filtered, mask and flow layers
     preview: "tracking"
 
-    # Hints file to loade.  Hints are a way to give extra information to the tracker about how many tracks to take.
-    # Note:  Set to 'False' is there is no hints file.
-    # Note:  This is relative to the current directory of the application, not the base data folder
-    hints_file: "hints.txt"
-
+    #cache buffer frame to disk reducing memory usage
+    cache_to_disk: True
 train:
     hyper_params:
         # training
@@ -174,7 +188,6 @@ train:
         # model
         batch_norm: true
         lstm_units: 256
-        enable_flow: true
 
         # augmentation
         augmentation: true
@@ -225,5 +238,59 @@ evaluate:
     # false positive's and 'none' can be mapped to the same label as they represent the same idea.
     null_tags: ["false-positive", "none", "no-tag"]
 
-    #classes
-    classes: ["bird", "possum", "rat", "hedgehog", "stoat", "none"]
+build:
+    #file containing clips to be banned relative to running path
+    banned_clips_file: "excluded_clips.txt"
+
+    # uses split from previous run
+    use_previous_split: False
+
+    # file to load previous split from
+    previous_split: template.dat
+
+    # labels to ignore
+    ignore_labels: ["false-positive"]
+
+    # if true removes any trapped animal footage from dataset.
+    # trapped footage can be a problem as there tends to be lots of it and the animals do not move in a normal way.
+    # however, bin weighting will generally take care of the excessive footage problem.
+    excluded_trap: True
+
+    # sets a maximum number of segments per bin, where the cap is this many standard deviations above the norm.
+    # bins with more than this number of segments will be weighted lower so that their segments are not lost, but
+    # will be sampled less frequently.
+    cap_bin_weight: 1.5
+
+    # adjusts the weight for each animal class.  Setting this lower for animals that are less represented can help
+    # with training, otherwise the few examples we have will be used excessively.  This also helps build a prior for
+    # the class suggesting that the class is more or less likely.  For example bumping up the human weighting will cause
+    # the classifier lean towards guessing human when it is not sure.
+
+    # xxx this doesn't actually work, and should be removed.
+    label_weights: {"bird-kiwi": 0.1}
+
+    # clips after this date will be ignored.
+    # note: this is based on the UTC date.
+    clip_end_date: "2019-12-31"
+
+    # minimum average mass for test segment
+    test_min_mass: 30
+
+    train_min_mass: 20
+
+    # any day with a track this number of second or longer will be excluded from the validation set.
+    # this is because it would be more useful to train on the long track, and we don't want the track to dominate the
+    # validation set (otherwise a single track could end up being 50% of the data)
+    max_validation_set_track_duration: 120
+
+    # number of segments to include in test set for each class (multiplied by label weights)
+    test_set_count: 300
+
+    # minimum number of bins used for test set
+    test_set_bins: 10
+
+    # number of seconds each segment should be
+    segment_length: 3
+
+    # number of seconds segments are spaced apart
+    segment_spacing: 1

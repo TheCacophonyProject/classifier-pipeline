@@ -4,13 +4,16 @@ import numpy as np
 from multiprocessing import Lock
 
 
+from ml_tools.tools import get_clipped_flow
+
+
 class FrameCache:
     def __init__(self, cptv_name, keep_open=True, delete_if_exists=True):
         basename = os.path.splitext(cptv_name)[0]
         self.filename = basename + ".cache"
         self.db = None
         self.keep_open = keep_open
-
+        self.num_farmes = 0
         if delete_if_exists:
             self.delete()
 
@@ -21,15 +24,18 @@ class FrameCache:
     def add_frame(self, frame):
         self.open()
         frames = self.db["frames"]
+        frame_group = frames.create_group(str(frame.frame_number))
+        frame_group.attrs["ffc_affected"] = frame.ffc_affected
+
         height, width = frame.thermal.shape
 
         chunks = (1, height, width)
 
         dims = (5, height, width)
-        frame_node = frames.create_dataset(
-            str(frame.frame_number), dims, chunks=chunks, dtype=np.float16
+        frame_node = frame_group.create_dataset(
+            "frame", dims, chunks=chunks, dtype=np.float16
         )
-        scaled_flow = np.clip(frame.flow * 256, -16000, 16000)
+        scaled_flow = get_clipped_flow(frame.flow)
         frame_val = (
             np.float16(frame.thermal),
             np.float16(frame.filtered),
@@ -42,12 +48,17 @@ class FrameCache:
             self.close()
 
     def get_frame(self, frame_number):
-        if not self.db:
-            self.open()
-        frame = self.db["frames"][str(frame_number)]
+        self.open()
+        ffc_affected = False
+        if str(frame_number) in self.db["frames"]:
+            frame_group = self.db["frames"][str(frame_number)]
+            frame = frame_group["frame"]
+            ffc_affected = frame_group.attrs["ffc_affected"]
+        else:
+            frame = None
         if not self.keep_open:
             self.close()
-        return frame
+        return frame, ffc_affected
 
     def close(self):
         if self.db:

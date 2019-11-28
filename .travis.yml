@@ -25,7 +25,7 @@ deploy:
     secure: WrrLauinQh68r3+fjSh6WePNB4MoaUcriUhLFioYaxC1SiLzyt6qysFT9MNx4r+Tp94prEkFIMJpljfFlwvS6rPEOqkiTdIsjJnbzmcrjAMCwSyP6sGeiyMfO+VYCJPaDqmjBp056tehUtDl8Gtz5esXFygchAOfZ6v7g/+HvwMIB8Tq+3GZQIzYM80jKjPfAeHMwSV0bXmoQ04m3s2z5ysjEDGtZTaKDEFMZOYOUmDIU74HZsUiDrDxfk5H2UR4mNt2+1JSdJogcpRF1OCzVIG1R5GSTAaC9pprzXsQFUueRS0tQRCeHS5ktRbmnIgOBIws2bMkGZIWys7R9MjWwqnLnPv0JUp2Aza0JBlQuh8imEEt9Hlxm8vdXn2RQwQSKaOBME+ng3izhgdBIYM+U9Ti/kaB7SF/LfYmGx1xhdYVxhYXeD5SLpVTJJYggCn+qVawFAdPxOTxiQmjIgZF9ZnuKbhC1VbLl9dxx4NE3aJTJq5UI6m1UZBvA9zRWrgdmeUN/En+ijvjGzuUm8IFOwwR86Aua8VUQvR/H9U5UBXZAfRA+b468jfjQ2cVdzz0r/1j+v9SAkqX487odFX8i0udy5GRoBnvN9NtTo+duqdMQev+l2u47n/R7x1Q0/stdjgVC4ZZ/JiZTSR0QK5E9stu0Gpxq2cDwlcjaz3gDXw=
   skip_cleanup: true
   file_glob: true
-  file: "build/*.deb"
+  file: "dist/*.deb"
   on:
     repo: TheCacophonyProject/classifier-pipeline
     tags: true

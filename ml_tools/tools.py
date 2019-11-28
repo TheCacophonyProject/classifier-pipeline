@@ -17,6 +17,7 @@ import binascii
 import datetime
 import glob
 import cv2
+import timezonefinder
 from matplotlib.colors import LinearSegmentedColormap
 import subprocess
 from PIL import ImageFont
@@ -302,6 +303,9 @@ def convert_heat_to_img(frame, colormap, temp_min=2800, temp_max=4200):
     :return: a pillow Image containing a colorised heatmap
     """
     # normalise
+    if colormap is None:
+        colormap = _load_colourmap(None)
+
     frame = np.float32(frame)
     frame = (frame - temp_min) / (temp_max - temp_min)
     colorized = np.uint8(255.0 * colormap(frame))
@@ -342,16 +346,16 @@ def load_tracker_stats(filename):
 def load_clip_metadata(filename):
     """
     Loads a metadata file for a clip.
-    :param filename: full path and filename to stats file
+    :param filename: full path and filename to meta file
     :return: returns the stats file
     """
     with open(filename, "r") as t:
         # add in some metadata stats
-        stats = json.load(t)
+        meta = json.load(t)
 
-    stats["recordingDateTime"] = dateutil.parser.parse(stats["recordingDateTime"])
+    meta["recordingDateTime"] = dateutil.parser.parse(meta["recordingDateTime"])
 
-    return stats
+    return meta
 
 
 def load_track_stats(filename):
@@ -386,8 +390,8 @@ def get_session(disable_gpu=False):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         config.gpu_options.per_process_gpu_memory_fraction = (
-            0.8
-        )  # save some ram for other applications.
+            0.8  # save some ram for other applications.
+        )
         session = tf.Session(config=config)
 
     return session
@@ -681,6 +685,8 @@ def get_confusion_matrix(pred_class, true_class, classes, normalize=True):
     return cm
 
 
+gzip_compression = {"compression": "gzip"}
+
 blosc_zstd = blosc_opts(complevel=9, complib="blosc:zstd", shuffle=True)
 
 color_dict = {
@@ -691,14 +697,54 @@ color_dict = {
 cm_blue_red = LinearSegmentedColormap("BlueRed2", color_dict)
 
 
-def frame_to_img(frame, filename, colourmap_file, min, max):
+def calculate_mass(filtered, threshold):
+    """Calculates mass of filtered frame with threshold applied"""
+    _, mass = blur_and_return_as_mask(filtered, threshold=threshold)
+    return mass
+
+
+def calculate_variance(filtered, prev_filtered):
+    """Calculates variance of filtered frame with previous frame"""
+    if prev_filtered is None:
+        return
+    delta_frame = np.abs(filtered - prev_filtered)
+    return np.var(delta_frame)
+
+
+def blur_and_return_as_mask(frame, threshold):
+    """
+    Creates a binary mask out of an image by applying a threshold.
+    Any pixels more than the threshold are set 1, all others are set to 0.
+    A blur is also applied as a filtering step
+    """
+    thresh = cv2.GaussianBlur(frame, (5, 5), 0)
+    thresh[thresh - threshold < 0] = 0
+    values = thresh[thresh > 0]
+    mass = len(values)
+    values = 1
+    return thresh, mass
+
+
+def get_optical_flow_function(high_quality=False):
+    opt_flow = cv2.createOptFlow_DualTVL1()
+    opt_flow.setUseInitialFlow(True)
+    if not high_quality:
+        # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
+        opt_flow.setTau(1 / 4)
+        opt_flow.setScalesNumber(3)
+        opt_flow.setWarpingsNumber(3)
+        opt_flow.setScaleStep(0.5)
+    return opt_flow
+
+
+def frame_to_jpg(frame, filename, colourmap_file, min, max):
     colourmap = _load_colourmap(colourmap_file)
     img = convert_heat_to_img(frame, colourmap, min, max)
     img.save(filename + ".jpg", "JPEG")
 
 
 def _load_colourmap(colourmap_path):
-    if not os.path.exists(colourmap_path):
+    if colourmap_path is None or not os.path.exists(colourmap_path):
         colourmap_path = resource_path("colourmap.dat")
     return load_colourmap(colourmap_path)
 
@@ -709,13 +755,12 @@ def resource_path(name):
         p = os.path.join(base, name)
         if os.path.exists(p):
             return p
-    raise OSError(f"unable to locate {name!r} resource")
+    raise OSError("unable to locate {} resource".format(name))
 
 
 def add_heat_number(img, frame, scale):
     draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype("FreeSans.ttf", 8)
-
+    font = ImageFont.truetype(resource_path("Ubuntu-R.ttf"), 8)
     for y, row in enumerate(frame):
         if y % 4 == 0:
             min_v = np.amin(row)
@@ -727,4 +772,20 @@ def add_heat_number(img, frame, scale):
 
 
 def eucl_distance(first, second):
-    return ((first[0] - second[0]) ** 2 + (first[1] - second[1]) ** 2) ** 0.5
+    first_sq = (first[0] - second[0]) ** 2
+    second_sq = (first[1] - second[1]) ** 2
+    return first_sq + second_sq
+    # return ((first[0] - second[0]) ** 2 + (first[1] - second[1]) ** 2) ** 0.5
+
+
+def get_clipped_flow(flow):
+    return np.clip(flow * 256, -16000, 16000)
+
+
+def get_timezone_str(lat, lng):
+    tf = timezonefinder.TimezoneFinder()
+    timezone_str = tf.certain_timezone_at(lat=lat, lng=lng)
+
+    if timezone_str is None:
+        timezone_str = "Pacific/Auckland"
+    return timezone_str

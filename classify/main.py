@@ -8,9 +8,12 @@ from ml_tools.logs import init_logging
 from ml_tools import tools
 from ml_tools.config import Config
 from ml_tools.previewer import Previewer
+import absl.logging
 
 
 def main():
+    logging.root.removeHandler(absl.logging._absl_handler)
+    absl.logging._warn_preinit_stderr = False
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -45,7 +48,7 @@ def main():
     args = parser.parse_args()
 
     config = Config.load_from_file(args.config_file)
-
+    config.validate()
     init_logging(args.timestamps)
 
     # parse command line arguments
@@ -84,15 +87,16 @@ def main():
     # just fetch the classifier now so it doesn't impact the benchmarking on the first clip analysed.
     _ = clip_classifier.classifier
 
-    if args.source == "all":
-        clip_classifier.process_all(config.source_folder)
-    elif os.path.splitext(args.source)[-1].lower() == ".cptv":
+    if os.path.splitext(args.source)[-1].lower() == ".cptv":
         source_file = tools.find_file_from_cmd_line(config.source_folder, args.source)
         if source_file is None:
             return
         clip_classifier.process_file(source_file)
     else:
-        clip_classifier.process_folder(os.path.join(config.source_folder, args.source))
+        folder = config.source_folder
+        if args.source != "all":
+            os.path.join(config.source_folder, folder)
+        clip_classifier.process_all(folder)
 
 
 if __name__ == "__main__":

@@ -21,8 +21,11 @@ import datetime
 import numpy as np
 from collections import namedtuple
 
+from ml_tools.tools import Rectangle, get_clipped_flow
+from ml_tools.dataset import TrackChannels
+import track.region
 from track.region import Region
-from ml_tools.tools import Rectangle
+
 from ml_tools.tools import eucl_distance
 
 
@@ -32,21 +35,25 @@ class Track:
     # keeps track of which id number we are up to.
     _track_id = 1
 
-    def __init__(self, id=None):
+    def __init__(self, clip_id, id=None):
         """
         Creates a new Track.
         :param id: id number for track, if not specified is provided by an auto-incrementer
         """
 
-        # used to uniquely identify the track
         if not id:
-            self.id = Track._track_id
+            self._id = Track._track_id
             Track._track_id += 1
         else:
-            self.id = id
+            self._id = id
 
-        # frame number this track starts at
-        self.start_frame = 0
+        self.clip_id = clip_id
+        self.start_frame = None
+        self.end_frame = None
+        self.start_s = None
+        self.end_s = None
+        self.current_frame_num = None
+        self.frame_list = []
         # our bounds over time
         self.bounds_history = []
         # number frames since we lost target.
@@ -55,31 +62,115 @@ class Track:
         self.vel_x = 0
         # our current estimated vertical velocity
         self.vel_y = 0
-
         # the tag for this track
         self.tag = "unknown"
+        self.prev_frame_num = None
+        self.include_filtered_channel = True
+        self.confidence = None
+        self.max_novelty = None
+        self.avg_novelty = None
 
-    def add_frame(self, bounds: Region):
-        """
-        Adds a new point in time bounds and mass to track
-        :param bounds: new bounds region
-        """
-        self.bounds_history.append(bounds.copy())
+        self.from_metadata = False
+        self.track_tags = None
+
+    @classmethod
+    def from_region(cls, clip, region):
+        track = cls(clip.get_id())
+        track.start_frame = region.frame_number
+        track.start_s = region.frame_number / float(clip.frames_per_second)
+        track.add_region(region)
+        return track
+
+    def get_id(self):
+        return self._id
+
+    def load_track_meta(
+        self,
+        track_meta,
+        frames_per_second,
+        include_filtered_channel,
+        tag_precedence,
+        min_confidence,
+    ):
+        self.from_metadata = True
+        self._id = track_meta["id"]
+        self.include_filtered_channel = include_filtered_channel
+        data = track_meta["data"]
+        self.start_s = data["start_s"]
+        self.end_s = data["end_s"]
+        self.track_tags = track_meta.get("TrackTags")
+        tag = Track.get_best_human_tag(track_meta, tag_precedence, min_confidence)
+        if tag:
+            self.tag = tag["what"]
+            self.confidence = tag["confidence"]
+        else:
+            return False
+
+        positions = data.get("positions")
+        if not positions:
+            return False
+        self.bounds_history = []
+        self.frame_list = []
+        for position in positions:
+            frame_number = round(position[0] * frames_per_second)
+            if self.start_frame is None:
+                self.start_frame = frame_number
+            self.end_frame = frame_number
+            region = Region.region_from_array(position[1], frame_number)
+            self.bounds_history.append(region)
+            self.frame_list.append(frame_number)
+        self.current_frame_num = 0
+        return True
+
+    def add_region(self, region):
+        if self.prev_frame_num and region.frame_number:
+            frame_diff = region.frame_number - self.prev_frame_num - 1
+            for _ in range(frame_diff):
+                self.add_blank_frame()
+
+        self.bounds_history.append(region)
+        self.end_frame = region.frame_number
+        self.prev_frame_num = region.frame_number
+        self.update_velocity()
         self.frames_since_target_seen = 0
 
-        if len(self) >= 2:
+    def update_velocity(self):
+        if len(self.bounds_history) >= 2:
             self.vel_x = self.bounds_history[-1].mid_x - self.bounds_history[-2].mid_x
             self.vel_y = self.bounds_history[-1].mid_y - self.bounds_history[-2].mid_y
         else:
             self.vel_x = self.vel_y = 0
 
-    def add_blank_frame(self):
+    def add_frame_for_existing_region(self, frame, mass_delta_threshold, prev_filtered):
+        region = self.bounds_history[self.current_frame_num]
+        if prev_filtered is not None:
+            prev_filtered = region.subimage(prev_filtered)
+
+        filtered = region.subimage(frame.filtered)
+        region.calculate_mass(filtered, mass_delta_threshold)
+        region.calculate_variance(filtered, prev_filtered)
+
+        if self.prev_frame_num and frame.frame_number:
+            frame_diff = frame.frame_number - self.prev_frame_num - 1
+            for _ in range(frame_diff):
+                self.add_blank_frame()
+
+        self.update_velocity()
+
+        self.prev_frame_num = frame.frame_number
+        self.current_frame_num += 1
+        self.frames_since_target_seen = 0
+
+    def add_blank_frame(self, buffer_frame=None):
         """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
-        self.bounds_history.append(self.bounds.copy())
-        self.bounds.mass = 0
-        self.bounds.pixel_variance = 0
-        self.bounds.frame_index += 1
+        region = self.last_bound.copy()
+        region.mass = 0
+        region.pixel_variance = 0
+        region.frame_number += 1
+        self.bounds_history.append(region)
+        self.prev_frame_num = region.frame_number
         self.vel_x = self.vel_y = 0
+        self.frames_since_target_seen += 1
 
     def get_stats(self):
         """
@@ -90,10 +181,13 @@ class Track:
 
         if len(self) <= 1:
             return TrackMovementStatistics()
-
         # get movement vectors
         mass_history = [int(bound.mass) for bound in self.bounds_history]
-        variance_history = [bound.pixel_variance for bound in self.bounds_history]
+        variance_history = [
+            bound.pixel_variance
+            for bound in self.bounds_history
+            if bound.pixel_variance
+        ]
         mid_x = [bound.mid_x for bound in self.bounds_history]
         mid_y = [bound.mid_y for bound in self.bounds_history]
         delta_x = [mid_x[0] - x for x in mid_x]
@@ -168,7 +262,6 @@ class Track:
         Removes empty frames from start and end of track
         """
         mass_history = [int(bound.mass) for bound in self.bounds_history]
-
         start = 0
         while start < len(self) and mass_history[start] <= 2:
             start += 1
@@ -190,17 +283,20 @@ class Track:
         """
 
         if abs(self.vel_x) + abs(self.vel_y) >= moving_vel_thresh:
-            expected_x = int(self.bounds.mid_x + self.vel_x)
-            expected_y = int(self.bounds.mid_y + self.vel_y)
+            expected_x = int(self.last_bound.mid_x + self.vel_x)
+            expected_y = int(self.last_bound.mid_y + self.vel_y)
             distance = eucl_distance(
                 (expected_x, expected_y), (region.mid_x, region.mid_y)
             )
         else:
-            expected_x = int(self.bounds.x + self.vel_x)
-            expected_y = int(self.bounds.y + self.vel_y)
+            expected_x = int(self.last_bound.x + self.vel_x)
+            expected_y = int(self.last_bound.y + self.vel_y)
             distance = eucl_distance((expected_x, expected_y), (region.x, region.y))
             distance += eucl_distance(
-                (expected_x + self.bounds.width, expected_y + self.bounds.height),
+                (
+                    expected_x + self.last_bound.width,
+                    expected_y + self.last_bound.height,
+                ),
                 (region.x + region.width, region.y + region.height),
             )
             distance /= 2.0
@@ -208,7 +304,7 @@ class Track:
         # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
         # area is padded with 50 pixels so small regions don't change too much
         size_difference = (
-            abs(region.area - self.bounds.area) / (self.bounds.area + 50)
+            abs(region.area - self.last_bound.area) / (self.last_bound.area + 50)
         ) * 100
 
         return distance, size_difference
@@ -225,9 +321,7 @@ class Track:
             return 0.0
 
         start = max(self.start_frame, other_track.start_frame)
-        end = min(
-            self.start_frame + len(self), other_track.start_frame + len(other_track)
-        )
+        end = min(self.end_frame, other_track.end_frame)
 
         frames_overlapped = 0
 
@@ -248,36 +342,92 @@ class Track:
 
         return frames_overlapped / len(self)
 
-    def get_track_frame(self, frame, track_frame_number):
+    def crop_by_region_at_trackframe(self, frame, track_frame_number, clip_flow=True):
         bounds = self.bounds_history[track_frame_number]
-        thermal = bounds.subimage(frame[0])
-        filtered = bounds.subimage(frame[1])
-        mask = bounds.subimage(frame[2])
-        flow = bounds.subimage(frame[3])
-        flow2 = bounds.subimage(frame[4])
+        return self.crop_by_region(frame, bounds)
 
+    def crop_by_region(self, frame, region, clip_flow=True):
+        thermal = region.subimage(frame.thermal)
+        filtered = region.subimage(frame.filtered)
+        if frame.flow is not None:
+            flow_h = region.subimage(frame.flow_h)
+            flow_v = region.subimage(frame.flow_v)
+            if clip_flow and not frame.flow_clipped:
+                flow_h = get_clipped_flow(flow_h)
+                flow_v = get_clipped_flow(flow_v)
+        else:
+            flow_h = None
+            flow_v = None
+
+        mask = region.subimage(frame.mask).copy()
         # make sure only our pixels are included in the mask.
-        mask[mask != bounds.id] = 0
+        mask[mask != region.id] = 0
         mask[mask > 0] = 1
 
         # stack together into a numpy array.
         # by using int16 we lose a little precision on the filtered frames, but not much (only 1 bit)
-        frame = np.int16(np.stack((thermal, filtered, flow, flow2, mask), axis=0))
+        if flow_h is not None and flow_v is not None:
+            return np.int16(np.stack((thermal, filtered, flow_h, flow_v, mask), axis=0))
+        else:
+            empty = np.zeros(filtered.shape)
+            return np.int16(np.stack((thermal, filtered, empty, empty, mask), axis=0))
         return frame
 
     @property
-    def mass(self):
+    def frames(self):
+        return self.end_frame + 1 - self.start_frame
+
+    @property
+    def last_mass(self):
         return self.bounds_history[-1].mass
 
     @property
-    def bounds(self) -> Region:
+    def last_bound(self) -> Region:
         return self.bounds_history[-1]
 
     def __repr__(self):
-        return "Track:{} frames".format(len(self))
+        return "Track: frames# {}".format(self.get_id(), len(self))
 
     def __len__(self):
         return len(self.bounds_history)
+
+    @classmethod
+    def get_best_human_tag(cls, track_meta, tag_precedence, min_confidence=-1):
+        """ returns highest precidence non AI tag from the metadata """
+
+        track_tags = track_meta.get("TrackTags", [])
+        track_tags = [
+            tag
+            for tag in track_tags
+            if not tag.get("automatic", False)
+            and tag.get("confidence") > min_confidence
+        ]
+
+        if not track_tags:
+            return None
+
+        tag = None
+        default_prec = tag_precedence.get("default", 100)
+        best = None
+        for track_tag in track_tags:
+            ranking = cls.tag_ranking(track_tag, tag_precedence, default_prec)
+
+            # if 2 track_tags have same confidence ignore both
+            if ranking == best:
+                tag = None
+            elif best is None or ranking < best:
+                best = ranking
+                tag = track_tag
+        return tag
+
+    @staticmethod
+    def tag_ranking(track_tag, precedence, default_prec):
+        """ returns a ranking of tags based of what they are and confidence """
+
+        what = track_tag.get("what")
+        confidence = 1 - track_tag.get("confidence", 0)
+        prec = precedence.get(what, default_prec)
+        return prec + confidence
 
 
 TrackMovementStatistics = namedtuple(

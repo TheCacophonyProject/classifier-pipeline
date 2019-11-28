@@ -17,22 +17,13 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import attr
 
-
-@attr.s
-class ExtractConfig:
-
-    enable_compression = attr.ib()
-    include_filtered_channel = attr.ib()
-    preview = attr.ib()
-    hints_file = attr.ib()
-
+class DefaultConfig:
     @classmethod
-    def load(cls, extract):
-        return cls(
-            enable_compression=extract["enable_compression"],
-            include_filtered_channel=extract["include_filtered_channel"],
-            preview=extract["preview"],
-            hints_file=extract["hints_file"],
-        )
+    def get_defaults(cls):
+        """ The function to get default config. """
+        raise Exception("get_defaults method must be overwritten in sub class.")
+
+    def validate(self):
+        """ The function to get default config. """
+        raise Exception("validate method must be overwritten in sub class.")

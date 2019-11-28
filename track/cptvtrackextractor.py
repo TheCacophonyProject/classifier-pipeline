@@ -80,15 +80,19 @@ class CPTVTrackExtractor(CPTVFileProcessor):
 
         previous_filter_setting = self.disable_track_filters
         previous_background_setting = self.disable_background_subtraction
+        for folder_root, folders, _ in os.walk(root):
 
-        for _, folders, _ in os.walk(root):
             for folder in folders:
                 if folder not in self.config.excluded_folders:
                     if folder.lower() == "false-positive":
                         self.disable_track_filters = True
                         self.disable_background_subtraction = True
                         logging.info("Turning Track filters OFF.")
-                    self.process_folder(os.path.join(root, folder), tag=folder.lower())
+
+                    self.process_folder(
+                        os.path.join(folder_root, folder), tag=folder.lower()
+                    )
+
                     if folder.lower() == "false-positive":
                         logging.info("Restoring Track filters.")
                         self.disable_track_filters = previous_filter_setting
@@ -259,7 +263,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         return tracker
 
     def export_tracks(
-        self, full_path, tracker: TrackExtractor, database: TrackDatabase
+        self, full_path, tracks, tracker: TrackExtractor, database: TrackDatabase
     ):
         """
         Writes tracks to a track database.

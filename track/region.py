@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
+import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
 
 
@@ -32,7 +33,7 @@ class Region(Rectangle):
         mass=0,
         pixel_variance=0,
         id=0,
-        frame_index=0,
+        frame_number=0,
         was_cropped=False,
     ):
         super().__init__(topleft_x, topleft_y, width, height)
@@ -43,9 +44,51 @@ class Region(Rectangle):
         # an identifier for this region
         self.id = id
         # frame index from clip
-        self.frame_index = frame_index
+        self.frame_number = frame_number
         # if this region was cropped or not
         self.was_cropped = was_cropped
+        self.is_along_border = False
+
+    @classmethod
+    def region_from_array(cls, region_bounds, frame_number=0):
+        width = region_bounds[2] - region_bounds[0]
+        height = region_bounds[3] - region_bounds[1]
+        return cls(
+            region_bounds[0], region_bounds[1], width, height, frame_number=frame_number
+        )
+
+    def calculate_mass(self, filtered, threshold):
+        """ 
+            calculates mass on this frame for this region 
+            filtered is assumed to be cropped to the region
+        """
+        height, width = filtered.shape
+        assert (
+            width == self.width and height == self.height
+        ), "calculating variance on incorrectly sized filtered"
+
+        self.mass = tools.calculate_mass(filtered, threshold)
+
+    def calculate_variance(self, filtered, prev_filtered):
+        """ 
+            calculates variance on this frame for this region 
+            filtered is assumed to be cropped to the region
+        """
+        height, width = filtered.shape
+        assert (
+            width == self.width and height == self.height
+        ), "calculating variance on incorrectly sized filtered"
+
+        self.pixel_variance = tools.calculate_variance(filtered, prev_filtered)
+
+    def set_is_along_border(self, bounds):
+        self.is_along_border = (
+            self.was_cropped
+            or self.x == bounds.x
+            or self.y == bounds.y
+            or self.right == bounds.width
+            or self.bottom == bounds.height
+        )
 
     def copy(self):
         return Region(
@@ -56,6 +99,6 @@ class Region(Rectangle):
             self.mass,
             self.pixel_variance,
             self.id,
-            self.frame_index,
+            self.frame_number,
             self.was_cropped,
         )

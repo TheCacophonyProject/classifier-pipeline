@@ -20,7 +20,6 @@ def train_model(run_name, conf, hyper_params):
     with open(datasets_filename, "rb") as f:
         dsets = pickle.load(f)
     labels = dsets[0].labels
-
     model = ModelCRNN_LQ(labels=len(labels), train_config=conf.train, **hyper_params)
     model.import_dataset(datasets_filename)
     # display the data set summary
@@ -53,6 +52,7 @@ def train_model(run_name, conf, hyper_params):
     print()
     print("Found {0:.1f}K training examples".format(model.rows / 1000))
     print()
+
     model.train_model(
         epochs=conf.train.epochs,
         run_name=run_name + " " + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),
