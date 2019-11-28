@@ -29,17 +29,7 @@ from ml_tools import tools
 import ml_tools.globals as globs
 from ml_tools.mpeg_creator import MPEGCreator
 from track.region import Region
-
-LOCAL_RESOURCES = path.join(path.dirname(path.dirname(__file__)), "resources")
-GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
-
-
-def resource_path(name):
-    for base in [LOCAL_RESOURCES, GLOBAL_RESOURCES]:
-        p = path.join(base, name)
-        if path.exists(p):
-            return p
-    raise OSError(f"unable to locate {name!r} resource")
+from .dataset import TrackChannels
 
 
 class Previewer:
@@ -63,6 +53,7 @@ class Previewer:
     ]
 
     TRACK_COLOURS = [(255, 0, 0), (0, 255, 0), (255, 255, 0), (128, 255, 255)]
+    FILTERED_COLOURS = [(128, 128, 128)]
 
     def __init__(self, config, preview_type):
         self.config = config
@@ -74,16 +65,17 @@ class Previewer:
         self.font_title
         self.preview_type = preview_type
         self.frame_scale = 1
+        self.debug = config.debug
 
     @classmethod
     def create_if_required(self, config, preview_type):
-        if not preview_type == Previewer.PREVIEW_NONE:
+        if not preview_type.lower() == Previewer.PREVIEW_NONE:
             return Previewer(config, preview_type)
 
     def _load_colourmap(self):
         colourmap_path = self.config.previews_colour_map
         if not path.exists(colourmap_path):
-            colourmap_path = resource_path("colourmap.dat")
+            colourmap_path = tools.resource_path("colourmap.dat")
         return tools.load_colourmap(colourmap_path)
 
     @property
@@ -91,7 +83,7 @@ class Previewer:
         """ gets default font. """
         if not globs._previewer_font:
             globs._previewer_font = ImageFont.truetype(
-                resource_path("Ubuntu-R.ttf"), 12
+                tools.resource_path("Ubuntu-R.ttf"), 12
             )
         return globs._previewer_font
 
@@ -100,11 +92,11 @@ class Previewer:
         """ gets default title font. """
         if not globs._previewer_font_title:
             globs._previewer_font_title = ImageFont.truetype(
-                resource_path("Ubuntu-B.ttf"), 14
+                tools.resource_path("Ubuntu-B.ttf"), 14
             )
         return globs._previewer_font_title
 
-    def export_clip_preview(self, filename, clip: Clip, track_predictions=None):
+    def export_clip_preview(self, filename, clip: Clip, predictions=None):
         """
         Exports a clip showing the tracking and predictions for objects within the clip.
         """
@@ -113,54 +105,71 @@ class Previewer:
 
         # increased resolution of video file.
         # videos look much better scaled up
-        if clip.background_stats:
-            self.auto_max = clip.background_stats["max_temp"]
-            self.auto_min = clip.background_stats["min_temp"]
-        else:
+        if not clip.stats:
             logging.error("Do not have temperatures to use.")
             return
 
-        if bool(track_predictions) and self.preview_type == self.PREVIEW_CLASSIFIED:
-            self.create_track_descriptions(clip, track_predictions)
+        if self.debug:
+            footer = Previewer.stats_footer(clip.stats)
+        if (
+            predictions
+            and self.preview_type == self.PREVIEW_CLASSIFIED
+            or self.preview_type == self.PREVIEW_TRACKING
+        ):
+            self.create_track_descriptions(clip, predictions)
 
-        if self.preview_type == self.PREVIEW_TRACKING and not clip.frame_buffer.flow:
-            clip.generate_optical_flow()
-
+        if clip.stats.min_temp is None or clip.stats.max_temp is None:
+            thermals = [frame.thermal for frame in clip.frame_buffer.frames]
+            clip.stats.min_temp = np.amin(thermals)
+            clip.stats.max_temp = np.amax(thermals)
         mpeg = MPEGCreator(filename)
-
-        for frame_number, thermal in enumerate(clip.frame_buffer.thermal):
+        for frame_number, frame in enumerate(clip.frame_buffer):
             if self.preview_type == self.PREVIEW_RAW:
-                image = self.convert_and_resize(thermal)
-
-            if self.preview_type == self.PREVIEW_TRACKING:
-                image = self.create_four_tracking_image(clip.frame_buffer, frame_number)
-                image = self.convert_and_resize(image, 3.0, mode=Image.NEAREST)
+                image = self.convert_and_resize(
+                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp
+                )
                 draw = ImageDraw.Draw(image)
-                if clip.region_history:
-                    regions = clip.region_history[frame_number]
-                    self.add_regions(draw, regions)
-                    self.add_regions(draw, regions, v_offset=120)
-                self.add_tracks(draw, clip.tracks, frame_number)
-
-            if self.preview_type == self.PREVIEW_BOXES:
-                image = self.convert_and_resize(thermal, 4.0)
+            elif self.preview_type == self.PREVIEW_TRACKING:
+                image = self.create_four_tracking_image(frame, clip.stats.min_temp)
+                image = self.convert_and_resize(
+                    image,
+                    clip.stats.min_temp,
+                    clip.stats.max_temp,
+                    3.0,
+                    mode=Image.NEAREST,
+                )
                 draw = ImageDraw.Draw(image)
-                screen_bounds = Region(0, 0, image.width, image.height)
-                self.add_tracks(draw, clip.tracks, frame_number)
+                self.add_tracks(draw, clip.tracks, frame_number, predictions)
 
-            if self.preview_type == self.PREVIEW_CLASSIFIED:
-                image = self.convert_and_resize(thermal, 4.0)
+            elif self.preview_type == self.PREVIEW_BOXES:
+                image = self.convert_and_resize(
+                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp, 4.0
+                )
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(
-                    draw, clip.tracks, frame_number, track_predictions, screen_bounds
+                    draw, clip.tracks, frame_number, colours=[(128, 255, 255)]
                 )
 
+            elif self.preview_type == self.PREVIEW_CLASSIFIED:
+                image = self.convert_and_resize(
+                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp, 4.0
+                )
+                draw = ImageDraw.Draw(image)
+                screen_bounds = Region(0, 0, image.width, image.height)
+                self.add_tracks(
+                    draw, clip.tracks, frame_number, predictions, screen_bounds
+                )
+            if self.debug and draw:
+                self.add_footer(
+                    draw, image.width, image.height, footer, frame.ffc_affected
+                )
             mpeg.next_frame(np.asarray(image))
 
             # we store the entire video in memory so we need to cap the frame count at some point.
             if frame_number > clip.frames_per_second * 60 * 10:
                 break
+        clip.frame_buffer.close_cache()
         mpeg.close()
 
     def create_individual_track_previews(self, filename, clip: Clip):
@@ -170,22 +179,25 @@ class Previewer:
 
         FRAME_SIZE = 4 * 48
         frame_width, frame_height = FRAME_SIZE, FRAME_SIZE
-        frame_buffer = clip.frame_buffer
-        for track in clip.tracks:
+
+        for id, track in enumerate(clip.tracks):
             video_frames = []
-            for channels in track.track_data:
-                img = tools.convert_heat_to_img(channels[1], self.colourmap, 0, 350)
+            for region in track.bounds_history:
+                frame = clip.frame_buffer.get_frame(region.frame_number)
+                frame = track.crop_by_region(frame, region)
+                img = tools.convert_heat_to_img(
+                    frame[TrackChannels.thermal], self.colourmap, 0, 350
+                )
                 img = img.resize((frame_width, frame_height), Image.NEAREST)
                 video_frames.append(np.asarray(img))
 
-            logging.info("creating preview %s", filename_format.format(track.get_id()))
-            tools.write_mpeg(filename_format.format(track.get_id()), video_frames)
+            logging.info("creating preview %s", filename_format.format(id + 1))
+            tools.write_mpeg(filename_format.format(id + 1), video_frames)
 
-    def convert_and_resize(self, image, size=None, mode=Image.BILINEAR):
+    def convert_and_resize(self, frame, h_min, h_max, size=None, mode=Image.BILINEAR):
         """ Converts the image to colour using colour map and resize """
-        image = tools.convert_heat_to_img(
-            image, self.colourmap, self.auto_min, self.auto_max
-        )
+        thermal = frame[:120, :160].copy()
+        image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
         if size:
             self.frame_scale = size
             image = image.resize(
@@ -195,92 +207,130 @@ class Previewer:
                 ),
                 mode,
             )
+
+        if self.debug:
+            tools.add_heat_number(image, thermal, self.frame_scale)
         return image
 
-    def create_track_descriptions(self, clip, track_predictions):
+    def create_track_descriptions(self, clip, predictions):
         # look for any tracks that occur on this frame
         for track in clip.tracks:
-
-            prediction = track_predictions[track]
-            # find a track description, which is the final guess of what this class is.
-            guesses = [
-                "{} ({:.1f})".format(
-                    globs._classifier.labels[prediction.label(i)],
-                    prediction.score(i) * 10,
-                )
-                for i in range(1, 4)
-                if prediction.score(i) > 0.5
-            ]
+            guesses = predictions.guesses_for(track.get_id())
             track_description = "\n".join(guesses)
             track_description.strip()
             self.track_descs[track] = track_description
-
-    def create_four_tracking_image(self, frame_buffer, frame_number):
-        thermal = frame_buffer.thermal[frame_number]
-        filtered = frame_buffer.filtered[frame_number] + self.auto_min
-        mask = frame_buffer.mask[frame_number] * 10000
-        flow = frame_buffer.flow[frame_number]
-        flow_magnitude = (
-            np.linalg.norm(np.float32(flow), ord=2, axis=2) / 4.0 + self.auto_min
-        )
-
-        return np.hstack(
-            (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
-        )
 
     def add_regions(self, draw, regions, v_offset=0):
         for rect in regions:
             draw.rectangle(self.rect_points(rect, v_offset), outline=(128, 128, 128))
 
     def add_tracks(
-        self, draw, tracks, frame_number, track_predictions=None, screen_bounds=None
+        self,
+        draw,
+        tracks,
+        frame_number,
+        track_predictions=None,
+        screen_bounds=None,
+        colours=TRACK_COLOURS,
+        tracks_text=None,
+        v_offset=0,
     ):
+
         # look for any tracks that occur on this frame
         for index, track in enumerate(tracks):
             frame_offset = frame_number - track.start_frame
-            if frame_offset >= 0 and frame_offset < len(track.bounds_history) - 1:
-                rect = track.bounds_history[frame_offset]
+            if frame_offset >= 0 and frame_offset < len(track.bounds_history):
+                region = track.bounds_history[frame_offset]
                 draw.rectangle(
-                    self.rect_points(rect),
-                    outline=self.TRACK_COLOURS[index % len(self.TRACK_COLOURS)],
+                    self.rect_points(region, v_offset),
+                    outline=colours[index % len(colours)],
                 )
                 if track_predictions:
                     self.add_class_results(
                         draw,
                         track,
                         frame_offset,
-                        rect,
+                        region,
                         track_predictions,
                         screen_bounds,
+                        v_offset=v_offset,
+                    )
+                if self.debug:
+                    text = None
+                    if tracks_text and len(tracks_text) > index:
+                        text = tracks_text[index]
+                    self.add_debug_text(
+                        draw, track, region, screen_bounds, text=text, v_offset=v_offset
                     )
 
+    def add_footer(self, draw, width, height, text, ffc_affected):
+        footer_text = "FFC {} {}".format(ffc_affected, text)
+        footer_size = self.font.getsize(footer_text)
+        center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
+        draw.text((center[0], center[1]), footer_text, font=self.font)
+
+    def add_debug_text(self, draw, track, region, screen_bounds, text=None, v_offset=0):
+        if text is None:
+            text = "id {}".format(track.get_id())
+            if region.pixel_variance:
+                text += "mass {} var {}".format(
+                    region.mass, round(region.pixel_variance, 2)
+                )
+        footer_size = self.font.getsize(text)
+        footer_center = ((region.width * self.frame_scale) - footer_size[0]) / 2
+
+        footer_rect = Region(
+            region.right * self.frame_scale - footer_center / 2.0,
+            (v_offset + region.bottom) * self.frame_scale,
+            footer_size[0],
+            footer_size[1],
+        )
+        self.fit_to_image(footer_rect, screen_bounds)
+
+        draw.text((footer_rect.x, footer_rect.y), text, font=self.font)
+
     def add_class_results(
-        self, draw, track, frame_offset, rect, track_predictions, screen_bounds
+        self,
+        draw,
+        track,
+        frame_offset,
+        rect,
+        track_predictions,
+        screen_bounds,
+        v_offset=0,
     ):
-        prediction = track_predictions[track]
-        if track not in track_predictions:
+        prediction = track_predictions.prediction_for(track.get_id())
+        if prediction is None:
             return
 
-        label = globs._classifier.labels[prediction.label_at_time(frame_offset)]
-        score = prediction.score_at_time(frame_offset) * 10
-        novelty = prediction.novelty_history[frame_offset]
-        prediction_format = "({:.1f} {})\nnovelty={:.2f}"
-        current_prediction_string = prediction_format.format(score * 10, label, novelty)
+        current_prediction_string = prediction.get_classified_footer(
+            track_predictions.labels, frame_offset
+        )
+        self.add_text_to_track(
+            draw,
+            rect,
+            self.track_descs[track],
+            current_prediction_string,
+            screen_bounds,
+            v_offset,
+        )
 
-        header_size = self.font_title.getsize(self.track_descs[track])
-        footer_size = self.font.getsize(current_prediction_string)
-
+    def add_text_to_track(
+        self, draw, rect, header_text, footer_text, screen_bounds, v_offset=0
+    ):
+        header_size = self.font_title.getsize(header_text)
+        footer_size = self.font.getsize(footer_text)
         # figure out where to draw everything
         header_rect = Region(
             rect.left * self.frame_scale,
-            rect.top * self.frame_scale - header_size[1],
+            (v_offset + rect.top) * self.frame_scale - header_size[1],
             header_size[0],
             header_size[1],
         )
         footer_center = ((rect.width * self.frame_scale) - footer_size[0]) / 2
         footer_rect = Region(
             rect.left * self.frame_scale + footer_center,
-            rect.bottom * self.frame_scale,
+            (v_offset + rect.bottom) * self.frame_scale,
             footer_size[0],
             footer_size[1],
         )
@@ -288,17 +338,13 @@ class Previewer:
         self.fit_to_image(header_rect, screen_bounds)
         self.fit_to_image(footer_rect, screen_bounds)
 
-        draw.text(
-            (header_rect.x, header_rect.y),
-            self.track_descs[track],
-            font=self.font_title,
-        )
-        draw.text(
-            (footer_rect.x, footer_rect.y), current_prediction_string, font=self.font
-        )
+        draw.text((header_rect.x, header_rect.y), header_text, font=self.font_title)
+        draw.text((footer_rect.x, footer_rect.y), footer_text, font=self.font)
 
     def fit_to_image(self, rect: Region, screen_bounds: Region):
         """ Modifies rect so that rect is visible within bounds. """
+        if screen_bounds is None:
+            return
         if rect.left < screen_bounds.left:
             rect.x = screen_bounds.left
         if rect.top < screen_bounds.top:
@@ -319,3 +365,79 @@ class Previewer:
             s * (rect.bottom + v_offset) - 1,
         ]
         return
+
+    def add_last_frame_tracking(
+        self,
+        img,
+        tracks,
+        labels,
+        track_predictions=None,
+        screen_bounds=None,
+        colours=TRACK_COLOURS,
+        tracks_text=None,
+        v_offset=0,
+    ):
+        draw = ImageDraw.Draw(img)
+
+        # look for any tracks that occur on this frame
+        for index, track in enumerate(tracks):
+            region = track.bounds_history[-1]
+            draw.rectangle(
+                self.rect_points(region, v_offset),
+                outline=colours[index % len(colours)],
+            )
+            if track_predictions:
+                footer_text = track_predictions.get_classified_footer(labels)
+                self.add_text_to_track(
+                    draw,
+                    region,
+                    str(track.get_id()),
+                    footer_text,
+                    screen_bounds,
+                    v_offset,
+                )
+
+            if self.debug:
+                text = None
+                if tracks_text and len(tracks_text) > index:
+                    text = tracks_text[index]
+                self.add_debug_text(
+                    draw, track, region, screen_bounds, text=text, v_offset=v_offset
+                )
+
+    @staticmethod
+    def create_four_tracking_image(frame, min_temp):
+
+        thermal = frame.thermal
+        filtered = frame.filtered + min_temp
+        mask = frame.mask * 10000
+        flow_h, flow_v = frame.get_flow_split(clip_flow=True)
+        if flow_h is None and flow_v is None:
+            flow_magnitude = filtered
+        else:
+            flow_magnitude = (
+                np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
+                + min_temp
+            )
+
+        return np.hstack(
+            (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
+        )
+
+    @staticmethod
+    def stats_footer(stats):
+        return "max {}, min{}, mean{}, filtered deviation {}, avg delta{}, temp_thresh {}".format(
+            none_or_round(stats.max_temp),
+            none_or_round(stats.min_temp),
+            none_or_round(stats.mean_temp),
+            none_or_round(stats.filtered_deviation, 2),
+            none_or_round(stats.average_delta, 1),
+            none_or_round(stats.temp_thresh),
+        )
+
+
+def none_or_round(value, decimals=0):
+    if value:
+        return round(value, decimals)
+    else:
+        return value

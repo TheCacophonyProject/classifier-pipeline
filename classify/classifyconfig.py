@@ -33,6 +33,7 @@ class ClassifyConfig(DefaultConfig):
     meta_to_stdout = attr.ib()
     preview = attr.ib()
     classify_folder = attr.ib()
+    cache_to_disk = attr.ib()
 
     @classmethod
     def load(cls, classify, base_folder):
@@ -43,12 +44,17 @@ class ClassifyConfig(DefaultConfig):
                 "preview", classify["preview"], Previewer.PREVIEW_OPTIONS
             ),
             classify_folder=path.join(base_folder, classify["classify_folder"]),
+            cache_to_disk=classify["cache_to_disk"],
         )
 
     @classmethod
     def get_defaults(cls):
         return cls(
-            meta_to_stdout=False, model=None, preview="none", classify_folder="classify"
+            meta_to_stdout=False,
+            model=None,
+            preview="none",
+            classify_folder="classify",
+            cache_to_disk=True,
         )
 
     def validate(self):

@@ -24,16 +24,14 @@ import multiprocessing
 import time
 
 from ml_tools import tools
-from ml_tools.trackdatabase import TrackDatabase
+from ml_tools.dataset import TrackChannels
 from ml_tools import trackdatabase
+from ml_tools.trackdatabase import TrackDatabase
+
 from ml_tools.previewer import Previewer
 from .clip import Clip
+from .cliptrackextractor import ClipTrackExtractor
 from track.track import Track
-
-
-def init_workers(lock):
-    """ Initialise worker by setting the trackdatabase lock. """
-    trackdatabase.HDF5_LOCK = lock
 
 
 def process_job(job):
@@ -52,12 +50,16 @@ class ClipLoader:
         self.compression = (
             tools.gzip_compression if self.config.load.enable_compression else None
         )
-        self.worker_pool_init = init_workers
         self.track_config = config.tracking
         # number of threads to use when processing jobs.
         self.workers_threads = config.worker_threads
-
         self.previewer = Previewer.create_if_required(config, config.load.preview)
+        self.track_extractor = ClipTrackExtractor(
+            self.config.tracking,
+            self.config.use_opt_flow
+            or config.load.preview == Previewer.PREVIEW_TRACKING,
+            self.config.load.cache_to_disk,
+        )
 
     def process_all(self, root=None):
         if root is None:
@@ -77,11 +79,7 @@ class ClipLoader:
             for job in jobs:
                 process_job(job)
         else:
-            pool = multiprocessing.Pool(
-                self.workers_threads,
-                initializer=self.worker_pool_init,
-                initargs=init_workers,
-            )
+            pool = multiprocessing.Pool(self.workers_threads)
             try:
                 pool.map(process_job, jobs, chunksize=1)
                 pool.close()
@@ -112,10 +110,19 @@ class ClipLoader:
             start_time, end_time = clip.start_and_end_time_absolute(
                 track.start_s, track.end_s
             )
+            track_data = []
+            for region in track.bounds_history:
+                frame = clip.frame_buffer.get_frame(region.frame_number)
+                frame = track.crop_by_region(frame, region)
+                # zero out the filtered channel
+                if not self.config.load.include_filtered_channel:
+                    frame[TrackChannels.filtered] = 0
+                track_data.append(frame)
 
             self.database.add_track(
                 clip.get_id(),
                 track,
+                track_data,
                 opts=self.compression,
                 start_time=start_time,
                 end_time=end_time,
@@ -177,18 +184,19 @@ class ClipLoader:
 
         metadata = tools.load_clip_metadata(metadata_filename)
         valid_tracks = self._filter_clip_tracks(metadata)
-
         if not valid_tracks:
             logging.error("No valid track data found for %s", filename)
             return
 
-        clip = Clip(self.track_config)
-        clip.load_cptv(filename)
-        clip.parse_clip(
+        clip = Clip(self.track_config, filename)
+        clip.load_metadata(
             metadata,
             self.config.load.include_filtered_channel,
             self.config.load.tag_precedence,
         )
+
+        self.track_extractor.parse_clip(clip)
+        # , self.config.load.cache_to_disk, self.config.use_opt_flow
 
         if self.track_config.enable_track_output:
             self._export_tracks(filename, clip)
@@ -201,7 +209,7 @@ class ClipLoader:
             self.previewer.export_clip_preview(preview_filename, clip)
 
         if self.track_config.verbose:
-            num_frames = len(clip.frame_buffer.thermal)
+            num_frames = len(clip.frame_buffer.frames)
             ms_per_frame = (time.time() - start) * 1000 / max(1, num_frames)
             self._log_message(
                 "Tracks {}.  Frames: {}, Took {:.1f}ms per frame".format(

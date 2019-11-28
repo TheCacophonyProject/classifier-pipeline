@@ -10,25 +10,23 @@ import pickle
 import math
 import matplotlib.pyplot as plt
 import logging
-import io
-import itertools
-import gzip
 from sklearn import metrics
 import json
 import dateutil
 import binascii
-import time
 import datetime
 import glob
 import cv2
+import timezonefinder
 from matplotlib.colors import LinearSegmentedColormap
 import subprocess
+from PIL import ImageFont
+from PIL import ImageDraw
 
 EPISON = 1e-5
 
-# the coldest value to display when rendering previews
-TEMPERATURE_MIN = 2800
-TEMPERATURE_MAX = 4200
+LOCAL_RESOURCES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources")
+GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
 
 
 class Rectangle:
@@ -305,6 +303,9 @@ def convert_heat_to_img(frame, colormap, temp_min=2800, temp_max=4200):
     :return: a pillow Image containing a colorised heatmap
     """
     # normalise
+    if colormap is None:
+        colormap = _load_colourmap(None)
+
     frame = np.float32(frame)
     frame = (frame - temp_min) / (temp_max - temp_min)
     colorized = np.uint8(255.0 * colormap(frame))
@@ -389,8 +390,8 @@ def get_session(disable_gpu=False):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         config.gpu_options.per_process_gpu_memory_fraction = (
-            0.8
-        )  # save some ram for other applications.
+            0.8  # save some ram for other applications.
+        )
         session = tf.Session(config=config)
 
     return session
@@ -698,8 +699,8 @@ cm_blue_red = LinearSegmentedColormap("BlueRed2", color_dict)
 
 def calculate_mass(filtered, threshold):
     """Calculates mass of filtered frame with threshold applied"""
-    thresh = blur_and_return_as_mask(filtered, threshold=threshold)
-    return np.sum(thresh)
+    _, mass = blur_and_return_as_mask(filtered, threshold=threshold)
+    return mass
 
 
 def calculate_variance(filtered, prev_filtered):
@@ -716,7 +717,75 @@ def blur_and_return_as_mask(frame, threshold):
     Any pixels more than the threshold are set 1, all others are set to 0.
     A blur is also applied as a filtering step
     """
-    thresh = cv2.GaussianBlur(frame, (5, 5), 0) - threshold
-    thresh[thresh < 0] = 0
-    thresh[thresh > 0] = 1
-    return thresh
+    thresh = cv2.GaussianBlur(frame, (5, 5), 0)
+    thresh[thresh - threshold < 0] = 0
+    values = thresh[thresh > 0]
+    mass = len(values)
+    values = 1
+    return thresh, mass
+
+
+def get_optical_flow_function(high_quality=False):
+    opt_flow = cv2.createOptFlow_DualTVL1()
+    opt_flow.setUseInitialFlow(True)
+    if not high_quality:
+        # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
+        opt_flow.setTau(1 / 4)
+        opt_flow.setScalesNumber(3)
+        opt_flow.setWarpingsNumber(3)
+        opt_flow.setScaleStep(0.5)
+    return opt_flow
+
+
+def frame_to_jpg(frame, filename, colourmap_file, min, max):
+    colourmap = _load_colourmap(colourmap_file)
+    img = convert_heat_to_img(frame, colourmap, min, max)
+    img.save(filename + ".jpg", "JPEG")
+
+
+def _load_colourmap(colourmap_path):
+    if colourmap_path is None or not os.path.exists(colourmap_path):
+        colourmap_path = resource_path("colourmap.dat")
+    return load_colourmap(colourmap_path)
+
+
+def resource_path(name):
+
+    for base in [LOCAL_RESOURCES, GLOBAL_RESOURCES]:
+        p = os.path.join(base, name)
+        if os.path.exists(p):
+            return p
+    raise OSError("unable to locate {} resource".format(name))
+
+
+def add_heat_number(img, frame, scale):
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype(resource_path("Ubuntu-R.ttf"), 8)
+    for y, row in enumerate(frame):
+        if y % 4 == 0:
+            min_v = np.amin(row)
+            min_i = np.where(row == min_v)[0][0]
+            max_v = np.amax(row)
+            max_i = np.where(row == max_v)[0][0]
+            draw.text((min_i * scale, y * scale), str(int(min_v)), (0, 0, 0), font=font)
+            draw.text((max_i * scale, y * scale), str(int(max_v)), (0, 0, 0), font=font)
+
+
+def eucl_distance(first, second):
+    first_sq = (first[0] - second[0]) ** 2
+    second_sq = (first[1] - second[1]) ** 2
+    return first_sq + second_sq
+    # return ((first[0] - second[0]) ** 2 + (first[1] - second[1]) ** 2) ** 0.5
+
+
+def get_clipped_flow(flow):
+    return np.clip(flow * 256, -16000, 16000)
+
+
+def get_timezone_str(lat, lng):
+    tf = timezonefinder.TimezoneFinder()
+    timezone_str = tf.certain_timezone_at(lat=lat, lng=lng)
+
+    if timezone_str is None:
+        timezone_str = "Pacific/Auckland"
+    return timezone_str

@@ -37,6 +37,10 @@ class Config(DefaultConfig):
     previews_colour_map = attr.ib()
     use_gpu = attr.ib()
     worker_threads = attr.ib()
+    debug = attr.ib()
+    use_opt_flow = attr.ib()
+    res_x = attr.ib()
+    res_y = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename=None):
@@ -51,9 +55,9 @@ class Config(DefaultConfig):
         default = Config.get_defaults()
         if raw is None:
             raw = {}
-        deep_copy_map_if_key_not_exist(default.as_dict(), raw)
         # "tracking" params are overrides, add other parameters from "classify_tracking"
         deep_copy_map_if_key_not_exist(raw["tracking"], raw["classify_tracking"])
+        deep_copy_map_if_key_not_exist(default.as_dict(), raw)
 
         base_folder = raw.get("base_data_folder")
         if base_folder is None:
@@ -76,6 +80,10 @@ class Config(DefaultConfig):
             worker_threads=raw["worker_threads"],
             labels=raw["labels"],
             build=BuildConfig.load(raw["build"]),
+            debug=raw["debug"],
+            use_opt_flow=raw["use_opt_flow"],
+            res_x=raw["res_x"],
+            res_y=raw["res_y"],
         )
 
     @classmethod
@@ -96,6 +104,10 @@ class Config(DefaultConfig):
             classify_tracking=TrackingConfig.get_defaults(),
             classify=ClassifyConfig.get_defaults(),
             evaluate=EvaluateConfig.get_defaults(),
+            debug=False,
+            use_opt_flow=False,
+            res_x=160,
+            res_y=120,
         )
 
     def validate(self):

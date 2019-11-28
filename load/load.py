@@ -4,6 +4,7 @@ Processes a CPTV file identifying and tracking regions of interest, and saving t
 
 import argparse
 import cv2
+import os
 
 from ml_tools.logs import init_logging
 from ml_tools.config import Config
@@ -14,7 +15,7 @@ def parse_params():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-target",
-        default="all",
+        default=None,
         help='Target to process, "all" processes all folders, "test" runs test cases, "clean" to remove banned clips from db, or a "cptv" file to run a single source.',
     )
 
@@ -60,7 +61,13 @@ def parse_params():
 def load_clips(config, target):
 
     loader = ClipLoader(config)
-    loader.process_all(config.source_folder)
+    if target is None:
+        target = config.source_folder
+
+    if os.path.splitext(target)[1] == ".cptv":
+        loader.process_file(target)
+    else:
+        loader.process_all(target)
 
 
 def print_opencl_info():

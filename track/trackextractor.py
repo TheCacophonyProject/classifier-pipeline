@@ -18,19 +18,16 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 import pytz
 import datetime
-import os
-
 import numpy as np
 import cv2
 import logging
 
-from ml_tools.tools import Rectangle
+from cptv import CPTVReader
 
+from ml_tools.tools import Rectangle
 from track.track import Track
 from track.region import Region
 from track.framebuffer import FrameBuffer
-
-from cptv import CPTVReader
 
 
 class TrackExtractor:
@@ -43,10 +40,9 @@ class TrackExtractor:
     # version number.  Recorded into stats file when a clip is processed.
     VERSION = 6
 
-    def __init__(self, trackconfig):
+    def __init__(self, trackconfig, cache_to_disk=False):
 
         self.config = trackconfig
-
         # start time of video
         self.video_start_time = None
         # name of source file
@@ -77,6 +73,7 @@ class TrackExtractor:
         self.active_tracks = []
         # a list of all tracks
         self.tracks = []
+        self.filtered_tracks = []
         # list of regions for each frame
         self.region_history = []
 
@@ -91,9 +88,6 @@ class TrackExtractor:
         # rejects any videos that have non static backgrounds
         self.reject_non_static_clips = False
 
-        # this buffers store the entire video in memory and are required for fast track exporting
-        self.frame_buffer = FrameBuffer()
-
         # the previous filtered frame
         self._prev_filtered = None
 
@@ -105,12 +99,18 @@ class TrackExtractor:
         # the dilation effectively also pads the frame so take it into consideration.
         self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
 
+        self.cache_to_disk = cache_to_disk
+        self.set_optical_flow_function()
+
+        # this buffers store the entire video in memory and are required for fast track exporting
+        self.frame_buffer = None
+
     def load(self, filename):
         """
         Loads a cptv file, and prepares for track extraction.
         """
         self.source_file = filename
-
+        self.frame_buffer = FrameBuffer(filename, self.opt_flow, self.cache_to_disk)
         with open(filename, "rb") as f:
             reader = CPTVReader(f)
             local_tz = pytz.timezone("Pacific/Auckland")
@@ -142,7 +142,6 @@ class TrackExtractor:
 
         # for now just always calculate as we are using the stats...
         background, background_stats = self.process_background(frames)
-
         if self.config.background_calc == self.PREVIEW:
             if self.preview_secs > 0:
                 self.background_is_preview = True
@@ -151,6 +150,12 @@ class TrackExtractor:
                 logging.info(
                     "No preview secs defined for CPTV file - using statistical background measurement"
                 )
+
+        if self.config.dynamic_thresh:
+            self.config.temp_thresh = min(
+                self.config.temp_thresh, background_stats.mean_temp
+            )
+        self.stats["temp_thresh"] = self.config.temp_thresh
 
         if len(frames) <= 9:
             self.reject_reason = "Clip too short {} frames".format(len(frames))
@@ -188,16 +193,6 @@ class TrackExtractor:
         self.active_tracks = []
         self.region_history = []
 
-        # create optical flow
-        self.opt_flow = cv2.createOptFlow_DualTVL1()
-        self.opt_flow.setUseInitialFlow(True)
-        if not self.config.high_quality_optical_flow:
-            # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
-            self.opt_flow.setTau(1 / 4)
-            self.opt_flow.setScalesNumber(3)
-            self.opt_flow.setWarpingsNumber(3)
-            self.opt_flow.setScaleStep(0.5)
-
         # process each frame
         self.frame_on = 0
         for frame in frames:
@@ -223,7 +218,7 @@ class TrackExtractor:
             logging.error("Video consists entirely of preview")
             number_frames = len(frame_list)
         frames = np.int32(frame_list[0:number_frames])
-        background = np.average(frames, axis=0)
+        background = np.min(frames, axis=0)
         background = np.int32(np.rint(background))
         self.mean_background_value = np.average(background)
         self.threshold = self.config.delta_thresh
@@ -260,7 +255,6 @@ class TrackExtractor:
             If specified background subtraction algorithm will be used.
         """
 
-        thermal = np.float32(thermal)
         filtered = self.get_filtered(thermal, background)
 
         regions, mask = self.get_regions_of_interest(filtered, self._prev_filtered)
@@ -271,9 +265,7 @@ class TrackExtractor:
         self.frame_stats_median.append(np.median(thermal))
         self.frame_stats_mean.append(np.mean(thermal))
 
-        # save history
-        self.frame_buffer.filtered.append(np.float32(filtered))
-        self.frame_buffer.mask.append(np.float32(mask))
+        self.frame_buffer.add_frame(thermal, filtered, mask, self.frame_on)
 
         self.region_history.append(regions)
 
@@ -281,7 +273,7 @@ class TrackExtractor:
         # do we need to copy?
         self._prev_filtered = filtered.copy()
 
-    def get_track_channels(self, track: Track, frame_number):
+    def get_track_channels(self, track, track_offset, frame_number=None):
         """
         Gets frame channels for track at given frame number.  If frame number outside of track's lifespan an exception
         is thrown.  Requires the frame_buffer to be filled.
@@ -290,39 +282,24 @@ class TrackExtractor:
         :return: numpy array of size [channels, height, width] where channels are thermal, filtered, u, v, mask
         """
 
-        if frame_number < 0 or frame_number >= len(track):
+        if track_offset < 0 or track_offset >= len(track):
             raise ValueError(
                 "Frame {} is out of bounds for track with {} frames".format(
-                    frame_number, len(track)
+                    track_offset, len(track)
                 )
             )
 
-        bounds = track.bounds_history[frame_number]
-        tracker_frame = track.start_frame + frame_number
+        if not frame_number:
+            frame_number = track.start_frame + track_offset
 
-        if tracker_frame < 0 or tracker_frame >= len(self.frame_buffer.thermal):
+        if frame_number < 0 or frame_number >= len(self.frame_buffer.thermal):
             raise ValueError(
                 "Track frame is out of bounds.  Frame {} was expected to be between [0-{}]".format(
-                    tracker_frame, len(self.frame_buffer.thermal) - 1
+                    frame_number, len(self.frame_buffer.thermal) - 1
                 )
             )
-
-        thermal = bounds.subimage(self.frame_buffer.thermal[tracker_frame])
-        filtered = bounds.subimage(self.frame_buffer.filtered[tracker_frame])
-        flow = bounds.subimage(self.frame_buffer.flow[tracker_frame])
-        mask = bounds.subimage(self.frame_buffer.mask[tracker_frame])
-
-        # make sure only our pixels are included in the mask.
-        mask[mask != bounds.id] = 0
-        mask[mask > 0] = 1
-
-        # stack together into a numpy array.
-        # by using int16 we loose a little precision on the filtered frames, but not much (only 1 bit)
-        frame = np.int16(
-            np.stack((thermal, filtered, flow[:, :, 0], flow[:, :, 1], mask), axis=0)
-        )
-
-        return frame
+        frame = self.frame_buffer.get_frame(frame_number)
+        return track.get_track_frame(frame, track_offset)
 
     def apply_matchings(self, regions):
         """
@@ -332,15 +309,16 @@ class TrackExtractor:
         scores = []
         for track in self.active_tracks:
             for region in regions:
-                distance, size_change = track.get_track_region_score(region)
-
+                distance, size_change = track.get_track_region_score(
+                    region, self.config.moving_vel_thresh
+                )
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
                 max_distance = np.clip(7 * (track.mass ** 0.5), 30, 95)
-                size_change = np.clip(track.mass, 50, 500)
+                max_size_change = np.clip(track.mass, 50, 500)
 
                 if distance > max_distance:
                     continue
-                if size_change > size_change:
+                if size_change > max_size_change:
                     continue
                 scores.append((distance, track, region))
 
@@ -442,6 +420,9 @@ class TrackExtractor:
                         track_overlap_ratio[track]
                     )
                 )
+                self.filtered_tracks.append(
+                    ("Track filtered.  Too much overlap", track)
+                )
                 continue
 
             # discard any tracks that are less min_duration
@@ -450,16 +431,19 @@ class TrackExtractor:
                 self.print_if_verbose(
                     "Track filtered. Too short, {}".format(len(track))
                 )
+                self.filtered_tracks.append(("Track filtered.  Too short", track))
                 continue
 
             # discard tracks that do not move enough
             if stats.max_offset < self.config.track_min_offset:
                 self.print_if_verbose("Track filtered.  Didn't move")
+                self.filtered_tracks.append(("Track filtered.  Didn't move", track))
                 continue
 
             # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
             if stats.delta_std < self.config.track_min_delta:
                 self.print_if_verbose("Track filtered.  Too static")
+                self.filtered_tracks.append(("Track filtered.  Too static", track))
                 continue
 
             # discard tracks that do not have enough enough average mass.
@@ -467,6 +451,7 @@ class TrackExtractor:
                 self.print_if_verbose(
                     "Track filtered.  Mass too small ({})".format(stats.average_mass)
                 )
+                self.filtered_tracks.append(("Track filtered.  Mass too small", track))
                 continue
 
             good_tracks.append(track)
@@ -485,6 +470,9 @@ class TrackExtractor:
                 )
             )
             self.tracks = self.tracks[: self.max_tracks]
+            self.filtered_tracks.extend(
+                [("Too many tracks", track) for track in self.tracks[self.max_tracks :]]
+            )
 
     def get_regions_of_interest(self, filtered, prev_filtered=None):
         """
@@ -522,9 +510,8 @@ class TrackExtractor:
 
         # make mask go back to full frame size without edges chopped
         edge = self.config.edge_pixels
-        mask = np.zeros(filtered.shape)
+        mask = np.zeros(filtered.shape, dtype=np.int32)
         mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
-
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.frame_padding
 
@@ -542,7 +529,6 @@ class TrackExtractor:
                 i,
                 self.frame_on,
             )
-
             # want the real mass calculated from before the dilation
             region.mass = np.sum(region.subimage(thresh))
 
@@ -676,7 +662,25 @@ class TrackExtractor:
 
         return background, background_stats
 
+    def set_optical_flow_function(self):
+        if self.opt_flow:
+            return
+
+        self.opt_flow = cv2.createOptFlow_DualTVL1()
+        self.opt_flow.setUseInitialFlow(True)
+        if not self.config.high_quality_optical_flow:
+            # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
+            self.opt_flow.setTau(1 / 4)
+            self.opt_flow.setScalesNumber(3)
+            self.opt_flow.setWarpingsNumber(3)
+            self.opt_flow.setScaleStep(0.5)
+
     def generate_optical_flow(self):
+        if self.cache_to_disk:
+            return
+        # create optical flow
+        self.set_optical_flow_function()
+
         if not self.frame_buffer.has_flow:
             self.frame_buffer.generate_optical_flow(
                 self.opt_flow, self.config.flow_threshold

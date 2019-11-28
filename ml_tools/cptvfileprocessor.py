@@ -45,9 +45,6 @@ class CPTVFileProcessor:
         # number of threads to use when processing jobs.
         self.workers_threads = config.worker_threads
 
-        # optional initializer for worker threads
-        self.worker_pool_init = None
-
         os.makedirs(config.classify.classify_folder, mode=0o775, exist_ok=True)
 
     def process_file(self, filename, **kwargs):
@@ -93,11 +90,10 @@ class CPTVFileProcessor:
         else:
             return not os.path.exists(meta_filename)
 
-    def _process_job_list(self, jobs, worker_pool_args=None):
+    def _process_job_list(self, jobs):
         """
         Processes a list of jobs. Supports worker threads.
         :param jobs: List of jobs to process
-        :param worker_pool_args: optional arguments to worker pool initializer
         """
 
         if self.workers_threads == 0:
@@ -106,11 +102,7 @@ class CPTVFileProcessor:
                 process_job(job)
         else:
             # send the jobs to a worker pool
-            pool = multiprocessing.Pool(
-                self.workers_threads,
-                initializer=self.worker_pool_init,
-                initargs=worker_pool_args,
-            )
+            pool = multiprocessing.Pool(self.workers_threads)
             try:
                 # see https://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
                 pool.map(process_job, jobs, chunksize=1)

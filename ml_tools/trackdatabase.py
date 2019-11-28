@@ -7,46 +7,39 @@ Date December 2017
 Handles reading and writing tracks (or segments) to a large database.  Uses HDF5 as a backing store.
 
 """
-
+import h5py
 import os
 import logging
+import filelock
+import datetime
 from multiprocessing import Lock
-
-import h5py
-import tables  # required for blosc compression to work
 import numpy as np
-
-# default lock for safe database writes.
-#
-# note for multiprocessing this will need to be overwritten with a shared lock for each process.
-# which can be done via
-#
-# def init_workers(lock):
-#    trackdatabase.HDF5_LOCK = lock
-#
-# pool = multiprocessing.Pool(self.workers_threads, initializer=init_workers, initargs=(shared_lock,))
-
-HDF5_LOCK = Lock()
 
 
 class HDF5Manager:
     """ Class to handle locking of HDF5 files. """
 
+    LOCK_FILE = "/var/lock/classifier-hdf5.lock"
+
     def __init__(self, db, mode="r"):
         self.mode = mode
         self.f = None
         self.db = db
+        self.lock = filelock.FileLock(HDF5Manager.LOCK_FILE, timeout=60 * 3)
+        filelock.logger().setLevel(logging.ERROR)
 
     def __enter__(self):
         # note: we might not have to lock when in read only mode?
         # this could improve performance
-        HDF5_LOCK.acquire()
+        self.lock.acquire()
         self.f = h5py.File(self.db, self.mode)
         return self.f
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.f.close()
-        HDF5_LOCK.release()
+        try:
+            self.f.close()
+        finally:
+            self.lock.release()
 
 
 class TrackDatabase:
@@ -93,18 +86,35 @@ class TrackDatabase:
 
             if clip is not None:
                 group_attrs = group.attrs
-                group_attrs.update(clip.background_stats)
+
+                # group_attrs.update(clip.stats)
                 group_attrs["filename"] = clip.source_file
                 group_attrs["start_time"] = clip.video_start_time.isoformat()
                 group_attrs["threshold"] = clip.threshold
-                group_attrs["frame_temp_min"] = clip.frame_stats_min
-                group_attrs["frame_temp_max"] = clip.frame_stats_max
-                group_attrs["frame_temp_median"] = clip.frame_stats_median
-                group_attrs["frame_temp_mean"] = clip.frame_stats_mean
-                group_attrs["device"] = clip.device
+
+                group_attrs["mean_background_value"] = clip.stats.mean_background_value
+                group_attrs["threshold"] = clip.stats.threshold
+                group_attrs["max_temp"] = clip.stats.max_temp
+                group_attrs["min_temp"] = clip.stats.min_temp
+                group_attrs["mean_temp"] = clip.stats.mean_temp
+                group_attrs["filtered_deviation"] = clip.stats.filtered_deviation
+                group_attrs["filtered_sum"] = clip.stats.filtered_sum
+                group_attrs["temp_thresh"] = clip.stats.temp_thresh
+                group_attrs["threshold"] = clip.stats.threshold
+
+                if not clip.background_is_preview:
+                    group_attrs["average_delta"] = clip.stats.average_delta
+                    group_attrs["is_static"] = clip.stats.is_static_background
+                group_attrs["frame_temp_min"] = clip.stats.frame_stats_min
+                group_attrs["frame_temp_max"] = clip.stats.frame_stats_max
+                group_attrs["frame_temp_median"] = clip.stats.frame_stats_median
+                group_attrs["frame_temp_mean"] = clip.stats.frame_stats_mean
+
+                if clip.device:
+                    group_attrs["device"] = clip.device
                 group_attrs["frames_per_second"] = clip.frames_per_second
-                if clip.location:
-                    group_attrs["location"] = clip.location
+                if clip.location and clip.location.get("coordinates") is not None:
+                    group_attrs["location"] = clip.location["coordinates"]
             f.flush()
             group.attrs["finished"] = True
 
@@ -165,7 +175,6 @@ class TrackDatabase:
                 end_frame = track_node["frames"]
 
             result = []
-
             for frame_number in range(start_frame, end_frame):
                 # we use [:,:,:] to force loading of all data.
                 result.append(track_node[str(frame_number)][:, :, :])
@@ -188,7 +197,9 @@ class TrackDatabase:
             else:
                 return False
 
-    def add_track(self, clip_id, track=None, opts=None, start_time=None, end_time=None):
+    def add_track(
+        self, clip_id, track, track_data, opts=None, start_time=None, end_time=None
+    ):
         """
         Adds track to database.
         :param clip_id: id of the clip to add track to write
@@ -199,8 +210,7 @@ class TrackDatabase:
 
         track_id = str(track.get_id())
 
-        track_data = track.track_data
-        frames = len(track.track_data)
+        frames = len(track_data)
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
             clip_node = clips[clip_id]
@@ -242,7 +252,8 @@ class TrackDatabase:
                 node_attrs["frames"] = frames
                 node_attrs["start_frame"] = track.start_frame
                 node_attrs["end_frame"] = track.end_frame
-                node_attrs["confidence"] = track.confidence
+                if track.confidence:
+                    node_attrs["confidence"] = track.confidence
                 if start_time:
                     node_attrs["start_time"] = start_time.isoformat()
                 if end_time:
@@ -250,7 +261,6 @@ class TrackDatabase:
 
                 for name, value in track_stats._asdict().items():
                     node_attrs[name] = value
-
                 # frame history
                 node_attrs["mass_history"] = np.int32(
                     [bounds.mass for bounds in track.bounds_history]

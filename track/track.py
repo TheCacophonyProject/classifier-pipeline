@@ -21,11 +21,12 @@ import datetime
 import numpy as np
 from collections import namedtuple
 
-
-from ml_tools.tools import Rectangle
+from ml_tools.tools import Rectangle, get_clipped_flow
 from ml_tools.dataset import TrackChannels
 import track.region
 from track.region import Region
+
+from ml_tools.tools import eucl_distance
 
 
 class Track:
@@ -40,7 +41,6 @@ class Track:
         :param id: id number for track, if not specified is provided by an auto-incrementer
         """
 
-        # used to uniquely identify the track
         if not id:
             self._id = Track._track_id
             Track._track_id += 1
@@ -48,12 +48,11 @@ class Track:
             self._id = id
 
         self.clip_id = clip_id
-        # frame number this track starts at
         self.start_frame = None
         self.end_frame = None
         self.start_s = None
         self.end_s = None
-        self.current_frame = 0
+        self.current_frame_num = None
         self.frame_list = []
         # our bounds over time
         self.bounds_history = []
@@ -63,14 +62,24 @@ class Track:
         self.vel_x = 0
         # our current estimated vertical velocity
         self.vel_y = 0
-        self.track_data = []
         # the tag for this track
         self.tag = "unknown"
-        self.prev_frame = None
+        self.prev_frame_num = None
         self.include_filtered_channel = True
         self.confidence = None
+        self.max_novelty = None
+        self.avg_novelty = None
+
         self.from_metadata = False
         self.track_tags = None
+
+    @classmethod
+    def from_region(cls, clip, region):
+        track = cls(clip.get_id())
+        track.start_frame = region.frame_number
+        track.start_s = region.frame_number / float(clip.frames_per_second)
+        track.add_region(region)
+        return track
 
     def get_id(self):
         return self._id
@@ -86,7 +95,6 @@ class Track:
         self.from_metadata = True
         self._id = track_meta["id"]
         self.include_filtered_channel = include_filtered_channel
-        self.track_data = []
         data = track_meta["data"]
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
@@ -111,44 +119,47 @@ class Track:
             region = Region.region_from_array(position[1], frame_number)
             self.bounds_history.append(region)
             self.frame_list.append(frame_number)
-
+        self.current_frame_num = 0
         return True
 
-    def add_frame_from_region(self, region, buffer_frame):
-        self.bounds_history.append(region)
-        channels = buffer_frame.get_frame_channels(region, region.frame_number)
-        self.track_data.append(channels)
-        self.end_frame = region.frame_number
-        self.current_frame += 1
-
-    def add_frame(self, frame_number, buffer_frame, mass_delta_threshold):
-
-        region = self.bounds_history[self.current_frame]
-        prev_filtered = buffer_frame.get_previous_filtered(region, frame_number)
-        channels = buffer_frame.get_frame_channels(region, frame_number)
-        filtered = channels[TrackChannels.filtered]
-
-        region.calculate_mass(filtered, mass_delta_threshold)
-        region.calculate_variance(filtered, prev_filtered)
-
-        if self.prev_frame and frame_number:
-            frame_diff = frame_number - self.prev_frame - 1
+    def add_region(self, region):
+        if self.prev_frame_num and region.frame_number:
+            frame_diff = region.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
 
-        if len(self) >= 2:
+        self.bounds_history.append(region)
+        self.end_frame = region.frame_number
+        self.prev_frame_num = region.frame_number
+        self.update_velocity()
+        self.frames_since_target_seen = 0
+
+    def update_velocity(self):
+        if len(self.bounds_history) >= 2:
             self.vel_x = self.bounds_history[-1].mid_x - self.bounds_history[-2].mid_x
             self.vel_y = self.bounds_history[-1].mid_y - self.bounds_history[-2].mid_y
         else:
             self.vel_x = self.vel_y = 0
 
-        self.prev_frame = frame_number
-        self.current_frame += 1
+    def add_frame_for_existing_region(self, frame, mass_delta_threshold, prev_filtered):
+        region = self.bounds_history[self.current_frame_num]
+        if prev_filtered is not None:
+            prev_filtered = region.subimage(prev_filtered)
 
-        if not self.include_filtered_channel:
-            channels[TrackChannels.filtered] = 0
+        filtered = region.subimage(frame.filtered)
+        region.calculate_mass(filtered, mass_delta_threshold)
+        region.calculate_variance(filtered, prev_filtered)
 
-        self.track_data.append(channels)
+        if self.prev_frame_num and frame.frame_number:
+            frame_diff = frame.frame_number - self.prev_frame_num - 1
+            for _ in range(frame_diff):
+                self.add_blank_frame()
+
+        self.update_velocity()
+
+        self.prev_frame_num = frame.frame_number
+        self.current_frame_num += 1
+        self.frames_since_target_seen = 0
 
     def add_blank_frame(self, buffer_frame=None):
         """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
@@ -157,10 +168,9 @@ class Track:
         region.pixel_variance = 0
         region.frame_number += 1
         self.bounds_history.append(region)
-        if buffer_frame:
-            channels = buffer_frame.get_frame_channels(region, region.frame_number)
-            self.track_data.append(channels)
+        self.prev_frame_num = region.frame_number
         self.vel_x = self.vel_y = 0
+        self.frames_since_target_seen += 1
 
     def get_stats(self):
         """
@@ -171,10 +181,13 @@ class Track:
 
         if len(self) <= 1:
             return TrackMovementStatistics()
-
         # get movement vectors
         mass_history = [int(bound.mass) for bound in self.bounds_history]
-        variance_history = [bound.pixel_variance for bound in self.bounds_history]
+        variance_history = [
+            bound.pixel_variance
+            for bound in self.bounds_history
+            if bound.pixel_variance
+        ]
         mid_x = [bound.mid_x for bound in self.bounds_history]
         mid_y = [bound.mid_y for bound in self.bounds_history]
         delta_x = [mid_x[0] - x for x in mid_x]
@@ -259,23 +272,34 @@ class Track:
         if end < start:
             self.start_frame = 0
             self.bounds_history = []
-            self.track_data = []
         else:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
-            self.track_data = self.track_data[start : end + 1]
 
-    def get_track_region_score(self, region: Region):
+    def get_track_region_score(self, region: Region, moving_vel_thresh):
         """
         Calculates a score between this track and a region of interest.  Regions that are close the the expected
         location for this track are given high scores, as are regions of a similar size.
         """
-        expected_x = int(self.last_bound.mid_x + self.vel_x)
-        expected_y = int(self.last_bound.mid_y + self.vel_y)
 
-        distance = (
-            (region.mid_x - expected_x) ** 2 + (region.mid_y - expected_y) ** 2
-        ) ** 0.5
+        if abs(self.vel_x) + abs(self.vel_y) >= moving_vel_thresh:
+            expected_x = int(self.last_bound.mid_x + self.vel_x)
+            expected_y = int(self.last_bound.mid_y + self.vel_y)
+            distance = eucl_distance(
+                (expected_x, expected_y), (region.mid_x, region.mid_y)
+            )
+        else:
+            expected_x = int(self.last_bound.x + self.vel_x)
+            expected_y = int(self.last_bound.y + self.vel_y)
+            distance = eucl_distance((expected_x, expected_y), (region.x, region.y))
+            distance += eucl_distance(
+                (
+                    expected_x + self.last_bound.width,
+                    expected_y + self.last_bound.height,
+                ),
+                (region.x + region.width, region.y + region.height),
+            )
+            distance /= 2.0
 
         # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
         # area is padded with 50 pixels so small regions don't change too much
@@ -318,6 +342,41 @@ class Track:
 
         return frames_overlapped / len(self)
 
+    def crop_by_region_at_trackframe(self, frame, track_frame_number, clip_flow=True):
+        bounds = self.bounds_history[track_frame_number]
+        return self.crop_by_region(frame, bounds)
+
+    def crop_by_region(self, frame, region, clip_flow=True):
+        thermal = region.subimage(frame.thermal)
+        filtered = region.subimage(frame.filtered)
+        if frame.flow is not None:
+            flow_h = region.subimage(frame.flow_h)
+            flow_v = region.subimage(frame.flow_v)
+            if clip_flow and not frame.flow_clipped:
+                flow_h = get_clipped_flow(flow_h)
+                flow_v = get_clipped_flow(flow_v)
+        else:
+            flow_h = None
+            flow_v = None
+
+        mask = region.subimage(frame.mask).copy()
+        # make sure only our pixels are included in the mask.
+        mask[mask != region.id] = 0
+        mask[mask > 0] = 1
+
+        # stack together into a numpy array.
+        # by using int16 we lose a little precision on the filtered frames, but not much (only 1 bit)
+        if flow_h is not None and flow_v is not None:
+            return np.int16(np.stack((thermal, filtered, flow_h, flow_v, mask), axis=0))
+        else:
+            empty = np.zeros(filtered.shape)
+            return np.int16(np.stack((thermal, filtered, empty, empty, mask), axis=0))
+        return frame
+
+    @property
+    def frames(self):
+        return self.end_frame + 1 - self.start_frame
+
     @property
     def last_mass(self):
         return self.bounds_history[-1].mass
@@ -327,7 +386,7 @@ class Track:
         return self.bounds_history[-1]
 
     def __repr__(self):
-        return "Track:{} frames".format(len(self))
+        return "Track: frames# {}".format(self.get_id(), len(self))
 
     def __len__(self):
         return len(self.bounds_history)

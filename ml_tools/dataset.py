@@ -169,15 +169,13 @@ class TrackHeader:
     def bin_id(self):
         # name of the bin to assign this track to.
         # .dat file has no location attribute
-        if self.__dict__.get("location"):
-            return (
-                self.location
-                + "-"
-                + str(self.start_time.date())
-                + "-"
-                + self.camera
-                + "-"
-                + self.label
+        if self.__dict__.get("location") is not None:
+            return "{}-{}-{}-{}-{}".format(
+                self.location[0],
+                self.location[1],
+                str(self.start_time.date()),
+                self.camera,
+                self.label,
             )
         else:
             return str(self.start_time.date()) + "-" + self.camera + "-" + self.label
@@ -206,7 +204,9 @@ class TrackHeader:
         track_start_frame = track_meta["start_frame"]
         track_end_frame = track_meta["end_frame"]
         frame_temp_median = np.float32(
-            clip_meta["frame_temp_median"][track_start_frame:track_end_frame]
+            clip_meta["frame_temp_median"][
+                track_start_frame : frames + track_start_frame
+            ]
         )
 
         bounds_history = track_meta["bounds_history"]
@@ -395,9 +395,9 @@ class Preprocessor:
 
         # convert back into [F,C,H,W] array.
         data = np.float32(scaled_frames)
+
         # -------------------------------------------
         # next adjust temperature and flow levels
-
         # get reference level for thermal channel
         assert len(data) == len(
             reference_level
@@ -442,7 +442,6 @@ class Preprocessor:
                 # when we flip the frame remember to flip the horizontal velocity as well
                 data = np.flip(data, axis=3)
                 data[:, 2] = -data[:, 2]
-
         return data
 
 
@@ -654,10 +653,8 @@ class Dataset:
         print("add_track clip {} track {}".format(clip_id, track_number))
         clip_meta = self.db.get_clip_meta(clip_id)
         track_meta = self.db.get_track_meta(clip_id, track_number)
-
         if self.filter_track(clip_meta, track_meta):
             return False
-
         track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
         self.tracks.append(track_header)
         self.add_track_to_mappings(track_header)
@@ -676,6 +673,7 @@ class Dataset:
             "segment_mass"
         ]
         self.segments.extend(track_header.segments)
+
         return True
 
     def filter_track(self, clip_meta, track_meta):
@@ -748,7 +746,6 @@ class Dataset:
         for segment in self.segments:
 
             pass_mass = segment.avg_mass >= avg_mass
-
             if (not ignore_labels and segment.label in ignore_labels) or (pass_mass):
                 new_segments.append(segment)
             else:
@@ -1048,7 +1045,7 @@ class Dataset:
     def get_label_segments_count(self, label):
         """ Returns the total weight for all segments of given class. """
         tracks = self.tracks_by_label.get(label, [])
-        result = sum([track.segments for track in tracks])
+        result = sum([len(track.segments) for track in tracks])
         return result
 
     def get_label_segments(self, label):
