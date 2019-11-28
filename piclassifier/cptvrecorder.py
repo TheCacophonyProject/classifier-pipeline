@@ -56,13 +56,14 @@ class CPTVRecorder:
         f = open(self.filename, "wb")
         self.writer = CPTVWriter(f)
         self.writer.timestamp = datetime.now()
-        self.writer.device_name = b"gp-test-01"
+        self.writer.device_name = b""
         self.writer.latitude = self.location_config.latitude
         self.writer.longitude = self.location_config.longitude
         self.writer.preview_secs = self.preview_secs
         default_thresh = self.motion_config.temp_thresh
         self.motion_config.temp_thresh = temp_thresh
-        self.writer.motion_config = yaml.dump(self.motion_config).encode()
+        print(yaml.dump(self.motion_config).encode())
+        # self.writer.motion_config = yaml.dump(self.motion_config).encode()
         self.motion_config.temp_thresh = default_thresh
         self.writer.write_header()
         self.recording = True

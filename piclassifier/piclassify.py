@@ -25,7 +25,6 @@ from .cptvrecorder import CPTVRecorder
 
 from ml_tools.logs import init_logging
 from ml_tools import tools
-from ml_tools.model import Model
 from ml_tools.dataset import Preprocessor
 from ml_tools.config import Config
 from ml_tools.previewer import Previewer
@@ -44,6 +43,7 @@ def parse_args():
 
 
 def get_classifier(config):
+    from ml_tools.model import Model
 
     """
     Returns a classifier object, which is created on demand.
@@ -71,16 +71,29 @@ def main():
     config = Config.load_from_file()
     thermal_config = ThermalConfig.load_from_file()
     location_config = LocationConfig.load_from_file()
-    classifier = get_classifier(config)
 
-    clip_classifier = PiClassifier(config, thermal_config, location_config, classifier)
+    proccesor = None
+    if thermal_config.motion.run_classifier:
+        classifier = get_classifier(config)
+        proccesor = PiClassifier(config, thermal_config, location_config, classifier)
+    else:
+        proccesor = MotionDetector(
+            config.res_x,
+            config.res_y,
+            thermal_config.motion,
+            location_config,
+            thermal_config.recorder,
+            config.tracking.dynamic_thresh,
+            CPTVRecorder(location_config, thermal_config),
+        )
+
     if args.cptv:
         with open(args.cptv, "rb") as f:
             reader = CPTVReader(f)
             for frame in reader:
-                clip_classifier.process_frame(frame)
+                proccesor.process_frame(frame)
 
-        clip_classifier.disconnected()
+        proccesor.disconnected()
         return
     try:
         os.unlink(SOCKET_NAME)
@@ -97,36 +110,34 @@ def main():
         connection, client_address = sock.accept()
         logging.info("connection from %s", client_address)
         try:
-            handle_connection(connection, clip_classifier)
+            handle_connection(connection, config, proccesor)
         finally:
             # Clean up the connection
             connection.close()
 
 
-def handle_connection(connection, clip_classifier):
+def handle_connection(connection, config, processor):
     img_dtype = np.dtype("uint16")
     # big endian > little endian <
     # lepton3 is big endian while python is little endian
 
-    thermal_frame = np.empty(
-        (clip_classifier.res_y, clip_classifier.res_x), dtype=img_dtype
-    )
+    thermal_frame = np.empty((config.res_y, config.res_x), dtype=img_dtype)
     while True:
         data = connection.recv(400 * 400 * 2 + TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE)
 
         if not data:
             logging.info("disconnected from camera")
-            clip_classifier.disconnected()
+            processor.disconnected()
             return
 
-        if len(data) > clip_classifier.res_y * clip_classifier.res_x * 2:
+        if len(data) > config.res_y * config.res_x * 2:
             telemetry = Telemetry.parse_telemetry(
                 data[: TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE]
             )
 
             thermal_frame = np.frombuffer(
                 data, dtype=img_dtype, offset=TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE
-            ).reshape(clip_classifier.res_y, clip_classifier.res_x)
+            ).reshape(config.res_y, config.res_x)
         else:
             telemetry = Telemetry()
             telemetry.last_ffc_time = timedelta(milliseconds=time.time())
@@ -134,7 +145,7 @@ def handle_connection(connection, clip_classifier):
                 milliseconds=time.time(), seconds=MotionDetector.FFC_PERIOD.seconds + 1
             )
             thermal_frame = np.frombuffer(data, dtype=img_dtype, offset=0).reshape(
-                clip_classifier.res_y, clip_classifier.res_x
+                config.res_y, config.res_x
             )
 
         # swap from big to little endian
@@ -150,9 +161,9 @@ def handle_connection(connection, clip_classifier):
                 )
             )
             # this frame has bad data probably from lack of CPU
-            clip_classifier.skip_frame()
+            processor.skip_frame()
             continue
-        clip_classifier.process_frame(lepton_frame)
+        processor.process_frame(lepton_frame)
 
 
 class PiClassifier:
@@ -354,7 +365,7 @@ class PiClassifier:
 
     def disconnected(self):
         self.end_clip()
-        self.motion_detector.force_stop()
+        self.motion_detector.disconnected()
 
     def skip_frame(self):
         self.skip_classifying -= 1

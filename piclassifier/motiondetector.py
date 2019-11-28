@@ -244,7 +244,7 @@ class MotionDetector:
             return time > self.sunset or time < self.sunrise
         return True
 
-    def force_stop(self):
+    def disconnected(self):
         self.clipped_window.reset()
         self.thermal_window.reset()
         self.diff_window.reset()
