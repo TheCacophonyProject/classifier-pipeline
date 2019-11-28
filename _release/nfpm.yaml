@@ -14,7 +14,7 @@ overrides:
       - python3.6
 
 files:
-  build/classifier-pipeline.pex: "/usr/bin/classifier-pipeline.pex"
+  dist/classifier-pipeline.pex: "/usr/bin/classifier-pipeline.pex"
   resources/*: "/usr/lib/classifier-pipeline/resources/"
 
 config_files:
