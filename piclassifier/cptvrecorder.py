@@ -62,8 +62,7 @@ class CPTVRecorder:
         self.writer.preview_secs = self.preview_secs
         default_thresh = self.motion_config.temp_thresh
         self.motion_config.temp_thresh = temp_thresh
-        print(yaml.dump(self.motion_config).encode())
-        # self.writer.motion_config = yaml.dump(self.motion_config).encode()
+        self.writer.motion_config = yaml.dump(self.motion_config).encode()
         self.motion_config.temp_thresh = default_thresh
         self.writer.write_header()
         self.recording = True

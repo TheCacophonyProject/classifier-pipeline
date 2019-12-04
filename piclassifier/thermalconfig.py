@@ -18,7 +18,6 @@ class MotionConfig:
     edge_pixels = attr.ib()
     warmer_only = attr.ib()
     dynamic_thresh = attr.ib()
-    run_classifier = attr.ib()
 
     @classmethod
     def load(cls, motion):
@@ -33,7 +32,6 @@ class MotionConfig:
             edge_pixels=motion.get("edge-pixels", 3),
             warmer_only=motion.get("warmer-only", False),
             dynamic_thresh=motion.get("dynamic-thresh", True),
-            run_classifier=motion.get("run_classifier", False),
         )
 
 
@@ -65,6 +63,7 @@ class ThermalConfig:
     motion = attr.ib()
     recorder = attr.ib()
     output_dir = attr.ib()
+    run_classifier = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename=None):
@@ -82,6 +81,7 @@ class ThermalConfig:
             output_dir=raw["output-dir"],
             motion=MotionConfig.load(raw.get("motion", {})),
             recorder=RecorderConfig.load(raw.get("recorder", {})),
+            run_classifier=raw.get("run_classifier", False),
         )
 
     def validate(self):

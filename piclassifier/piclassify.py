@@ -73,7 +73,7 @@ def main():
     location_config = LocationConfig.load_from_file()
 
     proccesor = None
-    if thermal_config.motion.run_classifier:
+    if thermal_config.run_classifier:
         classifier = get_classifier(config)
         proccesor = PiClassifier(config, thermal_config, location_config, classifier)
     else:
