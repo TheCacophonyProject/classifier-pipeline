@@ -61,7 +61,6 @@ class MotionDetector:
     FFC_PERIOD = timedelta(seconds=9.9)
     BACKGROUND_WEIGHTING_PER_FRAME = 0.99
     BACKGROUND_WEIGHT_EVERY = 3
-
     def __init__(
         self,
         res_x,
@@ -236,6 +235,9 @@ class MotionDetector:
                 )
             )
         return False
+
+    def last_frame(self):
+        return self.thermal_window.current
 
     def can_record(self):
         if self.use_sunrise:

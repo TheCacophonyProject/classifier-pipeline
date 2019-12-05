@@ -22,6 +22,7 @@ from .locationconfig import LocationConfig
 from .thermalconfig import ThermalConfig
 from .motiondetector import MotionDetector
 from .cptvrecorder import CPTVRecorder
+from service import SnapshotService
 
 from ml_tools.logs import init_logging
 from ml_tools import tools
@@ -82,6 +83,8 @@ def main():
 
         clip_classifier.disconnected()
         return
+
+    service = SnapshotService(clip_classifier)
     try:
         os.unlink(SOCKET_NAME)
     except OSError:
@@ -351,6 +354,9 @@ class PiClassifier:
                 track_prediction.classified_frame(
                     self.clip.frame_on, smooth_prediction, smooth_novelty
                 )
+
+    def get_recent_frame(self):
+        return self.motion_detector.last_frame()
 
     def disconnected(self):
         self.end_clip()
