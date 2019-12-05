@@ -90,7 +90,7 @@ def main():
     except OSError:
         if os.path.exists(SOCKET_NAME):
             raise
-   
+
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     sock.bind(SOCKET_NAME)
     sock.listen(1)

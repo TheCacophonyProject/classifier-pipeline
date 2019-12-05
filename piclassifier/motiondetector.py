@@ -61,6 +61,7 @@ class MotionDetector:
     FFC_PERIOD = timedelta(seconds=9.9)
     BACKGROUND_WEIGHTING_PER_FRAME = 0.99
     BACKGROUND_WEIGHT_EVERY = 3
+
     def __init__(
         self,
         res_x,
