@@ -1,12 +1,12 @@
+import threading
+import os
+
 from ml_tools.tools import frame_to_jpg
 
 from pydbus import SystemBus
-import threading
-
 from gi.repository import GLib
 
 SNPASHOT_NAME = "still.png"
-
 DBUS_NAME = "org.cacophony.thermalrecorder"
 DBUS_PATH = "/org/cacophony/thermalrecorder"
 
@@ -29,12 +29,15 @@ class Service(object):
         last_frame = self.processor.get_recent_frame()
         if not last_frame:
             return "Reading from camera has not start yet."
-        frame_to_jpg(last_frame, SNPASHOT_NAME)
+
+        frame_to_jpg(last_frame, self.processor.output_dir + "/" + SNPASHOT_NAME)
         return "Success"
 
 
 class SnapshotService:
-    def __init__(self, processor):
+    def __init__(
+        self, processor,
+    ):
         self.t = threading.Thread(target=self.run_server, args=(processor,))
         self.t.start()
 

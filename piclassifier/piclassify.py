@@ -90,8 +90,7 @@ def main():
     except OSError:
         if os.path.exists(SOCKET_NAME):
             raise
-    if not os.path.exists("metadata"):
-        os.makedirs("metadata")
+   
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     sock.bind(SOCKET_NAME)
     sock.listen(1)
@@ -217,6 +216,11 @@ class PiClassifier:
             CPTVRecorder(location_config, thermal_config),
         )
         self.startup_classifier()
+
+        self.output_dir = thermal_config.output_dir
+        self.meta_dir = os.path.join(thermal_config.output_dir, "metadata")
+        if not os.path.exists(self.meta_dir):
+            os.makedirs(self.meta_dir)
 
     def new_clip(self):
         self.clip = Clip(self.config.tracking, "stream")
@@ -475,5 +479,5 @@ class PiClassifier:
                 positions.append([track_time, region])
             track_info["positions"] = positions
 
-        with open("metadata/" + filename, "w") as f:
+        with open(self.meta_dir + "/" + filename, "w") as f:
             json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
