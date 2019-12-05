@@ -4,12 +4,12 @@ import os.path as path
 import attr
 import yaml
 
-from load.loadconfig import LoadConfig
-from track.trackingconfig import TrackingConfig
-from train.config import TrainConfig
-from classify.classifyconfig import ClassifyConfig
-from build.buildconfig import BuildConfig
-from evaluate.evaluateconfig import EvaluateConfig
+from .loadconfig import LoadConfig
+from .trackingconfig import TrackingConfig
+from .trainconfig import TrainConfig
+from .classifyconfig import ClassifyConfig
+from .buildconfig import BuildConfig
+from .evaluateconfig import EvaluateConfig
 from .defaultconfig import DefaultConfig
 
 CONFIG_FILENAME = "classifier.yaml"
@@ -72,7 +72,7 @@ class Config(DefaultConfig):
             train=TrainConfig.load(raw["train"], base_folder),
             classify_tracking=TrackingConfig.load(raw["classify_tracking"]),
             classify=ClassifyConfig.load(raw["classify"], base_folder),
-            evaluate=EvaluateConfig.load(raw["evaluate"], base_folder),
+            evaluate=EvaluateConfig.load(raw["evaluate"]),
             excluded_tags=raw["excluded_tags"],
             reprocess=raw["reprocess"],
             previews_colour_map=raw["previews_colour_map"],

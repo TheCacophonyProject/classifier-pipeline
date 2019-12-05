@@ -16,35 +16,48 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
-import attr
-import os.path as path
 
-import ml_tools.config
-from ml_tools.defaultconfig import DefaultConfig
-from ml_tools.previewer import Previewer
+from os import path
+
+import attr
+
+import config
+from .defaultconfig import DefaultConfig
 
 
 @attr.s
-class EvaluateConfig(DefaultConfig):
-
-    show_extended_evaluation = attr.ib()
-    new_visit_threshold = attr.ib()
-    null_tags = attr.ib()
+class TrainConfig(DefaultConfig):
+    hyper_params = attr.ib()
+    train_dir = attr.ib()
+    epochs = attr.ib()
 
     @classmethod
-    def load(cls, classify, base_folder):
+    def load(cls, raw, base_data_folder):
         return cls(
-            show_extended_evaluation=classify["show_extended_evaluation"],
-            new_visit_threshold=classify["new_visit_threshold"],
-            null_tags=classify["null_tags"],
+            hyper_params=raw["hyper_params"],
+            train_dir=path.join(base_data_folder, raw.get("train_dir", "train")),
+            epochs=raw["epochs"],
         )
 
     @classmethod
     def get_defaults(cls):
         return cls(
-            show_extended_evaluation=False,
-            new_visit_threshold=180,
-            null_tags=["false-positive", "none", "no-tag"],
+            hyper_params={
+                "batch_size": 16,
+                "learning_rate": 0.0004,
+                "learning_rate_decay": 1.0,
+                "l2_reg": 0,
+                "label_smoothing": 0.1,
+                "keep_prob": 0.2,
+                "batch_norm": True,
+                "lstm_units": 256,
+                "enable_flow": True,
+                "augmentation": True,
+                "thermal_threshold": 10,
+                "scale_frequency": 0.5,
+            },
+            train_dir="train",
+            epochs=30,
         )
 
     def validate(self):

@@ -7,15 +7,17 @@ CPTV_TEMP_EXT = ".cptv.temp"
 
 
 class CPTVRecorder:
-    def __init__(self, location_config, thermal_config):
-        self.location_config = location_config
-        self.output_dir = thermal_config.output_dir
+    def __init__(self, thermal_config):
+        self.location_config = thermal_config.location
+        self.device_config = thermal_config.device
+        self.output_dir = thermal_config.recorder.output_dir
         self.motion_config = thermal_config.motion
         self.preview_secs = thermal_config.recorder.preview_secs
         self.writer = None
         self.filename = None
         self.recording = False
         self.frames = 0
+        self.device_config = thermal_config.device
         self.min_frames = (
             thermal_config.recorder.min_secs * thermal_config.recorder.frame_rate
         )
@@ -56,14 +58,19 @@ class CPTVRecorder:
         f = open(self.filename, "wb")
         self.writer = CPTVWriter(f)
         self.writer.timestamp = datetime.now()
-        self.writer.device_name = b"gp-test-01"
         self.writer.latitude = self.location_config.latitude
         self.writer.longitude = self.location_config.longitude
         self.writer.preview_secs = self.preview_secs
         default_thresh = self.motion_config.temp_thresh
         self.motion_config.temp_thresh = temp_thresh
-        self.writer.motion_config = yaml.dump(self.motion_config).encode()
+        self.writer.motion_config = yaml.dump(self.motion_config).encode()[:255]
         self.motion_config.temp_thresh = default_thresh
+
+        if self.device_config.name:
+            self.writer.device_name = self.device_config.name.encode()
+        if self.device_config.device_id:
+            self.writer.device_id = self.device_config.device_id
+
         self.writer.write_header()
         self.recording = True
 

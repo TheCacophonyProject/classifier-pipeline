@@ -19,8 +19,8 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import attr
 
-import ml_tools.config
-from ml_tools.defaultconfig import DefaultConfig
+from config import config
+from .defaultconfig import DefaultConfig
 from track.trackextractor import TrackExtractor
 
 
@@ -69,7 +69,7 @@ class TrackingConfig(DefaultConfig):
     def load(cls, tracking):
 
         return cls(
-            background_calc=ml_tools.config.parse_options_param(
+            background_calc=config.parse_options_param(
                 "background_calc",
                 tracking["background_calc"],
                 [TrackExtractor.PREVIEW, "stats"],
