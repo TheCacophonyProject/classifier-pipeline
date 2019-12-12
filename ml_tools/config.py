@@ -55,7 +55,8 @@ class Config(DefaultConfig):
         default = Config.get_defaults()
         if raw is None:
             raw = {}
-        # "tracking" params are overrides, add other parameters from "classify_tracking"
+        # Configuration from "tracking" section is used in
+        # "classify_tracking" when not specified.
         deep_copy_map_if_key_not_exist(raw["tracking"], raw["classify_tracking"])
         deep_copy_map_if_key_not_exist(default.as_dict(), raw)
 
