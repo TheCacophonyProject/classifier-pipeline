@@ -81,6 +81,9 @@ class ClipTrackExtractor:
             else:
                 self.process_frames(clip, [np.float32(frame.pix) for frame in reader])
 
+        if not clip.from_metadata:
+            self.apply_track_filtering(clip)
+
         if self.calc_stats:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
 
@@ -158,9 +161,6 @@ class ClipTrackExtractor:
         # process each frame
         for frame_number, frame in enumerate(frames):
             self._process_frame(clip, frame_number, frame)
-
-        if not clip.from_metadata:
-            self.apply_track_filtering(clip)
 
     def apply_track_filtering(self, clip):
         self.filter_tracks(clip)
@@ -452,12 +452,12 @@ class ClipTrackExtractor:
         for stats, track in track_stats:
             # discard any tracks that overlap too often with other tracks.  This normally means we are tracking the
             # tail of an animal.
-            if not self.filter_track(track, stats):
+            if not self.filter_track(clip, track, stats):
                 good_tracks.append(track)
 
         clip.tracks = good_tracks
         self.print_if_verbose(
-            "{} {}".format("Number of 'good' tracks", len(self.tracks))
+            "{} {}".format("Number of 'good' tracks", len(clip.tracks))
         )
         # apply max_tracks filter
         # note, we take the n best tracks.
@@ -468,7 +468,7 @@ class ClipTrackExtractor:
                 )
             )
             clip.filtered_tracks.extend(
-                [("Too many tracks", track) for track in self.tracks[self.max_tracks :]]
+                [("Too many tracks", track) for track in clip.tracks[self.max_tracks :]]
             )
             clip.tracks = clip.tracks[: self.max_tracks]
 
