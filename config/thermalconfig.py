@@ -142,7 +142,6 @@ class RecorderConfig:
 
 
 @attr.s
-<<<<<<< HEAD
 class DeviceConfig:
     device_id = attr.ib()
     name = attr.ib()
@@ -153,8 +152,6 @@ class DeviceConfig:
 
 
 @attr.s
-=======
->>>>>>> moved config files to config package (#90)
 class ThermalConfig:
     motion = attr.ib()
     recorder = attr.ib()
