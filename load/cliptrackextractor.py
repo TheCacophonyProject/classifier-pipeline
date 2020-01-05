@@ -71,13 +71,17 @@ class ClipTrackExtractor:
             clip.num_preview_frames = (
                 reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
             )
-
             clip.set_video_stats(video_start_time)
             # we need to load the entire video so we can analyse the background.
 
             if clip.background_is_preview:
                 for frame in reader:
                     self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
+
+                if clip.on_preview():
+                    logging.warn("Clip is all preview frames")
+                    clip._set_from_background()
+                    self._process_preview_frames(clip)
             else:
                 self.process_frames(clip, [np.float32(frame.pix) for frame in reader])
 
@@ -97,15 +101,18 @@ class ClipTrackExtractor:
         if clip.on_preview():
             clip.calculate_preview_from_frame(frame, ffc_affected)
             if clip.background_calculated:
-                clip.frame_on -= len(clip.preview_frames)
-                for i, back_frame in enumerate(clip.preview_frames):
-                    clip.frame_on += 1
-                    self._process_frame(clip, back_frame[0], back_frame[1])
-
-                clip.preview_frames = None
+                self._process_preview_frames(clip)
         else:
             self._process_frame(clip, frame, ffc_affected)
         clip.frame_on += 1
+
+    def _process_preview_frames(self, clip):
+        clip.frame_on -= len(clip.preview_frames)
+        for _, back_frame in enumerate(clip.preview_frames):
+            clip.frame_on += 1
+            self._process_frame(clip, back_frame[0], back_frame[1])
+
+        clip.preview_frames = None
 
     def _whole_clip_stats(self, clip, frames):
         filtered = np.float32(
