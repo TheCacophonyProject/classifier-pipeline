@@ -479,5 +479,5 @@ class PiClassifier:
                 positions.append([track_time, region])
             track_info["positions"] = positions
 
-        with open(self.meta_dir + "/" + filename, "w") as f:
+        with open(os.path.join(self.meta_dir, filename), "w") as f:
             json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)

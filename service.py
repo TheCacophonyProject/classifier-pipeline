@@ -35,9 +35,7 @@ class Service(object):
 
 
 class SnapshotService:
-    def __init__(
-        self, processor,
-    ):
+    def __init__(self, processor):
         self.t = threading.Thread(target=self.run_server, args=(processor,))
         self.t.start()
 

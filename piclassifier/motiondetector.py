@@ -41,16 +41,16 @@ class SlidingWindow:
         return None
 
     def add(self, frame):
-
         if self.last_index is None:
-            self.last_index = 0
             self.oldest_index = 0
             self.frames[0] = frame
+            self.last_index = 0
         else:
-            self.last_index = (self.last_index + 1) % self.size
-            if self.last_index == self.oldest_index:
+            new_index = (self.last_index + 1) % self.size
+            if new_index == self.oldest_index:
                 self.oldest_index = (self.oldest_index + 1) % self.size
-            self.frames[self.last_index] = frame
+            self.frames[new_index] = frame
+            self.last_index = new_index
 
     def reset(self):
         self.last_index = None
