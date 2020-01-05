@@ -19,7 +19,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import attr
 
-from ml_tools.defaultconfig import DefaultConfig
+from config.defaultconfig import DefaultConfig
 
 
 @attr.s

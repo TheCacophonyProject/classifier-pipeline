@@ -7,7 +7,7 @@ import cv2
 import os
 
 from ml_tools.logs import init_logging
-from ml_tools.config import Config
+from config.config import Config
 from .cliploader import ClipLoader
 
 
