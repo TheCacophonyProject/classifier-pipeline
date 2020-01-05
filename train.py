@@ -36,7 +36,7 @@ import matplotlib
 matplotlib.use("Agg")  # enable canvas drawing
 
 from ml_tools.logs import init_logging
-from ml_tools.config import Config
+from config.config import Config
 from train.train import train_model
 from train.search import axis_search
 

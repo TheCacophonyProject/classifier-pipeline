@@ -99,7 +99,12 @@ class MotionDetector:
         self.dynamic_thresh = dynamic_thresh
         self.temp_thresh = config.temp_thresh
         self.crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
-        self.use_sunrise = recorder_config.use_sunrise_sunset
+
+        self.start_rec = recorder_config.start_rec
+        self.end_rec = recorder_config.end_rec
+        self.use_sunrise = (
+            recorder_config.start_rec.is_relative or recorder_config.end_rec.is_relative
+        )
 
         self.last_sunrise_check = None
         self.location = None
@@ -107,8 +112,6 @@ class MotionDetector:
         self.sunset = None
         self.recording = False
         if self.use_sunrise:
-            self.sunrise_offset = recorder_config.sunrise_offset
-            self.sunset_offset = recorder_config.sunset_offset
             self.set_location(location_config)
 
         self.recorder = recorder
@@ -128,14 +131,19 @@ class MotionDetector:
         if self.last_sunrise_check is None or date > self.last_sunrise_check:
             sun = self.location.sun()
 
-            self.sunrise = (
-                sun["sunrise"] + timedelta(minutes=self.sunrise_offset)
-            ).time()
-            self.sunset = (sun["sunset"] + timedelta(minutes=self.sunset_offset)).time()
+            if self.start_rec.is_relative:
+                self.start_rec.time = (
+                    sun["sunrise"] + timedelta(minutes=self.start_rec.offset_s)
+                ).time()
+
+            if self.end_rec.is_relative:
+                self.end_rec.time = (
+                    sun["sunset"] + timedelta(minutes=self.end_rec.offset_s)
+                ).time()
             self.last_sunrise_check = date
             logging.info(
-                "sunrise is {} sunset is {} next check is {}".format(
-                    self.sunrise, self.sunset, self.last_sunrise_check
+                "start_rec is {} end_rec is {} next check is {}".format(
+                    self.start_rec.time, self.end_rec.time, self.last_sunrise_check
                 )
             )
 
@@ -207,6 +215,7 @@ class MotionDetector:
                 delta_frame[
                     delta_frame >= self.config.delta_thresh
                 ] = self.config.delta_thresh
+                diff = 0
 
         self.diff_window.add(delta_frame)
 
@@ -240,9 +249,8 @@ class MotionDetector:
     def can_record(self):
         if self.use_sunrise:
             self.get_sunrise_sunet()
-            time = datetime.now().time()
-            return time > self.sunset or time < self.sunrise
-        return True
+
+        return self.start_rec.is_after() and self.end_rec.is_before()
 
     def force_stop(self):
         self.clipped_window.reset()

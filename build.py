@@ -4,17 +4,14 @@
 # tracks with low confidence are excluded.
 
 import argparse
-import datetime
 import os
 import pickle
 import random
-
-import dateutil
 import numpy as np
 
 from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
-from ml_tools.config import Config
+from config.config import Config
 from ml_tools.dataset import Dataset, dataset_db_path
 
 
