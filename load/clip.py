@@ -118,7 +118,7 @@ class Clip:
 
         self._set_from_background()
 
-    def background_from_whole_clip(self, clip, frames):
+    def background_from_whole_clip(self, frames):
         """
         Runs through all provided frames and estimates the background, consuming all the source frames.
         :param frames_list: a list of numpy array frames

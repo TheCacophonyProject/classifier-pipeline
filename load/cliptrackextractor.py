@@ -71,15 +71,22 @@ class ClipTrackExtractor:
             clip.num_preview_frames = (
                 reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
             )
-
             clip.set_video_stats(video_start_time)
             # we need to load the entire video so we can analyse the background.
 
             if clip.background_is_preview:
                 for frame in reader:
                     self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
+
+                if clip.on_preview():
+                    logging.warn("Clip is all preview frames")
+                    clip._set_from_background()
+                    self._process_preview_frames(clip)
             else:
                 self.process_frames(clip, [np.float32(frame.pix) for frame in reader])
+
+        if not clip.from_metadata:
+            self.apply_track_filtering(clip)
 
         if self.calc_stats:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
@@ -94,15 +101,18 @@ class ClipTrackExtractor:
         if clip.on_preview():
             clip.calculate_preview_from_frame(frame, ffc_affected)
             if clip.background_calculated:
-                clip.frame_on -= len(clip.preview_frames)
-                for i, back_frame in enumerate(clip.preview_frames):
-                    clip.frame_on += 1
-                    self._process_frame(clip, back_frame[0], back_frame[1])
-
-                clip.preview_frames = None
+                self._process_preview_frames(clip)
         else:
             self._process_frame(clip, frame, ffc_affected)
         clip.frame_on += 1
+
+    def _process_preview_frames(self, clip):
+        clip.frame_on -= len(clip.preview_frames)
+        for _, back_frame in enumerate(clip.preview_frames):
+            clip.frame_on += 1
+            self._process_frame(clip, back_frame[0], back_frame[1])
+
+        clip.preview_frames = None
 
     def _whole_clip_stats(self, clip, frames):
         filtered = np.float32(
@@ -158,9 +168,6 @@ class ClipTrackExtractor:
         # process each frame
         for frame_number, frame in enumerate(frames):
             self._process_frame(clip, frame_number, frame)
-
-        if not clip.from_metadata:
-            self.apply_track_filtering(clip)
 
     def apply_track_filtering(self, clip):
         self.filter_tracks(clip)
@@ -452,12 +459,12 @@ class ClipTrackExtractor:
         for stats, track in track_stats:
             # discard any tracks that overlap too often with other tracks.  This normally means we are tracking the
             # tail of an animal.
-            if not self.filter_track(track, stats):
+            if not self.filter_track(clip, track, stats):
                 good_tracks.append(track)
 
         clip.tracks = good_tracks
         self.print_if_verbose(
-            "{} {}".format("Number of 'good' tracks", len(self.tracks))
+            "{} {}".format("Number of 'good' tracks", len(clip.tracks))
         )
         # apply max_tracks filter
         # note, we take the n best tracks.
@@ -468,7 +475,7 @@ class ClipTrackExtractor:
                 )
             )
             clip.filtered_tracks.extend(
-                [("Too many tracks", track) for track in self.tracks[self.max_tracks :]]
+                [("Too many tracks", track) for track in clip.tracks[self.max_tracks :]]
             )
             clip.tracks = clip.tracks[: self.max_tracks]
 

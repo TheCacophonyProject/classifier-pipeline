@@ -17,13 +17,10 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import os.path as path
 import attr
 import dateutil.parser
-import yaml
 
-from ml_tools.defaultconfig import DefaultConfig
-from ml_tools.previewer import Previewer
+from .defaultconfig import DefaultConfig
 
 
 @attr.s

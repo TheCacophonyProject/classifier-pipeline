@@ -18,8 +18,7 @@ from classify.trackprediction import Predictions
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
 from .telemetry import Telemetry
-from .locationconfig import LocationConfig
-from .thermalconfig import ThermalConfig
+from config.thermalconfig import ThermalConfig
 from .motiondetector import MotionDetector
 from .cptvrecorder import CPTVRecorder
 from service import SnapshotService
@@ -28,7 +27,7 @@ from ml_tools.logs import init_logging
 from ml_tools import tools
 from ml_tools.model import Model
 from ml_tools.dataset import Preprocessor
-from ml_tools.config import Config
+from config.config import Config
 from ml_tools.previewer import Previewer
 from cptv import CPTVReader
 
@@ -71,10 +70,9 @@ def main():
 
     config = Config.load_from_file()
     thermal_config = ThermalConfig.load_from_file()
-    location_config = LocationConfig.load_from_file()
     classifier = get_classifier(config)
 
-    clip_classifier = PiClassifier(config, thermal_config, location_config, classifier)
+    clip_classifier = PiClassifier(config, thermal_config, classifier)
     if args.cptv:
         with open(args.cptv, "rb") as f:
             reader = CPTVReader(f)
@@ -165,7 +163,7 @@ class PiClassifier:
     DEBUG_EVERY = 100
     MAX_CONSEC = 3
 
-    def __init__(self, config, thermal_config, location_config, classifier):
+    def __init__(self, config, thermal_config, classifier):
         self.frame_num = 0
         self.clip = None
         self.tracking = False
@@ -210,10 +208,10 @@ class PiClassifier:
             self.res_x,
             self.res_y,
             thermal_config.motion,
-            location_config,
+            thermal_config.location,
             thermal_config.recorder,
             self.config.tracking.dynamic_thresh,
-            CPTVRecorder(location_config, thermal_config),
+            CPTVRecorder(thermal_config),
         )
         self.startup_classifier()
 
