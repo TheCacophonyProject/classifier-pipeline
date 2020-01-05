@@ -17,6 +17,7 @@ class CPTVRecorder:
         self.filename = None
         self.recording = False
         self.frames = 0
+        self.device_config = thermal_config.device
         self.min_frames = (
             thermal_config.recorder.min_secs * thermal_config.recorder.frame_rate
         )

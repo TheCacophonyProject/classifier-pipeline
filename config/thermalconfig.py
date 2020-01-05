@@ -93,7 +93,6 @@ class RelAbsTime:
         return self.any_time or datetime.datetime.now().time() < self.time
 
     def parse_duration(self, time_str, default_offset=None):
-
         if not time_str:
             return default_offset
 
@@ -143,6 +142,7 @@ class RecorderConfig:
 
 
 @attr.s
+<<<<<<< HEAD
 class DeviceConfig:
     device_id = attr.ib()
     name = attr.ib()
@@ -153,6 +153,8 @@ class DeviceConfig:
 
 
 @attr.s
+=======
+>>>>>>> moved config files to config package (#90)
 class ThermalConfig:
     motion = attr.ib()
     recorder = attr.ib()
