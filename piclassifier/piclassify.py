@@ -21,6 +21,7 @@ from .telemetry import Telemetry
 from config.thermalconfig import ThermalConfig
 from .motiondetector import MotionDetector
 from .cptvrecorder import CPTVRecorder
+from service import SnapshotService
 
 from ml_tools.logs import init_logging
 from ml_tools import tools
@@ -80,13 +81,14 @@ def main():
 
         clip_classifier.disconnected()
         return
+
+    service = SnapshotService(clip_classifier)
     try:
         os.unlink(SOCKET_NAME)
     except OSError:
         if os.path.exists(SOCKET_NAME):
             raise
-    if not os.path.exists("metadata"):
-        os.makedirs("metadata")
+
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     sock.bind(SOCKET_NAME)
     sock.listen(1)
@@ -212,6 +214,11 @@ class PiClassifier:
             CPTVRecorder(thermal_config),
         )
         self.startup_classifier()
+
+        self.output_dir = thermal_config.recorder.output_dir
+        self.meta_dir = os.path.join(thermal_config.recorder.output_dir, "metadata")
+        if not os.path.exists(self.meta_dir):
+            os.makedirs(self.meta_dir)
 
     def new_clip(self):
         self.clip = Clip(self.config.tracking, "stream")
@@ -350,6 +357,9 @@ class PiClassifier:
                     self.clip.frame_on, smooth_prediction, smooth_novelty
                 )
 
+    def get_recent_frame(self):
+        return self.motion_detector.last_frame()
+
     def disconnected(self):
         self.end_clip()
         self.motion_detector.force_stop()
@@ -467,5 +477,5 @@ class PiClassifier:
                 positions.append([track_time, region])
             track_info["positions"] = positions
 
-        with open("metadata/" + filename, "w") as f:
+        with open(os.path.join(self.meta_dir, filename), "w") as f:
             json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)

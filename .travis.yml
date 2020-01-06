@@ -4,6 +4,8 @@ python:
 - '3.6'
 
 install:
+- sudo apt-get update
+- sudo apt-get -y install libgirepository1.0-dev
 - pip install -r requirements.txt
 
 before_script:

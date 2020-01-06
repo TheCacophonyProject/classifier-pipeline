@@ -29,5 +29,5 @@ class LocationConfig:
         if use_default and lat == 0:
             lat = LocationConfig.DEFAULT_LAT
         if use_default and lng == 0:
-            lng == LocationConfig.DEFAULT_LONG
+            lng = LocationConfig.DEFAULT_LONG
         return (lat, lng)

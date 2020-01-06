@@ -6,7 +6,6 @@ import portalocker
 import os
 
 from .locationconfig import LocationConfig
-from .deviceconfig import DeviceConfig
 
 CONFIG_FILENAME = "config.toml"
 CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
@@ -71,6 +70,7 @@ class RelAbsTime:
     def __init__(self, time_str, default_offset=None, default_time=None):
         self.is_relative = False
         self.offset_s = 0
+        self.time = None
 
         if time_str == "":
             self.any_time = True
@@ -79,7 +79,7 @@ class RelAbsTime:
         try:
             self.any_time = False
             self.time = datetime.datetime.strptime(time_str, "%H:%M").time()
-        except ValueError:
+        except:
             if default_time:
                 self.time = default_time
             else:
@@ -94,7 +94,7 @@ class RelAbsTime:
 
     def parse_duration(self, time_str, default_offset=None):
 
-        if len(time_str) == 0:
+        if not time_str:
             return default_offset
 
         time_type = time_str[-1]
@@ -140,6 +140,16 @@ class RecorderConfig:
             end_rec=RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
             output_dir=recorder["output-dir"],
         )
+
+
+@attr.s
+class DeviceConfig:
+    device_id = attr.ib()
+    name = attr.ib()
+
+    @classmethod
+    def load(cls, device):
+        return cls(name=device.get("name"), device_id=device.get("id"))
 
 
 @attr.s
