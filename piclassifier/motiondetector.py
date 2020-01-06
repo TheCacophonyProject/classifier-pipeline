@@ -1,13 +1,17 @@
+from threading import Lock
 from datetime import datetime, timedelta
-from astral import Location
 import logging
+
+from astral import Location
 import numpy as np
+
 from ml_tools import tools
 from ml_tools.tools import Rectangle
 
 
 class SlidingWindow:
     def __init__(self, shape, dtype):
+        self.lock = Lock()
         self.frames = np.empty(shape, dtype)
         self.last_index = None
         self.size = len(self.frames)
@@ -15,42 +19,53 @@ class SlidingWindow:
 
     @property
     def current(self):
-        if self.last_index is not None:
-            return self.frames[self.last_index]
-        return None
+        with self.lock:
+            if self.last_index is not None:
+                return self.frames[self.last_index]
+            return None
+
+    def current_copy(self):
+        with self.lock:
+            if self.last_index is not None:
+                return self.frames[self.last_index].copy()
+            return None
 
     def get_frames(self):
-        if self.last_index is None:
-            return []
-        frames = []
-        cur = self.oldest_index
-        end_index = (self.last_index + 1) % self.size
-        while len(frames) == 0 or cur != end_index:
-            frames.append(self.frames[cur])
-            cur = (cur + 1) % self.size
-        return frames
+        with self.lock:
+            if self.last_index is None:
+                return []
+            frames = []
+            cur = self.oldest_index
+            end_index = (self.last_index + 1) % self.size
+            while len(frames) == 0 or cur != end_index:
+                frames.append(self.frames[cur])
+                cur = (cur + 1) % self.size
+            return frames
 
     def get(self, i):
         i = i % self.size
-        return self.frames[i]
+        with self.lock:
+            return self.frames[i]
 
     @property
     def oldest(self):
-        if self.oldest_index is not None:
-            return self.frames[self.oldest_index]
-        return None
+        with self.lock:
+            if self.oldest_index is not None:
+                return self.frames[self.oldest_index]
+            return None
 
     def add(self, frame):
-        if self.last_index is None:
-            self.oldest_index = 0
-            self.frames[0] = frame
-            self.last_index = 0
-        else:
-            new_index = (self.last_index + 1) % self.size
-            if new_index == self.oldest_index:
-                self.oldest_index = (self.oldest_index + 1) % self.size
-            self.frames[new_index] = frame
-            self.last_index = new_index
+        with self.lock:
+            if self.last_index is None:
+                self.oldest_index = 0
+                self.frames[0] = frame
+                self.last_index = 0
+            else:
+                new_index = (self.last_index + 1) % self.size
+                if new_index == self.oldest_index:
+                    self.oldest_index = (self.oldest_index + 1) % self.size
+                self.frames[new_index] = frame
+                self.last_index = new_index
 
     def reset(self):
         self.last_index = None
@@ -130,15 +145,13 @@ class MotionDetector:
         date = datetime.now().date()
         if self.last_sunrise_check is None or date > self.last_sunrise_check:
             sun = self.location.sun()
-
             if self.start_rec.is_relative:
                 self.start_rec.time = (
-                    sun["sunrise"] + timedelta(minutes=self.start_rec.offset_s)
+                    sun["sunset"] + timedelta(seconds=self.start_rec.offset_s)
                 ).time()
-
             if self.end_rec.is_relative:
                 self.end_rec.time = (
-                    sun["sunset"] + timedelta(minutes=self.end_rec.offset_s)
+                    sun["sunrise"] + timedelta(seconds=self.end_rec.offset_s)
                 ).time()
             self.last_sunrise_check = date
             logging.info(
@@ -247,7 +260,7 @@ class MotionDetector:
         return False
 
     def last_frame(self):
-        return self.thermal_window.current
+        return self.thermal_window.current_copy()
 
     def can_record(self):
         if self.use_sunrise:

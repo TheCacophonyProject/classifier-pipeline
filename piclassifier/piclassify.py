@@ -215,8 +215,8 @@ class PiClassifier:
         )
         self.startup_classifier()
 
-        self.output_dir = thermal_config.output_dir
-        self.meta_dir = os.path.join(thermal_config.output_dir, "metadata")
+        self.output_dir = thermal_config.recorder.output_dir
+        self.meta_dir = os.path.join(thermal_config.recorder.output_dir, "metadata")
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)
 
