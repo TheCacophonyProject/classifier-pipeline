@@ -68,8 +68,9 @@ class SlidingWindow:
                 self.last_index = new_index
 
     def reset(self):
-        self.last_index = None
-        self.oldest_index = None
+        with self.lock:
+            self.last_index = None
+            self.oldest_index = None
 
 
 class MotionDetector:
