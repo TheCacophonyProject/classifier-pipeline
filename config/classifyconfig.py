@@ -21,8 +21,9 @@ import os.path as path
 
 import attr
 
-import ml_tools.config
-from ml_tools.defaultconfig import DefaultConfig
+
+from config import config
+from .defaultconfig import DefaultConfig
 from ml_tools.previewer import Previewer
 
 
@@ -40,7 +41,7 @@ class ClassifyConfig(DefaultConfig):
         return cls(
             model=classify["model"],
             meta_to_stdout=classify["meta_to_stdout"],
-            preview=ml_tools.config.parse_options_param(
+            preview=config.parse_options_param(
                 "preview", classify["preview"], Previewer.PREVIEW_OPTIONS
             ),
             classify_folder=path.join(base_folder, classify["classify_folder"]),

@@ -32,6 +32,9 @@ class MPEGCreator:
         self._ffmpeg.stdin.write(frame.tobytes())
 
     def close(self):
+        if not self._ffmpeg:
+            return
+
         self._ffmpeg.stdin.close()
 
         return_code = self._ffmpeg.wait(timeout=60)

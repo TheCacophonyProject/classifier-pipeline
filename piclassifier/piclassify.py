@@ -18,15 +18,15 @@ from classify.trackprediction import Predictions
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
 from .telemetry import Telemetry
-from .locationconfig import LocationConfig
-from .thermalconfig import ThermalConfig
+from config.thermalconfig import ThermalConfig
 from .motiondetector import MotionDetector
 from .cptvrecorder import CPTVRecorder
+from service import SnapshotService
 
 from ml_tools.logs import init_logging
 from ml_tools import tools
 from ml_tools.dataset import Preprocessor
-from ml_tools.config import Config
+from config.config import Config
 from ml_tools.previewer import Previewer
 from cptv import CPTVReader
 
@@ -70,23 +70,18 @@ def main():
 
     config = Config.load_from_file()
     thermal_config = ThermalConfig.load_from_file()
-    location_config = LocationConfig.load_from_file()
-
     proccesor = None
     if thermal_config.run_classifier:
         classifier = get_classifier(config)
-        proccesor = PiClassifier(config, thermal_config, location_config, classifier)
+        proccesor = PiClassifier(config, thermal_config, classifier)
     else:
         proccesor = MotionDetector(
             config.res_x,
             config.res_y,
-            thermal_config.motion,
-            location_config,
-            thermal_config.recorder,
+            thermal_config,
             config.tracking.dynamic_thresh,
-            CPTVRecorder(location_config, thermal_config),
+            CPTVRecorder(thermal_config.location, thermal_config),
         )
-
     if args.cptv:
         with open(args.cptv, "rb") as f:
             reader = CPTVReader(f)
@@ -95,13 +90,14 @@ def main():
 
         proccesor.disconnected()
         return
+
+    service = SnapshotService(proccesor)
     try:
         os.unlink(SOCKET_NAME)
     except OSError:
         if os.path.exists(SOCKET_NAME):
             raise
-    if not os.path.exists("metadata"):
-        os.makedirs("metadata")
+
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     sock.bind(SOCKET_NAME)
     sock.listen(1)
@@ -174,7 +170,7 @@ class PiClassifier:
     DEBUG_EVERY = 100
     MAX_CONSEC = 3
 
-    def __init__(self, config, thermal_config, location_config, classifier):
+    def __init__(self, config, thermal_config, classifier):
         self.frame_num = 0
         self.clip = None
         self.tracking = False
@@ -218,13 +214,16 @@ class PiClassifier:
         self.motion_detector = MotionDetector(
             self.res_x,
             self.res_y,
-            thermal_config.motion,
-            location_config,
-            thermal_config.recorder,
+            thermal_config,
             self.config.tracking.dynamic_thresh,
-            CPTVRecorder(location_config, thermal_config),
+            CPTVRecorder(thermal_config),
         )
         self.startup_classifier()
+
+        self.output_dir = thermal_config.recorder.output_dir
+        self.meta_dir = os.path.join(thermal_config.recorder.output_dir, "metadata")
+        if not os.path.exists(self.meta_dir):
+            os.makedirs(self.meta_dir)
 
     def new_clip(self):
         self.clip = Clip(self.config.tracking, "stream")
@@ -363,6 +362,9 @@ class PiClassifier:
                     self.clip.frame_on, smooth_prediction, smooth_novelty
                 )
 
+    def get_recent_frame(self):
+        return self.motion_detector.get_recent_frame()
+
     def disconnected(self):
         self.end_clip()
         self.motion_detector.disconnected()
@@ -480,5 +482,5 @@ class PiClassifier:
                 positions.append([track_time, region])
             track_info["positions"] = positions
 
-        with open("metadata/" + filename, "w") as f:
+        with open(os.path.join(self.meta_dir, filename), "w") as f:
             json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)

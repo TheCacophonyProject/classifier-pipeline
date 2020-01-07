@@ -737,10 +737,16 @@ def get_optical_flow_function(high_quality=False):
     return opt_flow
 
 
-def frame_to_jpg(frame, filename, colourmap_file, min, max):
+def frame_to_jpg(
+    frame, filename, colourmap_file=None, f_min=None, f_max=None, img_fmt="PNG"
+):
     colourmap = _load_colourmap(colourmap_file)
-    img = convert_heat_to_img(frame, colourmap, min, max)
-    img.save(filename + ".jpg", "JPEG")
+    if f_min is None:
+        f_min = np.amin(frame)
+    if f_max is None:
+        f_max = np.amax(frame)
+    img = convert_heat_to_img(frame, colourmap, f_min, f_max)
+    img.save(filename, img_fmt)
 
 
 def _load_colourmap(colourmap_path):
