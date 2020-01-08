@@ -35,3 +35,7 @@ class Processor:
     @property
     def res_y(self):
         raise Exception("res_y property must be overwritten in sub class.")
+
+    @property
+    def output_dir(self):
+        raise Exception("output_dir property must be overwritten in sub class.")

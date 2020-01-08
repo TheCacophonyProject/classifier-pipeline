@@ -82,6 +82,7 @@ class MotionDetector(Processor):
     def __init__(
         self, res_x, res_y, thermal_config, dynamic_thresh, recorder,
     ):
+        self._output_dir = thermal_config.recorder.output_dir
         self._res_x = res_x
         self._res_y = res_y
         self.config = thermal_config.motion
@@ -310,6 +311,10 @@ class MotionDetector(Processor):
         else:
             self.movement_detected = False
         self.num_frames += 1
+
+    @property
+    def output_dir(self):
+        return self._output_dir
 
     @property
     def res_x(self):
