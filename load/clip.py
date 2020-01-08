@@ -80,13 +80,6 @@ class Clip:
             self.background = background
             self._set_from_background()
 
-    def reset_preview(self):
-        self.background_calculated = False
-        self.background_frames = 0
-        self.background = None
-        self.temp_thresh = self.config.temp_thresh
-        self.preview_frames = []
-
     def _set_from_background(self):
         self.stats.mean_background_value = np.average(self.background)
         self.set_temp_thresh()
