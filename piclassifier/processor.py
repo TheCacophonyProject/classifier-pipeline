@@ -28,6 +28,9 @@ class Processor:
     def disconnected(self):
         raise Exception("disconnected method must be overwritten in sub class.")
 
+    def skip_frame(self):
+        raise Exception("skip_frame method must be overwritten in sub class.")
+
     @property
     def res_x(self):
         raise Exception("res_x property must be overwritten in sub class.")

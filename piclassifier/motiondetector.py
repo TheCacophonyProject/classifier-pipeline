@@ -302,6 +302,9 @@ class MotionDetector(Processor):
             self.movement_detected = False
         self.num_frames += 1
 
+    def skip_frame(self):
+        return
+
     @property
     def output_dir(self):
         return self._output_dir
