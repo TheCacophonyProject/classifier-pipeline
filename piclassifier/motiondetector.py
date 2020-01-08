@@ -7,6 +7,7 @@ import numpy as np
 
 from ml_tools import tools
 from ml_tools.tools import Rectangle
+from .processor import Processor
 
 
 class SlidingWindow:
@@ -73,7 +74,7 @@ class SlidingWindow:
             self.oldest_index = None
 
 
-class MotionDetector:
+class MotionDetector(Processor):
     FFC_PERIOD = timedelta(seconds=9.9)
     BACKGROUND_WEIGHTING_PER_FRAME = 0.99
     BACKGROUND_WEIGHT_EVERY = 3
@@ -81,21 +82,20 @@ class MotionDetector:
     def __init__(
         self, res_x, res_y, thermal_config, dynamic_thresh, recorder,
     ):
+        self._res_x = res_x
+        self._res_y = res_y
         self.config = thermal_config.motion
-        self.location_config = thermal_config.location_config
+        self.location_config = thermal_config.location
         self.preview_frames = (
-            thermal_config.recorder_config.preview_secs
-            * thermal_config.recorder_config.frame_rate
+            thermal_config.recorder.preview_secs * thermal_config.recorder.frame_rate
         )
         self.compare_gap = self.config.frame_compare_gap + 1
         edge = self.config.edge_pixels
         self.min_frames = (
-            thermal_config.recorder_config.min_secs
-            * thermal_config.recorder_config.frame_rate
+            thermal_config.recorder.min_secs * thermal_config.recorder.frame_rate
         )
         self.max_frames = (
-            thermal_config.recorder_config.max_secs
-            * thermal_config.recorder_config.frame_rate
+            thermal_config.recorder.max_secs * thermal_config.recorder.frame_rate
         )
         self.clipped_window = SlidingWindow(
             (self.compare_gap, res_y - edge * 2, res_x - edge * 2), np.int32
@@ -118,11 +118,11 @@ class MotionDetector:
         self.temp_thresh = self.config.temp_thresh
         self.crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
 
-        self.start_rec = thermal_config.recorder_config.start_rec
-        self.end_rec = thermal_config.recorder_config.end_rec
+        self.start_rec = thermal_config.recorder.start_rec
+        self.end_rec = thermal_config.recorder.end_rec
         self.use_sunrise = (
-            thermal_config.recorder_config.start_rec.is_relative
-            or thermal_config.recorder_config.end_rec.is_relative
+            thermal_config.recorder.start_rec.is_relative
+            or thermal_config.recorder.end_rec.is_relative
         )
 
         self.last_sunrise_check = None
@@ -310,6 +310,14 @@ class MotionDetector:
         else:
             self.movement_detected = False
         self.num_frames += 1
+
+    @property
+    def res_x(self):
+        return self._res_x
+
+    @property
+    def res_y(self):
+        return self._res_y
 
 
 def is_affected_by_ffc(lepton_frame):
