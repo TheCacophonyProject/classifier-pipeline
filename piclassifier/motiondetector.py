@@ -239,11 +239,6 @@ class MotionDetector(Processor):
 
         if diff > self.config.count_thresh:
             if not self.movement_detected:
-                print(
-                    "{} MotionDetector motion detected thresh {} count {}".format(
-                        timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
-                    )
-                )
                 logging.debug(
                     "{} MotionDetector motion detected thresh {} count {}".format(
                         timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
@@ -252,11 +247,6 @@ class MotionDetector(Processor):
             return True
 
         if self.movement_detected:
-            print(
-                "{} MotionDetector motion stopped thresh {} count {}".format(
-                    timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
-                )
-            )
             logging.debug(
                 "{} MotionDetector motion stopped thresh {} count {}".format(
                     timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
