@@ -17,13 +17,17 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
+from abc import ABC, abstractmethod
 
-class DefaultConfig:
+
+class DefaultConfig(ABC):
     @classmethod
+    @abstractmethod
     def get_defaults(cls):
         """ The function to get default config. """
-        raise Exception("get_defaults method must be overwritten in sub class.")
+        ...
 
+    @abstractmethod
     def validate(self):
         """ The function to get default config. """
-        raise Exception("validate method must be overwritten in sub class.")
+        ...

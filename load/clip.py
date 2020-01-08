@@ -24,12 +24,8 @@ import numpy as np
 import os
 import pytz
 
-from cptv import CPTVReader
-import cv2
 
-import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
-from track.region import Region
 from track.framebuffer import FrameBuffer
 from track.track import Track
 

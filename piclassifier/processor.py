@@ -17,28 +17,37 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
+from abc import ABC, abstractmethod
 
-class Processor:
+
+class Processor(ABC):
+    @abstractmethod
     def process_frame(self, lepton_frame):
-        raise Exception("process_frame method must be overwritten in sub class.")
+        ...
 
+    @abstractmethod
     def get_recent_frame(self):
-        raise Exception("get_recent_frame method must be overwritten in sub class.")
+        ...
 
+    @abstractmethod
     def disconnected(self):
-        raise Exception("disconnected method must be overwritten in sub class.")
+        ...
 
+    @abstractmethod
     def skip_frame(self):
-        raise Exception("skip_frame method must be overwritten in sub class.")
+        ...
 
     @property
+    @abstractmethod
     def res_x(self):
-        raise Exception("res_x property must be overwritten in sub class.")
+        ...
 
     @property
+    @abstractmethod
     def res_y(self):
-        raise Exception("res_y property must be overwritten in sub class.")
+        ...
 
     @property
+    @abstractmethod
     def output_dir(self):
-        raise Exception("output_dir property must be overwritten in sub class.")
+        ...
