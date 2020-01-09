@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timedelta
 
-from .timewindow import RelAbsTime, TimeWindow
+from config.timewindow import RelAbsTime, TimeWindow
 
 
 class TestRelAbs:
