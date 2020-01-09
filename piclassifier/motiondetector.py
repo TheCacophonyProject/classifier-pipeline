@@ -17,6 +17,13 @@ class SlidingWindow:
         self.last_index = None
         self.size = len(self.frames)
         self.oldest_index = None
+   
+    def update_current_frame(self, frame):
+        with self.lock:
+            if self.last_index is None:
+                self.oldest_index = 0
+                self.last_index = 0
+            self.frames[self.last_index] = frame
 
     @property
     def current(self):
@@ -266,6 +273,7 @@ class MotionDetector(Processor):
                     self.movement_detected, lepton_frame, self.temp_thresh
                 )
         else:
+            self.thermal_window.update_current_frame(lepton_frame.pix)
             self.movement_detected = False
         self.num_frames += 1
 
