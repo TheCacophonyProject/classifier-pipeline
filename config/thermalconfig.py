@@ -65,6 +65,7 @@ class MotionConfig:
             dynamic_thresh=motion.get("dynamic-thresh", True),
         )
 
+
 @attr.s
 class RecorderConfig:
     preview_secs = attr.ib()
