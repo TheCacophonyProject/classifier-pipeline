@@ -17,7 +17,7 @@ class SlidingWindow:
         self.last_index = None
         self.size = len(self.frames)
         self.oldest_index = None
-   
+
     def update_current_frame(self, frame):
         with self.lock:
             if self.last_index is None:
