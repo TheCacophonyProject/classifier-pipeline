@@ -24,12 +24,8 @@ import numpy as np
 import os
 import pytz
 
-from cptv import CPTVReader
-import cv2
 
-import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
-from track.region import Region
 from track.framebuffer import FrameBuffer
 from track.track import Track
 
@@ -79,13 +75,6 @@ class Clip:
         if background is not None:
             self.background = background
             self._set_from_background()
-
-    def reset_preview(self):
-        self.background_calculated = False
-        self.background_frames = 0
-        self.background = None
-        self.temp_thresh = self.config.temp_thresh
-        self.preview_frames = []
 
     def _set_from_background(self):
         self.stats.mean_background_value = np.average(self.background)

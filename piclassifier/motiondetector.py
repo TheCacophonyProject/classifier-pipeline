@@ -7,6 +7,7 @@ import numpy as np
 
 from ml_tools import tools
 from ml_tools.tools import Rectangle
+from .processor import Processor
 
 
 class SlidingWindow:
@@ -73,28 +74,30 @@ class SlidingWindow:
             self.oldest_index = None
 
 
-class MotionDetector:
+class MotionDetector(Processor):
     FFC_PERIOD = timedelta(seconds=9.9)
     BACKGROUND_WEIGHTING_PER_FRAME = 0.99
     BACKGROUND_WEIGHT_EVERY = 3
 
     def __init__(
-        self,
-        res_x,
-        res_y,
-        config,
-        location_config,
-        recorder_config,
-        dynamic_thresh,
-        recorder,
+        self, res_x, res_y, thermal_config, dynamic_thresh, recorder,
     ):
-        self.config = config
-        self.location_config = location_config
-        self.preview_frames = recorder_config.preview_secs * recorder_config.frame_rate
-        self.compare_gap = config.frame_compare_gap + 1
-        edge = config.edge_pixels
-        self.min_frames = recorder_config.min_secs * recorder_config.frame_rate
-        self.max_frames = recorder_config.max_secs * recorder_config.frame_rate
+        self._output_dir = thermal_config.recorder.output_dir
+        self._res_x = res_x
+        self._res_y = res_y
+        self.config = thermal_config.motion
+        self.location_config = thermal_config.location
+        self.preview_frames = (
+            thermal_config.recorder.preview_secs * thermal_config.recorder.frame_rate
+        )
+        self.compare_gap = self.config.frame_compare_gap + 1
+        edge = self.config.edge_pixels
+        self.min_frames = (
+            thermal_config.recorder.min_secs * thermal_config.recorder.frame_rate
+        )
+        self.max_frames = (
+            thermal_config.recorder.max_secs * thermal_config.recorder.frame_rate
+        )
         self.clipped_window = SlidingWindow(
             (self.compare_gap, res_y - edge * 2, res_x - edge * 2), np.int32
         )
@@ -113,18 +116,20 @@ class MotionDetector:
         self.background_weight = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
         self.movement_detected = False
         self.dynamic_thresh = dynamic_thresh
-        self.temp_thresh = config.temp_thresh
+        self.temp_thresh = self.config.temp_thresh
         self.crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
-        self.rec_window = recorder_config.rec_window
+        self.rec_window = self.recorder_config.rec_window
         self.use_sunrise = self.rec_window.use_sunrise_sunset()
         self.last_sunrise_check = None
         self.location = None
         self.sunrise = None
         self.sunset = None
         self.recording = False
+
         if self.rec_window.use_sunrise_sunset():
             self.rec_window.set_location(
-                location_config.get_lat_long(use_default=True), location_config.altitude
+                self.location_config.get_lat_long(use_default=True),
+                self.location_config.altitude,
             )
 
         self.recorder = recorder
@@ -204,11 +209,6 @@ class MotionDetector:
 
         if diff > self.config.count_thresh:
             if not self.movement_detected:
-                print(
-                    "{} MotionDetector motion detected thresh {} count {}".format(
-                        timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
-                    )
-                )
                 logging.debug(
                     "{} MotionDetector motion detected thresh {} count {}".format(
                         timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
@@ -217,11 +217,6 @@ class MotionDetector:
             return True
 
         if self.movement_detected:
-            print(
-                "{} MotionDetector motion stopped thresh {} count {}".format(
-                    timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
-                )
-            )
             logging.debug(
                 "{} MotionDetector motion stopped thresh {} count {}".format(
                     timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
@@ -229,13 +224,13 @@ class MotionDetector:
             )
         return False
 
-    def last_frame(self):
+    def get_recent_frame(self):
         return self.thermal_window.current_copy()
 
     def can_record(self):
         return self.rec_window.inside_window()
 
-    def force_stop(self):
+    def disconnected(self):
         self.clipped_window.reset()
         self.thermal_window.reset()
         self.diff_window.reset()
@@ -273,6 +268,21 @@ class MotionDetector:
         else:
             self.movement_detected = False
         self.num_frames += 1
+
+    def skip_frame(self):
+        return
+
+    @property
+    def output_dir(self):
+        return self._output_dir
+
+    @property
+    def res_x(self):
+        return self._res_x
+
+    @property
+    def res_y(self):
+        return self._res_y
 
 
 def is_affected_by_ffc(lepton_frame):

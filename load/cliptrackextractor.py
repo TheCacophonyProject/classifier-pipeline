@@ -92,8 +92,6 @@ class ClipTrackExtractor:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
 
     def process_frame(self, clip, frame, ffc_affected=False):
-        if clip.ffc_affected and not ffc_affected:
-            clip.reset_preview()
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.frame_on))
 
@@ -349,7 +347,7 @@ class ClipTrackExtractor:
                 track.add_blank_frame(clip.frame_buffer)
                 clip.active_tracks.add(track)
                 self.print_if_verbose(
-                    "frame {} adding a blacnk frame to {} ".format(
+                    "frame {} adding a blank frame to {} ".format(
                         clip.frame_on, track.get_id()
                     )
                 )

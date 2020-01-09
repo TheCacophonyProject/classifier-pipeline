@@ -49,6 +49,7 @@ class MotionConfig:
     edge_pixels = attr.ib()
     warmer_only = attr.ib()
     dynamic_thresh = attr.ib()
+    run_classifier = attr.ib()
 
     @classmethod
     def load(cls, motion):
@@ -63,6 +64,7 @@ class MotionConfig:
             edge_pixels=motion.get("edge-pixels", 3),
             warmer_only=motion.get("warmer-only", False),
             dynamic_thresh=motion.get("dynamic-thresh", True),
+            run_classifier=motion.get("run-classifier", False),
         )
 
 

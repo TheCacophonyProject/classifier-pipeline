@@ -1,7 +1,7 @@
 """
 classifier-pipeline - this is a server side component that manipulates cptv
 files and to create a classification model of animals present
-Copyright (C) 2018, The Cacophony Project
+Copyright (C) 2020, The Cacophony Project
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -20,14 +20,34 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 from abc import ABC, abstractmethod
 
 
-class DefaultConfig(ABC):
-    @classmethod
+class Processor(ABC):
     @abstractmethod
-    def get_defaults(cls):
-        """ The function to get default config. """
+    def process_frame(self, lepton_frame):
         ...
 
     @abstractmethod
-    def validate(self):
-        """ The function to get default config. """
+    def get_recent_frame(self):
+        ...
+
+    @abstractmethod
+    def disconnected(self):
+        ...
+
+    @abstractmethod
+    def skip_frame(self):
+        ...
+
+    @property
+    @abstractmethod
+    def res_x(self):
+        ...
+
+    @property
+    @abstractmethod
+    def res_y(self):
+        ...
+
+    @property
+    @abstractmethod
+    def output_dir(self):
         ...
