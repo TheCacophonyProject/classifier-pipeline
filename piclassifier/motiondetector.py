@@ -122,41 +122,11 @@ class MotionDetector:
         self.sunrise = None
         self.sunset = None
         self.recording = False
-        if self.use_sunrise:
-            self.set_location(location_config)
+        if self.rec_window.use_sunrise_sunset():
+            self.rec_window.set_location(location_config)
 
         self.recorder = recorder
         self.ffc_affected = False
-
-    def set_location(self, location_config):
-        self.location = Location()
-        lat, lng = location_config.get_lat_long(use_default=True)
-        self.location.latitude = lat
-        self.location.longitude = lng
-
-        self.location.altitude = location_config.altitude
-        self.location.timezone = tools.get_timezone_str(lat, lng)
-
-    def get_sunrise_sunet(self):
-        date = datetime.now().date()
-        if self.last_sunrise_check is None or date > self.last_sunrise_check:
-            sun = self.location.sun()
-            if self.rec_window.start.is_relative:
-                self.rec_window.start.time = (
-                    sun["sunset"] + timedelta(seconds=self.rec_window.start.offset_s)
-                ).time()
-            if self.rec_window.end.is_relative:
-                self.rec_window.end.time = (
-                    sun["sunrise"] + timedelta(seconds=self.rec_window.end.offset_s)
-                ).time()
-            self.last_sunrise_check = date
-            logging.info(
-                "start_rec is {} end_rec is {} next check is {}".format(
-                    self.rec_window.start.time,
-                    self.rec_window.stop.time,
-                    self.last_sunrise_check,
-                )
-            )
 
     def calc_temp_thresh(self, thermal_frame, prev_ffc):
         if self.dynamic_thresh:
@@ -261,9 +231,6 @@ class MotionDetector:
         return self.thermal_window.current_copy()
 
     def can_record(self):
-        if self.use_sunrise:
-            self.get_sunrise_sunet()
-
         return self.rec_window.inside_window()
 
     def force_stop(self):
