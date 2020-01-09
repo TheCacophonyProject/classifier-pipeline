@@ -12,7 +12,8 @@ before_script:
 - pip install black
 
 script:
-- pytest
+- pytest ml_tools/test_rectangle.py
+- pytest config/test_timewindow.py
 - ./check-style
 
 before_deploy:
