@@ -123,7 +123,9 @@ class MotionDetector:
         self.sunset = None
         self.recording = False
         if self.rec_window.use_sunrise_sunset():
-            self.rec_window.set_location(location_config)
+            self.rec_window.set_location(
+                location_config.get_lat_long(use_default=True), location_config.altitude
+            )
 
         self.recorder = recorder
         self.ffc_affected = False
