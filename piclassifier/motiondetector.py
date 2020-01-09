@@ -118,7 +118,7 @@ class MotionDetector(Processor):
         self.dynamic_thresh = dynamic_thresh
         self.temp_thresh = self.config.temp_thresh
         self.crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
-        self.rec_window = self.recorder_config.rec_window
+        self.rec_window = thermal_config.recorder.rec_window
         self.use_sunrise = self.rec_window.use_sunrise_sunset()
         self.last_sunrise_check = None
         self.location = None
