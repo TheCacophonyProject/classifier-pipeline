@@ -25,6 +25,9 @@ class PiClassifier(Processor):
     NUM_CONCURRENT_TRACKS = 1
     DEBUG_EVERY = 100
     MAX_CONSEC = 3
+    # after every MAX_CONSEC frames skip this many frames
+    # this gives the cpu a break
+    SKIP_FRAMES = 7
 
     def __init__(self, config, thermal_config, classifier):
         self.frame_num = 0
@@ -241,7 +244,7 @@ class PiClassifier(Processor):
                 self.clip, lepton_frame.pix, self.motion_detector.ffc_affected
             )
             if self.motion_detector.ffc_affected or self.clip.on_preview():
-                self.skip_classifying = 7
+                self.skip_classifying = PiClassifier.SKIP_FRAMES
                 self.classified_consec = 0
             elif (
                 self.motion_detector.ffc_affected is False
@@ -252,7 +255,7 @@ class PiClassifier(Processor):
                 self.identify_last_frame()
                 self.classified_consec += 1
                 if self.classified_consec == PiClassifier.MAX_CONSEC:
-                    self.skip_classifying = 7
+                    self.skip_classifying = PiClassifier.SKIP_FRAMES
                     self.classified_consec = 0
 
         elif self.clip is not None:
