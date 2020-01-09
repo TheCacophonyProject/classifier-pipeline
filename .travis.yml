@@ -13,7 +13,7 @@ before_script:
 
 script:
 - pytest ml_tools/test_rectangle.py
-- cd config && pytest test_timewindow.py
+- pytest config/test_timewindow.py
 - ./check-style
 
 before_deploy:
