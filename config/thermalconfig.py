@@ -1,11 +1,11 @@
 from pathlib import Path
 import attr
 import toml
-import datetime
 import portalocker
 import os
 
 from .locationconfig import LocationConfig
+from .timewindow import RelAbsTime, TimeWindow
 
 CONFIG_FILENAME = "config.toml"
 CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
@@ -66,67 +66,13 @@ class MotionConfig:
         )
 
 
-class RelAbsTime:
-    def __init__(self, time_str, default_offset=None, default_time=None):
-        self.is_relative = False
-        self.offset_s = 0
-        self.time = None
-
-        if time_str == "":
-            self.any_time = True
-            return
-
-        try:
-            self.any_time = False
-            self.time = datetime.datetime.strptime(time_str, "%H:%M").time()
-        except:
-            if default_time:
-                self.time = default_time
-            else:
-                self.is_relative = True
-                self.offset_s = self.parse_duration(time_str, default_offset)
-
-    def is_after(self):
-        return self.any_time or datetime.datetime.now().time() > self.time
-
-    def is_before(self):
-        return self.any_time or datetime.datetime.now().time() < self.time
-
-    def parse_duration(self, time_str, default_offset=None):
-
-        if not time_str:
-            return default_offset
-
-        time_type = time_str[-1]
-        if time_type.isalpha():
-            try:
-                offset = int(time_str[:-1])
-            except ValueError:
-                return default_offset
-            if time_type == "s":
-                return offset
-            elif time_type == "m":
-                return offset * 60
-            elif time_type == "h":
-                return offset * 60 * 60
-            return offset
-        else:
-            try:
-                offset = int(time_str[:-1])
-                return offset * 60
-            except ValueError:
-                pass
-            return default_offset
-
-
 @attr.s
 class RecorderConfig:
     preview_secs = attr.ib()
     min_secs = attr.ib()
     max_secs = attr.ib()
     frame_rate = attr.ib()
-    start_rec = attr.ib()
-    end_rec = attr.ib()
+    rec_window = attr.ib()
     output_dir = attr.ib()
 
     @classmethod
@@ -136,8 +82,10 @@ class RecorderConfig:
             max_secs=recorder.get("max-secs", 10),
             preview_secs=recorder.get("preview-secs", 5),
             frame_rate=recorder.get("frame-rate", 9),
-            start_rec=RelAbsTime(window.get("start-recording"), default_offset=30 * 60),
-            end_rec=RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
+            rec_window=TimeWindow(
+                RelAbsTime(window.get("start-recording"), default_offset=30 * 60),
+                RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
+            ),
             output_dir=recorder["output-dir"],
         )
 
