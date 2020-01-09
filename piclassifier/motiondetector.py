@@ -128,7 +128,8 @@ class MotionDetector(Processor):
 
         if self.rec_window.use_sunrise_sunset():
             self.rec_window.set_location(
-                self.location_config.get_lat_long(use_default=True), self.location_config.altitude
+                self.location_config.get_lat_long(use_default=True),
+                self.location_config.altitude,
             )
 
         self.recorder = recorder
