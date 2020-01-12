@@ -18,6 +18,13 @@ class SlidingWindow:
         self.size = len(self.frames)
         self.oldest_index = None
 
+    def update_current_frame(self, frame):
+        with self.lock:
+            if self.last_index is None:
+                self.oldest_index = 0
+                self.last_index = 0
+            self.frames[self.last_index] = frame
+
     @property
     def current(self):
         with self.lock:
@@ -118,7 +125,7 @@ class MotionDetector(Processor):
         self.dynamic_thresh = dynamic_thresh
         self.temp_thresh = self.config.temp_thresh
         self.crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
-        self.rec_window = self.recorder_config.rec_window
+        self.rec_window = thermal_config.recorder.rec_window
         self.use_sunrise = self.rec_window.use_sunrise_sunset()
         self.last_sunrise_check = None
         self.location = None
@@ -128,7 +135,7 @@ class MotionDetector(Processor):
 
         if self.rec_window.use_sunrise_sunset():
             self.rec_window.set_location(
-                self.location_config.get_lat_long(use_default=True),
+                *self.location_config.get_lat_long(use_default=True),
                 self.location_config.altitude,
             )
 
@@ -266,6 +273,7 @@ class MotionDetector(Processor):
                     self.movement_detected, lepton_frame, self.temp_thresh
                 )
         else:
+            self.thermal_window.update_current_frame(lepton_frame.pix)
             self.movement_detected = False
         self.num_frames += 1
 
