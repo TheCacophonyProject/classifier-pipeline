@@ -241,7 +241,7 @@ evaluate:
     labels : ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
 build:
     #file containing clips to be banned relative to running path
-    banned_clips_file: "excluded_clips.txt"
+    # banned_clips_file: "excluded_clips.txt"
 
     # uses split from previous run
     use_previous_split: True
