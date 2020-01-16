@@ -22,13 +22,15 @@ excluded_tags: ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit', 'h
                   'mouse', 'bird-kiwi', 'for_grant', 'missclassified', 'other']
 
 # Reprocess files which have already been processed.
-reprocess: True
+reprocess: true
 
 # Colour map override to use when exporting to MPEG. If not specified,
 # a sensible default colour map is used.
 # Note: This is should be a full path. It is not relative to the # base_data_folder.
 # previews_colour_map: "custom_colormap.dat"
 
+# Labels 
+labels : ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
 
 # Number of worker threads to use.  0 disables worker pool and forces a single thread.
 worker_threads: 0
@@ -237,11 +239,9 @@ evaluate:
     # false positive's and 'none' can be mapped to the same label as they represent the same idea.
     null_tags: ["false-positive", "none", "no-tag"]
     
-    # Labels 
-    labels : ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
 build:
     #file containing clips to be banned relative to running path
-    banned_clips_file: "excluded_clips.txt"
+    # banned_clips_file: "excluded_clips.txt"
 
     # uses split from previous run
     use_previous_split: False
