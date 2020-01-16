@@ -14,6 +14,10 @@ before_script:
 script:
 - pytest
 - ./check-style
+- python3 classify.py all -c smoketest/test-config.yaml
+- python3 load.py -c smoketest/test-config.yaml
+- python3 build.py -c smoketest/test-config.yaml
+
 
 before_deploy:
 - "pip install pex"
