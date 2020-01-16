@@ -86,9 +86,7 @@ class MotionDetector(Processor):
     BACKGROUND_WEIGHTING_PER_FRAME = 0.99
     BACKGROUND_WEIGHT_EVERY = 3
 
-    def __init__(
-        self, res_x, res_y, thermal_config, dynamic_thresh, recorder,
-    ):
+    def __init__(self, res_x, res_y, thermal_config, dynamic_thresh, recorder):
         self._output_dir = thermal_config.recorder.output_dir
         self._res_x = res_x
         self._res_y = res_y

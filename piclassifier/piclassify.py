@@ -32,7 +32,9 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cptv", help="a CPTV file to send", default=None)
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
-    parser.add_argument("--thermal-config-file", help="Path to pi-config file (config.toml) to use")
+    parser.add_argument(
+        "--thermal-config-file", help="Path to pi-config file (config.toml) to use"
+    )
 
     args = parser.parse_args()
     return args

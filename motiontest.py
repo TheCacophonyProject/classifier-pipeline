@@ -12,7 +12,9 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("cptv", help="a CPTV file to detect motion")
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
-    parser.add_argument("--thermal-config-file", help="Path to pi-config file (config.toml) to use")
+    parser.add_argument(
+        "--thermal-config-file", help="Path to pi-config file (config.toml) to use"
+    )
 
     args = parser.parse_args()
     return args
@@ -28,11 +30,7 @@ def main():
     res_y = config.res_y
     print("detecting on  " + args.cptv)
     motion_detector = MotionDetector(
-        res_x,
-        res_y,
-        thermal_config,
-        config.tracking.dynamic_thresh,
-        None,
+        res_x, res_y, thermal_config, config.tracking.dynamic_thresh, None
     )
     with open(args.cptv, "rb") as f:
         reader = CPTVReader(f)
