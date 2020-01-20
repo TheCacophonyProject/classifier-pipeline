@@ -1,7 +1,9 @@
-from cptv import CPTVWriter
 from datetime import datetime
+import logging
 import os
 import yaml
+
+from cptv import CPTVWriter
 
 CPTV_TEMP_EXT = ".cptv.temp"
 
@@ -72,6 +74,7 @@ class CPTVRecorder:
 
         self.writer.write_header()
         self.recording = True
+        logging.debug("recording started temp_thresh: %d", temp_thresh)
 
     def write_frame(self, lepton_frame, temp_thresh):
         if self.writer is None:
@@ -80,6 +83,8 @@ class CPTVRecorder:
         self.frames += 1
 
     def stop_recording(self):
+        logging.debug("recording ended")
+
         if self.writer is None:
             return
 
