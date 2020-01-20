@@ -55,6 +55,9 @@ class TestWindow:
         assert time_window.inside_window()
 
         time_window.end = RelAbsTime((cur_date + timedelta(hours=-1)).strftime("%H:%M"))
+        print(time_window.end.time)
+
+        print(time_window.end.time)
         assert not time_window.inside_window()
 
     def test_sunrise_times(self):
