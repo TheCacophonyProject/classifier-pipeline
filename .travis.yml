@@ -13,7 +13,7 @@ before_script:
 - pip install black
 
 script:
-- pytest -s
+- pytest
 - ./check-style
 - python3 load.py -c smoketest/test-config.yaml
 - python3 build.py -c smoketest/test-config.yaml
