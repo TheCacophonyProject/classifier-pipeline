@@ -1,12 +1,11 @@
 #!/usr/bin/python3
 import absl.logging
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 import os
 import psutil
 import socket
-import time
 
 # fixes logging not showing up in tensorflow
 
@@ -16,12 +15,13 @@ import numpy as np
 from config.config import Config
 from config.thermalconfig import ThermalConfig
 from .cptvrecorder import CPTVRecorder
+from .headerinfo import HeaderInfo
 from ml_tools.logs import init_logging
 from ml_tools import tools
 from .motiondetector import MotionDetector
 from .piclassifier import PiClassifier
 from service import SnapshotService
-from .telemetry import Telemetry
+from .cameras import boson, lepton3
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -91,7 +91,7 @@ def main():
         if os.path.exists(SOCKET_NAME):
             raise
 
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
     sock.listen(1)
     while True:
@@ -105,42 +105,38 @@ def main():
             connection.close()
 
 
-def handle_connection(connection, processor):
-    img_dtype = np.dtype("uint16")
-    # big endian > little endian <
-    # lepton3 is big endian while python is little endian
-
-    thermal_frame = np.empty((processor.res_y, processor.res_x), dtype=img_dtype)
+def handle_headers(connection):
+    headers = ""
+    line = ""
     while True:
-        data = connection.recv(400 * 400 * 2 + TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE)
+        data = connection.recv(1).decode()
 
+        line += data
+        if data == "\n":
+            if line.strip() == "":
+                break
+
+            headers += line
+            line = ""
+    return HeaderInfo.parse_header(headers)
+
+
+def handle_connection(connection, processor):
+    headers = handle_headers(connection)
+
+    raw_frame = lepton3.Lepton3(headers)
+
+    while True:
+        data = connection.recv(
+            headers.frame_size + raw_frame.get_telemetry_size(), socket.MSG_WAITALL
+        )
         if not data:
             logging.info("disconnected from camera")
             processor.disconnected()
             return
 
-        if len(data) > processor.res_y * processor.res_x * 2:
-            telemetry = Telemetry.parse_telemetry(
-                data[: TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE]
-            )
+        lepton_frame = raw_frame.parse(data)
 
-            thermal_frame = np.frombuffer(
-                data, dtype=img_dtype, offset=TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE
-            ).reshape(processor.res_y, processor.res_x)
-        else:
-            telemetry = Telemetry()
-            telemetry.last_ffc_time = timedelta(milliseconds=time.time())
-            telemetry.time_on = timedelta(
-                milliseconds=time.time(), seconds=MotionDetector.FFC_PERIOD.seconds + 1
-            )
-            thermal_frame = np.frombuffer(data, dtype=img_dtype, offset=0).reshape(
-                processor.res_y, processor.res_x
-            )
-
-        # swap from big to little endian
-        lepton_frame = Frame(
-            thermal_frame.byteswap(), telemetry.time_on, telemetry.last_ffc_time
-        )
         t_max = np.amax(lepton_frame.pix)
         t_min = np.amin(lepton_frame.pix)
         if t_max > 10000 or t_min == 0:
