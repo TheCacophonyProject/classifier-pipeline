@@ -23,6 +23,8 @@ class TimeWindow:
             self.update_sun_times()
             if self.end.time < self.start.time:
                 return self.start.is_after() or self.end.is_before()
+        elif self.start.time == self.end.time:
+            return True
         return self.start.is_after() and self.end.is_before()
 
     def update_sun_times(self):

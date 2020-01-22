@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from struct import unpack_from
-
+from datetime import timedelta
 import numpy as np
 from cptv import Frame
 
@@ -20,7 +20,11 @@ class RawFrame(ABC):
             data, dtype=self.img_dtype, offset=self.get_telemetry_size()
         ).reshape(self.res_y, self.res_x)
 
-        return Frame(thermal_frame, telemetry.time_on, telemetry.last_ffc_time)
+        return Frame(
+            thermal_frame,
+            telemetry.last_ffc_time + timedelta(minutes=1),
+            telemetry.last_ffc_time,
+        )
 
     @abstractmethod
     def get_telemetry_size(self):

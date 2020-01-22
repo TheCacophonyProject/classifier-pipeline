@@ -63,28 +63,10 @@ def main():
 
     config = Config.load_from_file()
     thermal_config = ThermalConfig.load_from_file()
-    proccesor = None
-    if thermal_config.motion.run_classifier:
-        classifier = get_classifier(config)
-        proccesor = PiClassifier(config, thermal_config, classifier)
-    else:
-        proccesor = MotionDetector(
-            config.res_x,
-            config.res_y,
-            thermal_config,
-            config.tracking.dynamic_thresh,
-            CPTVRecorder(thermal_config),
-        )
+
     if args.cptv:
-        with open(args.cptv, "rb") as f:
-            reader = CPTVReader(f)
-            for frame in reader:
-                proccesor.process_frame(frame)
+        return parse_cptv(args.cptv, config, thermal_config)
 
-        proccesor.disconnected()
-        return
-
-    service = SnapshotService(proccesor)
     try:
         os.unlink(SOCKET_NAME)
     except OSError:
@@ -99,10 +81,43 @@ def main():
         connection, client_address = sock.accept()
         logging.info("connection from %s", client_address)
         try:
-            handle_connection(connection, proccesor)
+            handle_connection(connection, config, thermal_config)
         finally:
             # Clean up the connection
             connection.close()
+
+
+def parse_cptv(cptv_file, config, thermal_config):
+    with open(cptv_file, "rb") as f:
+        reader = CPTVReader(f)
+
+        headers = HeaderInfo(
+            res_x=reader.x_resolution,
+            res_y=reader.y_resolution,
+            fps=9,
+            brand="",
+            model="",
+            frame_size=reader.x_resolution * reader.y_resolution * 2,
+            pixel_bits=16,
+        )
+        processor = get_processor(config, thermal_config, headers)
+        for frame in reader:
+            processor.process_frame(frame)
+
+        processor.disconnected()
+
+
+def get_processor(config, thermal_config, headers):
+    if thermal_config.motion.run_classifier:
+        classifier = get_classifier(config)
+        return PiClassifier(config, thermal_config, classifier, headers)
+
+    return MotionDetector(
+        thermal_config,
+        config.tracking.dynamic_thresh,
+        CPTVRecorder(thermal_config, headers),
+        headers,
+    )
 
 
 def handle_headers(connection):
@@ -121,8 +136,10 @@ def handle_headers(connection):
     return HeaderInfo.parse_header(headers)
 
 
-def handle_connection(connection, processor):
+def handle_connection(connection, config, thermal_config):
     headers = handle_headers(connection)
+    processor = get_processor(config, thermal_config, headers)
+    service = SnapshotService(processor)
 
     raw_frame = lepton3.Lepton3(headers)
 
@@ -133,12 +150,13 @@ def handle_connection(connection, processor):
         if not data:
             logging.info("disconnected from camera")
             processor.disconnected()
+            service.quit()
             return
 
-        lepton_frame = raw_frame.parse(data)
+        frame = raw_frame.parse(data)
 
-        t_max = np.amax(lepton_frame.pix)
-        t_min = np.amin(lepton_frame.pix)
+        t_max = np.amax(frame .pix)
+        t_min = np.amin(frame .pix)
         if t_max > 10000 or t_min == 0:
             logging.warning(
                 "received frame has odd values skipping thermal frame max {} thermal frame min {} cpu % {} memory % {}".format(
@@ -148,4 +166,4 @@ def handle_connection(connection, processor):
             # this frame has bad data probably from lack of CPU
             processor.skip_frame()
             continue
-        processor.process_frame(lepton_frame)
+        processor.process_frame(frame)
