@@ -9,7 +9,7 @@ import socket
 
 # fixes logging not showing up in tensorflow
 
-from cptv import Frame, CPTVReader
+from cptv import CPTVReader
 import numpy as np
 
 from config.config import Config
@@ -21,7 +21,7 @@ from ml_tools import tools
 from .motiondetector import MotionDetector
 from .piclassifier import PiClassifier
 from service import SnapshotService
-from .cameras import boson, lepton3
+from .cameras import lepton3
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -138,6 +138,7 @@ def handle_headers(connection):
 
 def handle_connection(connection, config, thermal_config):
     headers = handle_headers(connection)
+    logging.debug("parsed camera headers", headers)
     processor = get_processor(config, thermal_config, headers)
     service = SnapshotService(processor)
 

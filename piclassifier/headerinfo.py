@@ -42,7 +42,6 @@ class HeaderInfo:
                 headers.frame_size = int(
                     headers.res_x * headers.res_y * headers.pixel_bits / 8
                 )
-        print(headers)
         headers.validate()
 
         return headers
