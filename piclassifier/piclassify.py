@@ -144,6 +144,7 @@ def handle_connection(connection, config, thermal_config):
     raw_frame = lepton3.Lepton3(headers)
 
     while True:
+        print("waiting for ", headers.frame_size + raw_frame.get_telemetry_size(), socket.MSG_WAITALL)
         data = connection.recv(
             headers.frame_size + raw_frame.get_telemetry_size(), socket.MSG_WAITALL
         )

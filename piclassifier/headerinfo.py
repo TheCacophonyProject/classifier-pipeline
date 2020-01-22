@@ -35,13 +35,14 @@ class HeaderInfo:
         )
         if headers.res_x and headers.res_y:
             if not headers.pixel_bits and headers.frame_size:
-                headers.pixel_bits = (
+                headers.pixel_bits = int(
                     8 * headers.frame_size / (headers.res_x * headers.res_y)
                 )
             elif not headers.frame_size and headers.pixel_bits:
                 headers.frame_size = int(
                     headers.res_x * headers.res_y * headers.pixel_bits / 8
                 )
+        print(headers)
         headers.validate()
 
         return headers
