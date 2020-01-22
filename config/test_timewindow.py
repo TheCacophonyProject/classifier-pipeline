@@ -49,7 +49,7 @@ class TestWindow:
         start = RelAbsTime(cur_date.strftime("%H:%M"))
         end = RelAbsTime(cur_date.strftime("%H:%M"))
         time_window = TimeWindow(start, end)
-        assert not time_window.inside_window()
+        assert time_window.inside_window()
 
         time_window.end = RelAbsTime((cur_date + timedelta(hours=1)).strftime("%H:%M"))
         assert time_window.inside_window()

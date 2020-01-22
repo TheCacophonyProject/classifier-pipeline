@@ -155,8 +155,8 @@ def handle_connection(connection, config, thermal_config):
 
         frame = raw_frame.parse(data)
 
-        t_max = np.amax(frame .pix)
-        t_min = np.amin(frame .pix)
+        t_max = np.amax(frame.pix)
+        t_min = np.amin(frame.pix)
         if t_max > 10000 or t_min == 0:
             logging.warning(
                 "received frame has odd values skipping thermal frame max {} thermal frame min {} cpu % {} memory % {}".format(
