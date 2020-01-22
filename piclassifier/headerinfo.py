@@ -1,0 +1,55 @@
+import yaml
+import attr
+
+
+@attr.s
+class HeaderInfo:
+
+    X_RESOLUTION = "ResX"
+    Y_RESOLUTION = "ResY"
+    FPS = "FPS"
+    MODEL = "Model"
+    BRAND = "Brand"
+    PIXEL_BITS = "PixelBits"
+    FRAME_SIZE = "FrameSize"
+
+    res_x = attr.ib()
+    res_y = attr.ib()
+    fps = attr.ib()
+    brand = attr.ib()
+    model = attr.ib()
+    frame_size = attr.ib()
+    pixel_bits = attr.ib()
+
+    @classmethod
+    def parse_header(cls, raw_string):
+        raw = yaml.safe_load(raw_string)
+        headers = cls(
+            res_x=raw.get(HeaderInfo.X_RESOLUTION),
+            res_y=raw.get(HeaderInfo.Y_RESOLUTION),
+            fps=raw.get(HeaderInfo.FPS),
+            brand=raw.get(HeaderInfo.BRAND),
+            model=raw.get(HeaderInfo.MODEL),
+            frame_size=raw.get(HeaderInfo.FRAME_SIZE),
+            pixel_bits=raw.get(HeaderInfo.PIXEL_BITS),
+        )
+
+        headers.validate()
+
+        if not headers.frame_size:
+            headers.frame_size = int(
+                headers.res_x * headers.res_y * headers.pixel_bits / 8
+            )
+        return headers
+
+    def validate(self):
+        if not (self.res_x and self.res_y and self.fps and self.pixel_bits):
+            raise ValueError(
+                "header info is missing a required field ({}, {}, {} and/or {})".format(
+                    HeaderInfo.X_RESOLUTION,
+                    HeaderInfo.Y_RESOLUTION,
+                    HeaderInfo.FPS,
+                    HeaderInfo.PIXEL_BITS,
+                )
+            )
+        return True
