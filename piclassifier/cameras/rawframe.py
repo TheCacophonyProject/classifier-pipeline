@@ -21,9 +21,7 @@ class RawFrame(ABC):
         ).reshape(self.res_y, self.res_x)
 
         return Frame(
-            thermal_frame,
-            telemetry.last_ffc_time + timedelta(minutes=1),
-            telemetry.last_ffc_time,
+            thermal_frame.byteswap(), telemetry.time_on, telemetry.last_ffc_time
         )
 
     @abstractmethod
