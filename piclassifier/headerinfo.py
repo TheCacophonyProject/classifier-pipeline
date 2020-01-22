@@ -33,13 +33,17 @@ class HeaderInfo:
             frame_size=raw.get(HeaderInfo.FRAME_SIZE),
             pixel_bits=raw.get(HeaderInfo.PIXEL_BITS),
         )
-
+        if headers.res_x and headers.res_y:
+            if not headers.pixel_bits and headers.frame_size:
+                headers.pixel_bits = (
+                    8 * headers.frame_size / (headers.res_x * headers.res_y)
+                )
+            elif not headers.frame_size and headers.pixel_bits:
+                headers.frame_size = int(
+                    headers.res_x * headers.res_y * headers.pixel_bits / 8
+                )
         headers.validate()
 
-        if not headers.frame_size:
-            headers.frame_size = int(
-                headers.res_x * headers.res_y * headers.pixel_bits / 8
-            )
         return headers
 
     def validate(self):
