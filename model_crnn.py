@@ -343,35 +343,7 @@ class ModelCRNN_HQ(ConvModel):
 
         # -------------------------------------
         # run the LSTM
-        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
-        dropout = tf.nn.rnn_cell.DropoutWrapper(
-            lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
-        )
-        init_state = tf.nn.rnn_cell.LSTMStateTuple(
-            self.state_in[:, :, 0], self.state_in[:, :, 1]
-        )
-
-        lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
-            cell=dropout,
-            inputs=out,
-            initial_state=init_state,
-            dtype=tf.float32,
-            scope="lstm",
-        )
-
-        lstm_state_1, lstm_state_2 = lstm_states
-
-        # just need the last output
-        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
-        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-
-        logging.info(
-            "lstm output shape: {} x {}".format(
-                lstm_outputs.shape[1], lstm_output.shape
-            )
-        )
-        logging.info("lstm state shape: {}".format(lstm_state.shape))
-
+        memory_output, memory_state = self._build_memory(out)
         if self.params["l2_reg"] > 0:
             regularizer = tf.contrib.layers.l2_regularizer(scale=self.params["l2_reg"])
         else:
@@ -379,7 +351,7 @@ class ModelCRNN_HQ(ConvModel):
 
         # dense hidden layer
         dense = tf.layers.dense(
-            inputs=lstm_output,
+            inputs=memory_output,
             units=384,
             activation=tf.nn.relu,
             name="hidden",
@@ -427,11 +399,11 @@ class ModelCRNN_HQ(ConvModel):
         # -------------------------------------
         # novelty
 
-        self.setup_novelty(logits, lstm_output)
+        self.setup_novelty(logits, memory_output)
         self.setup_optimizer(loss)
 
         # make reference to special nodes
-        tf.identity(lstm_state, "state_out")
+        tf.identity(memory_state, "state_out")
         tf.identity(dense, "hidden_out")
         tf.identity(logits, "logits_out")
 
@@ -540,43 +512,15 @@ class ModelCRNN_LQ(ConvModel):
         logging.info("Output shape {}".format(out.shape))
 
         # -------------------------------------
-        # run the LSTM
-
-        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
-        dropout = tf.nn.rnn_cell.DropoutWrapper(
-            lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
-        )
-        init_state = tf.nn.rnn_cell.LSTMStateTuple(
-            self.state_in[:, :, 0], self.state_in[:, :, 1]
-        )
-
-        lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
-            cell=dropout,
-            inputs=out,
-            initial_state=init_state,
-            dtype=tf.float32,
-            scope="lstm",
-        )
-
-        lstm_state_1, lstm_state_2 = lstm_states
-
-        # just need the last output
-        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
-        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-
-        logging.info(
-            "lstm output shape: {} x {}".format(
-                lstm_outputs.shape[1], lstm_output.shape
-            )
-        )
-        logging.info("lstm state shape: {}".format(lstm_state.shape))
+        # add short term memory (GRU / LSTM)
+        memory_output, memory_state = self._build_memory(out)
 
         # -------------------------------------
         # dense / logits
 
         # dense layer on top of convolutional output mapping to class labels.
         logits = tf.layers.dense(
-            inputs=lstm_output, units=label_count, activation=None, name="logits"
+            inputs=memory_output, units=label_count, activation=None, name="logits"
         )
         tf.summary.histogram("weights/logits", logits)
 
@@ -608,11 +552,11 @@ class ModelCRNN_LQ(ConvModel):
             tf.cast(correct_prediction, dtype=tf.float32), name="accuracy"
         )
 
-        self.setup_novelty(logits, lstm_output)
+        self.setup_novelty(logits, memory_output)
         self.setup_optimizer(loss)
 
         # make reference to special nodes
-        tf.identity(lstm_state, "state_out")
-        tf.identity(lstm_output, "hidden_out")
+        tf.identity(memory_state, "state_out")
+        tf.identity(memory_output, "hidden_out")
         tf.identity(logits, "logits_out")
         self.attach_nodes()

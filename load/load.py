@@ -63,7 +63,7 @@ def load_clips(config, target):
     loader = ClipLoader(config)
     if target is None:
         target = config.source_folder
-
+    print("load from ", target)
     if os.path.splitext(target)[1] == ".cptv":
         loader.process_file(target)
     else:

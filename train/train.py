@@ -4,7 +4,7 @@ import pickle
 
 import tensorflow as tf
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
-
+from model_resnet import ResnetModel
 from ml_tools.dataset import dataset_db_path
 
 
@@ -20,7 +20,19 @@ def train_model(run_name, conf, hyper_params):
     with open(datasets_filename, "rb") as f:
         dsets = pickle.load(f)
     labels = dsets[0].labels
-    model = ModelCRNN_LQ(labels=len(labels), train_config=conf.train, **hyper_params)
+    # model = ModelCRNN_LQ(labels=len(labels), train_config=conf.train, **hyper_params)
+    if conf.train.model == ResnetModel.MODEL_NAME:
+        model = ResnetModel(labels, conf.train)
+        return
+    elif conf.train.model == ModelCRNN_HQ.MODEL_NAME:
+        model = ModelCRNN_HQ(
+            labels=len(labels), train_config=conf.train, **hyper_params
+        )
+    else:
+        model = ModelCRNN_LQ(
+            labels=len(labels), train_config=conf.train, **hyper_params
+        )
+
     model.import_dataset(datasets_filename)
     # display the data set summary
     print("Training on labels", labels)

@@ -176,6 +176,8 @@ load:
     #cache buffer frame to disk reducing memory usage
     cache_to_disk: True
 train:
+    # model_resnet, model_lq, or model_hq
+    model: "model_resnet"
     hyper_params:
         # training
         batch_size: 16
@@ -187,15 +189,29 @@ train:
 
         # model
         batch_norm: true
-        lstm_units: 256
+        lstm_units: 512
+        gru_units: 512
+        enable_flow: true
 
         # augmentation
         augmentation: true
         thermal_threshold: 10
         scale_frequency: 0.5
 
+        #  resnet
+    resnet_params:
+        num_filters: 32
+        kernel_size: 3
+        conv_stride: 2
+        block_sizes : [3]
+        block_strides: [3]
+        bottleneck: false
+        resnet_size: 50
     # Number of epochs to train for
     epochs: 30
+    
+    # use a gru cell or a lstm cell
+    use_gru: true
 
     # Location to write various training outputs to. Relative to
     # base_data_folder. Defaults to "training"

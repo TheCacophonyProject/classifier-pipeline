@@ -30,13 +30,19 @@ class TrainConfig(DefaultConfig):
     hyper_params = attr.ib()
     train_dir = attr.ib()
     epochs = attr.ib()
+    resnet_params = attr.ib()
+    use_gru = attr.ib()
+    model = attr.ib()
 
     @classmethod
     def load(cls, raw, base_data_folder):
         return cls(
+            resnet_params=ResnetConfig.load(raw.get("resnet_params")),
             hyper_params=raw["hyper_params"],
             train_dir=path.join(base_data_folder, raw.get("train_dir", "train")),
             epochs=raw["epochs"],
+            use_gru=raw["use_gru"],
+            model=raw["model"],
         )
 
     @classmethod
@@ -55,10 +61,42 @@ class TrainConfig(DefaultConfig):
                 "augmentation": True,
                 "thermal_threshold": 10,
                 "scale_frequency": 0.5,
+                "gru_units": 256,
             },
+            resnet_params=None,
             train_dir="train",
             epochs=30,
+            use_gru=True,
+            model="Resnet",
         )
 
     def validate(self):
         return True
+
+
+@attr.s
+class ResnetConfig:
+    #  resnet
+    num_filters = attr.ib()
+    kernel_size = attr.ib()
+    conv_stride = attr.ib()
+    block_sizes = attr.ib()
+    block_strides = attr.ib()
+    bottleneck = attr.ib()
+    resnet_size = attr.ib()
+    first_pool_size = attr.ib()
+    first_pool_stride = attr.ib()
+
+    @classmethod
+    def load(cls, raw):
+        return cls(
+            num_filters=raw.get("num_filters"),
+            kernel_size=raw.get("kernel_size"),
+            conv_stride=raw.get("conv_stride"),
+            block_sizes=raw.get("block_sizes"),
+            block_strides=raw.get("block_strides"),
+            bottleneck=raw.get("bottleneck"),
+            resnet_size=raw.get("resnet_size"),
+            first_pool_size=raw.get("first_pool_size"),
+            first_pool_stride=raw.get("first_pool_stride"),
+        )

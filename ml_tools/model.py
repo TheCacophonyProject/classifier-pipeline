@@ -25,7 +25,7 @@ class Model:
     VERSION = "0.3.0"
 
     def __init__(self, train_config=None, session=None):
-
+        self.use_gru = train_config.use_gru
         self.name = "model"
         self.session = session or tools.get_session()
         self.saver = None
@@ -1044,3 +1044,75 @@ class Model:
         assign_op = self.session.graph.get_operation_by_name(name + "_assign_op")
         var_input = self.session.graph.get_tensor_by_name(name + "_in:0")
         self.session.run(assign_op, feed_dict={var_input: data})
+
+    def _build_memory(self, inputs):
+        if self.use_gru:
+            return self.gru_cell(inputs)
+
+        return self.lstm_cell(inputs)
+
+    def gru_cell(self, inputs):
+        gru_cell = tf.nn.rnn_cell.GRUCell(num_units=self.params["gru_units"])
+        dropout = tf.nn.rnn_cell.DropoutWrapper(
+            gru_cell, output_keep_prob=self.keep_prob, dtype=np.float32
+        )
+        # init_state_1 = tf.nn.rnn_cell.LSTMStateTuple(
+        #     self.state_in[:, :, 0], self.state_in[:, :, 1]
+        # )
+
+        init_state_2 = self.state_in
+
+        print("the state_in object shape is :", self.state_in.shape)
+        gru_outputs, gru_states = tf.nn.dynamic_rnn(
+            cell=dropout,
+            inputs=inputs,
+            initial_state=init_state_2[:, :, 0],
+            dtype=tf.float32,
+            scope="lstm",
+        )
+        print("The GRU output shape is: ", gru_outputs.shape)
+
+        # GRU_state_1, GRU_state_2 = GRU_states
+
+        # just need the last output
+        gru_output = tf.identity(gru_outputs[:, -1], "lstm_out")
+        gru_state = tf.identity(gru_states[:, -1], "gru_out")
+        # GRU_state = tf.stack([GRU_state_1, GRU_state_2], axis=2)
+
+        logging.info(
+            "gru output shape: {} x {}".format(gru_outputs.shape[1], gru_output.shape)
+        )
+        logging.info("gru state shape: {}".format(gru_state.shape))
+
+        return gru_output, gru_state
+
+    def lstm_cell(self, inputs):
+        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
+        dropout = tf.nn.rnn_cell.DropoutWrapper(
+            lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
+        )
+        init_state = tf.nn.rnn_cell.LSTMStateTuple(
+            self.state_in[:, :, 0], self.state_in[:, :, 1]
+        )
+
+        lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
+            cell=dropout,
+            inputs=inputs,
+            initial_state=init_state,
+            dtype=tf.float32,
+            scope="lstm",
+        )
+
+        lstm_state_1, lstm_state_2 = lstm_states
+
+        # just need the last output
+        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
+        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
+
+        logging.info(
+            "lstm output shape: {} x {}".format(
+                lstm_outputs.shape[1], lstm_output.shape
+            )
+        )
+        logging.info("lstm state shape: {}".format(lstm_state.shape))
+        return lstm_output, lstm_state
