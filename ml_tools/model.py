@@ -1,5 +1,7 @@
 import tensorflow as tf
-from tensorflow.contrib.tensorboard.plugins import projector
+# from tensorflow.contrib.tensorboard.plugins import projector
+from tensorboard.plugins import projector
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -29,6 +31,7 @@ class Model:
         self.name = "model"
         self.session = session or tools.get_session()
         self.saver = None
+        tf.compat.v1.enable_control_flow_v2()
 
         # datasets
         self.datasets = namedtuple("Datasets", "train, validation, test")
@@ -205,7 +208,6 @@ class Model:
             if len(Xm) == 0:
                 continue
             samples = Xm.shape[0]
-
             # only calculate summary on first batch, as otherwise we could get many summaries for a single timestep.
             # a better solution would be to accumulate and average the summaries which tensorflow sort of has support for.
             feed_dict = self.get_feed_dict(Xm, ym)
@@ -663,7 +665,7 @@ class Model:
         print("Starting benchmark.")
         self.benchmark_model()
         print("Training...")
-
+        iterations = 1
         for i in range(iterations):
 
             self.step = i
@@ -699,31 +701,32 @@ class Model:
 
                 steps_remaining = iterations - i
                 step_time = prep_time + train_time + eval_time
-                eta = (
-                    steps_remaining
-                    * step_time
-                    / (examples_since_print / self.batch_size)
-                ) / 60
+                # eta = (
+                #     steps_remaining
+                #     * step_time
+                #     / (examples_since_print / self.batch_size)
+                # ) / 60
 
-                print(
-                    "[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] eta {9:.1f} min".format(
-                        epoch,
-                        i,
-                        train_accuracy * 100,
-                        train_loss * 10,
-                        val_accuracy * 100,
-                        val_loss * 10,
-                        1000 * prep_time / examples_since_print,
-                        1000 * train_time / examples_since_print,
-                        1000 * eval_time / examples_since_print,
-                        eta,
-                    )
-                )
+                # print(
+                #     "[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] eta {9:.1f} min".format(
+                #         epoch,
+                #         i,
+                #         train_accuracy * 100,
+                #         train_loss * 10,
+                #         val_accuracy * 100,
+                #         val_loss * 10,
+                #         1000 * prep_time / examples_since_print,
+                #         1000 * train_time / examples_since_print,
+                #         1000 * eval_time / examples_since_print,
+                #         eta,
+                #     )
+                # )
 
                 # create a save point
                 self.save(
                     os.path.join(self.checkpoint_folder, "training-most-recent.sav")
                 )
+                print("Model saved")
                 # save the best model if validation score was good
                 if val_loss < best_val_loss:
                     print("Saving best validation model.")
@@ -857,6 +860,7 @@ class Model:
         model_stats["version"] = self.VERSION
 
         json.dump(model_stats, open(filename + ".txt", "w"), indent=4)
+
 
     def load(self, filename):
         """ Loads model and parameters from file. """
@@ -1049,7 +1053,7 @@ class Model:
         if self.use_gru:
             return self.gru_cell(inputs)
 
-        return self.lstm_cell(inputs)
+        return self.lite_lstm_cell(inputs)
 
     def gru_cell(self, inputs):
         gru_cell = tf.nn.rnn_cell.GRUCell(num_units=self.params["gru_units"])
@@ -1063,7 +1067,7 @@ class Model:
         init_state_2 = self.state_in
 
         print("the state_in object shape is :", self.state_in.shape)
-        gru_outputs, gru_states = tf.nn.dynamic_rnn(
+        gru_outputs, gru_states = tf.nn.static_rnn(
             cell=dropout,
             inputs=inputs,
             initial_state=init_state_2[:, :, 0],
@@ -1087,6 +1091,7 @@ class Model:
         return gru_output, gru_state
 
     def lstm_cell(self, inputs):
+        r
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
         dropout = tf.nn.rnn_cell.DropoutWrapper(
             lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
@@ -1096,6 +1101,39 @@ class Model:
         )
 
         lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
+            cell=dropout,
+            inputs=inputs,
+            initial_state=init_state,
+            dtype=tf.float32,
+            scope="lstm",
+        )
+
+        lstm_state_1, lstm_state_2 = lstm_states
+
+        # just need the last output
+        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
+        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
+
+        logging.info(
+            "lstm output shape: {} x {}".format(
+                lstm_outputs.shape[1], lstm_output.shape
+            )
+        )
+        logging.info("lstm state shape: {}".format(lstm_state.shape))
+        return lstm_output, lstm_state
+
+
+    def lite_lstm_cell(self, inputs):
+        print("LSTM LITE")
+        lstm_cell = tf.lite.experimental.nn.TFLiteLSTMCell(num_units=self.params["lstm_units"])
+        dropout = tf.nn.rnn_cell.DropoutWrapper(
+            lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
+        )
+        init_state = tf.nn.rnn_cell.LSTMStateTuple(
+            self.state_in[:, :, 0], self.state_in[:, :, 1]
+        )
+
+        lstm_outputs, lstm_states = tf.lite.experimental.nn.dynamic_rnn(
             cell=dropout,
             inputs=inputs,
             initial_state=init_state,

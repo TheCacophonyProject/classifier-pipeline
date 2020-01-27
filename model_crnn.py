@@ -232,7 +232,7 @@ class ConvModel(Model):
             learning_rate = self.params["learning_rate"]
 
         # setup optimizer
-        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name="Adam")
+        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name="AdamO")
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
             train_op = optimizer.minimize(loss, name="train_op")

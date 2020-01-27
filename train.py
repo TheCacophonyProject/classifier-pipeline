@@ -57,15 +57,16 @@ def main():
     conf, job_name = load_config()
 
     init_logging()
-    tf.logging.set_verbosity(3)
+    # tf.logging.set_verbosity(3)
 
     os.makedirs(conf.train.train_dir, exist_ok=True)
 
     if job_name == "search":
         axis_search(conf)
     else:
+        print("train model")
         train_model(job_name, conf, conf.train.hyper_params)
-
+    print("model trained...")
 
 if __name__ == "__main__":
     main()

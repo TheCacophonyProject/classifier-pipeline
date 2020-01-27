@@ -88,12 +88,13 @@ class ResnetModel(ConvModel):
 
         self.training = True
         self.resnet_size = train_config.resnet_params.resnet_size
-
+        data_format =  "channels_last"
         if not data_format:
             data_format = (
                 "channels_first" if tf.test.is_built_with_cuda() else "channels_last"
             )
-
+        # print("data format is", data_format)
+        # return
         self.resnet_version = resnet_version
         if resnet_version not in (1, 2):
             raise ValueError(

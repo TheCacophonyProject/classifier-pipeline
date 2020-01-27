@@ -11,7 +11,7 @@ from ml_tools.dataset import dataset_db_path
 def train_model(run_name, conf, hyper_params):
     """Trains a model with the given hyper parameters.
     """
-
+    print("train model...")
     run_name = os.path.join("train", run_name)
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
@@ -23,7 +23,6 @@ def train_model(run_name, conf, hyper_params):
     # model = ModelCRNN_LQ(labels=len(labels), train_config=conf.train, **hyper_params)
     if conf.train.model == ResnetModel.MODEL_NAME:
         model = ResnetModel(labels, conf.train)
-        return
     elif conf.train.model == ModelCRNN_HQ.MODEL_NAME:
         model = ModelCRNN_HQ(
             labels=len(labels), train_config=conf.train, **hyper_params
