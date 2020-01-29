@@ -1,4 +1,5 @@
 import tensorflow as tf
+
 # from tensorflow.contrib.tensorboard.plugins import projector
 from tensorboard.plugins import projector
 
@@ -27,12 +28,14 @@ class Model:
     VERSION = "0.3.0"
 
     def __init__(self, train_config=None, session=None):
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
         self.use_gru = train_config.use_gru
         self.name = "model"
         self.session = session or tools.get_session()
         self.saver = None
         tf.compat.v1.enable_control_flow_v2()
-
+        tf.compat.v1.disable_eager_execution()
         # datasets
         self.datasets = namedtuple("Datasets", "train, validation, test")
 
@@ -74,7 +77,7 @@ class Model:
 
         # number of samples to use when evaluating the model, 1000 works well but is a bit slow,
         # 100 should give results to within a few percent.
-        self.eval_samples = 500
+        self.eval_samples = 10
 
         # number of samples to use when generating the model report,
         # atleast 1000 is recommended for a good representation
@@ -197,14 +200,14 @@ class Model:
         """
 
         total_samples = batch_X.shape[0]
+        total_samples = 1
         batches = (total_samples // self.batch_size) + 1
         score = 0
         loss = 0
         summary = None
-
         for i in range(batches):
-            Xm = batch_X[i * self.batch_size : (i + 1) * self.batch_size]
-            ym = batch_y[i * self.batch_size : (i + 1) * self.batch_size]
+            Xm = batch_X[i]
+            ym = batch_y[i:i+1]
             if len(Xm) == 0:
                 continue
             samples = Xm.shape[0]
@@ -247,13 +250,13 @@ class Model:
         :return:
         """
         result = {
-            self.X: X[
-                :, 0 : self.training_segment_frames
-            ],  # limit number of frames per segment passed to trainer
+            self.X: X[0 : self.training_segment_frames],
+            # limit number of frames per segment passed to trainer
             self.keep_prob: self.params["keep_prob"] if is_training else 1.0,
             self.is_training: is_training,
             self.global_step: self.step,
         }
+
         if y is not None:
             result[self.y] = y
         if state_in is not None:
@@ -324,8 +327,10 @@ class Model:
         X, y = self.datasets.train.next_batch(self.batch_size)
         feed_dict = self.get_feed_dict(X, y, is_training=True)
 
-        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-        run_metadata = tf.RunMetadata()
+        run_options = tf.compat.v1.RunOptions(
+            trace_level=tf.compat.v1.RunOptions.FULL_TRACE
+        )
+        run_metadata = tf.compat.v1.RunMetadata()
 
         # first run takes a while, so run this just to build the graph, then run again to get real performance.
         (_,) = self.session.run([self.train_op], feed_dict=feed_dict)
@@ -348,13 +353,13 @@ class Model:
         :return:
         """
         os.makedirs(self.log_dir, exist_ok=True)
-        self.writer_train = tf.summary.FileWriter(
+        self.writer_train = tf.compat.v1.summary.FileWriter(
             os.path.join(self.log_dir, run_name + "/train"), graph=self.session.graph
         )
-        self.writer_val = tf.summary.FileWriter(
+        self.writer_val = tf.compat.v1.summary.FileWriter(
             os.path.join(self.log_dir, run_name + "/val"), graph=self.session.graph
         )
-        merged = tf.summary.merge_all()
+        merged = tf.compat.v1.summary.merge_all()
         self.merged_summary = merged
 
     def log_scalar(self, tag, value, writer=None):
@@ -367,7 +372,9 @@ class Model:
         if writer is None:
             writer = self.writer_val
         writer.add_summary(
-            tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)]),
+            tf.compat.v1.Summary(
+                value=[tf.compat.v1.Summary.Value(tag=tag, simple_value=value)]
+            ),
             global_step=self.step,
         )
 
@@ -384,7 +391,7 @@ class Model:
         counts, bin_edges = np.histogram(values, bins=bins)
 
         # Fill fields of histogram proto
-        hist = tf.HistogramProto()
+        hist = tf.compat.v1.HistogramProto()
         hist.min = float(np.min(values))
         hist.max = float(np.max(values))
         hist.num = int(np.prod(values.shape))
@@ -403,7 +410,9 @@ class Model:
             hist.bucket.append(c)
 
         # Create and write Summary
-        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, histo=hist)])
+        summary = tf.compat.v1.Summary(
+            value=[tf.compat.v1.Summary.Value(tag=tag, histo=hist)]
+        )
         writer.add_summary(summary, self.step)
         writer.flush()
 
@@ -418,9 +427,9 @@ class Model:
             writer = self.writer_val
 
         text_tensor = tf.make_tensor_proto(str(value), dtype=tf.string)
-        meta = tf.SummaryMetadata()
+        meta = tf.compat.v1.SummaryMetadata()
         meta.plugin_data.plugin_name = "text"
-        summary = tf.Summary()
+        summary = tf.compat.v1.Summary()
         summary.value.add(tag=tag, metadata=meta, tensor=text_tensor)
         writer.add_summary(summary)
 
@@ -440,16 +449,16 @@ class Model:
         plt.imsave(s, image, format="png")
 
         # Create an Image object
-        img_summary = tf.Summary.Image(
+        img_summary = tf.compat.v1.Summary.Image(
             encoded_image_string=s.getvalue(),
             height=image.shape[0],
             width=image.shape[1],
         )
         # Create a Summary value
-        im_summary = tf.Summary.Value(tag=tag, image=img_summary)
+        im_summary = tf.compat.v1.Summary.Value(tag=tag, image=img_summary)
 
         # Create and write Summary
-        summary = tf.Summary(value=[im_summary])
+        summary = tf.compat.v1.Summary(value=[im_summary])
         writer.add_summary(summary, self.step)
 
     def tune_novelty_detection(self):
@@ -654,16 +663,16 @@ class Model:
         self.setup_summary_writers(run_name)
 
         # Run the initializer
-        init = tf.global_variables_initializer()
+        init = tf.compat.v1.global_variables_initializer()
         self.session.run(init)
 
         self.train_samples = self.setup_sample_training_data(log_dir, self.writer_train)
 
         # setup a saver
-        self.saver = tf.train.Saver(max_to_keep=1000)
+        self.saver = tf.compat.v1.train.Saver(max_to_keep=1000)
 
         print("Starting benchmark.")
-        self.benchmark_model()
+        # self.benchmark_model()
         print("Training...")
         iterations = 1
         for i in range(iterations):
@@ -684,7 +693,6 @@ class Model:
                 train_batch = self.datasets.train.next_batch(
                     self.eval_samples, force_no_augmentation=True
                 )
-
                 train_accuracy, train_loss = self.eval_batch(
                     train_batch[0], train_batch[1], writer=self.writer_train
                 )
@@ -727,6 +735,7 @@ class Model:
                     os.path.join(self.checkpoint_folder, "training-most-recent.sav")
                 )
                 print("Model saved")
+                return
                 # save the best model if validation score was good
                 if val_loss < best_val_loss:
                     print("Saving best validation model.")
@@ -832,7 +841,7 @@ class Model:
         """
 
         if filename is None:
-            score_part = "{:.3f}".format(self.eval_score)
+            score_part = "0"  # {:.3f}".format(self.eval_score)
             while len(score_part) < 3:
                 score_part = score_part + "0"
             filename = os.path.join("./models/", self.MODEL_NAME + "-" + score_part)
@@ -861,13 +870,14 @@ class Model:
 
         json.dump(model_stats, open(filename + ".txt", "w"), indent=4)
 
-
     def load(self, filename):
         """ Loads model and parameters from file. """
 
         logging.info("Loading model {}".format(filename))
 
-        saver = tf.train.import_meta_graph(filename + ".meta", clear_devices=True)
+        saver = tf.compat.v1.train.import_meta_graph(
+            filename + ".meta", clear_devices=True
+        )
         saver.restore(self.session, filename)
 
         # get additional hyper parameters
@@ -935,6 +945,7 @@ class Model:
 
         self.logits_out = self.get_tensor("logits_out", none_if_not_found=True)
         self.hidden_out = self.get_tensor("hidden_out", none_if_not_found=True)
+        self.lstm_out = self.state_out
         self.lstm_out = self.get_tensor("lstm_out")
 
     def freeze(self):
@@ -987,15 +998,15 @@ class Model:
         :param name: the namespace for the summaries
         :param var: the tensor
         """
-        with tf.name_scope(name):
-            mean = tf.reduce_mean(var)
-            tf.summary.scalar("mean", mean)
-            with tf.name_scope("stddev"):
-                stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
-            tf.summary.scalar("stddev", stddev)
-            tf.summary.scalar("max", tf.reduce_max(var))
-            tf.summary.scalar("min", tf.reduce_min(var))
-            tf.summary.histogram("histogram", var)
+        with tf.compat.v1.name_scope(name):
+            mean = tf.reduce_mean(input_tensor=var)
+            tf.compat.v1.summary.scalar("mean", mean)
+            with tf.compat.v1.name_scope("stddev"):
+                stddev = tf.sqrt(tf.reduce_mean(input_tensor=tf.square(var - mean)))
+            tf.compat.v1.summary.scalar("stddev", stddev)
+            tf.compat.v1.summary.scalar("max", tf.reduce_max(input_tensor=var))
+            tf.compat.v1.summary.scalar("min", tf.reduce_min(input_tensor=var))
+            tf.compat.v1.summary.histogram("histogram", var)
 
     def save_input_summary(self, input, name, reference_level=None):
         """
@@ -1007,13 +1018,13 @@ class Model:
         # hard code dims
         W, H = 48, 48
 
-        mean = tf.reduce_mean(input)
-        tf.summary.histogram(name, input)
-        tf.summary.scalar(name + "/max", tf.reduce_max(input))
-        tf.summary.scalar(name + "/min", tf.reduce_min(input))
-        tf.summary.scalar(name + "/mean", mean)
-        tf.summary.scalar(
-            name + "/std", tf.sqrt(tf.reduce_mean(tf.square(input - mean)))
+        mean = tf.reduce_mean(input_tensor=input)
+        tf.compat.v1.summary.histogram(name, input)
+        tf.compat.v1.summary.scalar(name + "/max", tf.reduce_max(input_tensor=input))
+        tf.compat.v1.summary.scalar(name + "/min", tf.reduce_min(input_tensor=input))
+        tf.compat.v1.summary.scalar(name + "/mean", mean)
+        tf.compat.v1.summary.scalar(
+            name + "/std", tf.sqrt(tf.reduce_mean(input_tensor=tf.square(input - mean)))
         )
 
         if reference_level is not None:
@@ -1028,19 +1039,21 @@ class Model:
             input = input * mask + levels
             input = tf.abs(input)
 
-        tf.summary.image(name, input[-2:-1], max_outputs=1)
+        tf.compat.v1.summary.image(name, input[-2:-1], max_outputs=1)
 
     def create_writable_variable(self, name, shape):
         """ Creates a variable in the model that can be written to. """
-        var = tf.get_variable(
+        var = tf.compat.v1.get_variable(
             name=name,
-            initializer=tf.initializers.zeros,
+            initializer=tf.compat.v1.initializers.zeros,
             dtype=tf.float32,
             trainable=False,
             shape=shape,
         )
-        input = tf.placeholder(name=name + "_in", dtype=tf.float32, shape=shape)
-        assign_op = tf.assign(var, input, name=name + "_assign_op")
+        input = tf.compat.v1.placeholder(
+            name=name + "_in", dtype=tf.float32, shape=shape
+        )
+        assign_op = tf.compat.v1.assign(var, input, name=name + "_assign_op")
         return var
 
     def update_writeable_variable(self, name, data):
@@ -1050,14 +1063,16 @@ class Model:
         self.session.run(assign_op, feed_dict={var_input: data})
 
     def _build_memory(self, inputs):
+        # return self.test_cell(inputs)
+
         if self.use_gru:
             return self.gru_cell(inputs)
 
         return self.lite_lstm_cell(inputs)
 
     def gru_cell(self, inputs):
-        gru_cell = tf.nn.rnn_cell.GRUCell(num_units=self.params["gru_units"])
-        dropout = tf.nn.rnn_cell.DropoutWrapper(
+        gru_cell = tf.compat.v1.nn.rnn_cell.GRUCell(num_units=self.params["gru_units"])
+        dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
             gru_cell, output_keep_prob=self.keep_prob, dtype=np.float32
         )
         # init_state_1 = tf.nn.rnn_cell.LSTMStateTuple(
@@ -1067,7 +1082,7 @@ class Model:
         init_state_2 = self.state_in
 
         print("the state_in object shape is :", self.state_in.shape)
-        gru_outputs, gru_states = tf.nn.static_rnn(
+        gru_outputs, gru_states = tf.compat.v1.nn.static_rnn(
             cell=dropout,
             inputs=inputs,
             initial_state=init_state_2[:, :, 0],
@@ -1091,16 +1106,18 @@ class Model:
         return gru_output, gru_state
 
     def lstm_cell(self, inputs):
-        r
-        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
-        dropout = tf.nn.rnn_cell.DropoutWrapper(
+
+        lstm_cell = tf.compat.v1.nn.rnn_cell.LSTMCell(
+            num_units=self.params["lstm_units"]
+        )
+        dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
             lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
         )
-        init_state = tf.nn.rnn_cell.LSTMStateTuple(
+        init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
             self.state_in[:, :, 0], self.state_in[:, :, 1]
         )
 
-        lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
+        lstm_outputs, lstm_states = tf.compat.v1.nn.dynamic_rnn(
             cell=dropout,
             inputs=inputs,
             initial_state=init_state,
@@ -1122,18 +1139,66 @@ class Model:
         logging.info("lstm state shape: {}".format(lstm_state.shape))
         return lstm_output, lstm_state
 
+    def test_cell(self, inputs):
+        lstm_output = tf.identity(inputs, "lstm_out")
+        print("lstm_outputs", lstm_output.shape)
 
-    def lite_lstm_cell(self, inputs):
-        print("LSTM LITE")
-        lstm_cell = tf.lite.experimental.nn.TFLiteLSTMCell(num_units=self.params["lstm_units"])
-        dropout = tf.nn.rnn_cell.DropoutWrapper(
+        memory_state = tf.stack([lstm_output, lstm_output], axis=2)
+
+        return lstm_output, memory_state
+
+        print("test_cell", inputs.shape)
+        lstm_cell = tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
+            num_units=self.params["lstm_units"]
+        )
+        # print("test_cell2", lstm_cell.shape)
+
+        dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
             lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
         )
-        init_state = tf.nn.rnn_cell.LSTMStateTuple(
+        init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
             self.state_in[:, :, 0], self.state_in[:, :, 1]
         )
+        print("drop out shape", dropout.output_size)
+        print("init_state out shape", init_state.c.shape, init_state.h.shape)
 
-        lstm_outputs, lstm_states = tf.lite.experimental.nn.dynamic_rnn(
+        # tf.compat.v1.lite.experimental.nn.dynamic_rnn(
+        lstm_outputs, lstm_states = tf.compat.v1.nn.dynamic_rnn(
+            cell=dropout,
+            inputs=inputs,
+            initial_state=init_state,
+            dtype=tf.float32,
+            scope="lstm",
+        )
+
+        lstm_state_1, lstm_state_2 = lstm_states
+        print("lstm_outputs", lstm_outputs.shape)
+        # just need the last output
+        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
+        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
+
+        logging.info(
+            "lstm output shape: {} x {}".format(
+                lstm_outputs.shape[1], lstm_output.shape
+            )
+        )
+        logging.info("lstm state shape: {}".format(lstm_state.shape))
+        return lstm_output, lstm_state
+
+    def lite_lstm_cell(self, inputs):
+        print("LSTM LITE", inputs.shape)
+        lstm_cell = tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
+            num_units=self.params["lstm_units"]
+        )
+        dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
+            lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
+        )
+        print(self.state_in)
+        init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
+            self.state_in[:, :, 0], self.state_in[:, :, 1]
+        )
+        # tf.compat.v1.lite.experimental.nn.dynamic_rnn(
+        lstm_outputs, lstm_states = tf.compat.v1.lite.experimental.nn.dynamic_rnn(
             cell=dropout,
             inputs=inputs,
             initial_state=init_state,

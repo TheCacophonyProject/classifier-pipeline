@@ -139,7 +139,7 @@ class ResnetModel(ConvModel):
     def _build_model(self):
 
         thermal, flow, mask = self.process_inputs()
-        frame_count = tf.shape(self.X)[1]
+        frame_count = tf.shape(input=self.X)[1]
 
         layer = thermal
         layer = conv2d_fixed_padding(
@@ -236,12 +236,12 @@ class ResnetModel(ConvModel):
         # dense / logits
 
         # dense layer on top of convolutional output mapping to class labels.
-        logits = tf.layers.dense(
+        logits = tf.compat.v1.layers.dense(
             inputs=memory_output, units=self.num_classes, activation=None, name="logits"
         )
-        tf.summary.histogram("weights/logits", logits)
+        tf.compat.v1.summary.histogram("weights/logits", logits)
 
-        softmax_loss = tf.losses.softmax_cross_entropy(
+        softmax_loss = tf.compat.v1.losses.softmax_cross_entropy(
             onehot_labels=tf.one_hot(self.y, self.num_classes),
             logits=logits,
             label_smoothing=self.params["label_smoothing"],
@@ -249,24 +249,24 @@ class ResnetModel(ConvModel):
         )
 
         if self.params["l2_reg"] != 0:
-            with tf.variable_scope("logits", reuse=True):
-                logit_weights = tf.get_variable("kernel")
+            with tf.compat.v1.variable_scope("logits", reuse=True):
+                logit_weights = tf.compat.v1.get_variable("kernel")
 
             reg_loss = (
                 tf.nn.l2_loss(logit_weights, name="loss/reg") * self.params["l2_reg"]
             )
             loss = tf.add(softmax_loss, reg_loss, name="loss")
-            tf.summary.scalar("loss/reg", reg_loss)
-            tf.summary.scalar("loss/softmax", softmax_loss)
+            tf.compat.v1.summary.scalar("loss/reg", reg_loss)
+            tf.compat.v1.summary.scalar("loss/softmax", softmax_loss)
         else:
             # just relabel the loss node
             loss = tf.identity(softmax_loss, "loss")
 
-        class_out = tf.argmax(logits, axis=1, name="class_out")
+        class_out = tf.argmax(input=logits, axis=1, name="class_out")
         correct_prediction = tf.equal(class_out, self.y)
         pred = tf.nn.softmax(logits, name="prediction")
         accuracy = tf.reduce_mean(
-            tf.cast(correct_prediction, dtype=tf.float32), name="accuracy"
+            input_tensor=tf.cast(correct_prediction, dtype=tf.float32), name="accuracy"
         )
 
         self.setup_novelty(logits, memory_output)

@@ -178,7 +178,7 @@ class TrackDatabase:
             for frame_number in range(start_frame, end_frame):
                 # we use [:,:,:] to force loading of all data.
                 result.append(track_node[str(frame_number)][:, :, :])
-
+               
             return result
 
     def remove_clip(self, clip_id):

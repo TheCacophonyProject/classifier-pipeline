@@ -29,6 +29,7 @@ training run tensorboard from the log directory.
 
 import argparse
 import os
+os.environ["CUDA_VISIBLE_DEVICES"]="-1"    
 
 import tensorflow as tf
 import matplotlib

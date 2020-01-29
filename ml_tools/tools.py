@@ -384,15 +384,15 @@ def get_session(disable_gpu=False):
 
     if disable_gpu:
         logging.info("Creating new CPU session.")
-        session = tf.Session(config=tf.ConfigProto(device_count={"GPU": 0}))
+        session = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(device_count={"GPU": 0}))
     else:
         logging.info("Creating new GPU session with memory growth enabled.")
-        config = tf.ConfigProto()
+        config = tf.compat.v1.ConfigProto()
         config.gpu_options.allow_growth = True
         config.gpu_options.per_process_gpu_memory_fraction = (
             0.8  # save some ram for other applications.
         )
-        session = tf.Session(config=config)
+        session = tf.compat.v1.Session(config=config)
 
     return session
 
