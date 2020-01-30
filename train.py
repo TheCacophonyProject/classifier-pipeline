@@ -29,7 +29,6 @@ training run tensorboard from the log directory.
 
 import argparse
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="-1"    
 
 import tensorflow as tf
 import matplotlib
@@ -65,9 +64,7 @@ def main():
     if job_name == "search":
         axis_search(conf)
     else:
-        print("train model")
         train_model(job_name, conf, conf.train.hyper_params)
-    print("model trained...")
 
 if __name__ == "__main__":
     main()

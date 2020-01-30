@@ -28,7 +28,6 @@ class Model:
     VERSION = "0.3.0"
 
     def __init__(self, train_config=None, session=None):
-        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
         self.use_gru = train_config.use_gru
         self.name = "model"
@@ -200,14 +199,13 @@ class Model:
         """
 
         total_samples = batch_X.shape[0]
-        total_samples = 1
         batches = (total_samples // self.batch_size) + 1
         score = 0
         loss = 0
         summary = None
         for i in range(batches):
-            Xm = batch_X[i]
-            ym = batch_y[i : i + 1]
+            Xm = batch_X[i * self.batch_size : (i + 1) * self.batch_size]
+            ym = batch_y[i * self.batch_size : (i + 1) * self.batch_size]
             if len(Xm) == 0:
                 continue
             samples = Xm.shape[0]
@@ -250,7 +248,7 @@ class Model:
         :return:
         """
         result = {
-            self.X: X[0 : self.training_segment_frames],
+            self.X: X[:, 0 : self.training_segment_frames],
             # limit number of frames per segment passed to trainer
             self.keep_prob: self.params["keep_prob"] if is_training else 1.0,
             self.is_training: is_training,
@@ -282,7 +280,7 @@ class Model:
 
         assert None not in nodes, "Requests output of 'None' node."
 
-        total_samples = 1 #batch_X.shape[0]
+        total_samples = batch_X.shape[0]
         batches = (total_samples // self.batch_size) + 1
 
         output_lists = {}
@@ -290,7 +288,7 @@ class Model:
             output_lists[node] = []
 
         for i in range(batches):
-            Xm = batch_X[i]
+            Xm = batch_X[i * self.batch_size : (i + 1) * self.batch_size]
             if len(Xm) == 0:
                 continue
 
@@ -494,13 +492,11 @@ class Model:
          """
 
         sample_X = self.train_samples[0]
-        print(self.logits_out.shape)
 
         # evaluate the stored samples and fetch the logits and hidden states
         data = self.classify_batch_extended(
             sample_X, [self.logits_out, self.hidden_out]
         )
-        print(self.logits_out.shape)
         # run the 'assign' operations that update the models stored varaibles
         for var_name, node in zip(
             ["sample_logits", "sample_hidden"], [self.logits_out, self.hidden_out]
@@ -676,7 +672,6 @@ class Model:
         print("Starting benchmark.")
         # self.benchmark_model()
         print("Training...")
-        iterations = 1
         for i in range(iterations):
 
             self.step = i
@@ -1108,20 +1103,17 @@ class Model:
         return gru_output, gru_state
 
     def lstm_cell(self, inputs):
-
-        lstm_cell = tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
-            num_units=self.params["lstm_units"]
-        )
-        dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
+        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
+        dropout = tf.nn.rnn_cell.DropoutWrapper(
             lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
         )
-        init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
+        init_state = tf.nn.rnn_cell.LSTMStateTuple(
             self.state_in[:, :, 0], self.state_in[:, :, 1]
         )
 
-        lstm_outputs, lstm_states = tf.compat.v1.nn.dynamic_rnn(
+        lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
             cell=dropout,
-            inputs=tf.expand_dims(inputs, axis=1),
+            inputs=inputs,
             initial_state=init_state,
             dtype=tf.float32,
             scope="lstm",
@@ -1132,6 +1124,30 @@ class Model:
         # just need the last output
         lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
         lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
+
+        # lstm_cell = tf.compat.v1.nn.rnn_cell.LSTMCell(
+        #     num_units=self.params["lstm_units"]
+        # )
+        # dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
+        #     lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
+        # )
+        # init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
+        #     self.state_in[:, :, 0], self.state_in[:, :, 1]
+        # )
+
+        # lstm_outputs, lstm_states = tf.compat.v1.nn.dynamic_rnn(
+        #     cell=dropout,
+        #     inputs=inputs,
+        #     initial_state=init_state,
+        #     dtype=tf.float32,
+        #     scope="lstm",
+        # )
+
+        # lstm_state_1, lstm_state_2 = lstm_states
+
+        # # just need the last output
+        # lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
+        # lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
 
         logging.info(
             "lstm output shape: {} x {}".format(

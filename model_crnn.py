@@ -87,7 +87,7 @@ class ConvModel(Model):
 
         # Setup placeholders
         self.X = tf.compat.v1.placeholder(
-            tf.float32, [None, 5, 48, 48], name="X"
+            tf.float32, [None,None, 5, 48, 48], name="X"
         )  # [B, F, C, H, W]
         self.y = tf.compat.v1.placeholder(tf.int64, [None], name="y")
         batch_size = tf.shape(input=self.X)[0]
@@ -163,11 +163,11 @@ class ConvModel(Model):
 
         # normalise the flow
         # horizontal and vertical flow have different normalisation constants
-        flow = X[:, 2 : 3 + 1]
-        flow = flow * np.asarray([2.5, 5])[np.newaxis, :, np.newaxis, np.newaxis]
+        flow = X[:, :, 2 : 3 + 1]   
+        flow = flow * np.asarray([2.5, 5])[np.newaxis, np.newaxis:, np.newaxis, np.newaxis]
 
         # grab the mask
-        mask = X[:, 4 : 4 + 1]
+        mask = X[:, :, 4 : 4 + 1]   
 
         # tap the outputs
         tf.identity(thermal, "thermal_out")
@@ -176,8 +176,8 @@ class ConvModel(Model):
 
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
-        thermal = tf.transpose(a=thermal, perm=(0, 2, 3, 1))  # [B, F, H, W, 1]
-        flow = tf.transpose(a=flow, perm=(0, 2, 3, 1))  # [B, F, H, W, 2]
+        thermal = tf.transpose(thermal, (0, 1, 3, 4, 2))  # [B, F, H, W, 1]]
+        flow = tf.transpose(flow, (0, 1, 3, 4, 2))  # [B, F, H, W, 2]
         # raise ValueError("FAIL")
         thermal = tf.reshape(thermal, [-1, 48, 48, 1])  # [B*F, 48, 48, 1]
         flow = tf.reshape(flow, [-1, 48, 48, 2])  # [B*F, 48, 48, 2]
@@ -480,9 +480,6 @@ class ModelCRNN_LQ(ConvModel):
         frame_count = tf.shape(input=self.X)[0]
         # -------------------------------------
         # run the Convolutions
-        print(thermal.shape)
-
-        # raise ValueError("FAIL")
 
         layer = thermal
         layer = self.conv_layer("thermal/1", layer, 32, [3, 3], conv_stride=2)
@@ -496,11 +493,8 @@ class ModelCRNN_LQ(ConvModel):
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
         filtered_out = tf.reshape(
             filtered_conv,
-            [frame_count, tools.product(filtered_conv.shape[1:])],
+            [-1, frame_count, tools.product(filtered_conv.shape[1:])],
             name="thermal/out",
-        )
-        logging.info(
-            "filtered_out convolution output shape: {}".format(filtered_out.shape)
         )
 
         if self.params["enable_flow"]:

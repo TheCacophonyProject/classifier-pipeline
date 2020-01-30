@@ -11,7 +11,6 @@ from ml_tools.dataset import dataset_db_path
 def train_model(run_name, conf, hyper_params):
     """Trains a model with the given hyper parameters.
     """
-    print("train model...")
     run_name = os.path.join("train", run_name)
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
@@ -20,7 +19,6 @@ def train_model(run_name, conf, hyper_params):
     with open(datasets_filename, "rb") as f:
         dsets = pickle.load(f)
     labels = dsets[0].labels
-    # model = ModelCRNN_LQ(labels=len(labels), train_config=conf.train, **hyper_params)
     if conf.train.model == ResnetModel.MODEL_NAME:
         model = ResnetModel(labels, conf.train)
     elif conf.train.model == ModelCRNN_HQ.MODEL_NAME:
