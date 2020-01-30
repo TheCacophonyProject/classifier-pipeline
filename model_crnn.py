@@ -118,14 +118,7 @@ class ConvModel(Model):
 
         # normalise the thermal
         # the idea here is to apply sqrt to any values over 100 so that we reduce the effect of very strong values.
-        thermal = X[ :, 0 : 0 + 1]
-        
-        #         (20,27, 5, 48, 48)
-        # thermal = X[:, :, 0 : 0 + 1]
-# (?, 48, 48, 1)
-
-# (?, 5, 48, 48)
-# (?, 1, 48, 48)
+        thermal = X[:, 0 : 0 + 1]
 
         AUTO_NORM_THERMAL = False
         THERMAL_ROLLOFF = 400
@@ -135,11 +128,9 @@ class ConvModel(Model):
                 input_tensor=thermal, axis=(3, 4), keepdims=True
             )  # center data
 
-            signs = tf.sign(thermal)
-            abs = tf.abs(thermal)
-            thermal = (
-                tf.minimum(tf.sqrt(abs / THERMAL_ROLLOFF) * THERMAL_ROLLOFF, abs)
-                * signs
+            rectified = tf.nn.relu(thermal)
+            thermal = tf.minimum(
+                tf.sqrt(rectified / THERMAL_ROLLOFF) * THERMAL_ROLLOFF, rectified
             )  # curve off the really strong values
             thermal = thermal - tf.reduce_mean(
                 input_tensor=thermal, axis=(3, 4), keepdims=True
@@ -154,9 +145,12 @@ class ConvModel(Model):
             # thermal = (tf.nn.relu(thermal - relu_threshold) + relu_threshold) * 1.5
         else:
             # signs = tf.sign(thermal)
-            abs = tf.abs(thermal)
+            # complained about use of tf.signs for tflite, i think relu should be the same??
+            rectified = tf.nn.relu(thermal)
             thermal = (
-                tf.minimum(tf.sqrt(abs / THERMAL_ROLLOFF) * THERMAL_ROLLOFF, abs)
+                tf.minimum(
+                    tf.sqrt(rectified / THERMAL_ROLLOFF) * THERMAL_ROLLOFF, rectified
+                )
                 # * signs
             )  # curve off the really strong values
 
@@ -169,14 +163,11 @@ class ConvModel(Model):
 
         # normalise the flow
         # horizontal and vertical flow have different normalisation constants
-        flow = X[ :, 2 : 3 + 1]
-        flow = (
-            flow
-            * np.asarray([2.5, 5])[np.newaxis, :, np.newaxis, np.newaxis]
-        )
+        flow = X[:, 2 : 3 + 1]
+        flow = flow * np.asarray([2.5, 5])[np.newaxis, :, np.newaxis, np.newaxis]
 
         # grab the mask
-        mask = X[ :, 4 : 4 + 1]
+        mask = X[:, 4 : 4 + 1]
 
         # tap the outputs
         tf.identity(thermal, "thermal_out")
@@ -186,8 +177,8 @@ class ConvModel(Model):
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
         thermal = tf.transpose(a=thermal, perm=(0, 2, 3, 1))  # [B, F, H, W, 1]
-        flow = tf.transpose(a=flow, perm=( 0, 2, 3, 1))  # [B, F, H, W, 2]
-
+        flow = tf.transpose(a=flow, perm=(0, 2, 3, 1))  # [B, F, H, W, 2]
+        # raise ValueError("FAIL")
         thermal = tf.reshape(thermal, [-1, 48, 48, 1])  # [B*F, 48, 48, 1]
         flow = tf.reshape(flow, [-1, 48, 48, 2])  # [B*F, 48, 48, 2]
 
@@ -332,7 +323,9 @@ class ModelCRNN_HQ(ConvModel):
             name="thermal/out",
         )
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
-        logging.info("filtered_out convolution output shape: {}".format(filtered_out.shape))
+        logging.info(
+            "filtered_out convolution output shape: {}".format(filtered_out.shape)
+        )
 
         if self.params["enable_flow"]:
             # integrate thermal and flow into a 3 channel layer
@@ -487,6 +480,9 @@ class ModelCRNN_LQ(ConvModel):
         frame_count = tf.shape(input=self.X)[0]
         # -------------------------------------
         # run the Convolutions
+        print(thermal.shape)
+
+        # raise ValueError("FAIL")
 
         layer = thermal
         layer = self.conv_layer("thermal/1", layer, 32, [3, 3], conv_stride=2)
@@ -500,10 +496,12 @@ class ModelCRNN_LQ(ConvModel):
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
         filtered_out = tf.reshape(
             filtered_conv,
-            [ frame_count, tools.product(filtered_conv.shape[1:])],
+            [frame_count, tools.product(filtered_conv.shape[1:])],
             name="thermal/out",
         )
-        logging.info("filtered_out convolution output shape: {}".format(filtered_out.shape))
+        logging.info(
+            "filtered_out convolution output shape: {}".format(filtered_out.shape)
+        )
 
         if self.params["enable_flow"]:
             # integrate thermal and flow into a 3 channel layer
@@ -528,27 +526,13 @@ class ModelCRNN_LQ(ConvModel):
         else:
             out = tf.concat((filtered_out,), axis=2, name="out")
 
-        # INFO logging.info("Output shape {}".format(out.shape))
-        # INFO Output shape (None, None, 576)
-        # INFO memory_output shape: None x (None, 576)
-        # INFO lstm state shape: (None, 576, 2)
-        # INFO memory_output output shape: (None, 576)
-        # INFO memory_state output shape: (None, 576, 2)
-
         # -------------------------------------
         # add short term memory (GRU / LSTM)
         memory_output, memory_state = self._build_memory(out)
-        
-        # memory_output = out
-        # tf.reshape(out,[-1,576])
 
         # memory_state =  tf.stack([memory_output, memory_output], axis=2)
-        logging.info(
-            "memory_output output shape: {}".format(memory_output.shape)
-        )
-        logging.info(
-            "memory_state output shape: {}".format(memory_state.shape)
-        )
+        logging.info("memory_output output shape: {}".format(memory_output.shape))
+        logging.info("memory_state output shape: {}".format(memory_state.shape))
         # -------------------------------------
         # dense / logits
 
@@ -556,9 +540,7 @@ class ModelCRNN_LQ(ConvModel):
         logits = tf.compat.v1.layers.dense(
             inputs=memory_output, units=label_count, activation=None, name="logits"
         )
-        logging.info(
-            "logits output shape: {}".format(logits.shape)
-        )
+        logging.info("logits output shape: {}".format(logits.shape))
         tf.compat.v1.summary.histogram("weights/logits", logits)
         softmax_loss = tf.compat.v1.losses.softmax_cross_entropy(
             onehot_labels=tf.one_hot(self.y, label_count),

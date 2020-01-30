@@ -207,7 +207,7 @@ class Model:
         summary = None
         for i in range(batches):
             Xm = batch_X[i]
-            ym = batch_y[i:i+1]
+            ym = batch_y[i : i + 1]
             if len(Xm) == 0:
                 continue
             samples = Xm.shape[0]
@@ -282,7 +282,7 @@ class Model:
 
         assert None not in nodes, "Requests output of 'None' node."
 
-        total_samples = batch_X.shape[0]
+        total_samples = 1 #batch_X.shape[0]
         batches = (total_samples // self.batch_size) + 1
 
         output_lists = {}
@@ -290,13 +290,14 @@ class Model:
             output_lists[node] = []
 
         for i in range(batches):
-            Xm = batch_X[i * self.batch_size : (i + 1) * self.batch_size]
+            Xm = batch_X[i]
             if len(Xm) == 0:
                 continue
 
             outputs = self.session.run(nodes, feed_dict={self.X: Xm})
             for node, output in zip(nodes, outputs):
                 for i in range(len(output)):
+                    print("node {} returns output {}".format(node, node))
                     output_lists[node].append(output[i])
 
         return output_lists
@@ -493,12 +494,13 @@ class Model:
          """
 
         sample_X = self.train_samples[0]
+        print(self.logits_out.shape)
 
         # evaluate the stored samples and fetch the logits and hidden states
         data = self.classify_batch_extended(
             sample_X, [self.logits_out, self.hidden_out]
         )
-
+        print(self.logits_out.shape)
         # run the 'assign' operations that update the models stored varaibles
         for var_name, node in zip(
             ["sample_logits", "sample_hidden"], [self.logits_out, self.hidden_out]
@@ -709,33 +711,33 @@ class Model:
 
                 steps_remaining = iterations - i
                 step_time = prep_time + train_time + eval_time
-                # eta = (
-                #     steps_remaining
-                #     * step_time
-                #     / (examples_since_print / self.batch_size)
-                # ) / 60
+                if examples_since_print > 0:
+                    eta = (
+                        steps_remaining
+                        * step_time
+                        / (examples_since_print / self.batch_size)
+                    ) / 60
 
-                # print(
-                #     "[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] eta {9:.1f} min".format(
-                #         epoch,
-                #         i,
-                #         train_accuracy * 100,
-                #         train_loss * 10,
-                #         val_accuracy * 100,
-                #         val_loss * 10,
-                #         1000 * prep_time / examples_since_print,
-                #         1000 * train_time / examples_since_print,
-                #         1000 * eval_time / examples_since_print,
-                #         eta,
-                #     )
-                # )
+                    print(
+                        "[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] eta {9:.1f} min".format(
+                            epoch,
+                            i,
+                            train_accuracy * 100,
+                            train_loss * 10,
+                            val_accuracy * 100,
+                            val_loss * 10,
+                            1000 * prep_time / examples_since_print,
+                            1000 * train_time / examples_since_print,
+                            1000 * eval_time / examples_since_print,
+                            eta,
+                        )
+                    )
 
                 # create a save point
                 self.save(
                     os.path.join(self.checkpoint_folder, "training-most-recent.sav")
                 )
-                print("Model saved")
-                return
+
                 # save the best model if validation score was good
                 if val_loss < best_val_loss:
                     print("Saving best validation model.")
@@ -1068,7 +1070,7 @@ class Model:
         if self.use_gru:
             return self.gru_cell(inputs)
 
-        return self.lite_lstm_cell(inputs)
+        return self.lstm_cell(inputs)
 
     def gru_cell(self, inputs):
         gru_cell = tf.compat.v1.nn.rnn_cell.GRUCell(num_units=self.params["gru_units"])
@@ -1107,7 +1109,7 @@ class Model:
 
     def lstm_cell(self, inputs):
 
-        lstm_cell = tf.compat.v1.nn.rnn_cell.LSTMCell(
+        lstm_cell = tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
             num_units=self.params["lstm_units"]
         )
         dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
@@ -1119,7 +1121,7 @@ class Model:
 
         lstm_outputs, lstm_states = tf.compat.v1.nn.dynamic_rnn(
             cell=dropout,
-            inputs=inputs,
+            inputs=tf.expand_dims(inputs, axis=1),
             initial_state=init_state,
             dtype=tf.float32,
             scope="lstm",
@@ -1147,60 +1149,25 @@ class Model:
 
         return lstm_output, memory_state
 
-        print("test_cell", inputs.shape)
-        lstm_cell = tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
-            num_units=self.params["lstm_units"]
-        )
-        # print("test_cell2", lstm_cell.shape)
-
-        dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
-            lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
-        )
-        init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
-            self.state_in[:, :, 0], self.state_in[:, :, 1]
-        )
-        print("drop out shape", dropout.output_size)
-        print("init_state out shape", init_state.c.shape, init_state.h.shape)
-
-        # tf.compat.v1.lite.experimental.nn.dynamic_rnn(
-        lstm_outputs, lstm_states = tf.compat.v1.nn.dynamic_rnn(
-            cell=dropout,
-            inputs=inputs,
-            initial_state=init_state,
-            dtype=tf.float32,
-            scope="lstm",
-        )
-
-        lstm_state_1, lstm_state_2 = lstm_states
-        print("lstm_outputs", lstm_outputs.shape)
-        # just need the last output
-        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
-        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-
-        logging.info(
-            "lstm output shape: {} x {}".format(
-                lstm_outputs.shape[1], lstm_output.shape
-            )
-        )
-        logging.info("lstm state shape: {}".format(lstm_state.shape))
-        return lstm_output, lstm_state
-
     def lite_lstm_cell(self, inputs):
         print("LSTM LITE", inputs.shape)
+        print("shapes", self.state_in[:, :, 0].shape, self.state_in[:, :, 1].shape)
         lstm_cell = tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
             num_units=self.params["lstm_units"]
         )
         dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
             lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
         )
-        print(self.state_in)
-        init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
-            self.state_in[:, :, 0], self.state_in[:, :, 1]
-        )
+
+        init_state = lstm_cell.zero_state(self.batch_size, tf.float32)
+
+        # init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
+        #     self.state_in[:, :, 0], self.state_in[:, :, 1]
+        # )
         # tf.compat.v1.lite.experimental.nn.dynamic_rnn(
         lstm_outputs, lstm_states = tf.compat.v1.lite.experimental.nn.dynamic_rnn(
             cell=dropout,
-            inputs=inputs,
+            inputs=tf.expand_dims(inputs, axis=1),
             initial_state=init_state,
             dtype=tf.float32,
             scope="lstm",
