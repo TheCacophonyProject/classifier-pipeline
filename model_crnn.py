@@ -87,7 +87,7 @@ class ConvModel(Model):
 
         # Setup placeholders
         self.X = tf.compat.v1.placeholder(
-            tf.float32, [None,None, 5, 48, 48], name="X"
+            tf.float32, [None, None, 5, 48, 48], name="X"
         )  # [B, F, C, H, W]
         self.y = tf.compat.v1.placeholder(tf.int64, [None], name="y")
         batch_size = tf.shape(input=self.X)[0]
@@ -118,7 +118,7 @@ class ConvModel(Model):
 
         # normalise the thermal
         # the idea here is to apply sqrt to any values over 100 so that we reduce the effect of very strong values.
-        thermal = X[:, 0 : 0 + 1]
+        thermal = X[:, :, 0 : 0 + 1]
 
         AUTO_NORM_THERMAL = False
         THERMAL_ROLLOFF = 400
@@ -163,11 +163,14 @@ class ConvModel(Model):
 
         # normalise the flow
         # horizontal and vertical flow have different normalisation constants
-        flow = X[:, :, 2 : 3 + 1]   
-        flow = flow * np.asarray([2.5, 5])[np.newaxis, np.newaxis:, np.newaxis, np.newaxis]
+        flow = X[:, :, 2 : 3 + 1]
+        flow = (
+            flow
+            * np.asarray([2.5, 5])[np.newaxis, np.newaxis :, np.newaxis, np.newaxis]
+        )
 
         # grab the mask
-        mask = X[:, :, 4 : 4 + 1]   
+        mask = X[:, :, 4 : 4 + 1]
 
         # tap the outputs
         tf.identity(thermal, "thermal_out")
@@ -176,9 +179,9 @@ class ConvModel(Model):
 
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
-        thermal = tf.transpose(thermal, (0, 1, 3, 4, 2))  # [B, F, H, W, 1]]
+        thermal = tf.transpose(thermal, (0, 1, 3, 4, 2))  # [B, F, H, W, 1]
         flow = tf.transpose(flow, (0, 1, 3, 4, 2))  # [B, F, H, W, 2]
-        # raise ValueError("FAIL")
+
         thermal = tf.reshape(thermal, [-1, 48, 48, 1])  # [B*F, 48, 48, 1]
         flow = tf.reshape(flow, [-1, 48, 48, 2])  # [B*F, 48, 48, 2]
 
@@ -323,9 +326,6 @@ class ModelCRNN_HQ(ConvModel):
             name="thermal/out",
         )
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
-        logging.info(
-            "filtered_out convolution output shape: {}".format(filtered_out.shape)
-        )
 
         if self.params["enable_flow"]:
             # integrate thermal and flow into a 3 channel layer
@@ -354,7 +354,7 @@ class ModelCRNN_HQ(ConvModel):
 
         # -------------------------------------
         # run the LSTM
-        memory_output, memory_state = self._build_memory(out)
+        # memory_output, memory_state = self._build_memory(out)
         if self.params["l2_reg"] > 0:
             regularizer = tf.keras.regularizers.l2(l=0.5 * (self.params["l2_reg"]))
         else:
@@ -362,7 +362,7 @@ class ModelCRNN_HQ(ConvModel):
 
         # dense hidden layer
         dense = tf.compat.v1.layers.dense(
-            inputs=memory_output,
+            inputs=out,
             units=384,
             activation=tf.nn.relu,
             name="hidden",
@@ -477,10 +477,10 @@ class ModelCRNN_LQ(ConvModel):
         # W frame width
 
         thermal, flow, mask = self.process_inputs()
-        frame_count = tf.shape(input=self.X)[0]
+        frame_count = tf.shape(input=self.X)[1]
         # -------------------------------------
         # run the Convolutions
-
+        print(thermal.shape)
         layer = thermal
         layer = self.conv_layer("thermal/1", layer, 32, [3, 3], conv_stride=2)
 
@@ -519,10 +519,21 @@ class ModelCRNN_LQ(ConvModel):
             out = tf.concat((filtered_out, motion_out), axis=2, name="out")
         else:
             out = tf.concat((filtered_out,), axis=2, name="out")
+        logging.info("Output shape {}".format(out.shape))
+
+        # INFO Thermal convolution output shape: (?, 3, 3, 64)
+        # INFO Output shape (?, ?, 576)
+        # INFO memory_output output shape: (?, 576)
+        # INFO memory_state output shape: (?, 576, 2)
 
         # -------------------------------------
         # add short term memory (GRU / LSTM)
+        # out must be [batch_size, max_time, ...]
+        #  out is           ?     , ?
         memory_output, memory_state = self._build_memory(out)
+        # batch_size, max_time, cell.output_size], [batch_size, cell.state_size (units x units)]
+        memory_state = out
+        memory_output =out[:, -1]
 
         # memory_state =  tf.stack([memory_output, memory_output], axis=2)
         logging.info("memory_output output shape: {}".format(memory_output.shape))

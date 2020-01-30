@@ -76,7 +76,7 @@ class Model:
 
         # number of samples to use when evaluating the model, 1000 works well but is a bit slow,
         # 100 should give results to within a few percent.
-        self.eval_samples = 10
+        self.eval_samples = 1
 
         # number of samples to use when generating the model report,
         # atleast 1000 is recommended for a good representation
@@ -107,9 +107,9 @@ class Model:
         self.log_id = ""
 
         # number of frames per segment during training
-        self.training_segment_frames = 27
+        self.training_segment_frames = 2
         # number of frames per segment during testing
-        self.testing_segment_frames = 27
+        self.testing_segment_frames = 2
 
         # dictionary containing current hyper parameters
         self.params = {
@@ -295,7 +295,6 @@ class Model:
             outputs = self.session.run(nodes, feed_dict={self.X: Xm})
             for node, output in zip(nodes, outputs):
                 for i in range(len(output)):
-                    print("node {} returns output {}".format(node, node))
                     output_lists[node].append(output[i])
 
         return output_lists
@@ -670,7 +669,7 @@ class Model:
         self.saver = tf.compat.v1.train.Saver(max_to_keep=1000)
 
         print("Starting benchmark.")
-        # self.benchmark_model()
+        self.benchmark_model()
         print("Training...")
         for i in range(iterations):
 
@@ -678,18 +677,25 @@ class Model:
 
             # get a new batch
             start = time.time()
+            print("get batch")
             batch = self.datasets.train.next_batch(self.batch_size)
             prep_time += time.time() - start
 
             # evaluate every so often
-            if examples_since_print >= self.print_every or (i == iterations - 1):
+            if (
+                True
+                or examples_since_print >= self.print_every
+                or (i == iterations - 1)
+            ):
 
                 start = time.time()
 
                 val_batch = self.datasets.validation.next_batch(self.eval_samples)
+                print(len(val_batch[0]))
                 train_batch = self.datasets.train.next_batch(
                     self.eval_samples, force_no_augmentation=True
                 )
+                print("trained")
                 train_accuracy, train_loss = self.eval_batch(
                     train_batch[0], train_batch[1], writer=self.writer_train
                 )
@@ -732,6 +738,7 @@ class Model:
                 self.save(
                     os.path.join(self.checkpoint_folder, "training-most-recent.sav")
                 )
+                print("saved")
 
                 # save the best model if validation score was good
                 if val_loss < best_val_loss:
@@ -942,8 +949,7 @@ class Model:
 
         self.logits_out = self.get_tensor("logits_out", none_if_not_found=True)
         self.hidden_out = self.get_tensor("hidden_out", none_if_not_found=True)
-        self.lstm_out = self.state_out
-        self.lstm_out = self.get_tensor("lstm_out")
+        # self.lstm_out = self.s
 
     def freeze(self):
         """ Freezes graph so that no additional changes can be made. """
@@ -1104,6 +1110,8 @@ class Model:
 
     def lstm_cell(self, inputs):
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
+        print("*****")
+        print("=================state", lstm_cell.state_size)
         dropout = tf.nn.rnn_cell.DropoutWrapper(
             lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
         )
@@ -1122,32 +1130,9 @@ class Model:
         lstm_state_1, lstm_state_2 = lstm_states
 
         # just need the last output
+        # all of first dim and last element of secon dim
         lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
         lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-
-        # lstm_cell = tf.compat.v1.nn.rnn_cell.LSTMCell(
-        #     num_units=self.params["lstm_units"]
-        # )
-        # dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
-        #     lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
-        # )
-        # init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
-        #     self.state_in[:, :, 0], self.state_in[:, :, 1]
-        # )
-
-        # lstm_outputs, lstm_states = tf.compat.v1.nn.dynamic_rnn(
-        #     cell=dropout,
-        #     inputs=inputs,
-        #     initial_state=init_state,
-        #     dtype=tf.float32,
-        #     scope="lstm",
-        # )
-
-        # lstm_state_1, lstm_state_2 = lstm_states
-
-        # # just need the last output
-        # lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
-        # lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
 
         logging.info(
             "lstm output shape: {} x {}".format(
@@ -1158,10 +1143,12 @@ class Model:
         return lstm_output, lstm_state
 
     def test_cell(self, inputs):
-        lstm_output = tf.identity(inputs, "lstm_out")
-        print("lstm_outputs", lstm_output.shape)
-
+        lstm_output = tf.identity(tf.squeeze(inputs, axis=1), "lstm_out")
         memory_state = tf.stack([lstm_output, lstm_output], axis=2)
+        # INFO lstm output shape: ? x (?, 576)
+        # INFO lstm state shape: (?, 576, 2)
+        # INFO memory_output output shape: (?, 576)
+        # INFO memory_state output shape: (?, 576, 2)
 
         return lstm_output, memory_state
 

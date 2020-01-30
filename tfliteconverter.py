@@ -30,7 +30,7 @@ def freeze_model():
         outName = "state_out:0"
 
         inputTensor = loaded_graph.get_tensor_by_name(inName)
-        inputTensor.set_shape([1, 5, 48, 48])
+        inputTensor.set_shape([1, 1, 5, 48, 48])
         # doing this lets us convert the model as it doesn't like unknown shapes
         outTensor = loaded_graph.get_tensor_by_name(outName)
 
@@ -91,7 +91,7 @@ def convert_model_concrete():
 
 
 def main():
-    # run_model()
+    run_model()
     freeze_model()
     convert_model()
 
