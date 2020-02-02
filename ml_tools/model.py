@@ -27,8 +27,8 @@ class Model:
     MODEL_DESCRIPTION = ""
     VERSION = "0.3.0"
 
-    def __init__(self, train_config=None, session=None):
-
+    def __init__(self, train_config=None, session=None, training=False):
+        self.training =training
         self.use_gru = train_config.use_gru
         self.name = "model"
         self.session = session or tools.get_session()

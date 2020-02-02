@@ -52,6 +52,7 @@ class ResnetModel(ConvModel):
         self,
         labels,
         train_config,
+        training=False,
         resnet_version=DEFAULT_VERSION,
         data_format=None,
         dtype=DEFAULT_DTYPE,
@@ -84,9 +85,8 @@ class ResnetModel(ConvModel):
     Raises:
       ValueError: if invalid version is selected.
     """
-        super().__init__(train_config=train_config)
+        super().__init__(train_config=train_config, training=training)
 
-        self.training = True
         self.resnet_size = train_config.resnet_params.resnet_size
         data_format = "channels_last"
         if not data_format:

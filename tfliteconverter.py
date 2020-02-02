@@ -25,7 +25,7 @@ def save_eval_model(args):
     model = ModelCRNN_LQ(
         labels=len(labels),
         train_config=config.train,
-        training_build=False,
+        training=False,
         **config.train.hyper_params,
     )
     model.saver = tf.compat.v1.train.Saver(max_to_keep=1000)

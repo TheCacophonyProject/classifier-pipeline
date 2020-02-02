@@ -26,7 +26,6 @@ class ConvModel(Model):
         conv_stride=1,
         pool_stride=1,
         disable_norm=False,
-        training_build=False,
     ):
         """ Adds a convolutional layer to the model. """
 
@@ -52,20 +51,10 @@ class ConvModel(Model):
         tf.compat.v1.summary.histogram(name + "/activations", activation)
 
         if self.params["batch_norm"] and not disable_norm:
-            if training_build:
+            out = tf.compat.v1.layers.batch_normalization(
+                activation, fused=True, training=self.training, name=name + "/batchnorm"
+            )
 
-                out = tf.compat.v1.layers.batch_normalization(
-                    activation,
-                    fused=True,
-                    training=self.is_training,
-                    name=name + "/batchnorm",
-                )
-            else:
-                out = tf.compat.v1.layers.batch_normalization(
-                    activation,
-                    fused=True,
-                    name=name + "/batchnorm",
-                )
             moving_mean = tf.compat.v1.get_collection(
                 tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
                 scope=name + "/batchnorm/moving_mean",
@@ -285,12 +274,12 @@ class ModelCRNN_HQ(ConvModel):
         "scale_frequency": 0.5,
     }
 
-    def __init__(self, labels, train_config, **kwargs):
+    def __init__(self, labels, train_config, training=False, **kwargs):
         """
         Initialise the model
         :param labels: number of labels for model to predict
         """
-        super().__init__(train_config=train_config)
+        super().__init__(train_config=train_config, training=training)
         self.params.update(self.DEFAULT_PARAMS)
         self.params.update(kwargs)
         self._build_model(labels)
@@ -356,9 +345,12 @@ class ModelCRNN_HQ(ConvModel):
 
         logging.info("Output shape {}".format(out.shape))
 
+
         # -------------------------------------
         # run the LSTM
         # memory_output, memory_state = self._build_memory(out)
+        memory_state = out
+        memory_output = out[:, -1]
         if self.params["l2_reg"] > 0:
             regularizer = tf.keras.regularizers.l2(l=0.5 * (self.params["l2_reg"]))
         else:
@@ -366,7 +358,7 @@ class ModelCRNN_HQ(ConvModel):
 
         # dense hidden layer
         dense = tf.compat.v1.layers.dense(
-            inputs=out,
+            inputs=memory_output,
             units=384,
             activation=tf.nn.relu,
             name="hidden",
@@ -456,17 +448,17 @@ class ModelCRNN_LQ(ConvModel):
         "scale_frequency": 0.5,
     }
 
-    def __init__(self, labels, train_config, training_build, **kwargs):
+    def __init__(self, labels, train_config, training, **kwargs):
         """
         Initialise the model
         :param labels: number of labels for model to predict
         """
-        super().__init__(train_config=train_config)
+        super().__init__(train_config=train_config, training=training)
         self.params.update(self.DEFAULT_PARAMS)
         self.params.update(kwargs)
-        self._build_model(labels, training_build)
+        self._build_model(labels)
 
-    def _build_model(self, label_count, training_build):
+    def _build_model(self, label_count):
         label_count = 2
         ####################################
         # CNN + LSTM
@@ -486,22 +478,12 @@ class ModelCRNN_LQ(ConvModel):
         # run the Convolutions
         print(thermal.shape)
         layer = thermal
-        layer = self.conv_layer(
-            "thermal/1", layer, 32, [3, 3], conv_stride=2, training_build=training_build
-        )
+        layer = self.conv_layer("thermal/1", layer, 32, [3, 3], conv_stride=2)
 
-        layer = self.conv_layer(
-            "thermal/2", layer, 48, [3, 3], conv_stride=2, training_build=training_build
-        )
-        layer = self.conv_layer(
-            "thermal/3", layer, 64, [3, 3], conv_stride=2, training_build=training_build
-        )
-        layer = self.conv_layer(
-            "thermal/4", layer, 64, [3, 3], conv_stride=2, training_build=training_build
-        )
-        layer = self.conv_layer(
-            "thermal/5", layer, 64, [3, 3], conv_stride=1, training_build=training_build
-        )
+        layer = self.conv_layer("thermal/2", layer, 48, [3, 3], conv_stride=2)
+        layer = self.conv_layer("thermal/3", layer, 64, [3, 3], conv_stride=2)
+        layer = self.conv_layer("thermal/4", layer, 64, [3, 3], conv_stride=2)
+        layer = self.conv_layer("thermal/5", layer, 64, [3, 3], conv_stride=1)
 
         filtered_conv = layer
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
@@ -514,46 +496,11 @@ class ModelCRNN_LQ(ConvModel):
         if self.params["enable_flow"]:
             # integrate thermal and flow into a 3 channel layer
             layer = tf.concat((thermal, flow), axis=3)
-            layer = self.conv_layer(
-                "motion/1",
-                layer,
-                32,
-                [3, 3],
-                conv_stride=2,
-                training_build=training_build,
-            )
-            layer = self.conv_layer(
-                "motion/2",
-                layer,
-                48,
-                [3, 3],
-                conv_stride=2,
-                training_build=training_build,
-            )
-            layer = self.conv_layer(
-                "motion/3",
-                layer,
-                64,
-                [3, 3],
-                conv_stride=2,
-                training_build=training_build,
-            )
-            layer = self.conv_layer(
-                "motion/4",
-                layer,
-                64,
-                [3, 3],
-                conv_stride=2,
-                training_build=training_build,
-            )
-            layer = self.conv_layer(
-                "motion/5",
-                layer,
-                64,
-                [3, 3],
-                conv_stride=1,
-                training_build=training_build,
-            )
+            layer = self.conv_layer("motion/1", layer, 32, [3, 3], conv_stride=2)
+            layer = self.conv_layer("motion/2", layer, 48, [3, 3], conv_stride=2)
+            layer = self.conv_layer("motion/3", layer, 64, [3, 3], conv_stride=2)
+            layer = self.conv_layer("motion/4", layer, 64, [3, 3], conv_stride=2)
+            layer = self.conv_layer("motion/5", layer, 64, [3, 3], conv_stride=1)
 
             motion_conv = layer
             logging.info(
