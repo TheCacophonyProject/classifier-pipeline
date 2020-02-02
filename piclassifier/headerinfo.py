@@ -1,3 +1,9 @@
+"""
+HeaderInfo describes a thermal cameras specs.
+When a thermal camera first connects to the socket it will send some header
+information describing it's specs e.g. Resolution, Frame rate
+"""
+
 import yaml
 import attr
 
