@@ -1,11 +1,9 @@
 from threading import Lock
-from datetime import datetime, timedelta
+from datetime import timedelta
 import logging
 
-from astral import Location
 import numpy as np
 
-from ml_tools import tools
 from ml_tools.tools import Rectangle
 from .processor import Processor
 
@@ -86,32 +84,27 @@ class MotionDetector(Processor):
     BACKGROUND_WEIGHTING_PER_FRAME = 0.99
     BACKGROUND_WEIGHT_EVERY = 3
 
-    def __init__(self, res_x, res_y, thermal_config, dynamic_thresh, recorder):
+    def __init__(self, thermal_config, dynamic_thresh, recorder, headers):
         self._output_dir = thermal_config.recorder.output_dir
-        self._res_x = res_x
-        self._res_y = res_y
+        self.headers = headers
         self.config = thermal_config.motion
         self.location_config = thermal_config.location
-        self.preview_frames = (
-            thermal_config.recorder.preview_secs * thermal_config.recorder.frame_rate
-        )
+        self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         self.compare_gap = self.config.frame_compare_gap + 1
         edge = self.config.edge_pixels
-        self.min_frames = (
-            thermal_config.recorder.min_secs * thermal_config.recorder.frame_rate
-        )
-        self.max_frames = (
-            thermal_config.recorder.max_secs * thermal_config.recorder.frame_rate
-        )
+        self.min_frames = thermal_config.recorder.min_secs * headers.fps
+        self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.clipped_window = SlidingWindow(
-            (self.compare_gap, res_y - edge * 2, res_x - edge * 2), np.int32
+            (self.compare_gap, headers.res_y - edge * 2, headers.res_x - edge * 2),
+            np.int32,
         )
         self.diff_window = SlidingWindow(
-            (self.compare_gap, res_y - edge * 2, res_x - edge * 2), np.int32
+            (self.compare_gap, headers.res_y - edge * 2, headers.res_x - edge * 2),
+            np.int32,
         )
 
         self.thermal_window = SlidingWindow(
-            (self.preview_frames, res_y, res_x), np.uint16
+            (self.preview_frames, headers.res_y, headers.res_x), np.uint16
         )
         self.processed = 0
         self.num_frames = 0
@@ -122,7 +115,9 @@ class MotionDetector(Processor):
         self.movement_detected = False
         self.dynamic_thresh = dynamic_thresh
         self.temp_thresh = self.config.temp_thresh
-        self.crop_rectangle = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
+        self.crop_rectangle = Rectangle(
+            edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
+        )
         self.rec_window = thermal_config.recorder.rec_window
         self.use_sunrise = self.rec_window.use_sunrise_sunset()
         self.last_sunrise_check = None
@@ -242,19 +237,19 @@ class MotionDetector(Processor):
         self.processed = 0
         self.recorder.force_stop()
 
-    def process_frame(self, lepton_frame):
+    def process_frame(self, cptv_frame):
         if self.can_record() or (self.recorder and self.recorder.recording):
-            cropped_frame = self.crop_rectangle.subimage(lepton_frame.pix)
+            cropped_frame = self.crop_rectangle.subimage(cptv_frame.pix)
             frame = np.int32(cropped_frame)
             prev_ffc = self.ffc_affected
-            self.ffc_affected = is_affected_by_ffc(lepton_frame)
+            self.ffc_affected = is_affected_by_ffc(cptv_frame)
             if not self.ffc_affected:
-                self.thermal_window.add(lepton_frame.pix)
+                self.thermal_window.add(cptv_frame.pix)
                 if self.background is None:
-                    self.background = lepton_frame.pix
+                    self.background = cptv_frame.pix
                     self.last_background_change = self.processed
                 else:
-                    self.calc_temp_thresh(lepton_frame.pix, prev_ffc)
+                    self.calc_temp_thresh(cptv_frame.pix, prev_ffc)
 
             clipped_frame = np.clip(frame, a_min=self.temp_thresh, a_max=None)
             self.clipped_window.add(clipped_frame)
@@ -268,10 +263,10 @@ class MotionDetector(Processor):
             self.processed += 1
             if self.recorder:
                 self.recorder.process_frame(
-                    self.movement_detected, lepton_frame, self.temp_thresh
+                    self.movement_detected, cptv_frame, self.temp_thresh
                 )
         else:
-            self.thermal_window.update_current_frame(lepton_frame.pix)
+            self.thermal_window.update_current_frame(cptv_frame.pix)
             self.movement_detected = False
         self.num_frames += 1
 
@@ -284,17 +279,15 @@ class MotionDetector(Processor):
 
     @property
     def res_x(self):
-        return self._res_x
+        return self.headers.res_x
 
     @property
     def res_y(self):
-        return self._res_y
+        return self.headers.res_y
 
 
-def is_affected_by_ffc(lepton_frame):
-    if lepton_frame.time_on is None or lepton_frame.last_ffc_time is None:
+def is_affected_by_ffc(cptv_frame):
+    if cptv_frame.time_on is None or cptv_frame.last_ffc_time is None:
         return False
 
-    return (
-        lepton_frame.time_on - lepton_frame.last_ffc_time
-    ) < MotionDetector.FFC_PERIOD
+    return (cptv_frame.time_on - cptv_frame.last_ffc_time) < MotionDetector.FFC_PERIOD

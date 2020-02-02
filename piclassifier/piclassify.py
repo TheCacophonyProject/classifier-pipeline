@@ -1,27 +1,27 @@
 #!/usr/bin/python3
 import absl.logging
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 import os
 import psutil
 import socket
-import time
 
 # fixes logging not showing up in tensorflow
 
-from cptv import Frame, CPTVReader
+from cptv import CPTVReader
 import numpy as np
 
 from config.config import Config
 from config.thermalconfig import ThermalConfig
 from .cptvrecorder import CPTVRecorder
+from .headerinfo import HeaderInfo
 from ml_tools.logs import init_logging
 from ml_tools import tools
 from .motiondetector import MotionDetector
 from .piclassifier import PiClassifier
 from service import SnapshotService
-from .telemetry import Telemetry
+from .cameras import lepton3
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -66,37 +66,19 @@ def main():
     init_logging()
     args = parse_args()
 
-    config = Config.load_from_file(args.config_file)
-    thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
-    proccesor = None
-    if thermal_config.motion.run_classifier:
-        classifier = get_classifier(config)
-        proccesor = PiClassifier(config, thermal_config, classifier)
-    else:
-        proccesor = MotionDetector(
-            config.res_x,
-            config.res_y,
-            thermal_config,
-            config.tracking.dynamic_thresh,
-            CPTVRecorder(thermal_config),
-        )
+    config = Config.load_from_file()
+    thermal_config = ThermalConfig.load_from_file()
+
     if args.cptv:
-        with open(args.cptv, "rb") as f:
-            reader = CPTVReader(f)
-            for frame in reader:
-                proccesor.process_frame(frame)
+        return parse_cptv(args.cptv, config, thermal_config)
 
-        proccesor.disconnected()
-        return
-
-    service = SnapshotService(proccesor)
     try:
         os.unlink(SOCKET_NAME)
     except OSError:
         if os.path.exists(SOCKET_NAME):
             raise
 
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
     sock.listen(1)
     while True:
@@ -104,50 +86,83 @@ def main():
         connection, client_address = sock.accept()
         logging.info("connection from %s", client_address)
         try:
-            handle_connection(connection, proccesor)
+            handle_connection(connection, config, thermal_config)
         finally:
             # Clean up the connection
             connection.close()
 
 
-def handle_connection(connection, processor):
-    img_dtype = np.dtype("uint16")
-    # big endian > little endian <
-    # lepton3 is big endian while python is little endian
+def parse_cptv(cptv_file, config, thermal_config):
+    with open(cptv_file, "rb") as f:
+        reader = CPTVReader(f)
 
-    thermal_frame = np.empty((processor.res_y, processor.res_x), dtype=img_dtype)
+        headers = HeaderInfo(
+            res_x=reader.x_resolution,
+            res_y=reader.y_resolution,
+            fps=9,
+            brand="",
+            model="",
+            frame_size=reader.x_resolution * reader.y_resolution * 2,
+            pixel_bits=16,
+        )
+        processor = get_processor(config, thermal_config, headers)
+        for frame in reader:
+            processor.process_frame(frame)
+
+        processor.disconnected()
+
+
+def get_processor(config, thermal_config, headers):
+    if thermal_config.motion.run_classifier:
+        classifier = get_classifier(config)
+        return PiClassifier(config, thermal_config, classifier, headers)
+
+    return MotionDetector(
+        thermal_config,
+        config.tracking.dynamic_thresh,
+        CPTVRecorder(thermal_config, headers),
+        headers,
+    )
+
+
+def handle_headers(connection):
+    headers = ""
+    line = ""
     while True:
-        data = connection.recv(400 * 400 * 2 + TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE)
+        data = connection.recv(1).decode()
 
+        line += data
+        if data == "\n":
+            if line.strip() == "":
+                break
+
+            headers += line
+            line = ""
+    return HeaderInfo.parse_header(headers)
+
+
+def handle_connection(connection, config, thermal_config):
+    headers = handle_headers(connection)
+    logging.debug("parsed camera headers", headers)
+    processor = get_processor(config, thermal_config, headers)
+    service = SnapshotService(processor)
+
+    raw_frame = lepton3.Lepton3(headers)
+
+    while True:
+        data = connection.recv(
+            headers.frame_size + raw_frame.get_telemetry_size(), socket.MSG_WAITALL
+        )
         if not data:
             logging.info("disconnected from camera")
             processor.disconnected()
+            service.quit()
             return
 
-        if len(data) > processor.res_y * processor.res_x * 2:
-            telemetry = Telemetry.parse_telemetry(
-                data[: TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE]
-            )
+        frame = raw_frame.parse(data)
 
-            thermal_frame = np.frombuffer(
-                data, dtype=img_dtype, offset=TELEMETRY_PACKET_COUNT * VOSPI_DATA_SIZE
-            ).reshape(processor.res_y, processor.res_x)
-        else:
-            telemetry = Telemetry()
-            telemetry.last_ffc_time = timedelta(milliseconds=time.time())
-            telemetry.time_on = timedelta(
-                milliseconds=time.time(), seconds=MotionDetector.FFC_PERIOD.seconds + 1
-            )
-            thermal_frame = np.frombuffer(data, dtype=img_dtype, offset=0).reshape(
-                processor.res_y, processor.res_x
-            )
-
-        # swap from big to little endian
-        lepton_frame = Frame(
-            thermal_frame.byteswap(), telemetry.time_on, telemetry.last_ffc_time
-        )
-        t_max = np.amax(lepton_frame.pix)
-        t_min = np.amin(lepton_frame.pix)
+        t_max = np.amax(frame.pix)
+        t_min = np.amin(frame.pix)
         if t_max > 10000 or t_min == 0:
             logging.warning(
                 "received frame has odd values skipping thermal frame max {} thermal frame min {} cpu % {} memory % {}".format(
@@ -157,4 +172,4 @@ def handle_connection(connection, processor):
             # this frame has bad data probably from lack of CPU
             processor.skip_frame()
             continue
-        processor.process_frame(lepton_frame)
+        processor.process_frame(frame)

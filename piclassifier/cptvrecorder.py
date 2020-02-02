@@ -9,7 +9,7 @@ CPTV_TEMP_EXT = ".cptv.temp"
 
 
 class CPTVRecorder:
-    def __init__(self, thermal_config):
+    def __init__(self, thermal_config, headers):
         self.location_config = thermal_config.location
         self.device_config = thermal_config.device
         self.output_dir = thermal_config.recorder.output_dir
@@ -19,12 +19,9 @@ class CPTVRecorder:
         self.filename = None
         self.recording = False
         self.frames = 0
-        self.min_frames = (
-            thermal_config.recorder.min_secs * thermal_config.recorder.frame_rate
-        )
-        self.max_frames = (
-            thermal_config.recorder.max_secs * thermal_config.recorder.frame_rate
-        )
+        self.headers = headers
+        self.min_frames = thermal_config.recorder.min_secs * headers.fps
+        self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.write_until = 0
 
     def force_stop(self):
@@ -36,15 +33,15 @@ class CPTVRecorder:
         else:
             self.delete_recording()
 
-    def process_frame(self, movement_detected, lepton_frame, temp_thresh):
+    def process_frame(self, movement_detected, cptv_frame, temp_thresh):
         if movement_detected:
             self.write_until = self.frames + self.min_frames
-            self.write_frame(lepton_frame, temp_thresh)
+            self.write_frame(cptv_frame, temp_thresh)
         elif self.recording:
             if self.has_minimum():
                 self.stop_recording()
             else:
-                self.write_frame(lepton_frame, temp_thresh)
+                self.write_frame(cptv_frame, temp_thresh)
 
         if self.frames == self.max_frames:
             self.stop_recording()
@@ -67,6 +64,8 @@ class CPTVRecorder:
         self.writer.motion_config = yaml.dump(self.motion_config).encode()[:255]
         self.motion_config.temp_thresh = default_thresh
 
+        # add brand model fps etc to cptv when python-cptv supports
+
         if self.device_config.name:
             self.writer.device_name = self.device_config.name.encode()
         if self.device_config.device_id:
@@ -76,10 +75,10 @@ class CPTVRecorder:
         self.recording = True
         logging.debug("recording started temp_thresh: %d", temp_thresh)
 
-    def write_frame(self, lepton_frame, temp_thresh):
+    def write_frame(self, cptv_frame, temp_thresh):
         if self.writer is None:
             self.start_recording(temp_thresh)
-        self.writer.write_frame(lepton_frame)
+        self.writer.write_frame(cptv_frame)
         self.frames += 1
 
     def stop_recording(self):
