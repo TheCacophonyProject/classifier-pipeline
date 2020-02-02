@@ -76,7 +76,7 @@ class Model:
 
         # number of samples to use when evaluating the model, 1000 works well but is a bit slow,
         # 100 should give results to within a few percent.
-        self.eval_samples = 1
+        self.eval_samples = 500
 
         # number of samples to use when generating the model report,
         # atleast 1000 is recommended for a good representation
@@ -107,9 +107,9 @@ class Model:
         self.log_id = ""
 
         # number of frames per segment during training
-        self.training_segment_frames = 2
+        self.training_segment_frames = 27
         # number of frames per segment during testing
-        self.testing_segment_frames = 2
+        self.testing_segment_frames = 27
 
         # dictionary containing current hyper parameters
         self.params = {
@@ -514,7 +514,8 @@ class Model:
         )
         predictions = self.classify_batch(examples)
         predicted_classes = [np.argmax(prediction) for prediction in predictions]
-
+        print(self.labels)
+        print(predicted_classes)
         pred_label = [self.labels[x] for x in predicted_classes]
         true_label = [self.labels[x] for x in true_classess]
 
@@ -671,6 +672,8 @@ class Model:
         print("Starting benchmark.")
         self.benchmark_model()
         print("Training...")
+        print(self.labels)
+
         for i in range(iterations):
 
             self.step = i
