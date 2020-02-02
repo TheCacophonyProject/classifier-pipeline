@@ -73,7 +73,6 @@ class RecorderConfig:
     preview_secs = attr.ib()
     min_secs = attr.ib()
     max_secs = attr.ib()
-    frame_rate = attr.ib()
     rec_window = attr.ib()
     output_dir = attr.ib()
 
@@ -83,7 +82,6 @@ class RecorderConfig:
             min_secs=recorder.get("min-secs", 2),
             max_secs=recorder.get("max-secs", 10),
             preview_secs=recorder.get("preview-secs", 5),
-            frame_rate=recorder.get("frame-rate", 9),
             rec_window=TimeWindow(
                 RelAbsTime(window.get("start-recording"), default_offset=30 * 60),
                 RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
