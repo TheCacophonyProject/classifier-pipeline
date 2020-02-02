@@ -154,7 +154,7 @@ def parse_args():
     parser.add_argument(
         "--model_name",
         default=MODEL_NAME,
-        help="Name of the model to convert <name>.save",
+        help="Name of the model to convert <name>.sav",
     )
     parser.add_argument(
         "--tflite_name",
