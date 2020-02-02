@@ -209,20 +209,67 @@ class ResnetModel(ConvModel):
             # guessing this should change to the same as thermal....?
             # integrate thermal and flow into a 3 channel layer
             layer = tf.concat((thermal, flow), axis=3)
-            layer = self.conv_layer("motion/1", layer, 32, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/2", layer, 48, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/3", layer, 64, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/4", layer, 64, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/5", layer, 64, [3, 3], conv_stride=1)
+
+            layer = conv2d_fixed_padding(
+                inputs=layer,
+                filters=self.num_filters,
+                kernel_size=self.kernel_size,
+                strides=self.conv_stride,
+                data_format=self.data_format,
+            )
+            layer = tf.identity(layer, "initial_conv_f")
+
+            if self.resnet_version == 1:
+                layer = batch_norm(layer, self.training, self.data_format)
+                layer = tf.nn.relu(layer)
+
+            if self.first_pool_size:
+                layer = tf.compat.v1.layers.max_pooling2d(
+                    inputs=layer,
+                    pool_size=self.first_pool_size,
+                    strides=self.first_pool_stride,
+                    padding="SAME",
+                    data_format=self.data_format,
+                )
+
+            layer = tf.identity(layer, "initial_max_pool_f")
+
+            for i, num_blocks in enumerate(self.block_sizes):
+                num_filters = self.num_filters * (2 ** i)
+                layer = block_layer(
+                    inputs=layer,
+                    filters=num_filters,
+                    bottleneck=self.bottleneck,
+                    block_fn=self.block_fn,
+                    blocks=num_blocks,
+                    strides=self.block_strides[i],
+                    training=self.training,
+                    name="block_layer_f{}".format(i + 1),
+                    data_format=self.data_format,
+                )
+
+            # The current top layer has shape
+            # `batch_size x pool_size x pool_size x final_size`.
+            # ResNet does an Average Pooling layer over pool_size,
+            # but that is the same as doing a reduce_mean. We do a reduce_mean
+            # here because it performs better than AveragePooling2D.
+
+            axes = [2, 3] if self.data_format == "channels_first" else [1, 2]
+            layer = tf.reduce_mean(input_tensor=layer, axis=axes, keepdims=True)
+            layer = tf.identity(layer, "final_reduce_mean_f")
+
+            layer = tf.squeeze(layer, axes)
+            layer = tf.compat.v1.layers.dense(inputs=layer, units=self.num_classes)
+            layer = tf.identity(layer, "final_dense_f")
 
             motion_conv = layer
-            logging.info(
-                "Motion convolution output shape: {}".format(motion_conv.shape)
-            )
             motion_out = tf.reshape(
                 motion_conv,
                 [-1, frame_count, tools.product(motion_conv.shape[1:])],
                 name="motion/out",
+            )
+            logging.info(
+                "Motion convolution output shape: {}".format(motion_conv.shape)
             )
 
             out = tf.concat((filtered_out, motion_out), axis=2, name="out")
