@@ -177,8 +177,8 @@ class ConvModel(Model):
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
         thermal = tf.transpose(thermal, (0, 2, 3, 1))  # [B * F, H, W, 1]
-        flow = tf.transpose(flow, (0, 2, 3, 1)) # [B * F, H, W, 2]
-        mask = tf.transpose(mask, (0, 2, 3, 1)) # [B * F, H, W, 2]
+        flow = tf.transpose(flow, (0, 2, 3, 1))  # [B * F, H, W, 2]
+        mask = tf.transpose(mask, (0, 2, 3, 1))  # [B * F, H, W, 1]
 
         # save distribution of inputs
         self.save_input_summary(thermal, "inputs/thermal", 3)
