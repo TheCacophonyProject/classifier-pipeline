@@ -28,7 +28,7 @@ class Model:
     VERSION = "0.3.0"
 
     def __init__(self, train_config=None, session=None, training=False):
-        self.training =training
+        self.training = training
         self.use_gru = train_config.use_gru
         self.name = "model"
         self.session = session or tools.get_session()
@@ -1062,8 +1062,6 @@ class Model:
         self.session.run(assign_op, feed_dict={var_input: data})
 
     def _build_memory(self, inputs):
-        # return self.test_cell(inputs)
-
         if self.use_gru:
             return self.gru_cell(inputs)
 
@@ -1106,8 +1104,6 @@ class Model:
 
     def lstm_cell(self, inputs):
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
-        print("*****")
-        print("=================state", lstm_cell.state_size)
         dropout = tf.nn.rnn_cell.DropoutWrapper(
             lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
         )
@@ -1138,19 +1134,7 @@ class Model:
         logging.info("lstm state shape: {}".format(lstm_state.shape))
         return lstm_output, lstm_state
 
-    def test_cell(self, inputs):
-        lstm_output = tf.identity(tf.squeeze(inputs, axis=1), "lstm_out")
-        memory_state = tf.stack([lstm_output, lstm_output], axis=2)
-        # INFO lstm output shape: ? x (?, 576)
-        # INFO lstm state shape: (?, 576, 2)
-        # INFO memory_output output shape: (?, 576)
-        # INFO memory_state output shape: (?, 576, 2)
-
-        return lstm_output, memory_state
-
     def lite_lstm_cell(self, inputs):
-        print("LSTM LITE", inputs.shape)
-        print("shapes", self.state_in[:, :, 0].shape, self.state_in[:, :, 1].shape)
         lstm_cell = tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
             num_units=self.params["lstm_units"]
         )
@@ -1160,10 +1144,6 @@ class Model:
 
         init_state = lstm_cell.zero_state(self.batch_size, tf.float32)
 
-        # init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
-        #     self.state_in[:, :, 0], self.state_in[:, :, 1]
-        # )
-        # tf.compat.v1.lite.experimental.nn.dynamic_rnn(
         lstm_outputs, lstm_states = tf.compat.v1.lite.experimental.nn.dynamic_rnn(
             cell=dropout,
             inputs=tf.expand_dims(inputs, axis=1),
