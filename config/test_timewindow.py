@@ -50,8 +50,11 @@ class TestWindow:
         end = RelAbsTime(cur_date.strftime("%H:%M"))
         time_window = TimeWindow(start, end)
         assert time_window.inside_window()
-        print(cur_date)
-        time_window.end = RelAbsTime((cur_date + timedelta(hours=1)).strftime("%H:%M"))
+
+        new_end = cur_date + timedelta(minutes=1)
+        if new_end.day < cur_date.day:
+            new_end = cur_date
+        time_window.end = RelAbsTime(new_end.strftime("%H:%M"))
         assert time_window.inside_window()
 
         new_end = cur_date + timedelta(minutes=-1)
