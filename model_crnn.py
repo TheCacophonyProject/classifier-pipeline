@@ -29,7 +29,7 @@ class ConvModel(Model):
     ):
         """ Adds a convolutional layer to the model. """
 
-        # tf.compat.v1.summary.histogram(name + "/input", input_layer)
+        tf.compat.v1.summary.histogram(name + "/input", input_layer)
         conv = tf.compat.v1.layers.conv2d(
             inputs=input_layer,
             filters=filters,
@@ -113,7 +113,7 @@ class ConvModel(Model):
 
         # Apply pre-processing
         X = self.X  # [B, F, C, H, W]
-        X = tf.reshape(X, [-1, 5, 48, 48])
+        X = tf.reshape(X, [-1, 5, 48, 48])  # [B* F, C, H, W]
         # normalise the thermal
         # the idea here is to apply sqrt to any values over 100 so that we reduce the effect of very strong values.
         thermal = X[:, 0 : 0 + 1]
@@ -176,9 +176,9 @@ class ConvModel(Model):
 
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
-        thermal = tf.transpose(thermal, (0, 2, 3, 1))  # [B, F, H, W, 1]
-        flow = tf.transpose(flow, (0, 2, 3, 1))  # [B, F, H, W, 2]
-        mask = tf.transpose(mask, (0, 2, 3, 1))
+        thermal = tf.transpose(thermal, (0, 2, 3, 1))  # [B * F, H, W, 1]
+        flow = tf.transpose(flow, (0, 2, 3, 1)) # [B * F, H, W, 2]
+        mask = tf.transpose(mask, (0, 2, 3, 1)) # [B * F, H, W, 2]
 
         # save distribution of inputs
         self.save_input_summary(thermal, "inputs/thermal", 3)
@@ -345,7 +345,6 @@ class ModelCRNN_HQ(ConvModel):
 
         logging.info("Output shape {}".format(out.shape))
 
-
         # -------------------------------------
         # run the LSTM
         # memory_output, memory_state = self._build_memory(out)
@@ -476,7 +475,6 @@ class ModelCRNN_LQ(ConvModel):
         frame_count = tf.shape(input=self.X)[1]
         # -------------------------------------
         # run the Convolutions
-        print(thermal.shape)
         layer = thermal
         layer = self.conv_layer("thermal/1", layer, 32, [3, 3], conv_stride=2)
 
