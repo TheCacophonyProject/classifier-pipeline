@@ -12,7 +12,7 @@ before_script:
 - pip install black
 
 script:
-- pytest
+- pytest -s
 - ./check-style
 
 before_deploy:
