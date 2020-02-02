@@ -36,7 +36,7 @@ from ml_tools import tools
 
 _BATCH_NORM_DECAY = 0.997
 _BATCH_NORM_EPSILON = 1e-5
-DEFAULT_VERSION = 2
+DEFAULT_VERSION = 1
 DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
@@ -88,7 +88,7 @@ class ResnetModel(ConvModel):
 
         self.training = True
         self.resnet_size = train_config.resnet_params.resnet_size
-        data_format =  "channels_last"
+        data_format = "channels_last"
         if not data_format:
             data_format = (
                 "channels_first" if tf.test.is_built_with_cuda() else "channels_last"
@@ -126,7 +126,10 @@ class ResnetModel(ConvModel):
 
         self.first_pool_size = train_config.resnet_params.first_pool_size
         self.first_pool_stride = train_config.resnet_params.first_pool_stride
-        self.block_sizes = train_config.resnet_params.block_sizes
+        if train_config.resnet_params.block_sizes:
+            self.block_sizes = train_config
+        else:
+            self.block_sizes = _get_block_sizes(self.resnet_size)
         self.block_strides = train_config.resnet_params.block_strides
         self.dtype = dtype
         self.pre_activation = resnet_version == 2
@@ -230,7 +233,9 @@ class ResnetModel(ConvModel):
 
         # -------------------------------------
         # add short term memory (GRU / LSTM)
-        memory_output, memory_state = self._build_memory(out)
+        # memory_output, memory_state = self._build_memory(out)
+        memory_output = out[:, -1]
+        memory_state = out
 
         # -------------------------------------
         # dense / logits
@@ -588,6 +593,37 @@ def _bottleneck_block_v2(
     )
 
     return inputs + shortcut
+
+
+def _get_block_sizes(resnet_size):
+    """Retrieve the size of each block_layer in the ResNet model.
+  The number of block layers used for the Resnet model varies according
+  to the size of the model. This helper grabs the layer set we want, throwing
+  an error if a non-standard size has been selected.
+  Args:
+    resnet_size: The number of convolutional layers needed in the model.
+  Returns:
+    A list of block sizes to use in building the model.
+  Raises:
+    KeyError: if invalid resnet_size is received.
+  """
+    choices = {
+        18: [2, 2, 2, 2],
+        34: [3, 4, 6, 3],
+        50: [3, 4, 6, 3],
+        101: [3, 4, 23, 3],
+        152: [3, 8, 36, 3],
+        200: [3, 24, 36, 3],
+    }
+
+    try:
+        return choices[resnet_size]
+    except KeyError:
+        err = (
+            "Could not find layers for selected Resnet size.\n"
+            "Size received: {}; sizes allowed: {}.".format(resnet_size, choices.keys())
+        )
+        raise ValueError(err)
 
 
 def block_layer(

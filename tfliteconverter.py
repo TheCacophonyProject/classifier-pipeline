@@ -1,68 +1,106 @@
+import argparse
 import os
 import numpy as np
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import shutil
 import tensorflow as tf
+from config.config import Config
+from ml_tools.dataset import dataset_db_path
+import pickle
+
+from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
+
+MODEL_DIR = "newmodel/train/checkpoints"
+MODEL_NAME = "training-most-recent.sav"
+SAVED_DIR = "saved_model"
+LITE_MODEL_NAME = "converted_model.tflite"
 
 
-base_dir = "/home/zaza/Cacophony/classifier-pipeline/newmodel/train/checkpoints"
-model_name = "training-most-recent.sav"
-saved_dir = "saved_model2"
+def save_eval_model(args):
+    config = Config.load_from_file()
+    datasets_filename = dataset_db_path(config)
+    with open(datasets_filename, "rb") as f:
+        dsets = pickle.load(f)
+    labels = dsets[0].labels
+    model = ModelCRNN_LQ(
+        labels=len(labels),
+        train_config=config.train,
+        training_build=False,
+        **config.train.hyper_params,
+    )
+    model.saver = tf.compat.v1.train.Saver(max_to_keep=1000)
+
+    model.restore_params(os.path.join(args.model_dir, args.model_name))
+    model.save(os.path.join(args.model_dir, "eval-model"))
+    model.setup_summary_writers("convert")
 
 
-def freeze_model():
+def freeze_model(args):
+    save_eval_model(args)
     loaded_graph = tf.Graph()
-
     with tf.Session(graph=loaded_graph) as sess:
 
         saver = tf.compat.v1.train.import_meta_graph(
-            os.path.join(base_dir, model_name) + ".meta", clear_devices=True
+            os.path.join(args.model_dir, "eval-model") + ".meta", clear_devices=True
         )
-        saver.restore(sess, os.path.join(base_dir, model_name))
+        saver.restore(sess, os.path.join(args.model_dir, "eval-model"))
 
         try:
             from tensorflow.compat.v1.saved_model import simple_save
         except (ModuleNotFoundError, ImportError):
             from tensorflow.saved_model import simple_save
 
-        inName = "X:0"
-        outName = "state_out:0"
+        in_names = ["X:0", "y:0", "state_in:0"]
+        out_names = ["state_out:0", "prediction:0", "accuracy:0"]
+        inputs = {}
+        outputs = {}
+        for name in in_names:
+            inputs[name] = loaded_graph.get_tensor_by_name(name)
+        inputs["X:0"].set_shape([None, 1, 5, 48, 48])
 
-        inputTensor = loaded_graph.get_tensor_by_name(inName)
-        inputTensor.set_shape([1, 1, 5, 48, 48])
-        # doing this lets us convert the model as it doesn't like unknown shapes
-        outTensor = loaded_graph.get_tensor_by_name(outName)
+        for name in out_names:
+            outputs[name] = loaded_graph.get_tensor_by_name(name)
 
-        inputs = {inName: inputTensor}
-        outputs = {outName: outTensor}
+        # training = loaded_graph.get_tensor_by_name("training:0")
+        # training[0] = False
 
         # complains if directory isn't empty
-        try:
-            shutil.rmtree(os.path.join(base_dir, saved_dir))
-        except:
-            pass
+        if os.path.exists(os.path.join(args.model_dir, SAVED_DIR)):
+            shutil.rmtree(os.path.join(args.model_dir, SAVED_DIR))
 
-        simple_save(sess, os.path.join(base_dir, saved_dir), inputs, outputs)
+        simple_save(sess, os.path.join(args.model_dir, SAVED_DIR), inputs, outputs)
 
 
-def run_model():
-    interpreter = tf.lite.Interpreter(model_path="converted_model.tflite")
+def run_model(args):
+    interpreter = tf.lite.Interpreter(
+        model_path=os.path.join(args.model_dir, args.tflite_name)
+    )
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
+
+    in_values = {}
+    for detail in input_details:
+        in_values[detail["name"]] = detail["index"]
     output_details = interpreter.get_output_details()
     input_shape = input_details[0]["shape"]
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
-    interpreter.set_tensor(input_details[0]["index"], input_data)
+    interpreter.set_tensor(in_values["X"], input_data)
 
     interpreter.invoke()
-    output_data = interpreter.get_tensor(output_details[0]["index"])
-    print(output_data)
+    print("model pass 1")
+    out_values = {}
+    for detail in output_details:
+        out_values[detail["name"]] = interpreter.get_tensor(detail["index"])
+
+    input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
+    interpreter.set_tensor(in_values["X"], input_data)
+    interpreter.invoke()
+    print("model pass 2")
 
 
-def convert_model():
+def convert_model(args):
     converter = tf.lite.TFLiteConverter.from_saved_model(
-        os.path.join(base_dir, saved_dir)
+        os.path.join(args.model_dir, SAVED_DIR)
     )
     converter.target_spec.supported_ops = [
         tf.lite.OpsSet.TFLITE_BUILTINS,
@@ -71,12 +109,14 @@ def convert_model():
     converter.experimental_new_converter = True
 
     tflite_model = converter.convert()
-    open("converted_model.tflite", "wb").write(tflite_model)
+    open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
 
 
-def convert_model_concrete():
+def convert_model_concrete(args):
 
-    model = tf.saved_model.load(export_dir=os.path.join(base_dir, saved_dir), tags=None)
+    model = tf.saved_model.load(
+        export_dir=os.path.join(args.model_dir, SAVED_DIR), tags=None
+    )
     concrete_func = model.signatures[tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
     concrete_func.inputs[0].set_shape([0, 27, 5, 48, 48])
 
@@ -88,12 +128,50 @@ def convert_model_concrete():
     converter.experimental_new_converter = True
 
     tflite_model = converter.convert()
+    open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-f", "--freeze", action="store_true", help="freeze saved model to .pb format"
+    )
+    parser.add_argument(
+        "-c", "--convert", action="store_true", help="Convert frozen model to tflite"
+    )
+    parser.add_argument(
+        "-r",
+        "--run",
+        action="store_true",
+        help="Test converted model with random data using tflite interpreter",
+    )
+    parser.add_argument(
+        "--model_dir",
+        default=MODEL_DIR,
+        help="Directory where meta data of the model you want to convert is stored",
+    )
+    parser.add_argument(
+        "--model_name",
+        default=MODEL_NAME,
+        help="Name of the model to convert <name>.save",
+    )
+    parser.add_argument(
+        "--tflite_name",
+        default=LITE_MODEL_NAME,
+        help="Name to save converted tflite model under, also used to run model",
+    )
+    return parser.parse_args()
 
 
 def main():
-    run_model()
-    freeze_model()
-    convert_model()
+    args = parse_args()
+    if args.freeze:
+        freeze_model(args)
+    if args.convert:
+        convert_model(args)
+    if args.run:
+        run_model(args)
 
 
 if __name__ == "__main__":

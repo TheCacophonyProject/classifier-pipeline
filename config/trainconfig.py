@@ -94,7 +94,7 @@ class ResnetConfig:
             kernel_size=raw.get("kernel_size"),
             conv_stride=raw.get("conv_stride"),
             block_sizes=raw.get("block_sizes"),
-            block_strides=raw.get("block_strides"),
+            block_strides=raw.get("block_strides", [1, 2, 2, 2]),
             bottleneck=raw.get("bottleneck"),
             resnet_size=raw.get("resnet_size"),
             first_pool_size=raw.get("first_pool_size"),

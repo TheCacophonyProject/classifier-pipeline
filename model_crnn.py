@@ -26,10 +26,11 @@ class ConvModel(Model):
         conv_stride=1,
         pool_stride=1,
         disable_norm=False,
+        training_build=False,
     ):
         """ Adds a convolutional layer to the model. """
 
-        tf.compat.v1.summary.histogram(name + "/input", input_layer)
+        # tf.compat.v1.summary.histogram(name + "/input", input_layer)
         conv = tf.compat.v1.layers.conv2d(
             inputs=input_layer,
             filters=filters,
@@ -51,12 +52,20 @@ class ConvModel(Model):
         tf.compat.v1.summary.histogram(name + "/activations", activation)
 
         if self.params["batch_norm"] and not disable_norm:
-            out = tf.compat.v1.layers.batch_normalization(
-                activation,
-                fused=True,
-                training=self.is_training,
-                name=name + "/batchnorm",
-            )
+            if training_build:
+
+                out = tf.compat.v1.layers.batch_normalization(
+                    activation,
+                    fused=True,
+                    training=self.is_training,
+                    name=name + "/batchnorm",
+                )
+            else:
+                out = tf.compat.v1.layers.batch_normalization(
+                    activation,
+                    fused=True,
+                    name=name + "/batchnorm",
+                )
             moving_mean = tf.compat.v1.get_collection(
                 tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
                 scope=name + "/batchnorm/moving_mean",
@@ -115,11 +124,10 @@ class ConvModel(Model):
 
         # Apply pre-processing
         X = self.X  # [B, F, C, H, W]
-
+        X = tf.reshape(X, [-1, 5, 48, 48])
         # normalise the thermal
         # the idea here is to apply sqrt to any values over 100 so that we reduce the effect of very strong values.
-        thermal = X[:, :, 0 : 0 + 1]
-
+        thermal = X[:, 0 : 0 + 1]
         AUTO_NORM_THERMAL = False
         THERMAL_ROLLOFF = 400
 
@@ -163,14 +171,14 @@ class ConvModel(Model):
 
         # normalise the flow
         # horizontal and vertical flow have different normalisation constants
-        flow = X[:, :, 2 : 3 + 1]
+        flow = X[:, 2 : 3 + 1]
         flow = (
             flow
             * np.asarray([2.5, 5])[np.newaxis, np.newaxis :, np.newaxis, np.newaxis]
         )
 
         # grab the mask
-        mask = X[:, :, 4 : 4 + 1]
+        mask = X[:, 4 : 4 + 1]
 
         # tap the outputs
         tf.identity(thermal, "thermal_out")
@@ -179,13 +187,9 @@ class ConvModel(Model):
 
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
-        thermal = tf.transpose(thermal, (0, 1, 3, 4, 2))  # [B, F, H, W, 1]
-        flow = tf.transpose(flow, (0, 1, 3, 4, 2))  # [B, F, H, W, 2]
-
-        thermal = tf.reshape(thermal, [-1, 48, 48, 1])  # [B*F, 48, 48, 1]
-        flow = tf.reshape(flow, [-1, 48, 48, 2])  # [B*F, 48, 48, 2]
-
-        mask = tf.reshape(mask, [-1, 48, 48, 1])  # [B*F, 48, 48, 1]
+        thermal = tf.transpose(thermal, (0, 2, 3, 1))  # [B, F, H, W, 1]
+        flow = tf.transpose(flow, (0, 2, 3, 1))  # [B, F, H, W, 2]
+        mask = tf.transpose(mask, (0, 2, 3, 1))
 
         # save distribution of inputs
         self.save_input_summary(thermal, "inputs/thermal", 3)
@@ -452,7 +456,7 @@ class ModelCRNN_LQ(ConvModel):
         "scale_frequency": 0.5,
     }
 
-    def __init__(self, labels, train_config, **kwargs):
+    def __init__(self, labels, train_config, training_build, **kwargs):
         """
         Initialise the model
         :param labels: number of labels for model to predict
@@ -460,9 +464,9 @@ class ModelCRNN_LQ(ConvModel):
         super().__init__(train_config=train_config)
         self.params.update(self.DEFAULT_PARAMS)
         self.params.update(kwargs)
-        self._build_model(labels)
+        self._build_model(labels, training_build)
 
-    def _build_model(self, label_count):
+    def _build_model(self, label_count, training_build):
         label_count = 2
         ####################################
         # CNN + LSTM
@@ -482,12 +486,22 @@ class ModelCRNN_LQ(ConvModel):
         # run the Convolutions
         print(thermal.shape)
         layer = thermal
-        layer = self.conv_layer("thermal/1", layer, 32, [3, 3], conv_stride=2)
+        layer = self.conv_layer(
+            "thermal/1", layer, 32, [3, 3], conv_stride=2, training_build=training_build
+        )
 
-        layer = self.conv_layer("thermal/2", layer, 48, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/3", layer, 64, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/4", layer, 64, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/5", layer, 64, [3, 3], conv_stride=1)
+        layer = self.conv_layer(
+            "thermal/2", layer, 48, [3, 3], conv_stride=2, training_build=training_build
+        )
+        layer = self.conv_layer(
+            "thermal/3", layer, 64, [3, 3], conv_stride=2, training_build=training_build
+        )
+        layer = self.conv_layer(
+            "thermal/4", layer, 64, [3, 3], conv_stride=2, training_build=training_build
+        )
+        layer = self.conv_layer(
+            "thermal/5", layer, 64, [3, 3], conv_stride=1, training_build=training_build
+        )
 
         filtered_conv = layer
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
@@ -500,11 +514,46 @@ class ModelCRNN_LQ(ConvModel):
         if self.params["enable_flow"]:
             # integrate thermal and flow into a 3 channel layer
             layer = tf.concat((thermal, flow), axis=3)
-            layer = self.conv_layer("motion/1", layer, 32, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/2", layer, 48, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/3", layer, 64, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/4", layer, 64, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/5", layer, 64, [3, 3], conv_stride=1)
+            layer = self.conv_layer(
+                "motion/1",
+                layer,
+                32,
+                [3, 3],
+                conv_stride=2,
+                training_build=training_build,
+            )
+            layer = self.conv_layer(
+                "motion/2",
+                layer,
+                48,
+                [3, 3],
+                conv_stride=2,
+                training_build=training_build,
+            )
+            layer = self.conv_layer(
+                "motion/3",
+                layer,
+                64,
+                [3, 3],
+                conv_stride=2,
+                training_build=training_build,
+            )
+            layer = self.conv_layer(
+                "motion/4",
+                layer,
+                64,
+                [3, 3],
+                conv_stride=2,
+                training_build=training_build,
+            )
+            layer = self.conv_layer(
+                "motion/5",
+                layer,
+                64,
+                [3, 3],
+                conv_stride=1,
+                training_build=training_build,
+            )
 
             motion_conv = layer
             logging.info(
@@ -521,19 +570,9 @@ class ModelCRNN_LQ(ConvModel):
             out = tf.concat((filtered_out,), axis=2, name="out")
         logging.info("Output shape {}".format(out.shape))
 
-        # INFO Thermal convolution output shape: (?, 3, 3, 64)
-        # INFO Output shape (?, ?, 576)
-        # INFO memory_output output shape: (?, 576)
-        # INFO memory_state output shape: (?, 576, 2)
-
-        # -------------------------------------
-        # add short term memory (GRU / LSTM)
-        # out must be [batch_size, max_time, ...]
-        #  out is           ?     , ?
-        memory_output, memory_state = self._build_memory(out)
-        # batch_size, max_time, cell.output_size], [batch_size, cell.state_size (units x units)]
+        # memory_output, memory_state = self._build_memory(out)
         memory_state = out
-        memory_output =out[:, -1]
+        memory_output = out[:, -1]
 
         # memory_state =  tf.stack([memory_output, memory_output], axis=2)
         logging.info("memory_output output shape: {}".format(memory_output.shape))
@@ -578,6 +617,7 @@ class ModelCRNN_LQ(ConvModel):
         self.setup_optimizer(loss)
 
         # make reference to special nodes
+        # not used for anything as we aren't doing RNN for tflite
         tf.identity(memory_state, "state_out")
         tf.identity(memory_output, "hidden_out")
         tf.identity(logits, "logits_out")

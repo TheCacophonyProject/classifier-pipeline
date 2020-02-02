@@ -677,7 +677,6 @@ class Model:
 
             # get a new batch
             start = time.time()
-            print("get batch")
             batch = self.datasets.train.next_batch(self.batch_size)
             prep_time += time.time() - start
 
@@ -691,11 +690,9 @@ class Model:
                 start = time.time()
 
                 val_batch = self.datasets.validation.next_batch(self.eval_samples)
-                print(len(val_batch[0]))
                 train_batch = self.datasets.train.next_batch(
                     self.eval_samples, force_no_augmentation=True
                 )
-                print("trained")
                 train_accuracy, train_loss = self.eval_batch(
                     train_batch[0], train_batch[1], writer=self.writer_train
                 )
@@ -738,7 +735,6 @@ class Model:
                 self.save(
                     os.path.join(self.checkpoint_folder, "training-most-recent.sav")
                 )
-                print("saved")
 
                 # save the best model if validation score was good
                 if val_loss < best_val_loss:
