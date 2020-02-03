@@ -6,7 +6,7 @@ from config.config import Config
 from ml_tools.logs import init_logging
 from piclassifier.motiondetector import MotionDetector
 from config.thermalconfig import ThermalConfig
-from .headerinfo import HeaderInfo
+from piclassifier.headerinfo import HeaderInfo
 
 
 def parse_args():
