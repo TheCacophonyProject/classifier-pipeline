@@ -31,6 +31,11 @@ TELEMETRY_PACKET_COUNT = 4
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cptv", help="a CPTV file to send", default=None)
+    parser.add_argument("-c", "--config-file", help="Path to config file to use")
+    parser.add_argument(
+        "--thermal-config-file", help="Path to pi-config file (config.toml) to use"
+    )
+
     args = parser.parse_args()
     return args
 
@@ -61,8 +66,8 @@ def main():
     init_logging()
     args = parse_args()
 
-    config = Config.load_from_file()
-    thermal_config = ThermalConfig.load_from_file()
+    config = Config.load_from_file(args.config_file)
+    thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
 
     if args.cptv:
         return parse_cptv(args.cptv, config, thermal_config)

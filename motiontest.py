@@ -6,7 +6,7 @@ from config.config import Config
 from ml_tools.logs import init_logging
 from piclassifier.motiondetector import MotionDetector
 from config.thermalconfig import ThermalConfig
-from .headerinfo import HeaderInfo
+from piclassifier.headerinfo import HeaderInfo
 
 
 def parse_args():
@@ -27,9 +27,7 @@ def main():
 
     config = Config.load_from_file(args.config_file)
     thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
-
     print("detecting on  " + args.cptv)
-
     with open(args.cptv, "rb") as f:
         reader = CPTVReader(f)
 

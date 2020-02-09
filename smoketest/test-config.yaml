@@ -4,36 +4,38 @@ use_opt_flow: True
 debug: False
 
 # root folder where the source and output folders belong
-base_data_folder: "<full path>"
+base_data_folder: "."
 
 # Enables/Disables GPU accelerated classification
 use_gpu: false
 
 # source_folder is where the cptv files reside under. It is relative
 # to base_data_folder.
-source_folder: "cptv"
+source_folder: "smoketest/clips/"
 
 # tracks_folder is where the track data files will be created. It is
 # specified relative to base_data_folder.
-tracks_folder: "tracks"
+tracks_folder: "smoketest/classify/"
 
 # which folders (tags) to ignore when selecting cptv files from source_folder
 excluded_tags: ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit', 'hard', 'multi', 'moving',
                   'mouse', 'bird-kiwi', 'for_grant', 'missclassified', 'other']
 
 # Reprocess files which have already been processed.
-reprocess: true
+reprocess: True
 
 # Colour map override to use when exporting to MPEG. If not specified,
 # a sensible default colour map is used.
 # Note: This is should be a full path. It is not relative to the # base_data_folder.
 # previews_colour_map: "custom_colormap.dat"
 
-# Labels 
-labels : ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
 
 # Number of worker threads to use.  0 disables worker pool and forces a single thread.
 worker_threads: 0
+
+# x and y resolution of thermal camera
+res_x: 160
+res_y: 120
 
 tracking:
     #
@@ -211,17 +213,17 @@ classify_tracking:
 
 classify:
     # Writes metadata to standard out instead of a file with extension .txt
-    meta_to_stdout : False
+    meta_to_stdout : True
 
     # Path to pretrained Model use for classification (This should be the base filename without any extension)
-    model: "<full path>"
+    model: "./models/model_hq-0.966"
 
     # Create a MP4 preview after classification of recording.  Options are "none", "raw", "classified", "tracking"
     # See extract:preview for details on each option.
     preview: "boxes"
 
     # folder is where classifier output and mp4s will be created.  It is specified relative to the base_data_folder
-    classify_folder: "classify"
+    classify_folder: "smoketest/clips"
 
     #cache buffer frame to disk reducing memory usage
     cache_to_disk: True
@@ -235,12 +237,14 @@ evaluate:
     # false positive's and 'none' can be mapped to the same label as they represent the same idea.
     null_tags: ["false-positive", "none", "no-tag"]
     
+    # Labels 
+    labels : ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
 build:
     #file containing clips to be banned relative to running path
     # banned_clips_file: "excluded_clips.txt"
 
     # uses split from previous run
-    use_previous_split: False
+    use_previous_split: True
 
     # file to load previous split from
     previous_split: template.dat
@@ -268,7 +272,7 @@ build:
 
     # clips after this date will be ignored.
     # note: this is based on the UTC date.
-    clip_end_date: "2019-12-31"
+    clip_end_date: "2020-12-31"
 
     # minimum average mass for test segment
     test_min_mass: 30
@@ -281,10 +285,10 @@ build:
     max_validation_set_track_duration: 120
 
     # number of segments to include in test set for each class (multiplied by label weights)
-    test_set_count: 300
+    test_set_count: 1
 
     # minimum number of bins used for test set
-    test_set_bins: 10
+    test_set_bins: 1
 
     # number of seconds each segment should be
     segment_length: 3

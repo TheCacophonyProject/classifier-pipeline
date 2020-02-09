@@ -74,11 +74,12 @@ class CPTVFileProcessor:
 
         # check date filters
         date_part = str(os.path.basename(filename).split("-")[0])
-        date = datetime.strptime(date_part, "%Y%m%d")
-        if self.start_date and date < self.start_date:
-            return False
-        if self.end_date and date > self.end_date:
-            return False
+        if self.start_date or self.end_date:
+            date = datetime.strptime(date_part, "%Y%m%d")
+            if self.start_date and date < self.start_date:
+                return False
+            if self.end_date and date > self.end_date:
+                return False
 
         # look to see of the destination file already exists.
         classify_name = self.get_classify_filename(filename)
