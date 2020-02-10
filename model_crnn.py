@@ -52,7 +52,7 @@ class ConvModel(Model):
 
         if self.params["batch_norm"] and not disable_norm:
             out = tf.compat.v1.layers.batch_normalization(
-                activation, fused=True, training=self.training, name=name + "/batchnorm"
+                activation, fused=False, training=self.training, name=name + "/batchnorm"
             )
 
             moving_mean = tf.compat.v1.get_collection(
@@ -347,9 +347,9 @@ class ModelCRNN_HQ(ConvModel):
 
         # -------------------------------------
         # run the LSTM
-        # memory_output, memory_state = self._build_memory(out)
-        memory_state = out
-        memory_output = out[:, -1]
+        memory_output, memory_state = self._build_memory(out)
+        # memory_state = out
+        # memory_output = out[:, -1]
         if self.params["l2_reg"] > 0:
             regularizer = tf.keras.regularizers.l2(l=0.5 * (self.params["l2_reg"]))
         else:
@@ -517,7 +517,8 @@ class ModelCRNN_LQ(ConvModel):
 
         # memory_output, memory_state = self._build_memory(out)
         memory_state = out
-        memory_output = out[:, -1]
+        memory_output = out
+        # memory_output = memory_outpu[:, -1]
 
         # memory_state =  tf.stack([memory_output, memory_output], axis=2)
         logging.info("memory_output output shape: {}".format(memory_output.shape))

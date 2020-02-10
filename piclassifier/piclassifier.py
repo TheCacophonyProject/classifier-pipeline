@@ -55,7 +55,7 @@ class PiClassifier(Processor):
             self.fp_index = self.classifier.labels.index("false-positive")
         except ValueError:
             self.fp_index = None
-
+        print(self.fp_index)
         self.track_extractor = ClipTrackExtractor(
             self.config.tracking,
             self.config.use_opt_flow,
@@ -106,7 +106,7 @@ class PiClassifier(Processor):
         # classifies an empty frame to force loading of the model into memory
 
         p_frame = np.zeros((5, 48, 48), np.float32)
-        self.classifier.classify_frame_with_novelty(p_frame, None)
+        self.classifier.run(p_frame)
 
     def get_active_tracks(self):
         """
@@ -187,13 +187,13 @@ class PiClassifier(Processor):
                     novelty,
                     state,
                 ) = self.classifier.classify_frame_with_novelty(
-                    p_frame, track_prediction.state
+                    p_frame
                 )
                 track_prediction.state = state
 
                 if self.fp_index is not None:
                     prediction[self.fp_index] *= 0.8
-                state *= 0.98
+                # state *= 0.98
                 mass = region.mass
                 mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
                 cropped_weight = 0.7 if region.was_cropped else 1.0

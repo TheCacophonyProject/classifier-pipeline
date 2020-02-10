@@ -12,6 +12,7 @@ import time
 
 from cptv import Frame, CPTVReader
 import numpy as np
+import json
 
 from config.config import Config
 from config.thermalconfig import ThermalConfig
@@ -22,10 +23,58 @@ from .motiondetector import MotionDetector
 from .piclassifier import PiClassifier
 from service import SnapshotService
 from .telemetry import Telemetry
+import tflite_runtime.interpreter as tflite
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
 TELEMETRY_PACKET_COUNT = 4
+
+
+class LiteInterpreter:
+    def __init__(self, config):
+
+        self.interpreter = tflite.Interpreter(
+            model_path=config.classify.model + ".tflite"
+        )
+
+        self.interpreter.allocate_tensors()
+        input_details = self.interpreter.get_input_details()
+
+        self.in_values = {}
+        for detail in input_details:
+            self.in_values[detail["name"]] = detail["index"]
+        output_details = self.interpreter.get_output_details()
+
+        self.out_values = {}
+        for detail in output_details:
+            self.out_values[detail["name"]] = self.interpreter.get_tensor(
+                detail["index"]
+            )
+
+        self.load_json(config.classify.model)
+        print(input_details[0]["shape"])
+        self.accuracy = self.out_values["accuracy"]
+        self.prediction = self.out_values["prediction"]
+        print(self.prediction)
+        # interpreter.set_tensor(in_values["X"], input_data)
+
+    def run(self, input_x):
+        self.interpreter.set_tensor(self.in_values["X"], [[input_x]])
+        self.interpreter.invoke()
+
+    def classify_frame_with_novelty(self, input_x):
+        self.run(input_x)
+        return self.prediction,5, None
+
+    def load_json(self, filename):
+        """ Loads model and parameters from file. """
+        stats = json.load(open(filename + ".txt", "r"))
+
+        self.MODEL_NAME = stats["name"]
+        self.MODEL_DESCRIPTION = stats["description"]
+        self.labels = stats["labels"]
+        self.eval_score = stats["score"]
+        self.params = stats["hyperparams"]
 
 
 def parse_args():
@@ -33,6 +82,10 @@ def parse_args():
     parser.add_argument("--cptv", help="a CPTV file to send", default=None)
     args = parser.parse_args()
     return args
+
+
+def get_lite_model(config):
+    return LiteInterpreter(config)
 
 
 def get_classifier(config):
@@ -65,7 +118,7 @@ def main():
     thermal_config = ThermalConfig.load_from_file()
     proccesor = None
     if thermal_config.motion.run_classifier:
-        classifier = get_classifier(config)
+        classifier = get_lite_model(config)
         proccesor = PiClassifier(config, thermal_config, classifier)
     else:
         proccesor = MotionDetector(

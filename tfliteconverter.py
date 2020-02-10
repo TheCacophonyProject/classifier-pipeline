@@ -10,10 +10,26 @@ import pickle
 
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
 
-MODEL_DIR = "newmodel/train/checkpoints"
+MODEL_DIR = "../cptv-download/train/checkpoints"
 MODEL_NAME = "training-most-recent.sav"
 SAVED_DIR = "saved_model"
 LITE_MODEL_NAME = "converted_model.tflite"
+
+
+
+def optimizer_model(args):
+    save_eval_model(args)
+    loaded_graph = tf.Graph()
+    with tf.Session(graph=loaded_graph) as sess:
+    # import tensorflow as tf
+        from tensorflow.python.framework import graph_io
+        out_names = []
+        saver = tf.compat.v1.train.import_meta_graph(
+            os.path.join(args.model_dir, "eval-model") + ".meta", clear_devices=True
+        )
+        saver.restore(sess, os.path.join(args.model_dir, "eval-model"))
+        frozen = tf.graph_util.convert_variables_to_constants(sess, sess.graph_def, ["state_out","prediction"])
+        graph_io.write_graph(frozen, './', 'inference_graph.pb', as_text=False)
 
 
 def save_eval_model(args):
@@ -167,7 +183,8 @@ def parse_args():
 def main():
     args = parse_args()
     if args.freeze:
-        freeze_model(args)
+        optimizer_model(args)
+        # freeze_model(args)
     if args.convert:
         convert_model(args)
     if args.run:

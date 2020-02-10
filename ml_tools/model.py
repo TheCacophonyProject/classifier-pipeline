@@ -1075,17 +1075,15 @@ class Model:
         dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
             gru_cell, output_keep_prob=self.keep_prob, dtype=np.float32
         )
-        # init_state_1 = tf.nn.rnn_cell.LSTMStateTuple(
-        #     self.state_in[:, :, 0], self.state_in[:, :, 1]
-        # )
-
-        init_state_2 = self.state_in
+        init_state = tf.nn.rnn_cell.LSTMStateTuple(
+            self.state_in[:, :, 0], self.state_in[:, :, 1]
+        )
 
         print("the state_in object shape is :", self.state_in.shape)
-        gru_outputs, gru_states = tf.compat.v1.nn.static_rnn(
+        gru_outputs, gru_states = tf.nn.dynamic_rnn(
             cell=dropout,
             inputs=inputs,
-            initial_state=init_state_2[:, :, 0],
+            initial_state=init_state,
             dtype=tf.float32,
             scope="lstm",
         )
