@@ -30,7 +30,7 @@ class ConvModel(Model):
         """ Adds a convolutional layer to the model. """
 
         tf.compat.v1.summary.histogram(name + "/input", input_layer)
-        
+
         conv = tf.keras.layers.Conv2D(
             filters=filters,
             kernel_size=kernal_size,
@@ -51,25 +51,27 @@ class ConvModel(Model):
         tf.compat.v1.summary.histogram(name + "/activations", activation)
 
         if self.params["batch_norm"] and not disable_norm:
-            out = tf.compat.v1.layers.batch_normalization(
-                activation,
-                fused=True,
-                training=self.training,
-                name=name + "/batchnorm",
-            )
+            batch_n = tf.keras.layers.BatchNormalization(fused=True, trainable=True)
+            out = batch_n(activation, training=self.training)
 
-            moving_mean = tf.compat.v1.get_collection(
-                tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
-                scope=name + "/batchnorm/moving_mean",
-            )[0]
+            # out = tf.compat.v1.layers.batch_normalization(
+            #     activation,
+            #     training=self.training,
+            #     name=name + "/batchnorm",
+            # )
 
-            moving_variance = tf.compat.v1.get_collection(
-                tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
-                scope=name + "/batchnorm/moving_variance",
-            )[0]
+            # moving_mean = tf.compat.v1.get_collection(
+            #     tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
+            #     scope=name + "/batchnorm/moving_mean",
+            # )[0]
 
-            tf.compat.v1.summary.histogram(name + "/batchnorm/mean", moving_mean)
-            tf.compat.v1.summary.histogram(name + "/batchnorm/var", moving_variance)
+            # moving_variance = tf.compat.v1.get_collection(
+            #     tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
+            #     scope=name + "/batchnorm/moving_variance",
+            # )[0]
+
+            # tf.compat.v1.summary.histogram(name + "/batchnorm/mean", moving_mean)
+            # tf.compat.v1.summary.histogram(name + "/batchnorm/var", moving_variance)
             tf.compat.v1.summary.histogram(name + "/norm_output", out)
         else:
             out = activation
@@ -88,7 +90,7 @@ class ConvModel(Model):
 
         # Setup placeholders
         self.X = tf.compat.v1.placeholder(
-            tf.float32, [None, None, 5, 48, 48], name="X"
+            tf.float32, [None, self.frame_count, 5, 48, 48], name="X"
         )  # [B, F, C, H, W]
         self.y = tf.compat.v1.placeholder(tf.int64, [None], name="y")
         batch_size = tf.shape(input=self.X)[0]
@@ -302,8 +304,6 @@ class ModelCRNN_HQ(ConvModel):
 
         thermal, flow, mask = self.process_inputs()
 
-        frame_count = tf.shape(input=self.X)[1]
-
         # -------------------------------------
         # run the Convolutions
 
@@ -318,7 +318,7 @@ class ModelCRNN_HQ(ConvModel):
         filtered_conv = layer
         filtered_out = tf.reshape(
             filtered_conv,
-            [-1, frame_count, tools.product(filtered_conv.shape[1:])],
+            [-1, self.frame_count, tools.product(filtered_conv.shape[1:])],
             name="thermal/out",
         )
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
@@ -475,7 +475,7 @@ class ModelCRNN_LQ(ConvModel):
         # W frame width
 
         thermal, flow, mask = self.process_inputs()
-        frame_count = tf.shape(input=self.X)[1]
+
         # -------------------------------------
         # run the Convolutions
         layer = thermal
@@ -490,7 +490,7 @@ class ModelCRNN_LQ(ConvModel):
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
         filtered_out = tf.reshape(
             filtered_conv,
-            [-1, self.training_segment_frames, tools.product(filtered_conv.shape[1:])],
+            [-1, self.frame_count, tools.product(filtered_conv.shape[1:])],
             name="thermal/out",
         )
 
@@ -509,7 +509,7 @@ class ModelCRNN_LQ(ConvModel):
             )
             motion_out = tf.reshape(
                 motion_conv,
-                [-1, frame_count, tools.product(motion_conv.shape[1:])],
+                [-1, self.frame_count, tools.product(motion_conv.shape[1:])],
                 name="motion/out",
             )
 
@@ -518,7 +518,6 @@ class ModelCRNN_LQ(ConvModel):
             out = tf.concat((filtered_out,), axis=2, name="out")
         logging.info("Output shape {}".format(out.shape))
         memory_output, memory_state = self._build_memory(out)
-        print(memory_output.dtype)
         # memory_state = out
         # memory_output = out[:, -1]
         # memory_output = tf.reshape(out, [-1, 576 * 1])
@@ -533,7 +532,8 @@ class ModelCRNN_LQ(ConvModel):
         # dense layer on top of convolutional output mapping to class labels.
 
         # ../cptv-download/train/checkpoints
-        logits =tf.keras.layers.Dense(label_count)(memory_output)
+        dense = tf.keras.layers.Dense(label_count)
+        logits = dense(memory_output)
         # logits = tf.compat.v1.layers.dense(
         #     inputs=memory_output, units=label_count, activation=None, name="logits"
         # )
@@ -557,8 +557,7 @@ class ModelCRNN_LQ(ConvModel):
             tf.compat.v1.summary.scalar("loss/softmax", softmax_loss)
         else:
             # just relabel the loss node
-            loss = tf.identity(softmax_loss, "loss")
-
+            loss = tf.identity(softmax_loss, name="loss")
         class_out = tf.argmax(input=logits, axis=1, name="class_out")
         correct_prediction = tf.equal(class_out, self.y)
         pred = tf.nn.softmax(logits, name="prediction")

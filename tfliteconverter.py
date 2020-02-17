@@ -69,8 +69,8 @@ def freeze_model(args):
         except (ModuleNotFoundError, ImportError):
             from tensorflow.saved_model import simple_save
 
-        in_names = ["X:0","state_in:0"]
-        out_names = ["prediction:0"]
+        in_names = ["X:0", "state_in:0"]
+        out_names = ["state_out:0", "prediction:0", "novelt4y:0"]
         inputs = {}
         outputs = {}
         for name in in_names:
@@ -100,18 +100,23 @@ def run_model(args):
     in_values = {}
     for detail in input_details:
         in_values[detail["name"]] = detail["index"]
-    print(in_values)
 
     output_details = interpreter.get_output_details()
-    input_shape = input_details[0]["shape"]
+    input_shape = input_details[in_values["X"]]["shape"]
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
     interpreter.set_tensor(in_values["X"], input_data)
+
+    # state_in_shape = input_details[in_values["state_in"]]["shape"]
+
+    # state_in = np.array(np.zeros(state_in_shape), dtype=np.float32)
+    # interpreter.set_tensor(in_values["state_in"], state_in)
+
     interpreter.invoke()
     print("model pass 1")
     out_values = {}
     for detail in output_details:
         out_values[detail["name"]] = interpreter.get_tensor(detail["index"])
-
+    print(out_values["state_out"])
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
     interpreter.set_tensor(in_values["X"], input_data)
     interpreter.invoke()
@@ -141,13 +146,13 @@ def convert_model(args):
     #     tf.lite.OpsSet.TFLITE_BUILTINS,
     #     # tf.lite.OpsSet.SELECT_TF_OPS,
     # ]
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    converter.representative_dataset = representative_dataset_gen
+    # converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    # converter.representative_dataset = representative_dataset_gen
     # converter.post_training_quantize = True
     converter.experimental_new_converter = True
     converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
-    converter.inference_input_type = tf.uint8
-    converter.inference_output_type = tf.uint8
+    # converter.inference_input_type = tf.uint8
+    # converter.inference_output_type = tf.uint8
     tflite_model = converter.convert()
     open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
 

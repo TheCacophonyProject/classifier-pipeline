@@ -188,12 +188,16 @@ class PiClassifier(Processor):
                     prediction,
                     novelty,
                     state,
-                ) = self.classifier.classify_frame_with_novelty(p_frame)
+                ) = self.classifier.classify_frame_with_novelty(
+                    p_frame, track_prediction.state
+                )
                 track_prediction.state = state
-
+                print(prediction)
+                print(novelty)
+                print(state)
                 if self.fp_index is not None:
                     prediction[self.fp_index] *= 0.8
-                # state *= 0.98
+                state *= 0.98
                 mass = region.mass
                 mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
                 cropped_weight = 0.7 if region.was_cropped else 1.0

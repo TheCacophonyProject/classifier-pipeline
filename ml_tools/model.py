@@ -111,9 +111,9 @@ class Model:
         self.log_id = ""
 
         # number of frames per segment during training
-        self.training_segment_frames = 1
+        self.training_segment_frames = 27
         # number of frames per segment during testing
-        self.testing_segment_frames = 1
+        self.testing_segment_frames = 27
 
         # dictionary containing current hyper parameters
         self.params = {
@@ -134,7 +134,10 @@ class Model:
         self.writer_train = None
         self.writer_val = None
         self.merged_summary = None
-
+        self.frame_count = 1
+        if self.training:
+            self.frame_count = self.training_segment_frames
+        print(self.frame_count)
     def import_dataset(self, dataset_filename, ignore_labels=None):
         """
         Import dataset.
@@ -295,8 +298,9 @@ class Model:
             Xm = batch_X[i * self.batch_size : (i + 1) * self.batch_size]
             if len(Xm) == 0:
                 continue
+            feed_dict = self.get_feed_dict(Xm)
 
-            outputs = self.session.run(nodes, feed_dict={self.X: Xm})
+            outputs = self.session.run(nodes, feed_dict=feed_dict)
             for node, output in zip(nodes, outputs):
                 for i in range(len(output)):
                     output_lists[node].append(output[i])
@@ -1107,47 +1111,52 @@ class Model:
 
         return gru_output, gru_state
 
-    def lstm_cell(self, inputs):
-        lstm_cell = tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
-            num_units=self.params["lstm_units"]
-        )
+    # def lstm_cell(self, inputs):
+    #     lstm_cell = tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
+    #         num_units=self.params["lstm_units"]
+    #     )
 
-        dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
-            lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
-        )
+    #     dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
+    #         lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
+    #     )
 
-        init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
-            self.state_in[:, :, 0], self.state_in[:, :, 1]
-        )
-        lstm_outputs, lstm_states = tf.compat.v1.lite.experimental.nn.dynamic_rn(
-            cell=dropout,
-            inputs=inputs,
-            initial_state=init_state,
-            dtype=tf.float32,
-            scope="lstm",
-        )
+    #     init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
+    #         self.state_in[:, :, 0], self.state_in[:, :, 1]
+    #     )
+    #     lstm_outputs, lstm_states = tf.compat.v1.lite.experimental.nn.dynamic_rn(
+    #         cell=dropout,
+    #         inputs=inputs,
+    #         initial_state=init_state,
+    #         dtype=tf.float32,
+    #         scope="lstm",
+    #     )
 
-        lstm_state_1, lstm_state_2 = lstm_states
+    #     lstm_state_1, lstm_state_2 = lstm_states
 
-        # just need the last output
-        # all of first dim and last element of secon dim
-        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
-        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-        logging.info(
-            "lstm output shape: {} x {}".format(
-                lstm_outputs.shape[1], lstm_output.shape
-            )
-        )
-        logging.info("lstm state shape: {}".format(lstm_state.shape))
-        return lstm_output, lstm_state
+    #     # just need the last output
+    #     # all of first dim and last element of secon dim
+    #     lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
+    #     lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
+    #     logging.info(
+    #         "lstm output shape: {} x {}".format(
+    #             lstm_outputs.shape[1], lstm_output.shape
+    #         )
+    #     )
+    #     logging.info("lstm state shape: {}".format(lstm_state.shape))
+    #     return lstm_output, lstm_state
 
     def lite_lstm_cell(self, inputs):
         # lstm_cell = tf.compat.v1.nn.rnn_cell.GRUCell(num_units=self.params["gru_units"])
 
         lstm_cell = tf.keras.layers.LSTMCell(self.params["lstm_units"])
-        rnn = tf.keras.layers.RNN(lstm_cell, return_sequences=True, return_state=True)
+        rnn = tf.keras.layers.RNN(
+            lstm_cell,
+            return_sequences=True,
+            return_state=True,
+            dtype=tf.float32,
+            unroll=True,
+        )
         lstm_outputs, lstm_state_1, lstm_state_2 = rnn(inputs)
-
 
         lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
         lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
@@ -1158,6 +1167,7 @@ class Model:
         )
         logging.info("lstm state shape: {}".format(lstm_state.shape))
         return lstm_output, lstm_state
+
     # @tf.function
     # def lite_lstm_cell(self, inputs):
     #     # lstm_cell = tf.compat.v1.nn.rnn_cell.GRUCell(num_units=self.params["gru_units"])
@@ -1203,3 +1213,37 @@ class Model:
     #     logging.info("lstm output shape: {}".format(lstm_output.shape))
     #     logging.info("lstm state shape: {}".format(lstm_state.shape))
     #     return lstm_output, lstm_state
+
+    def lstm_cell(self, inputs):
+        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
+        print("*****")
+        print("=================state", lstm_cell.state_size)
+        dropout = tf.nn.rnn_cell.DropoutWrapper(
+            lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
+        )
+        init_state = tf.nn.rnn_cell.LSTMStateTuple(
+            self.state_in[:, :, 0], self.state_in[:, :, 1]
+        )
+
+        lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
+            cell=dropout,
+            inputs=inputs,
+            initial_state=init_state,
+            dtype=tf.float32,
+            scope="lstm",
+        )
+
+        lstm_state_1, lstm_state_2 = lstm_states
+
+        # just need the last output
+        # all of first dim and last element of secon dim
+        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
+        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
+
+        logging.info(
+            "lstm output shape: {} x {}".format(
+                lstm_outputs.shape[1], lstm_output.shape
+            )
+        )
+        logging.info("lstm state shape: {}".format(lstm_state.shape))
+        return lstm_output, lstm_state

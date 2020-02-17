@@ -30,12 +30,12 @@ TELEMETRY_PACKET_COUNT = 4
 
 
 class NeuralInterpreter:
-
     def __init__(self, model_name):
         from openvino.inference_engine import IENetwork, IECore
+
         print(model_name)
         device = "MYRIAD"
-        model_xml = model_name +".xml"
+        model_xml = model_name + ".xml"
         model_bin = os.path.splitext(model_xml)[0] + ".bin"
         ie = IECore()
         net = IENetwork(model=model_xml, weights=model_bin)
@@ -66,7 +66,7 @@ class NeuralInterpreter:
     def classify_frame_with_novelty(self, input_x):
         print("neural classify")
         input_x = np.array([[input_x]])
-        input_x = input_x.reshape((1,48,1,5,48))
+        input_x = input_x.reshape((1, 48, 1, 5, 48))
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
         print(res)
@@ -84,10 +84,9 @@ class NeuralInterpreter:
 
 
 class LiteInterpreter:
-    # import tflite_runtime.interpreter as tflite
-
     def __init__(self, model_name):
-        print(model_name)
+        import tflite_runtime.interpreter as tflite
+
         self.interpreter = tflite.Interpreter(model_path=model_name + ".tflite")
 
         self.interpreter.allocate_tensors()
@@ -96,8 +95,8 @@ class LiteInterpreter:
         self.in_values = {}
         for detail in input_details:
             self.in_values[detail["name"]] = detail["index"]
-        output_details = self.interpreter.get_output_details()
 
+        output_details = self.interpreter.get_output_details()
         self.out_values = {}
         for detail in output_details:
             self.out_values[detail["name"]] = self.interpreter.get_tensor(
@@ -105,17 +104,20 @@ class LiteInterpreter:
             )
 
         self.load_json(model_name)
-        self.accuracy = self.out_values["accuracy"]
+        self.state_out = self.out_values["state_out"]
+        self.novelty = self.out_values["novelty"]
         self.prediction = self.out_values["prediction"]
-        # interpreter.set_tensor(in_values["X"], input_data)
 
-    def run(self, input_x):
+    def run(self, input_x, state_in=None):
         self.interpreter.set_tensor(self.in_values["X"], [[input_x]])
+        if state_in is not None:
+            self.interpreter.set_tensor(self.in_values["state_in"], state_in)
+
         self.interpreter.invoke()
 
-    def classify_frame_with_novelty(self, input_x):
-        self.run(input_x)
-        return self.prediction, 5, None
+    def classify_frame_with_novelty(self, input_x, state_in=None):
+        self.run(input_x, state_in)
+        return self.prediction, self.novelty, self.state_out
 
     def load_json(self, filename):
         """ Loads model and parameters from file. """
