@@ -208,8 +208,8 @@ def parse_args():
 def main():
     args = parse_args()
     if args.freeze:
-        optimizer_model(args)
-        # freeze_model(args)
+        # optimizer_model(args)
+        freeze_model(args)
     if args.convert:
         convert_model(args)
     if args.run:

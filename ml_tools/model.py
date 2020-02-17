@@ -38,7 +38,7 @@ class Model:
         self.session = session or tools.get_session()
         self.saver = None
         # tf.compat.v1.enable_control_flow_v2()
-        # tf.compat.v1.disable_eager_execution()
+        tf.compat.v1.disable_eager_execution()
         # datasets
         self.datasets = namedtuple("Datasets", "train, validation, test")
 
@@ -1108,16 +1108,18 @@ class Model:
         return gru_output, gru_state
 
     def lstm_cell(self, inputs):
-        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
+        lstm_cell = tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
+            num_units=self.params["lstm_units"]
+        )
 
-        dropout = tf.nn.rnn_cell.DropoutWrapper(
+        dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
             lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
         )
-        init_state = tf.nn.rnn_cell.LSTMStateTuple(
+
+        init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
             self.state_in[:, :, 0], self.state_in[:, :, 1]
         )
-
-        lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
+        lstm_outputs, lstm_states = tf.compat.v1.lite.experimental.nn.dynamic_rn(
             cell=dropout,
             inputs=inputs,
             initial_state=init_state,
@@ -1142,41 +1144,62 @@ class Model:
     def lite_lstm_cell(self, inputs):
         # lstm_cell = tf.compat.v1.nn.rnn_cell.GRUCell(num_units=self.params["gru_units"])
 
-        # lstm_cell = tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
-        #     num_units=self.params["lstm_units"], dtype="float32"
-        # )
-        # print(lstm_cell.dtype)
+        lstm_cell = tf.keras.layers.LSTMCell(self.params["lstm_units"])
+        rnn = tf.keras.layers.RNN(lstm_cell, return_sequences=True, return_state=True)
+        lstm_outputs, lstm_state_1, lstm_state_2 = rnn(inputs)
 
-        # # lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
 
-        # dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
-        #     lstm_cell, output_keep_prob=self.keep_prob, dtype="float32"
-        # )
-        # print(dropout.dtype)
-
-        init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
-            self.state_in[:, :, 0], self.state_in[:, :, 1]
-        )
-
-        # print(inputs.shape)
-        outputs, state = tf.keras.layers.LSTM(
-            units=self.params["lstm_units"], dtype="float32", unroll=True
-        )(inputs)
-        # lstm_outputs, lstm_states = tf.compat.v1.lite.experimental.nn.dynamic_rnn(
-        #     cell=dropout,
-        #     inputs=inputs,
-        #       # initial_state=init_state,
-        #     dtype=tf.float32,
-        #     scope="lstm",
-        # )
-
-        lstm_state_1, lstm_state_2 = state
-        lstm_output = outputs[-1]
-        # just need the last output
-        # lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
+        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
         lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-        # lstm_output = tf.stack(output, axis=1)
-
-        logging.info("lstm output shape: {}".format(lstm_output.shape))
+        logging.info(
+            "lstm output shape: {} x {}".format(
+                lstm_outputs.shape[1], lstm_output.shape
+            )
+        )
         logging.info("lstm state shape: {}".format(lstm_state.shape))
         return lstm_output, lstm_state
+    # @tf.function
+    # def lite_lstm_cell(self, inputs):
+    #     # lstm_cell = tf.compat.v1.nn.rnn_cell.GRUCell(num_units=self.params["gru_units"])
+
+    #     lstm_cell = tf.keras.layers.LSTMCell(num_units=self.params["lstm_units"])
+    #     rnn = tf.keras.layers.RNN(lstm_cell, return_sequences=True, return_state=True)
+    #     whole_seq_output, final_memory_state, final_carry_state = rnn(inputs)
+    #     # lstm_cell = tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
+    #     #     num_units=self.params["lstm_units"], dtype="float32"
+    #     # )
+    #     # print(lstm_cell.dtype)
+
+    #     # lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
+
+    #     dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
+    #         lstm_cell, output_keep_prob=self.keep_prob, dtype="float32"
+    #     )
+    #     # print(dropout.dtype)
+
+    #     init_state = tf.compat.v1.nn.rnn_cell.LSTMStateTuple(
+    #         self.state_in[:, :, 0], self.state_in[:, :, 1]
+    #     )
+
+    #     # print(inputs.shape)
+    #     # outputs, state = tf.keras.layers.LSTM(
+    #     #     units=self.params["lstm_units"], dtype="float32", unroll=True
+    #     # )(inputs)
+    #     lstm_outputs, lstm_states = tf.compat.v1.lite.experimental.nn.dynamic_rnn(
+    #         cell=dropout,
+    #         inputs=inputs,
+    #         # initial_state=init_state,
+    #         dtype=tf.float32,
+    #         scope="lstm",
+    #     )
+
+    #     lstm_state_1, lstm_state_2 = state
+    #     lstm_output = outputs[-1]
+    #     # just need the last output
+    #     # lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
+    #     lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
+    #     # lstm_output = tf.stack(output, axis=1)
+
+    #     logging.info("lstm output shape: {}".format(lstm_output.shape))
+    #     logging.info("lstm state shape: {}".format(lstm_state.shape))
+    #     return lstm_output, lstm_state

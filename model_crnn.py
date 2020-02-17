@@ -490,7 +490,7 @@ class ModelCRNN_LQ(ConvModel):
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
         filtered_out = tf.reshape(
             filtered_conv,
-            [-1, 1, tools.product(filtered_conv.shape[1:])],
+            [-1, self.training_segment_frames, tools.product(filtered_conv.shape[1:])],
             name="thermal/out",
         )
 
@@ -531,9 +531,12 @@ class ModelCRNN_LQ(ConvModel):
         # dense / logits
 
         # dense layer on top of convolutional output mapping to class labels.
-        logits = tf.compat.v1.layers.dense(
-            inputs=memory_output, units=label_count, activation=None, name="logits"
-        )
+
+        # ../cptv-download/train/checkpoints
+        logits =tf.keras.layers.Dense(label_count)(memory_output)
+        # logits = tf.compat.v1.layers.dense(
+        #     inputs=memory_output, units=label_count, activation=None, name="logits"
+        # )
         logging.info("logits output shape: {}".format(logits.shape))
         tf.compat.v1.summary.histogram("weights/logits", logits)
         softmax_loss = tf.compat.v1.losses.softmax_cross_entropy(
