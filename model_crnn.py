@@ -30,15 +30,15 @@ class ConvModel(Model):
         """ Adds a convolutional layer to the model. """
 
         tf.compat.v1.summary.histogram(name + "/input", input_layer)
-        conv = tf.compat.v1.layers.conv2d(
-            inputs=input_layer,
+        
+        conv = tf.keras.layers.Conv2D(
             filters=filters,
             kernel_size=kernal_size,
             strides=(conv_stride, conv_stride),
             padding="same",
             activation=None,
             name=name + "/conv",
-        )
+        )(input_layer)
 
         conv_weights = tf.compat.v1.get_collection(
             tf.compat.v1.GraphKeys.GLOBAL_VARIABLES, name + "/conv/kernel"
@@ -52,7 +52,10 @@ class ConvModel(Model):
 
         if self.params["batch_norm"] and not disable_norm:
             out = tf.compat.v1.layers.batch_normalization(
-                activation, fused=False, training=self.training, name=name + "/batchnorm"
+                activation,
+                fused=True,
+                training=self.training,
+                name=name + "/batchnorm",
             )
 
             moving_mean = tf.compat.v1.get_collection(
@@ -487,7 +490,7 @@ class ModelCRNN_LQ(ConvModel):
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
         filtered_out = tf.reshape(
             filtered_conv,
-            [-1, frame_count, tools.product(filtered_conv.shape[1:])],
+            [-1, 1, tools.product(filtered_conv.shape[1:])],
             name="thermal/out",
         )
 
@@ -514,11 +517,12 @@ class ModelCRNN_LQ(ConvModel):
         else:
             out = tf.concat((filtered_out,), axis=2, name="out")
         logging.info("Output shape {}".format(out.shape))
-
-        # memory_output, memory_state = self._build_memory(out)
-        memory_state = out
-        memory_output = out
-        # memory_output = memory_outpu[:, -1]
+        memory_output, memory_state = self._build_memory(out)
+        print(memory_output.dtype)
+        # memory_state = out
+        # memory_output = out[:, -1]
+        # memory_output = tf.reshape(out, [-1, 576 * 1])
+        # this should be (batchsize, segmentlength * conv output dim)
 
         # memory_state =  tf.stack([memory_output, memory_output], axis=2)
         logging.info("memory_output output shape: {}".format(memory_output.shape))

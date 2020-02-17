@@ -23,13 +23,15 @@ class PiClassifier(Processor):
 
     PROCESS_FRAME = 3
     NUM_CONCURRENT_TRACKS = 1
-    DEBUG_EVERY = 100
+    DEBUG_EVERY = 1
     MAX_CONSEC = 3
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
-    SKIP_FRAMES = 7
+    SKIP_FRAMES = 0
 
     def __init__(self, config, thermal_config, classifier):
+        self.identified_count = 0
+        self.init_start = time.time()
         self.frame_num = 0
         self.clip = None
         self.tracking = False
@@ -106,7 +108,7 @@ class PiClassifier(Processor):
         # classifies an empty frame to force loading of the model into memory
 
         p_frame = np.zeros((5, 48, 48), np.float32)
-        self.classifier.run(p_frame)
+        self.classifier.classify_frame_with_novelty(p_frame)
 
     def get_active_tracks(self):
         """
@@ -186,9 +188,7 @@ class PiClassifier(Processor):
                     prediction,
                     novelty,
                     state,
-                ) = self.classifier.classify_frame_with_novelty(
-                    p_frame
-                )
+                ) = self.classifier.classify_frame_with_novelty(p_frame)
                 track_prediction.state = state
 
                 if self.fp_index is not None:
@@ -225,6 +225,11 @@ class PiClassifier(Processor):
         return self.motion_detector.get_recent_frame()
 
     def disconnected(self):
+        print(
+            "identified {}/{} running for {}".format(
+                self.identified_count, self.clip.frame_on, time.time() - self.init_start
+            )
+        )
         self.end_clip()
         self.motion_detector.disconnected()
 
@@ -238,6 +243,7 @@ class PiClassifier(Processor):
         start = time.time()
         self.motion_detector.process_frame(lepton_frame)
         if self.motion_detector.recorder.recording:
+            print("recording")
             if self.clip is None:
                 self.new_clip()
             self.track_extractor.process_frame(
@@ -252,7 +258,9 @@ class PiClassifier(Processor):
                 and self.skip_classifying <= 0
                 and not self.clip.on_preview()
             ):
+                print("ident")
                 self.identify_last_frame()
+                self.identified_count += 1
                 self.classified_consec += 1
                 if self.classified_consec == PiClassifier.MAX_CONSEC:
                     self.skip_classifying = PiClassifier.SKIP_FRAMES

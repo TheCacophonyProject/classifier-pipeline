@@ -16,20 +16,22 @@ SAVED_DIR = "saved_model"
 LITE_MODEL_NAME = "converted_model.tflite"
 
 
-
 def optimizer_model(args):
     save_eval_model(args)
     loaded_graph = tf.Graph()
     with tf.Session(graph=loaded_graph) as sess:
-    # import tensorflow as tf
+        # import tensorflow as tf
         from tensorflow.python.framework import graph_io
+
         out_names = []
         saver = tf.compat.v1.train.import_meta_graph(
             os.path.join(args.model_dir, "eval-model") + ".meta", clear_devices=True
         )
         saver.restore(sess, os.path.join(args.model_dir, "eval-model"))
-        frozen = tf.graph_util.convert_variables_to_constants(sess, sess.graph_def, ["state_out","prediction"])
-        graph_io.write_graph(frozen, './', 'inference_graph.pb', as_text=False)
+        frozen = tf.graph_util.convert_variables_to_constants(
+            sess, sess.graph_def, ["state_out", "prediction"]
+        )
+        graph_io.write_graph(frozen, "./", "inference_graph.pb", as_text=False)
 
 
 def save_eval_model(args):
@@ -47,6 +49,7 @@ def save_eval_model(args):
     model.saver = tf.compat.v1.train.Saver(max_to_keep=1000)
 
     model.restore_params(os.path.join(args.model_dir, args.model_name))
+
     model.save(os.path.join(args.model_dir, "eval-model"))
     model.setup_summary_writers("convert")
 
@@ -54,7 +57,7 @@ def save_eval_model(args):
 def freeze_model(args):
     save_eval_model(args)
     loaded_graph = tf.Graph()
-    with tf.Session(graph=loaded_graph) as sess:
+    with tf.compat.v1.Session(graph=loaded_graph) as sess:
 
         saver = tf.compat.v1.train.import_meta_graph(
             os.path.join(args.model_dir, "eval-model") + ".meta", clear_devices=True
@@ -66,8 +69,8 @@ def freeze_model(args):
         except (ModuleNotFoundError, ImportError):
             from tensorflow.saved_model import simple_save
 
-        in_names = ["X:0", "y:0", "state_in:0"]
-        out_names = ["state_out:0", "prediction:0", "accuracy:0"]
+        in_names = ["X:0","state_in:0"]
+        out_names = ["prediction:0"]
         inputs = {}
         outputs = {}
         for name in in_names:
@@ -92,16 +95,17 @@ def run_model(args):
         model_path=os.path.join(args.model_dir, args.tflite_name)
     )
     interpreter.allocate_tensors()
-    input_details = interpreter.get_input_details()
+    input_details = interpreter.get_tensor_details()
 
     in_values = {}
     for detail in input_details:
         in_values[detail["name"]] = detail["index"]
+    print(in_values)
+
     output_details = interpreter.get_output_details()
     input_shape = input_details[0]["shape"]
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
     interpreter.set_tensor(in_values["X"], input_data)
-
     interpreter.invoke()
     print("model pass 1")
     out_values = {}
@@ -114,16 +118,36 @@ def run_model(args):
     print("model pass 2")
 
 
+def representative_dataset_gen():
+    config = Config.load_from_file()
+
+    dataset_filename = os.path.join(config.tracks_folder, "datasets.dat")
+    datasets = pickle.load(open(dataset_filename, "rb"))
+    train, validation, test = datasets
+    num_calibration_steps = 100
+    for i in range(num_calibration_steps):
+        X, y = train.next_batch(1)
+        X = np.float32(X[:, 1:2, :, :, :])
+        y = np.int64(y)
+
+        yield [X, y]
+
+
 def convert_model(args):
     converter = tf.lite.TFLiteConverter.from_saved_model(
         os.path.join(args.model_dir, SAVED_DIR)
     )
-    converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        # tf.lite.OpsSet.SELECT_TF_OPS,
-    ]
+    # converter.target_spec.supported_ops = [
+    #     tf.lite.OpsSet.TFLITE_BUILTINS,
+    #     # tf.lite.OpsSet.SELECT_TF_OPS,
+    # ]
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.representative_dataset = representative_dataset_gen
+    # converter.post_training_quantize = True
     converter.experimental_new_converter = True
-
+    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
+    converter.inference_input_type = tf.uint8
+    converter.inference_output_type = tf.uint8
     tflite_model = converter.convert()
     open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
 
@@ -137,6 +161,7 @@ def convert_model_concrete(args):
     concrete_func.inputs[0].set_shape([0, 27, 5, 48, 48])
 
     converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
+    converter.optimizations = [tf.lite.Optimize.OPTIMIZE_FOR_SIZE]
     converter.target_spec.supported_ops = [
         tf.lite.OpsSet.TFLITE_BUILTINS,
         # tf.lite.OpsSet.SELECT_TF_OPS,

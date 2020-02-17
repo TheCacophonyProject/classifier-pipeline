@@ -23,19 +23,72 @@ from .motiondetector import MotionDetector
 from .piclassifier import PiClassifier
 from service import SnapshotService
 from .telemetry import Telemetry
-import tflite_runtime.interpreter as tflite
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
 TELEMETRY_PACKET_COUNT = 4
 
 
-class LiteInterpreter:
-    def __init__(self, config):
+class NeuralInterpreter:
 
-        self.interpreter = tflite.Interpreter(
-            model_path=config.classify.model + ".tflite"
-        )
+    def __init__(self, model_name):
+        from openvino.inference_engine import IENetwork, IECore
+        print(model_name)
+        device = "MYRIAD"
+        model_xml = model_name +".xml"
+        model_bin = os.path.splitext(model_xml)[0] + ".bin"
+        ie = IECore()
+        net = IENetwork(model=model_xml, weights=model_bin)
+        self.input_blob = next(iter(net.inputs))
+        self.out_blob = next(iter(net.outputs))
+        net.batch_size = 1
+        self.exec_net = ie.load_network(network=net, device_name=device)
+
+        # self.interpreter.allocate_tensors()
+        # input_details = self.interpreter.get_input_details()
+
+        # self.in_values = {}
+        # for detail in input_details:
+        #     self.in_values[detail["name"]] = detail["index"]
+        # output_details = self.interpreter.get_output_details()
+
+        # self.out_values = {}
+        # for detail in output_details:
+        #     self.out_values[detail["name"]] = self.interpreter.get_tensor(
+        #         detail["index"]
+        #     )
+
+        self.load_json(model_name)
+        # self.accuracy = self.out_values["accuracy"]
+        # self.prediction = self.out_values["prediction"]
+        # # interpreter.set_tensor(in_values["X"], input_data)
+
+    def classify_frame_with_novelty(self, input_x):
+        print("neural classify")
+        input_x = np.array([[input_x]])
+        input_x = input_x.reshape((1,48,1,5,48))
+        res = self.exec_net.infer(inputs={self.input_blob: input_x})
+        res = res[self.out_blob]
+        print(res)
+        return res[0][0], res[0][1], None
+
+    def load_json(self, filename):
+        """ Loads model and parameters from file. """
+        stats = json.load(open(filename + ".txt", "r"))
+
+        self.MODEL_NAME = stats["name"]
+        self.MODEL_DESCRIPTION = stats["description"]
+        self.labels = stats["labels"]
+        self.eval_score = stats["score"]
+        self.params = stats["hyperparams"]
+
+
+class LiteInterpreter:
+    # import tflite_runtime.interpreter as tflite
+
+    def __init__(self, model_name):
+        print(model_name)
+        self.interpreter = tflite.Interpreter(model_path=model_name + ".tflite")
 
         self.interpreter.allocate_tensors()
         input_details = self.interpreter.get_input_details()
@@ -51,11 +104,9 @@ class LiteInterpreter:
                 detail["index"]
             )
 
-        self.load_json(config.classify.model)
-        print(input_details[0]["shape"])
+        self.load_json(model_name)
         self.accuracy = self.out_values["accuracy"]
         self.prediction = self.out_values["prediction"]
-        print(self.prediction)
         # interpreter.set_tensor(in_values["X"], input_data)
 
     def run(self, input_x):
@@ -64,7 +115,7 @@ class LiteInterpreter:
 
     def classify_frame_with_novelty(self, input_x):
         self.run(input_x)
-        return self.prediction,5, None
+        return self.prediction, 5, None
 
     def load_json(self, filename):
         """ Loads model and parameters from file. """
@@ -84,11 +135,20 @@ def parse_args():
     return args
 
 
-def get_lite_model(config):
-    return LiteInterpreter(config)
-
-
 def get_classifier(config):
+    print("get classifier")
+    model_name, model_type = os.path.splitext(config.classify.model)
+    if model_type == ".tflite":
+        return LiteInterpreter(model_name)
+    elif model_type == ".xml":
+        print("getting neural")
+        return NeuralInterpreter(model_name)
+
+    else:
+        return get_full_classifier(config)
+
+
+def get_full_classifier(config):
     from ml_tools.model import Model
 
     """
@@ -118,7 +178,7 @@ def main():
     thermal_config = ThermalConfig.load_from_file()
     proccesor = None
     if thermal_config.motion.run_classifier:
-        classifier = get_lite_model(config)
+        classifier = get_classifier(config)
         proccesor = PiClassifier(config, thermal_config, classifier)
     else:
         proccesor = MotionDetector(

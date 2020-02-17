@@ -80,6 +80,10 @@ class ClipTrackExtractor:
 
                 if clip.on_preview():
                     logging.warn("Clip is all preview frames")
+                    if clip.background is None:
+                        logging.warn("Clip only has ffc affected frames")
+                        return False
+
                     clip._set_from_background()
                     self._process_preview_frames(clip)
             else:
@@ -91,6 +95,7 @@ class ClipTrackExtractor:
         if self.calc_stats:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
 
+        return True
     def process_frame(self, clip, frame, ffc_affected=False):
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.frame_on))

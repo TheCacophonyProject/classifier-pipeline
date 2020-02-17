@@ -195,7 +195,10 @@ class ClipLoader:
             self.config.load.tag_precedence,
         )
 
-        self.track_extractor.parse_clip(clip)
+        if not self.track_extractor.parse_clip(clip):
+            logging.error("No valid clip found for %s", filename)
+            return
+
         # , self.config.load.cache_to_disk, self.config.use_opt_flow
 
         if self.track_config.enable_track_output:
