@@ -33,7 +33,6 @@ class NeuralInterpreter:
     def __init__(self, model_name):
         from openvino.inference_engine import IENetwork, IECore
 
-        print(model_name)
         device = "MYRIAD"
         model_xml = model_name + ".xml"
         model_bin = os.path.splitext(model_xml)[0] + ".bin"
@@ -43,33 +42,13 @@ class NeuralInterpreter:
         self.out_blob = next(iter(net.outputs))
         net.batch_size = 1
         self.exec_net = ie.load_network(network=net, device_name=device)
-
-        # self.interpreter.allocate_tensors()
-        # input_details = self.interpreter.get_input_details()
-
-        # self.in_values = {}
-        # for detail in input_details:
-        #     self.in_values[detail["name"]] = detail["index"]
-        # output_details = self.interpreter.get_output_details()
-
-        # self.out_values = {}
-        # for detail in output_details:
-        #     self.out_values[detail["name"]] = self.interpreter.get_tensor(
-        #         detail["index"]
-        #     )
-
         self.load_json(model_name)
-        # self.accuracy = self.out_values["accuracy"]
-        # self.prediction = self.out_values["prediction"]
-        # # interpreter.set_tensor(in_values["X"], input_data)
 
     def classify_frame_with_novelty(self, input_x):
-        print("neural classify")
         input_x = np.array([[input_x]])
         input_x = input_x.reshape((1, 48, 1, 5, 48))
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
-        print(res)
         return res[0][0], res[0][1], None
 
     def load_json(self, filename):
@@ -138,14 +117,11 @@ def parse_args():
 
 
 def get_classifier(config):
-    print("get classifier")
     model_name, model_type = os.path.splitext(config.classify.model)
     if model_type == ".tflite":
         return LiteInterpreter(model_name)
     elif model_type == ".xml":
-        print("getting neural")
         return NeuralInterpreter(model_name)
-
     else:
         return get_full_classifier(config)
 

@@ -650,7 +650,6 @@ class Dataset:
         if TrackHeader.get_name(clip_id, track_number) in self.track_by_id:
             return False
 
-        print("add_track clip {} track {}".format(clip_id, track_number))
         clip_meta = self.db.get_clip_meta(clip_id)
         track_meta = self.db.get_track_meta(clip_id, track_number)
         if self.filter_track(clip_meta, track_meta):

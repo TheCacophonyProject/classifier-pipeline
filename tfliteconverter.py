@@ -16,6 +16,7 @@ SAVED_DIR = "saved_model"
 LITE_MODEL_NAME = "converted_model.tflite"
 
 
+# some reason neural compute stick doesn't like the other frozen model
 def optimizer_model(args):
     save_eval_model(args)
     loaded_graph = tf.Graph()
@@ -23,7 +24,6 @@ def optimizer_model(args):
         # import tensorflow as tf
         from tensorflow.python.framework import graph_io
 
-        out_names = []
         saver = tf.compat.v1.train.import_meta_graph(
             os.path.join(args.model_dir, "eval-model") + ".meta", clear_devices=True
         )
@@ -34,6 +34,8 @@ def optimizer_model(args):
         graph_io.write_graph(frozen, "./", "inference_graph.pb", as_text=False)
 
 
+# this removes training attributes from the model and resaves and sets
+# frame count to 1 as is needed for tflite
 def save_eval_model(args):
     config = Config.load_from_file()
     datasets_filename = dataset_db_path(config)
@@ -69,8 +71,8 @@ def freeze_model(args):
         except (ModuleNotFoundError, ImportError):
             from tensorflow.saved_model import simple_save
 
-        in_names = ["X:0", "state_in:0"]
-        out_names = ["state_out:0", "prediction:0", "novelt4y:0"]
+        in_names = ["X:0", "y:0", "state_in:0"]
+        out_names = ["state_out:0", "prediction:0", "novelty:0"]
         inputs = {}
         outputs = {}
         for name in in_names:
@@ -79,9 +81,6 @@ def freeze_model(args):
 
         for name in out_names:
             outputs[name] = loaded_graph.get_tensor_by_name(name)
-
-        # training = loaded_graph.get_tensor_by_name("training:0")
-        # training[0] = False
 
         # complains if directory isn't empty
         if os.path.exists(os.path.join(args.model_dir, SAVED_DIR)):
@@ -107,7 +106,6 @@ def run_model(args):
     interpreter.set_tensor(in_values["X"], input_data)
 
     # state_in_shape = input_details[in_values["state_in"]]["shape"]
-
     # state_in = np.array(np.zeros(state_in_shape), dtype=np.float32)
     # interpreter.set_tensor(in_values["state_in"], state_in)
 
@@ -116,9 +114,10 @@ def run_model(args):
     out_values = {}
     for detail in output_details:
         out_values[detail["name"]] = interpreter.get_tensor(detail["index"])
-    print(out_values["state_out"])
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
     interpreter.set_tensor(in_values["X"], input_data)
+    interpreter.set_tensor(in_values["state_out"], out_values["state_out"])
+
     interpreter.invoke()
     print("model pass 2")
 
@@ -132,10 +131,37 @@ def representative_dataset_gen():
     num_calibration_steps = 100
     for i in range(num_calibration_steps):
         X, y = train.next_batch(1)
-        X = np.float32(X[:, 1:2, :, :, :])
-        y = np.int64(y)
+        # X = np.float32(X[:, 1:2, :, :, :])
+        # y = np.int64(y)
+        feed_dict = get_feed_dict(X, y)
+        yield feed_dict
 
-        yield [X, y]
+
+def get_feed_dict(X, y=None, is_training=False, state_in=None):
+    """
+        Returns a feed dictionary for TensorFlow placeholders.
+        :param X: The examples to classify
+        :param y: (optional) the labels for each example
+        :param is_training: (optional) boolean indicating if we are training or not.
+        :param state_in: (optional) states from previous classification.  Used to maintain internal state across runs
+        :return:
+        """
+    result = []
+    result.append(X[:, 0:1])
+    print(X[:, 0:1].shape)
+    result.append(np.int64(y))
+    if state_in is None:
+
+        result.append(np.float32(np.zeros((1,576))))
+    else:
+        result.append(np.float32(state_in))
+
+    print(result[1].dtype)
+    # if y is not None:
+    #     result["y"] = y
+    # if state_in is not None:
+    #     result["state_in"] = state_in
+    return result
 
 
 def convert_model(args):
@@ -146,13 +172,13 @@ def convert_model(args):
     #     tf.lite.OpsSet.TFLITE_BUILTINS,
     #     # tf.lite.OpsSet.SELECT_TF_OPS,
     # ]
-    # converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    # converter.representative_dataset = representative_dataset_gen
-    # converter.post_training_quantize = True
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.representative_dataset = representative_dataset_gen
+    converter.post_training_quantize = True
     converter.experimental_new_converter = True
     converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
-    # converter.inference_input_type = tf.uint8
-    # converter.inference_output_type = tf.uint8
+    converter.inference_input_type = tf.uint8
+    converter.inference_output_type = tf.uint8
     tflite_model = converter.convert()
     open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
 

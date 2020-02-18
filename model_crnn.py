@@ -54,24 +54,14 @@ class ConvModel(Model):
             batch_n = tf.keras.layers.BatchNormalization(fused=True, trainable=True)
             out = batch_n(activation, training=self.training)
 
-            # out = tf.compat.v1.layers.batch_normalization(
-            #     activation,
-            #     training=self.training,
-            #     name=name + "/batchnorm",
-            # )
+            for var in batch_n.variables:
+                if var.name.endswith("moving_mean:0"):
+                    moving_mean = var
+                elif var.name.endswith("moving_variance:0"):
+                    moving_variance = var
 
-            # moving_mean = tf.compat.v1.get_collection(
-            #     tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
-            #     scope=name + "/batchnorm/moving_mean",
-            # )[0]
-
-            # moving_variance = tf.compat.v1.get_collection(
-            #     tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
-            #     scope=name + "/batchnorm/moving_variance",
-            # )[0]
-
-            # tf.compat.v1.summary.histogram(name + "/batchnorm/mean", moving_mean)
-            # tf.compat.v1.summary.histogram(name + "/batchnorm/var", moving_variance)
+            tf.compat.v1.summary.histogram(name + "/batchnorm/mean", moving_mean)
+            tf.compat.v1.summary.histogram(name + "/batchnorm/var", moving_variance)
             tf.compat.v1.summary.histogram(name + "/norm_output", out)
         else:
             out = activation
@@ -530,13 +520,7 @@ class ModelCRNN_LQ(ConvModel):
         # dense / logits
 
         # dense layer on top of convolutional output mapping to class labels.
-
-        # ../cptv-download/train/checkpoints
-        dense = tf.keras.layers.Dense(label_count)
-        logits = dense(memory_output)
-        # logits = tf.compat.v1.layers.dense(
-        #     inputs=memory_output, units=label_count, activation=None, name="logits"
-        # )
+        logits = tf.keras.layers.Dense(label_count)(memory_output)
         logging.info("logits output shape: {}".format(logits.shape))
         tf.compat.v1.summary.histogram("weights/logits", logits)
         softmax_loss = tf.compat.v1.losses.softmax_cross_entropy(
