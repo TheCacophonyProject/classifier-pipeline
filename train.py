@@ -66,5 +66,6 @@ def main():
     else:
         train_model(job_name, conf, conf.train.hyper_params)
 
+
 if __name__ == "__main__":
     main()

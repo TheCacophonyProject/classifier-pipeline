@@ -96,6 +96,7 @@ class ClipTrackExtractor:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
 
         return True
+
     def process_frame(self, clip, frame, ffc_affected=False):
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.frame_on))

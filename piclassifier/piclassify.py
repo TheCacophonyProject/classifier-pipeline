@@ -99,7 +99,6 @@ class LiteInterpreter:
         return self.prediction, self.novelty, self.state_out
 
     def load_json(self, filename):
-        """ Loads model and parameters from file. """
         stats = json.load(open(filename + ".txt", "r"))
 
         self.MODEL_NAME = stats["name"]

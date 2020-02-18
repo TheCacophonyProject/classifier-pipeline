@@ -116,7 +116,7 @@ def run_model(args):
         out_values[detail["name"]] = interpreter.get_tensor(detail["index"])
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
     interpreter.set_tensor(in_values["X"], input_data)
-    interpreter.set_tensor(in_values["state_out"], out_values["state_out"])
+    interpreter.set_tensor(in_values["state_in"], out_values["state_out"])
 
     interpreter.invoke()
     print("model pass 2")
@@ -152,7 +152,7 @@ def get_feed_dict(X, y=None, is_training=False, state_in=None):
     result.append(np.int64(y))
     if state_in is None:
 
-        result.append(np.float32(np.zeros((1,576))))
+        result.append(np.float32(np.zeros((1, 576))))
     else:
         result.append(np.float32(state_in))
 

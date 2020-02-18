@@ -116,28 +116,28 @@ class ConvModel(Model):
         THERMAL_ROLLOFF = 400
 
         if AUTO_NORM_THERMAL:
+            logging.warn("This wont work with tflite")
             thermal = thermal - tf.reduce_mean(
-                input_tensor=thermal, axis=(3, 4), keepdims=True
+                thermal, axis=(3, 4), keepdims=True
             )  # center data
-
-            rectified = tf.nn.relu(thermal)
-            thermal = tf.minimum(
-                tf.sqrt(rectified / THERMAL_ROLLOFF) * THERMAL_ROLLOFF, rectified
+            signs = tf.sign(thermal)
+            abs = tf.abs(thermal)
+            thermal = (
+                tf.minimum(tf.sqrt(abs / THERMAL_ROLLOFF) * THERMAL_ROLLOFF, abs)
+                * signs
             )  # curve off the really strong values
             thermal = thermal - tf.reduce_mean(
-                input_tensor=thermal, axis=(3, 4), keepdims=True
+                thermal, axis=(3, 4), keepdims=True
             )  # center data
             thermal = thermal / tf.sqrt(
-                tf.reduce_mean(
-                    input_tensor=tf.square(thermal), axis=(3, 4), keepdims=True
-                )
+                tf.reduce_mean(tf.square(thermal), axis=(3, 4), keepdims=True)
             )
             # theshold out the background, not sure this is a great idea.  1.5 keeps std approx 1.
             # relu_threshold = +0.1
             # thermal = (tf.nn.relu(thermal - relu_threshold) + relu_threshold) * 1.5
         else:
-            # signs = tf.sign(thermal)
-            # complained about use of tf.signs for tflite, i think relu should be the same??
+            # complained about use of tf.signs for tflite but if it was negative here
+            # it will turn to 0 below anyway
             rectified = tf.nn.relu(thermal)
             thermal = (
                 tf.minimum(
@@ -451,7 +451,6 @@ class ModelCRNN_LQ(ConvModel):
         self._build_model(labels)
 
     def _build_model(self, label_count):
-        label_count = 2
         ####################################
         # CNN + LSTM
         # based on https://arxiv.org/pdf/1507.06527.pdf
@@ -521,7 +520,6 @@ class ModelCRNN_LQ(ConvModel):
 
         # dense layer on top of convolutional output mapping to class labels.
         logits = tf.keras.layers.Dense(label_count)(memory_output)
-        logging.info("logits output shape: {}".format(logits.shape))
         tf.compat.v1.summary.histogram("weights/logits", logits)
         softmax_loss = tf.compat.v1.losses.softmax_cross_entropy(
             onehot_labels=tf.one_hot(self.y, label_count),

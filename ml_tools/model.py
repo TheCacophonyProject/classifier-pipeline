@@ -138,6 +138,7 @@ class Model:
         if self.training:
             self.frame_count = self.training_segment_frames
         print(self.frame_count)
+
     def import_dataset(self, dataset_filename, ignore_labels=None):
         """
         Import dataset.

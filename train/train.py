@@ -23,11 +23,11 @@ def train_model(run_name, conf, hyper_params):
         model = ResnetModel(labels, conf.train)
     elif conf.train.model == ModelCRNN_HQ.MODEL_NAME:
         model = ModelCRNN_HQ(
-            labels=len(labels), train_config=conf.train,training=True, **hyper_params
+            labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )
     else:
         model = ModelCRNN_LQ(
-            labels=len(labels), train_config=conf.train,training=True, **hyper_params
+            labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )
 
     model.import_dataset(datasets_filename)

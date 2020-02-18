@@ -51,9 +51,6 @@ class CPTVRecorder:
         return self.frames > self.write_until
 
     def start_recording(self, temp_thresh):
-        self.recording = True
-        print("start_recording")
-        return
         self.frames = 0
         self.filename = new_temp_name()
         self.filename = os.path.join(self.output_dir, self.filename)
@@ -79,31 +76,27 @@ class CPTVRecorder:
     def write_frame(self, lepton_frame, temp_thresh):
         if self.writer is None:
             self.start_recording(temp_thresh)
-        self.frames += 1
-
-        return
         self.writer.write_frame(lepton_frame)
         self.frames += 1
 
     def stop_recording(self):
+        self.recording = False
         if self.writer is None:
-            self.recording = False
             return
 
         self.writer.close()
         final_name = os.path.splitext(self.filename)[0]
         os.rename(self.filename, final_name)
         self.writer = None
-        self.recording = False
 
     def delete_recording(self):
+        self.recording = False
         if self.writer is None:
             return
 
         self.writer.close()
         os.remove(self.filename)
         self.writer = None
-        self.recording = False
 
 
 def new_temp_name():

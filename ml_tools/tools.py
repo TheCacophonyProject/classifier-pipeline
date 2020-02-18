@@ -384,7 +384,9 @@ def get_session(disable_gpu=False):
 
     if disable_gpu:
         logging.info("Creating new CPU session.")
-        session = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(device_count={"GPU": 0}))
+        session = tf.compat.v1.Session(
+            config=tf.compat.v1.ConfigProto(device_count={"GPU": 0})
+        )
     else:
         logging.info("Creating new GPU session with memory growth enabled.")
         config = tf.compat.v1.ConfigProto()

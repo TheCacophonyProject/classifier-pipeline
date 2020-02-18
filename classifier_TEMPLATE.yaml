@@ -4,8 +4,7 @@ use_opt_flow: False
 debug: False
 
 # root folder where the source and output folders belong
-base_data_folder: "/home/zaza/TheCacophonyProject/cptv-download"
-
+base_data_folder: "<full path>" 
 # Enables/Disables GPU accelerated classification
 use_gpu: false
 
@@ -15,7 +14,7 @@ source_folder: "cptv"
 
 # tracks_folder is where the track data files will be created. It is
 # specified relative to base_data_folder.
-tracks_folder: "cptv/tracks"
+tracks_folder: "tracks"
 
 # which folders (tags) to ignore when selecting cptv files from source_folder
 excluded_tags: ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit', 'hard', 'multi', 'moving',
@@ -30,7 +29,7 @@ reprocess: True
 # previews_colour_map: "custom_colormap.dat"
 
 # Labels 
-labels : ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
+labels : ["bird", "false-positive", "hedgehog", "possum", "rodent", "mustelid"]
 
 # Number of worker threads to use.  0 disables worker pool and forces a single thread.
 worker_threads: 0
@@ -233,8 +232,7 @@ classify:
     meta_to_stdout : False
 
     # Path to pretrained Model use for classification (This should be the base filename without any extension)
-    model: "/home/zaza/TheCacophonyProject/classifier-pipeline/models/model_lite"
-
+    model: "<full path>" 
     # Create a MP4 preview after classification of recording.  Options are "none", "raw", "classified", "tracking"
     # See extract:preview for details on each option.
     preview: "none"

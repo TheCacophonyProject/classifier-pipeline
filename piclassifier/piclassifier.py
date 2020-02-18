@@ -23,11 +23,11 @@ class PiClassifier(Processor):
 
     PROCESS_FRAME = 3
     NUM_CONCURRENT_TRACKS = 1
-    DEBUG_EVERY = 1
+    DEBUG_EVERY = 100
     MAX_CONSEC = 3
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
-    SKIP_FRAMES = 0
+    SKIP_FRAMES = 7
 
     def __init__(self, config, thermal_config, classifier):
         self.identified_count = 0
@@ -57,7 +57,6 @@ class PiClassifier(Processor):
             self.fp_index = self.classifier.labels.index("false-positive")
         except ValueError:
             self.fp_index = None
-        print(self.fp_index)
         self.track_extractor = ClipTrackExtractor(
             self.config.tracking,
             self.config.use_opt_flow,
@@ -108,7 +107,7 @@ class PiClassifier(Processor):
         # classifies an empty frame to force loading of the model into memory
 
         p_frame = np.zeros((5, 48, 48), np.float32)
-        self.classifier.classify_frame_with_novelty(p_frame)
+        self.classifier.classify_frame_with_novelty(p_frame, None)
 
     def get_active_tracks(self):
         """
@@ -192,9 +191,7 @@ class PiClassifier(Processor):
                     p_frame, track_prediction.state
                 )
                 track_prediction.state = state
-                print(prediction)
-                print(novelty)
-                print(state)
+
                 if self.fp_index is not None:
                     prediction[self.fp_index] *= 0.8
                 state *= 0.98
@@ -247,7 +244,6 @@ class PiClassifier(Processor):
         start = time.time()
         self.motion_detector.process_frame(lepton_frame)
         if self.motion_detector.recorder.recording:
-            print("recording")
             if self.clip is None:
                 self.new_clip()
             self.track_extractor.process_frame(
@@ -262,7 +258,6 @@ class PiClassifier(Processor):
                 and self.skip_classifying <= 0
                 and not self.clip.on_preview()
             ):
-                print("ident")
                 self.identify_last_frame()
                 self.identified_count += 1
                 self.classified_consec += 1
