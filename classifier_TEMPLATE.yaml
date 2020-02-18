@@ -202,8 +202,9 @@ train:
         num_filters: 32
         kernel_size: 3
         conv_stride: 2
-        block_sizes : [3]
-        block_strides: [3]
+        # block sizes can be left null and will be calculated based of resnet_size
+        block_sizes : [3, 4, 6, 3]
+        block_strides: [1, 2, 2, 2]
         bottleneck: false
         resnet_size: 50
     # Number of epochs to train for

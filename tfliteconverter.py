@@ -15,6 +15,7 @@ MODEL_NAME = "training-most-recent.sav"
 SAVED_DIR = "saved_model"
 LITE_MODEL_NAME = "converted_model.tflite"
 
+input_map = {"state_in:0": 0, "X:0": 1, "y:0": 2}
 
 # some reason neural compute stick doesn't like the other frozen model
 def optimizer_model(args):
@@ -137,7 +138,7 @@ def representative_dataset_gen():
         yield feed_dict
 
 
-def get_feed_dict(X, y=None, is_training=False, state_in=None):
+def get_feed_dict(X, y, is_training=False, state_in=None):
     """
         Returns a feed dictionary for TensorFlow placeholders.
         :param X: The examples to classify
@@ -146,25 +147,30 @@ def get_feed_dict(X, y=None, is_training=False, state_in=None):
         :param state_in: (optional) states from previous classification.  Used to maintain internal state across runs
         :return:
         """
-    result = []
-    result.append(X[:, 0:1])
-    print(X[:, 0:1].shape)
-    result.append(np.int64(y))
+    result = [None] * 3
     if state_in is None:
-
-        result.append(np.float32(np.zeros((1, 576))))
+        result[input_map["state_in:0"]] = np.float32(np.zeros((1, 576, 2)))
     else:
-        result.append(np.float32(state_in))
-
-    print(result[1].dtype)
-    # if y is not None:
-    #     result["y"] = y
-    # if state_in is not None:
-    #     result["state_in"] = state_in
+        result[input_map["state_in:0"]] = np.float32(state_in)
+    result[input_map["X:0"]] = np.float32(X[:, 0:1])
+    result[input_map["y:0"]] = np.int64(y)
+    print("feed")
     return result
 
 
 def convert_model(args):
+    # model = tf.saved_model.load(
+    #     export_dir=os.path.join(args.model_dir, SAVED_DIR), tags=None
+    # )
+    # concrete_func = model.signatures[tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+
+    # inputs = concrete_func.inputs[:3]
+    # for i, val in enumerate(inputs):
+    #     input_map[val.name] = (i, val.shape)
+    # concrete_func.inputs[input_map["X:0"][0]].set_shape([1, 1, 5, 48, 48])
+    # print(input_map)
+    # converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
+
     converter = tf.lite.TFLiteConverter.from_saved_model(
         os.path.join(args.model_dir, SAVED_DIR)
     )
