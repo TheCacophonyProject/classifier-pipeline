@@ -8,14 +8,14 @@ from config.config import Config
 from ml_tools.dataset import dataset_db_path
 import pickle
 
-from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
+from model_crnn import ModelCRNN_LQ
 
 MODEL_DIR = "../cptv-download/train/checkpoints"
 MODEL_NAME = "training-most-recent.sav"
 SAVED_DIR = "saved_model"
 LITE_MODEL_NAME = "converted_model.tflite"
 
-input_map = {"state_in:0": 0, "X:0": 1, "y:0": 2}
+input_map = {"state_in:0": 0, "X:0": 1}
 
 # some reason neural compute stick doesn't like the other frozen model
 def optimizer_model(args):
@@ -72,13 +72,16 @@ def freeze_model(args):
         except (ModuleNotFoundError, ImportError):
             from tensorflow.saved_model import simple_save
 
-        in_names = ["X:0", "y:0", "state_in:0"]
+        in_names = ["X:0", "state_in:0"]
         out_names = ["state_out:0", "prediction:0", "novelty:0"]
         inputs = {}
         outputs = {}
         for name in in_names:
             inputs[name] = loaded_graph.get_tensor_by_name(name)
-        inputs["X:0"].set_shape([None, 1, 5, 48, 48])
+        inputs["X:0"].set_shape([1, 1, 5, 48, 48])
+        inputs["state_in:0"].set_shape([1, 576, 2])
+
+        # inputs["X:0"].set_shape([None, 1, 5, 48, 48])
 
         for name in out_names:
             outputs[name] = loaded_graph.get_tensor_by_name(name)
@@ -105,11 +108,9 @@ def run_model(args):
     input_shape = input_details[in_values["X"]]["shape"]
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
     interpreter.set_tensor(in_values["X"], input_data)
-
-    # state_in_shape = input_details[in_values["state_in"]]["shape"]
-    # state_in = np.array(np.zeros(state_in_shape), dtype=np.float32)
-    # interpreter.set_tensor(in_values["state_in"], state_in)
-
+    interpreter.set_tensor(
+        in_values["state_in"], np.array(np.zeros((1, 576, 2)), dtype=np.float32)
+    )
     interpreter.invoke()
     print("model pass 1")
     out_values = {}
@@ -117,8 +118,8 @@ def run_model(args):
         out_values[detail["name"]] = interpreter.get_tensor(detail["index"])
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
     interpreter.set_tensor(in_values["X"], input_data)
-    interpreter.set_tensor(in_values["state_in"], out_values["state_out"])
 
+    interpreter.set_tensor(in_values["state_in"], out_values["state_out"])
     interpreter.invoke()
     print("model pass 2")
 
@@ -129,62 +130,55 @@ def representative_dataset_gen():
     dataset_filename = os.path.join(config.tracks_folder, "datasets.dat")
     datasets = pickle.load(open(dataset_filename, "rb"))
     train, validation, test = datasets
-    num_calibration_steps = 100
+    num_calibration_steps = 1000
     for i in range(num_calibration_steps):
         X, y = train.next_batch(1)
         # X = np.float32(X[:, 1:2, :, :, :])
         # y = np.int64(y)
-        feed_dict = get_feed_dict(X, y)
+        feed_dict = get_feed_dict(X)
         yield feed_dict
 
 
-def get_feed_dict(X, y, is_training=False, state_in=None):
+def get_feed_dict(X, state_in=None):
     """
         Returns a feed dictionary for TensorFlow placeholders.
         :param X: The examples to classify
-        :param y: (optional) the labels for each example
-        :param is_training: (optional) boolean indicating if we are training or not.
         :param state_in: (optional) states from previous classification.  Used to maintain internal state across runs
         :return:
         """
-    result = [None] * 3
+    result = [None] * len(input_map)
     if state_in is None:
-        result[input_map["state_in:0"]] = np.float32(np.zeros((1, 576, 2)))
+        result[input_map["state_in:0"][0]] = np.float32(np.zeros((1, 576, 2)))
     else:
-        result[input_map["state_in:0"]] = np.float32(state_in)
-    result[input_map["X:0"]] = np.float32(X[:, 0:1])
-    result[input_map["y:0"]] = np.int64(y)
-    print("feed")
+        result[input_map["state_in:0"][0]] = np.float32(state_in)
+    result[input_map["X:0"][0]] = np.float32(X[:, 0:1])
+    # result[input_map["y:0"]] = np.int64(y)
+
     return result
 
 
 def convert_model(args):
-    # model = tf.saved_model.load(
-    #     export_dir=os.path.join(args.model_dir, SAVED_DIR), tags=None
-    # )
-    # concrete_func = model.signatures[tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-
-    # inputs = concrete_func.inputs[:3]
-    # for i, val in enumerate(inputs):
-    #     input_map[val.name] = (i, val.shape)
-    # concrete_func.inputs[input_map["X:0"][0]].set_shape([1, 1, 5, 48, 48])
-    # print(input_map)
-    # converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
-
-    converter = tf.lite.TFLiteConverter.from_saved_model(
-        os.path.join(args.model_dir, SAVED_DIR)
+    model = tf.saved_model.load(
+        export_dir=os.path.join(args.model_dir, SAVED_DIR), tags=None
     )
-    # converter.target_spec.supported_ops = [
-    #     tf.lite.OpsSet.TFLITE_BUILTINS,
-    #     # tf.lite.OpsSet.SELECT_TF_OPS,
-    # ]
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    converter.representative_dataset = representative_dataset_gen
+    concrete_func = model.signatures[tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+
+    inputs = concrete_func.inputs[:2]
+    # gets input shape and the order of the inputs as it seems to be random
+    for i, val in enumerate(inputs):
+        input_map[val.name] = (i, val.shape)
+    concrete_func.inputs[input_map["X:0"][0]].set_shape([1, 1, 5, 48, 48])
+    concrete_func.inputs[input_map["state_in:0"][0]].set_shape([1, 576, 2])
+
+    converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
+
+    # be good to get this going but throws error
+    # converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    # converter.representative_dataset = representative_dataset_gen
+    #
     converter.post_training_quantize = True
     converter.experimental_new_converter = True
     converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
-    converter.inference_input_type = tf.uint8
-    converter.inference_output_type = tf.uint8
     tflite_model = converter.convert()
     open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
 
