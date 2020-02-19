@@ -84,16 +84,27 @@ class ConvModel(Model):
         )  # [B, F, C, H, W]
         self.y = tf.compat.v1.placeholder(tf.int64, [None], name="y")
         batch_size = tf.shape(input=self.X)[0]
+        # State input allows for processing longer sequences
 
         # State input allows for processing longer sequences
-        zero_state = tf.zeros(
-            shape=[batch_size, self.params["lstm_units"], 2], dtype=tf.float32
-        )
-        self.state_in = tf.compat.v1.placeholder_with_default(
-            input=zero_state,
-            shape=[None, self.params["lstm_units"], 2],
-            name="state_in",
-        )
+        if self.use_gru:
+            zero_state = tf.zeros(
+                shape=[batch_size, self.params["gru_units"]], dtype=tf.float32
+            )
+            self.state_in = tf.compat.v1.placeholder_with_default(
+                input=zero_state,
+                shape=[None, self.params["gru_units"]],
+                name="state_in",
+            )
+        else:
+            zero_state = tf.zeros(
+                shape=[batch_size, self.params["lstm_units"], 2], dtype=tf.float32
+            )
+            self.state_in = tf.compat.v1.placeholder_with_default(
+                input=zero_state,
+                shape=[None, self.params["lstm_units"], 2],
+                name="state_in",
+            )
 
         # Create some placeholder variables with defaults if not specified
         self.keep_prob = tf.compat.v1.placeholder_with_default(

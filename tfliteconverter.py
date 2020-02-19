@@ -79,7 +79,6 @@ def freeze_model(args):
         for name in in_names:
             inputs[name] = loaded_graph.get_tensor_by_name(name)
         inputs["X:0"].set_shape([1, 1, 5, 48, 48])
-        inputs["state_in:0"].set_shape([1, 576, 2])
 
         # inputs["X:0"].set_shape([None, 1, 5, 48, 48])
 
@@ -108,9 +107,6 @@ def run_model(args):
     input_shape = input_details[in_values["X"]]["shape"]
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
     interpreter.set_tensor(in_values["X"], input_data)
-    interpreter.set_tensor(
-        in_values["state_in"], np.array(np.zeros((1, 576, 2)), dtype=np.float32)
-    )
     interpreter.invoke()
     print("model pass 1")
     out_values = {}
@@ -148,7 +144,7 @@ def get_feed_dict(X, state_in=None):
         """
     result = [None] * len(input_map)
     if state_in is None:
-        result[input_map["state_in:0"][0]] = np.float32(np.zeros((1, 576, 2)))
+        result[input_map["state_in:0"][0]] = np.float32(np.zeros((1, 576)))
     else:
         result[input_map["state_in:0"][0]] = np.float32(state_in)
     result[input_map["X:0"][0]] = np.float32(X[:, 0:1])
@@ -168,37 +164,17 @@ def convert_model(args):
     for i, val in enumerate(inputs):
         input_map[val.name] = (i, val.shape)
     concrete_func.inputs[input_map["X:0"][0]].set_shape([1, 1, 5, 48, 48])
-    concrete_func.inputs[input_map["state_in:0"][0]].set_shape([1, 576, 2])
+    # concrete_func.inputs[input_map["state_in:0"][0]].set_shape([1, 576, 2])
 
     converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
 
     # be good to get this going but throws error
-    # converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    # converter.representative_dataset = representative_dataset_gen
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.representative_dataset = representative_dataset_gen
     #
     converter.post_training_quantize = True
     converter.experimental_new_converter = True
     converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
-    tflite_model = converter.convert()
-    open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
-
-
-def convert_model_concrete(args):
-
-    model = tf.saved_model.load(
-        export_dir=os.path.join(args.model_dir, SAVED_DIR), tags=None
-    )
-    concrete_func = model.signatures[tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-    concrete_func.inputs[0].set_shape([0, 27, 5, 48, 48])
-
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
-    converter.optimizations = [tf.lite.Optimize.OPTIMIZE_FOR_SIZE]
-    converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        # tf.lite.OpsSet.SELECT_TF_OPS,
-    ]
-    converter.experimental_new_converter = True
-
     tflite_model = converter.convert()
     open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
 

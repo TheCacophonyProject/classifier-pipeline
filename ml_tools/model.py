@@ -1110,10 +1110,10 @@ class Model:
             dtype=tf.float32,
             unroll=True,
         )
-        gru_outputs, gru_states = rnn(inputs)
+        init_state = self.state_in
 
+        gru_outputs, gru_state = rnn(inputs, initial_state=init_state)
         gru_output = tf.identity(gru_outputs[:, -1], "lstm_out")
-        gru_state = tf.identity(gru_states[:, -1], "gru_out")
         logging.info(
             "gru output shape: {} x {}".format(gru_outputs.shape[1], gru_output.shape)
         )
@@ -1129,7 +1129,8 @@ class Model:
             dtype=tf.float32,
             unroll=True,
         )
-        lstm_outputs, lstm_state_1, lstm_state_2 = rnn(inputs)
+        init_state = (self.state_in[:, :, 0], self.state_in[:, :, 1])
+        lstm_outputs, lstm_state_1, lstm_state_2 = rnn(inputs, initial_state=init_state)
 
         lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
         lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
