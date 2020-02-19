@@ -221,8 +221,6 @@ def add_random_samples(
 
         bin_id = random.sample(sample_set, 1)[0]
         tracks = dataset.tracks_by_bin[bin_id]
-
-        tracks = dataset.tracks_by_bin[bin_id]
         for ds in fill_datasets:
             ds.add_tracks(tracks)
 
@@ -301,8 +299,19 @@ def main():
     build_config = config.build
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
     dataset = Dataset(db, "dataset", config)
-
     tracks_loaded, total_tracks = dataset.load_tracks()
+    for camera in dataset.camera_bins:
+        # print("CAM:" + camera)
+        for loc in dataset.camera_bins[camera]:
+            # print("Loc:", loc)
+            for label in dataset.camera_bins[camera][loc]:
+                # print("Date:", label)
+                for data in dataset.camera_bins[camera][loc][label]:
+                    print("{},{},{},{},{}".format(camera, loc, label, data, len(dataset.camera_bins[camera][loc][label][data])))
+                    # print("Tag", data)
+                    # print("#clips ", len(dataset.camera_bins[camera][loc][label][data]))
+
+    # print(dataset.camera_bins)
 
     print(
         "Loaded {}/{} tracks, found {:.1f}k segments".format(

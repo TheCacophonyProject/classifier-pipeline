@@ -464,6 +464,7 @@ class Dataset:
     DEFAULT_INSET = 2
 
     def __init__(self, track_db: TrackDatabase, name="Dataset", config=None):
+        self.camera_bins = {}
 
         # database holding track data
         self.db = track_db
@@ -728,6 +729,38 @@ class Dataset:
 
         if track_header.bin_id not in self.tracks_by_bin:
             self.tracks_by_bin[track_header.bin_id] = []
+
+        self.tracks_by_bin[track_header.bin_id].append(track_header)
+
+        cam_bin = self.camera_bins.get(track_header.camera)
+        if cam_bin is None:
+            cam_bin = {}
+            self.camera_bins[track_header.camera] = cam_bin
+        loc ="{}".format(track_header.location)
+        loc_bin = cam_bin.get(loc)
+        if loc_bin is None:
+            loc_bin = {}
+            cam_bin[loc] = loc_bin
+
+        date_bin = loc_bin.get(track_header.start_time.date())
+        if date_bin is None:
+            date_bin = {}
+            loc_bin[track_header.start_time.date()] = date_bin
+
+        label_bin = date_bin.get(track_header.label)
+        if label_bin is None:
+            label_bin = {}
+            date_bin[track_header.label] = label_bin
+
+        label_bin[track_header.clip_id] = track_header.location
+        # label_bin.append(
+        #     "clip {} track {} location {} date {}".format(
+        #         track_header.clip_id,
+        #         track_header.track_number,
+        #         track_header.location,
+        #         track_header.start_time.date(),
+        #     )
+        # )
 
         self.tracks_by_bin[track_header.bin_id].append(track_header)
 
