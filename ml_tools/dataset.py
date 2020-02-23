@@ -42,6 +42,7 @@ class TrackChannels:
     mask = 4
 
 
+
 class TrackHeader:
     """ Header for track. """
 
@@ -230,7 +231,13 @@ class TrackHeader:
     def __repr__(self):
         return self.track_id
 
+class ClipHeader:
+    def __init__(self):
+        self.tracks = []
 
+    def add_track(self, track: TrackHeader):
+        self.tracks.append(track)
+        
 class SegmentHeader:
     """ Header for segment. """
 
@@ -732,11 +739,16 @@ class Dataset:
 
         self.tracks_by_bin[track_header.bin_id].append(track_header)
 
+        self.add_bin_distribution_info(track_header)
+
+        self.tracks_by_bin[track_header.bin_id].append(track_header)
+
+    def add_bin_distribution_info(self, track_header):
         cam_bin = self.camera_bins.get(track_header.camera)
         if cam_bin is None:
             cam_bin = {}
             self.camera_bins[track_header.camera] = cam_bin
-        loc ="{}".format(track_header.location)
+        loc = "{}".format(track_header.location)
         loc_bin = cam_bin.get(loc)
         if loc_bin is None:
             loc_bin = {}
@@ -753,16 +765,6 @@ class Dataset:
             date_bin[track_header.label] = label_bin
 
         label_bin[track_header.clip_id] = track_header.location
-        # label_bin.append(
-        #     "clip {} track {} location {} date {}".format(
-        #         track_header.clip_id,
-        #         track_header.track_number,
-        #         track_header.location,
-        #         track_header.start_time.date(),
-        #     )
-        # )
-
-        self.tracks_by_bin[track_header.bin_id].append(track_header)
 
     def filter_segments(self, avg_mass, ignore_labels=None):
         """

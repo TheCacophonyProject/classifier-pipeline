@@ -176,12 +176,7 @@ class TrackDatabase:
 
             result = []
             for frame_number in range(start_frame, end_frame):
-                if frame_number == -1:
-                    raise ValueError(
-                        "frame_number for clip {} track {} is {} start {} end {}".format(
-                            clip_id, track_number, frame_number, start_frame, end_frame
-                        )
-                    )  # we use [:,:,:] to force loading of all data.
+                # we use [:,:,:] to force loading of all data.
                 result.append(track_node[str(frame_number)][:, :, :])
 
             return result

@@ -145,7 +145,6 @@ class Track:
         region = self.bounds_history[self.current_frame_num]
         if prev_filtered is not None:
             prev_filtered = region.subimage(prev_filtered)
-
         filtered = region.subimage(frame.filtered)
         region.calculate_mass(filtered, mass_delta_threshold)
         region.calculate_variance(filtered, prev_filtered)

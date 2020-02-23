@@ -292,6 +292,16 @@ def load_config():
     return config
 
 
+def print_data(dataset):
+    for camera, data in enumerate(dataset.camera_bins):
+        for loc, l_data in enumerate(data):
+            for tag, t_data in enumerate(l_data):
+                for date, d_data in enumerate(t_data):
+                    print(
+                        "{},{},{},{},{}".format(camera, loc, tag, data, len(d_data))
+                    )
+
+
 def main():
     init_logging()
 
@@ -300,19 +310,7 @@ def main():
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
     dataset = Dataset(db, "dataset", config)
     tracks_loaded, total_tracks = dataset.load_tracks()
-    for camera in dataset.camera_bins:
-        # print("CAM:" + camera)
-        for loc in dataset.camera_bins[camera]:
-            # print("Loc:", loc)
-            for label in dataset.camera_bins[camera][loc]:
-                # print("Date:", label)
-                for data in dataset.camera_bins[camera][loc][label]:
-                    print("{},{},{},{},{}".format(camera, loc, label, data, len(dataset.camera_bins[camera][loc][label][data])))
-                    # print("Tag", data)
-                    # print("#clips ", len(dataset.camera_bins[camera][loc][label][data]))
-
-    # print(dataset.camera_bins)
-
+    print_data(dataset)
     print(
         "Loaded {}/{} tracks, found {:.1f}k segments".format(
             tracks_loaded, total_tracks, len(dataset.segments) / 1000

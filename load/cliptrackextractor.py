@@ -71,10 +71,11 @@ class ClipTrackExtractor:
             clip.num_preview_frames = (
                 reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
             )
+            # clip.num_preview_frames = max(0,clip.num_preview_frames)
             clip.set_video_stats(video_start_time)
             # we need to load the entire video so we can analyse the background.
 
-            if clip.background_is_preview:
+            if clip.background_is_preview and clip.num_preview_frames > 0:
                 for frame in reader:
                     self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
 
@@ -87,7 +88,8 @@ class ClipTrackExtractor:
                     clip._set_from_background()
                     self._process_preview_frames(clip)
             else:
-                self.process_frames(clip, [np.float32(frame.pix) for frame in reader])
+                clip.background_is_preview = False
+                self.process_frames(clip, [frame for frame in reader])
 
         if not clip.from_metadata:
             self.apply_track_filtering(clip)
@@ -113,8 +115,8 @@ class ClipTrackExtractor:
     def _process_preview_frames(self, clip):
         clip.frame_on -= len(clip.preview_frames)
         for _, back_frame in enumerate(clip.preview_frames):
-            clip.frame_on += 1
             self._process_frame(clip, back_frame[0], back_frame[1])
+            clip.frame_on += 1
 
         clip.preview_frames = None
 
@@ -126,7 +128,7 @@ class ClipTrackExtractor:
         delta = np.asarray(frames[1:], dtype=np.float32) - np.asarray(
             frames[:-1], dtype=np.float32
         )
-        average_delta = float(np.mean(np.abs(delta)))
+        average_delta = float(np.nanmean(np.abs(delta)))
 
         # take half the max filtered value as a threshold
         threshold = float(
@@ -155,23 +157,34 @@ class ClipTrackExtractor:
             ):
                 clip.background = None
 
-    def process_frames(self, clip, frames):
+    def process_frames(self, clip, raw_frames):
         # for now just always calculate as we are using the stats...
         # background np.float64[][] filtered calculated here and stats
-        clip.background_from_whole_clip(frames)
-        self._whole_clip_stats(clip, frames)
+        non_ffc_frames = [
+            np.float32(frame.pix)
+            for frame in raw_frames
+            if not is_affected_by_ffc(frame)
+        ]
+        if len(non_ffc_frames) == 0:
+            logging.warn("Clip only has ffc affected frames")
+            return False
+        clip.background_from_whole_clip(non_ffc_frames)
+        # not sure if we want to include ffc frames here or not
+        self._whole_clip_stats(clip, non_ffc_frames)
         if clip.background_is_preview:
             if clip.preview_frames > 0:
                 # background np.int32[][]
-                clip.background_from_frames(frames)
+                clip.background_from_frames(raw_frames)
             else:
                 logging.info(
                     "No preview secs defined for CPTV file - using statistical background measurement"
                 )
 
         # process each frame
-        for frame_number, frame in enumerate(frames):
-            self._process_frame(clip, frame_number, frame)
+        for frame_number, frame in enumerate(raw_frames):
+            ffc_affected = is_affected_by_ffc(frame)
+            self._process_frame(clip, np.float32(frame.pix), ffc_affected)
+            clip.frame_on += 1
 
     def apply_track_filtering(self, clip):
         self.filter_tracks(clip)
@@ -212,7 +225,6 @@ class ClipTrackExtractor:
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-
         filtered = self._get_filtered_frame(clip, thermal)
         frame_height, frame_width = filtered.shape
         mask = np.zeros(filtered.shape)
@@ -232,10 +244,10 @@ class ClipTrackExtractor:
 
         labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(dilated)
         mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
-
+        
+        prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
 
-        prev_filtered = clip.frame_buffer.get_last_filtered()
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.frame_on in track.frame_list:
