@@ -485,7 +485,7 @@ class Dataset:
         self.track_by_id = {}
         self.tracks_by_label = {}
         self.tracks_by_bin = {}
-        self.cameras =[]
+        self.cameras = []
         self.camera_bins = {}
         # writes the frame motion into the center of the optical flow channels
         self.encode_frame_offsets_in_flow = False
@@ -762,12 +762,10 @@ class Dataset:
             cam_bin = {}
             self.camera_bins[track_header.camera] = cam_bin
 
-
         if track_header.bin_id not in cam_bin:
             cam_bin[track_header.bin_id] = []
 
         cam_bin[track_header.bin_id].append(track_header)
-
 
     def add_bin_distribution_info(self, track_header):
         cam_bin = self.camera_bins.get(track_header.camera)
@@ -863,7 +861,7 @@ class Dataset:
         first_frame = segment.start_frame + (unused_frames // 2)
         last_frame = segment.start_frame + (unused_frames // 2) + segment_width
 
-        if augment:
+        if augment and unused_frames > 0:
             # jitter first frame
             prev_frames = first_frame
             post_frames = segment.track.frames - 1 - last_frame
