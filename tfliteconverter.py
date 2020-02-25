@@ -8,7 +8,7 @@ from config.config import Config
 from ml_tools.dataset import dataset_db_path
 import pickle
 
-from model_crnn import ModelCRNN_LQ
+from model_crnn import ModelCRNN_LQ, Model_CNN
 
 MODEL_DIR = "../cptv-download/train/checkpoints"
 MODEL_NAME = "training-most-recent.sav"
@@ -43,7 +43,7 @@ def save_eval_model(args):
     with open(datasets_filename, "rb") as f:
         dsets = pickle.load(f)
     labels = dsets[0].labels
-    model = ModelCRNN_LQ(
+    model = Model_CNN(
         labels=len(labels),
         train_config=config.train,
         training=False,
@@ -72,14 +72,14 @@ def freeze_model(args):
         except (ModuleNotFoundError, ImportError):
             from tensorflow.saved_model import simple_save
 
-        in_names = ["X:0", "state_in:0"]
-        out_names = ["state_out:0", "prediction:0", "novelty:0"]
+        in_names = ["X:0"]
+        out_names = [ "prediction:0", "novelty:0"]
         inputs = {}
         outputs = {}
         for name in in_names:
             inputs[name] = loaded_graph.get_tensor_by_name(name)
         inputs["X:0"].set_shape([1, 1, 5, 48, 48])
-
+        # loaded_graph.get_tensor_by_name("dense/MatMul:0").set_shape([576,])
         # inputs["X:0"].set_shape([None, 1, 5, 48, 48])
 
         for name in out_names:
@@ -115,7 +115,7 @@ def run_model(args):
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
     interpreter.set_tensor(in_values["X"], input_data)
 
-    interpreter.set_tensor(in_values["state_in"], out_values["state_out"])
+    # interpreter.set_tensor(in_values["state_in"], out_values["state_out"])
     interpreter.invoke()
     print("model pass 2")
 
@@ -169,8 +169,8 @@ def convert_model(args):
     converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
 
     # be good to get this going but throws error
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    converter.representative_dataset = representative_dataset_gen
+    # converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    # converter.representative_dataset = representative_dataset_gen
     #
     converter.post_training_quantize = True
     converter.experimental_new_converter = True

@@ -138,6 +138,10 @@ def split_dataset(db, dataset, build_config, prefill_dataset=None):
         counts.append(sum(len(track.segments) for track in tracks))
 
     train = Dataset(db, "train")
+    # 10 cameras
+    # 5 tests
+    # 5 train
+    # then change the names
     validation = Dataset(db, "validation")
     test = Dataset(db, "test")
 
@@ -297,10 +301,43 @@ def print_data(dataset):
         for loc, l_data in enumerate(data):
             for tag, t_data in enumerate(l_data):
                 for date, d_data in enumerate(t_data):
-                    print(
-                        "{},{},{},{},{}".format(camera, loc, tag, data, len(d_data))
-                    )
+                    print("{},{},{},{},{}".format(camera, loc, tag, data, len(d_data)))
 
+
+
+def split_dataset_by_cameras(db, dataset, build_config):
+
+    train_percent = 0.7
+    validation_percent = 0.3
+    test_cameras = 1
+    # 10 cameras
+    # 5 tests
+    # 5 train
+    # then change the names
+    train = Dataset(db, "train")
+    validation = Dataset(db, "validation")
+    test = Dataset(db, "test")
+    camera_count = len(dataset.camera_bins)
+    assert camera_count >= 3, "Atleast 3 cameras are required"
+    remaining_cameras = camera_count - test_cameras
+    validation_cameras = max(1, round(remaining_cameras * validation_percent))
+    remaining_cameras -= validation_cameras
+    train_cameras = remaining_cameras
+
+    cameras = list(dataset.camera_bins.items())
+    # randomize order
+    cameras.sort(key=lambda x: np.random.random_sample())
+
+    train_data = cameras[:train_cameras]
+    train.add_cameras(train_data)
+    validate_data = cameras[train_cameras : train_cameras + validation_cameras]
+    validation.add_cameras(validate_data)
+
+    test_data = [cameras[-1]]
+    test.add_cameras(test_data)
+    print_segments(dataset, train, validation, test)
+
+    return train, validation, test
 
 def main():
     init_logging()
@@ -310,7 +347,6 @@ def main():
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
     dataset = Dataset(db, "dataset", config)
     tracks_loaded, total_tracks = dataset.load_tracks()
-    print_data(dataset)
     print(
         "Loaded {}/{} tracks, found {:.1f}k segments".format(
             tracks_loaded, total_tracks, len(dataset.segments) / 1000
@@ -329,11 +365,12 @@ def main():
     print()
 
     print("Splitting data set into train / validation")
-    if build_config.use_previous_split:
-        split = get_previous_validation_bins(build_config.previous_split)
-        datasets = split_dataset(db, dataset, build_config, split)
-    else:
-        datasets = split_dataset(db, dataset, build_config)
+    datasets = split_dataset_by_cameras(db, dataset, build_config)
+    # if build_config.use_previous_split:
+    #     split = get_previous_validation_bins(build_config.previous_split)
+    #     datasets = split_dataset(db, dataset, build_config, split)
+    # else:
+    #     datasets = split_dataset(db, dataset, build_config)
 
     pickle.dump(datasets, open(dataset_db_path(config), "wb"))
 

@@ -102,12 +102,13 @@ class ClipTrackExtractor:
     def process_frame(self, clip, frame, ffc_affected=False):
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.frame_on))
-
         clip.ffc_affected = ffc_affected
         if clip.on_preview():
             clip.calculate_preview_from_frame(frame, ffc_affected)
             if clip.background_calculated:
+                clip.frame_on += 1
                 self._process_preview_frames(clip)
+                return
         else:
             self._process_frame(clip, frame, ffc_affected)
         clip.frame_on += 1
@@ -172,6 +173,7 @@ class ClipTrackExtractor:
         # not sure if we want to include ffc frames here or not
         self._whole_clip_stats(clip, non_ffc_frames)
         if clip.background_is_preview:
+
             if clip.preview_frames > 0:
                 # background np.int32[][]
                 clip.background_from_frames(raw_frames)
@@ -244,7 +246,7 @@ class ClipTrackExtractor:
 
         labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(dilated)
         mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
-        
+
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
 

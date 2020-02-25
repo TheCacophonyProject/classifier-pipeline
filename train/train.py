@@ -3,7 +3,7 @@ import os
 import pickle
 
 import tensorflow as tf
-from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
+from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ, Model_CNN
 from model_resnet import ResnetModel
 from ml_tools.dataset import dataset_db_path
 
@@ -23,6 +23,10 @@ def train_model(run_name, conf, hyper_params):
         model = ResnetModel(labels, conf.train)
     elif conf.train.model == ModelCRNN_HQ.MODEL_NAME:
         model = ModelCRNN_HQ(
+            labels=len(labels), train_config=conf.train, training=True, **hyper_params
+        )
+    elif conf.train.model == Model_CNN.MODEL_NAME:
+        model = Model_CNN(
             labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )
     else:

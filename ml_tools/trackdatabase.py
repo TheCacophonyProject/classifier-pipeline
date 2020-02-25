@@ -118,6 +118,17 @@ class TrackDatabase:
             f.flush()
             group.attrs["finished"] = True
 
+    def get_all_clip_ids(self):
+        """
+        Returns a list of clip_id, track_number pairs.
+        """
+        with HDF5Manager(self.database) as f:
+            clips = f["clips"]
+            results = {}
+            for clip_id in clips:
+                results[clip_id] = [track_id for track_id in clips[clip_id]]
+        return results
+
     def get_all_track_ids(self):
         """
         Returns a list of clip_id, track_number pairs.
@@ -151,7 +162,7 @@ class TrackDatabase:
         """
 
         with HDF5Manager(self.database) as f:
-            dataset = f["clips"][clip_id]
+            dataset = f["clips"][str(clip_id)]
             result = hdf5_attributes_dictionary(dataset)
             result["tracks"] = len(dataset)
         return result

@@ -80,7 +80,7 @@ class ConvModel(Model):
 
         # Setup placeholders
         self.X = tf.compat.v1.placeholder(
-            tf.float32, [None, self.frame_count, 5, 48, 48], name="X"
+            tf.float32, [None, None, 5, 48, 48], name="X"
         )  # [B, F, C, H, W]
         self.y = tf.compat.v1.placeholder(tf.int64, [None], name="y")
         batch_size = tf.shape(input=self.X)[0]
@@ -565,5 +565,146 @@ class ModelCRNN_LQ(ConvModel):
         # not used for anything as we aren't doing RNN for tflite
         tf.identity(memory_state, "state_out")
         tf.identity(memory_output, "hidden_out")
+        tf.identity(logits, "logits_out")
+        self.attach_nodes()
+
+
+class Model_CNN(ConvModel):
+    """
+    Convolutional neural net model feeding into an LSTM
+
+    Trains on GPU at around 5ms / segment as apposed to 16ms for the high quality model.
+    """
+
+    MODEL_NAME = "model_cnn"
+    MODEL_DESCRIPTION = "CNN"
+
+    DEFAULT_PARAMS = {
+        # training params
+        "batch_size": 16,
+        "learning_rate": 1e-4,
+        "learning_rate_decay": 1.0,
+        "l2_reg": 0,
+        "label_smoothing": 0.1,
+        "keep_prob": 0.2,
+        # model params
+        "batch_norm": True,
+        "enable_flow": True,
+        # augmentation
+        "augmentation": True,
+        "thermal_threshold": 10,
+        "scale_frequency": 0.5,
+    }
+
+    def __init__(self, labels, train_config, training, **kwargs):
+        """
+        Initialise the model
+        :param labels: number of labels for model to predict
+        """
+        super().__init__(train_config=train_config, training=training)
+        self.frame_count = 1
+        # number of frames per segment during training
+        self.training_segment_frames = 1
+        # number of frames per segment during testing
+        self.testing_segment_frames = 1
+
+        self.params.update(self.DEFAULT_PARAMS)
+        self.params.update(kwargs)
+        self._build_model(labels)
+
+    def _build_model(self, label_count):
+        ####################################
+        # CNN + LSTM
+        # based on https://arxiv.org/pdf/1507.06527.pdf
+        ####################################
+
+        # dimensions are documents as follows
+        # B batch size
+        # F frames per segment
+        # C channels
+        # H frame height
+        # W frame width
+
+        thermal, flow, mask = self.process_inputs()
+
+        # -------------------------------------
+        # run the Convolutions
+        layer = thermal
+        layer = self.conv_layer("thermal/1", layer, 32, [3, 3], conv_stride=2)
+
+        layer = self.conv_layer("thermal/2", layer, 48, [3, 3], conv_stride=2)
+        layer = self.conv_layer("thermal/3", layer, 64, [3, 3], conv_stride=2)
+        layer = self.conv_layer("thermal/4", layer, 64, [3, 3], conv_stride=2)
+        layer = self.conv_layer("thermal/5", layer, 64, [3, 3], conv_stride=1)
+
+        filtered_conv = layer
+        logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
+
+        if self.params["enable_flow"]:
+            # integrate thermal and flow into a 3 channel layer
+            layer = tf.concat((thermal, flow), axis=3)
+            layer = self.conv_layer("motion/1", layer, 32, [3, 3], conv_stride=2)
+            layer = self.conv_layer("motion/2", layer, 48, [3, 3], conv_stride=2)
+            layer = self.conv_layer("motion/3", layer, 64, [3, 3], conv_stride=2)
+            layer = self.conv_layer("motion/4", layer, 64, [3, 3], conv_stride=2)
+            layer = self.conv_layer("motion/5", layer, 64, [3, 3], conv_stride=1)
+
+            motion_conv = layer
+            logging.info(
+                "Motion convolution output shape: {}".format(motion_conv.shape)
+            )
+            motion_out = tf.reshape(
+                motion_conv,
+                [-1, self.frame_count, tools.product(motion_conv.shape[1:])],
+                name="motion/out",
+            )
+            filtered_out = tf.reshape(
+                filtered_conv,
+                [-1, self.frame_count, tools.product(filtered_conv.shape[1:])],
+                name="thermal/out",
+            )
+            out = tf.concat((filtered_out, motion_out), axis=2, name="out")
+        else:
+            out = tf.compat.v1.layers.flatten(filtered_conv)
+        logging.info("Output shape {}".format(out.shape))
+
+        # dense / logits
+
+        # dense layer on top of convolutional output mapping to class labels.
+        logits = tf.keras.layers.Dense(label_count)(out)
+        print("logits.shape", logits.shape)
+        tf.compat.v1.summary.histogram("weights/logits", logits)
+        softmax_loss = tf.compat.v1.losses.softmax_cross_entropy(
+            onehot_labels=tf.one_hot(self.y, label_count),
+            logits=logits,
+            label_smoothing=self.params["label_smoothing"],
+            scope="softmax_loss",
+        )
+        if self.params["l2_reg"] != 0:
+            with tf.compat.v1.variable_scope("logits", reuse=True):
+                logit_weights = tf.compat.v1.get_variable("kernel")
+
+            reg_loss = (
+                tf.nn.l2_loss(logit_weights, name="loss/reg") * self.params["l2_reg"]
+            )
+            loss = tf.add(softmax_loss, reg_loss, name="loss")
+            tf.compat.v1.summary.scalar("loss/reg", reg_loss)
+            tf.compat.v1.summary.scalar("loss/softmax", softmax_loss)
+        else:
+            # just relabel the loss node
+            loss = tf.identity(softmax_loss, name="loss")
+        class_out = tf.argmax(input=logits, axis=1, name="class_out")
+        correct_prediction = tf.equal(class_out, self.y)
+        pred = tf.nn.softmax(logits, name="prediction")
+        accuracy = tf.reduce_mean(
+            input_tensor=tf.cast(correct_prediction, dtype=tf.float32), name="accuracy"
+        )
+
+        self.setup_novelty(logits, out)
+        self.setup_optimizer(loss)
+
+        # make reference to special nodes
+        # not used for anything as we aren't doing RNN for tflite
+        tf.identity(out, "hidden_out")
         tf.identity(logits, "logits_out")
         self.attach_nodes()

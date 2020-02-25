@@ -42,7 +42,6 @@ class TrackChannels:
     mask = 4
 
 
-
 class TrackHeader:
     """ Header for track. """
 
@@ -231,13 +230,15 @@ class TrackHeader:
     def __repr__(self):
         return self.track_id
 
+
 class ClipHeader:
     def __init__(self):
         self.tracks = []
 
     def add_track(self, track: TrackHeader):
         self.tracks.append(track)
-        
+
+
 class SegmentHeader:
     """ Header for segment. """
 
@@ -484,7 +485,8 @@ class Dataset:
         self.track_by_id = {}
         self.tracks_by_label = {}
         self.tracks_by_bin = {}
-
+        self.cameras =[]
+        self.camera_bins = {}
         # writes the frame motion into the center of the optical flow channels
         self.encode_frame_offsets_in_flow = False
 
@@ -623,6 +625,18 @@ class Dataset:
                 counter += 1
         return [counter, len(track_ids)]
 
+    def add_cameras(self, cameras):
+        for camera_data in cameras:
+            print(camera_data[0])
+            self.add_camera(camera_data[0], camera_data[1])
+
+    def add_camera(self, camera, camera_data):
+        if camera not in self.cameras:
+            self.cameras.append(camera)
+
+        for bin_id, tracks in camera_data.items():
+            self.add_tracks(tracks)
+
     def add_tracks(self, tracks):
         """
         Adds list of tracks to dataset
@@ -739,9 +753,21 @@ class Dataset:
 
         self.tracks_by_bin[track_header.bin_id].append(track_header)
 
-        self.add_bin_distribution_info(track_header)
+        # self.add_bin_distribution_info(track_header)
 
         self.tracks_by_bin[track_header.bin_id].append(track_header)
+
+        cam_bin = self.camera_bins.get(track_header.camera)
+        if cam_bin is None:
+            cam_bin = {}
+            self.camera_bins[track_header.camera] = cam_bin
+
+
+        if track_header.bin_id not in cam_bin:
+            cam_bin[track_header.bin_id] = []
+
+        cam_bin[track_header.bin_id].append(track_header)
+
 
     def add_bin_distribution_info(self, track_header):
         cam_bin = self.camera_bins.get(track_header.camera)

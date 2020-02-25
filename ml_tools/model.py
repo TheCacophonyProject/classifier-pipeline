@@ -945,8 +945,8 @@ class Model:
         self.is_training = self.get_tensor("training")
         self.global_step = self.get_tensor("global_step")
 
-        self.state_out = self.get_tensor("state_out")
-        self.state_in = self.get_tensor("state_in")
+        # self.state_out = self.get_tensor("state_out")
+        # self.state_in = self.get_tensor("state_in")
 
         self.logits_out = self.get_tensor("logits_out", none_if_not_found=True)
         self.hidden_out = self.get_tensor("hidden_out", none_if_not_found=True)
