@@ -304,7 +304,6 @@ def print_data(dataset):
                     print("{},{},{},{},{}".format(camera, loc, tag, data, len(d_data)))
 
 
-
 def split_dataset_by_cameras(db, dataset, build_config):
 
     train_percent = 0.7
@@ -324,20 +323,79 @@ def split_dataset_by_cameras(db, dataset, build_config):
     remaining_cameras -= validation_cameras
     train_cameras = remaining_cameras
 
-    cameras = list(dataset.camera_bins.items())
+    # use hubble 6 for testing
+    camera_data = dataset.camera_bins
+    test_data = [camera_data["Hubble 6"]]
+    del camera_data["Hubble 6"]
+    cameras = list(camera_data.values())
     # randomize order
     cameras.sort(key=lambda x: np.random.random_sample())
 
     train_data = cameras[:train_cameras]
-    train.add_cameras(train_data)
-    validate_data = cameras[train_cameras : train_cameras + validation_cameras]
-    validation.add_cameras(validate_data)
 
-    test_data = [cameras[-1]]
-    test.add_cameras(test_data)
+    required_samples = build_config.test_set_count
+    required_bins = max(MIN_BINS, build_config.test_set_bins)
+
+    add_camera_data(
+        dataset.labels, train, train_data, required_samples * 4, required_bins * 4
+    )
+
+    validate_data = cameras[train_cameras : train_cameras + validation_cameras]
+    add_camera_data(
+        dataset.labels, validation, validate_data, required_samples, required_bins
+    )
+
+    # validation.add_cameras(validate_data)
+
+    add_camera_data(dataset.labels, test, test_data, required_samples, required_bins)
+
     print_segments(dataset, train, validation, test)
 
     return train, validation, test
+
+
+def add_random_camera_samples(
+    dataset, camera_data, sample_set, label, required_samples, required_bins,
+):
+    """
+        add random samples from the sample_set to every dataset in 
+        fill_datasets until the bin requirements are met
+        Updates the bins in sample_set and used_bins
+        """
+    used_bins = []
+    while sample_set and needs_more_bins(
+        dataset, label, used_bins, required_samples, required_bins
+    ):
+
+        sample_id = random.sample(sample_set, 1)
+        camera_i, bin_id = sample_id[0]
+        tracks = camera_data[camera_i].bins[bin_id]
+        dataset.add_tracks(tracks)
+        sample_set.remove(sample_id[0])
+        used_bins.append(bin_id)
+
+
+def add_camera_data(
+    labels, dataset, cameras, required_samples, required_bins, limit=300
+):
+
+    # assign bins to test and validation sets
+    # if we previously added bins from another dataset we are simply filling in the gaps here.
+    for label in labels:
+        bins = []
+
+        for i, camera_data in enumerate(cameras):
+            if label not in camera_data.label_to_bins:
+                continue
+            for bin_id in camera_data.label_to_bins[label]:
+                # name and camera
+                bins.append((i, bin_id))
+
+        available_bins = len(bins)
+        add_random_camera_samples(
+            dataset, cameras, bins, label, required_samples, required_bins,
+        )
+
 
 def main():
     init_logging()

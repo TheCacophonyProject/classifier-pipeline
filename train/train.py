@@ -55,7 +55,9 @@ def train_model(run_name, conf, hyper_params):
     print()
 
     for dataset in dsets:
+        print(dataset.name)
         print(dataset.labels)
+        print(dataset.cameras)
 
     print("Training started")
     print("---------------------")

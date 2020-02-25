@@ -231,12 +231,24 @@ class TrackHeader:
         return self.track_id
 
 
-class ClipHeader:
-    def __init__(self):
-        self.tracks = []
+class CameraSegments:
+    def __init__(self, camera):
+        self.label_to_bins = {}
+        self.bins = {}
+        self.camera = camera
 
-    def add_track(self, track: TrackHeader):
-        self.tracks.append(track)
+    def add_track(self, track_header):
+
+        if track_header.bin_id not in self.bins:
+            self.bins[track_header.bin_id] = []
+
+        if track_header.label not in self.label_to_bins:
+            self.label_to_bins[track_header.label] = []
+
+        if track_header.bin_id not in self.label_to_bins[track_header.label]:
+            self.label_to_bins[track_header.label].append(track_header.bin_id)
+
+        self.bins[track_header.bin_id].append(track_header)
 
 
 class SegmentHeader:
@@ -759,13 +771,15 @@ class Dataset:
 
         cam_bin = self.camera_bins.get(track_header.camera)
         if cam_bin is None:
-            cam_bin = {}
+            cam_bin = CameraSegments(track_header.camera)
             self.camera_bins[track_header.camera] = cam_bin
 
-        if track_header.bin_id not in cam_bin:
-            cam_bin[track_header.bin_id] = []
+        cam_bin.add_track(track_header)
 
-        cam_bin[track_header.bin_id].append(track_header)
+        # if track_header.bin_id not in cam_bin:
+        #     cam_bin[track_header.bin_id] = []
+
+        # cam_bin[track_header.bin_id].append(track_header)
 
     def add_bin_distribution_info(self, track_header):
         cam_bin = self.camera_bins.get(track_header.camera)
