@@ -456,7 +456,6 @@ def add_camera_data(
         )
 
     if cap_bin_weight is not None:
-        print(counts)
         bin_segment_mean = np.mean(counts)
         bin_segment_std = np.std(counts)
         max_bin_segments = bin_segment_mean + bin_segment_std * cap_bin_weight
