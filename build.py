@@ -257,6 +257,18 @@ def print_bin_stats(label, available_bins, heavy_bins, used_bins):
     )
 
 
+def print_cameras(train, validation, test):
+
+    print("Cameras per set:")
+    print("-" * 90)
+    print("Train")
+    print(train.cameras)
+    print("Validation")
+    print(validation.cameras)
+    print("Test")
+    print(test.cameras)
+
+
 def print_segments(dataset, train, validation, test):
 
     print("Segments per class:")
@@ -325,11 +337,22 @@ def split_dataset_by_cameras(db, dataset, build_config):
 
     # use hubble 6 for testing
     camera_data = dataset.camera_bins
-    test_data = [camera_data["Hubble 6"]]
-    del camera_data["Hubble 6"]
+    # want a test set that covers all labels
+
+    # test_data = [camera_data["Hubble 6"]]
+    # del camera_data["Hubble 6"]
     cameras = list(camera_data.values())
     # randomize order
     cameras.sort(key=lambda x: np.random.random_sample())
+    test_i = -1
+    for i, camera in enumerate(cameras):
+        if len(camera.label_to_bins.keys()) == len(dataset.labels):
+            test_data = [camera]
+            test_i = i
+            break
+
+    assert test_i >= 0, "No test camera found with all labels"
+    del cameras[i]
 
     train_data = cameras[:train_cameras]
 
@@ -337,20 +360,36 @@ def split_dataset_by_cameras(db, dataset, build_config):
     required_bins = max(MIN_BINS, build_config.test_set_bins)
 
     add_camera_data(
-        dataset.labels, train, train_data, required_samples * 4, required_bins * 4
+        dataset.labels,
+        train,
+        train_data,
+        required_samples * 2,
+        required_bins,
+        build_config.cap_bin_weight,
     )
 
     validate_data = cameras[train_cameras : train_cameras + validation_cameras]
     add_camera_data(
-        dataset.labels, validation, validate_data, required_samples, required_bins
+        dataset.labels,
+        validation,
+        validate_data,
+        required_samples,
+        required_bins,
+        build_config.cap_bin_weight,
     )
 
     # validation.add_cameras(validate_data)
 
     add_camera_data(dataset.labels, test, test_data, required_samples, required_bins)
 
-    print_segments(dataset, train, validation, test)
+    # balance out the classes
+    train.balance_weights()
+    validation.balance_weights()
 
+    test.balance_resample(required_samples=build_config.test_set_count)
+
+    print_segments(dataset, train, validation, test)
+    print_cameras(train, validation, test)
     return train, validation, test
 
 
@@ -363,38 +402,66 @@ def add_random_camera_samples(
         Updates the bins in sample_set and used_bins
         """
     used_bins = []
-    while sample_set and needs_more_bins(
+    num_cameras = len(sample_set)
+    cur_camera = 0
+    # 1 from each camera
+    while num_cameras > 0 and needs_more_bins(
         dataset, label, used_bins, required_samples, required_bins
     ):
+        camera_i, cam_bins = sample_set[cur_camera]
+        # camera_i = cam_bins[0]
+        # cam_bins = cam_bins[1]
 
-        sample_id = random.sample(sample_set, 1)
-        camera_i, bin_id = sample_id[0]
+        bin_id = random.sample(cam_bins, 1)[0]
         tracks = camera_data[camera_i].bins[bin_id]
         dataset.add_tracks(tracks)
-        sample_set.remove(sample_id[0])
+        dataset.cameras.add(camera_data[camera_i].camera)
+
+        cam_bins.remove(bin_id)
         used_bins.append(bin_id)
+
+        if len(cam_bins) == 0:
+            num_cameras -= 1
+            del sample_set[cur_camera]
+            if num_cameras > 0:
+                cur_camera %= num_cameras
+            continue
+
+        cur_camera += 1
+        cur_camera %= num_cameras
 
 
 def add_camera_data(
-    labels, dataset, cameras, required_samples, required_bins, limit=300
+    labels, dataset, cameras, required_samples, required_bins, cap_bin_weight=None
 ):
+
+    counts = []
 
     # assign bins to test and validation sets
     # if we previously added bins from another dataset we are simply filling in the gaps here.
+    for camera_data in cameras:
+        counts.extend((camera_data.bin_segment_sum.values()))
+
     for label in labels:
         bins = []
 
         for i, camera_data in enumerate(cameras):
+
             if label not in camera_data.label_to_bins:
                 continue
-            for bin_id in camera_data.label_to_bins[label]:
-                # name and camera
-                bins.append((i, bin_id))
+            bins.append((i, camera_data.label_to_bins[label]))
 
-        available_bins = len(bins)
         add_random_camera_samples(
             dataset, cameras, bins, label, required_samples, required_bins,
         )
+
+    if cap_bin_weight is not None:
+        print(counts)
+        bin_segment_mean = np.mean(counts)
+        bin_segment_std = np.std(counts)
+        max_bin_segments = bin_segment_mean + bin_segment_std * cap_bin_weight
+
+        dataset.balance_bins(max_bin_segments)
 
 
 def main():

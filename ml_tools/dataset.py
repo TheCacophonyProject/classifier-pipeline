@@ -236,11 +236,15 @@ class CameraSegments:
         self.label_to_bins = {}
         self.bins = {}
         self.camera = camera
+        self.bin_segment_sum = {}
+        self.segment_sum = 0
+        self.segments = 0
 
     def add_track(self, track_header):
 
         if track_header.bin_id not in self.bins:
             self.bins[track_header.bin_id] = []
+            self.bin_segment_sum[track_header.bin_id] = 0
 
         if track_header.label not in self.label_to_bins:
             self.label_to_bins[track_header.label] = []
@@ -249,6 +253,11 @@ class CameraSegments:
             self.label_to_bins[track_header.label].append(track_header.bin_id)
 
         self.bins[track_header.bin_id].append(track_header)
+
+        segment_length = len(track_header.segments)
+        self.bin_segment_sum[track_header.bin_id] += segment_length
+        self.segment_sum += segment_length
+        self.segments += 1
 
 
 class SegmentHeader:
@@ -497,7 +506,7 @@ class Dataset:
         self.track_by_id = {}
         self.tracks_by_label = {}
         self.tracks_by_bin = {}
-        self.cameras = []
+        self.cameras = set()
         self.camera_bins = {}
         # writes the frame motion into the center of the optical flow channels
         self.encode_frame_offsets_in_flow = False
@@ -637,18 +646,6 @@ class Dataset:
                 counter += 1
         return [counter, len(track_ids)]
 
-    def add_cameras(self, cameras):
-        for camera_data in cameras:
-            print(camera_data[0])
-            self.add_camera(camera_data[0], camera_data[1])
-
-    def add_camera(self, camera, camera_data):
-        if camera not in self.cameras:
-            self.cameras.append(camera)
-
-        for bin_id, tracks in camera_data.items():
-            self.add_tracks(tracks)
-
     def add_tracks(self, tracks):
         """
         Adds list of tracks to dataset
@@ -690,7 +687,6 @@ class Dataset:
             return False
         track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
         self.tracks.append(track_header)
-        self.add_track_to_mappings(track_header)
 
         segment_frame_spacing = self.segment_spacing * track_header.frames_per_second
         segment_width = self.segment_length * track_header.frames_per_second
@@ -706,6 +702,7 @@ class Dataset:
             "segment_mass"
         ]
         self.segments.extend(track_header.segments)
+        self.add_track_to_mappings(track_header)
 
         return True
 
