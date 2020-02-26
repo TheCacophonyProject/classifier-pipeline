@@ -119,8 +119,7 @@ class ClipClassifier(CPTVFileProcessor):
                     prediction,
                     novelty,
                     state,
-                ) = self.classifier.classify_frame_with_novelty(frame, state)
-
+                ) = self.classifier.classify_frame_with_novelty(frame)
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
                 if fp_index is not None:
@@ -160,7 +159,7 @@ class ClipClassifier(CPTVFileProcessor):
             track_prediction.classified_frame(
                 region.frame_number, smooth_prediction, smooth_novelty
             )
-
+            print(track_prediction.get_classified_footer(self.classifier.labels))
         return track_prediction
 
     @property
@@ -178,7 +177,6 @@ class ClipClassifier(CPTVFileProcessor):
             )
             globs._classifier.load(self.config.classify.model)
             logging.info("classifier loaded ({})".format(datetime.now() - t0))
-
         return globs._classifier
 
     def get_meta_data(self, filename):

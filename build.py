@@ -346,11 +346,13 @@ def split_dataset_by_cameras(db, dataset, build_config):
     cameras.sort(key=lambda x: np.random.random_sample())
     test_i = -1
     for i, camera in enumerate(cameras):
+        if "mustelid" in camera.label_to_bins.keys():
+            print("has mustelid", camera.camera)
         if len(camera.label_to_bins.keys()) == len(dataset.labels):
             test_data = [camera]
             test_i = i
-            break
-
+            # break
+    return
     assert test_i >= 0, "No test camera found with all labels"
     del cameras[i]
 

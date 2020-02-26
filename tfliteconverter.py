@@ -42,8 +42,10 @@ def save_eval_model(args):
     datasets_filename = dataset_db_path(config)
     with open(datasets_filename, "rb") as f:
         dsets = pickle.load(f)
-    labels = dsets[0].labels
-    model = Model_CNN(
+
+    labels = ["hedgehog", "false-positive", "possum", "rodent", "bird"]
+
+    model = ModelCRNN_LQ(
         labels=len(labels),
         train_config=config.train,
         training=False,
@@ -72,8 +74,8 @@ def freeze_model(args):
         except (ModuleNotFoundError, ImportError):
             from tensorflow.saved_model import simple_save
 
-        in_names = ["X:0"]
-        out_names = [ "prediction:0", "novelty:0"]
+        in_names = ["X:0", "state_out:0"]
+        out_names = ["state_in:0", "prediction:0", "novelty:0"]
         inputs = {}
         outputs = {}
         for name in in_names:

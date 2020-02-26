@@ -164,10 +164,10 @@ class Model:
         logging.info("Test segments: {0:.1f}k".format(self.datasets.test.rows / 1000))
         logging.info("Labels: {}".format(self.datasets.train.labels))
 
-        assert set(self.datasets.train.labels).issubset(
-            set(self.datasets.validation.labels)
-        )
-        assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
+        # assert set(self.datasets.train.labels).issubset(
+        #     set(self.datasets.validation.labels)
+        # )
+        # assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
 
     @property
     def batch_size(self):
@@ -256,7 +256,6 @@ class Model:
             self.is_training: is_training,
             self.global_step: self.step,
         }
-
         if y is not None:
             result[self.y] = y
         if state_in is not None:
@@ -887,7 +886,6 @@ class Model:
 
         # get additional hyper parameters
         stats = json.load(open(filename + ".txt", "r"))
-
         self.MODEL_NAME = stats["name"]
         self.MODEL_DESCRIPTION = stats["description"]
         self.labels = stats["labels"]
@@ -945,8 +943,8 @@ class Model:
         self.is_training = self.get_tensor("training")
         self.global_step = self.get_tensor("global_step")
 
-        # self.state_out = self.get_tensor("state_out")
-        # self.state_in = self.get_tensor("state_in")
+        self.state_out = self.get_tensor("state_out")
+        self.state_in = self.get_tensor("state_in")
 
         self.logits_out = self.get_tensor("logits_out", none_if_not_found=True)
         self.hidden_out = self.get_tensor("hidden_out", none_if_not_found=True)
@@ -983,16 +981,16 @@ class Model:
         :param state: the previous state, or none for initial frame.
         :return: tuple (prediction, novelty, state).  Where prediction is score for each class, and novelty is a scalar
         """
-        if state is None:
-            state_shape = self.state_in.shape
-            state = np.zeros([1, state_shape[1], state_shape[2]], dtype=np.float32)
+        # if state is None:
+        #     state_shape = self.state_in.shape
+        #     print(state_shape)
+        #     state = np.zeros([1, state_shape[1]], dtype=np.float32)
 
         batch_X = frame[np.newaxis, np.newaxis, :]
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
         pred, novelty, state = self.session.run(
             [self.prediction, self.novelty, self.state_out], feed_dict=feed_dict
         )
-
         return pred[0], novelty[0], state
 
     def create_summaries(self, name, var):
@@ -1108,7 +1106,7 @@ class Model:
             return_sequences=True,
             return_state=True,
             dtype=tf.float32,
-            unroll=True,
+            unroll=False,
         )
         init_state = self.state_in
 

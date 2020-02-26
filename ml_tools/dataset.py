@@ -161,6 +161,11 @@ class TrackHeader:
             self.segments.append(segment)
 
     @property
+    def camera_id(self):
+        """ Unique name of this track. """
+        return "{}-{}".format(self.camera, self.location)
+
+    @property
     def track_id(self):
         """ Unique name of this track. """
         return TrackHeader.get_name(self.clip_id, self.track_number)
@@ -766,9 +771,9 @@ class Dataset:
 
         self.tracks_by_bin[track_header.bin_id].append(track_header)
 
-        cam_bin = self.camera_bins.get(track_header.camera)
+        cam_bin = self.camera_bins.get(track_header.camera_id)
         if cam_bin is None:
-            cam_bin = CameraSegments(track_header.camera)
+            cam_bin = CameraSegments(track_header.camera_id)
             self.camera_bins[track_header.camera] = cam_bin
 
         cam_bin.add_track(track_header)
