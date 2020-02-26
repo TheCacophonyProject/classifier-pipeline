@@ -24,4 +24,5 @@ deploy:
   file_glob: true
   file: "dist/*.deb"
   on:
-    branch: lite-interpret
+    repo: gferraro/classifier-pipeline
+    tags: true
