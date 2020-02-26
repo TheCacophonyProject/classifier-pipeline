@@ -54,7 +54,6 @@ def train_model(run_name, conf, hyper_params):
         )
     print()
 
-
     print("Training started")
     print("---------------------")
     print("Hyper parameters")

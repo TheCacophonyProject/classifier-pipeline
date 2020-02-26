@@ -123,7 +123,7 @@ class ConvModel(Model):
 
         # vec = tf.constant([1., 2., 3., 4.])
         m = 27
-        X = tf.ones([m,1,1,1]) * X
+        X = tf.ones([m, 1, 1, 1]) * X
         # for i in range(27):
         # new_X = tf.tile(X, 27, name="x_out")
         # print(new_X.shape)

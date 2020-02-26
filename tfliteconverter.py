@@ -57,7 +57,6 @@ def save_eval_model(args):
     model.saver = tf.compat.v1.train.Saver(max_to_keep=1000)
     print("RESTORE")
 
-
     model.saver = tf.compat.v1.train.import_meta_graph(
         os.path.join(args.model_dir, args.model_name) + ".meta", clear_devices=True
     )

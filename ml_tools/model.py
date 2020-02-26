@@ -878,7 +878,7 @@ class Model:
         """ Loads model and parameters from file. """
 
         logging.info("Loading model {}".format(filename))
-        print("loading",filename)
+        print("loading", filename)
         saver = tf.compat.v1.train.import_meta_graph(
             filename + ".meta", clear_devices=True
         )
@@ -894,13 +894,14 @@ class Model:
         # connect up nodes.
         self.attach_nodes()
 
-    def load_meta(self,filename):
+    def load_meta(self, filename):
         stats = json.load(open(filename + ".txt", "r"))
         self.MODEL_NAME = stats["name"]
         self.MODEL_DESCRIPTION = stats["description"]
         self.labels = stats["labels"]
         self.eval_score = stats["score"]
         self.params = stats["hyperparams"]
+
     def save_params(self, filename):
         """ Saves model parameters. """
         self.saver.save(self.session, filename)
@@ -995,7 +996,7 @@ class Model:
 
         batch_X = frame[np.newaxis, np.newaxis, :]
         # batch_X = np.repeat(batch_X, 27, axis=1)
-     
+
         # print(batch_X.shape)
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
         pred, novelty, state = self.session.run(
