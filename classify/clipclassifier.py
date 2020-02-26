@@ -118,7 +118,7 @@ class ClipClassifier(CPTVFileProcessor):
                     prediction,
                     novelty,
                     state,
-                ) = self.classifier.classify_frame_with_novelty(frame)
+                ) = self.classifier.classify_frame_with_novelty(frame, state)
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
                 if fp_index is not None:

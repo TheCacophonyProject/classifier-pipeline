@@ -373,7 +373,7 @@ class ModelCRNN_HQ(ConvModel):
         # dense hidden layer
         dense = tf.compat.v1.layers.dense(
             inputs=memory_output,
-            units=384,
+            units=self.params["lstm_units"],
             activation=tf.nn.relu,
             name="hidden",
             kernel_regularizer=regularizer,
