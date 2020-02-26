@@ -314,6 +314,7 @@ class ModelCRNN_HQ(ConvModel):
         # W frame width
 
         thermal, flow, mask = self.process_inputs()
+        frame_count = tf.shape(self.X)[1]
 
         # -------------------------------------
         # run the Convolutions
