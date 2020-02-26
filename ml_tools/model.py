@@ -25,10 +25,15 @@ class Model:
     MODEL_DESCRIPTION = ""
     VERSION = "0.3.0"
 
+    def model_name(self):
+        return Model.MODEL_NAME
+
     def __init__(self, train_config=None, session=None, training=False):
         self.training = training
         self.use_gru = train_config.use_gru
-        self.name = "model"
+        self.name = self.model_name()
+        print("NAME IS", self.name)
+        # self.model_name()
         self.session = session or tools.get_session()
         self.saver = None
         tf.compat.v1.disable_eager_execution()
@@ -951,8 +956,9 @@ class Model:
         self.is_training = self.get_tensor("training")
         self.global_step = self.get_tensor("global_step")
 
-        self.state_out = self.get_tensor("state_out")
-        self.state_in = self.get_tensor("state_in")
+        if self.name != "model_cnn":
+            self.state_out = self.get_tensor("state_out")
+            self.state_in = self.get_tensor("state_in")
 
         self.logits_out = self.get_tensor("logits_out", none_if_not_found=True)
         self.hidden_out = self.get_tensor("hidden_out", none_if_not_found=True)

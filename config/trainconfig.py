@@ -62,6 +62,8 @@ class TrainConfig(DefaultConfig):
                 "thermal_threshold": 10,
                 "scale_frequency": 0.5,
                 "gru_units": 256,
+                "hq": False,
+                "use_mask": False,
             },
             resnet_params=None,
             train_dir="train",

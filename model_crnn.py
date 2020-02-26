@@ -287,6 +287,9 @@ class ModelCRNN_HQ(ConvModel):
         "scale_frequency": 0.5,
     }
 
+    def model_name(self):
+        return ModelCRNN_HQ.MODEL_NAME
+
     def __init__(self, labels, train_config, training=False, **kwargs):
         """
         Initialise the model
@@ -456,7 +459,12 @@ class ModelCRNN_LQ(ConvModel):
         "augmentation": True,
         "thermal_threshold": 10,
         "scale_frequency": 0.5,
+        "hq": False,
+        "use_mask": False,
     }
+
+    def model_name(self):
+        return ModelCRNN_LQ.MODEL_NAME
 
     def __init__(self, labels, train_config, training, **kwargs):
         """
@@ -466,6 +474,18 @@ class ModelCRNN_LQ(ConvModel):
         super().__init__(train_config=train_config, training=training)
         self.params.update(self.DEFAULT_PARAMS)
         self.params.update(kwargs)
+        if self.params["hq"]:
+            self.layers = 5
+            self.layer_filters = [64, 64, 96, 128, 128]
+            self.conv_stride = [1, 1, 1, 1, 1]
+            self.pool_stride = [2, 2, 2, 2, 1]
+            self.kernel_size = [3, 3]
+        else:
+            self.layers = 5
+            self.layer_filters = [32.48, 64, 64, 64]
+            self.kernel_size = [3, 3]
+            self.pool_stride = [1, 1, 1, 1, 1]
+            self.conv_stride = [2, 2, 2, 2, 1]
         self._build_model(labels)
 
     def _build_model(self, label_count):
@@ -485,14 +505,20 @@ class ModelCRNN_LQ(ConvModel):
         frame_count = tf.shape(self.X)[1]
         # -------------------------------------
         # run the Convolutions
-        layer = thermal
-        layer = self.conv_layer("thermal/1", layer, 32, [3, 3], conv_stride=2)
+        if self.params["use_mask"]:
+            layer = mask
+        else:
+            layer = thermal
 
-        layer = self.conv_layer("thermal/2", layer, 48, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/3", layer, 64, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/4", layer, 64, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/5", layer, 64, [3, 3], conv_stride=1)
-
+        for i in range(self.layers):
+            layer = self.conv_layer(
+                "thermal/{}".format(i),
+                layer,
+                self.layer_filters[i],
+                self.kernel_size,
+                conv_stride=self.conv_stride[i],
+                pool_stride=self.pool_stride[i],
+            )
         filtered_conv = layer
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
         filtered_out = tf.reshape(
@@ -503,12 +529,20 @@ class ModelCRNN_LQ(ConvModel):
 
         if self.params["enable_flow"]:
             # integrate thermal and flow into a 3 channel layer
-            layer = tf.concat((thermal, flow), axis=3)
-            layer = self.conv_layer("motion/1", layer, 32, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/2", layer, 48, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/3", layer, 64, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/4", layer, 64, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/5", layer, 64, [3, 3], conv_stride=1)
+            if self.params["use_mask"]:
+                layer = tf.concat((mask, flow), axis=3)
+            else:
+                layer = tf.concat((thermal, flow), axis=3)
+
+            for i in range(self.layers):
+                layer = self.conv_layer(
+                    "motion/{}".format(i),
+                    layer,
+                    self.layer_filters[i],
+                    self.kernel_size,
+                    conv_stride=self.conv_stride[i],
+                    pool_stride=self.pool_stride[i],
+                )
 
             motion_conv = layer
             logging.info(
@@ -601,7 +635,12 @@ class Model_CNN(ConvModel):
         "augmentation": True,
         "thermal_threshold": 10,
         "scale_frequency": 0.5,
+        "hq": False,
+        "use_mask": False,
     }
+
+    def model_name(self):
+        return Model_CNN.MODEL_NAME
 
     def __init__(self, labels, train_config, training, **kwargs):
         """
@@ -617,6 +656,18 @@ class Model_CNN(ConvModel):
 
         self.params.update(self.DEFAULT_PARAMS)
         self.params.update(kwargs)
+        if self.params["hq"]:
+            self.layers = 5
+            self.layer_filters = [64, 64, 96, 128, 128]
+            self.conv_stride = [1, 1, 1, 1, 1]
+            self.pool_stride = [2, 2, 2, 2, 1]
+            self.kernel_size = [3, 3]
+        else:
+            self.layers = 5
+            self.layer_filters = [32.48, 64, 64, 64]
+            self.kernel_size = [3, 3]
+            self.pool_stride = [1, 1, 1, 1, 1]
+            self.conv_stride = [2, 2, 2, 2, 1]
         self._build_model(labels)
 
     def _build_model(self, label_count):
@@ -636,25 +687,40 @@ class Model_CNN(ConvModel):
 
         # -------------------------------------
         # run the Convolutions
-        layer = thermal
-        layer = self.conv_layer("thermal/1", layer, 32, [3, 3], conv_stride=2)
+        if self.params["use_mask"]:
+            layer = mask
+        else:
+            layer = thermal
 
-        layer = self.conv_layer("thermal/2", layer, 48, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/3", layer, 64, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/4", layer, 64, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/5", layer, 64, [3, 3], conv_stride=1)
+        for i in range(self.layers):
+            layer = self.conv_layer(
+                "thermal/{}".format(i),
+                layer,
+                self.layer_filters[i],
+                self.kernel_size,
+                conv_stride=self.conv_stride[i],
+                pool_stride=self.pool_stride[i],
+            )
 
         filtered_conv = layer
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
 
         if self.params["enable_flow"]:
             # integrate thermal and flow into a 3 channel layer
-            layer = tf.concat((thermal, flow), axis=3)
-            layer = self.conv_layer("motion/1", layer, 32, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/2", layer, 48, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/3", layer, 64, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/4", layer, 64, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/5", layer, 64, [3, 3], conv_stride=1)
+            if self.params["use_mask"]:
+                layer = tf.concat((mask, flow), axis=3)
+            else:
+                layer = tf.concat((thermal, flow), axis=3)
+
+            for i in range(self.layers):
+                layer = self.conv_layer(
+                    "motion/{}".format(i),
+                    layer,
+                    self.layer_filters[i],
+                    self.kernel_size,
+                    conv_stride=self.conv_stride[i],
+                    pool_stride=self.pool_stride[i],
+                )
 
             motion_conv = layer
             logging.info(
