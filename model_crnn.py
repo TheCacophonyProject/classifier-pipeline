@@ -80,7 +80,7 @@ class ConvModel(Model):
 
         # Setup placeholders
         self.X = tf.compat.v1.placeholder(
-            tf.float32, [None, 1, 5, 48, 48], name="X"
+            tf.float32, [None, None, 5, 48, 48], name="X"
         )  # [B, F, C, H, W]
         self.y = tf.compat.v1.placeholder(tf.int64, [None], name="y")
         batch_size = tf.shape(input=self.X)[0]

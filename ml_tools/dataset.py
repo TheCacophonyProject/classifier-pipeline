@@ -774,7 +774,7 @@ class Dataset:
         cam_bin = self.camera_bins.get(track_header.camera_id)
         if cam_bin is None:
             cam_bin = CameraSegments(track_header.camera_id)
-            self.camera_bins[track_header.camera] = cam_bin
+            self.camera_bins[track_header.camera_id] = cam_bin
 
         cam_bin.add_track(track_header)
 

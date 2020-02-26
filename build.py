@@ -377,7 +377,6 @@ def split_dataset_by_cameras(db, dataset, build_config):
     )
 
     # validation.add_cameras(validate_data)
-
     add_camera_data(dataset.labels, test, test_data, required_samples, required_bins)
 
     # balance out the classes
