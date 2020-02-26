@@ -339,22 +339,18 @@ def split_dataset_by_cameras(db, dataset, build_config):
     camera_data = dataset.camera_bins
     # want a test set that covers all labels
 
-    # test_data = [camera_data["Hubble 6"]]
-    # del camera_data["Hubble 6"]
     cameras = list(camera_data.values())
     # randomize order
     cameras.sort(key=lambda x: np.random.random_sample())
     test_i = -1
+    test_data = []
     for i, camera in enumerate(cameras):
-        if "mustelid" in camera.label_to_bins.keys():
-            print("has mustelid", camera.camera)
         if len(camera.label_to_bins.keys()) == len(dataset.labels):
-            test_data = [camera]
+            test_data.append(camera)
             test_i = i
-            # break
-    return
-    assert test_i >= 0, "No test camera found with all labels"
-    del cameras[i]
+            break
+    assert len(test_data) >= 0, "No test camera found with all labels"
+    del cameras[test_i]
 
     train_data = cameras[:train_cameras]
 
@@ -365,7 +361,7 @@ def split_dataset_by_cameras(db, dataset, build_config):
         dataset.labels,
         train,
         train_data,
-        required_samples * 2,
+        required_samples * 4,
         required_bins,
         build_config.cap_bin_weight,
     )
