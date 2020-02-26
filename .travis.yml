@@ -2,32 +2,26 @@ dist: xenial
 language: python
 python:
 - '3.6'
-
 install:
-- sudo apt-get update 
+- sudo apt-get update
 - sudo apt-get -y install libgirepository1.0-dev
 - pip install -r requirements.txt
-
 before_script:
 - pip install black
-
 script:
 - pytest
-- ./check-style
-
+- "./check-style"
 before_deploy:
 - "pip install pex"
 - "mkdir -p /tmp/x"
 - "curl -sL https://github.com/goreleaser/nfpm/releases/download/v0.9.5/nfpm_0.9.5_Linux_x86_64.tar.gz | tar -C /tmp/x -xzf -"
 - "PATH=/tmp/x:$PATH _release/build ${TRAVIS_TAG}"
-
 deploy:
   provider: releases
   api_key:
-    secure: WrrLauinQh68r3+fjSh6WePNB4MoaUcriUhLFioYaxC1SiLzyt6qysFT9MNx4r+Tp94prEkFIMJpljfFlwvS6rPEOqkiTdIsjJnbzmcrjAMCwSyP6sGeiyMfO+VYCJPaDqmjBp056tehUtDl8Gtz5esXFygchAOfZ6v7g/+HvwMIB8Tq+3GZQIzYM80jKjPfAeHMwSV0bXmoQ04m3s2z5ysjEDGtZTaKDEFMZOYOUmDIU74HZsUiDrDxfk5H2UR4mNt2+1JSdJogcpRF1OCzVIG1R5GSTAaC9pprzXsQFUueRS0tQRCeHS5ktRbmnIgOBIws2bMkGZIWys7R9MjWwqnLnPv0JUp2Aza0JBlQuh8imEEt9Hlxm8vdXn2RQwQSKaOBME+ng3izhgdBIYM+U9Ti/kaB7SF/LfYmGx1xhdYVxhYXeD5SLpVTJJYggCn+qVawFAdPxOTxiQmjIgZF9ZnuKbhC1VbLl9dxx4NE3aJTJq5UI6m1UZBvA9zRWrgdmeUN/En+ijvjGzuUm8IFOwwR86Aua8VUQvR/H9U5UBXZAfRA+b468jfjQ2cVdzz0r/1j+v9SAkqX487odFX8i0udy5GRoBnvN9NtTo+duqdMQev+l2u47n/R7x1Q0/stdjgVC4ZZ/JiZTSR0QK5E9stu0Gpxq2cDwlcjaz3gDXw=
+    secure: XNeclYU/XcjSTorvuKN5fUXAutVfIDip8ZCsEKiIBSPZctgre3Crp1ShWF458F+prlA2BXbqmmNFOaAJZ11ZmQlMGz4uQ9btIrDayIQnyZCBTvWz8l+vRHT69KlkeBLdH47TMO5io5uP7vWe9fEnR1Od5/Qxio3um24lIXVilJYeLzU+wKiCXbO8SvhRKKkMqykxa9ymO75UkRJBCRJ4zQ5PxOpnYL9JuNDbF2vhTZclXrZ/58uGvCdINYIaIoLGAN1q/Iu2y0iI4NZAmD9fw/dHB+0odnGNCwGhPUdQBK238L284lRA3bAFo15og+Trn6SwKfj/s6x5/WxykLq/zBc/zIXS5Eu4H2+FtXvr6rWqyEWztMHd6Ab5TL1PS5PzVvqOQ2wvZsXbV9/GZ6SYXx6/ZGJIjs69axDdTzQA2hAc8E7lINT7rzpfJMQlWt2UF/DnxjQATsnDPOjLpi/fKBGwVs2CqQ+bbhFxIOUpkC4CDbT01ClytbXVWHPGBf4zsZSsm4E1Fs8xtRSI66n2xIO/EHYo5ISx91glTuIvGWkAAUjk36fkL3eiUJmz/jGD8gKH/P0rYkp5Bf2g4fzehFKXyo9GkeJLhVHjVeZrCCeYG0jjs3xQmAYDXDNU88wsowqxTl1+ZJregr6wRGnsUEn+jX3GmFZ6abkMg9rxDPc=
   skip_cleanup: true
   file_glob: true
   file: "dist/*.deb"
   on:
-    repo: TheCacophonyProject/classifier-pipeline
-    tags: true
+    branch: lite-interpret

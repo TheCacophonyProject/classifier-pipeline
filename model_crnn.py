@@ -122,8 +122,8 @@ class ConvModel(Model):
         X = tf.reshape(X, [-1, 5, 48, 48])  # [B* F, C, H, W]
 
         # vec = tf.constant([1., 2., 3., 4.])
-        m = 27
-        X = tf.ones([m, 1, 1, 1]) * X
+        # m = 27
+        # X = tf.ones([m,1,1,1]) * X
         # for i in range(27):
         # new_X = tf.tile(X, 27, name="x_out")
         # print(new_X.shape)
@@ -497,7 +497,7 @@ class ModelCRNN_LQ(ConvModel):
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
         filtered_out = tf.reshape(
             filtered_conv,
-            [-1, self.frame_count, tools.product(filtered_conv.shape[1:])],
+            [-1, frame_count, tools.product(filtered_conv.shape[1:])],
             name="thermal/out",
         )
 
