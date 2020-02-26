@@ -1139,7 +1139,7 @@ class Model:
             return_sequences=True,
             return_state=True,
             dtype=tf.float32,
-            unroll=True,
+            unroll=False,
         )
         init_state = (self.state_in[:, :, 0], self.state_in[:, :, 1])
         lstm_outputs, lstm_state_1, lstm_state_2 = rnn(inputs, initial_state=init_state)

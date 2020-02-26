@@ -373,7 +373,7 @@ class ModelCRNN_HQ(ConvModel):
         # dense hidden layer
         dense = tf.compat.v1.layers.dense(
             inputs=memory_output,
-            units=self.params["lstm_units"],
+            units=384,
             activation=tf.nn.relu,
             name="hidden",
             kernel_regularizer=regularizer,
@@ -419,7 +419,7 @@ class ModelCRNN_HQ(ConvModel):
         # -------------------------------------
         # novelty
 
-        self.setup_novelty(logits, memory_output)
+        self.setup_novelty(logits, dense)
         self.setup_optimizer(loss)
 
         # make reference to special nodes
@@ -483,7 +483,7 @@ class ModelCRNN_LQ(ConvModel):
             self.kernel_size = [3, 3]
         else:
             self.layers = 5
-            self.layer_filters = [32.48, 64, 64, 64]
+            self.layer_filters = [32,48, 64, 64, 64]
             self.kernel_size = [3, 3]
             self.pool_stride = [1, 1, 1, 1, 1]
             self.conv_stride = [2, 2, 2, 2, 1]
@@ -574,6 +574,7 @@ class ModelCRNN_LQ(ConvModel):
         # dense layer on top of convolutional output mapping to class labels.
         logits = tf.keras.layers.Dense(label_count)(memory_output)
         tf.compat.v1.summary.histogram("weights/logits", logits)
+
         softmax_loss = tf.compat.v1.losses.softmax_cross_entropy(
             onehot_labels=tf.one_hot(self.y, label_count),
             logits=logits,
