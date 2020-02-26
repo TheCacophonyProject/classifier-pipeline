@@ -114,9 +114,11 @@ class ClipClassifier(CPTVFileProcessor):
                     )
                     return
                 frame = frames[0]
-                (prediction, novelty,) = self.classifier.classify_frame_with_novelty(
-                    frame
-                )
+                (
+                    prediction,
+                    novelty,
+                    state,
+                ) = self.classifier.classify_frame_with_novelty(frame)
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
                 if fp_index is not None:
@@ -124,7 +126,7 @@ class ClipClassifier(CPTVFileProcessor):
 
                 # a little weight decay helps the model not lock into an initial impression.
                 # 0.98 represents a half life of around 3 seconds.
-                # state *= 0.98
+                state *= 0.98
 
                 # precondition on weight,  segments with small mass are weighted less as we can assume the error is
                 # higher here.
