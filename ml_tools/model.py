@@ -878,7 +878,7 @@ class Model:
         """ Loads model and parameters from file. """
 
         logging.info("Loading model {}".format(filename))
-
+        print("loading",filename)
         saver = tf.compat.v1.train.import_meta_graph(
             filename + ".meta", clear_devices=True
         )
@@ -891,16 +891,23 @@ class Model:
         self.labels = stats["labels"]
         self.eval_score = stats["score"]
         self.params = stats["hyperparams"]
-
         # connect up nodes.
         self.attach_nodes()
 
+    def load_meta(self,filename):
+        stats = json.load(open(filename + ".txt", "r"))
+        self.MODEL_NAME = stats["name"]
+        self.MODEL_DESCRIPTION = stats["description"]
+        self.labels = stats["labels"]
+        self.eval_score = stats["score"]
+        self.params = stats["hyperparams"]
     def save_params(self, filename):
         """ Saves model parameters. """
         self.saver.save(self.session, filename)
 
     def restore_params(self, filename):
         """ Restores model parameters. """
+        print("restoring", filename)
         self.saver.restore(self.session, filename)
 
     def get_tensor(self, name, none_if_not_found=False):
@@ -987,6 +994,9 @@ class Model:
         #     state = np.zeros([1, state_shape[1]], dtype=np.float32)
 
         batch_X = frame[np.newaxis, np.newaxis, :]
+        # batch_X = np.repeat(batch_X, 27, axis=1)
+     
+        # print(batch_X.shape)
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
         pred, novelty, state = self.session.run(
             [self.prediction, self.novelty, self.state_out], feed_dict=feed_dict

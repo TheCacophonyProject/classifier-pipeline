@@ -7,7 +7,7 @@ import tensorflow as tf
 from config.config import Config
 from ml_tools.dataset import dataset_db_path
 import pickle
-
+from ml_tools.model import Model
 from model_crnn import ModelCRNN_LQ, Model_CNN
 
 MODEL_DIR = "../cptv-download/train/checkpoints"
@@ -48,11 +48,21 @@ def save_eval_model(args):
     model = ModelCRNN_LQ(
         labels=len(labels),
         train_config=config.train,
-        training=False,
+        training=True,
         **config.train.hyper_params,
     )
+    print(model.frame_count)
+    # model = Model(train_config=config.train)
+    # model.load(os.path.join(args.model_dir, args.model_name))
     model.saver = tf.compat.v1.train.Saver(max_to_keep=1000)
+    print("RESTORE")
 
+
+    model.saver = tf.compat.v1.train.import_meta_graph(
+        os.path.join(args.model_dir, args.model_name) + ".meta", clear_devices=True
+    )
+    # saver.restore(self.session, filename)
+    model.load_meta(os.path.join(args.model_dir, args.model_name))
     model.restore_params(os.path.join(args.model_dir, args.model_name))
 
     model.save(os.path.join(args.model_dir, "eval-model"))
@@ -61,13 +71,14 @@ def save_eval_model(args):
 
 def freeze_model(args):
     save_eval_model(args)
+    return
     loaded_graph = tf.Graph()
     with tf.compat.v1.Session(graph=loaded_graph) as sess:
 
         saver = tf.compat.v1.train.import_meta_graph(
-            os.path.join(args.model_dir, "eval-model") + ".meta", clear_devices=True
+            os.path.join(args.model_dir, args.model_name) + ".meta", clear_devices=True
         )
-        saver.restore(sess, os.path.join(args.model_dir, "eval-model"))
+        saver.restore(sess, os.path.join(args.model_dir, args.model_name))
 
         try:
             from tensorflow.compat.v1.saved_model import simple_save

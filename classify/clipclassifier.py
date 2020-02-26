@@ -113,7 +113,6 @@ class ClipClassifier(CPTVFileProcessor):
                         )
                     )
                     return
-
                 frame = frames[0]
                 (
                     prediction,
@@ -159,7 +158,6 @@ class ClipClassifier(CPTVFileProcessor):
             track_prediction.classified_frame(
                 region.frame_number, smooth_prediction, smooth_novelty
             )
-            print(track_prediction.get_classified_footer(self.classifier.labels))
         return track_prediction
 
     @property

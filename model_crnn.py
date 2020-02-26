@@ -80,7 +80,7 @@ class ConvModel(Model):
 
         # Setup placeholders
         self.X = tf.compat.v1.placeholder(
-            tf.float32, [None, None, 5, 48, 48], name="X"
+            tf.float32, [None, 1, 5, 48, 48], name="X"
         )  # [B, F, C, H, W]
         self.y = tf.compat.v1.placeholder(tf.int64, [None], name="y")
         batch_size = tf.shape(input=self.X)[0]
@@ -120,6 +120,13 @@ class ConvModel(Model):
         # Apply pre-processing
         X = self.X  # [B, F, C, H, W]
         X = tf.reshape(X, [-1, 5, 48, 48])  # [B* F, C, H, W]
+
+        # vec = tf.constant([1., 2., 3., 4.])
+        m = 27
+        X = tf.ones([m,1,1,1]) * X
+        # for i in range(27):
+        # new_X = tf.tile(X, 27, name="x_out")
+        # print(new_X.shape)
         # normalise the thermal
         # the idea here is to apply sqrt to any values over 100 so that we reduce the effect of very strong values.
         thermal = X[:, 0 : 0 + 1]
@@ -475,7 +482,7 @@ class ModelCRNN_LQ(ConvModel):
         # W frame width
 
         thermal, flow, mask = self.process_inputs()
-        frame_count = tf.shape(self.X)[1]   
+        frame_count = tf.shape(self.X)[1]
         # -------------------------------------
         # run the Convolutions
         layer = thermal
@@ -490,7 +497,7 @@ class ModelCRNN_LQ(ConvModel):
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
         filtered_out = tf.reshape(
             filtered_conv,
-            [-1, frame_count, tools.product(filtered_conv.shape[1:])],
+            [-1, self.frame_count, tools.product(filtered_conv.shape[1:])],
             name="thermal/out",
         )
 
@@ -509,7 +516,7 @@ class ModelCRNN_LQ(ConvModel):
             )
             motion_out = tf.reshape(
                 motion_conv,
-                [-1, self.frame_count, tools.product(motion_conv.shape[1:])],
+                [-1, frame_count, tools.product(motion_conv.shape[1:])],
                 name="motion/out",
             )
 
