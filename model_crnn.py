@@ -330,7 +330,7 @@ class ModelCRNN_HQ(ConvModel):
         filtered_conv = layer
         filtered_out = tf.reshape(
             filtered_conv,
-            [-1, self.frame_count, tools.product(filtered_conv.shape[1:])],
+            [-1, frame_count, tools.product(filtered_conv.shape[1:])],
             name="thermal/out",
         )
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
