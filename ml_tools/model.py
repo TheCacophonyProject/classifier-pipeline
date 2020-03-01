@@ -1114,9 +1114,11 @@ class Model:
         return gru_output, gru_state
 
     def lite_gru_cell(self, inputs):
-        lstm_cell = tf.keras.layers.GRUCell(self.params["gru_units"])
+        gru_cell = tf.keras.layers.GRUCell(
+            self.params["gru_units"], dropout=self.params["keep_prob"]
+        )
         rnn = tf.keras.layers.RNN(
-            lstm_cell,
+            gru_cell,
             return_sequences=True,
             return_state=True,
             dtype=tf.float32,
@@ -1133,7 +1135,10 @@ class Model:
         return gru_output, gru_state
 
     def lite_lstm_cell(self, inputs):
-        lstm_cell = tf.keras.layers.LSTMCell(self.params["lstm_units"])
+        lstm_cell = tf.keras.layers.LSTMCell(
+            self.params["lstm_units"], dropout=self.params["keep_prob"]
+        )
+
         rnn = tf.keras.layers.RNN(
             lstm_cell,
             return_sequences=True,
@@ -1158,7 +1163,7 @@ class Model:
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
 
         dropout = tf.nn.rnn_cell.DropoutWrapper(
-            lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
+            lstm_cell, rate=1 - self.keep_prob, dtype=np.float32
         )
         init_state = tf.nn.rnn_cell.LSTMStateTuple(
             self.state_in[:, :, 0], self.state_in[:, :, 1]

@@ -373,7 +373,7 @@ class ModelCRNN_HQ(ConvModel):
         # dense hidden layer
         dense = tf.compat.v1.layers.dense(
             inputs=memory_output,
-            units=384,
+            units=self.params["lstm_units"],
             activation=tf.nn.relu,
             name="hidden",
             kernel_regularizer=regularizer,
@@ -483,7 +483,7 @@ class ModelCRNN_LQ(ConvModel):
             self.kernel_size = [3, 3]
         else:
             self.layers = 5
-            self.layer_filters = [32,48, 64, 64, 64]
+            self.layer_filters = [32, 48, 64, 64, 64]
             self.kernel_size = [3, 3]
             self.pool_stride = [1, 1, 1, 1, 1]
             self.conv_stride = [2, 2, 2, 2, 1]
