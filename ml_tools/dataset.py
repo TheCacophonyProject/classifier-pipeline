@@ -663,9 +663,15 @@ class Dataset:
                 result += 1
         return result
 
-    def add_track_header(self, track_header):
+    def add_track_header(self, track_header, limit_segments=2):
         if track_header.track_id in self.track_by_id:
             return False
+
+        # gp test less segments more tracks
+        if len(track_header.segments) > limit_segments:
+            segments = random.sample(track_header.segments, limit_segments)
+            track_header.segments = segments
+
         self.tracks.append(track_header)
         self.add_track_to_mappings(track_header)
         self.segments.extend(track_header.segments)
