@@ -32,8 +32,6 @@ class Model:
         self.training = training
         self.use_gru = train_config.use_gru
         self.name = self.model_name()
-        print("NAME IS", self.name)
-        # self.model_name()
         self.session = session or tools.get_session()
         self.saver = None
         tf.compat.v1.disable_eager_execution()

@@ -191,7 +191,7 @@ train:
         lstm_units: 512
         gru_units: 512
         enable_flow: true
-
+        
         # augmentation
         augmentation: true
         thermal_threshold: 10
@@ -309,3 +309,6 @@ build:
 
     # number of seconds segments are spaced apart
     segment_spacing: 1
+
+    # when building a dataset we want to use many different tracks if aren't building a big dataset
+    max_segments_per_track: 2

@@ -651,7 +651,7 @@ class Dataset:
                 counter += 1
         return [counter, len(track_ids)]
 
-    def add_tracks(self, tracks):
+    def add_tracks(self, tracks, max_segments_per_track=None):
         """
         Adds list of tracks to dataset
         :param tracks: list of TrackHeader
@@ -659,18 +659,19 @@ class Dataset:
         """
         result = 0
         for track in tracks:
-            if self.add_track_header(track):
+            if self.add_track_header(track, max_segments_per_track):
                 result += 1
         return result
 
-    def add_track_header(self, track_header, limit_segments=2):
+    def add_track_header(self, track_header, max_segments_per_track=None):
         if track_header.track_id in self.track_by_id:
             return False
 
         # gp test less segments more tracks
-        if len(track_header.segments) > limit_segments:
-            segments = random.sample(track_header.segments, limit_segments)
-            track_header.segments = segments
+        if max_segments_per_track is not None:
+            if len(track_header.segments) > max_segments_per_track:
+                segments = random.sample(track_header.segments, max_segments_per_track)
+                track_header.segments = segments
 
         self.tracks.append(track_header)
         self.add_track_to_mappings(track_header)

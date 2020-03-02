@@ -44,52 +44,6 @@ def show_segments_breakdown(dataset):
         print("  {:<20} {} segments".format(label, count))
 
 
-def split_dataset_predefined():
-    """Splits dataset into train / test / validation using a predefined set of camera-label allocations.
-
-    This method puts all tracks into 'camera-label' bins and then assigns certain bins to the validation set.
-    In this case the 'test' set is simply a subsample of the validation set. (as there are not enough unique cameras
-    at this point for 3 sets).
-
-    The advantages of this method are
-
-    1/ The datasets are fixed, even as more footage comes through
-    2/ Learning an animal on one camera / environment and predicting it on another is a very good indicator that that
-        algorthim has generalised
-    3/ Some adjustment can be made to make sure that the cameras used in the test / validation sets contain 'reasonable'
-        footage. (i.e. footage that is close to what we want to classify.
-
-    The disadvantages are that it requires seeing animals on multiple cameras, which we don't always have data for.
-    It can also be a bit wasteful as we sometimes dedicate a substantial portion of the data to some animal types.
-
-    A possible solution would be to note when (or if) the model over-fits then run on the entire dataset.
-
-    Another option would be k-fold validation.
-    """
-
-    validation_bins = [
-        ("bird", "akaroa03"),
-        ("hedgehog", "akaroa09"),
-        ("hedgehog", "akaroa03"),
-        ("hedgehog", "brent01"),
-        ("possum", "brent01"),
-        ("possum", "akaroa13"),
-        ("cat", "akaroa03"),
-        ("cat", "akaroa13"),
-        ("cat", "akaroa04"),
-        ("cat", "zip02"),
-        ("stoat", "akaroa09"),
-        ("stoat", "zip03"),
-        ("human", "akaroa09"),
-        ("rat", "akaroa04"),
-        ("rat", "akaroa10"),
-        ("rat", "zip01"),
-        ("false-positive", "akaroa09"),
-    ]
-
-    raise Exception("not implemented yet.")
-
-
 def prefill_bins(
     dataset,
     fill_datasets,
@@ -364,6 +318,7 @@ def split_dataset_by_cameras(db, dataset, build_config):
         required_samples * 4,
         required_bins,
         build_config.cap_bin_weight,
+        build_config.max_segments_per_track,
     )
 
     validate_data = cameras[train_cameras : train_cameras + validation_cameras]
@@ -374,10 +329,18 @@ def split_dataset_by_cameras(db, dataset, build_config):
         required_samples,
         required_bins,
         build_config.cap_bin_weight,
+        build_config.max_segments_per_track,
     )
 
     # validation.add_cameras(validate_data)
-    add_camera_data(dataset.labels, test, test_data, required_samples, required_bins)
+    add_camera_data(
+        dataset.labels,
+        test,
+        test_data,
+        required_samples,
+        required_bins,
+        build_config.max_segments_per_track,
+    )
 
     # balance out the classes
     train.balance_weights()
@@ -391,7 +354,13 @@ def split_dataset_by_cameras(db, dataset, build_config):
 
 
 def add_random_camera_samples(
-    dataset, camera_data, sample_set, label, required_samples, required_bins,
+    dataset,
+    camera_data,
+    sample_set,
+    label,
+    required_samples,
+    required_bins,
+    segments_per_track,
 ):
     """
         add random samples from the sample_set to every dataset in 
@@ -411,7 +380,7 @@ def add_random_camera_samples(
 
         bin_id = random.sample(cam_bins, 1)[0]
         tracks = camera_data[camera_i].bins[bin_id]
-        dataset.add_tracks(tracks)
+        dataset.add_tracks(tracks, segments_per_track)
         dataset.cameras.add(camera_data[camera_i].camera)
 
         cam_bins.remove(bin_id)
@@ -429,7 +398,13 @@ def add_random_camera_samples(
 
 
 def add_camera_data(
-    labels, dataset, cameras, required_samples, required_bins, cap_bin_weight=None
+    labels,
+    dataset,
+    cameras,
+    required_samples,
+    required_bins,
+    cap_bin_weight=None,
+    max_segments_per_track=None,
 ):
 
     counts = []
@@ -449,7 +424,13 @@ def add_camera_data(
             bins.append((i, camera_data.label_to_bins[label]))
 
         add_random_camera_samples(
-            dataset, cameras, bins, label, required_samples, required_bins,
+            dataset,
+            cameras,
+            bins,
+            label,
+            required_samples,
+            required_bins,
+            max_segments_per_track,
         )
 
     if cap_bin_weight is not None:

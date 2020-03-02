@@ -363,8 +363,6 @@ class ModelCRNN_HQ(ConvModel):
         # -------------------------------------
         # run the LSTM
         memory_output, memory_state = self._build_memory(out)
-        # memory_state = out
-        # memory_output = out[:, -1]
         if self.params["l2_reg"] > 0:
             regularizer = tf.keras.regularizers.l2(l=0.5 * (self.params["l2_reg"]))
         else:
@@ -560,12 +558,7 @@ class ModelCRNN_LQ(ConvModel):
             out = tf.concat((filtered_out,), axis=2, name="out")
         logging.info("Output shape {}".format(out.shape))
         memory_output, memory_state = self._build_memory(out)
-        # memory_state = out
-        # memory_output = out[:, -1]
-        # memory_output = tf.reshape(out, [-1, 576 * 1])
-        # this should be (batchsize, segmentlength * conv output dim)
 
-        # memory_state =  tf.stack([memory_output, memory_output], axis=2)
         logging.info("memory_output output shape: {}".format(memory_output.shape))
         logging.info("memory_state output shape: {}".format(memory_state.shape))
         # -------------------------------------
