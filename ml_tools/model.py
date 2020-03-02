@@ -601,7 +601,6 @@ class Model:
         y = np.asarray(sample_y, dtype=np.int32)
 
         data = (X, y, segs)
-
         sprite_path = os.path.join(log_dir, "examples.png")
         meta_path = os.path.join(log_dir, "examples.tsv")
 
@@ -669,7 +668,6 @@ class Model:
         self.session.run(init)
 
         self.train_samples = self.setup_sample_training_data(log_dir, self.writer_train)
-
         # setup a saver
         self.saver = tf.compat.v1.train.Saver(max_to_keep=1000)
 

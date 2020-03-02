@@ -280,9 +280,9 @@ class ResnetModel(ConvModel):
 
         # -------------------------------------
         # add short term memory (GRU / LSTM)
-        # memory_output, memory_state = self._build_memory(out)
-        memory_output = out[:, -1]
-        memory_state = out
+        memory_output, memory_state = self._build_memory(out)
+        # memory_output = out[:, -1]
+        # memory_state = out
 
         # -------------------------------------
         # dense / logits

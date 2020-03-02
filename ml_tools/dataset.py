@@ -1136,7 +1136,7 @@ class Dataset:
             result.extend(track.segments)
         return result
 
-    def start_async_load(self, buffer_size=64):
+    def start_async_load(self, buffer_size=128):
         """
         Starts async load process.
         """
@@ -1197,10 +1197,9 @@ def preloader(q, dataset):
             loads += 1
             if (time.time() - timer) > 1.0:
                 # logging.debug("{} segments per seconds {:.1f}".format(dataset.name, loads / (time.time() - timer)))
-                timer = time.time()
                 loads = 0
         else:
-            time.sleep(0.01)
+            time.sleep(0.1)
 
 
 def get_cropped_fraction(region: tools.Rectangle, width, height):
