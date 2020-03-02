@@ -389,23 +389,11 @@ def get_session(disable_gpu=False):
         )
     else:
         logging.info("Creating new GPU session with memory growth enabled.")
-                
-        gpus = tf.config.experimental.list_physical_devices('GPU')
-        if gpus:
-          # Restrict TensorFlow to only use the first GPU
-          try:
-            tf.config.experimental.set_visible_devices(gpus[0], 'GPU')
-            logical_gpus = tf.config.experimental.list_logical_devices('GPU')
-            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPU")
-          except RuntimeError as e:
-            # Visible devices must be set before GPUs have been initialized
-            print(e)
-            
-        # config = tf.compat.v1.ConfigProto()
-        # config.gpu_options.allow_growth = True
-        # config.gpu_options.per_process_gpu_memory_fraction = (
-        #     0.8  # save some ram for other applications.
-        # )
+        config = tf.compat.v1.ConfigProto()
+        config.gpu_options.allow_growth = True
+        config.gpu_options.per_process_gpu_memory_fraction = (
+            0.8  # save some ram for other applications.
+        )
         session = tf.compat.v1.Session(config=config)
 
     return session
