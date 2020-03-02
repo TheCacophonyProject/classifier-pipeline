@@ -95,7 +95,7 @@ class Model:
         self.step = 0
 
         # enabled parallel loading and training on data (much faster)
-        self.enable_async_loading = True
+        self.enable_async_loading = False
 
         # folder to write tensorboard logs to
         if train_config:

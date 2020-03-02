@@ -480,11 +480,16 @@ class ModelCRNN_LQ(ConvModel):
             self.pool_stride = [2, 2, 2, 2, 1]
             self.kernel_size = [3, 3]
         else:
-            self.layers = 5
-            self.layer_filters = [32, 48, 64, 64, 64]
-            self.kernel_size = [3, 3]
+            self.layers = 3
+            self.layer_filters = [32, 64, 64]
+            self.kernel_size = [[8, 8], [4, 4], [3, 3]]
             self.pool_stride = [1, 1, 1, 1, 1]
-            self.conv_stride = [2, 2, 2, 2, 1]
+            self.conv_stride = [4, 2, 1]
+            # self.layers = 5
+            # self.layer_filters = [32, 48, 64, 64, 64]
+            # self.kernel_size = [3, 3]
+            # self.pool_stride = [1, 1, 1, 1, 1]
+            # self.conv_stride = [2, 2, 2, 2, 1]
         self._build_model(labels)
 
     def _build_model(self, label_count):
@@ -514,7 +519,7 @@ class ModelCRNN_LQ(ConvModel):
                 "thermal/{}".format(i),
                 layer,
                 self.layer_filters[i],
-                self.kernel_size,
+                self.kernel_size[i],
                 conv_stride=self.conv_stride[i],
                 pool_stride=self.pool_stride[i],
             )
