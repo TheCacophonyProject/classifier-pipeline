@@ -40,7 +40,7 @@ class BuildConfig(DefaultConfig):
     segment_length = attr.ib()
     segment_spacing = attr.ib()
     previous_split = attr.ib()
-    segments_per_track = attr.ib()
+    max_segments_per_track = attr.ib()
 
     @classmethod
     def load(cls, build):
