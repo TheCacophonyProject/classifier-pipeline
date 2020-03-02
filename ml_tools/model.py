@@ -667,7 +667,7 @@ class Model:
         init = tf.compat.v1.global_variables_initializer()
         self.session.run(init)
 
-        self.train_samples = self.setup_sample_training_data(log_dir, self.writer_train)
+        # self.train_samples = self.setup_sample_training_data(log_dir, self.writer_train)
         # setup a saver
         self.saver = tf.compat.v1.train.Saver(max_to_keep=1000)
 
@@ -754,8 +754,8 @@ class Model:
 
                     # create a training reference set
                     print("Updating example training data")
-                    self.update_training_data_examples()
-                    self.tune_novelty_detection()
+                    # self.update_training_data_examples()
+                    # self.tune_novelty_detection()
 
                     print("Epoch report")
                     acc, f1 = self.generate_report()
