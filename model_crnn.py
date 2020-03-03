@@ -130,6 +130,17 @@ class ConvModel(Model):
         # normalise the thermal
         # the idea here is to apply sqrt to any values over 100 so that we reduce the effect of very strong values.
         thermal = X[:, 0 : 0 + 1]
+        filtered = X[:, 1 : 1 + 1]
+
+        mask = X[:, 4 : 4 + 1]
+        flow = X[:, 2 : 3 + 1]
+        flow = (
+            flow
+            * np.asarray([2.5, 5])[np.newaxis, np.newaxis :, np.newaxis, np.newaxis]
+        )
+        if self.params["use_mask"]:
+            thermal = tf.math.multiply(filtered, mask)
+        print(thermal.shape)
         AUTO_NORM_THERMAL = False
         THERMAL_ROLLOFF = 400
 
@@ -173,14 +184,8 @@ class ConvModel(Model):
 
         # normalise the flow
         # horizontal and vertical flow have different normalisation constants
-        flow = X[:, 2 : 3 + 1]
-        flow = (
-            flow
-            * np.asarray([2.5, 5])[np.newaxis, np.newaxis :, np.newaxis, np.newaxis]
-        )
 
         # grab the mask
-        mask = X[:, 4 : 4 + 1]
 
         # tap the outputs
         tf.identity(thermal, "thermal_out")
@@ -480,16 +485,16 @@ class ModelCRNN_LQ(ConvModel):
             self.pool_stride = [2, 2, 2, 2, 1]
             self.kernel_size = [3, 3]
         else:
-            self.layers = 3
-            self.layer_filters = [32, 64, 64]
-            self.kernel_size = [[8, 8], [4, 4], [3, 3]]
-            self.pool_stride = [1, 1, 1, 1, 1]
-            self.conv_stride = [4, 2, 1]
-            # self.layers = 5
-            # self.layer_filters = [32, 48, 64, 64, 64]
-            # self.kernel_size = [3, 3]
+            # self.layers = 3
+            # self.layer_filters = [32, 64, 64]
+            # self.kernel_size = [[8, 8], [4, 4], [3, 3]]
             # self.pool_stride = [1, 1, 1, 1, 1]
-            # self.conv_stride = [2, 2, 2, 2, 1]
+            # self.conv_stride = [4, 2, 1]
+            self.layers = 5
+            self.layer_filters = [32, 48, 64, 64, 64]
+            self.kernel_size = [3, 3]
+            self.pool_stride = [1, 1, 1, 1, 1]
+            self.conv_stride = [2, 2, 2, 2, 1]
         self._build_model(labels)
 
     def _build_model(self, label_count):
@@ -509,10 +514,8 @@ class ModelCRNN_LQ(ConvModel):
         frame_count = tf.shape(self.X)[1]
         # -------------------------------------
         # run the Convolutions
-        if self.params["use_mask"]:
-            layer = mask
-        else:
-            layer = thermal
+
+        layer = thermal
 
         for i in range(self.layers):
             layer = self.conv_layer(
@@ -533,10 +536,8 @@ class ModelCRNN_LQ(ConvModel):
 
         if self.params["enable_flow"]:
             # integrate thermal and flow into a 3 channel layer
-            if self.params["use_mask"]:
-                layer = tf.concat((mask, flow), axis=3)
-            else:
-                layer = tf.concat((thermal, flow), axis=3)
+
+            layer = tf.concat((thermal, flow), axis=3)
 
             for i in range(self.layers):
                 layer = self.conv_layer(
@@ -684,13 +685,11 @@ class Model_CNN(ConvModel):
         # W frame width
 
         thermal, flow, mask = self.process_inputs()
-
+        print(thermal.shape)
         # -------------------------------------
         # run the Convolutions
-        if self.params["use_mask"]:
-            layer = mask
-        else:
-            layer = thermal
+
+        layer = thermal
 
         for i in range(self.layers):
             layer = self.conv_layer(
@@ -707,10 +706,8 @@ class Model_CNN(ConvModel):
 
         if self.params["enable_flow"]:
             # integrate thermal and flow into a 3 channel layer
-            if self.params["use_mask"]:
-                layer = tf.concat((mask, flow), axis=3)
-            else:
-                layer = tf.concat((thermal, flow), axis=3)
+
+            layer = tf.concat((thermal, flow), axis=3)
 
             for i in range(self.layers):
                 layer = self.conv_layer(

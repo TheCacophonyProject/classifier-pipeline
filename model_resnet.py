@@ -143,7 +143,6 @@ class ResnetModel(ConvModel):
 
         thermal, flow, mask = self.process_inputs()
         frame_count = tf.shape(input=self.X)[1]
-
         layer = thermal
         layer = conv2d_fixed_padding(
             inputs=layer,
