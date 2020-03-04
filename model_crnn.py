@@ -87,8 +87,6 @@ class ConvModel(Model):
         self.y = tf.compat.v1.placeholder(tf.int64, [None], name="y")
         batch_size = tf.shape(input=self.X)[0]
         # State input allows for processing longer sequences
-
-        # State input allows for processing longer sequences
         if self.use_gru:
             zero_state = tf.zeros(
                 shape=[batch_size, self.params["gru_units"]], dtype=tf.float32
@@ -123,12 +121,6 @@ class ConvModel(Model):
         X = self.X  # [B, F, C, H, W]
         X = tf.reshape(X, [-1, 5, 48, 48])  # [B* F, C, H, W]
 
-        # vec = tf.constant([1., 2., 3., 4.])
-        # m = 27
-        # X = tf.ones([m,1,1,1]) * X
-        # for i in range(27):
-        # new_X = tf.tile(X, 27, name="x_out")
-        # print(new_X.shape)
         # normalise the thermal
         # the idea here is to apply sqrt to any values over 100 so that we reduce the effect of very strong values.
         thermal = X[:, 0 : 0 + 1]
@@ -373,6 +365,7 @@ class ModelCRNN_HQ(ConvModel):
         else:
             regularizer = None
 
+        #  to do change to keras dense
         # dense = tf.keras.layers.Dense(self.params["lstm_units"])(memory_output)
 
         # # dense hidden layer
@@ -611,7 +604,6 @@ class ModelCRNN_LQ(ConvModel):
         self.setup_optimizer(loss)
 
         # make reference to special nodes
-        # not used for anything as we aren't doing RNN for tflite
         tf.identity(memory_state, "state_out")
         tf.identity(memory_output, "hidden_out")
         tf.identity(logits, "logits_out")

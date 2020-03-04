@@ -175,15 +175,24 @@ class TrackHeader:
         # name of the bin to assign this track to.
         # .dat file has no location attribute
         if self.__dict__.get("location") is not None:
-            return "{}-{}-{}-{}-{}".format(
+            return "{}-{}-{}-{}-{}-{}".format(
                 self.location[0],
                 self.location[1],
                 str(self.start_time.date()),
                 self.camera,
                 self.label,
+                self.clip_id,
             )
         else:
-            return str(self.start_time.date()) + "-" + self.camera + "-" + self.label
+            return (
+                str(self.start_time.date())
+                + "-"
+                + self.camera
+                + "-"
+                + self.label
+                + "-"
+                + self.clip_id
+            )
 
     @property
     def weight(self):
@@ -774,8 +783,6 @@ class Dataset:
 
         self.tracks_by_bin[track_header.bin_id].append(track_header)
 
-        # self.add_bin_distribution_info(track_header)
-
         self.tracks_by_bin[track_header.bin_id].append(track_header)
 
         cam_bin = self.camera_bins.get(track_header.camera_id)
@@ -785,33 +792,29 @@ class Dataset:
 
         cam_bin.add_track(track_header)
 
-        # if track_header.bin_id not in cam_bin:
-        #     cam_bin[track_header.bin_id] = []
+    # used to see distribution of clips etc
+    # def add_bin_distribution_info(self, track_header):
+    #     cam_bin = self.camera_bins.get(track_header.camera)
+    #     if cam_bin is None:
+    #         cam_bin = {}
+    #         self.camera_bins[track_header.camera] = cam_bin
+    #     loc = "{}".format(track_header.location)
+    #     loc_bin = cam_bin.get(loc)
+    #     if loc_bin is None:
+    #         loc_bin = {}
+    #         cam_bin[loc] = loc_bin
 
-        # cam_bin[track_header.bin_id].append(track_header)
+    #     date_bin = loc_bin.get(track_header.start_time.date())
+    #     if date_bin is None:
+    #         date_bin = {}
+    #         loc_bin[track_header.start_time.date()] = date_bin
 
-    def add_bin_distribution_info(self, track_header):
-        cam_bin = self.camera_bins.get(track_header.camera)
-        if cam_bin is None:
-            cam_bin = {}
-            self.camera_bins[track_header.camera] = cam_bin
-        loc = "{}".format(track_header.location)
-        loc_bin = cam_bin.get(loc)
-        if loc_bin is None:
-            loc_bin = {}
-            cam_bin[loc] = loc_bin
+    #     label_bin = date_bin.get(track_header.label)
+    #     if label_bin is None:
+    #         label_bin = {}
+    #         date_bin[track_header.label] = label_bin
 
-        date_bin = loc_bin.get(track_header.start_time.date())
-        if date_bin is None:
-            date_bin = {}
-            loc_bin[track_header.start_time.date()] = date_bin
-
-        label_bin = date_bin.get(track_header.label)
-        if label_bin is None:
-            label_bin = {}
-            date_bin[track_header.label] = label_bin
-
-        label_bin[track_header.clip_id] = track_header.location
+    #     label_bin[track_header.clip_id] = track_header.location
 
     def filter_segments(self, avg_mass, ignore_labels=None):
         """

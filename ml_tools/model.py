@@ -81,7 +81,7 @@ class Model:
 
         # number of samples to use when generating the model report,
         # atleast 1000 is recommended for a good representation
-        self.report_samples = 2000  
+        self.report_samples = 2000
 
         # how often to do an evaluation + print
         self.print_every = 6000
@@ -168,10 +168,10 @@ class Model:
         logging.info("Test segments: {0:.1f}k".format(self.datasets.test.rows / 1000))
         logging.info("Labels: {}".format(self.datasets.train.labels))
 
-        # assert set(self.datasets.train.labels).issubset(
-        #     set(self.datasets.validation.labels)
-        # )
-        # assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
+        assert set(self.datasets.train.labels).issubset(
+            set(self.datasets.validation.labels)
+        )
+        assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
 
     @property
     def batch_size(self):
@@ -687,11 +687,7 @@ class Model:
             prep_time += time.time() - start
 
             # evaluate every so often
-            if (
-                True
-                or examples_since_print >= self.print_every
-                or (i == iterations - 1)
-            ):
+            if examples_since_print >= self.print_every or (i == iterations - 1):
 
                 start = time.time()
 
@@ -847,7 +843,7 @@ class Model:
         """
 
         if filename is None:
-            score_part = "0"  # {:.3f}".format(self.eval_score)
+            score_part = "{:.3f}".format(self.eval_score)
             while len(score_part) < 3:
                 score_part = score_part + "0"
             filename = os.path.join("./models/", self.MODEL_NAME + "-" + score_part)
@@ -880,7 +876,6 @@ class Model:
         """ Loads model and parameters from file. """
 
         logging.info("Loading model {}".format(filename))
-        print("loading", filename)
         saver = tf.compat.v1.train.import_meta_graph(
             filename + ".meta", clear_devices=True
         )
@@ -910,7 +905,6 @@ class Model:
 
     def restore_params(self, filename):
         """ Restores model parameters. """
-        print("restoring", filename)
         self.saver.restore(self.session, filename)
 
     def get_tensor(self, name, none_if_not_found=False):

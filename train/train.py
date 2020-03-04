@@ -54,6 +54,9 @@ def train_model(run_name, conf, hyper_params):
         )
     print()
 
+    for dataset in dsets:
+        print(dataset.labels)
+
     print("Training started")
     print("---------------------")
     print("Hyper parameters")

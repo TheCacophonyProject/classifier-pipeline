@@ -187,9 +187,7 @@ def add_random_samples(
 
 
 def needs_more_bins(dataset, label, used_bins, required_samples, required_bins):
-    return (
-        dataset.get_label_segments_count(label) < required_samples
-    )
+    return dataset.get_label_segments_count(label) < required_samples
 
 
 def print_bin_segment_stats(bin_segment_mean, bin_segment_std, max_bin_segments):
@@ -274,10 +272,7 @@ def split_dataset_by_cameras(db, dataset, build_config):
     train_percent = 0.7
     validation_percent = 0.3
     test_cameras = 1
-    # 10 cameras
-    # 5 tests
-    # 5 train
-    # then change the names
+
     train = Dataset(db, "train")
     validation = Dataset(db, "validation")
     test = Dataset(db, "test")
@@ -288,10 +283,8 @@ def split_dataset_by_cameras(db, dataset, build_config):
     remaining_cameras -= validation_cameras
     train_cameras = remaining_cameras
 
-    # use hubble 6 for testing
     camera_data = dataset.camera_bins
     # want a test set that covers all labels
-
     cameras = list(camera_data.values())
     # randomize order
     cameras.sort(key=lambda x: np.random.random_sample())
@@ -374,8 +367,6 @@ def add_random_camera_samples(
         dataset, label, used_bins, required_samples, required_bins
     ):
         camera_i, cam_bins = sample_set[cur_camera]
-        # camera_i = cam_bins[0]
-        # cam_bins = cam_bins[1]
 
         bin_id = random.sample(cam_bins, 1)[0]
         tracks = camera_data[camera_i].bins[bin_id]
@@ -395,7 +386,8 @@ def add_random_camera_samples(
         cur_camera += 1
         cur_camera %= num_cameras
     if num_cameras == 0:
-        print("ran out of data for {} dataset {}".format(label,dataset.name))
+        print("ran out of data for {} dataset {}".format(label, dataset.name))
+
 
 def add_camera_data(
     labels,

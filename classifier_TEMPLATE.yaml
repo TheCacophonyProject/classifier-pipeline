@@ -176,7 +176,7 @@ load:
     cache_to_disk: True
 train:
     # model_resnet, model_lq, or model_hq
-    model: "model_resnet"
+    model: "model_lq"
     hyper_params:
         # training
         batch_size: 16
@@ -211,7 +211,7 @@ train:
     epochs: 30
     
     # use a gru cell or a lstm cell
-    use_gru: true
+    use_gru: false
 
     # Location to write various training outputs to. Relative to
     # base_data_folder. Defaults to "training"

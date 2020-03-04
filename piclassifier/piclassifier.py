@@ -30,7 +30,6 @@ class PiClassifier(Processor):
     SKIP_FRAMES = 7
 
     def __init__(self, config, thermal_config, classifier):
-        self.init_start = time.time()
         self.frame_num = 0
         self.clip = None
         self.tracking = False

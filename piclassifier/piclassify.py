@@ -112,7 +112,9 @@ class LiteInterpreter:
         self.eval_score = stats["score"]
         self.params = stats["hyperparams"]
 
+
 # TO DO TFLIteInterpreter
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
