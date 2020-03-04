@@ -64,12 +64,13 @@ class NeuralInterpreter:
 
 class LiteInterpreter:
     def __init__(self, model_name):
-        import tflite_runtime.interpreter as tflite
+        import tensorflow as tf
 
-        self.interpreter = tflite.Interpreter(model_path=model_name + ".tflite")
+        self.interpreter = tf.lite.Interpreter(model_path=model_name + ".tflite")
 
         self.interpreter.allocate_tensors()
         input_details = self.interpreter.get_input_details()
+        tensors = self.interpreter.get_tensor_details()
 
         self.in_values = {}
         for detail in input_details:
@@ -78,17 +79,18 @@ class LiteInterpreter:
         output_details = self.interpreter.get_output_details()
         self.out_values = {}
         for detail in output_details:
-            self.out_values[detail["name"]] = self.interpreter.get_tensor(
-                detail["index"]
-            )
+
+            self.out_values[detail["name"]] = detail["index"]
 
         self.load_json(model_name)
+
         self.state_out = self.out_values["state_out"]
         self.novelty = self.out_values["novelty"]
         self.prediction = self.out_values["prediction"]
 
     def run(self, input_x, state_in=None):
-        self.interpreter.set_tensor(self.in_values["X"], [[input_x]])
+        input_x = input_x[np.newaxis, np.newaxis, :]
+        self.interpreter.set_tensor(self.in_values["X"], input_x)
         if state_in is not None:
             self.interpreter.set_tensor(self.in_values["state_in"], state_in)
 
@@ -96,7 +98,10 @@ class LiteInterpreter:
 
     def classify_frame_with_novelty(self, input_x, state_in=None):
         self.run(input_x, state_in)
-        return self.prediction, self.novelty, self.state_out
+        pred = self.interpreter.get_tensor(self.out_values["prediction"])[0]
+        nov = self.interpreter.get_tensor(self.out_values["novelty"])
+        state = self.interpreter.get_tensor(self.out_values["state_out"])
+        return pred, nov, state
 
     def load_json(self, filename):
         stats = json.load(open(filename + ".txt", "r"))
@@ -107,6 +112,7 @@ class LiteInterpreter:
         self.eval_score = stats["score"]
         self.params = stats["hyperparams"]
 
+# TO DO TFLIteInterpreter
 
 def parse_args():
     parser = argparse.ArgumentParser()

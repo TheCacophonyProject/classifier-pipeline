@@ -30,7 +30,6 @@ class PiClassifier(Processor):
     SKIP_FRAMES = 7
 
     def __init__(self, config, thermal_config, classifier):
-        self.identified_count = 0
         self.init_start = time.time()
         self.frame_num = 0
         self.clip = None
@@ -191,7 +190,6 @@ class PiClassifier(Processor):
                     p_frame, track_prediction.state
                 )
                 track_prediction.state = state
-
                 if self.fp_index is not None:
                     prediction[self.fp_index] *= 0.8
                 state *= 0.98
@@ -226,11 +224,6 @@ class PiClassifier(Processor):
         return self.motion_detector.get_recent_frame()
 
     def disconnected(self):
-        print(
-            "identified {}/{} running for {}".format(
-                self.identified_count, self.clip.frame_on, time.time() - self.init_start
-            )
-        )
         self.end_clip()
         self.motion_detector.disconnected()
 
@@ -259,7 +252,6 @@ class PiClassifier(Processor):
                 and not self.clip.on_preview()
             ):
                 self.identify_last_frame()
-                self.identified_count += 1
                 self.classified_consec += 1
                 if self.classified_consec == PiClassifier.MAX_CONSEC:
                     self.skip_classifying = PiClassifier.SKIP_FRAMES

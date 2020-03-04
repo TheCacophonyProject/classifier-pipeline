@@ -28,7 +28,8 @@ class Model:
     def model_name(self):
         return Model.MODEL_NAME
 
-    def __init__(self, train_config=None, session=None, training=False):
+    def __init__(self, train_config=None, session=None, training=False, tflite=False):
+        self.tflite = tflite
         self.training = training
         self.use_gru = train_config.use_gru
         self.name = self.model_name()
@@ -80,7 +81,7 @@ class Model:
 
         # number of samples to use when generating the model report,
         # atleast 1000 is recommended for a good representation
-        self.report_samples = 2000
+        self.report_samples = 2000  
 
         # how often to do an evaluation + print
         self.print_every = 6000
@@ -990,13 +991,10 @@ class Model:
         :param state: the previous state, or none for initial frame.
         :return: tuple (prediction, novelty, state).  Where prediction is score for each class, and novelty is a scalar
         """
-        # if state is None:
-        #     state_shape = self.state_in.shape
-        #     print(state_shape)
-        #     state = np.zeros([1, state_shape[1]], dtype=np.float32)
 
         batch_X = frame[np.newaxis, np.newaxis, :]
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
+
         pred, novelty, state = self.session.run(
             [self.prediction, self.novelty, self.state_out], feed_dict=feed_dict
         )
@@ -1078,46 +1076,20 @@ class Model:
 
         return self.lite_lstm_cell(inputs)
 
-    def gru_cell(self, inputs):
-        gru_cell = tf.compat.v1.nn.rnn_cell.GRUCell(num_units=self.params["gru_units"])
-        dropout = tf.compat.v1.nn.rnn_cell.DropoutWrapper(
-            gru_cell, output_keep_prob=self.keep_prob, dtype=np.float32
-        )
-        init_state = tf.nn.rnn_cell.LSTMStateTuple(
-            self.state_in[:, :, 0], self.state_in[:, :, 1]
-        )
-
-        print("the state_in object shape is :", self.state_in.shape)
-        gru_outputs, gru_states = tf.nn.dynamic_rnn(
-            cell=dropout,
-            inputs=inputs,
-            initial_state=init_state,
-            dtype=tf.float32,
-            scope="lstm",
-        )
-        print("The GRU output shape is: ", gru_outputs.shape)
-
-        # just need the last output
-        gru_output = tf.identity(gru_outputs[:, -1], "lstm_out")
-        gru_state = tf.identity(gru_states[:, -1], "gru_out")
-
-        logging.info(
-            "gru output shape: {} x {}".format(gru_outputs.shape[1], gru_output.shape)
-        )
-        logging.info("gru state shape: {}".format(gru_state.shape))
-
-        return gru_output, gru_state
-
     def lite_gru_cell(self, inputs):
-        gru_cell = tf.keras.layers.GRUCell(
-            self.params["gru_units"], dropout=self.params["keep_prob"]
-        )
+        if self.tflite:
+            gru_cell = tf.keras.layers.GRUCell(self.params["gru_units"])
+        else:
+            gru_cell = tf.keras.layers.GRUCell(
+                self.params["gru_units"], dropout=self.params["keep_prob"]
+            )
+
         rnn = tf.keras.layers.RNN(
             gru_cell,
             return_sequences=True,
             return_state=True,
             dtype=tf.float32,
-            unroll=False,
+            unroll=self.tflite,
         )
         init_state = self.state_in
 
@@ -1130,55 +1102,25 @@ class Model:
         return gru_output, gru_state
 
     def lite_lstm_cell(self, inputs):
-        lstm_cell = tf.keras.layers.LSTMCell(
-            self.params["lstm_units"], dropout=self.params["keep_prob"]
-        )
-
+        if self.tflite:
+            lstm_cell = tf.keras.layers.LSTMCell(self.params["lstm_units"])
+            # tflite dont like the dropout
+        else:
+            lstm_cell = tf.keras.layers.LSTMCell(
+                self.params["lstm_units"], dropout=self.params["keep_prob"]
+            )
         rnn = tf.keras.layers.RNN(
             lstm_cell,
             return_sequences=True,
             return_state=True,
             dtype=tf.float32,
-            unroll=False,
+            unroll=self.tflite,
         )
         init_state = (self.state_in[:, :, 0], self.state_in[:, :, 1])
         lstm_outputs, lstm_state_1, lstm_state_2 = rnn(inputs, initial_state=init_state)
 
         lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
         lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-        logging.info(
-            "lstm output shape: {} x {}".format(
-                lstm_outputs.shape[1], lstm_output.shape
-            )
-        )
-        logging.info("lstm state shape: {}".format(lstm_state.shape))
-        return lstm_output, lstm_state
-
-    def lstm_cell(self, inputs):
-        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
-
-        dropout = tf.nn.rnn_cell.DropoutWrapper(
-            lstm_cell, rate=1 - self.keep_prob, dtype=np.float32
-        )
-        init_state = tf.nn.rnn_cell.LSTMStateTuple(
-            self.state_in[:, :, 0], self.state_in[:, :, 1]
-        )
-
-        lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
-            cell=dropout,
-            inputs=inputs,
-            initial_state=init_state,
-            dtype=tf.float32,
-            scope="lstm",
-        )
-
-        lstm_state_1, lstm_state_2 = lstm_states
-
-        # just need the last output
-        # all of first dim and last element of secon dim
-        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
-        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-
         logging.info(
             "lstm output shape: {} x {}".format(
                 lstm_outputs.shape[1], lstm_output.shape

@@ -67,21 +67,23 @@ class ConvModel(Model):
             out = activation
 
         if pool_stride != 1:
-            out = tf.compat.v1.layers.max_pooling2d(
-                inputs=out,
+            out = tf.keras.layers.MaxPooling2D(
                 pool_size=[pool_stride, pool_stride],
                 strides=pool_stride,
                 name=name + "/max_pool",
-            )
+            )(out)
         return out
 
     def process_inputs(self):
         """ process input channels, returns thermal, flow, mask, """
 
         # Setup placeholders
-        self.X = tf.compat.v1.placeholder(
-            tf.float32, [None, None, 5, 48, 48], name="X"
-        )  # [B, F, C, H, W]
+        if self.tflite:
+            self.X = tf.compat.v1.placeholder(tf.float32, [1, 1, 5, 48, 48], name="X")
+        else:
+            self.X = tf.compat.v1.placeholder(
+                tf.float32, [None, None, 5, 48, 48], name="X"
+            )
         self.y = tf.compat.v1.placeholder(tf.int64, [None], name="y")
         batch_size = tf.shape(input=self.X)[0]
         # State input allows for processing longer sequences
@@ -138,8 +140,7 @@ class ConvModel(Model):
             flow
             * np.asarray([2.5, 5])[np.newaxis, np.newaxis :, np.newaxis, np.newaxis]
         )
-        if self.params["use_mask"]:
-            thermal = tf.math.multiply(thermal, mask)
+
         AUTO_NORM_THERMAL = False
         THERMAL_ROLLOFF = 400
 
@@ -294,12 +295,12 @@ class ModelCRNN_HQ(ConvModel):
     def model_name(self):
         return ModelCRNN_HQ.MODEL_NAME
 
-    def __init__(self, labels, train_config, training=False, **kwargs):
+    def __init__(self, labels, train_config, training=False, tflite=False, **kwargs):
         """
         Initialise the model
         :param labels: number of labels for model to predict
         """
-        super().__init__(train_config=train_config, training=training)
+        super().__init__(train_config=train_config, training=training, tflite=tflite)
         self.params.update(self.DEFAULT_PARAMS)
         self.params.update(kwargs)
         self._build_model(labels)
@@ -372,7 +373,9 @@ class ModelCRNN_HQ(ConvModel):
         else:
             regularizer = None
 
-        # dense hidden layer
+        # dense = tf.keras.layers.Dense(self.params["lstm_units"])(memory_output)
+
+        # # dense hidden layer
         dense = tf.compat.v1.layers.dense(
             inputs=memory_output,
             units=self.params["lstm_units"],
@@ -380,9 +383,12 @@ class ModelCRNN_HQ(ConvModel):
             name="hidden",
             kernel_regularizer=regularizer,
         )
-
-        dense = tf.nn.dropout(dense, rate=1 - (self.keep_prob))
+        if not self.tflite:
+            dense = tf.nn.dropout(dense, rate=1 - (self.keep_prob))
         # dense layer on top of convolutional output mapping to class labels.
+
+        # logits = tf.keras.layers.Dense(label_count)(dense)
+
         logits = tf.compat.v1.layers.dense(
             inputs=dense,
             units=label_count,
@@ -463,7 +469,6 @@ class ModelCRNN_LQ(ConvModel):
         "thermal_threshold": 10,
         "scale_frequency": 0.5,
         "hq": False,
-        "use_mask": False,
     }
 
     def model_name(self):
@@ -484,11 +489,14 @@ class ModelCRNN_LQ(ConvModel):
             self.pool_stride = [2, 2, 2, 2, 1]
             self.kernel_size = [3, 3]
         else:
+
+            # from the pdf this is the layers used
             # self.layers = 3
             # self.layer_filters = [32, 64, 64]
             # self.kernel_size = [[8, 8], [4, 4], [3, 3]]
             # self.pool_stride = [1, 1, 1, 1, 1]
             # self.conv_stride = [4, 2, 1]
+
             self.layers = 5
             self.layer_filters = [32, 48, 64, 64, 64]
             self.kernel_size = [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
@@ -636,18 +644,17 @@ class Model_CNN(ConvModel):
         "thermal_threshold": 10,
         "scale_frequency": 0.5,
         "hq": False,
-        "use_mask": False,
     }
 
     def model_name(self):
         return Model_CNN.MODEL_NAME
 
-    def __init__(self, labels, train_config, training, **kwargs):
+    def __init__(self, labels, train_config, training, tflite, **kwargs):
         """
         Initialise the model
         :param labels: number of labels for model to predict
         """
-        super().__init__(train_config=train_config, training=training)
+        super().__init__(train_config=train_config, training=training, tflite=tflite)
         self.frame_count = 1
         # number of frames per segment during training
         self.training_segment_frames = 1
