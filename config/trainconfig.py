@@ -36,8 +36,11 @@ class TrainConfig(DefaultConfig):
 
     @classmethod
     def load(cls, raw, base_data_folder):
+        resent_config = None
+        if raw.get("resnet_params"):
+            resent_config = ResnetConfig.load(raw.get("resnet_params"))
         return cls(
-            resnet_params=ResnetConfig.load(raw.get("resnet_params")),
+            resnet_params=resent_config,
             hyper_params=raw["hyper_params"],
             train_dir=path.join(base_data_folder, raw.get("train_dir", "train")),
             epochs=raw["epochs"],

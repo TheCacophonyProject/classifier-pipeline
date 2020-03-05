@@ -277,7 +277,6 @@ def split_dataset_by_cameras(db, dataset, build_config):
     validation = Dataset(db, "validation")
     test = Dataset(db, "test")
     camera_count = len(dataset.camera_bins)
-    assert camera_count >= 3, "Atleast 3 cameras are required"
     remaining_cameras = camera_count - test_cameras
     validation_cameras = max(1, round(remaining_cameras * validation_percent))
     remaining_cameras -= validation_cameras
@@ -295,7 +294,7 @@ def split_dataset_by_cameras(db, dataset, build_config):
             test_data.append(camera)
             test_i = i
             break
-    assert len(test_data) >= 0, "No test camera found with all labels"
+    assert len(test_data) > 0, "No test camera found with all labels"
     del cameras[test_i]
 
     train_data = cameras[:train_cameras]

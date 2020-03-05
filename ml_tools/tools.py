@@ -136,7 +136,7 @@ class CustomJSONEncoder(json.JSONEncoder):
 
 def purge(dir, pattern):
     for f in glob.glob(os.path.join(dir, pattern)):
-        os.remove(os.path.join(dir, f))
+        os.remove(f)
 
 
 def find_file(root, filename):
