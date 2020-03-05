@@ -36,11 +36,15 @@ class Service(object):
 
 class SnapshotService:
     def __init__(self, processor):
+        self.loop = GLib.MainLoop()
         self.t = threading.Thread(target=self.run_server, args=(processor,))
         self.t.start()
 
+    def quit(self):
+        self.loop.quit()
+
     def run_server(self, processor):
-        loop = GLib.MainLoop()
         bus = SystemBus()
-        bus.publish(DBUS_NAME, Service(processor))
-        loop.run()
+        service = bus.publish(DBUS_NAME, Service(processor))
+        self.loop.run()
+        service.unpublish()

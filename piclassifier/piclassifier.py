@@ -29,7 +29,8 @@ class PiClassifier(Processor):
     # this gives the cpu a break
     SKIP_FRAMES = 7
 
-    def __init__(self, config, thermal_config, classifier):
+    def __init__(self, config, thermal_config, classifier, headers):
+        self.headers = headers
         self.frame_num = 0
         self.clip = None
         self.tracking = False
@@ -40,15 +41,12 @@ class PiClassifier(Processor):
         self.config = config
         self.classifier = classifier
         self.num_labels = len(classifier.labels)
-        self._res_x = self.config.res_x
-        self._res_y = self.config.res_y
+
         self.predictions = Predictions(classifier.labels)
-        self.preview_frames = (
-            thermal_config.recorder.preview_secs * thermal_config.recorder.frame_rate
-        )
+        self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
         self.crop_rectangle = tools.Rectangle(
-            edge, edge, self.res_x - 2 * edge, self.res_y - 2 * edge
+            edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
         )
 
         try:
@@ -63,18 +61,13 @@ class PiClassifier(Processor):
             calc_stats=False,
         )
         self.motion_config = thermal_config.motion
-        self.min_frames = (
-            thermal_config.recorder.min_secs * thermal_config.recorder.frame_rate
-        )
-        self.max_frames = (
-            thermal_config.recorder.max_secs * thermal_config.recorder.frame_rate
-        )
+        self.min_frames = thermal_config.recorder.min_secs * headers.fps
+        self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.motion_detector = MotionDetector(
-            self.res_x,
-            self.res_y,
             thermal_config,
             self.config.tracking.dynamic_thresh,
-            CPTVRecorder(thermal_config),
+            CPTVRecorder(thermal_config, headers),
+            headers,
         )
         self.startup_classifier()
 
@@ -344,11 +337,11 @@ class PiClassifier(Processor):
 
     @property
     def res_x(self):
-        return self._res_x
+        return self.headers.res_x
 
     @property
     def res_y(self):
-        return self._res_y
+        return self.headers.res_y
 
     @property
     def output_dir(self):

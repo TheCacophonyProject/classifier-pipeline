@@ -39,8 +39,6 @@ class Config(DefaultConfig):
     worker_threads = attr.ib()
     debug = attr.ib()
     use_opt_flow = attr.ib()
-    res_x = attr.ib()
-    res_y = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename=None):
@@ -83,8 +81,6 @@ class Config(DefaultConfig):
             build=BuildConfig.load(raw["build"]),
             debug=raw["debug"],
             use_opt_flow=raw["use_opt_flow"],
-            res_x=raw["res_x"],
-            res_y=raw["res_y"],
         )
 
     @classmethod
@@ -107,8 +103,6 @@ class Config(DefaultConfig):
             evaluate=EvaluateConfig.get_defaults(),
             debug=False,
             use_opt_flow=False,
-            res_x=160,
-            res_y=120,
         )
 
     def validate(self):

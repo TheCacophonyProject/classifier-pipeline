@@ -1,0 +1,41 @@
+
+[battery]
+  enable-voltage-readings = false
+  full-battery-reading = 0
+  low-battery-reading = 0
+  no-battery-reading = 0
+
+[device]
+  id = 1
+  group = "test-group"
+  name = "test-name"
+  server = "test-url"
+
+[ports]
+  managementd = 80
+
+[thermal-motion]
+  run-classifier = false
+  count-thresh = 3
+  delta-thresh = 50
+  edge-pixels = 1
+  frame-compare-gap = 45
+  temp-thresh = 3000
+  trigger-frames = 2
+  use-one-diff-only = true
+  warmer-only = true
+
+[thermal-recorder]
+  use-sunrise-sunset = false
+  max-secs = 300
+  min-disk-space-mb = 200
+  min-secs = 10
+  output-dir = "/var/spool/cptv"
+  preview-secs = 1
+
+[thermal-throttler]
+  activate = true
+
+[windows]
+  start-recording= ""
+  stop-recording= ""

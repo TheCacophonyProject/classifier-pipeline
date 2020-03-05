@@ -7,7 +7,7 @@ import itertools
 import argparse
 import seaborn as sns
 
-from ml_tools.config import Config
+from config.config import Config
 from ml_tools.logs import init_logging
 from ml_tools import tools
 from .evaluateresults import *
