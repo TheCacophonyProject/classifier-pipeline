@@ -412,7 +412,7 @@ class Track:
             ranking = cls.tag_ranking(track_tag, tag_precedence, default_prec)
 
             # if 2 track_tags have same confidence ignore both
-            if ranking == best:
+            if ranking == best and track_tag["what"] != tag["what"]:
                 tag = None
             elif best is None or ranking < best:
                 best = ranking
