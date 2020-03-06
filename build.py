@@ -187,7 +187,17 @@ def add_random_samples(
 
 
 def needs_more_bins(dataset, label, used_bins, required_samples, required_bins):
-    return dataset.get_label_segments_count(label) < required_samples
+    if required_bins is None and required_samples is None:
+        return True
+
+    needs_samples = (
+        required_samples is None
+        or dataset.get_label_segments_count(label) < required_samples
+    )
+    needs_bins = required_bins is None or len(used_bins) < required_bins
+    if required_bins is None or required_samples is None:
+        return needs_samples and needs_bins
+    return needs_samples or needs_bins
 
 
 def print_bin_segment_stats(bin_segment_mean, bin_segment_std, max_bin_segments):
@@ -300,14 +310,14 @@ def split_dataset_by_cameras(db, dataset, build_config):
     train_data = cameras[:train_cameras]
 
     required_samples = build_config.test_set_count
-    required_bins = max(MIN_BINS, build_config.test_set_bins)
+    required_bins = build_config.test_set_bins
 
     add_camera_data(
         dataset.labels,
         train,
         train_data,
-        required_samples * 4,
-        required_bins,
+        None,
+        None,
         build_config.cap_bin_weight,
         build_config.max_segments_per_track,
     )
@@ -317,8 +327,8 @@ def split_dataset_by_cameras(db, dataset, build_config):
         dataset.labels,
         validation,
         validate_data,
-        required_samples,
-        required_bins,
+        None,
+        None,
         build_config.cap_bin_weight,
         build_config.max_segments_per_track,
     )
