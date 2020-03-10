@@ -161,9 +161,7 @@ class ClipTrackExtractor:
         # for now just always calculate as we are using the stats...
         # background np.float64[][] filtered calculated here and stats
         non_ffc_frames = [
-            np.float32(frame.pix)
-            for frame in raw_frames
-            if not is_affected_by_ffc(frame)
+            frame.pix for frame in raw_frames if not is_affected_by_ffc(frame)
         ]
         if len(non_ffc_frames) == 0:
             logging.warn("Clip only has ffc affected frames")
@@ -183,7 +181,7 @@ class ClipTrackExtractor:
         # process each frame
         for frame in raw_frames:
             ffc_affected = is_affected_by_ffc(frame)
-            self._process_frame(clip, np.float32(frame.pix), ffc_affected)
+            self._process_frame(clip, frame.pix, ffc_affected)
             clip.frame_on += 1
 
     def apply_track_filtering(self, clip):

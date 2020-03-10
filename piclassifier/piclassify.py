@@ -113,7 +113,7 @@ class LiteInterpreter:
         self.params = stats["hyperparams"]
 
 
-# TO DO TFLIteInterpreter
+# TODO abstract interpreter class
 
 
 def parse_args():
