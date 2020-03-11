@@ -145,7 +145,6 @@ class Track:
         region = self.bounds_history[self.current_frame_num]
         if prev_filtered is not None:
             prev_filtered = region.subimage(prev_filtered)
-
         filtered = region.subimage(frame.filtered)
         region.calculate_mass(filtered, mass_delta_threshold)
         region.calculate_variance(filtered, prev_filtered)
@@ -346,7 +345,7 @@ class Track:
         bounds = self.bounds_history[track_frame_number]
         return self.crop_by_region(frame, bounds)
 
-    def crop_by_region(self, frame, region, clip_flow=True):
+    def crop_by_region(self, frame, region, clip_flow=True, filter_mask_by_region=True):
         thermal = region.subimage(frame.thermal)
         filtered = region.subimage(frame.filtered)
         if frame.flow is not None:
@@ -361,9 +360,9 @@ class Track:
 
         mask = region.subimage(frame.mask).copy()
         # make sure only our pixels are included in the mask.
-        mask[mask != region.id] = 0
+        if filter_mask_by_region:
+            mask[mask != region.id] = 0
         mask[mask > 0] = 1
-
         # stack together into a numpy array.
         # by using int16 we lose a little precision on the filtered frames, but not much (only 1 bit)
         if flow_h is not None and flow_v is not None:
@@ -413,7 +412,7 @@ class Track:
             ranking = cls.tag_ranking(track_tag, tag_precedence, default_prec)
 
             # if 2 track_tags have same confidence ignore both
-            if ranking == best:
+            if ranking == best and track_tag["what"] != tag["what"]:
                 tag = None
             elif best is None or ranking < best:
                 best = ranking

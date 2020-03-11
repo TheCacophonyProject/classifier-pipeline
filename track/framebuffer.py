@@ -176,6 +176,8 @@ class FrameBuffer:
     def get_last_filtered(self, region=None):
 
         if self.cache:
+            if not self.prev_frame:
+                return None
             prev = self.prev_frame.filtered
         else:
             if len(self.frames) > 0:

@@ -35,6 +35,12 @@ def parse_params():
         "-v", "--verbose", action="count", help="Display additional information."
     )
     parser.add_argument(
+        "-r",
+        "--reprocess",
+        action="count",
+        help="Re process clips that already exist in the database",
+    )
+    parser.add_argument(
         "-i",
         "--show-build-information",
         action="count",
@@ -58,12 +64,12 @@ def parse_params():
     return config, args
 
 
-def load_clips(config, target):
+def load_clips(config, args):
 
-    loader = ClipLoader(config)
+    loader = ClipLoader(config, args.reprocess)
+    target = args.target
     if target is None:
         target = config.source_folder
-
     if os.path.splitext(target)[1] == ".cptv":
         loader.process_file(target)
     else:
@@ -82,7 +88,7 @@ def print_opencl_info():
 def main():
     config, args = parse_params()
     if config and args:
-        load_clips(config, args.target)
+        load_clips(config, args)
 
 
 if __name__ == "__main__":

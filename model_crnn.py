@@ -29,99 +29,115 @@ class ConvModel(Model):
     ):
         """ Adds a convolutional layer to the model. """
 
-        tf.summary.histogram(name + "/input", input_layer)
-        conv = tf.layers.conv2d(
-            inputs=input_layer,
+        tf.compat.v1.summary.histogram(name + "/input", input_layer)
+
+        conv = tf.keras.layers.Conv2D(
             filters=filters,
             kernel_size=kernal_size,
             strides=(conv_stride, conv_stride),
             padding="same",
             activation=None,
             name=name + "/conv",
-        )
+        )(input_layer)
 
-        conv_weights = tf.get_collection(
-            tf.GraphKeys.GLOBAL_VARIABLES, name + "/conv/kernel"
+        conv_weights = tf.compat.v1.get_collection(
+            tf.compat.v1.GraphKeys.GLOBAL_VARIABLES, name + "/conv/kernel"
         )[0]
 
-        tf.summary.histogram(name + "/conv_output", conv)
-        tf.summary.histogram(name + "/weights", conv_weights)
+        tf.compat.v1.summary.histogram(name + "/conv_output", conv)
+        tf.compat.v1.summary.histogram(name + "/weights", conv_weights)
 
         activation = tf.nn.relu(conv, name=name + "/relu")
-        tf.summary.histogram(name + "/activations", activation)
+        tf.compat.v1.summary.histogram(name + "/activations", activation)
 
         if self.params["batch_norm"] and not disable_norm:
-            out = tf.layers.batch_normalization(
-                activation,
-                fused=True,
-                training=self.is_training,
-                name=name + "/batchnorm",
-            )
+            batch_n = tf.keras.layers.BatchNormalization(fused=True, trainable=True)
+            out = batch_n(activation, training=self.training)
 
-            moving_mean = tf.contrib.framework.get_variables(
-                name + "/batchnorm/moving_mean"
-            )[0]
-            moving_variance = tf.contrib.framework.get_variables(
-                name + "/batchnorm/moving_variance"
-            )[0]
+            for var in batch_n.variables:
+                if var.name.endswith("moving_mean:0"):
+                    moving_mean = var
+                elif var.name.endswith("moving_variance:0"):
+                    moving_variance = var
 
-            tf.summary.histogram(name + "/batchnorm/mean", moving_mean)
-            tf.summary.histogram(name + "/batchnorm/var", moving_variance)
-            tf.summary.histogram(name + "/norm_output", out)
+            tf.compat.v1.summary.histogram(name + "/batchnorm/mean", moving_mean)
+            tf.compat.v1.summary.histogram(name + "/batchnorm/var", moving_variance)
+            tf.compat.v1.summary.histogram(name + "/norm_output", out)
         else:
             out = activation
 
         if pool_stride != 1:
-            out = tf.layers.max_pooling2d(
-                inputs=out,
+            out = tf.keras.layers.MaxPooling2D(
                 pool_size=[pool_stride, pool_stride],
                 strides=pool_stride,
                 name=name + "/max_pool",
-            )
+            )(out)
         return out
 
     def process_inputs(self):
         """ process input channels, returns thermal, flow, mask, """
 
         # Setup placeholders
-        self.X = tf.placeholder(
-            tf.float32, [None, None, 5, 48, 48], name="X"
-        )  # [B, F, C, H, W]
-        self.y = tf.placeholder(tf.int64, [None], name="y")
-        batch_size = tf.shape(self.X)[0]
-
+        if self.tflite:
+            self.X = tf.compat.v1.placeholder(tf.float32, [1, 1, 5, 48, 48], name="X")
+        else:
+            self.X = tf.compat.v1.placeholder(
+                tf.float32, [None, None, 5, 48, 48], name="X"
+            )
+        self.y = tf.compat.v1.placeholder(tf.int64, [None], name="y")
+        batch_size = tf.shape(input=self.X)[0]
         # State input allows for processing longer sequences
-        zero_state = tf.zeros(
-            shape=[batch_size, self.params["lstm_units"], 2], dtype=tf.float32
-        )
-        self.state_in = tf.placeholder_with_default(
-            input=zero_state,
-            shape=[None, self.params["lstm_units"], 2],
-            name="state_in",
-        )
+        if self.use_gru:
+            zero_state = tf.zeros(
+                shape=[batch_size, self.params["gru_units"]], dtype=tf.float32
+            )
+            self.state_in = tf.compat.v1.placeholder_with_default(
+                input=zero_state,
+                shape=[None, self.params["gru_units"]],
+                name="state_in",
+            )
+        else:
+            zero_state = tf.zeros(
+                shape=[batch_size, self.params["lstm_units"], 2], dtype=tf.float32
+            )
+            self.state_in = tf.compat.v1.placeholder_with_default(
+                input=zero_state,
+                shape=[None, self.params["lstm_units"], 2],
+                name="state_in",
+            )
 
         # Create some placeholder variables with defaults if not specified
-        self.keep_prob = tf.placeholder_with_default(
+        self.keep_prob = tf.compat.v1.placeholder_with_default(
             tf.constant(1.0, tf.float32), [], name="keep_prob"
         )
-        self.is_training = tf.placeholder_with_default(
+        self.is_training = tf.compat.v1.placeholder_with_default(
             tf.constant(False, tf.bool), [], name="training"
         )
-        self.global_step = tf.placeholder_with_default(
+        self.global_step = tf.compat.v1.placeholder_with_default(
             tf.constant(0, tf.int32), [], name="global_step"
         )
 
         # Apply pre-processing
         X = self.X  # [B, F, C, H, W]
+        X = tf.reshape(X, [-1, 5, 48, 48])  # [B* F, C, H, W]
 
         # normalise the thermal
         # the idea here is to apply sqrt to any values over 100 so that we reduce the effect of very strong values.
-        thermal = X[:, :, 0 : 0 + 1]
+        thermal = X[:, 0 : 0 + 1]
+        # filtered = X[:, 1 : 1 + 1]
+
+        mask = X[:, 4 : 4 + 1]
+        flow = X[:, 2 : 3 + 1]
+        flow = (
+            flow
+            * np.asarray([2.5, 5])[np.newaxis, np.newaxis :, np.newaxis, np.newaxis]
+        )
 
         AUTO_NORM_THERMAL = False
         THERMAL_ROLLOFF = 400
 
         if AUTO_NORM_THERMAL:
+            logging.warn("This wont work with tflite")
             thermal = thermal - tf.reduce_mean(
                 thermal, axis=(3, 4), keepdims=True
             )  # center data
@@ -141,28 +157,27 @@ class ConvModel(Model):
             # relu_threshold = +0.1
             # thermal = (tf.nn.relu(thermal - relu_threshold) + relu_threshold) * 1.5
         else:
-            signs = tf.sign(thermal)
-            abs = tf.abs(thermal)
+            # complained about use of tf.signs for tflite but if it was negative here
+            # it will turn to 0 below anyway
+            rectified = tf.nn.relu(thermal)
             thermal = (
-                tf.minimum(tf.sqrt(abs / THERMAL_ROLLOFF) * THERMAL_ROLLOFF, abs)
-                * signs
+                tf.minimum(
+                    tf.sqrt(rectified / THERMAL_ROLLOFF) * THERMAL_ROLLOFF, rectified
+                )
+                # * signs
             )  # curve off the really strong values
+
             thermal = (
                 tf.nn.relu(thermal - self.params["thermal_threshold"])
                 + self.params["thermal_threshold"]
             )
+
             thermal = thermal / 40
 
         # normalise the flow
         # horizontal and vertical flow have different normalisation constants
-        flow = X[:, :, 2 : 3 + 1]
-        flow = (
-            flow
-            * np.asarray([2.5, 5])[np.newaxis, np.newaxis, :, np.newaxis, np.newaxis]
-        )
 
         # grab the mask
-        mask = X[:, :, 4 : 4 + 1]
 
         # tap the outputs
         tf.identity(thermal, "thermal_out")
@@ -171,20 +186,15 @@ class ConvModel(Model):
 
         # First put all frames in batch into one line sequence, this is required for convolutions.
         # note: we also switch to BHWC format, which is not great, but is required for CPU processing for some reason.
-        thermal = tf.transpose(thermal, (0, 1, 3, 4, 2))  # [B, F, H, W, 1]
-        flow = tf.transpose(flow, (0, 1, 3, 4, 2))  # [B, F, H, W, 2]
-
-        thermal = tf.reshape(thermal, [-1, 48, 48, 1])  # [B*F, 48, 48, 1]
-        flow = tf.reshape(flow, [-1, 48, 48, 2])  # [B*F, 48, 48, 2]
-
-        mask = tf.reshape(mask, [-1, 48, 48, 1])  # [B*F, 48, 48, 1]
+        thermal = tf.transpose(thermal, (0, 2, 3, 1))  # [B * F, H, W, 1]
+        flow = tf.transpose(flow, (0, 2, 3, 1))  # [B * F, H, W, 2]
+        mask = tf.transpose(mask, (0, 2, 3, 1))  # [B * F, H, W, 1]
 
         # save distribution of inputs
         self.save_input_summary(thermal, "inputs/thermal", 3)
         self.save_input_summary(flow[:, :, :, 0 : 0 + 1], "inputs/flow/h", 3)
         self.save_input_summary(flow[:, :, :, 1 : 1 + 1], "inputs/flow/v", 3)
         self.save_input_summary(mask, "inputs/mask", 1)
-
         return thermal, flow, mask
 
     def setup_novelty(self, logits, hidden):
@@ -207,9 +217,10 @@ class ConvModel(Model):
         novelty_scale = self.create_writable_variable("novelty_scale", [])
 
         delta = tf.expand_dims(logits, axis=1) - tf.expand_dims(sample_logits, axis=0)
-        squared_distances = tf.reduce_sum(tf.square(delta), axis=2)
+        squared_distances = tf.reduce_sum(input_tensor=tf.square(delta), axis=2)
         min_distance = tf.sqrt(
-            tf.reduce_min(squared_distances, axis=1), name="novelty_distance"
+            tf.reduce_min(input_tensor=squared_distances, axis=1),
+            name="novelty_distance",
         )
         novelty = tf.sigmoid(
             (min_distance - novelty_threshold) / novelty_scale, "novelty"
@@ -220,20 +231,22 @@ class ConvModel(Model):
     def setup_optimizer(self, loss):
         # setup our training loss
         if self.params["learning_rate_decay"] != 1.0:
-            learning_rate = tf.train.exponential_decay(
+            learning_rate = tf.compat.v1.train.exponential_decay(
                 self.params["learning_rate"],
                 self.global_step,
                 1000,
                 self.params["learning_rate_decay"],
                 staircase=True,
             )
-            tf.summary.scalar("params/learning_rate", learning_rate)
+            tf.compat.v1.summary.scalar("params/learning_rate", learning_rate)
         else:
             learning_rate = self.params["learning_rate"]
 
         # setup optimizer
-        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name="Adam")
-        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        optimizer = tf.compat.v1.train.AdamOptimizer(
+            learning_rate=learning_rate, name="AdamO"
+        )
+        update_ops = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
             train_op = optimizer.minimize(loss, name="train_op")
             # get gradients
@@ -271,12 +284,15 @@ class ModelCRNN_HQ(ConvModel):
         "scale_frequency": 0.5,
     }
 
-    def __init__(self, labels, train_config, **kwargs):
+    def model_name(self):
+        return ModelCRNN_HQ.MODEL_NAME
+
+    def __init__(self, labels, train_config, training=False, tflite=False, **kwargs):
         """
         Initialise the model
         :param labels: number of labels for model to predict
         """
-        super().__init__(train_config=train_config)
+        super().__init__(train_config=train_config, training=training, tflite=tflite)
         self.params.update(self.DEFAULT_PARAMS)
         self.params.update(kwargs)
         self._build_model(labels)
@@ -343,53 +359,30 @@ class ModelCRNN_HQ(ConvModel):
 
         # -------------------------------------
         # run the LSTM
-        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
-        dropout = tf.nn.rnn_cell.DropoutWrapper(
-            lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
-        )
-        init_state = tf.nn.rnn_cell.LSTMStateTuple(
-            self.state_in[:, :, 0], self.state_in[:, :, 1]
-        )
-
-        lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
-            cell=dropout,
-            inputs=out,
-            initial_state=init_state,
-            dtype=tf.float32,
-            scope="lstm",
-        )
-
-        lstm_state_1, lstm_state_2 = lstm_states
-
-        # just need the last output
-        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
-        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-
-        logging.info(
-            "lstm output shape: {} x {}".format(
-                lstm_outputs.shape[1], lstm_output.shape
-            )
-        )
-        logging.info("lstm state shape: {}".format(lstm_state.shape))
-
+        memory_output, memory_state = self._build_memory(out)
         if self.params["l2_reg"] > 0:
-            regularizer = tf.contrib.layers.l2_regularizer(scale=self.params["l2_reg"])
+            regularizer = tf.keras.regularizers.l2(l=0.5 * (self.params["l2_reg"]))
         else:
             regularizer = None
 
-        # dense hidden layer
-        dense = tf.layers.dense(
-            inputs=lstm_output,
-            units=384,
+        #  to do change to keras dense
+        # dense = tf.keras.layers.Dense(self.params["lstm_units"])(memory_output)
+
+        # # dense hidden layer
+        dense = tf.compat.v1.layers.dense(
+            inputs=memory_output,
+            units=self.params["lstm_units"],
             activation=tf.nn.relu,
             name="hidden",
             kernel_regularizer=regularizer,
         )
-
-        dense = tf.nn.dropout(dense, keep_prob=self.keep_prob)
-
+        if not self.tflite:
+            dense = tf.nn.dropout(dense, rate=1 - (self.keep_prob))
         # dense layer on top of convolutional output mapping to class labels.
-        logits = tf.layers.dense(
+
+        # logits = tf.keras.layers.Dense(label_count)(dense)
+
+        logits = tf.compat.v1.layers.dense(
             inputs=dense,
             units=label_count,
             activation=None,
@@ -397,11 +390,11 @@ class ModelCRNN_HQ(ConvModel):
             kernel_regularizer=regularizer,
         )
 
-        tf.summary.histogram("weights/dense", dense)
-        tf.summary.histogram("weights/logits", logits)
+        tf.compat.v1.summary.histogram("weights/dense", dense)
+        tf.compat.v1.summary.histogram("weights/logits", logits)
 
         # loss
-        softmax_loss = tf.losses.softmax_cross_entropy(
+        softmax_loss = tf.compat.v1.losses.softmax_cross_entropy(
             onehot_labels=tf.one_hot(self.y, label_count),
             logits=logits,
             label_smoothing=self.params["label_smoothing"],
@@ -409,29 +402,29 @@ class ModelCRNN_HQ(ConvModel):
         )
 
         if self.params["l2_reg"] != 0:
-            reg_loss = tf.losses.get_regularization_loss()
+            reg_loss = tf.compat.v1.losses.get_regularization_loss()
             loss = tf.add(softmax_loss, reg_loss, name="loss")
-            tf.summary.scalar("loss/reg", reg_loss)
-            tf.summary.scalar("loss/softmax", softmax_loss)
+            tf.compat.v1.summary.scalar("loss/reg", reg_loss)
+            tf.compat.v1.summary.scalar("loss/softmax", softmax_loss)
         else:
             # just relabel the loss node
             loss = tf.identity(softmax_loss, name="loss")
 
-        class_out = tf.argmax(logits, axis=1, name="class_out")
+        class_out = tf.argmax(input=logits, axis=1, name="class_out")
         correct_prediction = tf.equal(class_out, self.y)
         pred = tf.nn.softmax(logits, name="prediction")
         accuracy = tf.reduce_mean(
-            tf.cast(correct_prediction, dtype=tf.float32), name="accuracy"
+            input_tensor=tf.cast(correct_prediction, dtype=tf.float32), name="accuracy"
         )
 
         # -------------------------------------
         # novelty
 
-        self.setup_novelty(logits, lstm_output)
+        self.setup_novelty(logits, dense)
         self.setup_optimizer(loss)
 
         # make reference to special nodes
-        tf.identity(lstm_state, "state_out")
+        tf.identity(memory_state, "state_out")
         tf.identity(dense, "hidden_out")
         tf.identity(logits, "logits_out")
 
@@ -468,16 +461,40 @@ class ModelCRNN_LQ(ConvModel):
         "augmentation": True,
         "thermal_threshold": 10,
         "scale_frequency": 0.5,
+        "hq": False,
     }
 
-    def __init__(self, labels, train_config, **kwargs):
+    def model_name(self):
+        return ModelCRNN_LQ.MODEL_NAME
+
+    def __init__(self, labels, train_config, training, **kwargs):
         """
         Initialise the model
         :param labels: number of labels for model to predict
         """
-        super().__init__(train_config=train_config)
+        super().__init__(train_config=train_config, training=training)
         self.params.update(self.DEFAULT_PARAMS)
         self.params.update(kwargs)
+        if self.params["hq"]:
+            self.layers = 5
+            self.layer_filters = [64, 64, 96, 128, 128]
+            self.conv_stride = [1, 1, 1, 1, 1]
+            self.pool_stride = [2, 2, 2, 2, 1]
+            self.kernel_size = [3, 3]
+        else:
+
+            # from the pdf this is the layers used
+            # self.layers = 3
+            # self.layer_filters = [32, 64, 64]
+            # self.kernel_size = [[8, 8], [4, 4], [3, 3]]
+            # self.pool_stride = [1, 1, 1, 1, 1]
+            # self.conv_stride = [4, 2, 1]
+
+            self.layers = 5
+            self.layer_filters = [32, 48, 64, 64, 64]
+            self.kernel_size = [[3, 3], [3, 3], [3, 3], [3, 3], [3, 3]]
+            self.pool_stride = [1, 1, 1, 1, 1]
+            self.conv_stride = [2, 2, 2, 2, 1]
         self._build_model(labels)
 
     def _build_model(self, label_count):
@@ -495,17 +512,20 @@ class ModelCRNN_LQ(ConvModel):
 
         thermal, flow, mask = self.process_inputs()
         frame_count = tf.shape(self.X)[1]
-
         # -------------------------------------
         # run the Convolutions
 
         layer = thermal
-        layer = self.conv_layer("thermal/1", layer, 32, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/2", layer, 48, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/3", layer, 64, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/4", layer, 64, [3, 3], conv_stride=2)
-        layer = self.conv_layer("thermal/5", layer, 64, [3, 3], conv_stride=1)
 
+        for i in range(self.layers):
+            layer = self.conv_layer(
+                "thermal/{}".format(i),
+                layer,
+                self.layer_filters[i],
+                self.kernel_size[i],
+                conv_stride=self.conv_stride[i],
+                pool_stride=self.pool_stride[i],
+            )
         filtered_conv = layer
         logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
         filtered_out = tf.reshape(
@@ -516,12 +536,18 @@ class ModelCRNN_LQ(ConvModel):
 
         if self.params["enable_flow"]:
             # integrate thermal and flow into a 3 channel layer
+
             layer = tf.concat((thermal, flow), axis=3)
-            layer = self.conv_layer("motion/1", layer, 32, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/2", layer, 48, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/3", layer, 64, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/4", layer, 64, [3, 3], conv_stride=2)
-            layer = self.conv_layer("motion/5", layer, 64, [3, 3], conv_stride=1)
+
+            for i in range(self.layers):
+                layer = self.conv_layer(
+                    "motion/{}".format(i),
+                    layer,
+                    self.layer_filters[i],
+                    self.kernel_size,
+                    conv_stride=self.conv_stride[i],
+                    pool_stride=self.pool_stride[i],
+                )
 
             motion_conv = layer
             logging.info(
@@ -536,83 +562,216 @@ class ModelCRNN_LQ(ConvModel):
             out = tf.concat((filtered_out, motion_out), axis=2, name="out")
         else:
             out = tf.concat((filtered_out,), axis=2, name="out")
-
         logging.info("Output shape {}".format(out.shape))
+        memory_output, memory_state = self._build_memory(out)
 
-        # -------------------------------------
-        # run the LSTM
-
-        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.params["lstm_units"])
-        dropout = tf.nn.rnn_cell.DropoutWrapper(
-            lstm_cell, output_keep_prob=self.keep_prob, dtype=np.float32
-        )
-        init_state = tf.nn.rnn_cell.LSTMStateTuple(
-            self.state_in[:, :, 0], self.state_in[:, :, 1]
-        )
-
-        lstm_outputs, lstm_states = tf.nn.dynamic_rnn(
-            cell=dropout,
-            inputs=out,
-            initial_state=init_state,
-            dtype=tf.float32,
-            scope="lstm",
-        )
-
-        lstm_state_1, lstm_state_2 = lstm_states
-
-        # just need the last output
-        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
-        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-
-        logging.info(
-            "lstm output shape: {} x {}".format(
-                lstm_outputs.shape[1], lstm_output.shape
-            )
-        )
-        logging.info("lstm state shape: {}".format(lstm_state.shape))
-
+        logging.info("memory_output output shape: {}".format(memory_output.shape))
+        logging.info("memory_state output shape: {}".format(memory_state.shape))
         # -------------------------------------
         # dense / logits
 
         # dense layer on top of convolutional output mapping to class labels.
-        logits = tf.layers.dense(
-            inputs=lstm_output, units=label_count, activation=None, name="logits"
-        )
-        tf.summary.histogram("weights/logits", logits)
+        logits = tf.keras.layers.Dense(label_count)(memory_output)
+        tf.compat.v1.summary.histogram("weights/logits", logits)
 
-        softmax_loss = tf.losses.softmax_cross_entropy(
+        softmax_loss = tf.compat.v1.losses.softmax_cross_entropy(
             onehot_labels=tf.one_hot(self.y, label_count),
             logits=logits,
             label_smoothing=self.params["label_smoothing"],
             scope="softmax_loss",
         )
-
         if self.params["l2_reg"] != 0:
-            with tf.variable_scope("logits", reuse=True):
-                logit_weights = tf.get_variable("kernel")
+            with tf.compat.v1.variable_scope("logits", reuse=True):
+                logit_weights = tf.compat.v1.get_variable("kernel")
 
             reg_loss = (
                 tf.nn.l2_loss(logit_weights, name="loss/reg") * self.params["l2_reg"]
             )
             loss = tf.add(softmax_loss, reg_loss, name="loss")
-            tf.summary.scalar("loss/reg", reg_loss)
-            tf.summary.scalar("loss/softmax", softmax_loss)
+            tf.compat.v1.summary.scalar("loss/reg", reg_loss)
+            tf.compat.v1.summary.scalar("loss/softmax", softmax_loss)
         else:
             # just relabel the loss node
-            loss = tf.identity(softmax_loss, "loss")
-
-        class_out = tf.argmax(logits, axis=1, name="class_out")
+            loss = tf.identity(softmax_loss, name="loss")
+        class_out = tf.argmax(input=logits, axis=1, name="class_out")
         correct_prediction = tf.equal(class_out, self.y)
         pred = tf.nn.softmax(logits, name="prediction")
         accuracy = tf.reduce_mean(
-            tf.cast(correct_prediction, dtype=tf.float32), name="accuracy"
+            input_tensor=tf.cast(correct_prediction, dtype=tf.float32), name="accuracy"
         )
 
-        self.setup_novelty(logits, lstm_output)
+        self.setup_novelty(logits, memory_output)
         self.setup_optimizer(loss)
 
         # make reference to special nodes
-        tf.identity(lstm_state, "state_out")
-        tf.identity(lstm_output, "hidden_out")
+        tf.identity(memory_state, "state_out")
+        tf.identity(memory_output, "hidden_out")
+        tf.identity(logits, "logits_out")
+        self.attach_nodes()
+
+
+class Model_CNN(ConvModel):
+    """
+    Convolutional neural net model feeding into an LSTM
+
+    Trains on GPU at around 5ms / segment as apposed to 16ms for the high quality model.
+    """
+
+    MODEL_NAME = "model_cnn"
+    MODEL_DESCRIPTION = "CNN"
+
+    DEFAULT_PARAMS = {
+        # training params
+        "batch_size": 16,
+        "learning_rate": 1e-4,
+        "learning_rate_decay": 1.0,
+        "l2_reg": 0,
+        "label_smoothing": 0.1,
+        "keep_prob": 0.2,
+        # model params
+        "batch_norm": True,
+        "enable_flow": True,
+        # augmentation
+        "augmentation": True,
+        "thermal_threshold": 10,
+        "scale_frequency": 0.5,
+        "hq": False,
+    }
+
+    def model_name(self):
+        return Model_CNN.MODEL_NAME
+
+    def __init__(self, labels, train_config, training, tflite, **kwargs):
+        """
+        Initialise the model
+        :param labels: number of labels for model to predict
+        """
+        super().__init__(train_config=train_config, training=training, tflite=tflite)
+        self.frame_count = 1
+        # number of frames per segment during training
+        self.training_segment_frames = 1
+        # number of frames per segment during testing
+        self.testing_segment_frames = 1
+
+        self.params.update(self.DEFAULT_PARAMS)
+        self.params.update(kwargs)
+        if self.params["hq"]:
+            self.layers = 5
+            self.layer_filters = [64, 64, 96, 128, 128]
+            self.conv_stride = [1, 1, 1, 1, 1]
+            self.pool_stride = [2, 2, 2, 2, 1]
+            self.kernel_size = [3, 3]
+        else:
+            self.layers = 5
+            self.layer_filters = [32.48, 64, 64, 64]
+            self.kernel_size = [3, 3]
+            self.pool_stride = [1, 1, 1, 1, 1]
+            self.conv_stride = [2, 2, 2, 2, 1]
+        self._build_model(labels)
+
+    def _build_model(self, label_count):
+        ####################################
+        # CNN + LSTM
+        # based on https://arxiv.org/pdf/1507.06527.pdf
+        ####################################
+
+        # dimensions are documents as follows
+        # B batch size
+        # F frames per segment
+        # C channels
+        # H frame height
+        # W frame width
+
+        thermal, flow, mask = self.process_inputs()
+        # -------------------------------------
+        # run the Convolutions
+
+        layer = thermal
+
+        for i in range(self.layers):
+            layer = self.conv_layer(
+                "thermal/{}".format(i),
+                layer,
+                self.layer_filters[i],
+                self.kernel_size,
+                conv_stride=self.conv_stride[i],
+                pool_stride=self.pool_stride[i],
+            )
+
+        filtered_conv = layer
+        logging.info("Thermal convolution output shape: {}".format(filtered_conv.shape))
+
+        if self.params["enable_flow"]:
+            # integrate thermal and flow into a 3 channel layer
+
+            layer = tf.concat((thermal, flow), axis=3)
+
+            for i in range(self.layers):
+                layer = self.conv_layer(
+                    "motion/{}".format(i),
+                    layer,
+                    self.layer_filters[i],
+                    self.kernel_size,
+                    conv_stride=self.conv_stride[i],
+                    pool_stride=self.pool_stride[i],
+                )
+
+            motion_conv = layer
+            logging.info(
+                "Motion convolution output shape: {}".format(motion_conv.shape)
+            )
+            motion_out = tf.reshape(
+                motion_conv,
+                [-1, self.frame_count, tools.product(motion_conv.shape[1:])],
+                name="motion/out",
+            )
+            filtered_out = tf.reshape(
+                filtered_conv,
+                [-1, self.frame_count, tools.product(filtered_conv.shape[1:])],
+                name="thermal/out",
+            )
+            out = tf.concat((filtered_out, motion_out), axis=2, name="out")
+        else:
+            out = tf.compat.v1.layers.flatten(filtered_conv)
+        logging.info("Output shape {}".format(out.shape))
+
+        # dense / logits
+
+        # dense layer on top of convolutional output mapping to class labels.
+        logits = tf.keras.layers.Dense(label_count)(out)
+        print("logits.shape", logits.shape)
+        tf.compat.v1.summary.histogram("weights/logits", logits)
+        softmax_loss = tf.compat.v1.losses.softmax_cross_entropy(
+            onehot_labels=tf.one_hot(self.y, label_count),
+            logits=logits,
+            label_smoothing=self.params["label_smoothing"],
+            scope="softmax_loss",
+        )
+        if self.params["l2_reg"] != 0:
+            with tf.compat.v1.variable_scope("logits", reuse=True):
+                logit_weights = tf.compat.v1.get_variable("kernel")
+
+            reg_loss = (
+                tf.nn.l2_loss(logit_weights, name="loss/reg") * self.params["l2_reg"]
+            )
+            loss = tf.add(softmax_loss, reg_loss, name="loss")
+            tf.compat.v1.summary.scalar("loss/reg", reg_loss)
+            tf.compat.v1.summary.scalar("loss/softmax", softmax_loss)
+        else:
+            # just relabel the loss node
+            loss = tf.identity(softmax_loss, name="loss")
+        class_out = tf.argmax(input=logits, axis=1, name="class_out")
+        correct_prediction = tf.equal(class_out, self.y)
+        pred = tf.nn.softmax(logits, name="prediction")
+        accuracy = tf.reduce_mean(
+            input_tensor=tf.cast(correct_prediction, dtype=tf.float32), name="accuracy"
+        )
+
+        self.setup_novelty(logits, out)
+        self.setup_optimizer(loss)
+
+        # make reference to special nodes
+        # not used for anything as we aren't doing RNN for tflite
+        tf.identity(out, "hidden_out")
         tf.identity(logits, "logits_out")
         self.attach_nodes()

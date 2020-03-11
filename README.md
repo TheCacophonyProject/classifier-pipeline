@@ -36,7 +36,8 @@ Evaluates the performance of a classify.py run and generates reports.
 
 2. Copy the classifier_Template.yaml to classifier.yaml and then edit this file with your own settings.   You will need to set up the paths for it work on your system. (Note: Currently these settings only apply to classify.py and extract.py)
 
-3. Optionally install GPU support for tensorflow (note this requires additional [setup](https://www.tensorflow.org/install/))</br>
+3. Optionally install GPU support for tensorflow (note this requires additional [setup](
+https://www.tensorflow.org/install/gpu))</br>
 `pip install tensorflow-gpu`
 
 4. MPEG4 output requires FFMPEG to be installed which can be found [here](https://www.ffmpeg.org/).  On windows the installation path will need to be added to the system path.

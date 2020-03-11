@@ -82,8 +82,8 @@ class CPTVRecorder:
         self.frames += 1
 
     def stop_recording(self):
+        self.recording = False
         logging.debug("recording ended")
-
         if self.writer is None:
             return
 
@@ -91,16 +91,15 @@ class CPTVRecorder:
         final_name = os.path.splitext(self.filename)[0]
         os.rename(self.filename, final_name)
         self.writer = None
-        self.recording = False
 
     def delete_recording(self):
+        self.recording = False
         if self.writer is None:
             return
 
         self.writer.close()
         os.remove(self.filename)
         self.writer = None
-        self.recording = False
 
 
 def new_temp_name():

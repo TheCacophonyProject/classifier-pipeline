@@ -78,7 +78,6 @@ class Region(Rectangle):
         assert (
             width == self.width and height == self.height
         ), "calculating variance on incorrectly sized filtered"
-
         self.pixel_variance = tools.calculate_variance(filtered, prev_filtered)
 
     def set_is_along_border(self, bounds):

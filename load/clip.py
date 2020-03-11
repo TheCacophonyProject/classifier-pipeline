@@ -41,6 +41,7 @@ class Clip:
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
         Track._track_id = 1
+        self.disable_background_subtraction = False
         self.frame_on = 0
         self.ffc_affected = False
         self.crop_rectangle = None
@@ -96,12 +97,12 @@ class Clip:
             self._set_from_background()
         self.background_frames += 1
 
-    def background_from_frames(self, frame_list):
+    def background_from_frames(self, raw_frames):
         number_frames = self.num_preview_frames
-        if not number_frames < len(frame_list):
+        if not number_frames < len(raw_frames):
             logging.error("Video consists entirely of preview")
-            number_frames = len(frame_list)
-        frames = frame_list[0:number_frames]
+            number_frames = len(raw_frames)
+        frames = [np.float32(frame.pix) for frame in raw_frames[0:number_frames]]
         self.background = np.min(frames, axis=0)
         self.background = np.int32(np.rint(self.background))
 
@@ -118,6 +119,7 @@ class Clip:
         # for this reason we must return all the frames so they can be reused
 
         # [][] array
+
         self.background = np.percentile(frames, q=10, axis=0)
         self._set_from_background()
 
@@ -249,7 +251,7 @@ class ClipStats:
         f_median = np.median(thermal)
         f_max = np.max(thermal)
         f_min = np.min(thermal)
-        f_mean = np.mean(thermal)
+        f_mean = np.nanmean(thermal)
         self.max_temp = null_safe_compare(self.max_temp, f_max, max)
         self.min_temp = null_safe_compare(self.min_temp, f_min, min)
 

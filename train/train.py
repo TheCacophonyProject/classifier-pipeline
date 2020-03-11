@@ -3,15 +3,14 @@ import os
 import pickle
 
 import tensorflow as tf
-from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ
-
+from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ, Model_CNN
+from model_resnet import ResnetModel
 from ml_tools.dataset import dataset_db_path
 
 
 def train_model(run_name, conf, hyper_params):
     """Trains a model with the given hyper parameters.
     """
-
     run_name = os.path.join("train", run_name)
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
@@ -20,7 +19,21 @@ def train_model(run_name, conf, hyper_params):
     with open(datasets_filename, "rb") as f:
         dsets = pickle.load(f)
     labels = dsets[0].labels
-    model = ModelCRNN_LQ(labels=len(labels), train_config=conf.train, **hyper_params)
+    if conf.train.model == ResnetModel.MODEL_NAME:
+        model = ResnetModel(labels, conf.train)
+    elif conf.train.model == ModelCRNN_HQ.MODEL_NAME:
+        model = ModelCRNN_HQ(
+            labels=len(labels), train_config=conf.train, training=True, **hyper_params
+        )
+    elif conf.train.model == Model_CNN.MODEL_NAME:
+        model = Model_CNN(
+            labels=len(labels), train_config=conf.train, training=True, **hyper_params
+        )
+    else:
+        model = ModelCRNN_LQ(
+            labels=len(labels), train_config=conf.train, training=True, **hyper_params
+        )
+
     model.import_dataset(datasets_filename)
     # display the data set summary
     print("Training on labels", labels)
