@@ -81,10 +81,20 @@ class TrackDatabase:
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
             if overwrite and clip_id in clips:
+
                 del clips[clip_id]
             group = clips.create_group(clip_id)
 
             if clip is not None:
+                if clip.background is not None:
+                    height, width = clip.background.shape
+                    background_frame = group.create_dataset(
+                        "background_frame",
+                        (height, width),
+                        chunks=(height, width),
+                        dtype=clip.background.dtype,
+                    )
+                    background_frame[:, :] = clip.background
                 group_attrs = group.attrs
 
                 # group_attrs.update(clip.stats)
@@ -101,8 +111,7 @@ class TrackDatabase:
                 group_attrs["filtered_sum"] = clip.stats.filtered_sum
                 group_attrs["temp_thresh"] = clip.stats.temp_thresh
                 group_attrs["threshold"] = clip.stats.threshold
-                if clip.background is not None:
-                    group_attrs["background_frame"] = clip.background
+
                 if not clip.background_is_preview:
                     group_attrs["average_delta"] = clip.stats.average_delta
                     group_attrs["is_static"] = clip.stats.is_static_background
