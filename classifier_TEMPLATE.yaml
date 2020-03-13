@@ -187,7 +187,7 @@ train:
     hyper_params:
         # training
         batch_size: 16
-        learning_rate: 0.0004
+        learning_rate: 0.0001
         learning_rate_decay: 1.0
         l2_reg: 0
         label_smoothing: 0.1

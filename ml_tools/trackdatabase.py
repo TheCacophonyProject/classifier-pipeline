@@ -101,7 +101,8 @@ class TrackDatabase:
                 group_attrs["filtered_sum"] = clip.stats.filtered_sum
                 group_attrs["temp_thresh"] = clip.stats.temp_thresh
                 group_attrs["threshold"] = clip.stats.threshold
-
+                if clip.background is not None:
+                    group_attrs["background_frame"] = clip.background
                 if not clip.background_is_preview:
                     group_attrs["average_delta"] = clip.stats.average_delta
                     group_attrs["is_static"] = clip.stats.is_static_background

@@ -45,6 +45,12 @@ def main():
     parser.add_argument(
         "-T", "--timestamps", action="store_true", help="Emit log timestamps"
     )
+    parser.add_argument(
+        "-m",
+        "--model-file",
+        help="Path to model file to use, will override config model",
+    )
+
     args = parser.parse_args()
 
     config = Config.load_from_file(args.config_file)
@@ -64,7 +70,10 @@ def main():
         config.classify.classify_folder = args.processor_folder
         config.source_folder = args.processor_folder
 
-    clip_classifier = ClipClassifier(config, config.classify_tracking)
+    model_file = config.classify.model
+    if args.model_file:
+        model_file = args.model_file
+    clip_classifier = ClipClassifier(config, config.classify_tracking, model_file)
 
     # parse start and end dates
     if args.start_date:
