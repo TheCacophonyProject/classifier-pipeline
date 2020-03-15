@@ -148,7 +148,8 @@ class TrackDatabase:
             result = []
             for clip in clips:
                 for track in clips[clip]:
-                    result.append((clip, track))
+                    if track != "background_frame":
+                        result.append((clip, track))
         return result
 
     def get_track_meta(self, clip_id, track_number):
