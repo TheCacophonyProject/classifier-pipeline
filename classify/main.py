@@ -22,9 +22,8 @@ def main():
     )
     parser.add_argument(
         "-p",
-        "--create-previews",
-        action="count",
-        help="Create MP4 previews for tracks (can be slow)",
+        "--preview-type",
+        help="Create MP4 previews of this type (can be slow), this overrides the config",
     )
     parser.add_argument(
         "-v", "--verbose", action="count", help="Display additional information."
@@ -58,8 +57,8 @@ def main():
     init_logging(args.timestamps)
 
     # parse command line arguments
-    if args.create_previews:
-        config.classify.preview = Previewer.PREVIEW_CLASSIFIED
+    if args.preview_type:
+        config.classify.preview = args.preview_type
 
     if args.verbose:
         config.classify_tracking.verbose = True
@@ -87,9 +86,9 @@ def main():
     if not config.use_gpu:
         logging.info("GPU mode disabled.")
 
-    if not os.path.exists(config.classify.model + ".meta"):
+    if not os.path.exists(clip_classifier.model_file + ".meta"):
         logging.error(
-            "No model found named '{}'.".format(config.classify.model + ".meta")
+            "No model found named '{}'.".format(clip_classifier.model_file + ".meta")
         )
         exit(13)
 
