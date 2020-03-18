@@ -304,7 +304,6 @@ class ClipTrackExtractor:
                 scores.append((score, track, region))
 
         # makes tracking consistent by ordering by score then by frame since target then track id
-
         scores.sort(
             key=lambda record: record[1].frames_since_target_seen
             + float(".{}".format(record[1]._id))
