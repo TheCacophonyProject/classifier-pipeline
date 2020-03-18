@@ -39,14 +39,14 @@ def process_job(job):
 
 
 class ClipLoader:
-    def __init__(self, config):
+    def __init__(self, config, reprocess=False):
 
         self.config = config
         os.makedirs(self.config.tracks_folder, mode=0o775, exist_ok=True)
         self.database = TrackDatabase(
             os.path.join(self.config.tracks_folder, "dataset.hdf5")
         )
-
+        self.reprocess = reprocess
         self.compression = (
             tools.gzip_compression if self.config.load.enable_compression else None
         )
@@ -61,7 +61,7 @@ class ClipLoader:
             self.config.load.cache_to_disk,
         )
 
-    def process_all(self, root=None):
+    def process_all(self, root=None, checkpoint=None):
         if root is None:
             root = self.config.source_folder
 
@@ -71,6 +71,8 @@ class ClipLoader:
                 if os.path.splitext(name)[1] == ".cptv":
                     full_path = os.path.join(folder_path, name)
                     jobs.append((self, full_path))
+
+        jobs.sort(key=lambda x: x[1])
 
         self._process_jobs(jobs)
 
@@ -113,7 +115,7 @@ class ClipLoader:
             track_data = []
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
-                frame = track.crop_by_region(frame, region)
+                frame = track.crop_by_region(frame, region, filter_mask_by_region=False)
                 # zero out the filtered channel
                 if not self.config.load.include_filtered_channel:
                     frame[TrackChannels.filtered] = 0
@@ -169,7 +171,6 @@ class ClipLoader:
         logging.info(f"processing %s", filename)
 
         destination_folder = self._get_dest_folder(base_filename)
-        os.makedirs(destination_folder, mode=0o775, exist_ok=True)
         # delete any previous files
         tools.purge(destination_folder, base_filename + "*.mp4")
 
@@ -183,6 +184,11 @@ class ClipLoader:
             return
 
         metadata = tools.load_clip_metadata(metadata_filename)
+
+        if not self.reprocess and self.database.has_clip(str(metadata["id"])):
+            logging.warning("Already loaded %s", filename)
+            return
+
         valid_tracks = self._filter_clip_tracks(metadata)
         if not valid_tracks:
             logging.error("No valid track data found for %s", filename)
@@ -195,7 +201,10 @@ class ClipLoader:
             self.config.load.tag_precedence,
         )
 
-        self.track_extractor.parse_clip(clip)
+        if not self.track_extractor.parse_clip(clip):
+            logging.error("No valid clip found for %s", filename)
+            return
+
         # , self.config.load.cache_to_disk, self.config.use_opt_flow
 
         if self.track_config.enable_track_output:
@@ -203,6 +212,8 @@ class ClipLoader:
 
         # write a preview
         if self.previewer:
+            os.makedirs(destination_folder, mode=0o775, exist_ok=True)
+
             preview_filename = base_filename + "-preview" + ".mp4"
             preview_filename = os.path.join(destination_folder, preview_filename)
             self.previewer.create_individual_track_previews(preview_filename, clip)

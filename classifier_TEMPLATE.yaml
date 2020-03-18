@@ -4,8 +4,7 @@ use_opt_flow: True
 debug: False
 
 # root folder where the source and output folders belong
-base_data_folder: "<full path>"
-
+base_data_folder: "<full path>" 
 # Enables/Disables GPU accelerated classification
 use_gpu: false
 
@@ -18,8 +17,8 @@ source_folder: "cptv"
 tracks_folder: "tracks"
 
 # which folders (tags) to ignore when selecting cptv files from source_folder
-excluded_tags: ['untagged', 'cat', 'dog', 'insect', 'unidentified', 'rabbit', 'hard', 'multi', 'moving',
-                  'mouse', 'bird-kiwi', 'for_grant', 'missclassified', 'other']
+excluded_tags: ['untagged', 'dog', ''unidentified', 'hard', 'multi', 'moving',
+                'bird-kiwi', 'for_grant', 'missclassified', 'other']
 
 # Reprocess files which have already been processed.
 reprocess: true
@@ -30,8 +29,19 @@ reprocess: true
 # previews_colour_map: "custom_colormap.dat"
 
 # Labels 
-labels : ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
-
+labels : [
+    "hedgehog",
+    "false-positive",
+    "rodent",
+    "possum",
+    "cat",
+    "bird",
+    "mustelid",
+    "insect",
+    "human",
+    "leporidae",
+]
+ 
 # Number of worker threads to use.  0 disables worker pool and forces a single thread.
 worker_threads: 0
 
@@ -172,10 +182,12 @@ load:
     #cache buffer frame to disk reducing memory usage
     cache_to_disk: True
 train:
+    # model_resnet, model_lq, or model_hq
+    model: "model_lq"
     hyper_params:
         # training
         batch_size: 16
-        learning_rate: 0.0004
+        learning_rate: 0.0001
         learning_rate_decay: 1.0
         l2_reg: 0
         label_smoothing: 0.1
@@ -183,16 +195,29 @@ train:
 
         # model
         batch_norm: true
-        lstm_units: 256
+        lstm_units: 512
+        gru_units: 512
         enable_flow: true
-
         # augmentation
         augmentation: true
         thermal_threshold: 10
         scale_frequency: 0.5
 
+        #  resnet
+    resnet_params:
+        num_filters: 32
+        kernel_size: 3
+        conv_stride: 2
+        # block sizes can be left null and will be calculated based of resnet_size
+        block_sizes : [3, 4, 6, 3]
+        block_strides: [1, 2, 2, 2]
+        bottleneck: false
+        resnet_size: 50
     # Number of epochs to train for
     epochs: 30
+    
+    # use a gru cell or a lstm cell
+    use_gru: false
 
     # Location to write various training outputs to. Relative to
     # base_data_folder. Defaults to "training"
@@ -214,8 +239,7 @@ classify:
     meta_to_stdout : False
 
     # Path to pretrained Model use for classification (This should be the base filename without any extension)
-    model: "<full path>"
-
+    model: "<full path>" 
     # Create a MP4 preview after classification of recording.  Options are "none", "raw", "classified", "tracking"
     # See extract:preview for details on each option.
     preview: "boxes"
@@ -236,9 +260,6 @@ evaluate:
     null_tags: ["false-positive", "none", "no-tag"]
     
 build:
-    #file containing clips to be banned relative to running path
-    # banned_clips_file: "excluded_clips.txt"
-
     # uses split from previous run
     use_previous_split: False
 
@@ -291,3 +312,6 @@ build:
 
     # number of seconds segments are spaced apart
     segment_spacing: 1
+
+    # when building a dataset we want to use many different tracks if aren't building a big dataset
+    max_segments_per_track: 2

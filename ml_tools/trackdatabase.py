@@ -81,10 +81,20 @@ class TrackDatabase:
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
             if overwrite and clip_id in clips:
+
                 del clips[clip_id]
             group = clips.create_group(clip_id)
 
             if clip is not None:
+                if clip.background is not None:
+                    height, width = clip.background.shape
+                    background_frame = group.create_dataset(
+                        "background_frame",
+                        (height, width),
+                        chunks=(height, width),
+                        dtype=clip.background.dtype,
+                    )
+                    background_frame[:, :] = clip.background
                 group_attrs = group.attrs
 
                 # group_attrs.update(clip.stats)
@@ -118,6 +128,17 @@ class TrackDatabase:
             f.flush()
             group.attrs["finished"] = True
 
+    def get_all_clip_ids(self):
+        """
+        Returns a list of clip_id, track_number pairs.
+        """
+        with HDF5Manager(self.database) as f:
+            clips = f["clips"]
+            results = {}
+            for clip_id in clips:
+                results[clip_id] = [track_id for track_id in clips[clip_id]]
+        return results
+
     def get_all_track_ids(self):
         """
         Returns a list of clip_id, track_number pairs.
@@ -127,7 +148,8 @@ class TrackDatabase:
             result = []
             for clip in clips:
                 for track in clips[clip]:
-                    result.append((clip, track))
+                    if track != "background_frame":
+                        result.append((clip, track))
         return result
 
     def get_track_meta(self, clip_id, track_number):
@@ -151,7 +173,7 @@ class TrackDatabase:
         """
 
         with HDF5Manager(self.database) as f:
-            dataset = f["clips"][clip_id]
+            dataset = f["clips"][str(clip_id)]
             result = hdf5_attributes_dictionary(dataset)
             result["tracks"] = len(dataset)
         return result

@@ -1,15 +1,16 @@
+import os
+import io
+
 import tensorflow as tf
-from tensorflow.contrib.tensorboard.plugins import projector
+from tensorboard.plugins import projector
 import numpy as np
 import matplotlib.pyplot as plt
-
 import os.path
 import pickle
 import math
 import logging
 import time
 import json
-import io
 from collections import namedtuple
 from sklearn import metrics
 
@@ -24,12 +25,17 @@ class Model:
     MODEL_DESCRIPTION = ""
     VERSION = "0.3.0"
 
-    def __init__(self, train_config=None, session=None):
+    def model_name(self):
+        return Model.MODEL_NAME
 
-        self.name = "model"
+    def __init__(self, train_config=None, session=None, training=False, tflite=False):
+        self.tflite = tflite
+        self.training = training
+        self.use_gru = train_config.use_gru
+        self.name = self.model_name()
         self.session = session or tools.get_session()
         self.saver = None
-
+        tf.compat.v1.disable_eager_execution()
         # datasets
         self.datasets = namedtuple("Datasets", "train, validation, test")
 
@@ -126,6 +132,11 @@ class Model:
         self.writer_val = None
         self.merged_summary = None
 
+        # this defines our input shape
+        self.frame_count = 1
+        if self.training:
+            self.frame_count = self.training_segment_frames
+
     def import_dataset(self, dataset_filename, ignore_labels=None):
         """
         Import dataset.
@@ -198,14 +209,12 @@ class Model:
         score = 0
         loss = 0
         summary = None
-
         for i in range(batches):
             Xm = batch_X[i * self.batch_size : (i + 1) * self.batch_size]
             ym = batch_y[i * self.batch_size : (i + 1) * self.batch_size]
             if len(Xm) == 0:
                 continue
             samples = Xm.shape[0]
-
             # only calculate summary on first batch, as otherwise we could get many summaries for a single timestep.
             # a better solution would be to accumulate and average the summaries which tensorflow sort of has support for.
             feed_dict = self.get_feed_dict(Xm, ym)
@@ -245,9 +254,8 @@ class Model:
         :return:
         """
         result = {
-            self.X: X[
-                :, 0 : self.training_segment_frames
-            ],  # limit number of frames per segment passed to trainer
+            self.X: X[:, 0 : self.training_segment_frames],
+            # limit number of frames per segment passed to trainer
             self.keep_prob: self.params["keep_prob"] if is_training else 1.0,
             self.is_training: is_training,
             self.global_step: self.step,
@@ -288,8 +296,9 @@ class Model:
             Xm = batch_X[i * self.batch_size : (i + 1) * self.batch_size]
             if len(Xm) == 0:
                 continue
+            feed_dict = self.get_feed_dict(Xm)
 
-            outputs = self.session.run(nodes, feed_dict={self.X: Xm})
+            outputs = self.session.run(nodes, feed_dict=feed_dict)
             for node, output in zip(nodes, outputs):
                 for i in range(len(output)):
                     output_lists[node].append(output[i])
@@ -322,8 +331,10 @@ class Model:
         X, y = self.datasets.train.next_batch(self.batch_size)
         feed_dict = self.get_feed_dict(X, y, is_training=True)
 
-        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-        run_metadata = tf.RunMetadata()
+        run_options = tf.compat.v1.RunOptions(
+            trace_level=tf.compat.v1.RunOptions.FULL_TRACE
+        )
+        run_metadata = tf.compat.v1.RunMetadata()
 
         # first run takes a while, so run this just to build the graph, then run again to get real performance.
         (_,) = self.session.run([self.train_op], feed_dict=feed_dict)
@@ -346,13 +357,13 @@ class Model:
         :return:
         """
         os.makedirs(self.log_dir, exist_ok=True)
-        self.writer_train = tf.summary.FileWriter(
+        self.writer_train = tf.compat.v1.summary.FileWriter(
             os.path.join(self.log_dir, run_name + "/train"), graph=self.session.graph
         )
-        self.writer_val = tf.summary.FileWriter(
+        self.writer_val = tf.compat.v1.summary.FileWriter(
             os.path.join(self.log_dir, run_name + "/val"), graph=self.session.graph
         )
-        merged = tf.summary.merge_all()
+        merged = tf.compat.v1.summary.merge_all()
         self.merged_summary = merged
 
     def log_scalar(self, tag, value, writer=None):
@@ -365,7 +376,9 @@ class Model:
         if writer is None:
             writer = self.writer_val
         writer.add_summary(
-            tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)]),
+            tf.compat.v1.Summary(
+                value=[tf.compat.v1.Summary.Value(tag=tag, simple_value=value)]
+            ),
             global_step=self.step,
         )
 
@@ -382,7 +395,7 @@ class Model:
         counts, bin_edges = np.histogram(values, bins=bins)
 
         # Fill fields of histogram proto
-        hist = tf.HistogramProto()
+        hist = tf.compat.v1.HistogramProto()
         hist.min = float(np.min(values))
         hist.max = float(np.max(values))
         hist.num = int(np.prod(values.shape))
@@ -401,7 +414,9 @@ class Model:
             hist.bucket.append(c)
 
         # Create and write Summary
-        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, histo=hist)])
+        summary = tf.compat.v1.Summary(
+            value=[tf.compat.v1.Summary.Value(tag=tag, histo=hist)]
+        )
         writer.add_summary(summary, self.step)
         writer.flush()
 
@@ -416,9 +431,9 @@ class Model:
             writer = self.writer_val
 
         text_tensor = tf.make_tensor_proto(str(value), dtype=tf.string)
-        meta = tf.SummaryMetadata()
+        meta = tf.compat.v1.SummaryMetadata()
         meta.plugin_data.plugin_name = "text"
-        summary = tf.Summary()
+        summary = tf.compat.v1.Summary()
         summary.value.add(tag=tag, metadata=meta, tensor=text_tensor)
         writer.add_summary(summary)
 
@@ -438,16 +453,16 @@ class Model:
         plt.imsave(s, image, format="png")
 
         # Create an Image object
-        img_summary = tf.Summary.Image(
+        img_summary = tf.compat.v1.Summary.Image(
             encoded_image_string=s.getvalue(),
             height=image.shape[0],
             width=image.shape[1],
         )
         # Create a Summary value
-        im_summary = tf.Summary.Value(tag=tag, image=img_summary)
+        im_summary = tf.compat.v1.Summary.Value(tag=tag, image=img_summary)
 
         # Create and write Summary
-        summary = tf.Summary(value=[im_summary])
+        summary = tf.compat.v1.Summary(value=[im_summary])
         writer.add_summary(summary, self.step)
 
     def tune_novelty_detection(self):
@@ -487,7 +502,6 @@ class Model:
         data = self.classify_batch_extended(
             sample_X, [self.logits_out, self.hidden_out]
         )
-
         # run the 'assign' operations that update the models stored varaibles
         for var_name, node in zip(
             ["sample_logits", "sample_hidden"], [self.logits_out, self.hidden_out]
@@ -588,7 +602,6 @@ class Model:
         y = np.asarray(sample_y, dtype=np.int32)
 
         data = (X, y, segs)
-
         sprite_path = os.path.join(log_dir, "examples.png")
         meta_path = os.path.join(log_dir, "examples.tsv")
 
@@ -652,17 +665,17 @@ class Model:
         self.setup_summary_writers(run_name)
 
         # Run the initializer
-        init = tf.global_variables_initializer()
+        init = tf.compat.v1.global_variables_initializer()
         self.session.run(init)
 
         self.train_samples = self.setup_sample_training_data(log_dir, self.writer_train)
-
         # setup a saver
-        self.saver = tf.train.Saver(max_to_keep=1000)
+        self.saver = tf.compat.v1.train.Saver(max_to_keep=1000)
 
         print("Starting benchmark.")
         self.benchmark_model()
         print("Training...")
+        print(self.labels)
 
         for i in range(iterations):
 
@@ -682,7 +695,6 @@ class Model:
                 train_batch = self.datasets.train.next_batch(
                     self.eval_samples, force_no_augmentation=True
                 )
-
                 train_accuracy, train_loss = self.eval_batch(
                     train_batch[0], train_batch[1], writer=self.writer_train
                 )
@@ -699,31 +711,33 @@ class Model:
 
                 steps_remaining = iterations - i
                 step_time = prep_time + train_time + eval_time
-                eta = (
-                    steps_remaining
-                    * step_time
-                    / (examples_since_print / self.batch_size)
-                ) / 60
+                if examples_since_print > 0:
+                    eta = (
+                        steps_remaining
+                        * step_time
+                        / (examples_since_print / self.batch_size)
+                    ) / 60
 
-                print(
-                    "[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] eta {9:.1f} min".format(
-                        epoch,
-                        i,
-                        train_accuracy * 100,
-                        train_loss * 10,
-                        val_accuracy * 100,
-                        val_loss * 10,
-                        1000 * prep_time / examples_since_print,
-                        1000 * train_time / examples_since_print,
-                        1000 * eval_time / examples_since_print,
-                        eta,
+                    print(
+                        "[epoch={0:.2f}] step {1}, training={2:.1f}%/{3:.3f} validation={4:.1f}%/{5:.3f} [times:{6:.1f}ms,{7:.1f}ms,{8:.1f}ms] eta {9:.1f} min".format(
+                            epoch,
+                            i,
+                            train_accuracy * 100,
+                            train_loss * 10,
+                            val_accuracy * 100,
+                            val_loss * 10,
+                            1000 * prep_time / examples_since_print,
+                            1000 * train_time / examples_since_print,
+                            1000 * eval_time / examples_since_print,
+                            eta,
+                        )
                     )
-                )
 
                 # create a save point
                 self.save(
                     os.path.join(self.checkpoint_folder, "training-most-recent.sav")
                 )
+
                 # save the best model if validation score was good
                 if val_loss < best_val_loss:
                     print("Saving best validation model.")
@@ -862,21 +876,28 @@ class Model:
         """ Loads model and parameters from file. """
 
         logging.info("Loading model {}".format(filename))
-
-        saver = tf.train.import_meta_graph(filename + ".meta", clear_devices=True)
+        saver = tf.compat.v1.train.import_meta_graph(
+            filename + ".meta", clear_devices=True
+        )
         saver.restore(self.session, filename)
 
         # get additional hyper parameters
         stats = json.load(open(filename + ".txt", "r"))
-
         self.MODEL_NAME = stats["name"]
         self.MODEL_DESCRIPTION = stats["description"]
         self.labels = stats["labels"]
         self.eval_score = stats["score"]
         self.params = stats["hyperparams"]
-
         # connect up nodes.
         self.attach_nodes()
+
+    def load_meta(self, filename):
+        stats = json.load(open(filename + ".txt", "r"))
+        self.MODEL_NAME = stats["name"]
+        self.MODEL_DESCRIPTION = stats["description"]
+        self.labels = stats["labels"]
+        self.eval_score = stats["score"]
+        self.params = stats["hyperparams"]
 
     def save_params(self, filename):
         """ Saves model parameters. """
@@ -926,12 +947,12 @@ class Model:
         self.is_training = self.get_tensor("training")
         self.global_step = self.get_tensor("global_step")
 
-        self.state_out = self.get_tensor("state_out")
-        self.state_in = self.get_tensor("state_in")
+        if self.name != "model_cnn":
+            self.state_out = self.get_tensor("state_out")
+            self.state_in = self.get_tensor("state_in")
 
         self.logits_out = self.get_tensor("logits_out", none_if_not_found=True)
         self.hidden_out = self.get_tensor("hidden_out", none_if_not_found=True)
-        self.lstm_out = self.get_tensor("lstm_out")
 
     def freeze(self):
         """ Freezes graph so that no additional changes can be made. """
@@ -949,7 +970,6 @@ class Model:
             state = np.zeros([1, state_shape[1], state_shape[2]], dtype=np.float32)
 
         batch_X = frame[np.newaxis, np.newaxis, :]
-
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
         pred, state = self.session.run(
             [self.prediction, self.state_out], feed_dict=feed_dict
@@ -965,16 +985,13 @@ class Model:
         :param state: the previous state, or none for initial frame.
         :return: tuple (prediction, novelty, state).  Where prediction is score for each class, and novelty is a scalar
         """
-        if state is None:
-            state_shape = self.state_in.shape
-            state = np.zeros([1, state_shape[1], state_shape[2]], dtype=np.float32)
 
         batch_X = frame[np.newaxis, np.newaxis, :]
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
+
         pred, novelty, state = self.session.run(
             [self.prediction, self.novelty, self.state_out], feed_dict=feed_dict
         )
-
         return pred[0], novelty[0], state
 
     def create_summaries(self, name, var):
@@ -983,15 +1000,15 @@ class Model:
         :param name: the namespace for the summaries
         :param var: the tensor
         """
-        with tf.name_scope(name):
-            mean = tf.reduce_mean(var)
-            tf.summary.scalar("mean", mean)
-            with tf.name_scope("stddev"):
-                stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
-            tf.summary.scalar("stddev", stddev)
-            tf.summary.scalar("max", tf.reduce_max(var))
-            tf.summary.scalar("min", tf.reduce_min(var))
-            tf.summary.histogram("histogram", var)
+        with tf.compat.v1.name_scope(name):
+            mean = tf.reduce_mean(input_tensor=var)
+            tf.compat.v1.summary.scalar("mean", mean)
+            with tf.compat.v1.name_scope("stddev"):
+                stddev = tf.sqrt(tf.reduce_mean(input_tensor=tf.square(var - mean)))
+            tf.compat.v1.summary.scalar("stddev", stddev)
+            tf.compat.v1.summary.scalar("max", tf.reduce_max(input_tensor=var))
+            tf.compat.v1.summary.scalar("min", tf.reduce_min(input_tensor=var))
+            tf.compat.v1.summary.histogram("histogram", var)
 
     def save_input_summary(self, input, name, reference_level=None):
         """
@@ -1003,13 +1020,13 @@ class Model:
         # hard code dims
         W, H = 48, 48
 
-        mean = tf.reduce_mean(input)
-        tf.summary.histogram(name, input)
-        tf.summary.scalar(name + "/max", tf.reduce_max(input))
-        tf.summary.scalar(name + "/min", tf.reduce_min(input))
-        tf.summary.scalar(name + "/mean", mean)
-        tf.summary.scalar(
-            name + "/std", tf.sqrt(tf.reduce_mean(tf.square(input - mean)))
+        mean = tf.reduce_mean(input_tensor=input)
+        tf.compat.v1.summary.histogram(name, input)
+        tf.compat.v1.summary.scalar(name + "/max", tf.reduce_max(input_tensor=input))
+        tf.compat.v1.summary.scalar(name + "/min", tf.reduce_min(input_tensor=input))
+        tf.compat.v1.summary.scalar(name + "/mean", mean)
+        tf.compat.v1.summary.scalar(
+            name + "/std", tf.sqrt(tf.reduce_mean(input_tensor=tf.square(input - mean)))
         )
 
         if reference_level is not None:
@@ -1024,19 +1041,21 @@ class Model:
             input = input * mask + levels
             input = tf.abs(input)
 
-        tf.summary.image(name, input[-2:-1], max_outputs=1)
+        tf.compat.v1.summary.image(name, input[-2:-1], max_outputs=1)
 
     def create_writable_variable(self, name, shape):
         """ Creates a variable in the model that can be written to. """
-        var = tf.get_variable(
+        var = tf.compat.v1.get_variable(
             name=name,
-            initializer=tf.initializers.zeros,
+            initializer=tf.compat.v1.initializers.zeros,
             dtype=tf.float32,
             trainable=False,
             shape=shape,
         )
-        input = tf.placeholder(name=name + "_in", dtype=tf.float32, shape=shape)
-        assign_op = tf.assign(var, input, name=name + "_assign_op")
+        input = tf.compat.v1.placeholder(
+            name=name + "_in", dtype=tf.float32, shape=shape
+        )
+        assign_op = tf.compat.v1.assign(var, input, name=name + "_assign_op")
         return var
 
     def update_writeable_variable(self, name, data):
@@ -1044,3 +1063,62 @@ class Model:
         assign_op = self.session.graph.get_operation_by_name(name + "_assign_op")
         var_input = self.session.graph.get_tensor_by_name(name + "_in:0")
         self.session.run(assign_op, feed_dict={var_input: data})
+
+    def _build_memory(self, inputs):
+        if self.use_gru:
+            return self.lite_gru_cell(inputs)
+
+        return self.lite_lstm_cell(inputs)
+
+    def lite_gru_cell(self, inputs):
+        if self.tflite:
+            gru_cell = tf.keras.layers.GRUCell(self.params["gru_units"])
+        else:
+            gru_cell = tf.keras.layers.GRUCell(
+                self.params["gru_units"], dropout=self.params["keep_prob"]
+            )
+
+        rnn = tf.keras.layers.RNN(
+            gru_cell,
+            return_sequences=True,
+            return_state=True,
+            dtype=tf.float32,
+            unroll=self.tflite,
+        )
+        init_state = self.state_in
+
+        gru_outputs, gru_state = rnn(inputs, initial_state=init_state)
+        gru_output = tf.identity(gru_outputs[:, -1], "lstm_out")
+        logging.info(
+            "gru output shape: {} x {}".format(gru_outputs.shape[1], gru_output.shape)
+        )
+        logging.info("gru state shape: {}".format(gru_state.shape))
+        return gru_output, gru_state
+
+    def lite_lstm_cell(self, inputs):
+        if self.tflite:
+            lstm_cell = tf.keras.layers.LSTMCell(self.params["lstm_units"])
+            # tflite dont like the dropout
+        else:
+            lstm_cell = tf.keras.layers.LSTMCell(
+                self.params["lstm_units"], dropout=self.params["keep_prob"]
+            )
+        rnn = tf.keras.layers.RNN(
+            lstm_cell,
+            return_sequences=True,
+            return_state=True,
+            dtype=tf.float32,
+            unroll=self.tflite,
+        )
+        init_state = (self.state_in[:, :, 0], self.state_in[:, :, 1])
+        lstm_outputs, lstm_state_1, lstm_state_2 = rnn(inputs, initial_state=init_state)
+
+        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
+        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
+        logging.info(
+            "lstm output shape: {} x {}".format(
+                lstm_outputs.shape[1], lstm_output.shape
+            )
+        )
+        logging.info("lstm state shape: {}".format(lstm_state.shape))
+        return lstm_output, lstm_state

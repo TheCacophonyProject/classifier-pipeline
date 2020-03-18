@@ -25,10 +25,11 @@ class ClipClassifier(CPTVFileProcessor):
     # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
     FRAME_SKIP = 1
 
-    def __init__(self, config, tracking_config):
+    def __init__(self, config, tracking_config, model_file):
         """ Create an instance of a clip classifier"""
 
         super(ClipClassifier, self).__init__(config, tracking_config)
+        self.model_file = model_file
 
         # prediction record for each track
         self.predictions = Predictions(self.classifier.labels)
@@ -113,14 +114,12 @@ class ClipClassifier(CPTVFileProcessor):
                         )
                     )
                     return
-
                 frame = frames[0]
                 (
                     prediction,
                     novelty,
                     state,
                 ) = self.classifier.classify_frame_with_novelty(frame, state)
-
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
                 if fp_index is not None:
@@ -160,7 +159,6 @@ class ClipClassifier(CPTVFileProcessor):
             track_prediction.classified_frame(
                 region.frame_number, smooth_prediction, smooth_novelty
             )
-
         return track_prediction
 
     @property
@@ -176,9 +174,8 @@ class ClipClassifier(CPTVFileProcessor):
                 train_config=self.config.train,
                 session=tools.get_session(disable_gpu=not self.config.use_gpu),
             )
-            globs._classifier.load(self.config.classify.model)
+            globs._classifier.load(self.model_file)
             logging.info("classifier loaded ({})".format(datetime.now() - t0))
-
         return globs._classifier
 
     def get_meta_data(self, filename):
@@ -279,10 +276,9 @@ class ClipClassifier(CPTVFileProcessor):
         save_file["start_time"] = start.isoformat()
         save_file["end_time"] = end.isoformat()
         save_file["algorithm"] = {}
-        save_file["algorithm"]["model"] = self.config.classify.model
+        save_file["algorithm"]["model"] = self.model_file
         save_file["algorithm"]["tracker_version"] = clip.VERSION
         save_file["algorithm"]["tracker_config"] = self.tracker_config.as_dict()
-
         if meta_data:
             save_file["camera"] = meta_data["Device"]["devicename"]
             save_file["cptv_meta"] = meta_data

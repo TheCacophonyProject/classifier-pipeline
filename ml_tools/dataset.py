@@ -161,6 +161,11 @@ class TrackHeader:
             self.segments.append(segment)
 
     @property
+    def camera_id(self):
+        """ Unique name of this track. """
+        return "{}-{}".format(self.camera, self.location)
+
+    @property
     def track_id(self):
         """ Unique name of this track. """
         return TrackHeader.get_name(self.clip_id, self.track_number)
@@ -170,15 +175,24 @@ class TrackHeader:
         # name of the bin to assign this track to.
         # .dat file has no location attribute
         if self.__dict__.get("location") is not None:
-            return "{}-{}-{}-{}-{}".format(
+            return "{}-{}-{}-{}-{}-{}".format(
                 self.location[0],
                 self.location[1],
                 str(self.start_time.date()),
                 self.camera,
                 self.label,
+                self.clip_id,
             )
         else:
-            return str(self.start_time.date()) + "-" + self.camera + "-" + self.label
+            return (
+                str(self.start_time.date())
+                + "-"
+                + self.camera
+                + "-"
+                + self.label
+                + "-"
+                + self.clip_id
+            )
 
     @property
     def weight(self):
@@ -229,6 +243,35 @@ class TrackHeader:
 
     def __repr__(self):
         return self.track_id
+
+
+class CameraSegments:
+    def __init__(self, camera):
+        self.label_to_bins = {}
+        self.bins = {}
+        self.camera = camera
+        self.bin_segment_sum = {}
+        self.segment_sum = 0
+        self.segments = 0
+
+    def add_track(self, track_header):
+
+        if track_header.bin_id not in self.bins:
+            self.bins[track_header.bin_id] = []
+            self.bin_segment_sum[track_header.bin_id] = 0
+
+        if track_header.label not in self.label_to_bins:
+            self.label_to_bins[track_header.label] = []
+
+        if track_header.bin_id not in self.label_to_bins[track_header.label]:
+            self.label_to_bins[track_header.label].append(track_header.bin_id)
+
+        self.bins[track_header.bin_id].append(track_header)
+
+        segment_length = len(track_header.segments)
+        self.bin_segment_sum[track_header.bin_id] += segment_length
+        self.segment_sum += segment_length
+        self.segments += 1
 
 
 class SegmentHeader:
@@ -464,6 +507,7 @@ class Dataset:
     DEFAULT_INSET = 2
 
     def __init__(self, track_db: TrackDatabase, name="Dataset", config=None):
+        self.camera_bins = {}
 
         # database holding track data
         self.db = track_db
@@ -476,7 +520,8 @@ class Dataset:
         self.track_by_id = {}
         self.tracks_by_label = {}
         self.tracks_by_bin = {}
-
+        self.cameras = set()
+        self.camera_bins = {}
         # writes the frame motion into the center of the optical flow channels
         self.encode_frame_offsets_in_flow = False
 
@@ -615,7 +660,7 @@ class Dataset:
                 counter += 1
         return [counter, len(track_ids)]
 
-    def add_tracks(self, tracks):
+    def add_tracks(self, tracks, max_segments_per_track=None):
         """
         Adds list of tracks to dataset
         :param tracks: list of TrackHeader
@@ -623,13 +668,20 @@ class Dataset:
         """
         result = 0
         for track in tracks:
-            if self.add_track_header(track):
+            if self.add_track_header(track, max_segments_per_track):
                 result += 1
         return result
 
-    def add_track_header(self, track_header):
+    def add_track_header(self, track_header, max_segments_per_track=None):
         if track_header.track_id in self.track_by_id:
             return False
+
+        # gp test less segments more tracks
+        if max_segments_per_track is not None:
+            if len(track_header.segments) > max_segments_per_track:
+                segments = random.sample(track_header.segments, max_segments_per_track)
+                track_header.segments = segments
+
         self.tracks.append(track_header)
         self.add_track_to_mappings(track_header)
         self.segments.extend(track_header.segments)
@@ -650,14 +702,12 @@ class Dataset:
         if TrackHeader.get_name(clip_id, track_number) in self.track_by_id:
             return False
 
-        print("add_track clip {} track {}".format(clip_id, track_number))
         clip_meta = self.db.get_clip_meta(clip_id)
         track_meta = self.db.get_track_meta(clip_id, track_number)
         if self.filter_track(clip_meta, track_meta):
             return False
         track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
         self.tracks.append(track_header)
-        self.add_track_to_mappings(track_header)
 
         segment_frame_spacing = self.segment_spacing * track_header.frames_per_second
         segment_width = self.segment_length * track_header.frames_per_second
@@ -673,6 +723,7 @@ class Dataset:
             "segment_mass"
         ]
         self.segments.extend(track_header.segments)
+        self.add_track_to_mappings(track_header)
 
         return True
 
@@ -731,6 +782,39 @@ class Dataset:
             self.tracks_by_bin[track_header.bin_id] = []
 
         self.tracks_by_bin[track_header.bin_id].append(track_header)
+
+        self.tracks_by_bin[track_header.bin_id].append(track_header)
+
+        cam_bin = self.camera_bins.get(track_header.camera_id)
+        if cam_bin is None:
+            cam_bin = CameraSegments(track_header.camera_id)
+            self.camera_bins[track_header.camera_id] = cam_bin
+
+        cam_bin.add_track(track_header)
+
+    # used to see distribution of clips etc
+    # def add_bin_distribution_info(self, track_header):
+    #     cam_bin = self.camera_bins.get(track_header.camera)
+    #     if cam_bin is None:
+    #         cam_bin = {}
+    #         self.camera_bins[track_header.camera] = cam_bin
+    #     loc = "{}".format(track_header.location)
+    #     loc_bin = cam_bin.get(loc)
+    #     if loc_bin is None:
+    #         loc_bin = {}
+    #         cam_bin[loc] = loc_bin
+
+    #     date_bin = loc_bin.get(track_header.start_time.date())
+    #     if date_bin is None:
+    #         date_bin = {}
+    #         loc_bin[track_header.start_time.date()] = date_bin
+
+    #     label_bin = date_bin.get(track_header.label)
+    #     if label_bin is None:
+    #         label_bin = {}
+    #         date_bin[track_header.label] = label_bin
+
+    #     label_bin[track_header.clip_id] = track_header.location
 
     def filter_segments(self, avg_mass, ignore_labels=None):
         """
@@ -803,7 +887,7 @@ class Dataset:
         first_frame = segment.start_frame + (unused_frames // 2)
         last_frame = segment.start_frame + (unused_frames // 2) + segment_width
 
-        if augment:
+        if augment and unused_frames > 0:
             # jitter first frame
             prev_frames = first_frame
             post_frames = segment.track.frames - 1 - last_frame
@@ -1055,7 +1139,7 @@ class Dataset:
             result.extend(track.segments)
         return result
 
-    def start_async_load(self, buffer_size=64):
+    def start_async_load(self, buffer_size=128):
         """
         Starts async load process.
         """
@@ -1116,10 +1200,9 @@ def preloader(q, dataset):
             loads += 1
             if (time.time() - timer) > 1.0:
                 # logging.debug("{} segments per seconds {:.1f}".format(dataset.name, loads / (time.time() - timer)))
-                timer = time.time()
                 loads = 0
         else:
-            time.sleep(0.01)
+            time.sleep(0.1)
 
 
 def get_cropped_fraction(region: tools.Rectangle, width, height):

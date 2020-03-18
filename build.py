@@ -44,52 +44,6 @@ def show_segments_breakdown(dataset):
         print("  {:<20} {} segments".format(label, count))
 
 
-def split_dataset_predefined():
-    """Splits dataset into train / test / validation using a predefined set of camera-label allocations.
-
-    This method puts all tracks into 'camera-label' bins and then assigns certain bins to the validation set.
-    In this case the 'test' set is simply a subsample of the validation set. (as there are not enough unique cameras
-    at this point for 3 sets).
-
-    The advantages of this method are
-
-    1/ The datasets are fixed, even as more footage comes through
-    2/ Learning an animal on one camera / environment and predicting it on another is a very good indicator that that
-        algorthim has generalised
-    3/ Some adjustment can be made to make sure that the cameras used in the test / validation sets contain 'reasonable'
-        footage. (i.e. footage that is close to what we want to classify.
-
-    The disadvantages are that it requires seeing animals on multiple cameras, which we don't always have data for.
-    It can also be a bit wasteful as we sometimes dedicate a substantial portion of the data to some animal types.
-
-    A possible solution would be to note when (or if) the model over-fits then run on the entire dataset.
-
-    Another option would be k-fold validation.
-    """
-
-    validation_bins = [
-        ("bird", "akaroa03"),
-        ("hedgehog", "akaroa09"),
-        ("hedgehog", "akaroa03"),
-        ("hedgehog", "brent01"),
-        ("possum", "brent01"),
-        ("possum", "akaroa13"),
-        ("cat", "akaroa03"),
-        ("cat", "akaroa13"),
-        ("cat", "akaroa04"),
-        ("cat", "zip02"),
-        ("stoat", "akaroa09"),
-        ("stoat", "zip03"),
-        ("human", "akaroa09"),
-        ("rat", "akaroa04"),
-        ("rat", "akaroa10"),
-        ("rat", "zip01"),
-        ("false-positive", "akaroa09"),
-    ]
-
-    raise Exception("not implemented yet.")
-
-
 def prefill_bins(
     dataset,
     fill_datasets,
@@ -138,6 +92,10 @@ def split_dataset(db, dataset, build_config, prefill_dataset=None):
         counts.append(sum(len(track.segments) for track in tracks))
 
     train = Dataset(db, "train")
+    # 10 cameras
+    # 5 tests
+    # 5 train
+    # then change the names
     validation = Dataset(db, "validation")
     test = Dataset(db, "test")
 
@@ -221,8 +179,6 @@ def add_random_samples(
 
         bin_id = random.sample(sample_set, 1)[0]
         tracks = dataset.tracks_by_bin[bin_id]
-
-        tracks = dataset.tracks_by_bin[bin_id]
         for ds in fill_datasets:
             ds.add_tracks(tracks)
 
@@ -231,10 +187,17 @@ def add_random_samples(
 
 
 def needs_more_bins(dataset, label, used_bins, required_samples, required_bins):
-    return (
-        dataset.get_label_segments_count(label) < required_samples
-        or len(used_bins) < required_bins
+    if required_bins is None and required_samples is None:
+        return True
+
+    needs_samples = (
+        required_samples is None
+        or dataset.get_label_segments_count(label) < required_samples
     )
+    needs_bins = required_bins is None or len(used_bins) < required_bins
+    if required_bins is None or required_samples is None:
+        return needs_samples and needs_bins
+    return needs_samples or needs_bins
 
 
 def print_bin_segment_stats(bin_segment_mean, bin_segment_std, max_bin_segments):
@@ -253,6 +216,18 @@ def print_bin_stats(label, available_bins, heavy_bins, used_bins):
             label, len(available_bins), len(heavy_bins), len(used_bins[label])
         )
     )
+
+
+def print_cameras(train, validation, test):
+
+    print("Cameras per set:")
+    print("-" * 90)
+    print("Train")
+    print(train.cameras)
+    print("Validation")
+    print(validation.cameras)
+    print("Test")
+    print(test.cameras)
 
 
 def print_segments(dataset, train, validation, test):
@@ -294,6 +269,179 @@ def load_config():
     return config
 
 
+def print_data(dataset):
+    for camera, data in enumerate(dataset.camera_bins):
+        for loc, l_data in enumerate(data):
+            for tag, t_data in enumerate(l_data):
+                for date, d_data in enumerate(t_data):
+                    print("{},{},{},{},{}".format(camera, loc, tag, data, len(d_data)))
+
+
+def split_dataset_by_cameras(db, dataset, build_config):
+
+    train_percent = 0.7
+    validation_percent = 0.3
+    test_cameras = 1
+
+    train = Dataset(db, "train")
+    validation = Dataset(db, "validation")
+    test = Dataset(db, "test")
+    camera_count = len(dataset.camera_bins)
+    remaining_cameras = camera_count - test_cameras
+    validation_cameras = max(1, round(remaining_cameras * validation_percent))
+    remaining_cameras -= validation_cameras
+    train_cameras = remaining_cameras
+
+    camera_data = dataset.camera_bins
+    # want a test set that covers all labels
+    cameras = list(camera_data.values())
+    # randomize order
+    cameras.sort(key=lambda x: np.random.random_sample())
+    test_i = -1
+    test_data = []
+    for i, camera in enumerate(cameras):
+        if len(camera.label_to_bins.keys()) == len(dataset.labels):
+            test_data.append(camera)
+            test_i = i
+            break
+    assert len(test_data) > 0, "No test camera found with all labels"
+    del cameras[test_i]
+
+    train_data = cameras[:train_cameras]
+
+    required_samples = build_config.test_set_count
+    required_bins = build_config.test_set_bins
+
+    add_camera_data(
+        dataset.labels,
+        train,
+        train_data,
+        None,
+        None,
+        build_config.cap_bin_weight,
+        build_config.max_segments_per_track,
+    )
+
+    validate_data = cameras[train_cameras : train_cameras + validation_cameras]
+    add_camera_data(
+        dataset.labels,
+        validation,
+        validate_data,
+        None,
+        None,
+        build_config.cap_bin_weight,
+        build_config.max_segments_per_track,
+    )
+
+    # validation.add_cameras(validate_data)
+    add_camera_data(
+        dataset.labels,
+        test,
+        test_data,
+        required_samples,
+        required_bins,
+        build_config.max_segments_per_track,
+    )
+
+    # balance out the classes
+    train.balance_weights()
+    validation.balance_weights()
+
+    test.balance_resample(required_samples=build_config.test_set_count)
+
+    print_segments(dataset, train, validation, test)
+    print_cameras(train, validation, test)
+    return train, validation, test
+
+
+def add_random_camera_samples(
+    dataset,
+    camera_data,
+    sample_set,
+    label,
+    required_samples,
+    required_bins,
+    segments_per_track,
+):
+    """
+        add random samples from the sample_set to every dataset in 
+        fill_datasets until the bin requirements are met
+        Updates the bins in sample_set and used_bins
+        """
+    used_bins = []
+    num_cameras = len(sample_set)
+    cur_camera = 0
+    # 1 from each camera
+    while num_cameras > 0 and needs_more_bins(
+        dataset, label, used_bins, required_samples, required_bins
+    ):
+        camera_i, cam_bins = sample_set[cur_camera]
+
+        bin_id = random.sample(cam_bins, 1)[0]
+        tracks = camera_data[camera_i].bins[bin_id]
+        dataset.add_tracks(tracks, segments_per_track)
+        dataset.cameras.add(camera_data[camera_i].camera)
+
+        cam_bins.remove(bin_id)
+        used_bins.append(bin_id)
+
+        if len(cam_bins) == 0:
+            num_cameras -= 1
+            del sample_set[cur_camera]
+            if num_cameras > 0:
+                cur_camera %= num_cameras
+            continue
+
+        cur_camera += 1
+        cur_camera %= num_cameras
+    if num_cameras == 0:
+        print("ran out of data for {} dataset {}".format(label, dataset.name))
+
+
+def add_camera_data(
+    labels,
+    dataset,
+    cameras,
+    required_samples,
+    required_bins,
+    cap_bin_weight=None,
+    max_segments_per_track=None,
+):
+
+    counts = []
+
+    # assign bins to test and validation sets
+    # if we previously added bins from another dataset we are simply filling in the gaps here.
+    for camera_data in cameras:
+        counts.extend((camera_data.bin_segment_sum.values()))
+
+    for label in labels:
+        bins = []
+
+        for i, camera_data in enumerate(cameras):
+
+            if label not in camera_data.label_to_bins:
+                continue
+            bins.append((i, camera_data.label_to_bins[label]))
+
+        add_random_camera_samples(
+            dataset,
+            cameras,
+            bins,
+            label,
+            required_samples,
+            required_bins,
+            max_segments_per_track,
+        )
+
+    if cap_bin_weight is not None:
+        bin_segment_mean = np.mean(counts)
+        bin_segment_std = np.std(counts)
+        max_bin_segments = bin_segment_mean + bin_segment_std * cap_bin_weight
+
+        dataset.balance_bins(max_bin_segments)
+
+
 def main():
     init_logging()
 
@@ -301,9 +449,7 @@ def main():
     build_config = config.build
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
     dataset = Dataset(db, "dataset", config)
-
     tracks_loaded, total_tracks = dataset.load_tracks()
-
     print(
         "Loaded {}/{} tracks, found {:.1f}k segments".format(
             tracks_loaded, total_tracks, len(dataset.segments) / 1000
@@ -322,11 +468,12 @@ def main():
     print()
 
     print("Splitting data set into train / validation")
-    if build_config.use_previous_split:
-        split = get_previous_validation_bins(build_config.previous_split)
-        datasets = split_dataset(db, dataset, build_config, split)
-    else:
-        datasets = split_dataset(db, dataset, build_config)
+    datasets = split_dataset_by_cameras(db, dataset, build_config)
+    # if build_config.use_previous_split:
+    #     split = get_previous_validation_bins(build_config.previous_split)
+    #     datasets = split_dataset(db, dataset, build_config, split)
+    # else:
+    #     datasets = split_dataset(db, dataset, build_config)
 
     pickle.dump(datasets, open(dataset_db_path(config), "wb"))
 

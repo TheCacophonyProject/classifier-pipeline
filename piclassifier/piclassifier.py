@@ -53,7 +53,6 @@ class PiClassifier(Processor):
             self.fp_index = self.classifier.labels.index("false-positive")
         except ValueError:
             self.fp_index = None
-
         self.track_extractor = ClipTrackExtractor(
             self.config.tracking,
             self.config.use_opt_flow,
@@ -183,7 +182,6 @@ class PiClassifier(Processor):
                     p_frame, track_prediction.state
                 )
                 track_prediction.state = state
-
                 if self.fp_index is not None:
                     prediction[self.fp_index] *= 0.8
                 state *= 0.98

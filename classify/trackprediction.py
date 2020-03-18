@@ -67,7 +67,6 @@ class TrackPrediction:
     def classified_frame(self, frame_number, prediction, novelty):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
-
         self.max_novelty = max(self.max_novelty, novelty)
         self.novelty_sum += novelty
 

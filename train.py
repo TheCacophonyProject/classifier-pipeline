@@ -57,7 +57,7 @@ def main():
     conf, job_name = load_config()
 
     init_logging()
-    tf.logging.set_verbosity(3)
+    # tf.logging.set_verbosity(3)
 
     os.makedirs(conf.train.train_dir, exist_ok=True)
 

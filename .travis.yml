@@ -15,7 +15,7 @@ before_script:
 script:
 - pytest
 - ./check-style
-- python3 load.py -c smoketest/test-config.yaml
+- python3 load.py -r -c smoketest/test-config.yaml
 - python3 build.py -c smoketest/test-config.yaml
 - python3 motiontest.py --thermal-config-file smoketest/config.toml -c smoketest/test-config.yaml smoketest/clips/hedgehog.cptv
 - sudo mkdir /var/spool/cptv
