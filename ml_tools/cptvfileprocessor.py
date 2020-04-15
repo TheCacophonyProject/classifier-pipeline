@@ -12,7 +12,7 @@ def process_job(job):
     params = job[2]
 
     try:
-        processor.process_file(path, **params)
+        processor.process_file(path)
     except Exception:
         logging.exception("Warning - error processing job")
 
@@ -47,11 +47,11 @@ class CPTVFileProcessor:
 
         os.makedirs(config.classify.classify_folder, mode=0o775, exist_ok=True)
 
-    def process_file(self, filename, **kwargs):
+    def process_file(self, filename):
         """ The function to process an individual file. """
         raise Exception("Process file method must be overwritten in sub class.")
 
-    def process_all(self, root, **kwargs):
+    def process_all(self, root):
         if root is None:
             root = self.config.source_folder
 
@@ -61,7 +61,7 @@ class CPTVFileProcessor:
                 if os.path.splitext(name)[1] == ".cptv":
                     full_path = os.path.join(folder_path, name)
                     if self.needs_processing(full_path):
-                        jobs.append((self, full_path, kwargs))
+                        jobs.append((self, full_path))
 
         self._process_job_list(jobs)
 

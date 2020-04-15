@@ -7,7 +7,7 @@ from typing import Dict
 from datetime import datetime
 import numpy as np
 
-from classify.trackprediction import Predictions
+from classify.trackprediction import Predictions, TrackPrediction
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
 from ml_tools import tools
@@ -25,14 +25,13 @@ class ClipClassifier(CPTVFileProcessor):
     # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
     FRAME_SKIP = 1
 
-    def __init__(self, config, tracking_config, model_file):
+    def __init__(self, config, tracking_config, model_file=None):
         """ Create an instance of a clip classifier"""
 
         super(ClipClassifier, self).__init__(config, tracking_config)
         self.model_file = model_file
-
-        # prediction record for each track
-        self.predictions = Predictions(self.classifier.labels)
+        if model_file is None:
+            self.model_file = config.classify.model
 
         self.previewer = Previewer.create_if_required(config, config.classify.preview)
 
@@ -92,7 +91,7 @@ class ClipClassifier(CPTVFileProcessor):
         # go through making classifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         state = None
-        track_prediction = self.predictions.get_or_create_prediction(track)
+        track_prediction = TrackPrediction(track.get_id(), track.start_frame)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
             track_data = track.crop_by_region(frame, region)
@@ -213,12 +212,32 @@ class ClipClassifier(CPTVFileProcessor):
             )
         )[0]
 
-    def process_file(self, filename, **kwargs):
+    def process_file(self, filename):
         """
         Process a file extracting tracks and identifying them.
         :param filename: filename to process
         :param enable_preview: if true an MPEG preview file is created.
         """
+
+        clip, predictions = self.classify_file(filename)
+
+        classify_name = self.get_classify_filename(filename)
+        destination_folder = os.path.dirname(classify_name)
+        if not os.path.exists(destination_folder):
+            logging.info("Creating folder {}".format(destination_folder))
+            os.makedirs(destination_folder)
+        mpeg_filename = classify_name + ".mp4"
+        meta_filename = classify_name + ".txt"
+        if self.previewer:
+            logging.info("Exporting preview to '{}'".format(mpeg_filename))
+            self.previewer.export_clip_preview(mpeg_filename, clip, predictions)
+        logging.info("saving meta data")
+        self.save_metadata(filename, meta_filename, clip, predictions)
+
+    def classify_file(self, filename):
+
+        # prediction record for each track
+        predictions = Predictions(self.classifier.labels)
 
         if not os.path.exists(filename):
             raise Exception("File {} not found.".format(filename))
@@ -229,32 +248,14 @@ class ClipClassifier(CPTVFileProcessor):
         clip = Clip(self.tracker_config, filename)
         self.track_extractor.parse_clip(clip)
 
-        classify_name = self.get_classify_filename(filename)
-        destination_folder = os.path.dirname(classify_name)
-
-        if not os.path.exists(destination_folder):
-            logging.info("Creating folder {}".format(destination_folder))
-            os.makedirs(destination_folder)
-
-        mpeg_filename = classify_name + ".mp4"
-
-        meta_filename = classify_name + ".txt"
-
-        logging.info(os.path.basename(filename) + ":")
-
         for i, track in enumerate(clip.tracks):
             prediction = self.identify_track(clip, track)
+            predictions.prediction_per_track[track.get_id()] = prediction
+
             description = prediction.description(self.classifier.labels)
             logging.info(
                 " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
             )
-
-        if self.previewer:
-            logging.info("Exporting preview to '{}'".format(mpeg_filename))
-            self.previewer.export_clip_preview(mpeg_filename, clip, self.predictions)
-        logging.info("saving meta data")
-        self.save_metadata(filename, meta_filename, clip)
-        self.predictions.clear_predictions()
 
         if self.tracker_config.verbose:
             ms_per_frame = (
@@ -262,7 +263,9 @@ class ClipClassifier(CPTVFileProcessor):
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
 
-    def save_metadata(self, filename, meta_filename, clip):
+        return clip, predictions
+
+    def save_metadata(self, filename, meta_filename, clip, predictions):
         if self.cache_to_disk:
             clip.frame_buffer.remove_cache()
 
@@ -286,7 +289,7 @@ class ClipClassifier(CPTVFileProcessor):
         save_file["tracks"] = []
         for track in clip.tracks:
             track_info = {}
-            prediction = self.predictions.prediction_for(track.get_id())
+            prediction = predictions.prediction_for(track.get_id())
             start_s, end_s = clip.start_and_end_in_secs(track)
             save_file["tracks"].append(track_info)
             track_info["start_s"] = round(start_s, 2)

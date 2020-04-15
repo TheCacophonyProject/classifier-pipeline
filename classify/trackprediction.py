@@ -166,6 +166,12 @@ class TrackPrediction:
             return None
         return self.novelties[n]
 
+    def predicted_tag(self, labels):
+        index = self.best_label_index
+        if index is None:
+            return None
+        return labels[index]
+
     @property
     def best_label_index(self):
         if self.class_best_score is None:
