@@ -12,6 +12,7 @@ install:
 before_script:
 - pip install black
 - pip install gdown
+
 script:
 - pytest
 - ./check-style
