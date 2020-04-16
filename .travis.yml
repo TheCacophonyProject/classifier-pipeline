@@ -21,11 +21,10 @@ script:
 - python3 motiontest.py --thermal-config-file smoketest/config.toml -c smoketest/test-config.yaml smoketest/clips/hedgehog.cptv
 - sudo mkdir /var/spool/cptv
 - sudo /home/travis/virtualenv/python3.6.7/bin/python3 piclassify.py --cptv smoketest/clips/hedgehog.cptv  --thermal-config-file smoketest/config.toml -c smoketest/test-config.yaml
-- echo "import gdown
-gdown.download(\"https://drive.google.com/u/1/uc?id=1F55gbIjmil1hOV4kuW2rSZFA3RB69qez\", \"model_hq.tar\", quiet=False)" > download.py  
-- python3 download.py
+- python -c "import gdown
+gdown.download(\"https://drive.google.com/u/1/uc?id=1F55gbIjmil1hOV4kuW2rSZFA3RB69qez\", \"model_hq.tar\", quiet=False)"
 - mkdir model
-- tar -C model -xvf model_hq_09032020.tar 
+- tar -C model -xvf model_hq.tar 
 - python3 classify.py all -c smoketest/test-config.yaml -m model/training-best.sav
 
 
