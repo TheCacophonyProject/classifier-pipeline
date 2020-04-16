@@ -11,7 +11,7 @@ install:
 
 before_script:
 - pip install black
-
+- pip install gdown
 script:
 - pytest
 - ./check-style
@@ -20,7 +20,11 @@ script:
 - python3 motiontest.py --thermal-config-file smoketest/config.toml -c smoketest/test-config.yaml smoketest/clips/hedgehog.cptv
 - sudo mkdir /var/spool/cptv
 - sudo /home/travis/virtualenv/python3.6.7/bin/python3 piclassify.py --cptv smoketest/clips/hedgehog.cptv  --thermal-config-file smoketest/config.toml -c smoketest/test-config.yaml
-# - python3 classify.py all -c smoketest/test-config.yaml need model  
+- gdown https://drive.google.com/u/1/uc?id=1F55gbIjmil1hOV4kuW2rSZFA3RB69qez&export=download
+- fg
+- mkdir model
+- tar -C model -xvf model_hq_09032020.tar 
+- python3 classify.py all -c smoketest/test-config.yaml -m model/training-best.sav
 
 
 before_deploy:

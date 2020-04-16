@@ -11,12 +11,12 @@ from .testconfig import TestConfig
 
 
 class RecordingMatch:
-    def __init__(self, filename, id):
+    def __init__(self, filename, id_):
         self.matches = []
         self.unmatched_tracks = []
         self.unmatched_tests = []
         self.filename = filename
-        self.id = id
+        self.id = id_
 
     def match(self, expected, tracks, predictions):
         expected_tracks = sorted(expected.tracks, key=lambda x: x.start)
@@ -73,7 +73,6 @@ class RecordingMatch:
 
         if len(self.unmatched_tracks) > 0:
             f.write("Unmatched Tracks\n")
-
         for (what, track) in self.unmatched_tracks:
             f.write(
                 "{} - [{}s]Start-End {} - {}\n".format(
@@ -84,9 +83,9 @@ class RecordingMatch:
                 )
             )
         f.write("\n")
+
         if len(self.unmatched_tests) > 0:
             f.write("Unmatched Tests\n")
-
         for expected in self.unmatched_tests:
             f.write(
                 "{} - Opt[{}s] Start-End {} - {}, Expected[{}s] {} - {}\n".format(
@@ -118,7 +117,6 @@ class Match:
         self.track = track
 
     def write_results(self, f):
-
         f.write("{}{}{}\n".format("=" * 10, "Track", "=" * 90))
         tracking_s = "Improved Tracking" if self.improvement else "Worse Tracking"
         classify_s = (
@@ -178,8 +176,6 @@ class TestClassify:
             self.classifier_config, self.classifier_config.classify_tracking
         )
         self.test_config = TestConfig.load_from_file(args.tests)
-
-        # self.tests = self.load_tests(args.tests)
         self.results = []
         self.classifier = get_classifier(self.classifier_config)
 

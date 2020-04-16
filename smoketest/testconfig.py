@@ -85,13 +85,14 @@ class TestTrack(yaml.YAMLObject):
 
 
 def get_best_tag(track, min_confidence=0.6):
-    """ returns highest precidence non AI tag from the metadata """
+    """ returns highest precidence tag from the metadata """
 
     track_tags = track.get("TrackTags", [])
     track_tags = [tag for tag in track_tags if tag.get("confidence") > min_confidence]
 
     if not track_tags:
         return None
+
     # sort by original model so it has first pick if confidence is the same
     track_tags = sorted(
         track_tags, key=lambda x: 0 if model_name(x) == "Original" else 1,
@@ -107,6 +108,6 @@ def get_best_tag(track, min_confidence=0.6):
 
 def model_name(x):
     data = x.get("data")
-    if data is None or data == "":
+    if not data:
         return "Original"
     return data.get("name", "Original")
