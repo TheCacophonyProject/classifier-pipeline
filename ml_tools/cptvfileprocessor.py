@@ -9,7 +9,6 @@ def process_job(job):
     """ Just a wrapper to pass tupple containing (extractor, *params) to the process_file method. """
     processor = job[0]
     path = job[1]
-    params = job[2]
 
     try:
         processor.process_file(path)
