@@ -33,6 +33,8 @@ from piclassifier.motiondetector import is_affected_by_ffc
 
 
 class ClipTrackExtractor:
+    PREVIEW = "preview"
+
     def __init__(
         self, config, use_opt_flow, cache_to_disk, keep_frames=True, calc_stats=True
     ):
@@ -316,12 +318,19 @@ class ClipTrackExtractor:
                     )
                     continue
                 scores.append((score, track, region))
+
+        # makes tracking consistent by ordering by score then by frame since target then track id
+        scores.sort(
+            key=lambda record: record[1].frames_since_target_seen
+            + float(".{}".format(record[1]._id))
+        )
         scores.sort(key=lambda record: record[0])
 
         matched_tracks = set()
         for (score, track, region) in scores:
             if track in matched_tracks or region in used_regions:
                 continue
+
             track.add_region(region)
             matched_tracks.add(track)
             used_regions.add(region)

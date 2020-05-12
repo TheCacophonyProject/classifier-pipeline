@@ -21,7 +21,7 @@ import attr
 
 from config import config
 from .defaultconfig import DefaultConfig
-from track.trackextractor import TrackExtractor
+from load.cliptrackextractor import ClipTrackExtractor
 
 
 @attr.s
@@ -72,7 +72,7 @@ class TrackingConfig(DefaultConfig):
             background_calc=config.parse_options_param(
                 "background_calc",
                 tracking["background_calc"],
-                [TrackExtractor.PREVIEW, "stats"],
+                [ClipTrackExtractor.PREVIEW, "stats"],
             ),
             dynamic_thresh=tracking["preview"]["dynamic_thresh"],
             temp_thresh=tracking["preview"]["temp_thresh"],
@@ -115,7 +115,7 @@ class TrackingConfig(DefaultConfig):
     @classmethod
     def get_defaults(cls):
         return cls(
-            background_calc=TrackExtractor.PREVIEW,
+            background_calc=ClipTrackExtractor.PREVIEW,
             preview={"ignore_frames": 2, "temp_thresh": 2900, "delta_thresh": 20},
             stats={
                 "threshold_percentile": 99.9,
