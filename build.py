@@ -12,7 +12,7 @@ import numpy as np
 from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
-from ml_tools.dataset import Dataset, dataset_db_path
+from ml_tools.dataset import Dataset, dataset_db_path, CameraSegments
 
 
 MIN_BINS = 4
@@ -169,7 +169,7 @@ def add_random_samples(
     required_bins,
 ):
     """
-        add random samples from the sample_set to every dataset in 
+        add random samples from the sample_set to every dataset in
         fill_datasets until the bin requirements are met
         Updates the bins in sample_set and used_bins
         """
@@ -293,22 +293,60 @@ def split_dataset_by_cameras(db, dataset, build_config):
     train_cameras = remaining_cameras
 
     camera_data = dataset.camera_bins
+
+    wallaby = camera_data["Wallaby-None"]
+    del camera_data["Wallaby-None"]
+    wallaby_validate = CameraSegments("Wallaby-2")
+    remove = []
+    last_index = 0
+    print("wallaby bins", len(wallaby.label_to_bins["wallaby"]))
+    for i, bin_id in enumerate(wallaby.label_to_bins["wallaby"]):
+        bin = wallaby.bins[bin_id]
+        print("tracks for bin", len(bin), bin_id)
+        for track in bin:
+            wallaby_validate.add_track(track)
+            wallaby.segments -= 1
+            wallaby.segment_sum -= len(track.segments)
+        remove.append(bin_id)
+        last_index = i
+        if wallaby_validate.segments > 15:
+            break
+    wallaby.label_to_bins["wallaby"] = wallaby.label_to_bins["wallaby"][
+        last_index + 1 :
+    ]
+    print("wallaby length is now", len(wallaby.label_to_bins["wallaby"]))
+    for bin in remove:
+        del wallaby.bins[bin]
+
     # want a test set that covers all labels
     cameras = list(camera_data.values())
     # randomize order
     cameras.sort(key=lambda x: np.random.random_sample())
     test_i = -1
     test_data = []
+    most_diverse = None
+    most_diverse_i = None
+
     for i, camera in enumerate(cameras):
+        if most_diverse is None or len(camera.label_to_bins.keys()) > len(
+            camera.label_to_bins.keys()
+        ):
+            most_diverse = camera
+            most_diverse_i = i
         if len(camera.label_to_bins.keys()) == len(dataset.labels):
             test_data.append(camera)
             test_i = i
             break
-    assert len(test_data) > 0, "No test camera found with all labels"
+    assert most_diverse or len(test_data) > 0, "No test camera found with all labels"
+
+    if len(test_data) == 0:
+        test_data.append(most_diverse)
+        test_i = most_diverse_i
+    # assert len(test_data) > 0, "No test camera found with all labels"
     del cameras[test_i]
 
     train_data = cameras[:train_cameras]
-
+    train_data.append(wallaby)
     required_samples = build_config.test_set_count
     required_bins = build_config.test_set_bins
 
@@ -323,6 +361,8 @@ def split_dataset_by_cameras(db, dataset, build_config):
     )
 
     validate_data = cameras[train_cameras : train_cameras + validation_cameras]
+    validate_data.append(wallaby_validate)
+
     add_camera_data(
         dataset.labels,
         validation,
@@ -332,7 +372,7 @@ def split_dataset_by_cameras(db, dataset, build_config):
         build_config.cap_bin_weight,
         build_config.max_segments_per_track,
     )
-
+    print("validated")
     # validation.add_cameras(validate_data)
     add_camera_data(
         dataset.labels,
@@ -364,7 +404,7 @@ def add_random_camera_samples(
     segments_per_track,
 ):
     """
-        add random samples from the sample_set to every dataset in 
+        add random samples from the sample_set to every dataset in
         fill_datasets until the bin requirements are met
         Updates the bins in sample_set and used_bins
         """
@@ -376,7 +416,6 @@ def add_random_camera_samples(
         dataset, label, used_bins, required_samples, required_bins
     ):
         camera_i, cam_bins = sample_set[cur_camera]
-
         bin_id = random.sample(cam_bins, 1)[0]
         tracks = camera_data[camera_i].bins[bin_id]
         dataset.add_tracks(tracks, segments_per_track)
@@ -422,6 +461,7 @@ def add_camera_data(
 
             if label not in camera_data.label_to_bins:
                 continue
+
             bins.append((i, camera_data.label_to_bins[label]))
 
         add_random_camera_samples(
@@ -459,7 +499,6 @@ def main():
         if value != 0:
             print("  {} filtered {}".format(key, value))
     print()
-
     show_tracks_breakdown(dataset)
     print()
     show_segments_breakdown(dataset)
