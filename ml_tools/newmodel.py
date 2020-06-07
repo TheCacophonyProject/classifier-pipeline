@@ -14,9 +14,7 @@ class NewModel:
     MODEL_DESCRIPTION = ""
     VERSION = "0.3.0"
 
-    def __init__(
-        self, datasets_filename, train_config=None,
-    ):
+    def __init__(self, datasets_filename=None, train_config=None, labels=None):
         self.log_dir = os.path.join(train_config.train_dir, "logs")
         self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
         self.model = None
@@ -33,10 +31,14 @@ class NewModel:
             "batch_size": 16,
         }
         self.params.update(train_config.hyper_params)
-        self.import_dataset(datasets_filename)
-        self.build_model(len(self.datasets.train.labels))
+        self.labels = labels
+        if datasets_filename:
+            self.import_dataset(datasets_filename)
+            self.labels = self.datasets.train.labels
 
-    def build_model(self, labels):
+        self.build_model()
+
+    def build_model(self):
 
         base_model = tf.keras.applications.ResNet50(
             weights="imagenet", include_top=False, input_shape=(48, 48, 3)
@@ -66,12 +68,10 @@ class NewModel:
             x = tf.keras.layers.Dense(1024, activation="relu")(x)
             x = tf.keras.layers.Dense(1024, activation="relu")(x)
             x = tf.keras.layers.Dense(512, activation="relu")(x)
-            preds = tf.keras.layers.Dense(
-                len(self.datasets.train.labels), activation="softmax"
-            )(x)
+            preds = tf.keras.layers.Dense(len(self.labels), activation="softmax")(x)
             self.model = tf.keras.models.Model(inputs=base_model.input, outputs=preds)
 
-        print(self.model.summary())
+        # print(self.model.summary())
 
         #
         #         encoded_frames = tf.keras.layers.TimeDistributed(self.model)(input_layer)
@@ -85,11 +85,6 @@ class NewModel:
             loss=self.loss(),
             metrics=["accuracy", tf.keras.metrics.Precision()],
         )
-        # history = model.fit_generator(
-        #     generator=train_generator,
-        #     steps_per_epoch=train_generator.n // train_generator.batch_size,
-        #     epochs=5,
-        # )
 
     def lstm(self, inputs):
         lstm_cell = tf.keras.layers.LSTMCell(
@@ -130,6 +125,10 @@ class NewModel:
         optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
         return optimizer
 
+    def load_model(self, file):
+        self.model = tf.keras.models.load_model(file)
+        # self.model.load_model(file)
+
     def save(self):
         # create a save point
         self.model.save(os.path.join(self.checkpoint_folder, "resnet50"))
@@ -140,27 +139,27 @@ class NewModel:
     def train_model(self, epochs, run_name):
         train = DataGenerator(self.datasets.train, len(self.datasets.train.labels))
         validate = DataGenerator(
-            self.datasets.validation, len(self.datasets.validation.labels)
+            self.datasets.validation, len(self.datasets.train.labels)
         )
         # test = DataGenerator(self.datasets.test, len(self.datasets.test.labels))
 
         history = self.model.fit(train, validation_data=validate, epochs=epochs)
-        print(history.history)
         acc = history.history["acc"]
         loss = history.history["loss"]
-
+        print(acc)
+        print(loss)
         plt.figure()
         plt.plot(acc, label="Training Accuracy")
         plt.ylabel("Accuracy")
         plt.title("Training Accuracy")
-
+        plt.savefig("accuracy.png")
         plt.figure()
 
         plt.plot(loss, label="Training Loss")
         plt.ylabel("Loss")
         plt.title("Training Loss")
         plt.xlabel("epoch")
-        plt.show()
+        plt.savefig("loss.png")
 
     def import_dataset(self, dataset_filename, ignore_labels=None):
         """

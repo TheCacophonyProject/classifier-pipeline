@@ -329,7 +329,7 @@ def split_dataset_by_cameras(db, dataset, build_config):
 
     for i, camera in enumerate(cameras):
         if most_diverse is None or len(camera.label_to_bins.keys()) > len(
-            camera.label_to_bins.keys()
+            most_diverse.label_to_bins.keys()
         ):
             most_diverse = camera
             most_diverse_i = i
