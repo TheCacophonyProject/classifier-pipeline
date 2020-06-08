@@ -1,5 +1,8 @@
+from ml_tools.dataset import dataset_db_path
+
 import sys
 import argparse
+from ml_tools.datagenerator import DataGenerator
 
 import json
 import logging
@@ -60,7 +63,13 @@ class Test:
         """
         t0 = datetime.now()
         logging.info("classifier loading")
-        self.classifier = NewModel(train_config=self.config.train, labels=self.labels)
+        datasets_filename = dataset_db_path(self.config)
+
+        self.classifier = NewModel(
+            datasets_filename=datasets_filename,
+            train_config=self.config.train,
+            labels=self.labels,
+        )
 
         self.classifier.load_model(model_file)
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
@@ -351,4 +360,5 @@ model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
 test = Test(config, model_file)
-test.process_file(args.source)
+test.classifier.evaluate()
+# test.process_file(args.source)

@@ -445,9 +445,13 @@ class Preprocessor:
         assert len(data) == len(
             reference_level
         ), "Reference level shape and data shape not match."
+        ref_avg = np.average(reference_level)
+
+        # gp surely should take the same value from each frame
+        data[:, 0, :, :] -= ref_avg
 
         # reference thermal levels to the reference level
-        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
+        # data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
 
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
@@ -485,6 +489,8 @@ class Preprocessor:
                 # when we flip the frame remember to flip the horizontal velocity as well
                 data = np.flip(data, axis=3)
                 data[:, 2] = -data[:, 2]
+
+        np.clip(data[:, 0, :, :], a_min=0, a_max=None, out=data[:, 0, :, :])
         return data
 
 

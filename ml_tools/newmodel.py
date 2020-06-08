@@ -39,7 +39,7 @@ class NewModel:
         self.build_model()
 
     def build_model(self):
-
+        # note the model already applies batch_norm
         base_model = tf.keras.applications.ResNet50(
             weights="imagenet", include_top=False, input_shape=(48, 48, 3)
         )
@@ -137,29 +137,54 @@ class NewModel:
         pass
 
     def train_model(self, epochs, run_name):
-        train = DataGenerator(self.datasets.train, len(self.datasets.train.labels))
+        train = DataGenerator(
+            self.datasets.train,
+            len(self.datasets.train.labels),
+            lstm=self.params.get("lstm", False),
+            thermal_only=self.params.get("thermal_only", False),
+        )
         validate = DataGenerator(
-            self.datasets.validation, len(self.datasets.train.labels)
+            self.datasets.validation,
+            len(self.datasets.train.labels),
+            lstm=self.params.get("lstm", False),
+            thermal_only=self.params.get("thermal_only", False),
         )
         # test = DataGenerator(self.datasets.test, len(self.datasets.test.labels))
 
         history = self.model.fit(train, validation_data=validate, epochs=epochs)
-        acc = history.history["acc"]
-        loss = history.history["loss"]
-        print(acc)
-        print(loss)
-        plt.figure()
-        plt.plot(acc, label="Training Accuracy")
-        plt.ylabel("Accuracy")
-        plt.title("Training Accuracy")
-        plt.savefig("accuracy.png")
-        plt.figure()
+        self.save()
+        for key, value in history.history.items():
+            plt.figure()
+            plt.plot(value, label="Training {}".format(key))
+            plt.ylabel("{}".format(key))
+            plt.title("Training {}".format(key))
+            plt.savefig("{}.png".format(key))
 
-        plt.plot(loss, label="Training Loss")
-        plt.ylabel("Loss")
-        plt.title("Training Loss")
-        plt.xlabel("epoch")
-        plt.savefig("loss.png")
+    def evaluate(self):
+        # infer = self.model.signatures["serving_default"]
+        #
+        # labeling = infer(tf.constant(x))[self.model.output_names[0]]
+        test = DataGenerator(self.datasets.test, len(self.datasets.train.labels))
+        scalars = self.model.evaluate(test)
+        # print(self.model.metrics_name)
+
+        print(scalars)
+        # acc = history.history["acc"]
+        # loss = history.history["loss"]
+        # print(acc)
+        # print(loss)
+        # plt.figure()
+        # plt.plot(acc, label="Training Accuracy")
+        # plt.ylabel("Accuracy")
+        # plt.title("Training Accuracy")
+        # plt.savefig("accuracy.png")
+        # plt.figure()
+        #
+        # plt.plot(loss, label="Training Loss")
+        # plt.ylabel("Loss")
+        # plt.title("Training Loss")
+        # plt.xlabel("epoch")
+        # plt.savefig("loss.png")
 
     def import_dataset(self, dataset_filename, ignore_labels=None):
         """

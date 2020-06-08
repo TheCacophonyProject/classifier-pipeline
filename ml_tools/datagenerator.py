@@ -13,13 +13,14 @@ class DataGenerator(keras.utils.Sequence):
         dim=(48, 48, 3),
         n_channels=5,
         shuffle=True,
-        augment=False,
         sequence_size=27,
         lstm=False,
+        thermal_only=False,
     ):
+        self.thermal_only = thermal_only
         self.lstm = lstm
         self.dim = dim
-        self.augment = augment
+        self.augment = dataset.enable_augmentation
         self.batch_size = batch_size
         self.sequence_size = sequence_size
         self.dataset = dataset
@@ -81,8 +82,11 @@ class DataGenerator(keras.utils.Sequence):
                 ]
 
                 data = np.transpose(data, (1, 2, 3, 0))
-                # Store sample
-                X[i,] = data
+            elif self.thermal_only:
+                data = data[slice_i]
+                data = data[np.newaxis, 0, :, :]
+                data = np.repeat(data, 3, axis=0)
+                data = np.transpose(data, (1, 2, 0))
             else:
                 data = data[slice_i]
                 data = [
