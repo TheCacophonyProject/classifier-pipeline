@@ -3,22 +3,25 @@ import pickle
 import logging
 from collections import namedtuple
 from ml_tools.datagenerator import DataGenerator
+import numpy as np
 import os
 import matplotlib.pyplot as plt
+from ml_tools.dataset import Preprocessor
 
 
 class NewModel:
     """ Defines a deep learning model """
 
     MODEL_NAME = "new model"
-    MODEL_DESCRIPTION = ""
+    MODEL_DESCRIPTION = "Pre trained resnet"
     VERSION = "0.3.0"
 
-    def __init__(self, datasets_filename=None, train_config=None, labels=None):
+    def __init__(self, train_config=None, labels=None):
         self.log_dir = os.path.join(train_config.train_dir, "logs")
         self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
         self.model = None
-        self.datasets = namedtuple("Datasets", "train, validation, test")
+        self.datasets =None
+        # namedtuple("Datasets", "train, validation, test")
         # dictionary containing current hyper parameters
         self.params = {
             # augmentation
@@ -32,11 +35,11 @@ class NewModel:
         }
         self.params.update(train_config.hyper_params)
         self.labels = labels
-        if datasets_filename:
-            self.import_dataset(datasets_filename)
-            self.labels = self.datasets.train.labels
 
-        self.build_model()
+    def load_datasets(self, datasets_filename):
+        self.datasets = namedtuple("Datasets", "train, validation, test")
+        self.import_dataset(datasets_filename)
+        self.labels = self.datasets.train.labels
 
     def build_model(self):
         # note the model already applies batch_norm
@@ -125,6 +128,11 @@ class NewModel:
         optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
         return optimizer
 
+    def load_weights(self, file):
+        if not self.model:
+            self.build_model()
+        self.model.load_weights(file)
+
     def load_model(self, file):
         self.model = tf.keras.models.load_model(file)
         # self.model.load_model(file)
@@ -133,10 +141,21 @@ class NewModel:
         # create a save point
         self.model.save(os.path.join(self.checkpoint_folder, "resnet50"))
 
+        model_stats = {}
+        model_stats["name"] = self.MODEL_NAME
+        model_stats["description"] = self.MODEL_DESCRIPTION
+        model_stats["labels"] = self.labels
+        model_stats["hyperparams"] = self.params
+        model_stats["training_date"] = str(time.time())
+        model_stats["version"] = self.VERSION
+        json.dump(model_stats, open(os.path.join(self.checkpoint_folder, "resnet50","metadata.txt"), "w"), indent=4)
+
     def close(self):
         pass
 
     def train_model(self, epochs, run_name):
+        if not self.model:
+            self.build_model()
         train = DataGenerator(
             self.datasets.train,
             len(self.datasets.train.labels),
@@ -159,6 +178,29 @@ class NewModel:
             plt.ylabel("{}".format(key))
             plt.title("Training {}".format(key))
             plt.savefig("{}.png".format(key))
+
+    def preprocess(self, frame):
+        thermal_reference = np.median(frame[0])
+        frames = Preprocessor.apply([frame], [thermal_reference], default_inset=0)
+        return frames[0]
+
+
+    def classify_frame(self, frame):
+        frame = [
+            frame[0, :, :],
+            frame[1, :, :],
+            frame[4, :, :],
+        ]
+
+        frame = np.transpose(frame, (1, 2, 0))
+        frame = frame[
+            np.newaxis,
+        ]
+        # print(frame.shape)
+
+        output = self.model.predict(frame)
+        # print(output)
+        return output[0]
 
     def evaluate(self):
         # infer = self.model.signatures["serving_default"]

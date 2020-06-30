@@ -14,6 +14,7 @@ import filelock
 import datetime
 from multiprocessing import Lock
 import numpy as np
+from classify.trackprediction import TrackPrediction
 
 
 class HDF5Manager:
@@ -66,8 +67,51 @@ class TrackDatabase:
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             has_record = clip_id in clips and "finished" in clips[clip_id].attrs
+            if has_record:
+                return clips[clip_id]
+        return None
 
-        return has_record
+    def has_prediction(self, clip_id):
+        with HDF5Manager(self.database) as f:
+            clips = f["clips"]
+            has_record = clip_id in clips and "finished" in clips[clip_id].attrs
+            if has_record:
+                return "has_prediction" in clips[clip_id].attrs and clips[clip_id].attrs["has_prediction"]
+        return False
+
+    def add_predictions(self, clip_id, model):
+        with HDF5Manager(self.database, "a") as f:
+            clip = f["clips"][str(clip_id)]
+            for track_id in clip:
+                track_node =clip[track_id]
+
+                if track_node.attrs.get("tag", "") not in model.labels:
+                    continue
+                label_index = model.labels.index(track_node.attrs.get("tag", ""))
+
+                result = []
+                frames = list(track_node.keys())
+                frames.sort(key=int)
+                if len(frames) ==0 :
+                    return
+                track_prediction = TrackPrediction(track_id, int(frames[0]), True)
+                for frame_number in frames:
+                    frame = track_node[frame_number][:, :, :]
+                    frame = model.preprocess(frame)
+                    prediction = model.classify_frame(frame)
+                    track_prediction.classified_frame(frame_number, prediction)
+
+                node_attrs  = track_node.attrs
+                # print(node_attrs["tag"], "and now its", model.labels[track_prediction.best_label_index])
+
+                value, best = track_prediction.best_frame(label=label_index)
+                node_attrs["best_frame"] = [round(100*value,0), best[0][0]]
+                best =np.array(track_prediction.best_gap())
+                best[1] = round(100*best[1])
+                node_attrs["best_gap"] = np.int16(best)
+                preds = np.int16(np.around(100*np.array(track_prediction.predictions)))
+                node_attrs["predictions"] = preds
+            clip.attrs["has_prediction"]= True
 
     def create_clip(self, clip, overwrite=True):
         """
@@ -220,7 +264,7 @@ class TrackDatabase:
                 return False
 
     def add_track(
-        self, clip_id, track, track_data, opts=None, start_time=None, end_time=None
+        self, clip_id, track, track_data, opts=None, start_time=None, end_time=None, prediction = None
     ):
         """
         Adds track to database.
@@ -274,7 +318,14 @@ class TrackDatabase:
                 node_attrs["frames"] = frames
                 node_attrs["start_frame"] = track.start_frame
                 node_attrs["end_frame"] = track.end_frame
-                if track.confidence:
+                if prediction:
+                    value, best = prediction.best_frame()
+                    node_attrs["best_frame"] = [round(100*value,0), best[0][0]]
+                    best = np.around(100*prediction.best_gap(),2)
+                    node_attrs["best_gap"] = np.int16(best)
+                    node_attrs["predictions"] = np.int16(np.around(100*prediction.predictions))
+
+                elif track.confidence:
                     node_attrs["confidence"] = track.confidence
                 if start_time:
                     node_attrs["start_time"] = start_time.isoformat()

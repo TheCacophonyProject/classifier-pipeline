@@ -31,7 +31,8 @@ def train_model(run_name, conf, hyper_params):
             labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )
     elif conf.train.model == "new model":
-        model = NewModel(datasets_filename, train_config=conf.train)
+        model = NewModel(train_config=conf.train)
+        model.load_datasets(datasets_filename)
     else:
         model = ModelCRNN_LQ(
             labels=len(labels), train_config=conf.train, training=True, **hyper_params

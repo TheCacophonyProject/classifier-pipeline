@@ -17,11 +17,13 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-
+from datetime import datetime
 import os
 import logging
 import multiprocessing
 import time
+from ml_tools.dataset import dataset_db_path
+from ml_tools.newmodel import NewModel
 
 from ml_tools import tools
 from ml_tools.dataset import TrackChannels
@@ -41,6 +43,19 @@ def process_job(job):
 class ClipLoader:
     def __init__(self, config, reprocess=False):
 
+        self.labels = [
+            "hedgehog",
+            "false-positive",
+            "rodent",
+            "possum",
+            "cat",
+            "bird",
+            "mustelid",
+            "insect",
+            "human",
+            "leporidae",
+            "wallaby",
+        ]
         self.config = config
         os.makedirs(self.config.tracks_folder, mode=0o775, exist_ok=True)
         self.database = TrackDatabase(
@@ -60,6 +75,16 @@ class ClipLoader:
             or config.load.preview == Previewer.PREVIEW_TRACKING,
             self.config.load.cache_to_disk,
         )
+        self.classifier = None
+        self.load_classifier(self.config.classify.model)
+
+    def add_predictions(self):
+        clips = self.database.get_all_clip_ids()
+        for clip in clips:
+            # print("looking at clip", clip)
+            if not self.database.has_prediction(clip):
+                self.database.add_predictions(clip, self.classifier)
+                # return
 
     def process_all(self, root=None, checkpoint=None):
         if root is None:
@@ -98,6 +123,24 @@ class ClipLoader:
     def _get_dest_folder(self, filename):
         return os.path.join(self.config.tracks_folder, get_distributed_folder(filename))
 
+
+
+    def load_classifier(self, model_file):
+        """
+        Returns a classifier object, which is created on demand.
+        This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
+        """
+        t0 = datetime.now()
+        logging.info("classifier loading")
+
+        self.classifier = NewModel(
+            train_config=self.config.train,
+            labels=self.labels,
+        )
+
+        self.classifier.load_model(model_file)
+        logging.info("classifier loaded ({})".format(datetime.now() - t0))
+
     def _export_tracks(self, full_path, clip):
         """
         Writes tracks to a track database.
@@ -109,6 +152,8 @@ class ClipLoader:
         self.database.create_clip(clip)
 
         for track in clip.tracks:
+            track_prediction = TrackPrediction(track.get_id(), track.start_frame, True)
+
             start_time, end_time = clip.start_and_end_time_absolute(
                 track.start_s, track.end_s
             )
@@ -121,6 +166,13 @@ class ClipLoader:
                     frame[TrackChannels.filtered] = 0
                 track_data.append(frame)
 
+                thermal_reference = np.median(frame.thermal)
+                # classify
+                frames = Preprocessor.apply(
+                    [track_data], [thermal_reference], default_inset=0
+                )
+                frame = frames[0]
+                prediction = self.classifier.classify_frame(frame)
             self.database.add_track(
                 clip.get_id(),
                 track,
@@ -128,6 +180,7 @@ class ClipLoader:
                 opts=self.compression,
                 start_time=start_time,
                 end_time=end_time,
+                predictions = prediction
             )
 
     def _filter_clip_tracks(self, clip_metadata):
@@ -145,7 +198,7 @@ class ClipLoader:
         return valid_tracks
 
     def _track_meta_is_valid(self, track_meta):
-        """ 
+        """
         Tracks are valid if their confidence meets the threshold and they are
         not in the excluded_tags list, defined in the config.
         """
@@ -185,7 +238,11 @@ class ClipLoader:
 
         metadata = tools.load_clip_metadata(metadata_filename)
 
+
         if not self.reprocess and self.database.has_clip(str(metadata["id"])):
+            if self.database.has_prediction(str(metadata["id"])):
+                self.database.add_predictions(str(metadata["id"]), self.classifier)
+                add_predictions(str(metadata["id"]))
             logging.warning("Already loaded %s", filename)
             return
 
@@ -206,6 +263,7 @@ class ClipLoader:
             return
 
         # , self.config.load.cache_to_disk, self.config.use_opt_flow
+
 
         if self.track_config.enable_track_output:
             self._export_tracks(filename, clip)

@@ -35,6 +35,10 @@ def parse_params():
         "-v", "--verbose", action="count", help="Display additional information."
     )
     parser.add_argument(
+         "--predictions", action="count", help="Add prediction info"
+    )
+
+    parser.add_argument(
         "-r",
         "--reprocess",
         action="count",
@@ -70,10 +74,13 @@ def load_clips(config, args):
     target = args.target
     if target is None:
         target = config.source_folder
-    if os.path.splitext(target)[1] == ".cptv":
-        loader.process_file(target)
+    if args.predictions:
+        loader.add_predictions()
     else:
-        loader.process_all(target)
+        if os.path.splitext(target)[1] == ".cptv":
+            loader.process_file(target)
+        else:
+            loader.process_all(target)
 
 
 def print_opencl_info():

@@ -64,7 +64,7 @@ class TrackPrediction:
         self.max_novelty = max(self.novelties)
         self.novelty_sum = sum(self.novelties)
 
-    def classified_frame(self, frame_number, prediction, novelty):
+    def classified_frame(self, frame_number, prediction, novelty=0):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
         self.max_novelty = max(self.max_novelty, novelty)
@@ -135,7 +135,6 @@ class TrackPrediction:
         score = self.max_score
         if score is None:
             return None
-
         if score > 0.5:
             first_guess = "{} {:.1f} (clarity {:.1f})".format(
                 labels[self.best_label_index], score * 10, self.clarity * 10
@@ -188,7 +187,7 @@ class TrackPrediction:
     def clarity(self):
         """ The distance between our highest scoring class and second highest scoring class. """
         if self.class_best_score is None or len(self.class_best_score) < 2:
-            return None
+            return 0
         return self.max_score - self.score(2)
 
     def label_index(self, n=None):
@@ -208,11 +207,12 @@ class TrackPrediction:
             return None
         return float(sorted(self.class_best_score)[-n])
 
-    def label_at_time(self, frame_number, n=-1):
+    def label_at_time(self, frame_number, n=1):
         """ class label of nth best guess at a point in time."""
 
         if n is None:
             return None
+
         return int(np.argsort(self.predictions[frame_number])[-n])
 
     def score_at_time(self, frame_number, n=-1):
@@ -225,6 +225,26 @@ class TrackPrediction:
         logging.info(
             "Track {} is {}".format(self.track_id, self.get_classified_footer(labels))
         )
+
+    def best_gap(self, above= 0.7):
+        # frame and diff
+        best = (0,0)
+        for i, frame in enumerate(self.predictions):
+            a = np.argsort(frame)
+            if frame[a[-1]] > above:
+                gap = frame[a[-1]] - frame[a[-2]]
+                if gap > best[1]:
+                    best = [i,gap]
+        return best
+
+    def best_frame(self, label= None):
+        preds = self.predictions
+        if label:
+            preds = np.array(preds)[:,label]
+
+        max = np.amax(preds)
+        result = np.where(preds ==max)
+        return max,result
 
     def guesses(self, labels):
         guesses = [

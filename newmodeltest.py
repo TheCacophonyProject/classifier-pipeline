@@ -1,4 +1,5 @@
 from ml_tools.dataset import dataset_db_path
+import tensorflow as tf
 
 import sys
 import argparse
@@ -24,6 +25,7 @@ from ml_tools.dataset import Preprocessor
 from ml_tools.previewer import Previewer
 from track.track import Track
 from config.config import Config
+from mltools.dataset import Preprocessor
 
 
 class Test:
@@ -33,11 +35,14 @@ class Test:
         self.labels = [
             "hedgehog",
             "false-positive",
-            "possum",
-            "mustelid",
             "rodent",
+            "possum",
+            "cat",
             "bird",
+            "mustelid",
+            "insect",
             "human",
+            "leporidae",
             "wallaby",
         ]
         self.FRAME_SKIP = 1
@@ -63,33 +68,14 @@ class Test:
         """
         t0 = datetime.now()
         logging.info("classifier loading")
-        datasets_filename = dataset_db_path(self.config)
 
         self.classifier = NewModel(
-            datasets_filename=datasets_filename,
             train_config=self.config.train,
             labels=self.labels,
         )
 
         self.classifier.load_model(model_file)
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
-
-    def classify_frame(self, frame, state):
-        frame = [
-            frame[0, :, :],
-            frame[1, :, :],
-            frame[4, :, :],
-        ]
-
-        frame = np.transpose(frame, (1, 2, 0))
-        frame = frame[
-            np.newaxis,
-        ]
-        # print(frame.shape)
-
-        output = self.classifier.model.predict(frame)
-        # print(output)
-        return output[0], None, None
 
     def identify_track(self, clip: Clip, track: Track):
         """
@@ -112,13 +98,12 @@ class Test:
         prediction = 0.0
         novelty = 0.0
         try:
-            fp_index = self.labels.index("false-positive")
+            fp_index = self.classifier.labels.index("false-positive")
         except ValueError:
             fp_index = None
 
         # go through making classifications at each frame
         # note: we should probably be doing this every 9 frames or so.
-        state = None
         track_prediction = self.predictions.get_or_create_prediction(track)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
@@ -142,18 +127,13 @@ class Test:
                     )
                     return
                 frame = frames[0]
-                (prediction, novelty, state,) = self.classify_frame(frame, state)
+                prediction = self.classifier.classify_frame(frame)
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
                 if fp_index is not None:
                     prediction[fp_index] *= 0.8
 
-                # a little weight decay helps the model not lock into an initial impression.
-                # 0.98 represents a half life of around 3 seconds.
-                # state *= 0.98
 
-                # precondition on weight,  segments with small mass are weighted less as we can assume the error is
-                # higher here.
                 mass = region.mass
 
                 # we use the square-root here as the mass is in units squared.
@@ -182,6 +162,9 @@ class Test:
             track_prediction.classified_frame(
                 region.frame_number, smooth_prediction, smooth_novelty
             )
+
+            print(self.classifier.labels[track_prediction.label_at_time(-1)])
+
         return track_prediction
 
     def get_meta_data(self, filename):
@@ -250,7 +233,7 @@ class Test:
 
         for i, track in enumerate(clip.tracks):
             prediction = self.identify_track(clip, track)
-            description = prediction.description(self.classifier.labels)
+            description = prediction.description(self.labels)
             logging.info(
                 " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
             )
@@ -300,14 +283,14 @@ class Test:
             track_info["num_frames"] = prediction.num_frames
             track_info["frame_start"] = track.start_frame
             track_info["frame_end"] = track.end_frame
-            track_info["label"] = self.classifier.labels[prediction.best_label_index]
+            track_info["label"] = self.labels[prediction.best_label_index]
             track_info["confidence"] = round(prediction.score(), 2)
             track_info["clarity"] = round(prediction.clarity, 3)
             track_info["average_novelty"] = round(prediction.average_novelty, 2)
             track_info["max_novelty"] = round(prediction.max_novelty, 2)
             track_info["all_class_confidences"] = {}
             for i, value in enumerate(prediction.class_best_score):
-                label = self.classifier.labels[i]
+                label = self.labels[i]
                 track_info["all_class_confidences"][label] = round(float(value), 3)
 
             positions = []
@@ -360,5 +343,5 @@ model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
 test = Test(config, model_file)
-test.classifier.evaluate()
-# test.process_file(args.source)
+# test.classifier.evaluate()
+test.process_file(args.source)
