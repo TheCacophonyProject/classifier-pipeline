@@ -68,21 +68,24 @@ class TrackDatabase:
             clips = f["clips"]
             has_record = clip_id in clips and "finished" in clips[clip_id].attrs
             if has_record:
-                return clips[clip_id]
-        return None
+                return True
+        return False
 
     def has_prediction(self, clip_id):
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             has_record = clip_id in clips and "finished" in clips[clip_id].attrs
             if has_record:
-                return "has_prediction" in clips[clip_id].attrs and clips[clip_id].attrs["has_prediction"]
+                return clips[clip_id].attrs.get("has_prediction", False)
         return False
 
     def add_predictions(self, clip_id, model):
         with HDF5Manager(self.database, "a") as f:
             clip = f["clips"][str(clip_id)]
             for track_id in clip:
+                if track_id == "background_frame":
+                    continue
+
                 track_node =clip[track_id]
                 track_tag =track_node.attrs.get("tag", "")
                 if track_tag  not in model.labels:

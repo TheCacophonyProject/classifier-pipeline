@@ -167,7 +167,6 @@ class ClipLoader:
                 if not self.config.load.include_filtered_channel:
                     frame[TrackChannels.filtered] = 0
                 track_data.append(frame)
-                print(frame.shape)
 
                 thermal_reference = np.median(frame[0])
                 # classify
@@ -175,7 +174,6 @@ class ClipLoader:
                     [frame], [thermal_reference], default_inset=0
                 )
                 frame = frames[0]
-                print(frame.shape)
 
                 prediction = self.classifier.classify_frame(frame)
                 track_prediction.classified_frame(region.frame_number, prediction)
@@ -246,11 +244,10 @@ class ClipLoader:
 
         metadata = tools.load_clip_metadata(metadata_filename)
 
-
         if not self.reprocess and self.database.has_clip(str(metadata["id"])):
-            if self.database.has_prediction(str(metadata["id"])):
+            if not self.database.has_prediction(str(metadata["id"])):
+                print("doesn't have predictions")
                 self.database.add_predictions(str(metadata["id"]), self.classifier)
-                add_predictions(str(metadata["id"]))
             logging.warning("Already loaded %s", filename)
             return
 
