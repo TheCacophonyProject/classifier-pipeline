@@ -445,13 +445,13 @@ class Preprocessor:
         assert len(data) == len(
             reference_level
         ), "Reference level shape and data shape not match."
-        ref_avg = np.average(reference_level)
+        # ref_avg = np.average(reference_level)
 
         # gp surely should take the same value from each frame
-        data[:, 0, :, :] -= ref_avg
+        # data[:, 0, :, :] -= ref_avg
 
         # reference thermal levels to the reference level
-        # data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
+        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
 
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
@@ -874,7 +874,7 @@ class Dataset:
         )
         return data
 
-    def fetch_segment(self, segment: SegmentHeader, augment=False):
+    def fetch_segment(self, segment: SegmentHeader, augment=False, preprocess=True):
         """
         Fetches data for segment.
         :param segment: The segment header to fetch
@@ -915,15 +915,16 @@ class Dataset:
                 "invalid segment length %d, expected %d", len(data), len(segment_width)
             )
 
-        data = Preprocessor.apply(
-            data,
-            segment.track.frame_temp_median[first_frame:last_frame],
-            segment.track.frame_velocity[first_frame:last_frame],
-            augment=augment,
-            default_inset=self.DEFAULT_INSET,
-        )
+        if preprocess:
+            data = Preprocessor.apply(
+                data,
+                segment.track.frame_temp_median[first_frame:last_frame],
+                segment.track.frame_velocity[first_frame:last_frame],
+                augment=augment,
+                default_inset=self.DEFAULT_INSET,
+            )
 
-        return data
+        return data, segment.track.frame_temp_median[first_frame:last_frame]
 
     def sample_segment(self):
         """ Returns a random segment from weighted list. """

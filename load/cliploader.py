@@ -24,16 +24,18 @@ import multiprocessing
 import time
 from ml_tools.dataset import dataset_db_path
 from ml_tools.newmodel import NewModel
-
+import numpy as np
 from ml_tools import tools
 from ml_tools.dataset import TrackChannels
 from ml_tools import trackdatabase
+from ml_tools.dataset import Preprocessor
 from ml_tools.trackdatabase import TrackDatabase
 
 from ml_tools.previewer import Previewer
 from .clip import Clip
 from .cliptrackextractor import ClipTrackExtractor
 from track.track import Track
+from classify.trackprediction import TrackPrediction
 
 
 def process_job(job):
@@ -165,14 +167,19 @@ class ClipLoader:
                 if not self.config.load.include_filtered_channel:
                     frame[TrackChannels.filtered] = 0
                 track_data.append(frame)
+                print(frame.shape)
 
-                thermal_reference = np.median(frame.thermal)
+                thermal_reference = np.median(frame[0])
                 # classify
                 frames = Preprocessor.apply(
-                    [track_data], [thermal_reference], default_inset=0
+                    [frame], [thermal_reference], default_inset=0
                 )
                 frame = frames[0]
+                print(frame.shape)
+
                 prediction = self.classifier.classify_frame(frame)
+                track_prediction.classified_frame(region.frame_number, prediction)
+
             self.database.add_track(
                 clip.get_id(),
                 track,
@@ -180,7 +187,8 @@ class ClipLoader:
                 opts=self.compression,
                 start_time=start_time,
                 end_time=end_time,
-                predictions = prediction
+                prediction = track_prediction,
+                model = self.classifier
             )
 
     def _filter_clip_tracks(self, clip_metadata):

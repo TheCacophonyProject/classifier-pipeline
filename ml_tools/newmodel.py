@@ -5,6 +5,7 @@ from collections import namedtuple
 from ml_tools.datagenerator import DataGenerator
 import numpy as np
 import os
+import time
 import matplotlib.pyplot as plt
 from ml_tools.dataset import Preprocessor
 
@@ -178,6 +179,7 @@ class NewModel:
             plt.ylabel("{}".format(key))
             plt.title("Training {}".format(key))
             plt.savefig("{}.png".format(key))
+
 
     def preprocess(self, frame):
         thermal_reference = np.median(frame[0])

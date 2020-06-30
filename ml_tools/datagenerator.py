@@ -1,5 +1,10 @@
+import random
 import tensorflow.keras as keras
+import tensorflow as tf
 import numpy as np
+from matplotlib import pyplot
+
+FRAME_SIZE = 48
 
 
 class DataGenerator(keras.utils.Sequence):
@@ -76,7 +81,12 @@ class DataGenerator(keras.utils.Sequence):
                 slice_i = np.random.randint(26)
                  # index % 27
             segment = self.dataset.segments[segment_i]
-            data = self.dataset.fetch_segment(segment, augment=self.augment)
+            data,temp_median = self.dataset.fetch_segment(segment, augment=self.augment, preprocess=False)
+            # data = np.array(data)
+            data = np.float32(data[slice_i])
+            data[0] -= np.float32(temp_median)[slice_i]
+
+            data[0] = np.clip(data[0], a_min=0,a_max=None)
             if self.lstm:
                 data = [
                     data[:, 0, :, :],
@@ -86,7 +96,7 @@ class DataGenerator(keras.utils.Sequence):
 
                 data = np.transpose(data, (1, 2, 3, 0))
             elif self.thermal_only:
-                data = data[slice_i]
+                # data = data[slice_i]
                 data = data[np.newaxis, 0, :, :]
                 data = np.repeat(data, 3, axis=0)
                 data = np.transpose(data, (1, 2, 0))
@@ -100,6 +110,41 @@ class DataGenerator(keras.utils.Sequence):
 
                 data = np.transpose(data, (1, 2, 0))
                 # Store sample
+
+            if self.augment:
+                data = augement_frame(data)
+            else:
+                data = resize(data)
+
             X[i,] = data
             y[i] = self.dataset.labels.index(segment.label)
         return X, keras.utils.to_categorical(y, num_classes=self.n_classes)
+
+
+def resize(image):
+    sess = tf.Session();
+    with sess.as_default():
+        image = convert(image)
+        image = tf.image.resize_with_crop_or_pad(image, FRAME_SIZE, FRAME_SIZE) # Add 6 pixels of padding
+        return image.eval()
+
+def convert(image):
+    image = tf.image.convert_image_dtype(image, tf.float32) # Cast and normalize the image to [0,1]
+    return image
+
+def augement_frame(frame):
+    sess = tf.Session();
+    with sess.as_default():     # data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
+      image = convert(frame)
+      # print(image)
+      image = tf.image.convert_image_dtype(image, tf.float32) # Cast and normalize the image to [0,1]
+      image = tf.image.resize_with_crop_or_pad(image, FRAME_SIZE+6, FRAME_SIZE+6) # Add 6 pixels of padding
+      image = tf.image.random_crop(image, size=[FRAME_SIZE, FRAME_SIZE, 1]) # Random crop back to 28x28
+      if random.random() > 0.50:
+          rotated = tf.image.rot90(image)
+      if random.random() > 0.50:
+          flipped = tf.image.flip_left_right(image)
+      image = tf.image.random_brightness(image, max_delta=0.5) # Random brightness
+      # pyplot.show
+      # print(image.eval())
+      return image.eval()
