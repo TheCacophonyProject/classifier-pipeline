@@ -2,7 +2,7 @@ import random
 import tensorflow.keras as keras
 import tensorflow as tf
 import numpy as np
-from matplotlib import pyplot
+import matplotlib.pyplot as plt
 
 FRAME_SIZE = 48
 
@@ -29,7 +29,7 @@ class DataGenerator(keras.utils.Sequence):
         self.batch_size = batch_size
         self.sequence_size = sequence_size
         self.dataset = dataset
-        self.size = len(dataset.segments)
+        self.size = len(dataset.frame_samples)
         if not self.lstm:
             self.size = self.size
         self.indexes = np.arange(self.size)
@@ -38,7 +38,6 @@ class DataGenerator(keras.utils.Sequence):
         self.n_classes = num_classes
         self.n_channels = n_channels
         self.on_epoch_end()
-        print("augmenting?", self.augment)
 
     def __len__(self):
         "Denotes the number of batches per epoch"
@@ -53,7 +52,15 @@ class DataGenerator(keras.utils.Sequence):
         indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
 
         # Generate data
-        X, y = self._data(indexes)
+        X, y, clips = self._data(indexes)
+
+        # fig = plt.figure(figsize=(48, 48))
+        # for i in range(len(X)):
+        #     axes = fig.add_subplot(4,10, i+1)
+        #     axes.set_title("{} - {} track {} frame {}".format(self.labels[np.argmax(np.array(y[i]))], clips[i][0],clips[i][1],clips[i][2]))
+        #     plt.imshow(tf.keras.preprocessing.image.array_to_img(X[i]))
+        # plt.savefig("testimage.png")
+        # plt.close(fig)
         return X, y
 
     def on_epoch_end(self):
@@ -70,7 +77,7 @@ class DataGenerator(keras.utils.Sequence):
             X = np.empty((self.batch_size, *self.dim))
 
         y = np.empty((self.batch_size), dtype=int)
-
+        clips = []
         # Generate data
         for i, index in enumerate(indexes):
             if self.lstm:
@@ -80,12 +87,14 @@ class DataGenerator(keras.utils.Sequence):
                  # int(index / self.sequence_size)
                 slice_i = np.random.randint(26)
                  # index % 27
-            segment = self.dataset.segments[segment_i]
-            data,temp_median = self.dataset.fetch_segment(segment, augment=self.augment, preprocess=False)
-            # data = np.array(data)
-            data = np.float32(data[slice_i])
-            data[0] -= np.float32(temp_median)[slice_i]
+            segment = self.dataset.frame_samples[segment_i]
+            data,label = self.dataset.fetch_frame(segment[0],segment[1],segment[2])
 
+            # data,temp_median,velocity = self.dataset.fetch_segment(segment, augment=self.augment, preprocess=False)
+            # data = np.array(data)
+            # data = np.float32(data[slice_i])
+            median = np.median(data[0])
+            data[0] = np.float32(data[0]) - median
             data[0] = np.clip(data[0], a_min=0,a_max=None)
             if self.lstm:
                 data = [
@@ -113,19 +122,20 @@ class DataGenerator(keras.utils.Sequence):
 
             if self.augment:
                 data = augement_frame(data)
+                data = np.clip(data, a_min=0,a_max=None)
             else:
                 data = resize(data)
-
             X[i,] = data
-            y[i] = self.dataset.labels.index(segment.label)
-        return X, keras.utils.to_categorical(y, num_classes=self.n_classes)
+            y[i] = self.dataset.labels.index(label)
+            clips.append(segment)
+        return X, keras.utils.to_categorical(y, num_classes=self.n_classes), clips
 
 
 def resize(image):
-    sess = tf.Session();
-    with sess.as_default():
+    session = tf.Session()
+    with session.as_default():
         image = convert(image)
-        image = tf.image.resize_with_crop_or_pad(image, FRAME_SIZE, FRAME_SIZE) # Add 6 pixels of padding
+        image = tf.image.resize(image, [FRAME_SIZE, FRAME_SIZE])
         return image.eval()
 
 def convert(image):
@@ -133,18 +143,14 @@ def convert(image):
     return image
 
 def augement_frame(frame):
-    sess = tf.Session();
-    with sess.as_default():     # data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
-      image = convert(frame)
-      # print(image)
-      image = tf.image.convert_image_dtype(image, tf.float32) # Cast and normalize the image to [0,1]
-      image = tf.image.resize_with_crop_or_pad(image, FRAME_SIZE+6, FRAME_SIZE+6) # Add 6 pixels of padding
-      image = tf.image.random_crop(image, size=[FRAME_SIZE, FRAME_SIZE, 1]) # Random crop back to 28x28
-      if random.random() > 0.50:
+    session = tf.Session()
+    with  session.as_default():     # data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
+        image = convert(frame)
+        image = tf.image.resize(image, [FRAME_SIZE+random.randint(0,0), FRAME_SIZE+random.randint(0,0)]) # Add 6 pixels of padding
+        image = tf.image.random_crop(image, size=[FRAME_SIZE, FRAME_SIZE, 3]) # Random crop back to 28x28
+        if random.random() > 0.50:
           rotated = tf.image.rot90(image)
-      if random.random() > 0.50:
-          flipped = tf.image.flip_left_right(image)
-      image = tf.image.random_brightness(image, max_delta=0.5) # Random brightness
-      # pyplot.show
-      # print(image.eval())
-      return image.eval()
+        if random.random() > 0.50:
+            flipped = tf.image.flip_left_right(image)
+        image = tf.image.random_brightness(image, max_delta=0.05) # Random brightness
+        return image.eval()

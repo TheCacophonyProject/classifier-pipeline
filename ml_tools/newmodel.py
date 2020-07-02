@@ -7,6 +7,7 @@ import numpy as np
 import os
 import time
 import matplotlib.pyplot as plt
+import json
 from ml_tools.dataset import Preprocessor
 
 
@@ -133,14 +134,20 @@ class NewModel:
         if not self.model:
             self.build_model()
         self.model.load_weights(file)
+        self.load_meta(os.path.basename(file))
 
-    def load_model(self, file):
-        self.model = tf.keras.models.load_model(file)
-        # self.model.load_model(file)
+    def load_model(self, dir):
+        self.model = tf.keras.models.load_model(dir)
+        self.load_meta(dir)
+
+    def load_meta(self, dir):
+        meta =  json.load(open(dir + "metadata.txt", "r"))
+        self.params = meta["hyperparams"]
+        self.labels = meta["labels"]
 
     def save(self):
         # create a save point
-        self.model.save(os.path.join(self.checkpoint_folder, "resnet50"))
+        self.model.save(os.path.join(self.checkpoint_folder, "resnet50/"), save_format="tf")
 
         model_stats = {}
         model_stats["name"] = self.MODEL_NAME

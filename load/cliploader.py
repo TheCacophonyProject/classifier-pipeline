@@ -79,7 +79,8 @@ class ClipLoader:
         )
         self.classifier = None
         self.load_classifier(self.config.classify.model)
-
+        self.database.set_labels(self.classifier.labels)
+        print(self.database.get_labels())
     def add_predictions(self):
         clips = self.database.get_all_clip_ids()
         for clip in clips:
