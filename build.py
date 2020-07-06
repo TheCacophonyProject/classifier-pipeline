@@ -312,7 +312,7 @@ def split_dataset_by_cameras(db, dataset, build_config):
     test = Dataset(db, "test")
     camera_count = len(dataset.camera_bins)
     remaining_cameras = camera_count - test_cameras
-    validation_cameras = min(3, round(remaining_cameras * validation_percent))
+    validation_cameras = min(1, round(remaining_cameras * validation_percent))
     remaining_cameras -= validation_cameras
     train_cameras = remaining_cameras
 
