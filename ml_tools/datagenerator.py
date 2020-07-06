@@ -141,11 +141,11 @@ class DataGenerator(keras.utils.Sequence):
 
 
 def resize(image):
-    session = tf.Session()
-    with session.as_default():
-        image = convert(image)
-        image = tf.image.resize(image, [FRAME_SIZE, FRAME_SIZE])
-        return image.eval()
+    # session = tf.Session()
+    # with session.as_default():
+    image = convert(image)
+    image = tf.image.resize(image, [FRAME_SIZE, FRAME_SIZE])
+    return image.numpy()
 
 
 def convert(image):
@@ -156,19 +156,18 @@ def convert(image):
 
 
 def augement_frame(frame):
-    session = tf.Session()
-    with session.as_default():  # data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
-        image = convert(frame)
-        image = tf.image.resize(
-            image,
-            [FRAME_SIZE + random.randint(0, 0), FRAME_SIZE + random.randint(0, 0)],
-        )  # Add 6 pixels of padding
-        image = tf.image.random_crop(
-            image, size=[FRAME_SIZE, FRAME_SIZE, 3]
-        )  # Random crop back to 28x28
-        if random.random() > 0.50:
-            rotated = tf.image.rot90(image)
-        if random.random() > 0.50:
-            flipped = tf.image.flip_left_right(image)
-        # image = tf.image.random_brightness(image, max_delta=0.05)  # Random brightness
-        return image.eval()
+    # session = tf.Session()
+    # with session.as_default():  # data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
+    image = convert(frame)
+    image = tf.image.resize(
+        image, [FRAME_SIZE + random.randint(0, 0), FRAME_SIZE + random.randint(0, 0)],
+    )  # Add 6 pixels of padding
+    image = tf.image.random_crop(
+        image, size=[FRAME_SIZE, FRAME_SIZE, 3]
+    )  # Random crop back to 28x28
+    if random.random() > 0.50:
+        rotated = tf.image.rot90(image)
+    if random.random() > 0.50:
+        flipped = tf.image.flip_left_right(image)
+    # image = tf.image.random_brightness(image, max_delta=0.05)  # Random brightness
+    return image.numpy()

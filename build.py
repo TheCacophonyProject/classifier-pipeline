@@ -440,9 +440,9 @@ def add_random_camera_samples(
         # bin_id = random.sample(cam_bins, 1)[0]
         # tracks = camera_data[camera_i].bins[bin_id]
         track, f = camera.sample_frame(label)
-
-        dataset.add_track_header_frame(track, f)
-        dataset.cameras.add(camera.camera)
+        if f is not None:
+            dataset.add_track_header_frame(track, f)
+            dataset.cameras.add(camera.camera)
 
         if camera.label_tracks(label) == 0:
             num_cameras -= 1
