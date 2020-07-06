@@ -14,7 +14,7 @@ class DataGenerator(keras.utils.Sequence):
         self,
         dataset,
         num_classes,
-        batch_size=32,
+        batch_size,
         dim=(48, 48, 3),
         n_channels=5,
         shuffle=True,
@@ -26,6 +26,7 @@ class DataGenerator(keras.utils.Sequence):
         self.lstm = lstm
         self.dim = dim
         self.augment = dataset.enable_augmentation
+        # self.augment = False
         self.batch_size = batch_size
         self.sequence_size = sequence_size
         self.dataset = dataset
@@ -42,9 +43,9 @@ class DataGenerator(keras.utils.Sequence):
     def __len__(self):
         "Denotes the number of batches per epoch"
 
-        return int(np.floor(100 / self.batch_size))
+        # return int(np.floor(100 / self.batch_size))
 
-        # return int(np.floor(len(self.dataset.segments) / self.batch_size))
+        return int(np.floor(self.dataset.frames / self.batch_size))
 
     def __getitem__(self, index):
         "Generate one batch of data"
@@ -53,14 +54,22 @@ class DataGenerator(keras.utils.Sequence):
 
         # Generate data
         X, y, clips = self._data(indexes)
-
+        #
         # fig = plt.figure(figsize=(48, 48))
         # for i in range(len(X)):
-        #     axes = fig.add_subplot(4,10, i+1)
-        #     axes.set_title("{} - {} track {} frame {}".format(self.labels[np.argmax(np.array(y[i]))], clips[i][0],clips[i][1],clips[i][2]))
+        #     axes = fig.add_subplot(4, 10, i + 1)
+        #     axes.set_title(
+        #         "{} - {} track {} frame {}".format(
+        #             self.labels[np.argmax(np.array(y[i]))],
+        #             clips[i].clip_id,
+        #             clips[i].track_id,
+        #             clips[i].frame_num,
+        #         )
+        #     )
         #     plt.imshow(tf.keras.preprocessing.image.array_to_img(X[i]))
         # plt.savefig("testimage.png")
         # plt.close(fig)
+        # raise "save err"
         return X, y
 
     def on_epoch_end(self):
@@ -84,18 +93,18 @@ class DataGenerator(keras.utils.Sequence):
                 segment_i = index
             else:
                 segment_i = index
-                 # int(index / self.sequence_size)
+                # int(index / self.sequence_size)
                 slice_i = np.random.randint(26)
-                 # index % 27
-            segment = self.dataset.frame_samples[segment_i]
-            data,label = self.dataset.fetch_frame(segment[0],segment[1],segment[2])
+                # index % 27
+            frame = self.dataset.frame_samples[segment_i]
+            data, label = self.dataset.fetch_frame(frame)
 
             # data,temp_median,velocity = self.dataset.fetch_segment(segment, augment=self.augment, preprocess=False)
             # data = np.array(data)
             # data = np.float32(data[slice_i])
-            median = np.median(data[0])
-            data[0] = np.float32(data[0]) - median
-            data[0] = np.clip(data[0], a_min=0,a_max=None)
+            # median = np.percentile(data[0], 10)
+            # data[0] = np.float32(data[0]) - median
+            data[1] = np.clip(data[1], a_min=0, a_max=None)
             if self.lstm:
                 data = [
                     data[:, 0, :, :],
@@ -106,7 +115,7 @@ class DataGenerator(keras.utils.Sequence):
                 data = np.transpose(data, (1, 2, 3, 0))
             elif self.thermal_only:
                 # data = data[slice_i]
-                data = data[np.newaxis, 0, :, :]
+                data = data[np.newaxis, 1, :, :]
                 data = np.repeat(data, 3, axis=0)
                 data = np.transpose(data, (1, 2, 0))
             else:
@@ -122,12 +131,12 @@ class DataGenerator(keras.utils.Sequence):
 
             if self.augment:
                 data = augement_frame(data)
-                data = np.clip(data, a_min=0,a_max=None)
+                data = np.clip(data, a_min=0, a_max=None)
             else:
                 data = resize(data)
             X[i,] = data
             y[i] = self.dataset.labels.index(label)
-            clips.append(segment)
+            clips.append(frame)
         return X, keras.utils.to_categorical(y, num_classes=self.n_classes), clips
 
 
@@ -138,19 +147,28 @@ def resize(image):
         image = tf.image.resize(image, [FRAME_SIZE, FRAME_SIZE])
         return image.eval()
 
+
 def convert(image):
-    image = tf.image.convert_image_dtype(image, tf.float32) # Cast and normalize the image to [0,1]
+    image = tf.image.convert_image_dtype(
+        image, tf.float32
+    )  # Cast and normalize the image to [0,1]
     return image
+
 
 def augement_frame(frame):
     session = tf.Session()
-    with  session.as_default():     # data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
+    with session.as_default():  # data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
         image = convert(frame)
-        image = tf.image.resize(image, [FRAME_SIZE+random.randint(0,0), FRAME_SIZE+random.randint(0,0)]) # Add 6 pixels of padding
-        image = tf.image.random_crop(image, size=[FRAME_SIZE, FRAME_SIZE, 3]) # Random crop back to 28x28
+        image = tf.image.resize(
+            image,
+            [FRAME_SIZE + random.randint(0, 0), FRAME_SIZE + random.randint(0, 0)],
+        )  # Add 6 pixels of padding
+        image = tf.image.random_crop(
+            image, size=[FRAME_SIZE, FRAME_SIZE, 3]
+        )  # Random crop back to 28x28
         if random.random() > 0.50:
-          rotated = tf.image.rot90(image)
+            rotated = tf.image.rot90(image)
         if random.random() > 0.50:
             flipped = tf.image.flip_left_right(image)
-        image = tf.image.random_brightness(image, max_delta=0.05) # Random brightness
+        # image = tf.image.random_brightness(image, max_delta=0.05)  # Random brightness
         return image.eval()

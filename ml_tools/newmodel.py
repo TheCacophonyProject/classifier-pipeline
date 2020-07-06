@@ -8,7 +8,6 @@ import os
 import time
 import matplotlib.pyplot as plt
 import json
-from ml_tools.dataset import Preprocessor
 
 
 class NewModel:
@@ -22,7 +21,7 @@ class NewModel:
         self.log_dir = os.path.join(train_config.train_dir, "logs")
         self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
         self.model = None
-        self.datasets =None
+        self.datasets = None
         # namedtuple("Datasets", "train, validation, test")
         # dictionary containing current hyper parameters
         self.params = {
@@ -141,13 +140,15 @@ class NewModel:
         self.load_meta(dir)
 
     def load_meta(self, dir):
-        meta =  json.load(open(dir + "metadata.txt", "r"))
+        meta = json.load(open(dir + "metadata.txt", "r"))
         self.params = meta["hyperparams"]
         self.labels = meta["labels"]
 
     def save(self):
         # create a save point
-        self.model.save(os.path.join(self.checkpoint_folder, "resnet50/"), save_format="tf")
+        self.model.save(
+            os.path.join(self.checkpoint_folder, "resnet50/"), save_format="tf"
+        )
 
         model_stats = {}
         model_stats["name"] = self.MODEL_NAME
@@ -156,7 +157,11 @@ class NewModel:
         model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
         model_stats["version"] = self.VERSION
-        json.dump(model_stats, open(os.path.join(self.checkpoint_folder, "resnet50","metadata.txt"), "w"), indent=4)
+        json.dump(
+            model_stats,
+            open(os.path.join(self.checkpoint_folder, "resnet50", "metadata.txt"), "w"),
+            indent=4,
+        )
 
     def close(self):
         pass
@@ -167,12 +172,14 @@ class NewModel:
         train = DataGenerator(
             self.datasets.train,
             len(self.datasets.train.labels),
+            batch_size=self.params.get("batch_size", 32),
             lstm=self.params.get("lstm", False),
             thermal_only=self.params.get("thermal_only", False),
         )
         validate = DataGenerator(
             self.datasets.validation,
             len(self.datasets.train.labels),
+            batch_size=self.params.get("batch_size", 32),
             lstm=self.params.get("lstm", False),
             thermal_only=self.params.get("thermal_only", False),
         )
@@ -187,12 +194,10 @@ class NewModel:
             plt.title("Training {}".format(key))
             plt.savefig("{}.png".format(key))
 
-
     def preprocess(self, frame):
         thermal_reference = np.median(frame[0])
         frames = Preprocessor.apply([frame], [thermal_reference], default_inset=0)
         return frames[0]
-
 
     def classify_frame(self, frame):
         frame = [
@@ -260,10 +265,10 @@ class NewModel:
         self.labels = self.datasets.train.labels.copy()
 
         logging.info(
-            "Training segments: {0:.1f}k".format(self.datasets.train.rows / 1000)
+            "Training frames: {0:.1f}k".format(self.datasets.train.rows / 1000)
         )
         logging.info(
-            "Validation segments: {0:.1f}k".format(self.datasets.validation.rows / 1000)
+            "Validation frames: {0:.1f}k".format(self.datasets.validation.rows / 1000)
         )
         logging.info("Test segments: {0:.1f}k".format(self.datasets.test.rows / 1000))
         logging.info("Labels: {}".format(self.datasets.train.labels))

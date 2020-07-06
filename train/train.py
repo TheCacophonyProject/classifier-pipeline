@@ -5,7 +5,7 @@ import pickle
 import tensorflow as tf
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ, Model_CNN
 from model_resnet import ResnetModel
-from ml_tools.dataset import dataset_db_path
+from ml_tools.framedataset import dataset_db_path
 from ml_tools.newmodel import NewModel
 
 
