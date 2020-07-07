@@ -32,7 +32,6 @@ def train_model(run_name, conf, hyper_params):
         )
     elif conf.train.model == "new model":
         model = NewModel(train_config=conf.train)
-        model.load_datasets(datasets_filename)
     else:
         model = ModelCRNN_LQ(
             labels=len(labels), train_config=conf.train, training=True, **hyper_params
@@ -69,7 +68,6 @@ def train_model(run_name, conf, hyper_params):
     print()
     # print("Found {0:.1f}K training examples".format(model.rows / 1000))
     print()
-
     model.train_model(
         epochs=conf.train.epochs,
         run_name=run_name + " " + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),

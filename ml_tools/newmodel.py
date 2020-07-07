@@ -37,11 +37,6 @@ class NewModel:
         self.params.update(train_config.hyper_params)
         self.labels = labels
 
-    def load_datasets(self, datasets_filename):
-        self.datasets = namedtuple("Datasets", "train, validation, test")
-        self.import_dataset(datasets_filename)
-        self.labels = self.datasets.train.labels
-
     def build_model(self):
         # note the model already applies batch_norm
         base_model = tf.keras.applications.ResNet50(
@@ -71,9 +66,17 @@ class NewModel:
             x = tf.keras.layers.Dense(1024, activation="relu")(x)
             x = tf.keras.layers.Dense(1024, activation="relu")(x)
             x = tf.keras.layers.Dense(1024, activation="relu")(x)
+            x = tf.keras.layers.Dense(1024, activation="relu")(x)
             x = tf.keras.layers.Dense(512, activation="relu")(x)
             preds = tf.keras.layers.Dense(len(self.labels), activation="softmax")(x)
             self.model = tf.keras.models.Model(inputs=base_model.input, outputs=preds)
+
+        # for i, layer in enumerate(self.model.layers):
+        #     print(i, layer.name)
+        for layer in self.model.layers[:175]:
+            layer.trainable = False
+        for layer in self.model.layers[175:]:
+            layer.trainable = True
 
         # print(self.model.summary())
 
@@ -249,8 +252,11 @@ class NewModel:
         :param ignore_labels: (optional) these labels will be removed from the dataset.
         :return:
         """
+
+        self.datasets = namedtuple("Datasets", "train, validation, test")
         datasets = pickle.load(open(dataset_filename, "rb"))
         self.datasets.train, self.datasets.validation, self.datasets.test = datasets
+        self.labels = self.datasets.train.labels
 
         # augmentation really helps with reducing over-fitting, but test set should be fixed so we don't apply it there.
         self.datasets.train.enable_augmentation = self.params["augmentation"]
