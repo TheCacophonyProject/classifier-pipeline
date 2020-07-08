@@ -53,12 +53,18 @@ class NewModel:
 
     def build_model(self):
         # note the model already applies batch_norm
-        base_model = tf.keras.applications.ResNet50(
-            weights="imagenet", include_top=False, input_shape=(48, 48, 3)
+        base_model = tf.keras.applications.ResNet50V2(
+            weights="imagenet",
+            include_top=False,
+            input_shape=(48, 48, 3),
+            layers=tf.keras.layers,
         )
-        base_model.trainable = False
+        inputs = tf.keras.Input(shape=(48, 48, 3))
 
-        x = base_model.output
+        base_model.trainable = False
+        x = base_model(inputs, training=False)  # IMPORTANT
+
+        # x = base_model.output
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
         if self.params["lstm"]:
@@ -78,21 +84,21 @@ class NewModel:
             )(x)
             self.model = tf.keras.models.Model(input_layer, preds)
         else:
-            x = tf.keras.layers.Dense(1024)(x)
-            x = tf.keras.layers.Dense(1024)(x)
-            x = tf.keras.layers.Dense(1024)(x)
-            x = tf.keras.layers.Dense(1024)(x)
-            x = tf.keras.layers.Dense(512)(x)
+            # x = tf.keras.layers.Dense(1024)(x)
+            # x = tf.keras.layers.Dense(1024)(x)
+            # x = tf.keras.layers.Dense(1024)(x)
+            # x = tf.keras.layers.Dense(1024)(x)
+            x = tf.keras.layers.Dense(2)(x)
             preds = tf.keras.layers.Dense(len(self.labels), activation="softmax")(x)
-            self.model = tf.keras.models.Model(inputs=base_model.input, outputs=preds)
+            self.model = tf.keras.models.Model(inputs, outputs=preds)
 
-        for i, layer in enumerate(self.model.layers):
-            print(i, layer.name)
+        # for i, layer in enumerate(self.model.layers):
+        #     print(i, layer.name)
 
         for layer in self.model.layers[175:]:
             layer.trainable = True
 
-        self.model.summary()
+        # self.model.summary()
 
         #
         #         encoded_frames = tf.keras.layers.TimeDistributed(self.model)(input_layer)

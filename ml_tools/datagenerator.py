@@ -120,11 +120,13 @@ class DataGenerator(keras.utils.Sequence):
             elif self.thermal_only:
                 # data = data[slice_i]
                 data = data[1]
-                # max = np.amax(data)
-                # min = np.amin(data)
-                # data -= min
-                # data = data / (max - min)
+
+                max = np.amax(data)
+                min = np.amin(data)
+                data -= min
+                data = data / (max - min)
                 data = data[np.newaxis, :]
+
                 data = np.transpose(data, (1, 2, 0))
                 data = np.repeat(data, 3, axis=2)
             else:
@@ -144,7 +146,12 @@ class DataGenerator(keras.utils.Sequence):
             else:
                 data = resize(data)
                 data = np.clip(data, a_min=0, a_max=None)
-
+            data = data * 255.0
+            # print("grey", np.amax(data), data.shape)
+            data = tf.keras.applications.resnet_v2.preprocess_input(
+                data, data_format=None
+            )
+            # print("preprocess", np.amax(data))
             X[i,] = data
             y[i] = self.dataset.labels.index(label)
             clips.append(frame)
