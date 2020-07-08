@@ -36,8 +36,9 @@ def train_model(run_name, conf, hyper_params):
         model = ModelCRNN_LQ(
             labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )
-
+    #
     model.import_dataset(datasets_filename)
+    model.redo_data(3000, 1000, exclude=["rodent"])
     # display the data set summary
     print("Training on labels", labels)
     print()
@@ -58,7 +59,7 @@ def train_model(run_name, conf, hyper_params):
     print()
 
     for dataset in dsets:
-        print(dataset.labels)
+        print(dataset.name, "count", dataset.frames)
 
     print("Training started")
     print("---------------------")
@@ -68,6 +69,9 @@ def train_model(run_name, conf, hyper_params):
     print()
     # print("Found {0:.1f}K training examples".format(model.rows / 1000))
     print()
+    # model.test_hparams()
+    # return
+
     model.train_model(
         epochs=conf.train.epochs,
         run_name=run_name + " " + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),

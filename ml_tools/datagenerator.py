@@ -39,6 +39,7 @@ class DataGenerator(keras.utils.Sequence):
         self.n_classes = num_classes
         self.n_channels = n_channels
         self.on_epoch_end()
+        print("size", self.size, "labels", self.n_classes)
 
     def __len__(self):
         "Denotes the number of batches per epoch"
@@ -54,22 +55,25 @@ class DataGenerator(keras.utils.Sequence):
 
         # Generate data
         X, y, clips = self._data(indexes)
-        #
-        # fig = plt.figure(figsize=(48, 48))
-        # for i in range(len(X)):
-        #     axes = fig.add_subplot(4, 10, i + 1)
-        #     axes.set_title(
-        #         "{} - {} track {} frame {}".format(
-        #             self.labels[np.argmax(np.array(y[i]))],
-        #             clips[i].clip_id,
-        #             clips[i].track_id,
-        #             clips[i].frame_num,
+        # if self.dataset.name == "train":
+        #     #
+        #     fig = plt.figure(figsize=(48, 48))
+        #     for i in range(len(X)):
+        #         axes = fig.add_subplot(4, 10, i + 1)
+        #         axes.set_title(
+        #             "{} - {} track {} frame {}".format(
+        #                 self.labels[np.argmax(np.array(y[i]))],
+        #                 clips[i].clip_id,
+        #                 clips[i].track_id,
+        #                 clips[i].frame_num,
+        #             )
         #         )
-        #     )
-        #     plt.imshow(tf.keras.preprocessing.image.array_to_img(X[i]))
-        # plt.savefig("testimage.png")
-        # plt.close(fig)
-        # raise "save err"
+        #         plt.imshow(tf.keras.preprocessing.image.array_to_img(X[i]))
+        #     plt.savefig("testimage.png")
+        #     plt.close(fig)
+        #     print(y)
+        #     raise "save err"
+
         return X, y
 
     def on_epoch_end(self):
@@ -115,9 +119,14 @@ class DataGenerator(keras.utils.Sequence):
                 data = np.transpose(data, (1, 2, 3, 0))
             elif self.thermal_only:
                 # data = data[slice_i]
-                data = data[np.newaxis, 1, :, :]
-                data = np.repeat(data, 3, axis=0)
+                data = data[1]
+                max = np.amax(data)
+                min = np.amin(data)
+                data -= min
+                data = data / (max - min)
+                data = data[np.newaxis, :]
                 data = np.transpose(data, (1, 2, 0))
+                data = np.repeat(data, 3, axis=2)
             else:
                 data = data[slice_i]
                 data = [
@@ -134,10 +143,16 @@ class DataGenerator(keras.utils.Sequence):
                 data = np.clip(data, a_min=0, a_max=None)
             else:
                 data = resize(data)
+                data = np.clip(data, a_min=0, a_max=None)
+
             X[i,] = data
             y[i] = self.dataset.labels.index(label)
             clips.append(frame)
-        return X, keras.utils.to_categorical(y, num_classes=self.n_classes), clips
+        # print(y)
+        return X, y, clips
+
+
+# -        return X, keras.utils.to_categorical(y, num_classes=self.n_classes), clips
 
 
 def resize(image):

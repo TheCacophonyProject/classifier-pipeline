@@ -1,6 +1,8 @@
 import tensorflow as tf
 import pickle
 import logging
+from tensorboard.plugins.hparams import api as hp
+
 from collections import namedtuple
 from ml_tools.datagenerator import DataGenerator
 import numpy as np
@@ -8,6 +10,20 @@ import os
 import time
 import matplotlib.pyplot as plt
 import json
+
+import tensorflow_datasets as tfds
+
+tfds.disable_progress_bar()
+IMG_SIZE = 48
+HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([8, 64]))
+HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam", "sgd"]))
+HP_LEARNING_RATE = hp.HParam(
+    "learning_rate",
+    hp.Discrete([0.0001])
+    # , 0.001, 0.01, 0.1, 1.0])
+)
+
+METRIC_ACCURACY = "accuracy"
 
 
 class NewModel:
@@ -19,6 +35,8 @@ class NewModel:
 
     def __init__(self, train_config=None, labels=None):
         self.log_dir = os.path.join(train_config.train_dir, "logs")
+        os.makedirs(self.log_dir, exist_ok=True)
+
         self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
         self.model = None
         self.datasets = None
@@ -40,8 +58,9 @@ class NewModel:
     def build_model(self):
         # note the model already applies batch_norm
         base_model = tf.keras.applications.ResNet50(
-            weights="imagenet", include_top=False, input_shape=(48, 48, 3)
+            weights=None, include_top=False, input_shape=(48, 48, 3)
         )
+        base_model.trainable = False
 
         x = base_model.output
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
@@ -73,8 +92,7 @@ class NewModel:
 
         # for i, layer in enumerate(self.model.layers):
         #     print(i, layer.name)
-        for layer in self.model.layers[:175]:
-            layer.trainable = False
+
         for layer in self.model.layers[175:]:
             layer.trainable = True
 
@@ -88,9 +106,26 @@ class NewModel:
         # outputs = Dense(50, activation="softmax")(hidden_layer)
         # model = Model([inputs], outputs)
         self.model.compile(
+            optimizer=self.optimizer(), loss=self.loss(), metrics=["accuracy"],
+        )
+
+    def build_model_mobile(self):
+        # note the model already applies batch_norm
+        IMG_SHAPE = (IMG_SIZE, IMG_SIZE, 3)
+
+        base_model = tf.keras.applications.MobileNetV2(
+            input_shape=IMG_SHAPE, include_top=False, weights="imagenet"
+        )
+        base_model.trainable = False
+        x = base_model.output
+        x = tf.keras.layers.GlobalAveragePooling2D()(x)
+        x = tf.keras.layers.Dense(1)(x)
+        self.model = tf.keras.models.Model(inputs=base_model.input, outputs=x)
+
+        self.model.compile(
             optimizer=self.optimizer(),
-            loss=self.loss(),
-            metrics=["accuracy", tf.keras.metrics.Precision()],
+            loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
+            metrics=["accuracy"],
         )
 
     def lstm(self, inputs):
@@ -129,7 +164,7 @@ class NewModel:
             tf.compat.v1.summary.scalar("params/learning_rate", learning_rate)
         else:
             learning_rate = self.params["learning_rate"]  # setup optimizer
-        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate)
         return optimizer
 
     def load_weights(self, file):
@@ -171,13 +206,14 @@ class NewModel:
 
     def train_model(self, epochs, run_name):
         if not self.model:
-            self.build_model()
+            self.build_model_mobile()
         train = DataGenerator(
             self.datasets.train,
             len(self.datasets.train.labels),
             batch_size=self.params.get("batch_size", 32),
             lstm=self.params.get("lstm", False),
             thermal_only=self.params.get("thermal_only", False),
+            shuffle=True,
         )
         validate = DataGenerator(
             self.datasets.validation,
@@ -185,10 +221,13 @@ class NewModel:
             batch_size=self.params.get("batch_size", 32),
             lstm=self.params.get("lstm", False),
             thermal_only=self.params.get("thermal_only", False),
+            shuffle=True,
         )
         # test = DataGenerator(self.datasets.test, len(self.datasets.test.labels))
 
-        history = self.model.fit(train, validation_data=validate, epochs=epochs)
+        history = self.model.fit(
+            train, validation_data=validate, epochs=epochs, shuffle=False
+        )
         self.save()
         for key, value in history.history.items():
             plt.figure()
@@ -196,6 +235,73 @@ class NewModel:
             plt.ylabel("{}".format(key))
             plt.title("Training {}".format(key))
             plt.savefig("{}.png".format(key))
+
+    def train_test_model(self, hparams, log_dir, epochs=1):
+        # if not self.model:
+        self.build_model()
+        print(self.labels)
+        train = DataGenerator(
+            self.datasets.train,
+            len(self.datasets.train.labels),
+            batch_size=hparams.get(HP_BATCH_SIZE, 32),
+            lstm=self.params.get("lstm", False),
+            thermal_only=self.params.get("thermal_only", False),
+            shuffle=False,
+        )
+        validate = DataGenerator(
+            self.datasets.validation,
+            len(self.datasets.train.labels),
+            batch_size=hparams.get(HP_BATCH_SIZE, 32),
+            lstm=self.params.get("lstm", False),
+            thermal_only=self.params.get("thermal_only", False),
+            shuffle=False,
+        )
+        # test = DataGenerator(self.datasets.test, len(self.datasets.test.labels))
+        opt = None
+        learning_rate = hparams[HP_LEARNING_RATE]
+        if hparams[HP_OPTIMIZER] == "adam":
+            opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        else:
+            opt = tf.keras.optimizers.SGD(learning_rate=learning_rate)
+        self.model.compile(
+            optimizer=opt, loss=self.loss(), metrics=["accuracy"],
+        )
+        history = self.model.fit(train, epochs=epochs,)
+
+        _, accuracy = self.model.evaluate(validate)
+        print(accuracy)
+        return accuracy
+
+    def test_hparams(self):
+        dir = self.log_dir + "/hparam_tuning"
+        with tf.summary.create_file_writer(dir).as_default():
+            hp.hparams_config(
+                hparams=[HP_BATCH_SIZE, HP_LEARNING_RATE],
+                metrics=[hp.Metric(METRIC_ACCURACY, display_name="Accuracy")],
+            )
+        session_num = 0
+
+        for batch_size in HP_BATCH_SIZE.domain.values:
+            for learning_rate in HP_LEARNING_RATE.domain.values:
+                for optimizer in HP_OPTIMIZER.domain.values:
+                    hparams = {
+                        HP_BATCH_SIZE: batch_size,
+                        HP_LEARNING_RATE: learning_rate,
+                        HP_OPTIMIZER: optimizer,
+                    }
+                    run_name = "run-%d" % session_num
+                    print("--- Starting trial: %s" % run_name)
+                    print({h.name: hparams[h] for h in hparams})
+                    self.run(dir + "/" + run_name, hparams)
+                    session_num += 1
+
+    def run(self, log_dir, hparams):
+        with tf.summary.create_file_writer(log_dir).as_default():
+            hp.hparams(hparams)  # record the values used in this trial
+            accuracy = self.train_test_model(hparams, log_dir)
+            tf.summary.scalar(METRIC_ACCURACY, accuracy, step=1)
+
+    # tf.summary.scalar(METRIC_ACCURACY, accuracy, step=1)
 
     def preprocess(self, frame):
         thermal_reference = np.median(frame[0])
@@ -219,31 +325,28 @@ class NewModel:
         # print(output)
         return output[0]
 
-    def evaluate(self):
-        # infer = self.model.signatures["serving_default"]
-        #
-        # labeling = infer(tf.constant(x))[self.model.output_names[0]]
-        test = DataGenerator(self.datasets.test, len(self.datasets.train.labels))
-        scalars = self.model.evaluate(test)
-        # print(self.model.metrics_name)
+    def redo_data(self, train_cap=1000, validate_cap=500, exclude=[]):
 
-        print(scalars)
-        # acc = history.history["acc"]
-        # loss = history.history["loss"]
-        # print(acc)
-        # print(loss)
-        # plt.figure()
-        # plt.plot(acc, label="Training Accuracy")
-        # plt.ylabel("Accuracy")
-        # plt.title("Training Accuracy")
-        # plt.savefig("accuracy.png")
-        # plt.figure()
-        #
-        # plt.plot(loss, label="Training Loss")
-        # plt.ylabel("Loss")
-        # plt.title("Training Loss")
-        # plt.xlabel("epoch")
-        # plt.savefig("loss.png")
+        new_samples = []
+        for key, value in self.datasets.train.labels_to_samples.items():
+            if key in exclude:
+                self.datasets.train.labels.remove(key)
+                continue
+            np.random.shuffle(value)
+            for i in value[:train_cap]:
+                new_samples.append(self.datasets.train.frame_samples[i])
+        self.datasets.train.frame_samples = new_samples
+        new_samples = []
+        for key, value in self.datasets.validation.labels_to_samples.items():
+            if key in exclude:
+                self.datasets.validation.labels.remove(key)
+
+                continue
+            np.random.shuffle(value)
+            for i in value[:validate_cap]:
+                new_samples.append(self.datasets.validation.frame_samples[i])
+        self.datasets.validation.frame_samples = new_samples
+        self.labels = self.datasets.train.labels
 
     def import_dataset(self, dataset_filename, ignore_labels=None):
         """
@@ -262,13 +365,12 @@ class NewModel:
         self.datasets.train.enable_augmentation = self.params["augmentation"]
         self.datasets.train.scale_frequency = self.params["scale_frequency"]
         self.datasets.validation.enable_augmentation = False
+        # lf.params["augmentation"]
         self.datasets.test.enable_augmentation = False
         for dataset in datasets:
             if ignore_labels:
                 for label in ignore_labels:
                     dataset.remove_label(label)
-
-        self.labels = self.datasets.train.labels.copy()
 
         logging.info(
             "Training frames: {0:.1f}k".format(self.datasets.train.rows / 1000)
