@@ -120,10 +120,10 @@ class DataGenerator(keras.utils.Sequence):
             elif self.thermal_only:
                 # data = data[slice_i]
                 data = data[1]
-                max = np.amax(data)
-                min = np.amin(data)
-                data -= min
-                data = data / (max - min)
+                # max = np.amax(data)
+                # min = np.amin(data)
+                # data -= min
+                # data = data / (max - min)
                 data = data[np.newaxis, :]
                 data = np.transpose(data, (1, 2, 0))
                 data = np.repeat(data, 3, axis=2)
@@ -148,11 +148,8 @@ class DataGenerator(keras.utils.Sequence):
             X[i,] = data
             y[i] = self.dataset.labels.index(label)
             clips.append(frame)
-        # print(y)
-        return X, y, clips
 
-
-# -        return X, keras.utils.to_categorical(y, num_classes=self.n_classes), clips
+        return X, keras.utils.to_categorical(y, num_classes=self.n_classes), clips
 
 
 def resize(image):
@@ -184,5 +181,6 @@ def augement_frame(frame):
         rotated = tf.image.rot90(image)
     if random.random() > 0.50:
         flipped = tf.image.flip_left_right(image)
+    image = tf.image.random_contrast(image, 0.2, 0.5)
     # image = tf.image.random_brightness(image, max_delta=0.05)  # Random brightness
     return image.numpy()

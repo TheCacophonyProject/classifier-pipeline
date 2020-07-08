@@ -11,10 +11,6 @@ import time
 import matplotlib.pyplot as plt
 import json
 
-import tensorflow_datasets as tfds
-
-tfds.disable_progress_bar()
-IMG_SIZE = 48
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([8, 64]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam", "sgd"]))
 HP_LEARNING_RATE = hp.HParam(
@@ -58,7 +54,7 @@ class NewModel:
     def build_model(self):
         # note the model already applies batch_norm
         base_model = tf.keras.applications.ResNet50(
-            weights=None, include_top=False, input_shape=(48, 48, 3)
+            weights="imagenet", include_top=False, input_shape=(48, 48, 3)
         )
         base_model.trainable = False
 
@@ -82,21 +78,21 @@ class NewModel:
             )(x)
             self.model = tf.keras.models.Model(input_layer, preds)
         else:
-            x = tf.keras.layers.Dense(1024, activation="relu")(x)
-            x = tf.keras.layers.Dense(1024, activation="relu")(x)
-            x = tf.keras.layers.Dense(1024, activation="relu")(x)
-            x = tf.keras.layers.Dense(1024, activation="relu")(x)
-            x = tf.keras.layers.Dense(512, activation="relu")(x)
+            x = tf.keras.layers.Dense(1024)(x)
+            x = tf.keras.layers.Dense(1024)(x)
+            x = tf.keras.layers.Dense(1024)(x)
+            x = tf.keras.layers.Dense(1024)(x)
+            x = tf.keras.layers.Dense(512)(x)
             preds = tf.keras.layers.Dense(len(self.labels), activation="softmax")(x)
             self.model = tf.keras.models.Model(inputs=base_model.input, outputs=preds)
 
-        # for i, layer in enumerate(self.model.layers):
-        #     print(i, layer.name)
+        for i, layer in enumerate(self.model.layers):
+            print(i, layer.name)
 
         for layer in self.model.layers[175:]:
             layer.trainable = True
 
-        # print(self.model.summary())
+        self.model.summary()
 
         #
         #         encoded_frames = tf.keras.layers.TimeDistributed(self.model)(input_layer)
@@ -111,7 +107,7 @@ class NewModel:
 
     def build_model_mobile(self):
         # note the model already applies batch_norm
-        IMG_SHAPE = (IMG_SIZE, IMG_SIZE, 3)
+        IMG_SHAPE = (48, 48, 3)
 
         base_model = tf.keras.applications.MobileNetV2(
             input_shape=IMG_SHAPE, include_top=False, weights="imagenet"
@@ -206,7 +202,7 @@ class NewModel:
 
     def train_model(self, epochs, run_name):
         if not self.model:
-            self.build_model_mobile()
+            self.build_model()
         train = DataGenerator(
             self.datasets.train,
             len(self.datasets.train.labels),
@@ -319,10 +315,7 @@ class NewModel:
         frame = frame[
             np.newaxis,
         ]
-        # print(frame.shape)
-
         output = self.model.predict(frame)
-        # print(output)
         return output[0]
 
     def redo_data(self, train_cap=1000, validate_cap=500, exclude=[]):
