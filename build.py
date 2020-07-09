@@ -348,28 +348,17 @@ def split_dataset_by_cameras(db, dataset, build_config):
 
     # want a test set that covers all labels
     # randomize order
+    diverse = True
+    most_diverse = None
+
+    if diverse:
+        sorted(
+            cameras, key=lambda camera: len(camera.label_to_bins.keys()), reverse=True
+        )
+        most_diverse_i = np.random.randint(0, 3)
+        most_diverse = cameras[most_diverse_i]
+        del cameras[most_diverse_i]
     cameras.sort(key=lambda x: np.random.random_sample())
-    # test_i = -1
-    # test_data = []
-    # most_diverse = None
-    # most_diverse_i = None
-    #
-    # for i, camera in enumerate(cameras):
-    #     if most_diverse is None or len(camera.label_to_bins.keys()) > len(
-    #         most_diverse.label_to_bins.keys()
-    #     ):
-    #         most_diverse = camera
-    #         most_diverse_i = i
-    #     if len(camera.label_to_bins.keys()) == len(dataset.labels):
-    #         test_data.append(camera)
-    #         test_i = i
-    #         break
-    # assert most_diverse or len(test_data) > 0, "No test camera found with all labels"
-    #
-    # if len(test_data) == 0:
-    #     test_i = most_diverse_i
-    # # assert len(test_data) > 0, "No test camera found with all labels"
-    # del cameras[test_i]
 
     train_data = cameras[:train_cameras]
     # train_data.append(wallaby)
@@ -389,7 +378,8 @@ def split_dataset_by_cameras(db, dataset, build_config):
 
     validate_data = cameras[train_cameras : train_cameras + validation_cameras]
     # validate_data.append(wallaby_validate)
-    # validate_data.append(most_diverse)
+    if most_diverse:
+        validate_data.append(most_diverse)
 
     add_camera_data(
         dataset.labels,

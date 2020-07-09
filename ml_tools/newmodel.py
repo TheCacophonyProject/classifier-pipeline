@@ -271,7 +271,7 @@ class NewModel:
 
     def rebalance(self, train_cap=1000, validate_cap=500, exclude=[]):
         self.datasets.train.rebalance(train_cap, exclude)
-        self.datasets.validation.rebalance(train_cap, exclude)
+        self.datasets.validation.rebalance(validate_cap, exclude)
         self.set_labels()
 
     def set_labels(self):
