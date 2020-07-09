@@ -17,7 +17,6 @@ HP_DENSE_SIZES = hp.HParam(
     "dense_sizes",
     hp.Discrete(["1024 1024 1024 1024 512", "1024 512", "512", "128", "64"]),
 )
-# HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.RealInterval(0.0, 4.0))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam", "sgd"]))
@@ -26,7 +25,6 @@ HP_LEARNING_RATE = hp.HParam(
 )
 
 METRIC_ACCURACY = "accuracy"
-# DENSE_SIZES = [[1024, 1024, 1024, 1024, 512], [1024, 512], [512], [128], [64]]
 
 
 class NewModel:
@@ -55,60 +53,92 @@ class NewModel:
             "keep_prob": 0.5,
             # training
             "batch_size": 16,
+            "use_filtered": True,
         }
         self.params.update(train_config.hyper_params)
         self.labels = labels
         self.preserve_labels = preserve_labels
+        self.pretrained_model = self.params.get("model", "resnetv2")
+        self.preprocess_fn = None
 
-    def add_lstm(self, base_model):
-        model2 = tf.keras.models.Model(inputs=base_model.input, outputs=x)
+    def base_model(self, input_shape):
+        if self.pretrained_model == "resnet":
+            return (
+                tf.keras.applications.ResNet50(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.resnet.preprocess_input,
+            )
+        elif self.pretrained_model == "resnetv2":
+            return (
+                tf.keras.applications.ResNet50V2(
+                    weights="imagenet", include_top=False, input_shape=input_shape
+                ),
+                tf.keras.applications.resnet_v2.preprocess_input,
+            )
+        elif self.pretrained_model == "resnet152":
+            return (
+                tf.keras.applications.ResNet152(
+                    weights="imagenet", include_top=False, input_shape=input_shape
+                ),
+                tf.keras.applications.resnet.preprocess_input,
+            )
+        elif self.pretrained_model == "vgg16":
+            return (
+                tf.keras.applications.VGG16(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.vgg16.preprocess_input,
+            )
+        elif self.pretrained_model == "vgg19":
+            return (
+                tf.keras.applications.VGG19(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.vgg19.preprocess_input,
+            )
+        elif self.pretrained_model == "mobilenet":
+            return (
+                tf.keras.applications.MobileNetV2(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.mobilenet_v2.preprocess_input,
+            )
+        elif self.pretrained_model == "densenet121":
+            return (
+                tf.keras.applications.DenseNet121(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.densenet.preprocess_input,
+            )
+        elif self.pretrained_model == "inceptionresnetv2":
+            return (
+                tf.keras.applications.InceptionResNetV2(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.inception_resnet_v2.preprocess_input,
+            )
 
-        input_layer = tf.keras.Input(shape=(27, 48, 48, 3))
-        curr_layer = tf.keras.layers.TimeDistributed(model2)(input_layer)
-        curr_layer = tf.keras.layers.Reshape(target_shape=(27, 2048))(curr_layer)
-        memory_output, memory_state = self.lstm(curr_layer)
-        x = memory_output
-        x = tf.keras.layers.Dense(self.params["lstm_units"], activation="relu")(x)
-
-        tf.identity(memory_state, "state_out")
-
-        preds = tf.keras.layers.Dense(
-            len(self.datasets.train.labels), activation="softmax"
-        )(x)
-
-        self.model = tf.keras.models.Model(input_layer, preds)
-
-        #
-        #         encoded_frames = tf.keras.layers.TimeDistributed(self.model)(input_layer)
-        #         encoded_sequence = LSTM(512)(encoded_frames)
-        #
-        # hidden_layer = Dense(1024, activation="relu")(encoded_sequence)
-        # outputs = Dense(50, activation="softmax")(hidden_layer)
-        # model = Model([inputs], outputs)
+        raise "Could not find model" + self.pretrained_model
 
     def build_model(self, dense_sizes=[1024]):
         # note the model already applies batch_norm
-        base_model = tf.keras.applications.ResNet50V2(
-            weights="imagenet", include_top=False, input_shape=(48, 48, 3),
-        )
         inputs = tf.keras.Input(shape=(48, 48, 3))
+
+        base_model, preprocess = self.base_model((48, 48, 3))
+        self.preprocess_fn = preprocess
 
         base_model.trainable = False
         x = base_model(inputs, training=False)  # IMPORTANT
-
-        # x = base_model.output
-        x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
         if self.params["lstm"]:
             # not tested
             self.add_lstm(base_model)
         else:
+            x = tf.keras.layers.GlobalAveragePooling2D()(x)
+
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
-            # x = tf.keras.layers.Dense(1024)(x)
-            # x = tf.keras.layers.Dense(1024)(x)
-            # x = tf.keras.layers.Dense(1024)(x)
-            # x = tf.keras.layers.Dense(1024)(x)
             preds = tf.keras.layers.Dense(len(self.labels), activation="softmax")(x)
             self.model = tf.keras.models.Model(inputs, outputs=preds)
 
@@ -136,24 +166,6 @@ class NewModel:
             loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
             metrics=["accuracy"],
         )
-
-    def lstm(self, inputs):
-        lstm_cell = tf.keras.layers.LSTMCell(
-            self.params["lstm_units"], dropout=self.params["keep_prob"]
-        )
-        rnn = tf.keras.layers.RNN(
-            lstm_cell,
-            return_sequences=True,
-            return_state=True,
-            dtype=tf.float32,
-            unroll=False,
-        )
-        # whole_seq_output, final_memory_state, final_carry_state = rnn(inputs)
-        lstm_outputs, lstm_state_1, lstm_state_2 = rnn(inputs)
-
-        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
-        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-        return lstm_output, lstm_state
 
     def loss(self):
         softmax = tf.keras.losses.CategoricalCrossentropy(
@@ -223,16 +235,20 @@ class NewModel:
             len(self.datasets.train.labels),
             batch_size=self.params.get("batch_size", 32),
             lstm=self.params.get("lstm", False),
-            thermal_only=self.params.get("thermal_only", False),
+            use_thermal=self.params.get("use_thermal", False),
+            use_filtered=self.params.get("use_filtered", False),
             shuffle=True,
+            preprocess_fn=self.preprocess_fn,
         )
         validate = DataGenerator(
             self.datasets.validation,
             len(self.datasets.train.labels),
             batch_size=self.params.get("batch_size", 32),
             lstm=self.params.get("lstm", False),
-            thermal_only=self.params.get("thermal_only", False),
+            use_thermal=self.params.get("use_thermal", False),
+            use_filtered=self.params.get("use_filtered", False),
             shuffle=True,
+            preprocess_fn=self.preprocess_fn,
         )
         history = self.model.fit(
             train,
@@ -256,10 +272,13 @@ class NewModel:
         return frames[0]
 
     def classify_frame(self, frame):
+        data_i = 1
+        if self.params["use_thermal"]:
+            data_i = 0
         frame = [
-            frame[0, :, :],
-            frame[1, :, :],
-            frame[4, :, :],
+            frame[data_i, :, :],
+            frame[data_i, :, :],
+            frame[data_i, :, :],
         ]
 
         frame = np.transpose(frame, (1, 2, 0))
@@ -270,11 +289,14 @@ class NewModel:
         return output[0]
 
     def rebalance(self, train_cap=1000, validate_cap=500, exclude=[]):
+        # set samples of each label to have a maximum cap, and exclude labels
         self.datasets.train.rebalance(train_cap, exclude)
         self.datasets.validation.rebalance(validate_cap, exclude)
         self.set_labels()
 
     def set_labels(self):
+        # preserve label order if needed, this should be used when retraining
+        # on a model already trained with our data
         if self.labels is None or self.preserve_labels == False:
             self.labels = self.datasets.train.labels
         else:
@@ -332,6 +354,7 @@ class NewModel:
         _, accuracy = self.model.evaluate(dataset)
         print("learning1", accuracy)
 
+    # GRID SEARCH
     def train_test_model(self, hparams, log_dir, epochs=1):
         # if not self.model:
         dense_size = hparams[HP_DENSE_SIZES].split()
@@ -343,16 +366,20 @@ class NewModel:
             len(self.datasets.train.labels),
             batch_size=hparams.get(HP_BATCH_SIZE, 32),
             lstm=self.params.get("lstm", False),
-            thermal_only=self.params.get("thermal_only", False),
+            use_thermal=self.params.get("use_thermal", False),
+            use_filtered=self.params.get("use_filtered", False),
             shuffle=False,
+            preprocess_fn=self.preprocess_fn,
         )
         validate = DataGenerator(
             self.datasets.validation,
             len(self.datasets.train.labels),
             batch_size=hparams.get(HP_BATCH_SIZE, 32),
             lstm=self.params.get("lstm", False),
-            thermal_only=self.params.get("thermal_only", False),
+            use_thermal=self.params.get("use_thermal", False),
+            use_filtered=self.params.get("use_filtered", False),
             shuffle=False,
+            preprocess_fn=self.preprocess_fn,
         )
         opt = None
         learning_rate = hparams[HP_LEARNING_RATE]
@@ -405,3 +432,53 @@ class NewModel:
         return "\n".join(
             ["{}={}".format(param, value) for param, value in self.params.items()]
         )
+
+    def add_lstm(self, base_model):
+        model2 = tf.keras.models.Model(inputs=base_model.input, outputs=x)
+
+        input_layer = tf.keras.Input(shape=(27, 48, 48, 3))
+        curr_layer = tf.keras.layers.TimeDistributed(model2)(input_layer)
+        curr_layer = tf.keras.layers.Reshape(target_shape=(27, 2048))(curr_layer)
+        memory_output, memory_state = self.lstm(curr_layer)
+        x = memory_output
+        x = tf.keras.layers.Dense(self.params["lstm_units"], activation="relu")(x)
+
+        tf.identity(memory_state, "state_out")
+
+        preds = tf.keras.layers.Dense(
+            len(self.datasets.train.labels), activation="softmax"
+        )(x)
+
+        self.model = tf.keras.models.Model(input_layer, preds)
+
+        #
+        #         encoded_frames = tf.keras.layers.TimeDistributed(self.model)(input_layer)
+        #         encoded_sequence = LSTM(512)(encoded_frames)
+        #
+        # hidden_layer = Dense(1024, activation="relu")(encoded_sequence)
+        # outputs = Dense(50, activation="softmax")(hidden_layer)
+        # model = Model([inputs], outputs)
+
+    def lstm(self, inputs):
+        lstm_cell = tf.keras.layers.LSTMCell(
+            self.params["lstm_units"], dropout=self.params["keep_prob"]
+        )
+        rnn = tf.keras.layers.RNN(
+            lstm_cell,
+            return_sequences=True,
+            return_state=True,
+            dtype=tf.float32,
+            unroll=False,
+        )
+        # whole_seq_output, final_memory_state, final_carry_state = rnn(inputs)
+        lstm_outputs, lstm_state_1, lstm_state_2 = rnn(inputs)
+
+        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
+        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
+        return lstm_output, lstm_state
+
+
+def preprocess_resv2(data):
+    data = data * 255.0
+    data = tf.keras.applications.resnet_v2.preprocess_input(data, data_format=None)
+    return data

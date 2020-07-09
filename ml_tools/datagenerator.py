@@ -4,6 +4,7 @@ import tensorflow.keras as keras
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
+from ml_tools.dataset import TrackChannels
 
 FRAME_SIZE = 48
 
@@ -16,18 +17,24 @@ class DataGenerator(keras.utils.Sequence):
         dataset,
         num_classes,
         batch_size,
+        preprocess_fn=None,
         dim=(48, 48, 3),
         n_channels=5,
         shuffle=True,
         sequence_size=27,
         lstm=False,
-        thermal_only=False,
+        use_thermal=False,
+        use_filtered=False,
     ):
-        self.thermal_only = thermal_only
+        self.preprocess_fn = preprocess_fn
+        self.use_thermal = use_thermal
+        self.use_filtered = use_filtered
         self.lstm = lstm
+        # default
+        if not self.use_thermal and not self.use_filtered and not self.lstm:
+            self.use_filtered = True
         self.dim = dim
         self.augment = dataset.enable_augmentation
-        # self.augment = False
         self.batch_size = batch_size
         self.sequence_size = sequence_size
         self.dataset = dataset
@@ -40,12 +47,9 @@ class DataGenerator(keras.utils.Sequence):
         self.n_classes = num_classes
         self.n_channels = n_channels
         self.on_epoch_end()
-        print("size", self.size, "labels", self.n_classes)
 
     def __len__(self):
         "Denotes the number of batches per epoch"
-
-        # return int(np.floor(2000 / self.batch_size))
 
         return int(np.floor(self.dataset.frames / self.batch_size))
 
@@ -94,22 +98,10 @@ class DataGenerator(keras.utils.Sequence):
         clips = []
         # Generate data
         for i, index in enumerate(indexes):
-            if self.lstm:
-                segment_i = index
-            else:
-                segment_i = index
-                # int(index / self.sequence_size)
-                slice_i = np.random.randint(26)
-                # index % 27
+            segment_i = index
             frame = self.dataset.frame_samples[segment_i]
             data, label = self.dataset.fetch_frame(frame)
 
-            # data,temp_median,velocity = self.dataset.fetch_segment(segment, augment=self.augment, preprocess=False)
-            # data = np.array(data)
-            # data = np.float32(data[slice_i])
-            # median = np.percentile(data[0], 10)
-            # data[0] = np.float32(data[0]) - median
-            data[1] = np.clip(data[1], a_min=0, a_max=None)
             if self.lstm:
                 data = [
                     data[:, 0, :, :],
@@ -118,9 +110,14 @@ class DataGenerator(keras.utils.Sequence):
                 ]
 
                 data = np.transpose(data, (1, 2, 3, 0))
-            elif self.thermal_only:
-                # data = data[slice_i]
-                data = data[1]
+            else:
+                if self.use_thermal:
+                    channel = TrackChannels.thermal
+                else:
+                    channel = TrackChannels.filtered
+                data = data[channel]
+
+                np.clip(data, a_min=0, a_max=None, out=data)
 
                 # normalizes data
                 max = np.amax(data)
@@ -140,29 +137,16 @@ class DataGenerator(keras.utils.Sequence):
                 data = data[np.newaxis, :]
                 data = np.transpose(data, (1, 2, 0))
                 data = np.repeat(data, 3, axis=2)
-            else:
-                data = data[slice_i]
-                data = [
-                    data[0, :, :],
-                    data[1, :, :],
-                    data[4, :, :],
-                ]
-
-                data = np.transpose(data, (1, 2, 0))
-                # Store sample
 
             if self.augment:
                 data = augement_frame(data)
-                data = np.clip(data, a_min=0, a_max=None)
+                data = np.clip(data, a_min=0, a_max=None, out=data)
             else:
                 data = resize(data)
-                data = np.clip(data, a_min=0, a_max=None)
-            data = data * 255.0
-            # # print("grey", np.amax(data), data.shape)
-            data = tf.keras.applications.resnet_v2.preprocess_input(
-                data, data_format=None
-            )
-            # print("preprocess", np.amax(data))
+
+            # pre proce expecteds values in range 0-255
+            if self.preprocess_fn:
+                data = self.preprocess_fn(data)
             X[i,] = data
             y[i] = self.dataset.labels.index(label)
             clips.append(frame)
@@ -171,26 +155,20 @@ class DataGenerator(keras.utils.Sequence):
 
 
 def resize(image):
-    # session = tf.Session()
-    # with session.as_default():
     image = convert(image)
     image = tf.image.resize(image, [FRAME_SIZE, FRAME_SIZE])
     return image.numpy()
 
 
 def convert(image):
-    image = tf.image.convert_image_dtype(
-        image, tf.float32
-    )  # Cast and normalize the image to [0,1]
+    image = tf.image.convert_image_dtype(image, tf.float32)
     return image
 
 
 def augement_frame(frame):
-    # session = tf.Session()
-    # with session.as_default():  # data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
     image = convert(frame)
     image = tf.image.resize(
-        image, [FRAME_SIZE + random.randint(0, 0), FRAME_SIZE + random.randint(0, 0)],
+        image, [FRAME_SIZE + random.randint(0, 4), FRAME_SIZE + random.randint(0, 4)],
     )  # Add 6 pixels of padding
     image = tf.image.random_crop(
         image, size=[FRAME_SIZE, FRAME_SIZE, 3]

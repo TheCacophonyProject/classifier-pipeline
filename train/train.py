@@ -9,7 +9,7 @@ from ml_tools.framedataset import dataset_db_path
 from ml_tools.newmodel import NewModel
 
 
-def train_model(run_name, conf, hyper_params):
+def train_model(run_name, conf, hyper_params, grid_search=False):
     """Trains a model with the given hyper parameters.
     """
     run_name = os.path.join("train", run_name)
@@ -53,6 +53,10 @@ def train_model(run_name, conf, hyper_params):
         #     "rodent",
         # ],
     )
+    if grid_search:
+        print("Searching hparams")
+        model.test_hparams()
+        return
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)
     print()
@@ -80,8 +84,6 @@ def train_model(run_name, conf, hyper_params):
     print()
     print("Found {0:.1f}K training examples".format(model.datasets.train.rows / 1000))
     print()
-    model.test_hparams()
-    return
 
     model.train_model(
         epochs=conf.train.epochs,
