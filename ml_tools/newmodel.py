@@ -13,17 +13,20 @@ import json
 from ml_tools.dataset import Preprocessor
 
 #
-# HP_DENSE_SIZES = hp.HParam(
-#     "dense_sizes",
-#     hp.Discrete([[1024, 1024, 1024, 1024, 512], [1024, 512], [512], [128], [64]]),
-# )
-HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([8, 64]))
+HP_DENSE_SIZES = hp.HParam(
+    "dense_sizes",
+    hp.Discrete(["1024 1024 1024 1024 512", "1024 512", "512", "128", "64"]),
+)
+# HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.RealInterval(0.0, 4.0))
+
+HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam", "sgd"]))
 HP_LEARNING_RATE = hp.HParam(
     "learning_rate", hp.Discrete([0.0001, 0.001, 0.01, 0.1, 1.0])
 )
 
 METRIC_ACCURACY = "accuracy"
+# DENSE_SIZES = [[1024, 1024, 1024, 1024, 512], [1024, 512], [512], [128], [64]]
 
 
 class NewModel:
@@ -331,7 +334,10 @@ class NewModel:
 
     def train_test_model(self, hparams, log_dir, epochs=1):
         # if not self.model:
-        self.build_model(dense_sizes=hparams[HP_LEARNING_RATE])
+        dense_size = hparams[HP_DENSE_SIZES].split()
+        for i, size in enumerate(dense_size):
+            dense_size[i] = int(size)
+        self.build_model(dense_sizes=dense_size)
         train = DataGenerator(
             self.datasets.train,
             len(self.datasets.train.labels),
