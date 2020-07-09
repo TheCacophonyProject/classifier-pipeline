@@ -1,4 +1,5 @@
 import random
+import logging
 import tensorflow.keras as keras
 import tensorflow as tf
 import numpy as np
@@ -121,12 +122,22 @@ class DataGenerator(keras.utils.Sequence):
                 # data = data[slice_i]
                 data = data[1]
 
+                # normalizes data
                 max = np.amax(data)
                 min = np.amin(data)
+                if max == min:
+                    logging.error(
+                        "frame max and min are the same clip %s track %s frame %s",
+                        frame.clip_id,
+                        frame.track_id,
+                        frame.frame_num,
+                    )
+                    continue
+
                 data -= min
                 data = data / (max - min)
-                data = data[np.newaxis, :]
 
+                data = data[np.newaxis, :]
                 data = np.transpose(data, (1, 2, 0))
                 data = np.repeat(data, 3, axis=2)
             else:
@@ -147,7 +158,7 @@ class DataGenerator(keras.utils.Sequence):
                 data = resize(data)
                 data = np.clip(data, a_min=0, a_max=None)
             data = data * 255.0
-            # print("grey", np.amax(data), data.shape)
+            # # print("grey", np.amax(data), data.shape)
             data = tf.keras.applications.resnet_v2.preprocess_input(
                 data, data_format=None
             )

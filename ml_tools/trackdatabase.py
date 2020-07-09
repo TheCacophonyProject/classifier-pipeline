@@ -60,9 +60,9 @@ class TrackDatabase:
 
     def get_labels(self):
         with HDF5Manager(self.database) as f:
-             return f.attrs.get("labels",None)
+            return f.attrs.get("labels", None)
 
-    def set_labels(self,labels):
+    def set_labels(self, labels):
         with HDF5Manager(self.database, "a") as f:
             f.attrs["labels"] = labels
 
@@ -85,7 +85,7 @@ class TrackDatabase:
             has_record = clip_id in clips and "finished" in clips[clip_id].attrs
             clip = clips[clip_id]
             if has_record:
-                has_pred =  clip.attrs.get("has_prediction", False)
+                has_pred = clip.attrs.get("has_prediction", False)
                 if not has_pred:
                     return has_pred
                 for track_id in clip:
@@ -95,7 +95,7 @@ class TrackDatabase:
                     if "predictions" in track:
                         pass
                     elif "predictions" in track.attrs:
-                        preds  = track.attrs["predictions"]
+                        preds = track.attrs["predictions"]
                         height, width = preds.shape
 
                         pred_data = track.create_dataset(
@@ -117,16 +117,18 @@ class TrackDatabase:
                 if track_id == "background_frame":
                     continue
 
-                track_node =clip[track_id]
-                track_tag =track_node.attrs.get("tag", "")
-                if track_tag  not in model.labels:
+                track_node = clip[track_id]
+                track_tag = track_node.attrs.get("tag", "")
+                if track_tag not in model.labels:
                     if track_tag != "":
-                        logging.info("Tag not in model labels %s", track_node.get("tag"))
+                        logging.info(
+                            "Tag not in model labels %s", track_node.get("tag")
+                        )
 
                 result = []
                 frames = list(track_node.keys())
                 frames.sort(key=int)
-                if len(frames) ==0 :
+                if len(frames) == 0:
                     return
                 track_prediction = TrackPrediction(track_id, int(frames[0]), True)
                 for frame_number in frames:
@@ -137,30 +139,29 @@ class TrackDatabase:
 
                 self._add_prediction_data(track_node, track_prediction, model)
 
-            clip.attrs["has_prediction"]= True
+            clip.attrs["has_prediction"] = True
 
     def _add_prediction_data(self, track, track_prediction, model):
         track_attrs = track.attrs
-        track_tag =track_attrs.get("tag", "")
-        if track_tag  not in model.labels:
+        track_tag = track_attrs.get("tag", "")
+        if track_tag not in model.labels:
             if track_tag != "":
                 logging.info("Tag not in model labels %s", track_tag)
             return
         label_index = model.labels.index(track_tag)
-        track_attrs["correct_prediction"] = track_attrs["tag"] == model.labels[track_prediction.best_label_index]
+        track_attrs["correct_prediction"] = (
+            track_attrs["tag"] == model.labels[track_prediction.best_label_index]
+        )
         value, best = track_prediction.best_frame(label=label_index)
-        track_attrs["best_frame"] = [round(100*value,0), best[0][0]]
-        best =np.array(track_prediction.best_gap())
-        best[1] = round(100*best[1])
+        track_attrs["best_frame"] = [round(100 * value, 0), best[0][0]]
+        best = np.array(track_prediction.best_gap())
+        best[1] = round(100 * best[1])
         track_attrs["best_gap"] = np.int16(best)
-        preds = np.int16(np.around(100*np.array(track_prediction.predictions)))
+        preds = np.int16(np.around(100 * np.array(track_prediction.predictions)))
         # track_attrs["predictions"]=preds
         height, width = preds.shape
         pred_data = track.create_dataset(
-            "predictions",
-            (height, width),
-            chunks=(height, width),
-            dtype=preds.dtype,
+            "predictions", (height, width), chunks=(height, width), dtype=preds.dtype,
         )
         pred_data[:, :] = preds
 
@@ -196,6 +197,12 @@ class TrackDatabase:
                 group_attrs["filename"] = clip.source_file
                 group_attrs["start_time"] = clip.video_start_time.isoformat()
                 group_attrs["threshold"] = clip.threshold
+
+                if clip.res_x and clip.res_y:
+                    group_attrs["res_x"] = clip.res_x
+                    group_attrs["res_y"] = clip.res_y
+                if clip.crop_rectangle:
+                    group_attrs["edge_pixels"] = clip.crop_rectangle.left
 
                 group_attrs["mean_background_value"] = clip.stats.mean_background_value
                 group_attrs["threshold"] = clip.stats.threshold
@@ -273,7 +280,7 @@ class TrackDatabase:
             result["tracks"] = len(dataset)
         return result
 
-    def get_label(self,clip_id, track_number):
+    def get_label(self, clip_id, track_number):
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             track_node = clips[str(clip_id)][str(track_number)]
@@ -320,7 +327,15 @@ class TrackDatabase:
                 return False
 
     def add_track(
-        self, clip_id, track, track_data, opts=None, start_time=None, end_time=None, prediction = None, model=None
+        self,
+        clip_id,
+        track,
+        track_data,
+        opts=None,
+        start_time=None,
+        end_time=None,
+        prediction=None,
+        model=None,
     ):
         """
         Adds track to database.
@@ -376,7 +391,7 @@ class TrackDatabase:
                 node_attrs["end_frame"] = track.end_frame
                 if prediction:
                     self._add_prediction_data(track_node, prediction, model)
-                    has_prediction = True;
+                    has_prediction = True
                 elif track.confidence:
                     node_attrs["confidence"] = track.confidence
                 if start_time:

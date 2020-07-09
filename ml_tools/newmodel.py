@@ -10,13 +10,17 @@ import os
 import time
 import matplotlib.pyplot as plt
 import json
+from ml_tools.dataset import Preprocessor
 
+#
+# HP_DENSE_SIZES = hp.HParam(
+#     "dense_sizes",
+#     hp.Discrete([[1024, 1024, 1024, 1024, 512], [1024, 512], [512], [128], [64]]),
+# )
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([8, 64]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam", "sgd"]))
 HP_LEARNING_RATE = hp.HParam(
-    "learning_rate",
-    hp.Discrete([0.0001])
-    # , 0.001, 0.01, 0.1, 1.0])
+    "learning_rate", hp.Discrete([0.0001, 0.001, 0.01, 0.1, 1.0])
 )
 
 METRIC_ACCURACY = "accuracy"
@@ -29,11 +33,12 @@ class NewModel:
     MODEL_DESCRIPTION = "Pre trained resnet"
     VERSION = "0.3.0"
 
-    def __init__(self, train_config=None, labels=None):
-        self.log_dir = os.path.join(train_config.train_dir, "logs")
-        os.makedirs(self.log_dir, exist_ok=True)
-
+    def __init__(self, train_config=None, labels=None, preserve_labels=False):
+        self.log_base = os.path.join(train_config.train_dir, "logs")
+        self.log_dir = self.log_base
+        os.makedirs(self.log_base, exist_ok=True)
         self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
+
         self.model = None
         self.datasets = None
         # namedtuple("Datasets", "train, validation, test")
@@ -50,14 +55,38 @@ class NewModel:
         }
         self.params.update(train_config.hyper_params)
         self.labels = labels
+        self.preserve_labels = preserve_labels
 
-    def build_model(self):
+    def add_lstm(self, base_model):
+        model2 = tf.keras.models.Model(inputs=base_model.input, outputs=x)
+
+        input_layer = tf.keras.Input(shape=(27, 48, 48, 3))
+        curr_layer = tf.keras.layers.TimeDistributed(model2)(input_layer)
+        curr_layer = tf.keras.layers.Reshape(target_shape=(27, 2048))(curr_layer)
+        memory_output, memory_state = self.lstm(curr_layer)
+        x = memory_output
+        x = tf.keras.layers.Dense(self.params["lstm_units"], activation="relu")(x)
+
+        tf.identity(memory_state, "state_out")
+
+        preds = tf.keras.layers.Dense(
+            len(self.datasets.train.labels), activation="softmax"
+        )(x)
+
+        self.model = tf.keras.models.Model(input_layer, preds)
+
+        #
+        #         encoded_frames = tf.keras.layers.TimeDistributed(self.model)(input_layer)
+        #         encoded_sequence = LSTM(512)(encoded_frames)
+        #
+        # hidden_layer = Dense(1024, activation="relu")(encoded_sequence)
+        # outputs = Dense(50, activation="softmax")(hidden_layer)
+        # model = Model([inputs], outputs)
+
+    def build_model(self, dense_sizes=[1024]):
         # note the model already applies batch_norm
         base_model = tf.keras.applications.ResNet50V2(
-            weights="imagenet",
-            include_top=False,
-            input_shape=(48, 48, 3),
-            layers=tf.keras.layers,
+            weights="imagenet", include_top=False, input_shape=(48, 48, 3),
         )
         inputs = tf.keras.Input(shape=(48, 48, 3))
 
@@ -68,45 +97,20 @@ class NewModel:
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
         if self.params["lstm"]:
-            model2 = tf.keras.models.Model(inputs=base_model.input, outputs=x)
-
-            input_layer = tf.keras.Input(shape=(27, 48, 48, 3))
-            curr_layer = tf.keras.layers.TimeDistributed(model2)(input_layer)
-            curr_layer = tf.keras.layers.Reshape(target_shape=(27, 2048))(curr_layer)
-            memory_output, memory_state = self.lstm(curr_layer)
-            x = memory_output
-            x = tf.keras.layers.Dense(self.params["lstm_units"], activation="relu")(x)
-
-            tf.identity(memory_state, "state_out")
-
-            preds = tf.keras.layers.Dense(
-                len(self.datasets.train.labels), activation="softmax"
-            )(x)
-            self.model = tf.keras.models.Model(input_layer, preds)
+            # not tested
+            self.add_lstm(base_model)
         else:
+            for i in dense_sizes:
+                x = tf.keras.layers.Dense(i, activation="relu")(x)
             # x = tf.keras.layers.Dense(1024)(x)
             # x = tf.keras.layers.Dense(1024)(x)
             # x = tf.keras.layers.Dense(1024)(x)
             # x = tf.keras.layers.Dense(1024)(x)
-            x = tf.keras.layers.Dense(2)(x)
             preds = tf.keras.layers.Dense(len(self.labels), activation="softmax")(x)
             self.model = tf.keras.models.Model(inputs, outputs=preds)
 
-        # for i, layer in enumerate(self.model.layers):
-        #     print(i, layer.name)
+        self.model.summary()
 
-        for layer in self.model.layers[175:]:
-            layer.trainable = True
-
-        # self.model.summary()
-
-        #
-        #         encoded_frames = tf.keras.layers.TimeDistributed(self.model)(input_layer)
-        #         encoded_sequence = LSTM(512)(encoded_frames)
-        #
-        # hidden_layer = Dense(1024, activation="relu")(encoded_sequence)
-        # outputs = Dense(50, activation="softmax")(hidden_layer)
-        # model = Model([inputs], outputs)
         self.model.compile(
             optimizer=self.optimizer(), loss=self.loss(), metrics=["accuracy"],
         )
@@ -180,14 +184,14 @@ class NewModel:
         self.load_meta(dir)
 
     def load_meta(self, dir):
-        meta = json.load(open(dir + "metadata.txt", "r"))
+        meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
         self.params = meta["hyperparams"]
         self.labels = meta["labels"]
 
-    def save(self):
+    def save(self, run_name=MODEL_NAME):
         # create a save point
         self.model.save(
-            os.path.join(self.checkpoint_folder, "resnet50/"), save_format="tf"
+            os.path.join(self.checkpoint_folder, run_name), save_format="tf"
         )
 
         model_stats = {}
@@ -199,7 +203,7 @@ class NewModel:
         model_stats["version"] = self.VERSION
         json.dump(
             model_stats,
-            open(os.path.join(self.checkpoint_folder, "resnet50", "metadata.txt"), "w"),
+            open(os.path.join(self.checkpoint_folder, run_name, "metadata.txt"), "w"),
             indent=4,
         )
 
@@ -207,6 +211,8 @@ class NewModel:
         pass
 
     def train_model(self, epochs, run_name):
+        self.log_dir = os.path.join(self.log_base, run_name)
+        os.makedirs(self.log_base, exist_ok=True)
         if not self.model:
             self.build_model()
         train = DataGenerator(
@@ -225,85 +231,21 @@ class NewModel:
             thermal_only=self.params.get("thermal_only", False),
             shuffle=True,
         )
-        # test = DataGenerator(self.datasets.test, len(self.datasets.test.labels))
-
         history = self.model.fit(
-            train, validation_data=validate, epochs=epochs, shuffle=False
+            train,
+            validation_data=validate,
+            epochs=10,
+            shuffle=False,
+            callbacks=[tf.keras.callbacks.TensorBoard(self.log_dir)],  # log metrics
         )
-        self.save()
+
+        self.save(run_name)
         for key, value in history.history.items():
             plt.figure()
             plt.plot(value, label="Training {}".format(key))
             plt.ylabel("{}".format(key))
             plt.title("Training {}".format(key))
             plt.savefig("{}.png".format(key))
-
-    def train_test_model(self, hparams, log_dir, epochs=1):
-        # if not self.model:
-        self.build_model()
-        print(self.labels)
-        train = DataGenerator(
-            self.datasets.train,
-            len(self.datasets.train.labels),
-            batch_size=hparams.get(HP_BATCH_SIZE, 32),
-            lstm=self.params.get("lstm", False),
-            thermal_only=self.params.get("thermal_only", False),
-            shuffle=False,
-        )
-        validate = DataGenerator(
-            self.datasets.validation,
-            len(self.datasets.train.labels),
-            batch_size=hparams.get(HP_BATCH_SIZE, 32),
-            lstm=self.params.get("lstm", False),
-            thermal_only=self.params.get("thermal_only", False),
-            shuffle=False,
-        )
-        # test = DataGenerator(self.datasets.test, len(self.datasets.test.labels))
-        opt = None
-        learning_rate = hparams[HP_LEARNING_RATE]
-        if hparams[HP_OPTIMIZER] == "adam":
-            opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-        else:
-            opt = tf.keras.optimizers.SGD(learning_rate=learning_rate)
-        self.model.compile(
-            optimizer=opt, loss=self.loss(), metrics=["accuracy"],
-        )
-        history = self.model.fit(train, epochs=epochs,)
-
-        _, accuracy = self.model.evaluate(validate)
-        print(accuracy)
-        return accuracy
-
-    def test_hparams(self):
-        dir = self.log_dir + "/hparam_tuning"
-        with tf.summary.create_file_writer(dir).as_default():
-            hp.hparams_config(
-                hparams=[HP_BATCH_SIZE, HP_LEARNING_RATE],
-                metrics=[hp.Metric(METRIC_ACCURACY, display_name="Accuracy")],
-            )
-        session_num = 0
-
-        for batch_size in HP_BATCH_SIZE.domain.values:
-            for learning_rate in HP_LEARNING_RATE.domain.values:
-                for optimizer in HP_OPTIMIZER.domain.values:
-                    hparams = {
-                        HP_BATCH_SIZE: batch_size,
-                        HP_LEARNING_RATE: learning_rate,
-                        HP_OPTIMIZER: optimizer,
-                    }
-                    run_name = "run-%d" % session_num
-                    print("--- Starting trial: %s" % run_name)
-                    print({h.name: hparams[h] for h in hparams})
-                    self.run(dir + "/" + run_name, hparams)
-                    session_num += 1
-
-    def run(self, log_dir, hparams):
-        with tf.summary.create_file_writer(log_dir).as_default():
-            hp.hparams(hparams)  # record the values used in this trial
-            accuracy = self.train_test_model(hparams, log_dir)
-            tf.summary.scalar(METRIC_ACCURACY, accuracy, step=1)
-
-    # tf.summary.scalar(METRIC_ACCURACY, accuracy, step=1)
 
     def preprocess(self, frame):
         thermal_reference = np.median(frame[0])
@@ -324,28 +266,19 @@ class NewModel:
         output = self.model.predict(frame)
         return output[0]
 
-    def redo_data(self, train_cap=1000, validate_cap=500, exclude=[]):
+    def rebalance(self, train_cap=1000, validate_cap=500, exclude=[]):
+        self.datasets.train.rebalance(train_cap, exclude)
+        self.datasets.validation.rebalance(train_cap, exclude)
+        self.set_labels()
 
-        new_samples = []
-        for key, value in self.datasets.train.labels_to_samples.items():
-            if key in exclude:
-                self.datasets.train.labels.remove(key)
-                continue
-            np.random.shuffle(value)
-            for i in value[:train_cap]:
-                new_samples.append(self.datasets.train.frame_samples[i])
-        self.datasets.train.frame_samples = new_samples
-        new_samples = []
-        for key, value in self.datasets.validation.labels_to_samples.items():
-            if key in exclude:
-                self.datasets.validation.labels.remove(key)
-
-                continue
-            np.random.shuffle(value)
-            for i in value[:validate_cap]:
-                new_samples.append(self.datasets.validation.frame_samples[i])
-        self.datasets.validation.frame_samples = new_samples
-        self.labels = self.datasets.train.labels
+    def set_labels(self):
+        if self.labels is None or self.preserve_labels == False:
+            self.labels = self.datasets.train.labels
+        else:
+            for label in self.datasets.train.labels:
+                if label not in self.labels:
+                    self.labels.append(label)
+            self.datasets.train.labels = label
 
     def import_dataset(self, dataset_filename, ignore_labels=None):
         """
@@ -362,9 +295,7 @@ class NewModel:
 
         # augmentation really helps with reducing over-fitting, but test set should be fixed so we don't apply it there.
         self.datasets.train.enable_augmentation = self.params["augmentation"]
-        self.datasets.train.scale_frequency = self.params["scale_frequency"]
         self.datasets.validation.enable_augmentation = False
-        # lf.params["augmentation"]
         self.datasets.test.enable_augmentation = False
         for dataset in datasets:
             if ignore_labels:
@@ -378,9 +309,93 @@ class NewModel:
             "Validation frames: {0:.1f}k".format(self.datasets.validation.rows / 1000)
         )
         logging.info("Test segments: {0:.1f}k".format(self.datasets.test.rows / 1000))
-        logging.info("Labels: {}".format(self.datasets.train.labels))
+        logging.info("Labels: {}".format(self.labels))
 
-        # assert set(self.datasets.train.labels).issubset(
-        #     set(self.datasets.validation.labels)
-        # )
-        # assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
+    #  was some problem with batch norm in old tensorflows
+    # when training accuracy would be high, but when evaluating on same data
+    # it would be low, this tests that, all printed accuracies should be close
+    def learning_phase_test(self, dataset):
+        self.save()
+        dataset.shuffle = False
+        _, accuracy = self.model.evaluate(dataset)
+        print("dynamic", accuracy)
+        tf.keras.backend.set_learning_phase(0)
+        self.load_model(os.path.join(self.checkpoint_folder, "resnet50/"),)
+        _, accuracy = self.model.evaluate(dataset)
+        print("learning0", accuracy)
+
+        tf.keras.backend.set_learning_phase(1)
+        self.load_model(os.path.join(self.checkpoint_folder, "resnet50/"),)
+        _, accuracy = self.model.evaluate(dataset)
+        print("learning1", accuracy)
+
+    def train_test_model(self, hparams, log_dir, epochs=1):
+        # if not self.model:
+        self.build_model(dense_sizes=hparams[HP_LEARNING_RATE])
+        train = DataGenerator(
+            self.datasets.train,
+            len(self.datasets.train.labels),
+            batch_size=hparams.get(HP_BATCH_SIZE, 32),
+            lstm=self.params.get("lstm", False),
+            thermal_only=self.params.get("thermal_only", False),
+            shuffle=False,
+        )
+        validate = DataGenerator(
+            self.datasets.validation,
+            len(self.datasets.train.labels),
+            batch_size=hparams.get(HP_BATCH_SIZE, 32),
+            lstm=self.params.get("lstm", False),
+            thermal_only=self.params.get("thermal_only", False),
+            shuffle=False,
+        )
+        opt = None
+        learning_rate = hparams[HP_LEARNING_RATE]
+        if hparams[HP_OPTIMIZER] == "adam":
+            opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        else:
+            opt = tf.keras.optimizers.SGD(learning_rate=learning_rate)
+        self.model.compile(
+            optimizer=opt, loss=self.loss(), metrics=["accuracy"],
+        )
+        history = self.model.fit(train, epochs=epochs,)
+
+        _, accuracy = self.model.evaluate(validate)
+        return accuracy
+
+    def test_hparams(self):
+        dir = self.log_dir + "/hparam_tuning"
+        with tf.summary.create_file_writer(dir).as_default():
+            hp.hparams_config(
+                hparams=[HP_BATCH_SIZE, HP_LEARNING_RATE],
+                metrics=[hp.Metric(METRIC_ACCURACY, display_name="Accuracy")],
+            )
+        session_num = 0
+
+        for batch_size in HP_BATCH_SIZE.domain.values:
+            for dense_size in HP_DENSE_SIZES.domain.values:
+                for learning_rate in HP_LEARNING_RATE.domain.values:
+                    for optimizer in HP_OPTIMIZER.domain.values:
+                        hparams = {
+                            HP_DENSE_SIZES: dense_size,
+                            HP_BATCH_SIZE: batch_size,
+                            HP_LEARNING_RATE: learning_rate,
+                            HP_OPTIMIZER: optimizer,
+                        }
+                        run_name = "run-%d" % session_num
+                        print("--- Starting trial: %s" % run_name)
+                        print({h.name: hparams[h] for h in hparams})
+                        self.run(dir + "/" + run_name, hparams)
+                        session_num += 1
+
+    def run(self, log_dir, hparams):
+        with tf.summary.create_file_writer(log_dir).as_default():
+            hp.hparams(hparams)  # record the values used in this trial
+            accuracy = self.train_test_model(hparams, log_dir)
+            tf.summary.scalar(METRIC_ACCURACY, accuracy, step=1)
+
+    @property
+    def hyperparams_string(self):
+        """ Returns list of hyperparameters as a string. """
+        return "\n".join(
+            ["{}={}".format(param, value) for param, value in self.params.items()]
+        )

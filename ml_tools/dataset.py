@@ -32,10 +32,11 @@ CPTV_FILE_HEIGHT = 120
 FRAMES_PER_SECOND = 9
 
 
-MAX_VELOCITY =2
+MAX_VELOCITY = 2
 MAX_CROP_PERCENT = 0.3
 MIN_CLARITY = 20
 MIN_PERCENT = 60
+
 
 class TrackChannels:
     """ Indexes to channels in track. """
@@ -65,7 +66,7 @@ class TrackHeader:
         frame_temp_median,
         frames_per_second,
         predictions,
-        correct_prediction
+        correct_prediction,
     ):
         self.predictions = predictions
         self.correct_prediction = correct_prediction
@@ -105,7 +106,7 @@ class TrackHeader:
 
     def set_important_frames(self, labels):
         frames = set()
-        for i,vel in enumerate(self.frame_velocity):
+        for i, vel in enumerate(self.frame_velocity):
             if vel[0] > MAX_VELOCITY or vel[1] > MAX_VELOCITY:
                 continue
             if self.frame_crop[i] > MAX_CROP_PERCENT:
@@ -124,7 +125,7 @@ class TrackHeader:
             best_preds = []
             incorrect_best = []
 
-            for i,pred in enumerate(self.predictions):
+            for i, pred in enumerate(self.predictions):
                 best = np.argsort(pred)
                 if fp_i and best[-1] == fp_i:
                     continue
@@ -142,9 +143,9 @@ class TrackHeader:
                     if pred[best[-1]] > MIN_PERCENT:
                         incorrect_best.append((i, pred[best[-1]]))
 
-            sorted(clear_frames,reverse=True, key=lambda frame: frame[1])
-            sorted(best_preds,reverse=True, key=lambda frame: frame[1])
-            sorted(incorrect_best,reverse=True, key=lambda frame: frame[1])
+            sorted(clear_frames, reverse=True, key=lambda frame: frame[1])
+            sorted(best_preds, reverse=True, key=lambda frame: frame[1])
+            sorted(incorrect_best, reverse=True, key=lambda frame: frame[1])
 
             pred_frames = set()
             pred_frames.update(f[0] for f in clear_frames[:2])
@@ -160,7 +161,7 @@ class TrackHeader:
 
             # if len(pred_frames) > 0:
             #     frames = pred_frames
-                # print("using prediction", frames)
+            # print("using prediction", frames)
         self.important_frames = list(frames)
         # print("setting important frames", frames)
 
@@ -279,8 +280,8 @@ class TrackHeader:
     @staticmethod
     def from_meta(clip_id, clip_meta, track_meta):
         """ Creates a track header from given metadata. """
-        predictions = track_meta.get("predictions",None)
-        correct_prediction = track_meta.get("correct_prediction",None)
+        predictions = track_meta.get("predictions", None)
+        correct_prediction = track_meta.get("correct_prediction", None)
 
         start_time = dateutil.parser.parse(track_meta["start_time"])
         end_time = dateutil.parser.parse(track_meta["end_time"])
@@ -313,8 +314,8 @@ class TrackHeader:
             track_bounds=np.asarray(bounds_history),
             frame_temp_median=frame_temp_median,
             frames_per_second=frames_per_second,
-            predictions = predictions,
-            correct_prediction = correct_prediction
+            predictions=predictions,
+            correct_prediction=correct_prediction,
         )
         return header
 
@@ -331,6 +332,7 @@ class CameraSegments:
         self.segment_sum = 0
         self.segments = 0
         self.important_sum = 0
+
     def add_track(self, track_header):
 
         if track_header.bin_id not in self.bins:
@@ -733,7 +735,7 @@ class Dataset:
 
         return batch_X, batch_y
 
-    def load_tracks(self):
+    def load_tracks(self, shuffle=True):
         """
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
@@ -741,12 +743,16 @@ class Dataset:
         counter = 0
         track_ids = self.db.get_all_track_ids()
         labels = self.db.get_labels()
+        if shuffle:
+            np.random.shuffle(track_ids)
         for clip_id, track_number in track_ids:
-            if self.add_track(clip_id, track_number,labels):
+            if self.add_track(clip_id, track_number, labels):
                 counter += 1
         return [counter, len(track_ids)]
 
-    def add_tracks(self, tracks, max_segments_per_track=None,max_frames_per_track=None):
+    def add_tracks(
+        self, tracks, max_segments_per_track=None, max_frames_per_track=None
+    ):
         """
         Adds list of tracks to dataset
         :param tracks: list of TrackHeader
@@ -764,9 +770,13 @@ class Dataset:
         # gp test less segments more tracks
         if max_frames_per_track is not None:
             if len(track_header.important_frames) > max_frames_per_track:
-                important_frames = track_header.important_frames[0:track_header.important_predicted][:max_frames_per_track]
+                important_frames = track_header.important_frames[
+                    0 : track_header.important_predicted
+                ][:max_frames_per_track]
                 remaining = max_frames_per_track - len(important_frames)
-                important_frames.extend(random.sample(track_header.important_frames, remaining))
+                important_frames.extend(
+                    random.sample(track_header.important_frames, remaining)
+                )
                 track_header.important_frames = important_frames
 
         self.tracks.append(track_header)
@@ -976,10 +986,9 @@ class Dataset:
         return data
 
     def fetch_frame(self, clip_id, track_id, frame_num):
-        data = self.db.get_track(clip_id, track_id, frame_num, frame_num+1)
-        label =self.db.get_label(clip_id, track_id)
+        data = self.db.get_track(clip_id, track_id, frame_num, frame_num + 1)
+        label = self.db.get_label(clip_id, track_id)
         return data[0], label
-
 
     def fetch_segment(self, segment: SegmentHeader, augment=False, preprocess=True):
         """
@@ -1031,7 +1040,11 @@ class Dataset:
                 default_inset=self.DEFAULT_INSET,
             )
 
-        return data, segment.track.frame_temp_median[first_frame:last_frame],segment.track.frame_velocity[first_frame:last_frame]
+        return (
+            data,
+            segment.track.frame_temp_median[first_frame:last_frame],
+            segment.track.frame_velocity[first_frame:last_frame],
+        )
 
     def sample_segment(self):
         """ Returns a random segment from weighted list. """
@@ -1045,8 +1058,6 @@ class Dataset:
         """ Loads all X and y into dataset if required. """
         if self.X is None or force:
             self.X, self.y = self.fetch_all()
-
-
 
     def balance_weights(self, weight_modifiers=None):
         """

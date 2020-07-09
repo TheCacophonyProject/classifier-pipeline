@@ -31,23 +31,37 @@ def train_model(run_name, conf, hyper_params):
             labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )
     elif conf.train.model == "new model":
-        model = NewModel(train_config=conf.train)
+        model = NewModel(train_config=conf.train, labels=conf.labels)
     else:
         model = ModelCRNN_LQ(
             labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )
     #
+
     model.import_dataset(datasets_filename)
-    model.redo_data(3000, 1000, exclude=["rodent"])
+    model.rebalance(
+        4000,
+        500,
+        # exclude=[
+        #     "mustelid",
+        #     "human",
+        #     "insect",
+        #     "leporidae",
+        #     "cat",
+        #     "wallaby",
+        #     "bird",
+        #     "rodent",
+        # ],
+    )
     # display the data set summary
-    print("Training on labels", labels)
+    print("Training on labels", model.datasets.train.labels)
     print()
     print(
         "{:<20} {:<20} {:<20} {:<20} (segments/tracks/bins/weight)".format(
             "label", "train", "validation", "test"
         )
     )
-    for label in labels:
+    for label in model.datasets.train.labels:
         print(
             "{:<20} {:<20} {:<20} {:<20}".format(
                 label,
@@ -58,16 +72,13 @@ def train_model(run_name, conf, hyper_params):
         )
     print()
 
-    for dataset in dsets:
-        print(dataset.name, "count", dataset.frames)
-
     print("Training started")
     print("---------------------")
     print("Hyper parameters")
     print("---------------------")
-    # print(model.hyperparams_string)
+    print(model.hyperparams_string)
     print()
-    # print("Found {0:.1f}K training examples".format(model.rows / 1000))
+    print("Found {0:.1f}K training examples".format(model.datasets.train.rows / 1000))
     print()
     # model.test_hparams()
     # return

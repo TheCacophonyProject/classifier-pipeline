@@ -130,7 +130,9 @@ class Previewer:
                 )
                 draw = ImageDraw.Draw(image)
             elif self.preview_type == self.PREVIEW_TRACKING:
-                image = self.create_four_tracking_image(frame, clip.stats.min_temp, clip.background)
+                image = self.create_four_tracking_image(
+                    frame, clip.stats.min_temp, clip.background
+                )
                 image = self.convert_and_resize(
                     image,
                     clip.stats.min_temp,
@@ -181,12 +183,16 @@ class Previewer:
         frame_width, frame_height = FRAME_SIZE, FRAME_SIZE
 
         for id, track in enumerate(clip.tracks):
+            print(track.get_id())
             video_frames = []
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 frame = track.crop_by_region(frame, region)
                 img = tools.convert_heat_to_img(
-                    frame[TrackChannels.thermal], self.colourmap, 0, 350
+                    frame[TrackChannels.filtered],
+                    self.colourmap,
+                    np.amin(frame),
+                    np.amax(frame),
                 )
                 img = img.resize((frame_width, frame_height), Image.NEAREST)
                 video_frames.append(np.asarray(img))
@@ -213,6 +219,8 @@ class Previewer:
         return image
 
     def create_track_descriptions(self, clip, predictions):
+        if predictions is None:
+            return
         # look for any tracks that occur on this frame
         for track in clip.tracks:
             guesses = predictions.guesses_for(track.get_id())
@@ -406,12 +414,15 @@ class Previewer:
                 )
 
     @staticmethod
-    def create_four_tracking_image(frame, min_temp,background):
+    def create_four_tracking_image(frame, min_temp, background):
 
         thermal = frame.thermal
         filtered = frame.filtered + min_temp
         mask = frame.mask * 10000
-        flow_magnitude = np.clip(np.float32(frame.thermal) - background, a_min = 0, a_max=None) + min_temp
+        flow_magnitude = (
+            np.clip(np.float32(frame.thermal) - background, a_min=0, a_max=None)
+            + min_temp
+        )
         # print(flow_magnitude[0])
         #
         # flow_h, flow_v = frame.get_flow_split(clip_flow=True)

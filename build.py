@@ -12,7 +12,7 @@ import numpy as np
 from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
-from ml_tools.framedataset import Dataset, dataset_db_path, Camera
+from ml_tools.framedataset import FrameDataset, dataset_db_path, Camera
 
 MIN_BINS = 4
 MIN_FRAMES = 1000
@@ -28,7 +28,7 @@ def show_tracks_breakdown(dataset):
 def show_cameras_breakdown(dataset):
     print("Cameras breakdown")
     tracks_by_camera = {}
-    for track in dataset.tracks:
+    for track in dataset.tracks_by_id.values():
         if track.camera not in tracks_by_camera:
             tracks_by_camera[track.camera] = []
         tracks_by_camera[track.camera].append(track)
@@ -47,8 +47,12 @@ def show_segments_breakdown(dataset):
 def show_important_frames_breakdown(dataset):
     print("important frames breakdown:")
     for label in dataset.labels:
+        tracks = dataset.tracks_by_label[label]
         count = sum(
-            [len(track.important_frames) for track in dataset.tracks_by_label[label]]
+            [
+                len(dataset.tracks_by_id[track_id].important_frames)
+                for track_id in tracks
+            ]
         )
         print("  {:<20} {} frames".format(label, count))
 
@@ -100,9 +104,9 @@ def split_dataset(db, dataset, build_config, prefill_dataset=None):
         bins_by_label[tracks[0].label].append(bin_id)
         counts.append(sum(len(track.segments) for track in tracks))
 
-    train = Dataset(db, "train")
-    validation = Dataset(db, "validation")
-    test = Dataset(db, "test")
+    train = FrameDataset(db, "train")
+    validation = FrameDataset(db, "validation")
+    test = FrameDataset(db, "test")
 
     bin_segment_mean = np.mean(counts)
     bin_segment_std = np.std(counts)
@@ -228,11 +232,11 @@ def print_cameras(train, validation, test):
     print("Cameras per set:")
     print("-" * 90)
     print("Train")
-    print(train.cameras)
+    print(train.camera_names)
     print("Validation")
-    print(validation.cameras)
+    print(validation.camera_names)
     print("Test")
-    print(test.cameras)
+    print(test.camera_names)
 
 
 def print_sample_frames(dataset, train, validation, test):
@@ -306,17 +310,17 @@ def split_dataset_by_cameras(db, dataset, build_config):
     train_percent = 0.7
     validation_percent = 0.3
     test_cameras = 0
+    print(dataset.labels)
+    train = FrameDataset(db, "train")
+    validation = FrameDataset(db, "validation")
+    test = FrameDataset(db, "test")
 
-    train = Dataset(db, "train")
-    validation = Dataset(db, "validation")
-    test = Dataset(db, "test")
-    camera_count = len(dataset.camera_bins)
+    cameras = list(dataset.cameras_by_id.values())
+    camera_count = len(cameras)
     remaining_cameras = camera_count - test_cameras
     validation_cameras = min(3, round(remaining_cameras * validation_percent))
     remaining_cameras -= validation_cameras
     train_cameras = remaining_cameras
-
-    camera_data = dataset.camera_bins
 
     # wallaby = camera_data["Wallaby-None"]
     # del camera_data["Wallaby-None"]
@@ -343,7 +347,6 @@ def split_dataset_by_cameras(db, dataset, build_config):
     #     del wallaby.bins[bin]
 
     # want a test set that covers all labels
-    cameras = list(camera_data.values())
     # randomize order
     cameras.sort(key=lambda x: np.random.random_sample())
     # test_i = -1
@@ -442,7 +445,6 @@ def add_random_camera_samples(
         track, f = camera.sample_frame(label)
         if f is not None:
             dataset.add_track_header_frame(track, f)
-            dataset.cameras.add(camera.camera)
 
         if camera.label_tracks(label) == 0:
             num_cameras -= 1
@@ -527,8 +529,10 @@ def main():
     config = load_config()
     build_config = config.build
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
-    dataset = Dataset(db, "dataset", config)
+    dataset = FrameDataset(db, "dataset", config)
     tracks_loaded, total_tracks = dataset.load_tracks(shuffle=True)
+    # keep label order conistent
+    dataset.labels.sort()
     print("Loaded {}/{} tracks".format(tracks_loaded, total_tracks,))
     for key, value in dataset.filtered_stats.items():
         if value != 0:
