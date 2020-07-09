@@ -144,8 +144,9 @@ class DataGenerator(keras.utils.Sequence):
             else:
                 data = resize(data)
 
-            # pre proce expecteds values in range 0-255
+            # pre proce expects values in range 0-255
             if self.preprocess_fn:
+                data = data * 255
                 data = self.preprocess_fn(data)
             X[i,] = data
             y[i] = self.dataset.labels.index(label)
