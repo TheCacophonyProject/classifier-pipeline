@@ -69,10 +69,7 @@ class Test:
         t0 = datetime.now()
         logging.info("classifier loading")
 
-        self.classifier = NewModel(
-            train_config=self.config.train,
-            labels=self.labels,
-        )
+        self.classifier = NewModel(train_config=self.config.train, labels=self.labels,)
 
         self.classifier.load_model(model_file)
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
@@ -132,7 +129,6 @@ class Test:
                 # score
                 if fp_index is not None:
                     prediction[fp_index] *= 0.8
-
 
                 mass = region.mass
 

@@ -34,9 +34,7 @@ def parse_params():
     parser.add_argument(
         "-v", "--verbose", action="count", help="Display additional information."
     )
-    parser.add_argument(
-         "--predictions", action="count", help="Add prediction info"
-    )
+    parser.add_argument("--predictions", action="count", help="Add prediction info")
 
     parser.add_argument(
         "-r",

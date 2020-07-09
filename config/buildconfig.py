@@ -66,7 +66,7 @@ class BuildConfig(DefaultConfig):
             segment_spacing=build["segment_spacing"],
             previous_split=build["previous_split"],
             max_segments_per_track=build["max_segments_per_track"],
-            max_frames_per_track = build["max_frames_per_track"],
+            max_frames_per_track=build["max_frames_per_track"],
         )
 
     @classmethod
@@ -88,7 +88,7 @@ class BuildConfig(DefaultConfig):
             segment_spacing=1,
             previous_split="template.dat",
             max_segments_per_track=None,
-            max_frames_per_track = None,
+            max_frames_per_track=None,
         )
 
     def validate(self):

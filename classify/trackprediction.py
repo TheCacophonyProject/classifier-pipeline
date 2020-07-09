@@ -226,25 +226,25 @@ class TrackPrediction:
             "Track {} is {}".format(self.track_id, self.get_classified_footer(labels))
         )
 
-    def best_gap(self, above= 0.7):
+    def best_gap(self, above=0.7):
         # frame and diff
-        best = (0,0)
+        best = (0, 0)
         for i, frame in enumerate(self.predictions):
             a = np.argsort(frame)
             if frame[a[-1]] > above:
                 gap = frame[a[-1]] - frame[a[-2]]
                 if gap > best[1]:
-                    best = [i,gap]
+                    best = [i, gap]
         return best
 
-    def best_frame(self, label= None):
+    def best_frame(self, label=None):
         preds = self.predictions
         if label:
-            preds = np.array(preds)[:,label]
+            preds = np.array(preds)[:, label]
 
         max = np.amax(preds)
-        result = np.where(preds ==max)
-        return max,result
+        result = np.where(preds == max)
+        return max, result
 
     def guesses(self, labels):
         guesses = [

@@ -81,13 +81,12 @@ class ClipLoader:
         self.load_classifier(self.config.classify.model)
         self.database.set_labels(self.classifier.labels)
         print(self.database.get_labels())
+
     def add_predictions(self):
         clips = self.database.get_all_clip_ids()
         for clip in clips:
-            # print("looking at clip", clip)
             if not self.database.has_prediction(clip):
                 self.database.add_predictions(clip, self.classifier)
-                # return
 
     def process_all(self, root=None, checkpoint=None):
         if root is None:
@@ -126,8 +125,6 @@ class ClipLoader:
     def _get_dest_folder(self, filename):
         return os.path.join(self.config.tracks_folder, get_distributed_folder(filename))
 
-
-
     def load_classifier(self, model_file):
         """
         Returns a classifier object, which is created on demand.
@@ -136,10 +133,7 @@ class ClipLoader:
         t0 = datetime.now()
         logging.info("classifier loading")
 
-        self.classifier = NewModel(
-            train_config=self.config.train,
-            labels=self.labels,
-        )
+        self.classifier = NewModel(train_config=self.config.train, labels=self.labels,)
 
         self.classifier.load_model(model_file)
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
@@ -186,8 +180,8 @@ class ClipLoader:
                 opts=self.compression,
                 start_time=start_time,
                 end_time=end_time,
-                prediction = track_prediction,
-                model = self.classifier
+                prediction=track_prediction,
+                model=self.classifier,
             )
 
     def _filter_clip_tracks(self, clip_metadata):
@@ -269,8 +263,6 @@ class ClipLoader:
             return
 
         # , self.config.load.cache_to_disk, self.config.use_opt_flow
-
-
         if self.track_config.enable_track_output:
             self._export_tracks(filename, clip)
 

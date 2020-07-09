@@ -554,7 +554,7 @@ class FrameDataset:
             frame_sample.frame_num,
             frame_sample.frame_num + 1,
         )
-        label = self.db.get_label(frame_sample.clip_id, frame_sample.track_id)
+        label = self.db.get_tag(frame_sample.clip_id, frame_sample.track_id)
         return data[0], label
 
     def rebalance(self, label_cap=1000, exclude=[]):

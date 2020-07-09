@@ -21,6 +21,7 @@ class HDF5Manager:
     """ Class to handle locking of HDF5 files. """
 
     LOCK_FILE = "/var/lock/classifier-hdf5.lock"
+    special_datasets = ["background_frame", "predictions"]
 
     def __init__(self, db, mode="r"):
         self.mode = mode
@@ -85,36 +86,14 @@ class TrackDatabase:
             has_record = clip_id in clips and "finished" in clips[clip_id].attrs
             clip = clips[clip_id]
             if has_record:
-                has_pred = clip.attrs.get("has_prediction", False)
-                if not has_pred:
-                    return has_pred
-                for track_id in clip:
-                    if track_id == "background_frame":
-                        continue
-                    track = clip[track_id]
-                    if "predictions" in track:
-                        pass
-                    elif "predictions" in track.attrs:
-                        preds = track.attrs["predictions"]
-                        height, width = preds.shape
-
-                        pred_data = track.create_dataset(
-                            "predictions",
-                            (height, width),
-                            chunks=(height, width),
-                            dtype=preds.dtype,
-                        )
-                        pred_data[:, :] = preds
-                        del track.attrs["predictions"]
-
-                return has_pred
+                return clip.attrs.get("has_prediction", False)
         return False
 
     def add_predictions(self, clip_id, model):
         with HDF5Manager(self.database, "a") as f:
             clip = f["clips"][str(clip_id)]
             for track_id in clip:
-                if track_id == "background_frame":
+                if track_id in special_datasets:
                     continue
 
                 track_node = clip[track_id]
@@ -250,7 +229,7 @@ class TrackDatabase:
             result = []
             for clip in clips:
                 for track in clips[clip]:
-                    if track != "background_frame":
+                    if track not in special_datasets:
                         result.append((clip, track))
         return result
 
@@ -280,7 +259,7 @@ class TrackDatabase:
             result["tracks"] = len(dataset)
         return result
 
-    def get_label(self, clip_id, track_number):
+    def get_tag(self, clip_id, track_number):
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             track_node = clips[str(clip_id)][str(track_number)]
