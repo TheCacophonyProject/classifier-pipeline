@@ -121,7 +121,7 @@ class NewModel:
 
         raise "Could not find model" + self.pretrained_model
 
-    def build_model(self, dense_sizes=[1024]):
+    def build_model(self, dense_sizes=[1024, 1024, 1024, 512]):
         # note the model already applies batch_norm
         inputs = tf.keras.Input(shape=(48, 48, 3))
 
@@ -148,25 +148,6 @@ class NewModel:
             optimizer=self.optimizer(), loss=self.loss(), metrics=["accuracy"],
         )
 
-    def build_model_mobile(self):
-        # note the model already applies batch_norm
-        IMG_SHAPE = (48, 48, 3)
-
-        base_model = tf.keras.applications.MobileNetV2(
-            input_shape=IMG_SHAPE, include_top=False, weights="imagenet"
-        )
-        base_model.trainable = False
-        x = base_model.output
-        x = tf.keras.layers.GlobalAveragePooling2D()(x)
-        x = tf.keras.layers.Dense(1)(x)
-        self.model = tf.keras.models.Model(inputs=base_model.input, outputs=x)
-
-        self.model.compile(
-            optimizer=self.optimizer(),
-            loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
-            metrics=["accuracy"],
-        )
-
     def loss(self):
         softmax = tf.keras.losses.CategoricalCrossentropy(
             label_smoothing=self.params["label_smoothing"],
@@ -185,7 +166,7 @@ class NewModel:
             tf.compat.v1.summary.scalar("params/learning_rate", learning_rate)
         else:
             learning_rate = self.params["learning_rate"]  # setup optimizer
-        optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate)
+        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
         return optimizer
 
     def load_weights(self, file):

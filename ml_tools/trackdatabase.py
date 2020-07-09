@@ -16,12 +16,13 @@ from multiprocessing import Lock
 import numpy as np
 from classify.trackprediction import TrackPrediction
 
+special_datasets = ["background_frame", "predictions"]
+
 
 class HDF5Manager:
     """ Class to handle locking of HDF5 files. """
 
     LOCK_FILE = "/var/lock/classifier-hdf5.lock"
-    special_datasets = ["background_frame", "predictions"]
 
     def __init__(self, db, mode="r"):
         self.mode = mode

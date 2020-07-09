@@ -305,6 +305,53 @@ def print_data(dataset):
                     print("{},{},{},{},{}".format(camera, loc, tag, data, len(d_data)))
 
 
+# idea is to try get a bit of all labels in validation set
+# take 1 of the top 4 diverse CameraSegments
+# then randomly pick a missing label and try find a camera
+# until we either have reached max cameras, or aren't missing labels
+def diverse_validation(cameras, labels, max_cameras):
+    validate_data = []
+    sorted(cameras, key=lambda camera: len(camera.label_to_bins.keys()), reverse=True)
+    most_diverse_i = np.random.randint(0, 4)
+    most_diverse = cameras[most_diverse_i]
+    del cameras[most_diverse_i]
+
+    # dont want to bother with these
+    low_data = ["human", "mustelid", "wallaby"]
+    all_labels = set(labels)
+    for tag in low_data:
+        all_labels.discard(tag)
+
+    missing_labels = list(all_labels - set(most_diverse.label_to_bins.keys()))
+    np.random.shuffle(missing_labels)
+    np.random.shuffle(cameras)
+    validate_data.append(most_diverse)
+    missing = len(missing_labels) / len(all_labels)
+    missing_i = 0
+    while (
+        len(validate_data) <= max_cameras
+        and missing < 0.20
+        and missing_i < len(missing_labels)
+    ):
+        print("get missing label", missing_i, missing_labels)
+
+        label = missing_labels[missing_i]
+        missing_i += 1
+        for i, camera in enumerate(cameras):
+            if label in camera.label_to_bins:
+                print("found label", label, "adding camera", camera.camera)
+                validate_data.append(camera)
+                for label in camera.label_to_bins.keys():
+                    if label in missing_labels:
+                        missing_labels.remove(label)
+                del cameras[i]
+                missing_i = 0
+                missing = len(missing_labels) / len(all_labels)
+                break
+
+    return validate_data
+
+
 def split_dataset_by_cameras(db, dataset, build_config):
 
     train_percent = 0.7
@@ -318,7 +365,7 @@ def split_dataset_by_cameras(db, dataset, build_config):
     cameras = list(dataset.cameras_by_id.values())
     camera_count = len(cameras)
     remaining_cameras = camera_count - test_cameras
-    validation_cameras = min(3, round(remaining_cameras * validation_percent))
+    validation_cameras = min(4, round(remaining_cameras * validation_percent))
     remaining_cameras -= validation_cameras
     train_cameras = remaining_cameras
 
@@ -349,16 +396,12 @@ def split_dataset_by_cameras(db, dataset, build_config):
     # want a test set that covers all labels
     # randomize order
     diverse = True
-    most_diverse = None
-
+    validate_data = []
     if diverse:
-        sorted(
-            cameras, key=lambda camera: len(camera.label_to_bins.keys()), reverse=True
-        )
-        most_diverse_i = np.random.randint(0, 3)
-        most_diverse = cameras[most_diverse_i]
-        del cameras[most_diverse_i]
-    cameras.sort(key=lambda x: np.random.random_sample())
+        validate_data = diverse_validation(cameras, dataset.labels, validation_cameras)
+        validation_cameras -= len(validate_data)
+        max(0, validation_cameras)
+    np.random.shuffle(cameras)
 
     train_data = cameras[:train_cameras]
     # train_data.append(wallaby)
@@ -376,10 +419,8 @@ def split_dataset_by_cameras(db, dataset, build_config):
         build_config.max_frames_per_track,
     )
 
-    validate_data = cameras[train_cameras : train_cameras + validation_cameras]
+    validate_data.extend(cameras[train_cameras : train_cameras + validation_cameras])
     # validate_data.append(wallaby_validate)
-    if most_diverse:
-        validate_data.append(most_diverse)
 
     add_camera_data(
         dataset.labels,
