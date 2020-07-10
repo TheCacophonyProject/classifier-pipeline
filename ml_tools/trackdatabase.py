@@ -256,7 +256,7 @@ class TrackDatabase:
         """
         with HDF5Manager(self.database) as f:
             track = f["clips"][clip_id][str(track_number)]
-            if "predictions" in dataset:
+            if "predictions" in track:
                 return track["predictions"][:]
         return None
 

@@ -213,6 +213,7 @@ class NewModel:
             self.build_model()
         train = DataGenerator(
             self.datasets.train,
+            self.datasets.train.labels,
             len(self.datasets.train.labels),
             batch_size=self.params.get("batch_size", 32),
             lstm=self.params.get("lstm", False),
@@ -223,6 +224,7 @@ class NewModel:
         )
         validate = DataGenerator(
             self.datasets.validation,
+            self.datasets.train.labels,
             len(self.datasets.train.labels),
             batch_size=self.params.get("batch_size", 32),
             lstm=self.params.get("lstm", False),

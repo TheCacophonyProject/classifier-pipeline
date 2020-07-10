@@ -16,6 +16,7 @@ class DataGenerator(keras.utils.Sequence):
     def __init__(
         self,
         dataset,
+        labels,
         num_classes,
         batch_size,
         preprocess_fn=None,
@@ -27,6 +28,7 @@ class DataGenerator(keras.utils.Sequence):
         use_thermal=False,
         use_filtered=False,
     ):
+        self.labels = labels
         self.preprocess_fn = preprocess_fn
         self.use_thermal = use_thermal
         self.use_filtered = use_filtered
@@ -155,7 +157,7 @@ class DataGenerator(keras.utils.Sequence):
                 data = data * 255
                 data = self.preprocess_fn(data)
             X[i,] = data
-            y[i] = self.dataset.labels.index(label)
+            y[i] = self.labels.index(label)
             clips.append(frame)
 
         return X, keras.utils.to_categorical(y, num_classes=self.n_classes), clips
