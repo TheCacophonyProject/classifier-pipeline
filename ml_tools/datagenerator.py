@@ -19,7 +19,7 @@ class DataGenerator(keras.utils.Sequence):
         num_classes,
         batch_size,
         preprocess_fn=None,
-        dim=(48, 48, 3),
+        dim=(FRAME_SIZE, FRAME_SIZE, 3),
         n_channels=5,
         shuffle=True,
         sequence_size=27,
@@ -77,7 +77,6 @@ class DataGenerator(keras.utils.Sequence):
         #         plt.imshow(tf.keras.preprocessing.image.array_to_img(X[i]))
         #     plt.savefig("testimage.png")
         #     plt.close(fig)
-        # print(y)
         # raise "save err"
 
         return X, y
@@ -146,10 +145,10 @@ class DataGenerator(keras.utils.Sequence):
                 data = np.repeat(data, 3, axis=2)
 
             if self.augment:
-                data = augement_frame(data)
+                data = augement_frame(data, self.dim)
                 data = np.clip(data, a_min=0, a_max=None, out=data)
             else:
-                data = reisze_cv(data)
+                data = reisze_cv(data, self.dim)
 
             # pre proce expects values in range 0-255
             if self.preprocess_fn:
@@ -162,17 +161,15 @@ class DataGenerator(keras.utils.Sequence):
         return X, keras.utils.to_categorical(y, num_classes=self.n_classes), clips
 
 
-def resize(image):
+def resize(image, dim):
     image = convert(image)
-    image = tf.image.resize(image, [FRAME_SIZE, FRAME_SIZE])
+    image = tf.image.resize(image, dim[0], dim[1])
     return image.numpy()
 
 
-def reisze_cv(image, interpolation=cv2.INTER_LINEAR, extra=0):
+def reisze_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
-        image,
-        dsize=(FRAME_SIZE + extra, FRAME_SIZE + extra),
-        interpolation=interpolation,
+        image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
     )
 
 
@@ -181,15 +178,20 @@ def convert(image):
     return image
 
 
-def augement_frame(frame):
-    frame = reisze_cv(frame)
+def augement_frame(frame, dim):
+    frame = reisze_cv(
+        frame,
+        dim,
+        extra_h=random.randint(0, int(FRAME_SIZE * 0.1)),
+        extra_v=random.randint(0, int(FRAME_SIZE * 0.1)),
+    )
 
     image = convert(frame)
     # image = tf.image.resize(
     #     image, [FRAME_SIZE + random.randint(0, 4), FRAME_SIZE + random.randint(0, 4)],
     # )  # Add 6 pixels of padding
     image = tf.image.random_crop(
-        image, size=[FRAME_SIZE, FRAME_SIZE, 3]
+        image, size=[dim[0], dim[1], 3]
     )  # Random crop back to 28x28
     if random.random() > 0.50:
         rotated = tf.image.rot90(image)

@@ -174,14 +174,16 @@ class TrackHeader:
             self.important_predicted = len(pred_frames)
             frames = list(frames - pred_frames)
             pred_frames = list(pred_frames)
-            np.random.shuffle(frames)
-            pred_frames.extend(frames)
+            np.random.shuffle(pred_frames)
+
+            # np.random.shuffle(frames)
+            # pred_frames.extend(frames)
             self.important_frames = pred_frames
             return
 
         frames = list(frames)
         np.random.shuffle(frames)
-        self.important_frames = list(frames)
+        # self.important_frames = list(frames)
         # print("setting important frames", frames)
 
     def calculate_frame_crop(self):
@@ -296,6 +298,8 @@ class Camera:
 
     def sample_frame(self, label):
         bins = self.label_to_bins[label]
+        if len(bins) == 0:
+            return None, None
         self.bin_i += 1
         self.bin_i = self.bin_i % len(bins)
 
@@ -485,6 +489,11 @@ class FrameDataset:
             self.filtered_stats["tags"] += 1
             return True
 
+        if len(set(track_meta["track_tags"])) != len(set([track_meta["tag"]])):
+            pass
+            # self.filtered_stats["tags"] += 1
+            # return True
+
         # filter by date
         if (
             self.clip_before_date
@@ -494,7 +503,7 @@ class FrameDataset:
             self.filtered_stats["date"] += 1
             return True
 
-        # always let the false-positives through as we need them even though they would normally
+        always let the false-positives through as we need them even though they would normally
         # be filtered out.
         if track_meta["tag"] == "false-positive":
             return False

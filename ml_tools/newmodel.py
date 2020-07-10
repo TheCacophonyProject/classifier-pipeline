@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import json
 from ml_tools.dataset import Preprocessor
 
+FRAME_SIZE = 48
 #
 HP_DENSE_SIZES = hp.HParam(
     "dense_sizes",
@@ -53,7 +54,6 @@ class NewModel:
             "keep_prob": 0.5,
             # training
             "batch_size": 16,
-            "use_filtered": True,
         }
         self.params.update(train_config.hyper_params)
         self.labels = labels
@@ -123,9 +123,9 @@ class NewModel:
 
     def build_model(self, dense_sizes=[1024, 512]):
         # note the model already applies batch_norm
-        inputs = tf.keras.Input(shape=(48, 48, 3))
+        inputs = tf.keras.Input(shape=(FRAME_SIZE, FRAME_SIZE, 3))
 
-        base_model, preprocess = self.base_model((48, 48, 3))
+        base_model, preprocess = self.base_model((FRAME_SIZE, FRAME_SIZE, 3))
         self.preprocess_fn = preprocess
 
         base_model.trainable = False
@@ -417,7 +417,7 @@ class NewModel:
     def add_lstm(self, base_model):
         model2 = tf.keras.models.Model(inputs=base_model.input, outputs=x)
 
-        input_layer = tf.keras.Input(shape=(27, 48, 48, 3))
+        input_layer = tf.keras.Input(shape=(27, FRAME_SIZE, FRAME_SIZE, 3))
         curr_layer = tf.keras.layers.TimeDistributed(model2)(input_layer)
         curr_layer = tf.keras.layers.Reshape(target_shape=(27, 2048))(curr_layer)
         memory_output, memory_state = self.lstm(curr_layer)
