@@ -569,7 +569,8 @@ class FrameDataset:
                 continue
 
             np.random.shuffle(value)
-            value = value[:label_cap]
+            if label_cap:
+                value = value[:label_cap]
             self.labels_to_samples[key] = value
             for i in value:
                 track_id = TrackHeader.get_name(

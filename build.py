@@ -316,8 +316,14 @@ def diverse_validation(cameras, labels, max_cameras):
     most_diverse = cameras[most_diverse_i]
     del cameras[most_diverse_i]
 
+    # camers_by_label = {}
+    # for label in labels:
+    #     for camera in cameras:
+    #         if label in camera.label_to_bins.keys():
+    #             lbl_cameras = camera_by_label.setdefault(label, [])
+    #             lbl_cmaers.append(camera)
     # dont want to bother with these
-    low_data = ["human", "mustelid", "wallaby"]
+    low_data = ["human", "wallaby"]
     all_labels = set(labels)
     for tag in low_data:
         all_labels.discard(tag)
@@ -330,7 +336,7 @@ def diverse_validation(cameras, labels, max_cameras):
     missing_i = 0
     while (
         len(validate_data) <= max_cameras
-        and missing < 0.20
+        and missing != 0
         and missing_i < len(missing_labels)
     ):
         print("get missing label", missing_i, missing_labels)
@@ -348,7 +354,7 @@ def diverse_validation(cameras, labels, max_cameras):
                 missing_i = 0
                 missing = len(missing_labels) / len(all_labels)
                 break
-
+    print("missing", missing)
     return validate_data
 
 
@@ -365,7 +371,8 @@ def split_dataset_by_cameras(db, dataset, build_config):
     cameras = list(dataset.cameras_by_id.values())
     camera_count = len(cameras)
     remaining_cameras = camera_count - test_cameras
-    validation_cameras = min(4, round(remaining_cameras * validation_percent))
+    print("camera count", camera_count)
+    validation_cameras = min(5, round(remaining_cameras * validation_percent))
     remaining_cameras -= validation_cameras
     train_cameras = remaining_cameras
 

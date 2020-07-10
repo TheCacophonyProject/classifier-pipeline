@@ -2,6 +2,7 @@ import random
 import logging
 import tensorflow.keras as keras
 import tensorflow as tf
+import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from ml_tools.dataset import TrackChannels
@@ -76,8 +77,8 @@ class DataGenerator(keras.utils.Sequence):
         #         plt.imshow(tf.keras.preprocessing.image.array_to_img(X[i]))
         #     plt.savefig("testimage.png")
         #     plt.close(fig)
-        #     print(y)
-        #     raise "save err"
+        # print(y)
+        # raise "save err"
 
         return X, y
 
@@ -117,11 +118,16 @@ class DataGenerator(keras.utils.Sequence):
                     channel = TrackChannels.filtered
                 data = data[channel]
 
-                np.clip(data, a_min=0, a_max=None, out=data)
-
-                # normalizes data
-                max = np.amax(data)
-                min = np.amin(data)
+                # normalizes data, constrast stretch good or bad?
+                if self.augment:
+                    percent = random.randint(0, 2)
+                else:
+                    percent = 0
+                max = int(np.percentile(data, 100 - percent))
+                min = int(np.percentile(data, percent))
+                # print("max", np.amax(data), "98 p[ercentile]", np.percentile(data, 98))
+                # print(min)
+                # print(max)
                 if max == min:
                     logging.error(
                         "frame max and min are the same clip %s track %s frame %s",
@@ -133,6 +139,7 @@ class DataGenerator(keras.utils.Sequence):
 
                 data -= min
                 data = data / (max - min)
+                np.clip(data, a_min=0, a_max=None, out=data)
 
                 data = data[np.newaxis, :]
                 data = np.transpose(data, (1, 2, 0))
@@ -142,7 +149,7 @@ class DataGenerator(keras.utils.Sequence):
                 data = augement_frame(data)
                 data = np.clip(data, a_min=0, a_max=None, out=data)
             else:
-                data = resize(data)
+                data = reisze_cv(data)
 
             # pre proce expects values in range 0-255
             if self.preprocess_fn:
@@ -161,16 +168,26 @@ def resize(image):
     return image.numpy()
 
 
+def reisze_cv(image, interpolation=cv2.INTER_LINEAR, extra=0):
+    return cv2.resize(
+        image,
+        dsize=(FRAME_SIZE + extra, FRAME_SIZE + extra),
+        interpolation=interpolation,
+    )
+
+
 def convert(image):
     image = tf.image.convert_image_dtype(image, tf.float32)
     return image
 
 
 def augement_frame(frame):
+    frame = reisze_cv(frame)
+
     image = convert(frame)
-    image = tf.image.resize(
-        image, [FRAME_SIZE + random.randint(0, 4), FRAME_SIZE + random.randint(0, 4)],
-    )  # Add 6 pixels of padding
+    # image = tf.image.resize(
+    #     image, [FRAME_SIZE + random.randint(0, 4), FRAME_SIZE + random.randint(0, 4)],
+    # )  # Add 6 pixels of padding
     image = tf.image.random_crop(
         image, size=[FRAME_SIZE, FRAME_SIZE, 3]
     )  # Random crop back to 28x28
@@ -178,6 +195,11 @@ def augement_frame(frame):
         rotated = tf.image.rot90(image)
     if random.random() > 0.50:
         flipped = tf.image.flip_left_right(image)
-    image = tf.image.random_contrast(image, 0.2, 0.5)
+
+        # maybes thisd should only be sometimes, as otherwise our validation set
+    # if random.random() > 0.20:
+    image = tf.image.random_contrast(image, 0.8, 1.2)
     # image = tf.image.random_brightness(image, max_delta=0.05)  # Random brightness
+    image = tf.minimum(image, 1.0)
+    image = tf.maximum(image, 0.0)
     return image.numpy()

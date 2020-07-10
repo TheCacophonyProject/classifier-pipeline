@@ -121,7 +121,7 @@ class NewModel:
 
         raise "Could not find model" + self.pretrained_model
 
-    def build_model(self, dense_sizes=[1024, 1024, 1024, 512]):
+    def build_model(self, dense_sizes=[1024, 512]):
         # note the model already applies batch_norm
         inputs = tf.keras.Input(shape=(48, 48, 3))
 
@@ -457,9 +457,3 @@ class NewModel:
         lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
         lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
         return lstm_output, lstm_state
-
-
-def preprocess_resv2(data):
-    data = data * 255.0
-    data = tf.keras.applications.resnet_v2.preprocess_input(data, data_format=None)
-    return data

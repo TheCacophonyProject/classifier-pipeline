@@ -40,18 +40,19 @@ def train_model(run_name, conf, hyper_params, grid_search=False):
 
     model.import_dataset(datasets_filename)
     model.rebalance(
-        4000,
-        500,
-        # exclude=[
-        #     "mustelid",
-        #     "human",
-        #     "insect",
-        #     "leporidae",
-        #     "cat",
-        #     "wallaby",
-        #     "bird",
-        #     "rodent",
-        # ],
+        None,
+        None,
+        exclude=[
+            "false-positive",
+            # "mustelid",
+            # "human",
+            #     "insect",
+            #     "leporidae",
+            #     "cat",
+            # "wallaby",
+            #     "bird",
+            #     "rodent",
+        ],
     )
     if grid_search:
         print("Searching hparams")
