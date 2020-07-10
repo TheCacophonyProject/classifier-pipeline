@@ -45,7 +45,6 @@ class DataGenerator(keras.utils.Sequence):
         if not self.lstm:
             self.size = self.size
         self.indexes = np.arange(self.size)
-        self.labels = dataset.labels
         self.shuffle = shuffle
         self.n_classes = num_classes
         self.n_channels = n_channels
@@ -103,7 +102,8 @@ class DataGenerator(keras.utils.Sequence):
             segment_i = index
             frame = self.dataset.frame_samples[segment_i]
             data, label = self.dataset.fetch_frame(frame)
-
+            if label not in self.labels:
+                continue
             if self.lstm:
                 data = [
                     data[:, 0, :, :],
