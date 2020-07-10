@@ -376,29 +376,35 @@ def split_dataset_by_cameras(db, dataset, build_config):
     remaining_cameras -= validation_cameras
     train_cameras = remaining_cameras
 
-    # wallaby = camera_data["Wallaby-None"]
-    # del camera_data["Wallaby-None"]
-    # wallaby_validate = Camera("Wallaby-2")
-    # remove = []
-    # last_index = 0
-    # print("wallaby bins", len(wallaby.label_to_bins["wallaby"]))
-    # for i, bin_id in enumerate(wallaby.label_to_bins["wallaby"]):
-    #     bin = wallaby.bins[bin_id]
-    #     for track in bin:
-    #         wallaby_validate.add_track(track)
-    #         # wallaby.segments -= 1
-    #         # wallaby.segment_sum -= len(track.segments)
-    #         # wallaby.important_sum -= len(track.important_frames)
-    #     remove.append(bin_id)
-    #     last_index = i
-    #     if wallaby_validate.tracks > 15:
-    #         break
-    # wallaby.label_to_bins["wallaby"] = wallaby.label_to_bins["wallaby"][
-    #     last_index + 1 :
-    # ]
-    # print("wallaby length is now", len(wallaby.label_to_bins["wallaby"]))
-    # for bin in remove:
-    #     del wallaby.bins[bin]
+    wallaby = dataset.cameras_by_id["Wallaby-None"]
+    # del dataset.cameras_by_id["Wallaby-None"]
+    for i, camera in enumerate(cameras):
+        if camera.camera == "Wallaby-None":
+            print("removed wallaby none")
+            del cameras[i]
+            break
+    # cameras.remove("Wallaby-None")
+    wallaby_validate = Camera("Wallaby-2")
+    remove = []
+    last_index = 0
+    print("wallaby bins", len(wallaby.label_to_bins["wallaby"]))
+    for i, bin_id in enumerate(wallaby.label_to_bins["wallaby"]):
+        bin = wallaby.bins[bin_id]
+        for track in bin:
+            wallaby_validate.add_track(track)
+            # wallaby.segments -= 1
+            # wallaby.segment_sum -= len(track.segments)
+            # wallaby.important_sum -= len(track.important_frames)
+        remove.append(bin_id)
+        last_index = i
+        if wallaby_validate.tracks > 15:
+            break
+    wallaby.label_to_bins["wallaby"] = wallaby.label_to_bins["wallaby"][
+        last_index + 1 :
+    ]
+    print("wallaby length is now", len(wallaby.label_to_bins["wallaby"]))
+    for bin in remove:
+        del wallaby.bins[bin]
 
     # want a test set that covers all labels
     # randomize order
@@ -410,8 +416,9 @@ def split_dataset_by_cameras(db, dataset, build_config):
         max(0, validation_cameras)
     np.random.shuffle(cameras)
 
-    train_data = cameras[:train_cameras]
-    # train_data.append(wallaby)
+    # train_data = cameras[:train_cameras]
+    train_data = cameras
+    train_data.append(wallaby)
     required_samples = build_config.test_set_count
     required_bins = build_config.test_set_bins
 
@@ -426,8 +433,8 @@ def split_dataset_by_cameras(db, dataset, build_config):
         build_config.max_frames_per_track,
     )
 
-    validate_data.extend(cameras[train_cameras : train_cameras + validation_cameras])
-    # validate_data.append(wallaby_validate)
+    # validate_data.extend(cameras[train_cameras : train_cameras + validation_cameras])
+    validate_data.append(wallaby_validate)
 
     add_camera_data(
         dataset.labels,
