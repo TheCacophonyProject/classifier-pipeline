@@ -234,7 +234,7 @@ class NewModel:
             preprocess_fn=self.preprocess_fn,
         )
         history = self.model.fit(
-            vlidate,
+            train,
             validation_data=validate,
             epochs=10,
             shuffle=False,
