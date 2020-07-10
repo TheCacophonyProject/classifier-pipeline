@@ -247,6 +247,19 @@ class TrackDatabase:
             result["id"] = track_number
         return result
 
+    def get_track_predictions(self, clip_id, track_number):
+        """
+        Gets metadata for given track
+        :param clip_id:
+        :param track_number:
+        :return:
+        """
+        with HDF5Manager(self.database) as f:
+            track = f["clips"][clip_id][str(track_number)]
+            if "predictions" in dataset:
+                return track["predictions"][:]
+        return None
+
     def get_clip_meta(self, clip_id):
         """
         Gets metadata for given clip

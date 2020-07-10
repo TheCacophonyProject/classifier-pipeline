@@ -237,9 +237,9 @@ class TrackHeader:
         return str(clip_id) + "-" + str(track_number)
 
     @staticmethod
-    def from_meta(clip_id, clip_meta, track_meta):
+    def from_meta(clip_id, clip_meta, track_meta, predictions):
         """ Creates a track header from given metadata. """
-        predictions = track_meta.get("predictions", None)
+        # predictions = track_meta.get("predictions", None)
         correct_prediction = track_meta.get("correct_prediction", None)
 
         start_time = dateutil.parser.parse(track_meta["start_time"])
@@ -460,9 +460,12 @@ class FrameDataset:
 
         clip_meta = self.db.get_clip_meta(clip_id)
         track_meta = self.db.get_track_meta(clip_id, track_number)
+        predictions = self.db.get_track_predictions(clip_id, track_number)
         if self.filter_track(clip_meta, track_meta):
             return False
-        track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
+        track_header = TrackHeader.from_meta(
+            clip_id, clip_meta, track_meta, predictions
+        )
         track_header.set_important_frames(labels)
 
         self.tracks_by_id[track_header.track_id] = track_header
