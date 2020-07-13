@@ -78,9 +78,8 @@ class ClipLoader:
             self.config.load.cache_to_disk,
         )
         self.classifier = None
-        self.load_classifier(self.config.classify.model)
-        self.database.set_labels(self.classifier.labels)
-        print(self.database.get_labels())
+        # self.load_classifier(self.config.classify.model)
+        # self.database.set_labels(self.classifier.labels)
 
     def add_predictions(self):
         clips = self.database.get_all_clip_ids()
@@ -149,8 +148,12 @@ class ClipLoader:
         self.database.create_clip(clip)
 
         for track in clip.tracks:
-            track_prediction = TrackPrediction(track.get_id(), track.start_frame, True)
-
+            if self.classifier:
+                track_prediction = TrackPrediction(
+                    track.get_id(), track.start_frame, True
+                )
+            else:
+                track_prediction = None
             start_time, end_time = clip.start_and_end_time_absolute(
                 track.start_s, track.end_s
             )
@@ -162,16 +165,16 @@ class ClipLoader:
                 if not self.config.load.include_filtered_channel:
                     frame[TrackChannels.filtered] = 0
                 track_data.append(frame)
+                if self.classifier:
+                    thermal_reference = np.median(frame[0])
+                    # classify
+                    frames = Preprocessor.apply(
+                        [frame], [thermal_reference], default_inset=0
+                    )
+                    frame = frames[0]
 
-                thermal_reference = np.median(frame[0])
-                # classify
-                frames = Preprocessor.apply(
-                    [frame], [thermal_reference], default_inset=0
-                )
-                frame = frames[0]
-
-                prediction = self.classifier.classify_frame(frame)
-                track_prediction.classified_frame(region.frame_number, prediction)
+                    prediction = self.classifier.classify_frame(frame)
+                    track_prediction.classified_frame(region.frame_number, prediction)
 
             self.database.add_track(
                 clip.get_id(),
@@ -240,7 +243,10 @@ class ClipLoader:
         metadata = tools.load_clip_metadata(metadata_filename)
 
         if not self.reprocess and self.database.has_clip(str(metadata["id"])):
-            if not self.database.has_prediction(str(metadata["id"])):
+            if (
+                not self.database.has_prediction(str(metadata["id"]))
+                and self.classifier
+            ):
                 print("doesn't have predictions")
                 self.database.add_predictions(str(metadata["id"]), self.classifier)
             logging.warning("Already loaded %s", filename)

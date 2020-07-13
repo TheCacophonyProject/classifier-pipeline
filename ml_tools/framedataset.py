@@ -176,14 +176,14 @@ class TrackHeader:
             pred_frames = list(pred_frames)
             np.random.shuffle(pred_frames)
 
-            # np.random.shuffle(frames)
-            # pred_frames.extend(frames)
+            np.random.shuffle(frames)
+            pred_frames.extend(frames)
             self.important_frames = pred_frames
             return
 
         frames = list(frames)
         np.random.shuffle(frames)
-        # self.important_frames = list(frames)
+        self.important_frames = list(frames)
         # print("setting important frames", frames)
 
     def calculate_frame_crop(self):
@@ -493,9 +493,10 @@ class FrameDataset:
             return True
 
         if len(set(track_meta["track_tags"])) != len(set([track_meta["tag"]])):
-            pass
-            # self.filtered_stats["tags"] += 1
-            # return True
+            # pass
+            if track_meta["tag"] != "wallaby":
+                self.filtered_stats["tags"] += 1
+                return True
 
         # filter by date
         if (

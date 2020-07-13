@@ -503,7 +503,6 @@ def add_random_camera_samples(
         cur_camera %= num_cameras
     if num_cameras == 0:
         print("use all data for {} dataset {}".format(label, dataset.name))
-    print("added to dataset", label, dataset.frames)
 
 
 def get_distribution(labels, cameras, max_frames_per_track):
@@ -519,7 +518,6 @@ def get_distribution(labels, cameras, max_frames_per_track):
                 continue
             lbl_cameras.append(camera)
             frames += camera.label_frame_count(label, max_frames_per_track)
-        print("frames for", label, frames)
         if frames > 0 and frames < MIN_FRAMES and max_frames_per_track:
             # take more frames tracks in this labels, capped at 2.5 * max_frames_per_track
             frames_per_tracks = min(

@@ -1,18 +1,19 @@
+from ml_tools.dataset import TrackChannels
 import tensorflow as tf
 import pickle
 import logging
 from tensorboard.plugins.hparams import api as hp
 
 from collections import namedtuple
-from ml_tools.datagenerator import DataGenerator
+from ml_tools.datagenerator import DataGenerator, preprocess_frame
 import numpy as np
 import os
 import time
 import matplotlib.pyplot as plt
 import json
 from ml_tools.dataset import Preprocessor
+from classify.trackprediction import TrackPrediction
 
-FRAME_SIZE = 48
 #
 HP_DENSE_SIZES = hp.HParam(
     "dense_sizes",
@@ -40,7 +41,7 @@ class NewModel:
         self.log_dir = self.log_base
         os.makedirs(self.log_base, exist_ok=True)
         self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
-
+        self.frame_size = 48
         self.model = None
         self.datasets = None
         # namedtuple("Datasets", "train, validation, test")
@@ -121,11 +122,38 @@ class NewModel:
 
         raise "Could not find model" + self.pretrained_model
 
+    def get_preprocess_fn(self):
+        if self.pretrained_model == "resnet":
+            return tf.keras.applications.resnet.preprocess_input
+
+        elif self.pretrained_model == "resnetv2":
+            return tf.keras.applications.resnet_v2.preprocess_input
+
+        elif self.pretrained_model == "resnet152":
+            return tf.keras.applications.resnet.preprocess_input
+
+        elif self.pretrained_model == "vgg16":
+            return tf.keras.applications.vgg16.preprocess_input
+
+        elif self.pretrained_model == "vgg19":
+            return tf.keras.applications.vgg19.preprocess_input
+
+        elif self.pretrained_model == "mobilenet":
+            return tf.keras.applications.mobilenet_v2.preprocess_input
+
+        elif self.pretrained_model == "densenet121":
+            return tf.keras.applications.densenet.preprocess_input
+
+        elif self.pretrained_model == "inceptionresnetv2":
+            return tf.keras.applications.inception_resnet_v2.preprocess_input
+
+        return None
+
     def build_model(self, dense_sizes=[1024, 512]):
         # note the model already applies batch_norm
-        inputs = tf.keras.Input(shape=(FRAME_SIZE, FRAME_SIZE, 3))
+        inputs = tf.keras.Input(shape=(self.frame_size, self.frame_size, 3))
 
-        base_model, preprocess = self.base_model((FRAME_SIZE, FRAME_SIZE, 3))
+        base_model, preprocess = self.base_model((self.frame_size, self.frame_size, 3))
         self.preprocess_fn = preprocess
 
         base_model.trainable = False
@@ -178,11 +206,20 @@ class NewModel:
     def load_model(self, dir):
         self.model = tf.keras.models.load_model(dir)
         self.load_meta(dir)
+        # base_model = tf.keras.applications.ResNet50V2(
+        #     weights="imagenet", include_top=False
+        # )
+        # base_model.summary()
+        # for i, layer in enumerate(base_model.layers):
+        #     print(i, layer.name)
 
     def load_meta(self, dir):
         meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
         self.params = meta["hyperparams"]
         self.labels = meta["labels"]
+        self.pretrained_model = self.params.get("model", "resnetv2")
+        self.preprocess_fn = self.get_preprocess_fn()
+        self.frame_size = self.params.get("frame_size", 48)
 
     def save(self, run_name=MODEL_NAME):
         # create a save point
@@ -197,6 +234,8 @@ class NewModel:
         model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
         model_stats["version"] = self.VERSION
+        model_stats["frame_size"] = self.frame_size
+        model_stats["model"] = self.pretrained_model
         json.dump(
             model_stats,
             open(os.path.join(self.checkpoint_folder, run_name, "metadata.txt"), "w"),
@@ -249,26 +288,48 @@ class NewModel:
             plt.title("Training {}".format(key))
             plt.savefig("{}.png".format(key))
 
-    def preprocess(self, frame):
-        thermal_reference = np.median(frame[0])
-        frames = Preprocessor.apply([frame], [thermal_reference], default_inset=0)
-        return frames[0]
+    def preprocess(self, frame, data):
+        if self.use_thermal:
+            channel = TrackChannels.thermal
+        else:
+            channel = TrackChannels.filtered
+        data = data[channel]
 
-    def classify_frame(self, frame):
-        data_i = 1
-        if self.params["use_thermal"]:
-            data_i = 0
-        frame = [
-            frame[data_i, :, :],
-            frame[data_i, :, :],
-            frame[data_i, :, :],
-        ]
+        # normalizes data, constrast stretch good or bad?
+        if self.augment:
+            percent = random.randint(0, 2)
+        else:
+            percent = 0
+        max = int(np.percentile(data, 100 - percent))
+        min = int(np.percentile(data, percent))
+        if max == min:
+            logging.error(
+                "frame max and min are the same clip %s track %s frame %s",
+                frame.clip_id,
+                frame.track_id,
+                frame.frame_num,
+            )
+            return None
 
-        frame = np.transpose(frame, (1, 2, 0))
-        frame = frame[
-            np.newaxis,
-        ]
-        output = self.model.predict(frame)
+        data -= min
+        data = data / (max - min)
+        np.clip(data, a_min=0, a_max=None, out=data)
+
+        data = data[np.newaxis, :]
+        data = np.transpose(data, (1, 2, 0))
+        data = np.repeat(data, 3, axis=2)
+        return data
+
+    def classify_frame(self, frame, preprocess=True):
+        if preprocess:
+            frame = preprocess_frame(
+                frame,
+                (self.frame_size, self.frame_size, 3),
+                self.params["use_thermal"],
+                self.preprocess_fn,
+            )
+
+        output = self.model.predict(frame[np.newaxis, :])
         return output[0]
 
     def rebalance(self, train_cap=1000, validate_cap=500, exclude=[]):
@@ -419,7 +480,7 @@ class NewModel:
     def add_lstm(self, base_model):
         model2 = tf.keras.models.Model(inputs=base_model.input, outputs=x)
 
-        input_layer = tf.keras.Input(shape=(27, FRAME_SIZE, FRAME_SIZE, 3))
+        input_layer = tf.keras.Input(shape=(27, self.frame_size, self.frame_size, 3))
         curr_layer = tf.keras.layers.TimeDistributed(model2)(input_layer)
         curr_layer = tf.keras.layers.Reshape(target_shape=(27, 2048))(curr_layer)
         memory_output, memory_state = self.lstm(curr_layer)
@@ -459,3 +520,10 @@ class NewModel:
         lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
         lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
         return lstm_output, lstm_state
+
+    def classify_track(self, track_id, data, keep_all=True):
+        track_prediction = TrackPrediction(track_id, 0, keep_all)
+        for i, frame in enumerate(data):
+            prediction = self.classify_frame(frame)
+            track_prediction.classified_frame(i, prediction, None)
+        return track_prediction

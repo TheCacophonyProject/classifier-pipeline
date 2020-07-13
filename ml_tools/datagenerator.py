@@ -19,7 +19,7 @@ class DataGenerator(keras.utils.Sequence):
         labels,
         num_classes,
         batch_size,
-        preprocess_fn=None,
+        model_preprocess=None,
         dim=(FRAME_SIZE, FRAME_SIZE, 3),
         n_channels=5,
         shuffle=True,
@@ -29,7 +29,7 @@ class DataGenerator(keras.utils.Sequence):
         use_filtered=False,
     ):
         self.labels = labels
-        self.preprocess_fn = preprocess_fn
+        self.model_preprocess = model_preprocess
         self.use_thermal = use_thermal
         self.use_filtered = use_filtered
         self.lstm = lstm
@@ -105,57 +105,24 @@ class DataGenerator(keras.utils.Sequence):
             if label not in self.labels:
                 continue
             if self.lstm:
-                data = [
-                    data[:, 0, :, :],
-                    data[:, 1, :, :],
-                    data[:, 4, :, :],
-                ]
-
-                data = np.transpose(data, (1, 2, 3, 0))
+                raise "LSTM not implemented"
             else:
-                if self.use_thermal:
-                    channel = TrackChannels.thermal
-                else:
-                    channel = TrackChannels.filtered
-                data = data[channel]
-
-                # normalizes data, constrast stretch good or bad?
-                if self.augment:
-                    percent = random.randint(0, 2)
-                else:
-                    percent = 0
-                max = int(np.percentile(data, 100 - percent))
-                min = int(np.percentile(data, percent))
-                # print("max", np.amax(data), "98 p[ercentile]", np.percentile(data, 98))
-                # print(min)
-                # print(max)
-                if max == min:
+                data = preprocess_fn(
+                    data,
+                    self.dim,
+                    self.use_thermal,
+                    self.augment,
+                    self.model_preprocess,
+                )
+                if data is None:
                     logging.error(
-                        "frame max and min are the same clip %s track %s frame %s",
+                        "error pre processing frame (i.e.max and min are the same) clip %s track %s frame %s",
                         frame.clip_id,
                         frame.track_id,
                         frame.frame_num,
                     )
                     continue
 
-                data -= min
-                data = data / (max - min)
-                np.clip(data, a_min=0, a_max=None, out=data)
-
-                data = data[np.newaxis, :]
-                data = np.transpose(data, (1, 2, 0))
-                data = np.repeat(data, 3, axis=2)
-
-            if self.augment:
-                data = augement_frame(data, self.dim)
-                data = np.clip(data, a_min=0, a_max=None, out=data)
-            else:
-                data = reisze_cv(data, self.dim)
-
-            # pre proce expects values in range 0-255
-            if self.preprocess_fn:
-                data = data * 255
-                data = self.preprocess_fn(data)
             X[i,] = data
             y[i] = self.labels.index(label)
             clips.append(frame)
@@ -207,3 +174,49 @@ def augement_frame(frame, dim):
     image = tf.minimum(image, 1.0)
     image = tf.maximum(image, 0.0)
     return image.numpy()
+
+
+def preprocess_frame(
+    data, output_dim, use_thermal=True, augment=False, preprocess_fn=None
+):
+    if use_thermal:
+        channel = TrackChannels.thermal
+    else:
+        channel = TrackChannels.filtered
+    data = data[channel]
+
+    # normalizes data, constrast stretch good or bad?
+    if augment:
+        percent = random.randint(0, 2)
+    else:
+        percent = 0
+    max = int(np.percentile(data, 100 - percent))
+    min = int(np.percentile(data, percent))
+    if max == min:
+        #     logging.error(
+        #         "frame max and min are the same clip %s track %s frame %s",
+        #         frame.clip_id,
+        #         frame.track_id,
+        #         frame.frame_num,
+        #     )
+        return None
+
+    data -= min
+    data = data / (max - min)
+    np.clip(data, a_min=0, a_max=None, out=data)
+
+    data = data[np.newaxis, :]
+    data = np.transpose(data, (1, 2, 0))
+    data = np.repeat(data, output_dim[2], axis=2)
+
+    if augment:
+        data = augement_frame(data, output_dim)
+        data = np.clip(data, a_min=0, a_max=None, out=data)
+    else:
+        data = reisze_cv(data, output_dim)
+
+    # pre proce expects values in range 0-255
+    if preprocess_fn:
+        data = data * 255
+        data = preprocess_fn(data)
+    return data

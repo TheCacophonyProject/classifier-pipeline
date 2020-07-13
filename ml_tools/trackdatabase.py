@@ -228,10 +228,13 @@ class TrackDatabase:
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             result = []
-            for clip in clips:
-                for track in clips[clip]:
+            for clip_id in clips:
+                clip = clips[clip_id]
+                if not clip.attrs.get("finished"):
+                    continue
+                for track in clip:
                     if track not in special_datasets:
-                        result.append((clip, track))
+                        result.append((clip_id, track))
         return result
 
     def get_track_meta(self, clip_id, track_number):
@@ -294,7 +297,7 @@ class TrackDatabase:
             if start_frame is None:
                 start_frame = 0
             if end_frame is None:
-                end_frame = track_node["frames"]
+                end_frame = track_node.attrs["frames"]
 
             result = []
             for frame_number in range(start_frame, end_frame):
