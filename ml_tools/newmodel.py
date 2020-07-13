@@ -158,8 +158,9 @@ class NewModel:
         base_model, preprocess = self.base_model((self.frame_size, self.frame_size, 3))
         self.preprocess_fn = preprocess
 
-        base_model.trainable = False
-        x = base_model(inputs, training=False)  # IMPORTANT
+        # base_model.trainable = False
+        x = base_model(inputs)
+        # , training=False)  # IMPORTANT
 
         if self.params["lstm"]:
             # not tested
