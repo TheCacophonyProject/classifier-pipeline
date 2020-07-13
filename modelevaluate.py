@@ -31,6 +31,8 @@ class ModelEvalute:
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
     def evaluate(self, labels=None):
+        stats = {}
+
         track_ids = self.db.get_all_track_ids()
         for clip_id, track_id in track_ids:
             clip_meta = self.db.get_clip_meta(clip_id)
@@ -40,6 +42,7 @@ class ModelEvalute:
                 continue
             if labels and tag not in labels:
                 continue
+            stat = stats.setdefault(tag, {"correct": 0, "incorrect": []})
             track_data = self.db.get_track(clip_id, track_id)
             track_prediction = self.classifier.classify_track(track_id, track_data)
             print("clip", clip_id, "track", track_id)
@@ -51,7 +54,21 @@ class ModelEvalute:
                 " accuracy:",
                 round(track_prediction.score(), 2),
             )
+            predicted_lbl = self.classifier.labels[track_prediction.best_label_index]
+            # if tag != wallaby and predicted_lbl == "not"
+            if (
+                # tag != "wallaby"
+                # and predicted_lbl == "not"
+                # or predicted_lbl == "wallaby"
+                predicted_lbl
+                == tag
+            ):
+                stat["correct"] += 1
+            else:
+                stat["incorrect"].append(predicted_lbl)
             # break
+        print(stats)
+        # break
 
 
 def load_args():

@@ -32,6 +32,8 @@ METRIC_ACCURACY = "accuracy"
 class NewModel:
     """ Defines a deep learning model """
 
+    # fig = plt.figure(figsize=(48, 48))
+    # plt_i = 1
     MODEL_NAME = "new model"
     MODEL_DESCRIPTION = "Pre trained resnet"
     VERSION = "0.3.0"
@@ -326,9 +328,14 @@ class NewModel:
                 frame,
                 (self.frame_size, self.frame_size, 3),
                 self.params["use_thermal"],
-                self.preprocess_fn,
+                augment=False,
+                preprocess_fn=self.preprocess_fn,
             )
-
+        # if NewModel.plt_i < 41:
+        #     axes = NewModel.fig.add_subplot(4, 10, NewModel.plt_i)
+        #     plt.imshow(tf.keras.preprocessing.image.array_to_img(frame))
+        #
+        #     NewModel.plt_i += 1
         output = self.model.predict(frame[np.newaxis, :])
         return output[0]
 
@@ -526,4 +533,6 @@ class NewModel:
         for i, frame in enumerate(data):
             prediction = self.classify_frame(frame)
             track_prediction.classified_frame(i, prediction, None)
+        # plt.savefig("testimage.png")
+        # plt.close(NewModel.fig)
         return track_prediction

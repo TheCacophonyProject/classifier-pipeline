@@ -100,6 +100,7 @@ class TrackHeader:
         self.frame_mass = frame_mass
         self.median_mass = np.median(frame_mass)
         self.mass_deviation = MASS_DIFF_PERCENT * np.amax(frame_mass)
+        self.mean_mass = np.mean(frame_mass)
         # print("mass max", np.amax(frame_mass), self.median_mass, np.amin(frame_mass))
 
     def get_sample_frame(self):
@@ -110,81 +111,70 @@ class TrackHeader:
         return f
 
     # trying to get only clear frames
-    def set_important_frames(self, labels):
-        crop_rectangle = tools.Rectangle(
-            EDGE_PIXELS, EDGE_PIXELS, RES_X - 2 * EDGE_PIXELS, RES_Y - 2 * EDGE_PIXELS
-        )
-        frames = set()
-        for i, vel in enumerate(self.frame_velocity):
-            if vel[0] > MAX_VELOCITY or vel[1] > MAX_VELOCITY:
+    def set_important_frames(self, labels, min_mass=None):
+        frames = list()
+        for i, mass in enumerate(self.frame_mass):
+            if mass < self.mean_mass or (min_mass and mass < min_mass):
                 continue
-            if self.frame_crop[i] > MAX_CROP_PERCENT:
-                continue
-            rect = Region.region_from_array(self.track_bounds[i])
-            rect.set_is_along_border(crop_rectangle)
-            if rect.is_along_border:
-                # print("rect on border")
-                # print(self.track_bounds[i])
-                continue
-            if abs(self.frame_mass[i] - self.median_mass) > self.mass_deviation:
-                # print("mass diff too big", self.frame_mass[i], self.median_mass)
-                # print(self.frame_mass)
-                continue
-            frames.add(i)
-
-        if self.predictions is not None:
-            label_i = None
-            fp_i = None
-            if self.label in labels:
-                label_i = list(labels).index(self.label)
-            if "false-positive" in labels:
-                fp_i = list(labels).index("false-positive")
-            clear_frames = set()
-            clear_frames = []
-            best_preds = []
-            incorrect_best = []
-
-            for i, pred in enumerate(self.predictions):
-                best = np.argsort(pred)
-                if fp_i and best[-1] == fp_i:
-                    continue
-
-                clarity = best[-1] - best[-2]
-                if clarity < MIN_CLARITY:
-                    clear_frames.append((i, clarity))
-
-                if label_i:
-                    pred_percent = pred[label_i]
-                    if pred_percent > MIN_PERCENT:
-                        best_preds.append((i, pred_percent))
-
-                if not self.correct_prediction:
-                    if pred[best[-1]] > MIN_PERCENT:
-                        incorrect_best.append((i, pred[best[-1]]))
-
-            sorted(clear_frames, reverse=True, key=lambda frame: frame[1])
-            sorted(best_preds, reverse=True, key=lambda frame: frame[1])
-            sorted(incorrect_best, reverse=True, key=lambda frame: frame[1])
-
-            pred_frames = set()
-            pred_frames.update(f[0] for f in clear_frames[:2])
-            pred_frames.update(f[0] for f in best_preds[:2])
-            pred_frames.update(f[0] for f in incorrect_best[:2])
-            pred_frames = frames.intersection(pred_frames)
-            self.important_predicted = len(pred_frames)
-            frames = list(frames - pred_frames)
-            pred_frames = list(pred_frames)
-            np.random.shuffle(pred_frames)
-
-            np.random.shuffle(frames)
-            pred_frames.extend(frames)
-            self.important_frames = pred_frames
-            return
-
+            frames.append(i)
         frames = list(frames)
         np.random.shuffle(frames)
         self.important_frames = list(frames)
-        # print("setting important frames", frames)
+        return
+
+        # this needs more testing
+        # if self.predictions is not None:
+        #     label_i = None
+        #     fp_i = None
+        #     if self.label in labels:
+        #         label_i = list(labels).index(self.label)
+        #     if "false-positive" in labels:
+        #         fp_i = list(labels).index("false-positive")
+        #     clear_frames = set()
+        #     clear_frames = []
+        #     best_preds = []
+        #     incorrect_best = []
+        #
+        #     for i, pred in enumerate(self.predictions):
+        #         best = np.argsort(pred)
+        #         if fp_i and best[-1] == fp_i:
+        #             continue
+        #
+        #         clarity = best[-1] - best[-2]
+        #         if clarity < MIN_CLARITY:
+        #             clear_frames.append((i, clarity))
+        #
+        #         if label_i:
+        #             pred_percent = pred[label_i]
+        #             if pred_percent > MIN_PERCENT:
+        #                 best_preds.append((i, pred_percent))
+        #
+        #         if not self.correct_prediction:
+        #             if pred[best[-1]] > MIN_PERCENT:
+        #                 incorrect_best.append((i, pred[best[-1]]))
+        #
+        #     sorted(clear_frames, reverse=True, key=lambda frame: frame[1])
+        #     sorted(best_preds, reverse=True, key=lambda frame: frame[1])
+        #     sorted(incorrect_best, reverse=True, key=lambda frame: frame[1])
+        #
+        #     pred_frames = set()
+        #     pred_frames.update(f[0] for f in clear_frames[:2])
+        #     pred_frames.update(f[0] for f in best_preds[:2])
+        #     pred_frames.update(f[0] for f in incorrect_best[:2])
+        #     pred_frames = frames.intersection(pred_frames)
+        #     self.important_predicted = len(pred_frames)
+        #     frames = list(frames - pred_frames)
+        #     pred_frames = list(pred_frames)
+        #     np.random.shuffle(pred_frames)
+        #
+        #     np.random.shuffle(frames)
+        #     pred_frames.extend(frames)
+        #     self.important_frames = pred_frames
+        #     return
+        #
+        # frames = list(frames)
+        # np.random.shuffle(frames)
+        # self.important_frames = list(frames)
 
     def calculate_frame_crop(self):
         # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
@@ -392,7 +382,7 @@ class FrameDataset:
         self.preloader_stop_flag = False
 
         if config:
-
+            self.min_frame_mass = 3
             self.banned_clips = config.build.banned_clips
             self.included_labels = config.labels
             self.clip_before_date = config.build.clip_end_date
@@ -466,7 +456,7 @@ class FrameDataset:
         track_header = TrackHeader.from_meta(
             clip_id, clip_meta, track_meta, predictions
         )
-        track_header.set_important_frames(labels)
+        track_header.set_important_frames(labels, self.min_frame_mass)
 
         self.tracks_by_id[track_header.track_id] = track_header
 

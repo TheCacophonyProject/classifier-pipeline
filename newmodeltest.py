@@ -25,7 +25,6 @@ from ml_tools.dataset import Preprocessor
 from ml_tools.previewer import Previewer
 from track.track import Track
 from config.config import Config
-from mltools.dataset import Preprocessor
 
 
 class Test:
@@ -48,7 +47,6 @@ class Test:
         self.FRAME_SKIP = 1
         self.model_file = model_file
         self.config = config
-        self.predictions = Predictions(self.labels)
         self.tracker_config = config.tracking
         self.previewer = Previewer.create_if_required(config, config.classify.preview)
         self.enable_per_track_information = False
@@ -60,6 +58,7 @@ class Test:
         )
         self.classifier = None
         self.load_classifier(model_file)
+        self.predictions = Predictions(self.classifier.labels)
 
     def load_classifier(self, model_file):
         """
@@ -69,7 +68,7 @@ class Test:
         t0 = datetime.now()
         logging.info("classifier loading")
 
-        self.classifier = NewModel(train_config=self.config.train, labels=self.labels,)
+        self.classifier = NewModel(train_config=self.config.train)
 
         self.classifier.load_model(model_file)
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
@@ -87,6 +86,7 @@ class Test:
         # faster, but potentially more unstable predictions.
         UNIFORM_PRIOR = False
         num_labels = len(self.classifier.labels)
+
         prediction_smooth = 0.1
 
         smooth_prediction = None
@@ -108,23 +108,24 @@ class Test:
 
             # note: would be much better for the tracker to store the thermal references as it goes.
             # frame = clip.frame_buffer.get_frame(frame_number)
-            thermal_reference = np.median(frame.thermal)
+            # thermal_reference = np.median(frame.thermal)
             # track_data = track.crop_by_region_at_trackframe(frame, i)
             if i % self.FRAME_SKIP == 0:
                 # we use a tighter cropping here so we disable the default 2 pixel inset
-                frames = Preprocessor.apply(
-                    [track_data], [thermal_reference], default_inset=0
-                )
+                # frames = Preprocessor.apply(
+                #     [track_data], [thermal_reference], default_inset=0
+                # )
 
-                if frames is None:
+                if frame is None:
                     logging.info(
                         "Frame {} of track could not be classified.".format(
                             region.frame_number
                         )
                     )
                     return
-                frame = frames[0]
-                prediction = self.classifier.classify_frame(frame)
+                # frame = frames[0]
+
+                prediction = self.classifier.classify_frame(frame.as_array())
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
                 if fp_index is not None:

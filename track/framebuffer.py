@@ -59,8 +59,8 @@ class Frame:
             return [
                 self.thermal,
                 self.filtered,
-                self.flow[:, :, 0] if self.flow else None,
-                self.flow[:, :, 1] if self.flow else None,
+                self.flow[:, :, 0] if self.flow is not None else None,
+                self.flow[:, :, 1] if self.flow is not None else None,
                 self.mask,
             ]
 
