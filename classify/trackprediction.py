@@ -32,6 +32,46 @@ class Predictions:
     def prediction_description(self, track_id):
         return self.prediction_per_track.get(track_id).description(self.labels)
 
+    def set_important_frames(self):
+        for track_id, track_prediction in self.prediction_per_track.items():
+            label_i = None
+            fp_i = None
+            # if self.label in self.labels:
+            #     label_i = list(labels).index(self.label)
+            if "false-positive" in self.labels:
+                fp_i = list(self.labels).index("false-positive")
+            clear_frames = set()
+            clear_frames = []
+            best_preds = []
+            incorrect_best = []
+
+            for i, pred in enumerate(track_prediction):
+                best = np.argsort(pred)
+                if fp_i and best[-1] == fp_i:
+                    continue
+
+                clarity = best[-1] - best[-2]
+                if clarity < MIN_CLARITY:
+                    clear_frames.append((i, clarity))
+
+                # if label_i:
+                pred_percent = pred[label_i]
+                if pred_percent > MIN_PERCENT:
+                    best_preds.append((i, pred_percent))
+
+                # if not self.correct_prediction:
+                #     if pred[best[-1]] > MIN_PERCENT:
+                #         incorrect_best.append((i, pred[best[-1]]))
+
+            sorted(clear_frames, reverse=True, key=lambda frame: frame[1])
+            sorted(best_preds, reverse=True, key=lambda frame: frame[1])
+            sorted(incorrect_best, reverse=True, key=lambda frame: frame[1])
+            pred_frames = set()
+            pred_frames.update(f[0] for f in clear_frames[:2])
+            pred_frames.update(f[0] for f in best_preds[:2])
+            pred_frames.update(f[0] for f in incorrect_best[:2])
+            prediction.important_frames = list(pred_frames)
+
 
 class TrackPrediction:
     """
@@ -54,6 +94,7 @@ class TrackPrediction:
         self.keep_all = keep_all
         self.max_novelty = 0
         self.novelty_sum = 0
+        self.important_frames = []
 
     def classified_clip(self, predictions, novelties, last_frame):
         self.last_frame_classified = last_frame
@@ -103,15 +144,22 @@ class TrackPrediction:
 
     def get_classified_footer(self, labels, frame_number=None):
         # self.track_prediction = TrackPrediction(self.predictions, self.novelties)
+        important = False
+        if frame_number in self.important_frames:
+            important = True
         if frame_number is None or frame_number >= len(self.novelties):
-            return "({:.1f} {})\nnovelty={:.2f}".format(
-                self.max_score * 10, labels[self.best_label_index], self.max_novelty
+            return "({:.1f} {})\nnovelty={:.2f} {}".format(
+                self.max_score * 10,
+                labels[self.best_label_index],
+                self.max_novelty,
+                important,
             )
         if self.predictions:
-            return "({:.1f} {})\nnovelty={:.2f}".format(
+            return "({:.1f} {})\nnovelty={:.2f} {}".format(
                 self.score_at_time(frame_number) * 10,
                 labels[self.label_at_time(frame_number)],
                 self.novelty_at(frame_number),
+                important,
             )
         else:
             return "no classification"

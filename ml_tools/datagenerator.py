@@ -107,7 +107,7 @@ class DataGenerator(keras.utils.Sequence):
             if self.lstm:
                 raise "LSTM not implemented"
             else:
-                data = preprocess_fn(
+                data = preprocess_frame(
                     data,
                     self.dim,
                     self.use_thermal,

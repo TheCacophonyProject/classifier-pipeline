@@ -534,6 +534,8 @@ def get_distribution(labels, cameras, max_frames_per_track):
             else:
                 min_count = min(min_count, frames)
         counts.append(frames)
+    counts.sort()
+    min_count = counts[2]
     min_count = max(MIN_FRAMES, min_count)
     mean_frames = np.mean(counts)
     label_cap = min_count * 1.5

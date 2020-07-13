@@ -43,7 +43,7 @@ def train_model(run_name, conf, hyper_params, grid_search=False):
         None,
         None,
         exclude=[
-            "false-positive",
+            # "false-positive",
             # "mustelid",
             # "human",
             #     "insect",

@@ -261,7 +261,7 @@ class NewModel:
             use_thermal=self.params.get("use_thermal", False),
             use_filtered=self.params.get("use_filtered", False),
             shuffle=True,
-            preprocess_fn=self.preprocess_fn,
+            model_preprocess=self.preprocess_fn,
         )
         validate = DataGenerator(
             self.datasets.validation,
@@ -272,12 +272,12 @@ class NewModel:
             use_thermal=self.params.get("use_thermal", False),
             use_filtered=self.params.get("use_filtered", False),
             shuffle=True,
-            preprocess_fn=self.preprocess_fn,
+            model_preprocess=self.preprocess_fn,
         )
         history = self.model.fit(
             train,
             validation_data=validate,
-            epochs=10,
+            epochs=epochs,
             shuffle=False,
             callbacks=[tf.keras.callbacks.TensorBoard(self.log_dir)],  # log metrics
         )
@@ -322,12 +322,29 @@ class NewModel:
         data = np.repeat(data, 3, axis=2)
         return data
 
+    def classify_frameold(self, frame):
+        frame = [
+            frame[0, :, :],
+            frame[1, :, :],
+            frame[4, :, :],
+        ]
+
+        frame = np.transpose(frame, (1, 2, 0))
+        frame = frame[
+            np.newaxis,
+        ]
+        # print(frame.shape)
+
+        output = self.model.predict(frame)
+        # print(output)
+        return output[0]
+
     def classify_frame(self, frame, preprocess=True):
         if preprocess:
             frame = preprocess_frame(
                 frame,
                 (self.frame_size, self.frame_size, 3),
-                self.params["use_thermal"],
+                self.params.get("use_thermal", True),
                 augment=False,
                 preprocess_fn=self.preprocess_fn,
             )

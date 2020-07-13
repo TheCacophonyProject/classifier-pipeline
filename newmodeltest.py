@@ -108,24 +108,24 @@ class Test:
 
             # note: would be much better for the tracker to store the thermal references as it goes.
             # frame = clip.frame_buffer.get_frame(frame_number)
-            # thermal_reference = np.median(frame.thermal)
+            thermal_reference = np.median(frame.thermal)
             # track_data = track.crop_by_region_at_trackframe(frame, i)
             if i % self.FRAME_SKIP == 0:
                 # we use a tighter cropping here so we disable the default 2 pixel inset
-                # frames = Preprocessor.apply(
-                #     [track_data], [thermal_reference], default_inset=0
-                # )
+                frames = Preprocessor.apply(
+                    [track_data], [thermal_reference], default_inset=0
+                )
 
-                if frame is None:
+                if frames is None:
                     logging.info(
                         "Frame {} of track could not be classified.".format(
                             region.frame_number
                         )
                     )
                     return
-                # frame = frames[0]
+                frame = frames[0]
 
-                prediction = self.classifier.classify_frame(frame.as_array())
+                prediction = self.classifier.classify_frameold(frame)
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
                 if fp_index is not None:
@@ -234,7 +234,7 @@ class Test:
             logging.info(
                 " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
             )
-
+        self.predictions.set_important_frames()
         if self.previewer:
             logging.info("Exporting preview to '{}'".format(mpeg_filename))
             self.previewer.export_clip_preview(mpeg_filename, clip, self.predictions)
