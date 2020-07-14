@@ -57,6 +57,8 @@ class Predictions:
             clear_frames = []
             best_preds = []
             incorrect_best = []
+            print("track", track_id)
+
             for i, pred in enumerate(track_prediction.predictions):
                 best = np.argsort(pred)
                 if fp_i and best[-1] == fp_i:
@@ -70,7 +72,7 @@ class Predictions:
                 pred_percent = pred[best[-1]]
                 if pred_percent > MIN_PERCENT:
                     best_preds.append((i, pred_percent))
-
+                    # print(i, pred_percent, self.labels[best[-1]])
                 # if not self.correct_prediction:
                 #     if pred[best[-1]] > MIN_PERCENT:
                 #         incorrect_best.append((i, pred[best[-1]]))
@@ -78,17 +80,32 @@ class Predictions:
             clear_frames = sorted(
                 clear_frames, reverse=True, key=lambda frame: frame[1]
             )
-            print("clearest frames", clear_frames)
+            # print("clearest frames", clear_frames)
             best_preds = sorted(best_preds, reverse=True, key=lambda frame: frame[1])
-            print("highest pred", best_preds)
+            # print("highest pred", best_preds)
 
             sorted(incorrect_best, reverse=True, key=lambda frame: frame[1])
             pred_frames = set()
+            track_prediction.best_predictions = [f[0] for f in best_preds]
+            track_prediction.clearest_frames = [f[0] for f in clear_frames]
+            track_prediction.clearest_frames.sort()
+            track_prediction.best_predictions.sort()
+            print("track", track_id, track_prediction.best_predictions)
+            # print(
+            #     "predictions not clear",
+            #     set(track_prediction.best_predictions)
+            #     - set(track_prediction.clearest_frames),
+            # )
+            #
+            # print(
+            #     "clear not predictions",
+            #     set(track_prediction.clearest_frames)
+            #     - set(track_prediction.best_predictions),
+            # )
             pred_frames.update(f[0] for f in clear_frames)
             pred_frames.update(f[0] for f in best_preds)
-            pred_frames.update(f[0] for f in incorrect_best)
             track_prediction.important_frames = list(pred_frames)
-            print(pred_frames)
+            # print(pred_frames)
 
 
 class TrackPrediction:
@@ -106,12 +123,15 @@ class TrackPrediction:
         self.novelties = []
         self.uniform_prior = False
         self.class_best_score = None
+        self.start_frame = start_frame
         self.last_frame_classified = start_frame
         self.num_frames_classified = 0
         self.keep_all = keep_all
         self.max_novelty = 0
         self.novelty_sum = 0
         self.important_frames = []
+        self.clearest_frames = []
+        self.best_predictions = []
 
     def classified_clip(self, predictions, novelties, last_frame):
         self.last_frame_classified = last_frame
@@ -163,22 +183,20 @@ class TrackPrediction:
         # self.track_prediction = TrackPrediction(self.predictions, self.novelties)
         important = False
         if frame_number in self.important_frames:
-            print("important_frame", frame_number)
+            # print("important_frame", frame_number)
             important = True
         if frame_number is None or frame_number >= len(self.novelties):
-            return "({:.1f} {})\nnovelty={:.2f}{} {}".format(
-                self.max_score * 10,
+            return "({:.1f} {}){} {}".format(
+                self.max_score * 100,
                 labels[self.best_label_index],
-                self.max_novelty,
-                self.clarity_at(frame_number),
+                int(round(self.clarity, 2) * 100),
                 important,
             )
         if self.predictions:
-            return "({:.1f} {})\nnovelty={:.2f} {} {}".format(
-                self.score_at_time(frame_number) * 10,
+            return "({:.1f} {}) {} {}".format(
+                self.score_at_time(frame_number) * 100,
                 labels[self.label_at_time(frame_number)],
-                self.novelty_at(frame_number),
-                self.clarity_at(frame_number),
+                int(round(self.clarity_at(frame_number), 2) * 100),
                 important,
             )
         else:
@@ -289,7 +307,7 @@ class TrackPrediction:
 
         return int(np.argsort(self.predictions[frame_number])[-n])
 
-    def score_at_time(self, frame_number, n=-1):
+    def score_at_time(self, frame_number, n=1):
         """ class label of nth best guess at a point in time."""
         if n is None:
             return None

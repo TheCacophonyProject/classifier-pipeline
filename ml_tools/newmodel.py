@@ -372,6 +372,7 @@ class NewModel:
         return output[0]
 
     def classify_frame(self, frame, preprocess=True):
+
         if preprocess:
             frame = preprocess_frame(
                 frame,

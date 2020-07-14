@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 from ml_tools.dataset import dataset_db_path
 import tensorflow as tf
 
@@ -31,19 +33,6 @@ class Test:
     def __init__(self, config, model_file):
 
         # prediction record for each track
-        self.labels = [
-            "hedgehog",
-            "false-positive",
-            "rodent",
-            "possum",
-            "cat",
-            "bird",
-            "mustelid",
-            "insect",
-            "human",
-            "leporidae",
-            "wallaby",
-        ]
         self.FRAME_SKIP = 1
         self.model_file = model_file
         self.config = config
@@ -59,6 +48,7 @@ class Test:
         self.classifier = None
         self.load_classifier(model_file)
         self.predictions = Predictions(self.classifier.labels)
+        print("predicted labels", self.classifier.labels)
 
     def load_classifier(self, model_file):
         """
@@ -99,33 +89,34 @@ class Test:
         except ValueError:
             fp_index = None
 
+        print(self.classifier.labels)
         # go through making classifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         track_prediction = self.predictions.get_or_create_prediction(track)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
-            track_data = track.crop_by_region(frame, region)
-
+            frame = track.crop_by_region(frame, region)
+            # thermal = region.subimage(frame.thermal)
             # note: would be much better for the tracker to store the thermal references as it goes.
             # frame = clip.frame_buffer.get_frame(frame_number)
-            thermal_reference = np.median(frame.thermal)
+            # thermal_reference = np.median(frame.thermal)
             # track_data = track.crop_by_region_at_trackframe(frame, i)
             if i % self.FRAME_SKIP == 0:
                 # we use a tighter cropping here so we disable the default 2 pixel inset
-                frames = Preprocessor.apply(
-                    [track_data], [thermal_reference], default_inset=0
-                )
+                # frames = Preprocessor.apply(
+                #     [track_data], [thermal_reference], default_inset=0
+                # )
 
-                if frames is None:
+                if frame is None:
                     logging.info(
                         "Frame {} of track could not be classified.".format(
                             region.frame_number
                         )
                     )
                     return
-                frame = frames[0]
+                # frame = frames[0]
 
-                prediction = self.classifier.classify_frameold(frame)
+                prediction = self.classifier.classify_frame(frame)
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
                 if fp_index is not None:
@@ -230,11 +221,12 @@ class Test:
 
         for i, track in enumerate(clip.tracks):
             prediction = self.identify_track(clip, track)
-            description = prediction.description(self.labels)
+            description = prediction.description(self.classifier.labels)
             logging.info(
                 " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
             )
         self.predictions.set_important_frames()
+        self.save_important_frames(clip, clip.get_id(), self.predictions)
         if self.previewer:
             logging.info("Exporting preview to '{}'".format(mpeg_filename))
             self.previewer.export_clip_preview(mpeg_filename, clip, self.predictions)
@@ -247,6 +239,47 @@ class Test:
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
+
+    def save_important_frames(self, clip, filename, predictions):
+        for track_id, track_prediction in predictions.prediction_per_track.items():
+            track = [track for track in clip.tracks if track.get_id() == track_id]
+            if len(track) == 0:
+                raise "Couldnt find track {}".format(track_id)
+            track = track[0]
+            for i in range(2):
+                if i == 0:
+                    values = track_prediction.best_predictions
+                    prefix = "best"
+                else:
+                    values = track_prediction.clearest_frames
+                    prefix = "clear"
+
+                rows = round(len(values) / 5.0) + 1
+                print(rows, len(values))
+                fig = plt.figure(figsize=(52, 52))
+                for i, frame_i in enumerate(values):
+                    axes = fig.add_subplot(rows, 5, i + 1)
+                    axes.set_title(
+                        "{}-{}".format(
+                            track.start_frame + 1,
+                            track_prediction.get_classified_footer(
+                                self.classifier.labels, frame_i + track.start_frame - 1
+                            ),
+                        )
+                    )
+
+                    frame = clip.frame_buffer.get_frame(frame_i + track.start_frame - 1)
+                    frame = track.crop_by_region(frame, track.bounds_history[frame_i])[
+                        0
+                    ]
+                    frame = np.float32(frame)
+                    temp_min = np.amin(frame)
+                    temp_max = np.amax(frame)
+                    frame = (frame - temp_min) / (temp_max - temp_min)
+                    colorized = np.uint8(255.0 * self.previewer.colourmap(frame))
+                    plt.imshow(colorized[:, :, :3])
+                plt.savefig("{}-{}-{}.png".format(prefix, filename, track_id))
+                plt.close(fig)
 
     def save_metadata(self, filename, meta_filename, clip):
         # if self.cache_to_disk:
@@ -280,14 +313,14 @@ class Test:
             track_info["num_frames"] = prediction.num_frames
             track_info["frame_start"] = track.start_frame
             track_info["frame_end"] = track.end_frame
-            track_info["label"] = self.labels[prediction.best_label_index]
+            track_info["label"] = self.classifier.labels[prediction.best_label_index]
             track_info["confidence"] = round(prediction.score(), 2)
             track_info["clarity"] = round(prediction.clarity, 3)
             track_info["average_novelty"] = round(prediction.average_novelty, 2)
             track_info["max_novelty"] = round(prediction.max_novelty, 2)
             track_info["all_class_confidences"] = {}
             for i, value in enumerate(prediction.class_best_score):
-                label = self.labels[i]
+                label = self.classifier.labels[i]
                 track_info["all_class_confidences"][label] = round(float(value), 3)
 
             positions = []
