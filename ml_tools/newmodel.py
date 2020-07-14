@@ -1,3 +1,5 @@
+import itertools
+import io
 from ml_tools.dataset import TrackChannels
 import tensorflow as tf
 import pickle
@@ -13,6 +15,7 @@ import matplotlib.pyplot as plt
 import json
 from ml_tools.dataset import Preprocessor
 from classify.trackprediction import TrackPrediction
+from sklearn.metrics import confusion_matrix
 
 #
 HP_DENSE_SIZES = hp.HParam(
@@ -27,6 +30,10 @@ HP_LEARNING_RATE = hp.HParam(
 )
 
 METRIC_ACCURACY = "accuracy"
+
+validate = None
+model = None
+file_writer_cm = None
 
 
 class NewModel:
@@ -158,9 +165,8 @@ class NewModel:
         base_model, preprocess = self.base_model((self.frame_size, self.frame_size, 3))
         self.preprocess_fn = preprocess
 
-        # base_model.trainable = False
-        x = base_model(inputs)
-        # , training=False)  # IMPORTANT
+        base_model.trainable = False
+        x = base_model(inputs, training=False)  # IMPORTANT
 
         if self.params["lstm"]:
             # not tested
@@ -178,6 +184,8 @@ class NewModel:
         self.model.compile(
             optimizer=self.optimizer(), loss=self.loss(), metrics=["accuracy"],
         )
+        global model
+        model = self.model
 
     def loss(self):
         softmax = tf.keras.losses.CategoricalCrossentropy(
@@ -264,6 +272,7 @@ class NewModel:
             shuffle=True,
             model_preprocess=self.preprocess_fn,
         )
+        global validate
         validate = DataGenerator(
             self.datasets.validation,
             self.datasets.train.labels,
@@ -275,12 +284,22 @@ class NewModel:
             shuffle=True,
             model_preprocess=self.preprocess_fn,
         )
+        cm_callback = tf.keras.callbacks.LambdaCallback(
+            on_epoch_end=log_confusion_matrix
+        )
+        global file_writer_cm
+        file_writer_cm = tf.summary.create_file_writer(self.log_dir + "/cm")
         history = self.model.fit(
             train,
             validation_data=validate,
             epochs=epochs,
             shuffle=False,
-            callbacks=[tf.keras.callbacks.TensorBoard(self.log_dir)],  # log metrics
+            callbacks=[
+                tf.keras.callbacks.TensorBoard(
+                    self.log_dir, write_graph=True, write_images=True
+                ),
+                cm_callback,
+            ],  # log metrics
         )
 
         self.save(run_name)
@@ -322,6 +341,18 @@ class NewModel:
         data = np.transpose(data, (1, 2, 0))
         data = np.repeat(data, 3, axis=2)
         return data
+
+    def preprocess_old(self, frame):
+        frame = [
+            frame[0, :, :],
+            frame[1, :, :],
+            frame[4, :, :],
+        ]
+
+        frame = np.transpose(frame, (1, 2, 0))
+        frame = frame[
+            np.newaxis,
+        ]
 
     def classify_frameold(self, frame):
         frame = [
@@ -554,3 +585,68 @@ class NewModel:
         # plt.savefig("testimage.png")
         # plt.close(NewModel.fig)
         return track_prediction
+
+
+def plot_confusion_matrix(cm, class_names):
+    """
+  Returns a matplotlib figure containing the plotted confusion matrix.
+
+  Args:
+    cm (array, shape = [n, n]): a confusion matrix of integer classes
+    class_names (array, shape = [n]): String names of the integer classes
+  """
+    figure = plt.figure(figsize=(8, 8))
+    plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+    plt.title("Confusion matrix")
+    plt.colorbar()
+    tick_marks = np.arange(len(class_names))
+    plt.xticks(tick_marks, class_names, rotation=45)
+    plt.yticks(tick_marks, class_names)
+
+    # Normalize the confusion matrix.
+    cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+
+    # Use white text if squares are dark; otherwise black.
+    threshold = cm.max() / 2.0
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        color = "white" if cm[i, j] > threshold else "black"
+        plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
+
+    plt.tight_layout()
+    plt.ylabel("True label")
+    plt.xlabel("Predicted label")
+    return figure
+
+
+def log_confusion_matrix(epoch, logs):
+    # Use the model to predict the values from the validation dataset.
+    x, y = validate.get_data()
+    test_pred_raw = model.predict(x)
+    test_pred = np.argmax(test_pred_raw, axis=1)
+    # Calculate the confusion matrix.
+
+    cm = confusion_matrix(y, test_pred)
+    # Log the confusion matrix as an image summary.
+    figure = plot_confusion_matrix(cm, class_names=validate.labels)
+    cm_image = plot_to_image(figure)
+
+    # Log the confusion matrix as an image summary.
+    with file_writer_cm.as_default():
+        tf.summary.image("Confusion Matrix", cm_image, step=epoch)
+
+
+def plot_to_image(figure):
+    """Converts the matplotlib plot specified by 'figure' to a PNG image and
+  returns it. The supplied figure is closed and inaccessible after this call."""
+    # Save the plot to a PNG in memory.
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png")
+    # Closing the figure prevents it from being displayed directly inside
+    # the notebook.
+    plt.close(figure)
+    buf.seek(0)
+    # Convert PNG buffer to TF image
+    image = tf.image.decode_png(buf.getvalue(), channels=4)
+    # Add the batch dimension
+    image = tf.expand_dims(image, 0)
+    return image

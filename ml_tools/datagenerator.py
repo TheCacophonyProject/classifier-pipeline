@@ -50,6 +50,10 @@ class DataGenerator(keras.utils.Sequence):
         self.n_channels = n_channels
         self.on_epoch_end()
 
+    def get_data(self):
+        X, y, _ = self._data(self.indexes, to_categorical=False)
+        return X, y
+
     def __len__(self):
         "Denotes the number of batches per epoch"
 
@@ -87,15 +91,15 @@ class DataGenerator(keras.utils.Sequence):
         if self.shuffle:
             np.random.shuffle(self.indexes)
 
-    def _data(self, indexes):
+    def _data(self, indexes, to_categorical=True):
         "Generates data containing batch_size samples"  # X : (n_samples, *dim, n_channels)
         # Initialization
         if self.lstm:
-            X = np.empty((self.batch_size, self.sequence_size, *self.dim))
+            X = np.empty((len(indexes), self.sequence_size, *self.dim))
         else:
-            X = np.empty((self.batch_size, *self.dim))
+            X = np.empty((len(indexes), *self.dim))
 
-        y = np.empty((self.batch_size), dtype=int)
+        y = np.empty((len(indexes)), dtype=int)
         clips = []
         # Generate data
         for i, index in enumerate(indexes):
@@ -127,7 +131,9 @@ class DataGenerator(keras.utils.Sequence):
             y[i] = self.labels.index(label)
             clips.append(frame)
 
-        return X, keras.utils.to_categorical(y, num_classes=self.n_classes), clips
+        if to_categorical:
+            return X, keras.utils.to_categorical(y, num_classes=self.n_classes), clips
+        return X, y, clips
 
 
 def resize(image, dim):

@@ -160,7 +160,7 @@ class Test:
                 region.frame_number, smooth_prediction, smooth_novelty
             )
 
-            print(self.classifier.labels[track_prediction.label_at_time(-1)])
+            # print(self.classifier.labels[track_prediction.label_at_time(-1)])
 
         return track_prediction
 

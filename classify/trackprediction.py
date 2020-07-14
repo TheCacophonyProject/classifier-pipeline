@@ -2,6 +2,20 @@ import attr
 import logging
 import numpy as np
 
+CPTV_FILE_WIDTH = 160
+CPTV_FILE_HEIGHT = 120
+FRAMES_PER_SECOND = 9
+
+MASS_DIFF_PERCENT = 0.20
+MAX_VELOCITY = 2
+MAX_CROP_PERCENT = 0.3
+MIN_CLARITY = 0.8
+MIN_PERCENT = 0.85
+
+RES_X = 160
+RES_Y = 120
+EDGE_PIXELS = 1
+
 
 class Predictions:
     def __init__(self, labels):
@@ -40,22 +54,20 @@ class Predictions:
             #     label_i = list(labels).index(self.label)
             if "false-positive" in self.labels:
                 fp_i = list(self.labels).index("false-positive")
-            clear_frames = set()
             clear_frames = []
             best_preds = []
             incorrect_best = []
-
-            for i, pred in enumerate(track_prediction):
+            for i, pred in enumerate(track_prediction.predictions):
                 best = np.argsort(pred)
                 if fp_i and best[-1] == fp_i:
                     continue
 
-                clarity = best[-1] - best[-2]
-                if clarity < MIN_CLARITY:
+                clarity = pred[best[-1]] - pred[best[-2]]
+                if clarity > MIN_CLARITY:
                     clear_frames.append((i, clarity))
 
                 # if label_i:
-                pred_percent = pred[label_i]
+                pred_percent = pred[best[-1]]
                 if pred_percent > MIN_PERCENT:
                     best_preds.append((i, pred_percent))
 
@@ -63,14 +75,20 @@ class Predictions:
                 #     if pred[best[-1]] > MIN_PERCENT:
                 #         incorrect_best.append((i, pred[best[-1]]))
 
-            sorted(clear_frames, reverse=True, key=lambda frame: frame[1])
-            sorted(best_preds, reverse=True, key=lambda frame: frame[1])
+            clear_frames = sorted(
+                clear_frames, reverse=True, key=lambda frame: frame[1]
+            )
+            print("clearest frames", clear_frames)
+            best_preds = sorted(best_preds, reverse=True, key=lambda frame: frame[1])
+            print("highest pred", best_preds)
+
             sorted(incorrect_best, reverse=True, key=lambda frame: frame[1])
             pred_frames = set()
-            pred_frames.update(f[0] for f in clear_frames[:2])
-            pred_frames.update(f[0] for f in best_preds[:2])
-            pred_frames.update(f[0] for f in incorrect_best[:2])
-            prediction.important_frames = list(pred_frames)
+            pred_frames.update(f[0] for f in clear_frames)
+            pred_frames.update(f[0] for f in best_preds)
+            pred_frames.update(f[0] for f in incorrect_best)
+            track_prediction.important_frames = list(pred_frames)
+            print(pred_frames)
 
 
 class TrackPrediction:
@@ -88,7 +106,6 @@ class TrackPrediction:
         self.novelties = []
         self.uniform_prior = False
         self.class_best_score = None
-        self.track_prediction = None
         self.last_frame_classified = start_frame
         self.num_frames_classified = 0
         self.keep_all = keep_all
@@ -146,19 +163,22 @@ class TrackPrediction:
         # self.track_prediction = TrackPrediction(self.predictions, self.novelties)
         important = False
         if frame_number in self.important_frames:
+            print("important_frame", frame_number)
             important = True
         if frame_number is None or frame_number >= len(self.novelties):
-            return "({:.1f} {})\nnovelty={:.2f} {}".format(
+            return "({:.1f} {})\nnovelty={:.2f}{} {}".format(
                 self.max_score * 10,
                 labels[self.best_label_index],
                 self.max_novelty,
+                self.clarity_at(frame_number),
                 important,
             )
         if self.predictions:
-            return "({:.1f} {})\nnovelty={:.2f} {}".format(
+            return "({:.1f} {})\nnovelty={:.2f} {} {}".format(
                 self.score_at_time(frame_number) * 10,
                 labels[self.label_at_time(frame_number)],
                 self.novelty_at(frame_number),
+                self.clarity_at(frame_number),
                 important,
             )
         else:
@@ -231,6 +251,11 @@ class TrackPrediction:
     def average_novelty(self):
         """ average novelty for this track """
         return self.novelty_sum / self.num_frames_classified
+
+    def clarity_at(self, frame):
+        pred = self.predictions[frame]
+        best = np.argsort(pred)
+        return pred[best[-1]] - pred[best[-2]]
 
     @property
     def clarity(self):
