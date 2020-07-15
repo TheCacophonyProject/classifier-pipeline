@@ -829,9 +829,9 @@ class Model:
         self.datasets.validation.stop_async_load()
 
     def close(self):
-        """ 
+        """
         Cleans up memory used by model by closing any open sessions or aync loaders.
-        :return: 
+        :return:
         """
         self.session.close()
         self.stop_async()

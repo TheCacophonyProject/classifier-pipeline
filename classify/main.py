@@ -86,7 +86,9 @@ def main():
     if not config.use_gpu:
         logging.info("GPU mode disabled.")
 
-    if not os.path.exists(clip_classifier.model_file + ".meta"):
+    if not clip_classifier.newmodel and not os.path.exists(
+        clip_classifier.model_file + ".meta"
+    ):
         logging.error(
             "No model found named '{}'.".format(clip_classifier.model_file + ".meta")
         )
