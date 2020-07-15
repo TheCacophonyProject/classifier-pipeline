@@ -8,7 +8,7 @@ import numpy as np
 from ml_tools.dataset import TrackChannels
 
 
-class NewModel:
+class KerasModel:
     def __init__(self, train_config=None):
         self.params = {
             # augmentation
@@ -63,6 +63,9 @@ class NewModel:
         elif self.pretrained_model == "inceptionresnetv2":
             return tf.keras.applications.inception_resnet_v2.preprocess_input
 
+        logging.warn(
+            "pretrained model %s has no preprocessing function", self.pretrained_model
+        )
         return None
 
     def classify_frame(self, frame, preprocess=True):
@@ -109,7 +112,7 @@ def preprocess_frame(
     data = np.repeat(data, output_dim[2], axis=2)
     data = reisze_cv(data, output_dim)
 
-    # pre proce expects values in range 0-255
+    # preprocess expects values in range 0-255
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)

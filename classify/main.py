@@ -72,6 +72,18 @@ def main():
     model_file = config.classify.model
     if args.model_file:
         model_file = args.model_file
+
+    path, ext = os.path.splitext(model_file)
+    if ext != ".sav":
+        if not os.path.exists(os.path.join(model_file, "saved_model.pb")):
+            logging.error(
+                "No model found named '{}'.".format(model_file + ".save_model.pb")
+            )
+            exit(13)
+    elif not os.path.exists(model_file + ".meta"):
+        logging.error("No model found named '{}'.".format(model_file + ".meta"))
+        exit(13)
+
     clip_classifier = ClipClassifier(config, config.classify_tracking, model_file)
 
     # parse start and end dates
@@ -85,14 +97,6 @@ def main():
 
     if not config.use_gpu:
         logging.info("GPU mode disabled.")
-
-    if not clip_classifier.newmodel and not os.path.exists(
-        clip_classifier.model_file + ".meta"
-    ):
-        logging.error(
-            "No model found named '{}'.".format(clip_classifier.model_file + ".meta")
-        )
-        exit(13)
 
     # just fetch the classifier now so it doesn't impact the benchmarking on the first clip analysed.
     _ = clip_classifier.classifier

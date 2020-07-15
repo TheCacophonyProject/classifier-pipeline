@@ -14,7 +14,7 @@ from ml_tools import tools
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 import ml_tools.globals as globs
 from ml_tools.model import Model
-from ml_tools.newmodel import NewModel
+from ml_tools.kerasmodel import KerasModel
 
 from ml_tools.dataset import Preprocessor
 from ml_tools.previewer import Previewer
@@ -32,7 +32,8 @@ class ClipClassifier(CPTVFileProcessor):
 
         super(ClipClassifier, self).__init__(config, tracking_config)
         self.model_file = model_file
-        self.newmodel = False
+        path, ext = os.path.splitext(self.model_file)
+        self.kerasmodel = ext != ".sav"
         # prediction record for each track
         self.predictions = Predictions(self.classifier.labels)
 
@@ -97,6 +98,7 @@ class ClipClassifier(CPTVFileProcessor):
         track_prediction = self.predictions.get_or_create_prediction(track)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
+
             track_data = track.crop_by_region(frame, region)
 
             # note: would be much better for the tracker to store the thermal references as it goes.
@@ -104,10 +106,10 @@ class ClipClassifier(CPTVFileProcessor):
             thermal_reference = np.median(frame.thermal)
             # track_data = track.crop_by_region_at_trackframe(frame, i)
             if i % self.FRAME_SKIP == 0:
-                # we use a tighter cropping here so we disable the default 2 pixel inset
-                if self.newmodel:
+                if self.kerasmodel:
                     prediction = self.classifier.classify_frame(track_data)
                 else:
+                    # we use a tighter cropping here so we disable the default 2 pixel inset
                     frames = Preprocessor.apply(
                         [track_data], [thermal_reference], default_inset=0
                     )
@@ -174,19 +176,17 @@ class ClipClassifier(CPTVFileProcessor):
         if globs._classifier is None:
             t0 = datetime.now()
             logging.info("classifier loading")
-            path, ext = os.path.splitext(self.model_file)
-            if ext == ".sav":
-                # old model
+            if self.kerasmodel:
+                model = KerasModel(self.config.train)
+                model.load_model(self.model_file)
+                globs._classifier = model
+            else:
                 globs._classifier = Model(
                     train_config=self.config.train,
                     session=tools.get_session(disable_gpu=not self.config.use_gpu),
                 )
                 globs._classifier.load(self.model_file)
-            else:
-                model = NewModel(self.config.train)
-                model.load_model(self.model_file)
-                globs._classifier = model
-                self.newmodel = True
+
             logging.info("classifier loaded ({})".format(datetime.now() - t0))
         return globs._classifier
 
