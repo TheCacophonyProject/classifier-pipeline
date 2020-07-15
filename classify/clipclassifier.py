@@ -14,6 +14,8 @@ from ml_tools import tools
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 import ml_tools.globals as globs
 from ml_tools.model import Model
+from ml_tools.kerasmodel import KerasModel
+
 from ml_tools.dataset import Preprocessor
 from ml_tools.previewer import Previewer
 from track.track import Track
@@ -30,7 +32,8 @@ class ClipClassifier(CPTVFileProcessor):
 
         super(ClipClassifier, self).__init__(config, tracking_config)
         self.model_file = model_file
-
+        path, ext = os.path.splitext(self.model_file)
+        self.kerasmodel = ext != ".sav"
         # prediction record for each track
         self.predictions = Predictions(self.classifier.labels)
 
@@ -95,6 +98,7 @@ class ClipClassifier(CPTVFileProcessor):
         track_prediction = self.predictions.get_or_create_prediction(track)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
+
             track_data = track.crop_by_region(frame, region)
 
             # note: would be much better for the tracker to store the thermal references as it goes.
@@ -102,33 +106,35 @@ class ClipClassifier(CPTVFileProcessor):
             thermal_reference = np.median(frame.thermal)
             # track_data = track.crop_by_region_at_trackframe(frame, i)
             if i % self.FRAME_SKIP == 0:
-                # we use a tighter cropping here so we disable the default 2 pixel inset
-                frames = Preprocessor.apply(
-                    [track_data], [thermal_reference], default_inset=0
-                )
-
-                if frames is None:
-                    logging.info(
-                        "Frame {} of track could not be classified.".format(
-                            region.frame_number
-                        )
+                if self.kerasmodel:
+                    prediction = self.classifier.classify_frame(track_data)
+                else:
+                    # we use a tighter cropping here so we disable the default 2 pixel inset
+                    frames = Preprocessor.apply(
+                        [track_data], [thermal_reference], default_inset=0
                     )
-                    return
-                frame = frames[0]
-                (
-                    prediction,
-                    novelty,
-                    state,
-                ) = self.classifier.classify_frame_with_novelty(frame, state)
-                # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
-                # score
+
+                    if frames is None:
+                        logging.info(
+                            "Frame {} of track could not be classified.".format(
+                                region.frame_number
+                            )
+                        )
+                        return
+                    frame = frames[0]
+                    (
+                        prediction,
+                        novelty,
+                        state,
+                    ) = self.classifier.classify_frame_with_novelty(frame, state)
+                    # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
+                    # score
+
+                    # a little weight decay helps the model not lock into an initial impression.
+                    # 0.98 represents a half life of around 3 seconds.
+                    state *= 0.98
                 if fp_index is not None:
                     prediction[fp_index] *= 0.8
-
-                # a little weight decay helps the model not lock into an initial impression.
-                # 0.98 represents a half life of around 3 seconds.
-                state *= 0.98
-
                 # precondition on weight,  segments with small mass are weighted less as we can assume the error is
                 # higher here.
                 mass = region.mass
@@ -170,11 +176,17 @@ class ClipClassifier(CPTVFileProcessor):
         if globs._classifier is None:
             t0 = datetime.now()
             logging.info("classifier loading")
-            globs._classifier = Model(
-                train_config=self.config.train,
-                session=tools.get_session(disable_gpu=not self.config.use_gpu),
-            )
-            globs._classifier.load(self.model_file)
+            if self.kerasmodel:
+                model = KerasModel(self.config.train)
+                model.load_model(self.model_file)
+                globs._classifier = model
+            else:
+                globs._classifier = Model(
+                    train_config=self.config.train,
+                    session=tools.get_session(disable_gpu=not self.config.use_gpu),
+                )
+                globs._classifier.load(self.model_file)
+
             logging.info("classifier loaded ({})".format(datetime.now() - t0))
         return globs._classifier
 

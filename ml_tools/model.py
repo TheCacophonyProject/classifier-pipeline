@@ -2,7 +2,8 @@ import os
 import io
 
 import tensorflow as tf
-from tensorboard.plugins import projector
+
+# from tensorboard.plugins import projector
 import numpy as np
 import matplotlib.pyplot as plt
 import os.path
@@ -829,9 +830,9 @@ class Model:
         self.datasets.validation.stop_async_load()
 
     def close(self):
-        """ 
+        """
         Cleans up memory used by model by closing any open sessions or aync loaders.
-        :return: 
+        :return:
         """
         self.session.close()
         self.stop_async()
