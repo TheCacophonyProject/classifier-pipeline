@@ -77,7 +77,6 @@ def main():
     keras_model = False
     if ext == ".pb":
         keras_model = True
-        print(os.path.dirname(model_file))
         weights_path = os.path.dirname(model_file) + "/variables/variables.index"
         if not os.path.exists(os.path.join(weights_path)):
             logging.error("No weights found named '{}'.".format(weights_path))
