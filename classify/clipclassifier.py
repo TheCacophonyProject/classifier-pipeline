@@ -27,13 +27,13 @@ class ClipClassifier(CPTVFileProcessor):
     # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
     FRAME_SKIP = 1
 
-    def __init__(self, config, tracking_config, model_file):
+    def __init__(self, config, tracking_config, model_file, kerasmodel=False):
         """ Create an instance of a clip classifier"""
 
         super(ClipClassifier, self).__init__(config, tracking_config)
         self.model_file = model_file
         path, ext = os.path.splitext(self.model_file)
-        self.kerasmodel = ext != ".sav"
+        self.kerasmodel = kerasmodel
         # prediction record for each track
         self.predictions = Predictions(self.classifier.labels)
 
@@ -178,7 +178,7 @@ class ClipClassifier(CPTVFileProcessor):
             logging.info("classifier loading")
             if self.kerasmodel:
                 model = KerasModel(self.config.train)
-                model.load_model(self.model_file)
+                model.load_weights(self.model_file)
                 globs._classifier = model
             else:
                 globs._classifier = Model(

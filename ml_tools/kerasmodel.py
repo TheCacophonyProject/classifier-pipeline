@@ -1,7 +1,6 @@
 import os
 import json
 import logging
-import tensorflow.keras as keras
 import tensorflow as tf
 import cv2
 import numpy as np
@@ -25,6 +24,115 @@ class KerasModel:
         self.labels = None
         self.frame_size = None
         self.pretrained_model = None
+        self.model = None
+
+    def get_base_model(self, input_shape):
+        if self.pretrained_model == "resnet":
+            return (
+                tf.keras.applications.ResNet50(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.resnet.preprocess_input,
+            )
+        elif self.pretrained_model == "resnetv2":
+            return (
+                tf.keras.applications.ResNet50V2(
+                    weights="imagenet", include_top=False, input_shape=input_shape
+                ),
+                tf.keras.applications.resnet_v2.preprocess_input,
+            )
+        elif self.pretrained_model == "resnet152":
+            return (
+                tf.keras.applications.ResNet152(
+                    weights="imagenet", include_top=False, input_shape=input_shape
+                ),
+                tf.keras.applications.resnet.preprocess_input,
+            )
+        elif self.pretrained_model == "vgg16":
+            return (
+                tf.keras.applications.VGG16(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.vgg16.preprocess_input,
+            )
+        elif self.pretrained_model == "vgg19":
+            return (
+                tf.keras.applications.VGG19(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.vgg19.preprocess_input,
+            )
+        elif self.pretrained_model == "mobilenet":
+            return (
+                tf.keras.applications.MobileNetV2(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.mobilenet_v2.preprocess_input,
+            )
+        elif self.pretrained_model == "densenet121":
+            return (
+                tf.keras.applications.DenseNet121(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.densenet.preprocess_input,
+            )
+        elif self.pretrained_model == "inceptionresnetv2":
+            return (
+                tf.keras.applications.InceptionResNetV2(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.inception_resnet_v2.preprocess_input,
+            )
+
+        raise "Could not find model" + self.pretrained_model
+
+    def build_model(self, dense_sizes=[1024, 512]):
+        input_shape = (self.frame_size, self.frame_size, 3)
+        inputs = tf.keras.Input(shape=input_shape)
+        base_model, preprocess = self.get_base_model(input_shape)
+        self.preprocess_fn = preprocess
+
+        base_model.trainable = False
+        x = base_model(inputs, training=False)
+        x = tf.keras.layers.GlobalAveragePooling2D()(x)
+        for i in dense_sizes:
+            x = tf.keras.layers.Dense(i, activation="relu")(x)
+        preds = tf.keras.layers.Dense(len(self.labels), activation="softmax")(x)
+        self.model = tf.keras.models.Model(inputs, outputs=preds)
+        self.model.compile(
+            optimizer=self.optimizer(), loss=self.loss(), metrics=["accuracy"],
+        )
+
+    def loss(self):
+        softmax = tf.keras.losses.CategoricalCrossentropy(
+            label_smoothing=self.params["label_smoothing"],
+        )
+        return softmax
+
+    def optimizer(self):
+        if self.params["learning_rate_decay"] != 1.0:
+            learning_rate = tf.compat.v1.train.exponential_decay(
+                self.params["learning_rate"],
+                self.global_step,
+                1000,
+                self.params["learning_rate_decay"],
+                staircase=True,
+            )
+            tf.compat.v1.summary.scalar("params/learning_rate", learning_rate)
+        else:
+            learning_rate = self.params["learning_rate"]  # setup optimizer
+        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        return optimizer
+
+    def load_weights(self, file):
+        dir = os.path.dirname(file)
+        weights_path = dir + "/variables/variables"
+
+        self.load_meta(dir)
+
+        if not self.model:
+            self.build_model()
+        self.model.load_weights(weights_path)
 
     def load_model(self, dir):
         self.model = tf.keras.models.load_model(dir)
