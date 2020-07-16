@@ -74,17 +74,21 @@ def main():
         model_file = args.model_file
 
     path, ext = os.path.splitext(model_file)
-    if ext != ".sav":
-        if not os.path.exists(os.path.join(model_file, "saved_model.pb")):
-            logging.error(
-                "No model found named '{}'.".format(model_file + ".save_model.pb")
-            )
+    keras_model = False
+    if ext == ".pb":
+        keras_model = True
+        print(os.path.dirname(model_file))
+        weights_path = os.path.dirname(model_file) + "/variables/variables.index"
+        if not os.path.exists(os.path.join(weights_path)):
+            logging.error("No weights found named '{}'.".format(weights_path))
             exit(13)
     elif not os.path.exists(model_file + ".meta"):
         logging.error("No model found named '{}'.".format(model_file + ".meta"))
         exit(13)
 
-    clip_classifier = ClipClassifier(config, config.classify_tracking, model_file)
+    clip_classifier = ClipClassifier(
+        config, config.classify_tracking, model_file, keras_model
+    )
 
     # parse start and end dates
     if args.start_date:
