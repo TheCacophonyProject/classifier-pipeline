@@ -39,9 +39,10 @@ def train_model(run_name, conf, hyper_params, grid_search=False):
     #
 
     model.import_dataset(datasets_filename)
-    # model.rebalance(
-    #     # 1000,
-    #     # 500,
+    model.rebalance(
+        1000,
+        500,
+    )
     #     exclude=[
     #         # "false-positive",
     #         # "mustelid",

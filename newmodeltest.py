@@ -1,4 +1,6 @@
 import matplotlib.pyplot as plt
+from ml_tools.framedataset import TrackHeader
+from ml_tools.trackdatabase import TrackDatabase
 
 from ml_tools.dataset import dataset_db_path
 import tensorflow as tf
@@ -243,10 +245,12 @@ class Test:
     def save_important_frames(self, clip, filename, predictions):
         for track_id, track_prediction in predictions.prediction_per_track.items():
             track = [track for track in clip.tracks if track.get_id() == track_id]
+
             if len(track) == 0:
                 raise "Couldnt find track {}".format(track_id)
             track = track[0]
-            for i in range(2):
+            print("track start at ",track.start_frame)
+            for i in range(1):
                 if i == 0:
                     values = track_prediction.best_predictions
                     prefix = "best"
@@ -254,21 +258,24 @@ class Test:
                     values = track_prediction.clearest_frames
                     prefix = "clear"
 
-                rows = round(len(values) / 5.0) + 1
+                # rows = round(len(values) / 5.0) + 1
+                rows = 5
                 print(rows, len(values))
                 fig = plt.figure(figsize=(52, 52))
-                for i, frame_i in enumerate(values):
+                for i in range(25):
+                    frame_i = i
                     axes = fig.add_subplot(rows, 5, i + 1)
                     axes.set_title(
                         "{}-{}".format(
-                            track.start_frame + 1,
+                            frame_i + track.start_frame ,
                             track_prediction.get_classified_footer(
-                                self.classifier.labels, frame_i + track.start_frame - 1
+                                self.classifier.labels, frame_i
                             ),
                         )
                     )
 
-                    frame = clip.frame_buffer.get_frame(frame_i + track.start_frame - 1)
+                    frame = clip.frame_buffer.get_frame(frame_i + track.start_frame )
+                    print(i, "corrping at",track.bounds_history[frame_i])
                     frame = track.crop_by_region(frame, track.bounds_history[frame_i])[
                         0
                     ]
@@ -336,6 +343,53 @@ class Test:
                 json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
 
 
+    def save_db(self, clip_id, track_id):
+        db = TrackDatabase(os.path.join(self.config.tracks_folder, "dataset.hdf5"))
+        clip_meta = db.get_clip_meta(clip_id)
+        track_meta = db.get_track_meta(clip_id, track_id)
+        predictions = db.get_track_predictions(clip_id, track_id)
+        track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta, predictions)
+        labels = db.get_labels()
+        track_header.set_important_frames(labels, 0)
+        start_offset = track_meta["start_frame"]
+        print("track starts at" , start_offset)
+        self.save_trackheader_important(db, track_header, str(clip_id),start_offset)
+
+    def save_trackheader_important(self, db,  track_header, filename, start_offset):
+        prefix = "best"
+        print(track_header.important_frames)
+        for frame in track_header.important_frames:
+            values = track_header.important_frames
+            rows = round(len(values) / 5.0) + 1
+            fig = plt.figure(figsize=(52, 52))
+            for i, frame_i in enumerate(values):
+                axes = fig.add_subplot(rows, 5, i + 1)
+                axes.set_title(
+                    "{}-{}".format(
+                        frame_i + start_offset - 1,
+                        np.max(track_header.predictions[frame_i])
+                        # track_prediction.get_classified_footer(
+                        #     self.classifier.labels, frame_i + start_offset - 1
+                        # ),
+                    )
+                )
+                frame = db.get_track(
+                    track_header.clip_id,
+                    track_header.track_number,
+                    frame_i,
+                    frame_i + 1,
+                )[0][0,:]
+                frame = np.float32(frame)
+                temp_min = np.amin(frame)
+                temp_max = np.amax(frame)
+                frame = (frame - temp_min) / (temp_max - temp_min)
+                # colorized = np.uint8(255.0 * self.previewer.colourmap(frame))
+                frame = frame[ :, :, np.newaxis]
+                print(frame.shape)
+                frame = np.repeat(frame,3,axis=2)
+                plt.imshow(colorized[:, :, :3])
+            plt.savefig("{}-{}-{}.png".format(prefix, filename, track_header.track_number))
+            plt.close(fig)
 def load_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -347,6 +401,7 @@ def load_args():
         "source",
         help='a CPTV file to process, or a folder name, or "all" for all files within subdirectories of source folder.',
     )
+
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     args = parser.parse_args()
     return args
@@ -369,9 +424,12 @@ def init_logging(timestamps=False):
 args = load_args()
 init_logging()
 config = Config.load_from_file(args.config_file)
+
 model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
 test = Test(config, model_file)
+# test.save_db("454309","213500")
+# exit(0)
 # test.classifier.evaluate()
 test.process_file(args.source)

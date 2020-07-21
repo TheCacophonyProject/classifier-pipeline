@@ -27,14 +27,20 @@ def show_tracks_breakdown(dataset):
 
 def show_cameras_breakdown(dataset):
     print("Cameras breakdown")
-    tracks_by_camera = {}
-    for track in dataset.tracks_by_id.values():
-        if track.camera not in tracks_by_camera:
-            tracks_by_camera[track.camera] = []
-        tracks_by_camera[track.camera].append(track)
+    # tracks_by_camera = {}
+    # for track in dataset.tracks_by_id.values():
+    #     if track.camera not in tracks_by_camera:
+    #         tracks_by_camera[track.camera] = []
+    #     tracks_by_camera[track.camera].append(track)
 
-    for camera, tracks in tracks_by_camera.items():
-        print("{:<20} {}".format(camera, len(tracks)))
+
+    for camera in dataset.cameras_by_id.values():
+            lbl_count = ["{}-{}".format(label,len(bins)) for label, bins in camera.label_to_bins.items()]
+            print("{:<20} {} {}".format(camera.camera, camera.tracks,lbl_count))
+    # for camera, tracks in tracks_by_camera.items():
+    #     camera_data = [c for c in dataset.cameras_by_id.values() if c.camera == camera][0]
+    #     lbl_count = ["{}-{}".format(label,len(bins)) for label, bins in camera_data.label_to_bins.itemes()]
+    #     print("{:<20} {} {}".format(camera, len(tracks)),lbl_count )
 
 
 def show_segments_breakdown(dataset):
@@ -323,7 +329,7 @@ def diverse_validation(cameras, labels, max_cameras):
     #             lbl_cameras = camera_by_label.setdefault(label, [])
     #             lbl_cmaers.append(camera)
     # dont want to bother with these
-    low_data = ["human", "wallaby"]
+    low_data = ["wallaby"]
     all_labels = set(labels)
     for tag in low_data:
         all_labels.discard(tag)
@@ -565,6 +571,33 @@ def add_camera_data(
             dataset, cameras, label, data["max_frames"],
         )
 
+def show_predicted_stats(db):
+    tracks = db.get_all_track_ids()
+    labels = list(db.get_labels())
+    mustelid = labels.index("mustelid")
+    stats ={}
+    for track in tracks:
+        meta = db.get_track_meta(track[0], track[1])
+        tag = meta.get("tag",None)
+        if tag is None:
+            continue
+        stat = stats.setdefault(tag, {"correct":0,"wrong":{}, "total":0})
+        predictions = db.get_track_predictions(track[0],track[1])
+        # print(np.max(predictions,axis=0))
+        max_i = np.argmax(np.max(predictions,axis=0))
+        # print(max_i)
+        # print(labels)
+        predicted = labels[max_i]
+        stat["total"]+=1
+        if predicted == tag:
+            stat["correct"]+=1
+        else:
+            stat["wrong"].setdefault(predicted,0)
+            stat["wrong"][predicted]+=1
+        # if meta["tag"] == "mustelid":
+
+    print(stats)
+    return
 
 def main():
     init_logging()
@@ -572,8 +605,11 @@ def main():
     config = load_config()
     build_config = config.build
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
+    # show_predicted_stats(db)
+    # return
     dataset = FrameDataset(db, "dataset", config)
     tracks_loaded, total_tracks = dataset.load_tracks(shuffle=True)
+
     # keep label order conistent
     dataset.labels.sort()
     print("Loaded {}/{} tracks".format(tracks_loaded, total_tracks,))

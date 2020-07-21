@@ -62,6 +62,7 @@ class NewModel:
             "scale_frequency": 0.5,
             # dropout
             "keep_prob": 0.5,
+            "lstm":False,
             # training
             "batch_size": 16,
         }
