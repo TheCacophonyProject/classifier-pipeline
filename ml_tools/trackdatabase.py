@@ -113,30 +113,40 @@ class TrackDatabase:
                 track_prediction = TrackPrediction(track_id, int(frames[0]), True)
                 for frame_number in frames:
                     frame = track_node[frame_number][:, :, :]
-                    frame = model.preprocess(frame)
-                    prediction = model.classify_frame(frame)
+                    prediction = model.classify_frame(np.copy(frame))
                     track_prediction.classified_frame(frame_number, prediction)
 
-                self._add_prediction_data(track_node, track_prediction, model)
+                self._add_prediction_data(clip_id, track_node, track_prediction, model)
 
             clip.attrs["has_prediction"] = True
 
-    def _add_prediction_data(self, track, track_prediction, model):
+    def _add_prediction_data(self, clip_id, track, track_prediction, model):
         track_attrs = track.attrs
         track_tag = track_attrs.get("tag", "")
         if track_tag not in model.labels:
             if track_tag != "":
                 logging.info("Tag not in model labels %s", track_tag)
             return
-        label_index = model.labels.index(track_tag)
+        # label_index = model.labels.index(track_tag)
         track_attrs["correct_prediction"] = (
             track_attrs["tag"] == model.labels[track_prediction.best_label_index]
         )
-        value, best = track_prediction.best_frame(label=label_index)
-        track_attrs["best_frame"] = [round(100 * value, 0), best[0][0]]
-        best = np.array(track_prediction.best_gap())
-        best[1] = round(100 * best[1])
-        track_attrs["best_gap"] = np.int16(best)
+        track_attrs["predicted"] = model.labels[track_prediction.best_label_index]
+        print(
+            clip_id,
+            track_attrs["id"],
+            track_attrs["correct_prediction"],
+            track_attrs["predicted"],
+        )
+        track_attrs["predicted_confidence"] = int(
+            round(100 * track_prediction.max_score)
+        )
+
+        # value, best = track_prediction.best_frame(label=label_index)
+        # track_attrs["best_frame"] = [round(100 * value, 0), best[0][0]]
+        # best = np.array(track_prediction.best_gap())
+        # best[1] = round(100 * best[1])
+        # track_attrs["best_gap"] = np.int16(best)
         preds = np.int16(np.around(100 * np.array(track_prediction.predictions)))
         # track_attrs["predictions"]=preds
         height, width = preds.shape

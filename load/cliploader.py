@@ -78,8 +78,8 @@ class ClipLoader:
             self.config.load.cache_to_disk,
         )
         self.classifier = None
-        # self.load_classifier(self.config.classify.model)
-        # self.database.set_labels(self.classifier.labels)
+        self.load_classifier(self.config.classify.model)
+        self.database.set_labels(self.classifier.labels)
 
     def add_predictions(self):
         clips = self.database.get_all_clip_ids()
@@ -132,7 +132,7 @@ class ClipLoader:
         t0 = datetime.now()
         logging.info("classifier loading")
 
-        self.classifier = NewModel(train_config=self.config.train, labels=self.labels,)
+        self.classifier = NewModel(train_config=self.config.train)
 
         self.classifier.load_model(model_file)
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
@@ -166,14 +166,14 @@ class ClipLoader:
                     frame[TrackChannels.filtered] = 0
                 track_data.append(frame)
                 if self.classifier:
-                    thermal_reference = np.median(frame[0])
+                    # thermal_reference = np.median(frame[0])
                     # classify
-                    frames = Preprocessor.apply(
-                        [frame], [thermal_reference], default_inset=0
-                    )
-                    frame = frames[0]
+                    # frames = Preprocessor.apply(
+                    #     [frame], [thermal_reference], default_inset=0
+                    # )
+                    # frame = frames[0]
 
-                    prediction = self.classifier.classify_frame(frame)
+                    prediction = self.classifier.classify_frame(np.copy(frame))
                     track_prediction.classified_frame(region.frame_number, prediction)
 
             self.database.add_track(
