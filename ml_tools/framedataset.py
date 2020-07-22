@@ -112,77 +112,30 @@ class TrackHeader:
 
     # trying to get only clear frames
     def set_important_frames(self, labels, min_mass=None):
-        # frames = list()
-        # for i, mass in enumerate(self.frame_mass):
-        #     if mass < self.mean_mass or (min_mass and mass < min_mass):
-        #         continue
-        #     frames.append(i)
-        # frames = list(frames)
-        # np.random.shuffle(frames)
-        # self.important_frames = list(frames)
-        # return
-
         # this needs more testing
         if self.predictions is not None:
-            label_i = None
             fp_i = None
-            if self.label in labels:
-                label_i = list(labels).index(self.label)
+            # if self.label in labels:
+            #     label_i = list(labels).index(self.label)
             if "false-positive" in labels:
                 fp_i = list(labels).index("false-positive")
-            clear_frames = set()
-            clear_frames = []
             best_preds = []
-            incorrect_best = []
             print
             for i, pred in enumerate(self.predictions):
                 best = np.argsort(pred)[-1]
 
                 if self.label != "false-positive" and fp_i and best == fp_i:
-                    print("skipping false-positive", i)
                     continue
 
                 pred_percent = pred[best]
                 if pred_percent >= MIN_PERCENT:
                     best_preds.append((i, pred_percent))
-                # if fp_i and best[-1] == fp_i:
-                #     continue
-                #
-                # clarity = best[-1] - best[-2]
-                # if clarity < MIN_CLARITY:
-                #     clear_frames.append((i, clarity))
-                #
-                # if label_i:
-                #     pred_percent = pred[label_i]
-                #     if pred_percent > MIN_PERCENT:
-                #         best_preds.append((i, pred_percent))
-                #
-                # if not self.correct_prediction:
-                #     if pred[best[-1]] > MIN_PERCENT:
-                #         incorrect_best.append((i, pred[best[-1]]))
 
-            # clear_frames =sorted(clear_frames, reverse=True, key=lambda frame: frame[1])
-            # best_preds = sorted(best_preds, reverse=True, key=lambda frame: frame[1])
-            # incorrect_best = sorted(incorrect_best, reverse=True, key=lambda frame: frame[1])
-
-            # pred_frames = set()
-            # pred_frames.update(f[0] for f in clear_frames[:2])
-            # pred_frames.update(f[0] for f in best_preds[:2])
-            # pred_frames.update(f[0] for f in incorrect_best[:2])
-            # pred_frames = frames.intersection(pred_frames)
-            # self.important_predicted = len(pred_frames)
-            # frames = list(frames - pred_frames)
             pred_frames = list(f[0] for f in best_preds)
-            # np.random.shuffle(pred_frames)
-            #
-            # np.random.shuffle(frames)
-            # pred_frames.extend(frames)
+            np.random.shuffle(pred_frames)
             self.important_frames = pred_frames
             return
-
-        frames = list(frames)
-        np.random.shuffle(frames)
-        self.important_frames = list(frames)
+        return
 
     def calculate_frame_crop(self):
         # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
@@ -490,11 +443,11 @@ class FrameDataset:
             self.filtered_stats["tags"] += 1
             return True
 
-        if len(set(track_meta["track_tags"])) != len(set([track_meta["tag"]])):
-            # pass
-            if track_meta["tag"] != "wallaby":
-                self.filtered_stats["tags"] += 1
-                # return True
+        # if len(set(track_meta["track_tags"])) != len(set([track_meta["tag"]])):
+        #     # pass
+        #     if track_meta["tag"] != "wallaby":
+        #         self.filtered_stats["tags"] += 1
+        # return True
 
         # filter by date
         if (

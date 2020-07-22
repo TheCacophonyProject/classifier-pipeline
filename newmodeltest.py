@@ -368,6 +368,7 @@ class Test:
         print(track_header.track_number, "predictions", track_header.important_frames)
         rows = round(len(track_header.important_frames) / 5.0) + 1
         fig = plt.figure(figsize=(52, 52))
+        track_header.important_frames.sort()
         for i, frame_i in enumerate(track_header.important_frames):
 
             pred = track_header.predictions[frame_i]
@@ -435,7 +436,7 @@ model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
 test = Test(config, model_file)
-test.save_db("10130", "145400")
+test.save_db("454309", "213500")
 # /clips/10130/10130
 # exit(0)
 raise "EX"

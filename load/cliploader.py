@@ -142,11 +142,11 @@ class ClipLoader:
     def _process_jobs(self, jobs):
         if self.workers_threads == 0:
             for job in jobs:
-                prediction_job(job)
+                process_job(job)
         else:
             pool = multiprocessing.Pool(self.workers_threads)
             try:
-                pool.map(prediction_job, jobs, chunksize=1)
+                pool.map(process_job, jobs, chunksize=1)
                 pool.close()
                 pool.join()
             except KeyboardInterrupt:
@@ -183,8 +183,9 @@ class ClipLoader:
         # Note: we do this even if there are no tracks so there there will be a blank clip entry as a record
         # that we have processed it.
         self.database.create_clip(clip)
-
         for track in clip.tracks:
+            print(track.confidence)
+
             if self.classifier:
                 track_prediction = TrackPrediction(
                     track.get_id(), track.start_frame, True

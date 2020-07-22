@@ -436,7 +436,7 @@ class TrackDatabase:
                 if prediction:
                     self._add_prediction_data(clip_id, track_node, prediction, model)
                     has_prediction = True
-                elif track.confidence:
+                if track.confidence:
                     node_attrs["confidence"] = track.confidence
                 if start_time:
                     node_attrs["start_time"] = start_time.isoformat()
