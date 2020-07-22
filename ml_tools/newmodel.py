@@ -46,10 +46,7 @@ class NewModel:
     VERSION = "0.3.0"
 
     def __init__(self, train_config=None, labels=None, preserve_labels=False):
-        self.log_base = os.path.join(train_config.train_dir, "logs")
-        self.log_dir = self.log_base
-        os.makedirs(self.log_base, exist_ok=True)
-        self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
+
         self.frame_size = 48
         self.model = None
         self.datasets = None
@@ -62,11 +59,16 @@ class NewModel:
             "scale_frequency": 0.5,
             # dropout
             "keep_prob": 0.5,
-            "lstm":False,
+            "lstm": False,
             # training
             "batch_size": 16,
         }
-        self.params.update(train_config.hyper_params)
+        if train_config:
+            self.log_base = os.path.join(train_config.train_dir, "logs")
+            self.log_dir = self.log_base
+            os.makedirs(self.log_base, exist_ok=True)
+            self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
+            self.params.update(train_config.hyper_params)
         self.labels = labels
         self.preserve_labels = preserve_labels
         self.pretrained_model = self.params.get("model", "resnetv2")

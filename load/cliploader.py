@@ -16,6 +16,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
+from multiprocessing import Process, Queue
+
 import matplotlib.pyplot as plt
 
 from datetime import datetime
@@ -41,6 +43,21 @@ from classify.trackprediction import TrackPrediction
 
 def process_job(job):
     job[0].process_file(job[1])
+
+
+def prediction_job(queue, db, model_file):
+    classifier = NewModel()
+    classifier.load_model(model_file)
+    logging.info("Loaded model")
+    while True:
+        clip = queue.get()
+        if clip == "DONE":
+            break
+        else:
+            db.add_predictions(str(clip), classifier)
+
+
+# job[0].add_prediction(job[1])
 
 
 class ClipLoader:
@@ -78,9 +95,9 @@ class ClipLoader:
             or config.load.preview == Previewer.PREVIEW_TRACKING,
             self.config.load.cache_to_disk,
         )
-        # self.classifier = None
-        self.load_classifier(self.config.classify.model)
-        self.database.set_labels(self.classifier.labels)
+        self.classifier = None
+        # self.load_classifier(self.config.classify.model)
+        # self.database.set_labels(self.classifier.labels)
 
     def remove_predictions(self):
         print("removing all predictions")
@@ -89,13 +106,25 @@ class ClipLoader:
             self.database.remove_prediction(clip)
 
     def add_predictions(self):
-        print("adding predictions")
+        job_queue = Queue()
+        processes = []
+        for i in range(max(1, self.workers_threads)):
+            p = Process(
+                target=prediction_job,
+                args=(job_queue, self.database, self.config.classify.model),
+            )
+            processes.append(p)
+            p.start()
         clips = self.database.get_all_clip_ids()
         for clip in clips:
             if not self.database.has_prediction(clip):
-                self.database.add_predictions(clip, self.classifier)
+                job_queue.put(clip)
+        for i in range(len(processes)):
+            job_queue.put("DONE")
 
     def process_all(self, root=None, checkpoint=None):
+        self.load_classifier(self.config.classify.model)
+        self.database.set_labels(self.classifier.labels)
         if root is None:
             root = self.config.source_folder
 
@@ -113,11 +142,11 @@ class ClipLoader:
     def _process_jobs(self, jobs):
         if self.workers_threads == 0:
             for job in jobs:
-                process_job(job)
+                prediction_job(job)
         else:
             pool = multiprocessing.Pool(self.workers_threads)
             try:
-                pool.map(process_job, jobs, chunksize=1)
+                pool.map(prediction_job, jobs, chunksize=1)
                 pool.close()
                 pool.join()
             except KeyboardInterrupt:
