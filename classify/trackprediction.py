@@ -48,6 +48,9 @@ class Predictions:
 
     def set_important_frames(self):
         for track_id, track_prediction in self.prediction_per_track.items():
+            print(
+                "set important frames for track starting at", track_prediction.track_id,
+            )
             label_i = None
             fp_i = None
             # if self.label in self.labels:
@@ -57,7 +60,7 @@ class Predictions:
             clear_frames = []
             best_preds = []
             incorrect_best = []
-            print("track", track_id)
+            # print("track", track_id)
 
             for i, pred in enumerate(track_prediction.predictions):
                 best = np.argsort(pred)
@@ -67,10 +70,13 @@ class Predictions:
                 clarity = pred[best[-1]] - pred[best[-2]]
                 if clarity > MIN_CLARITY:
                     clear_frames.append((i, clarity))
+                print(i, np.int16(np.around(100 * np.array(pred))))
 
                 # if label_i:
                 pred_percent = pred[best[-1]]
-                if pred_percent > MIN_PERCENT:
+                if pred_percent >= MIN_PERCENT:
+                    print(pred_percent, "saving", i)
+
                     best_preds.append((i, pred_percent))
                     # print(i, pred_percent, self.labels[best[-1]])
                 # if not self.correct_prediction:
@@ -102,10 +108,11 @@ class Predictions:
             #     set(track_prediction.clearest_frames)
             #     - set(track_prediction.best_predictions),
             # )
-            pred_frames.update(f[0] for f in clear_frames)
+            # pred_frames.update(f[0] for f in clear_frames)
             pred_frames.update(f[0] for f in best_preds)
             track_prediction.important_frames = list(pred_frames)
             # print(pred_frames)
+            print(pred_frames)
 
 
 class TrackPrediction:
@@ -148,10 +155,15 @@ class TrackPrediction:
         if novelty:
             self.max_novelty = max(self.max_novelty, novelty)
             self.novelty_sum += novelty
-
         if self.keep_all:
+            # if len(self.predictions) == 1:
+            # print(self.predictions[0])
+            # print(len(self.predictions), "adding prediction", prediction)
             self.predictions.append(prediction)
+            # print(self.predictions[0])
             self.novelties.append(novelty)
+            # if len(self.predictions) == 2:
+            #     raise "ERROR"
         else:
             self.predictions = [prediction]
             self.novelties = [novelty]

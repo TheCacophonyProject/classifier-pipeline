@@ -81,6 +81,35 @@ class TrackDatabase:
                 return True
         return False
 
+    def remove_prediction(self, clip_id):
+        with HDF5Manager(self.database, "a") as f:
+            clips = f["clips"]
+            # print("removing predictions", clip_id)
+            # has_record = clip_id in clips and "finished" in clips[clip_id].attrs
+            clip = clips[clip_id]
+            clip.attrs["has_prediction"] = False
+            for track_id in clip:
+                track = clip[track_id]
+                track_attrs = track.attrs
+                if "correct_prediction" in track_attrs:
+                    del track_attrs["correct_prediction"]
+                if "predicted" in track_attrs:
+                    del track_attrs["predicted"]
+                if "predicted_confidence" in track_attrs:
+                    del track_attrs["predicted_confidence"]
+                if "predictions" in track_attrs:
+                    del track_attrs["predictions"]
+                # if "predictions" in track:
+                # print("deleted predictions dataset")
+                try:
+                    del track["predictions"]
+                except:
+                    pass
+            try:
+                del clip["has_prediction"]
+            except:
+                pass
+
     def has_prediction(self, clip_id):
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
@@ -93,6 +122,7 @@ class TrackDatabase:
     def add_predictions(self, clip_id, model):
         with HDF5Manager(self.database, "a") as f:
             clip = f["clips"][str(clip_id)]
+            print(clip_id)
             for track_id in clip:
                 if track_id in special_datasets:
                     continue
@@ -132,12 +162,6 @@ class TrackDatabase:
             track_attrs["tag"] == model.labels[track_prediction.best_label_index]
         )
         track_attrs["predicted"] = model.labels[track_prediction.best_label_index]
-        print(
-            clip_id,
-            track_attrs["id"],
-            track_attrs["correct_prediction"],
-            track_attrs["predicted"],
-        )
         track_attrs["predicted_confidence"] = int(
             round(100 * track_prediction.max_score)
         )
@@ -148,6 +172,7 @@ class TrackDatabase:
         # best[1] = round(100 * best[1])
         # track_attrs["best_gap"] = np.int16(best)
         preds = np.int16(np.around(100 * np.array(track_prediction.predictions)))
+
         # track_attrs["predictions"]=preds
         height, width = preds.shape
         pred_data = track.create_dataset(
@@ -396,7 +421,7 @@ class TrackDatabase:
                 node_attrs["start_frame"] = track.start_frame
                 node_attrs["end_frame"] = track.end_frame
                 if prediction:
-                    self._add_prediction_data(track_node, prediction, model)
+                    self._add_prediction_data(clip_id, track_node, prediction, model)
                     has_prediction = True
                 elif track.confidence:
                     node_attrs["confidence"] = track.confidence

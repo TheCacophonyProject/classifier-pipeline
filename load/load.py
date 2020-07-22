@@ -35,6 +35,9 @@ def parse_params():
         "-v", "--verbose", action="count", help="Display additional information."
     )
     parser.add_argument("--predictions", action="count", help="Add prediction info")
+    parser.add_argument(
+        "--remove-predictions", action="count", help="Add prediction info"
+    )
 
     parser.add_argument(
         "-r",
@@ -74,6 +77,8 @@ def load_clips(config, args):
         target = config.source_folder
     if args.predictions:
         loader.add_predictions()
+    elif args.remove_predictions:
+        loader.remove_predictions()
     else:
         if os.path.splitext(target)[1] == ".cptv":
             loader.process_file(target)

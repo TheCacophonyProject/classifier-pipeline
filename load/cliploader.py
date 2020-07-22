@@ -82,7 +82,14 @@ class ClipLoader:
         self.load_classifier(self.config.classify.model)
         self.database.set_labels(self.classifier.labels)
 
+    def remove_predictions(self):
+        print("removing all predictions")
+        clips = self.database.get_all_clip_ids()
+        for clip in clips:
+            self.database.remove_prediction(clip)
+
     def add_predictions(self):
+        print("adding predictions")
         clips = self.database.get_all_clip_ids()
         for clip in clips:
             if not self.database.has_prediction(clip):
@@ -138,14 +145,6 @@ class ClipLoader:
         self.classifier.load_model(model_file)
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
-    def save_img(self, frame):
-        thermal = frame[0]
-        thermal = np.float32(thermal)
-        temp_min = np.amin(thermal)
-        temp_max = np.amax(thermal)
-        thermal = (thermal - temp_min) / (temp_max - temp_min)
-        colorized = np.uint8(255.0 * self.previewer.colourmap(thermal))
-        plt.imshow(colorized[:, :, :3])
     def _export_tracks(self, full_path, clip):
         """
         Writes tracks to a track database.
@@ -157,8 +156,6 @@ class ClipLoader:
         self.database.create_clip(clip)
 
         for track in clip.tracks:
-            fig = plt.figure(figsize=(52, 52))
-
             if self.classifier:
                 track_prediction = TrackPrediction(
                     track.get_id(), track.start_frame, True
@@ -169,27 +166,15 @@ class ClipLoader:
                 track.start_s, track.end_s
             )
             track_data = []
-            rows = 5
-            i = 0
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 frame = track.crop_by_region(frame, region, filter_mask_by_region=False)
-                if i < 25:
-                    axes = fig.add_subplot(rows, 5, i + 1)
-                    axes.set_title(region.frame_number)
-                    self.save_img(frame)
-                i += 1
+
                 # zero out the filtered channel
                 if not self.config.load.include_filtered_channel:
                     frame[TrackChannels.filtered] = 0
                 track_data.append(frame)
                 if self.classifier:
-                    # thermal_reference = np.median(frame[0])
-                    # classify
-                    # frames = Preprocessor.apply(
-                    #     [frame], [thermal_reference], default_inset=0
-                    # )
-                    # frame = frames[0]
 
                     prediction = self.classifier.classify_frame(np.copy(frame))
                     track_prediction.classified_frame(region.frame_number, prediction)
@@ -204,7 +189,7 @@ class ClipLoader:
                 prediction=track_prediction,
                 model=self.classifier,
             )
-            plt.savefig("{}-{}.png".format(clip.get_id(), track.get_id()))
+
     def _filter_clip_tracks(self, clip_metadata):
         """
         Removes track metadata for tracks which are invalid. Tracks are invalid
@@ -322,3 +307,6 @@ def get_distributed_folder(name, num_folders=256, seed=31):
     for byte in str_bytes:
         hash_code = hash_code * seed + byte
     return "{:02x}".format(hash_code % num_folders)
+
+
+#

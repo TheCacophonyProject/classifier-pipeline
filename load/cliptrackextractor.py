@@ -74,7 +74,6 @@ class ClipTrackExtractor:
                 reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
             )
             clip.set_video_stats(video_start_time)
-            print(video_start_time)
             # we need to load the entire video so we can analyse the background.
 
             if clip.background_is_preview and clip.num_preview_frames > 0:

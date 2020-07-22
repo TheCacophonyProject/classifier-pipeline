@@ -134,11 +134,16 @@ class TrackHeader:
             clear_frames = []
             best_preds = []
             incorrect_best = []
-
+            print
             for i, pred in enumerate(self.predictions):
-                best = np.argsort(pred)
-                pred_percent = pred[best[-1]]
-                if pred_percent > MIN_PERCENT:
+                best = np.argsort(pred)[-1]
+
+                if self.label != "false-positive" and fp_i and best == fp_i:
+                    print("skipping false-positive", i)
+                    continue
+
+                pred_percent = pred[best]
+                if pred_percent >= MIN_PERCENT:
                     best_preds.append((i, pred_percent))
                 # if fp_i and best[-1] == fp_i:
                 #     continue

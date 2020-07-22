@@ -50,7 +50,6 @@ class Test:
         self.classifier = None
         self.load_classifier(model_file)
         self.predictions = Predictions(self.classifier.labels)
-        print("predicted labels", self.classifier.labels)
 
     def load_classifier(self, model_file):
         """
@@ -91,7 +90,6 @@ class Test:
         except ValueError:
             fp_index = None
 
-        print(self.classifier.labels)
         # go through making classifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         track_prediction = self.predictions.get_or_create_prediction(track)
@@ -116,9 +114,13 @@ class Test:
                         )
                     )
                     return
-                # frame = frames[0]
 
                 prediction = self.classifier.classify_frame(frame)
+                track_prediction.classified_frame(
+                    region.frame_number, prediction, smooth_novelty
+                )
+
+                continue
                 # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                 # score
                 if fp_index is not None:
@@ -149,9 +151,6 @@ class Test:
                 # smooth_novelty = (
                 #     1 - prediction_smooth
                 # ) * smooth_novelty + prediction_smooth * novelty
-            track_prediction.classified_frame(
-                region.frame_number, smooth_prediction, smooth_novelty
-            )
 
             # print(self.classifier.labels[track_prediction.label_at_time(-1)])
 
@@ -206,6 +205,18 @@ class Test:
 
         start = time.time()
         clip = Clip(self.tracker_config, filename)
+        # base_filename = os.path.splitext(os.path.basename(filename))[0]
+        #
+        # metadata_filename = os.path.join(
+        #     os.path.dirname(filename), base_filename + ".txt"
+        # )
+        # metadata = tools.load_clip_metadata(metadata_filename)
+        #
+        # clip.load_metadata(
+        #     metadata,
+        #     self.config.load.include_filtered_channel,
+        #     self.config.load.tag_precedence,
+        # )
         self.track_extractor.parse_clip(clip)
 
         classify_name = self.get_classify_filename(filename)
@@ -249,7 +260,6 @@ class Test:
             if len(track) == 0:
                 raise "Couldnt find track {}".format(track_id)
             track = track[0]
-            print("track start at ",track.start_frame)
             for i in range(1):
                 if i == 0:
                     values = track_prediction.best_predictions
@@ -258,24 +268,20 @@ class Test:
                     values = track_prediction.clearest_frames
                     prefix = "clear"
 
-                # rows = round(len(values) / 5.0) + 1
-                rows = 5
-                print(rows, len(values))
+                rows = round(len(values) / 5.0) + 1
                 fig = plt.figure(figsize=(52, 52))
-                for i in range(25):
-                    frame_i = i
+                for i, frame_i in enumerate(values):
                     axes = fig.add_subplot(rows, 5, i + 1)
                     axes.set_title(
                         "{}-{}".format(
-                            frame_i + track.start_frame ,
+                            frame_i + track.start_frame,
                             track_prediction.get_classified_footer(
                                 self.classifier.labels, frame_i
                             ),
                         )
                     )
 
-                    frame = clip.frame_buffer.get_frame(frame_i + track.start_frame )
-                    print(i, "corrping at",track.bounds_history[frame_i])
+                    frame = clip.frame_buffer.get_frame(frame_i + track.start_frame)
                     frame = track.crop_by_region(frame, track.bounds_history[frame_i])[
                         0
                     ]
@@ -342,54 +348,54 @@ class Test:
             with open(meta_filename, "w") as f:
                 json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
 
-
     def save_db(self, clip_id, track_id):
         db = TrackDatabase(os.path.join(self.config.tracks_folder, "dataset.hdf5"))
         clip_meta = db.get_clip_meta(clip_id)
         track_meta = db.get_track_meta(clip_id, track_id)
         predictions = db.get_track_predictions(clip_id, track_id)
-        track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta, predictions)
+        track_header = TrackHeader.from_meta(
+            clip_id, clip_meta, track_meta, predictions
+        )
         labels = db.get_labels()
         track_header.set_important_frames(labels, 0)
         start_offset = track_meta["start_frame"]
-        print("track starts at" , start_offset)
-        self.save_trackheader_important(db, track_header, str(clip_id),start_offset)
+        self.save_trackheader_important(
+            db, track_header, "db" + str(clip_id), start_offset
+        )
 
-    def save_trackheader_important(self, db,  track_header, filename, start_offset):
+    def save_trackheader_important(self, db, track_header, filename, start_offset):
         prefix = "best"
-        print(track_header.important_frames)
-        for frame in track_header.important_frames:
-            values = track_header.important_frames
-            rows = round(len(values) / 5.0) + 1
-            fig = plt.figure(figsize=(52, 52))
-            for i, frame_i in enumerate(values):
-                axes = fig.add_subplot(rows, 5, i + 1)
-                axes.set_title(
-                    "{}-{}".format(
-                        frame_i + start_offset - 1,
-                        np.max(track_header.predictions[frame_i])
-                        # track_prediction.get_classified_footer(
-                        #     self.classifier.labels, frame_i + start_offset - 1
-                        # ),
-                    )
+        print(track_header.track_number, "predictions", track_header.important_frames)
+        rows = round(len(track_header.important_frames) / 5.0) + 1
+        fig = plt.figure(figsize=(52, 52))
+        for i, frame_i in enumerate(track_header.important_frames):
+
+            pred = track_header.predictions[frame_i]
+            label = self.classifier.labels[np.argmax(np.array(pred))]
+            axes = fig.add_subplot(rows, 5, i + 1)
+            axes.set_title(
+                "{}-{}-{}".format(
+                    frame_i + start_offset,
+                    label,
+                    np.max(track_header.predictions[frame_i])
+                    # track_prediction.get_classified_footer(
+                    #     self.classifier.labels, frame_i + start_offset - 1
+                    # ),
                 )
-                frame = db.get_track(
-                    track_header.clip_id,
-                    track_header.track_number,
-                    frame_i,
-                    frame_i + 1,
-                )[0][0,:]
-                frame = np.float32(frame)
-                temp_min = np.amin(frame)
-                temp_max = np.amax(frame)
-                frame = (frame - temp_min) / (temp_max - temp_min)
-                # colorized = np.uint8(255.0 * self.previewer.colourmap(frame))
-                frame = frame[ :, :, np.newaxis]
-                print(frame.shape)
-                frame = np.repeat(frame,3,axis=2)
-                plt.imshow(colorized[:, :, :3])
-            plt.savefig("{}-{}-{}.png".format(prefix, filename, track_header.track_number))
-            plt.close(fig)
+            )
+            frame = db.get_track(
+                track_header.clip_id, track_header.track_number, frame_i, frame_i + 1,
+            )[0][0]
+            frame = np.float32(frame)
+            temp_min = np.amin(frame)
+            temp_max = np.amax(frame)
+            frame = (frame - temp_min) / (temp_max - temp_min)
+            colorized = np.uint8(255.0 * self.previewer.colourmap(frame))
+            plt.imshow(colorized[:, :, :3])
+        plt.savefig("{}-{}-{}.png".format(prefix, filename, track_header.track_number))
+        plt.close(fig)
+
+
 def load_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -429,7 +435,9 @@ model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
 test = Test(config, model_file)
-# test.save_db("454309","213500")
+test.save_db("10130", "145400")
+# /clips/10130/10130
 # exit(0)
+raise "EX"
 # test.classifier.evaluate()
 test.process_file(args.source)
