@@ -33,10 +33,12 @@ def show_cameras_breakdown(dataset):
     #         tracks_by_camera[track.camera] = []
     #     tracks_by_camera[track.camera].append(track)
 
-
     for camera in dataset.cameras_by_id.values():
-            lbl_count = ["{}-{}".format(label,len(bins)) for label, bins in camera.label_to_bins.items()]
-            print("{:<20} {} {}".format(camera.camera, camera.tracks,lbl_count))
+        lbl_count = [
+            "{}-{}".format(label, len(bins))
+            for label, bins in camera.label_to_bins.items()
+        ]
+        print("{:<20} {} {}".format(camera.camera, camera.tracks, lbl_count))
     # for camera, tracks in tracks_by_camera.items():
     #     camera_data = [c for c in dataset.cameras_by_id.values() if c.camera == camera][0]
     #     lbl_count = ["{}-{}".format(label,len(bins)) for label, bins in camera_data.label_to_bins.itemes()]
@@ -337,8 +339,15 @@ def diverse_validation(cameras, labels, max_cameras):
     missing_labels = list(all_labels - set(most_diverse.label_to_bins.keys()))
     np.random.shuffle(missing_labels)
     np.random.shuffle(cameras)
+    lbl_counts = {}
+    missing = []
+    for label, count in most_diverse.label_frames.items():
+        lbl_counts[label] = count
+        if count < 1000:
+            missing.append(label)
+    print(lbl_counts)
     validate_data.append(most_diverse)
-    missing = len(missing_labels) / len(all_labels)
+    # missing = len(missing_labels) / len(all_labels)
     missing_i = 0
     while (
         len(validate_data) <= max_cameras
@@ -353,12 +362,17 @@ def diverse_validation(cameras, labels, max_cameras):
             if label in camera.label_to_bins:
                 print("found label", label, "adding camera", camera.camera)
                 validate_data.append(camera)
-                for label in camera.label_to_bins.keys():
-                    if label in missing_labels:
+                for label, count in camera.label_frames.items():
+                    if label in lbl_counts:
+                        lbl_counts[label] += count
+                    else:
+                        lbl_counts[label] = count
+
+                    if label in missing_labels and lbl_counts[label] > 1000:
                         missing_labels.remove(label)
                 del cameras[i]
                 missing_i = 0
-                missing = len(missing_labels) / len(all_labels)
+                # missing = len(missing_labels) / len(all_labels)
                 break
     print("missing", missing)
     return validate_data
@@ -571,33 +585,35 @@ def add_camera_data(
             dataset, cameras, label, data["max_frames"],
         )
 
+
 def show_predicted_stats(db):
     tracks = db.get_all_track_ids()
     labels = list(db.get_labels())
     mustelid = labels.index("mustelid")
-    stats ={}
+    stats = {}
     for track in tracks:
         meta = db.get_track_meta(track[0], track[1])
-        tag = meta.get("tag",None)
+        tag = meta.get("tag", None)
         if tag is None:
             continue
-        stat = stats.setdefault(tag, {"correct":0,"wrong":{}, "total":0})
-        predictions = db.get_track_predictions(track[0],track[1])
+        stat = stats.setdefault(tag, {"correct": 0, "wrong": {}, "total": 0})
+        predictions = db.get_track_predictions(track[0], track[1])
         # print(np.max(predictions,axis=0))
-        max_i = np.argmax(np.max(predictions,axis=0))
+        max_i = np.argmax(np.max(predictions, axis=0))
         # print(max_i)
         # print(labels)
         predicted = labels[max_i]
-        stat["total"]+=1
+        stat["total"] += 1
         if predicted == tag:
-            stat["correct"]+=1
+            stat["correct"] += 1
         else:
-            stat["wrong"].setdefault(predicted,0)
-            stat["wrong"][predicted]+=1
+            stat["wrong"].setdefault(predicted, 0)
+            stat["wrong"][predicted] += 1
         # if meta["tag"] == "mustelid":
 
     print(stats)
     return
+
 
 def main():
     init_logging()
