@@ -1,5 +1,6 @@
 import absl.logging
 import argparse
+import os
 import json
 import logging
 import sys
@@ -153,32 +154,27 @@ class Match:
         return self.expected_tag == self.got_animal
 
 
-def get_classifier(config):
-    from ml_tools.model import Model
-
-    """
-    Returns a classifier object, which is created on demand.
-    This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
-    """
-    logging.info("classifier loading")
-    classifier = Model(
-        train_config=config.train,
-        session=tools.get_session(disable_gpu=not config.use_gpu),
-    )
-    classifier.load(config.classify.model)
-    return classifier
-
-
 class TestClassify:
     def __init__(self, args):
-        self.classifier_config = Config.load_from_file(args.classify_config)
 
+        self.classifier_config = Config.load_from_file(args.classify_config)
+        model_file = self.classifier_config.classify.model
+        if args.model_file:
+            model_file = args.model_file
+
+        path, ext = os.path.splitext(model_file)
+        keras_model = False
+        if ext == ".pb":
+            keras_model = True
+            print("is keras model")
         self.clip_classifier = ClipClassifier(
-            self.classifier_config, self.classifier_config.classify_tracking
+            self.classifier_config,
+            self.classifier_config.classify_tracking,
+            model_file,
+            keras_model,
         )
         self.test_config = TestConfig.load_from_file(args.tests)
         self.results = []
-        self.classifier = get_classifier(self.classifier_config)
 
     def run_tests(self):
         for test in self.test_config.recording_tests:
@@ -219,6 +215,12 @@ def parse_args():
         "--tests",
         default="smoketest/tracking-tests.yml",
         help="YML file containing tests",
+    )
+
+    parser.add_argument(
+        "-m",
+        "--model-file",
+        help="Path to model file to use, will override config model",
     )
     args = parser.parse_args()
     return args
