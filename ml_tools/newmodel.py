@@ -280,6 +280,7 @@ class NewModel:
             shuffle=True,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
+            load_threads=4,
         )
         global validate
         self.validate = DataGenerator(
@@ -293,6 +294,7 @@ class NewModel:
             shuffle=True,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
+            load_threads=1,
         )
         validate = self.validate
         cm_callback = tf.keras.callbacks.LambdaCallback(

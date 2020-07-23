@@ -31,7 +31,9 @@ class DataGenerator(keras.utils.Sequence):
         use_filtered=False,
         buffer_size=128,
         epochs=10,
+        load_threads=1,
     ):
+
         self.preloader_queue = multiprocessing.Queue(buffer_size)
         self.preloader_stop_flag = False
 
@@ -60,10 +62,15 @@ class DataGenerator(keras.utils.Sequence):
         self.batch_index = 0
         self.cur_epoch = 0
         self.epochs = epochs
-        self.on_epoch_end()
+        self.load_queue = multiprocessing.Queue(len(self) + 1)
+
+        self.on_epoch_end(load=True)
+
         self.preloader_threads = [
-            multiprocessing.Process(target=preloader, args=(self.preloader_queue, self))
-            for _ in range(1)
+            multiprocessing.Process(
+                target=preloader, args=(self.preloader_queue, self.load_queue, self)
+            )
+            for _ in range(load_threads)
         ]
         for thread in self.preloader_threads:
             thread.start()
@@ -87,8 +94,8 @@ class DataGenerator(keras.utils.Sequence):
 
         return int(np.floor(self.dataset.frames / self.batch_size))
 
-    def loadbatch(self):
-        index = self.batch_index
+    def loadbatch(self, index):
+        # index = self.batch_index
         indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
         X, y, clips = self._data(indexes)
         # self.batch_index += 1
@@ -100,10 +107,14 @@ class DataGenerator(keras.utils.Sequence):
         X, y = self.preloader_queue.get()
         return X, y
 
-    def on_epoch_end(self):
+    def on_epoch_end(self, load=False):
         "Updates indexes after each epoch"
         if self.shuffle:
             np.random.shuffle(self.indexes)
+        if load:
+            self.load_queue.put(0)
+            for i in range(len(self)):
+                self.load_queue.put(i)
         self.batch_index = 0
         self.cur_epoch += 1
         # self.all_x, self.all_y = self.get_data(catog=True)
@@ -246,7 +257,7 @@ def preprocess_frame(
 
 
 # continue to read examples until queue is full
-def preloader(q, dataset):
+def preloader(q, load_queue, dataset):
     """ add a segment into buffer """
     logging.info(
         " -started async fetcher for %s with augment=%s",
@@ -255,15 +266,15 @@ def preloader(q, dataset):
     )
     while not dataset.preloader_stop_flag and dataset.cur_epoch <= dataset.epochs:
         if not q.full():
-            q.put(dataset.loadbatch())
-            dataset.batch_index += 1
-            if dataset.batch_index > len(dataset):
-                dataset.on_epoch_end()
-            # logging.info(
-            #     "loaded batch %s %s %s",
-            #     dataset.cur_epoch,
-            #     dataset.dataset.name,
-            #     dataset.batch_index,
-            # )
+            batch_i = load_queue.get()
+            q.put(dataset.loadbatch(batch_i))
+            if batch_i + 1 == len(dataset):
+                dataset.on_epoch_end(load=True)
+            logging.info(
+                "loaded batch %s %s %s",
+                dataset.cur_epoch,
+                dataset.dataset.name,
+                batch_i,
+            )
         else:
             time.sleep(0.1)
