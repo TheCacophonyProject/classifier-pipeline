@@ -336,18 +336,18 @@ def diverse_validation(cameras, labels, max_cameras):
     for tag in low_data:
         all_labels.discard(tag)
 
-    missing_labels = list(all_labels - set(most_diverse.label_to_bins.keys()))
+    missing_labels = list(all_labels)
+    # - set(most_diverse.label_to_bins.keys()))
     np.random.shuffle(missing_labels)
     np.random.shuffle(cameras)
     lbl_counts = {}
-    missing = []
     for label, count in most_diverse.label_frames.items():
         lbl_counts[label] = count
-        if count < 1000:
-            missing.append(label)
+        if count >= 1000:
+            missing_labels.remove(label)
     print(lbl_counts)
     validate_data.append(most_diverse)
-    # missing = len(missing_labels) / len(all_labels)
+    missing = len(missing_labels) / len(all_labels)
     missing_i = 0
     while (
         len(validate_data) <= max_cameras
@@ -357,7 +357,6 @@ def diverse_validation(cameras, labels, max_cameras):
         print("get missing label", missing_i, missing_labels)
 
         label = missing_labels[missing_i]
-        missing_i += 1
         for i, camera in enumerate(cameras):
             if label in camera.label_to_bins:
                 print("found label", label, "adding camera", camera.camera)
@@ -372,9 +371,12 @@ def diverse_validation(cameras, labels, max_cameras):
                         missing_labels.remove(label)
                 print(lbl_counts)
                 del cameras[i]
-                missing_i = 0
                 missing = len(missing_labels) / len(all_labels)
                 break
+        if len(missing_labels) == 0:
+            break
+        missing_i = random.randint(0, len(missing_labels) - 1)
+
     print("missing", missing)
     return validate_data
 
