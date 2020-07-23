@@ -65,27 +65,6 @@ And finally train the model
 
 `python train.py -dataset=data -model-name=model --epochs=10`
 
-## Testing Classification and Tracking
-
-# Generating Tests
-
-- Tests can be generated from existing videos files on browse. The tests will contain
-the tracks and tagged results as shown in browse by default.
-- Test metadata will be saved to a yml file(tracking-tests.yml by default). This
-may require manual editing to setup the tests if the original browse video did not track / classify
-well
-- Test CPTV files will be saved under out_dir and labelled as recordingid.cptv
-
-`python smoktest\generatetests.py out_dir Username Password <list of recording ids separated by a space>`
-e.g.
-`python smoktest\generatetests.py test_clips Derek password123 12554 122232`
-
-# Running Tests
-- Once tests have been generated you can test your current tracking and model against thermal
-- This will print out the results and also save a file called smoketest-results.txt
-`python trackingtest.py -t smoketest/tracking-tests.yml`
-
-
 ## Classifying animals within a CPTV File
 
 A pre-trained model can be used to classify objects within a CPTV video
@@ -119,3 +98,26 @@ This will generate a text file listing the animals identified, and create an MPE
 7. View logs
 
 	`journalctl -u cacophony-processing.thermal@xx.service -f`
+
+# Testing Classification and Tracking
+
+## Generating Tests
+
+- Tests can be generated from existing videos files on browse. The tests will contain
+the tracks and tagged results as shown in browse by default.
+- Test metadata will be saved to a yml file(tracking-tests.yml by default). This
+may require manual editing to setup the tests if the original browse video did not track / classify
+well
+- Test CPTV files will be saved under out_dir and labelled as recordingid.cptv
+
+`python smoktest\generatetests.py out_dir Username Password <list of recording ids separated by a space>`
+
+e.g.
+
+`python smoktest\generatetests.py test_clips Derek password123 12554 122232`
+
+## Running Tests
+- Once tests have been generated you can test your current tracking and model against thermal
+- This will print out the results and also save a file called smoketest-results.txt
+
+`python trackingtest.py -t smoketest/tracking-tests.yml`
