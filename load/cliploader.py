@@ -99,6 +99,13 @@ class ClipLoader:
         # self.load_classifier(self.config.classify.model)
         # self.database.set_labels(self.classifier.labels)
 
+    def missing_predictions(self):
+        print("missing predictions")
+        clips = self.database.get_all_clip_ids()
+        for clip in clips:
+            if not self.database.has_prediction(clip):
+                print(clip, "missing prediction")
+
     def remove_predictions(self):
         print("removing all predictions")
         clips = self.database.get_all_clip_ids()
@@ -121,6 +128,8 @@ class ClipLoader:
                 job_queue.put(clip)
         for i in range(len(processes)):
             job_queue.put("DONE")
+        for process in processes:
+            process.join()
 
     def process_all(self, root=None, checkpoint=None):
         self.load_classifier(self.config.classify.model)
