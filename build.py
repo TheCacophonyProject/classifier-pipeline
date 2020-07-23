@@ -428,12 +428,12 @@ def split_dataset_by_cameras(db, dataset, build_config):
     for i, bin_id in enumerate(wallaby.label_to_bins["wallaby"]):
         bin = wallaby.bins[bin_id]
         for track in bin:
-            count += track.important_frames
+            wallaby_count += track.important_frames
             track.camera = "Wallaby-2"
             wallaby_validate.add_track(track)
         remove.append(bin_id)
         last_index = i
-        if count > 1000:
+        if wallaby_count > 1000:
             break
     wallaby.label_to_bins["wallaby"] = wallaby.label_to_bins["wallaby"][
         last_index + 1 :
