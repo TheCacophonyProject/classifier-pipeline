@@ -113,10 +113,10 @@ class TrackDatabase:
     def has_prediction(self, clip_id):
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
-            has_record = clip_id in clips and "finished" in clips[clip_id].attrs
+            # has_record = clip_id in clips and "finished" in clips[clip_id].attrs
             clip = clips[clip_id]
-            if has_record:
-                return clip.attrs.get("has_prediction", False)
+            # if has_record:
+            return clip.attrs.get("has_prediction", False)
         return False
 
     def add_predictions(self, clip_id, model):

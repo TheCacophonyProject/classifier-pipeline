@@ -48,10 +48,12 @@ class DataGenerator(keras.utils.Sequence):
         self.shuffle = shuffle
         self.n_classes = num_classes
         self.n_channels = n_channels
+        self.all_x = None
+        self.all_y = None
         self.on_epoch_end()
 
-    def get_data(self):
-        X, y, _ = self._data(self.indexes, to_categorical=False)
+    def get_data(self, to_categorical=False):
+        X, y, _ = self._data(self.indexes, to_categorical=to_categorical)
         return X, y
 
     def __len__(self):
@@ -62,10 +64,12 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
-        indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
-
+        # indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
+        X = self.all_x[index * self.batch_size : (index + 1) * self.batch_size]
+        y = self.all_y[index * self.batch_size : (index + 1) * self.batch_size]
+        return X, y
         # Generate data
-        X, y, clips = self._data(indexes)
+        # X, y, clips = self._data(indexes)
         # if self.dataset.name == "train":
         #     #
         #     fig = plt.figure(figsize=(48, 48))
@@ -84,12 +88,13 @@ class DataGenerator(keras.utils.Sequence):
         #     plt.close(fig)
         # raise "save err"
 
-        return X, y
+        # return X, y
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
         if self.shuffle:
             np.random.shuffle(self.indexes)
+        self.all_x, self.all_y = self.get_data(to_catogorical=True)
 
     def _data(self, indexes, to_categorical=True):
         "Generates data containing batch_size samples"  # X : (n_samples, *dim, n_channels)
