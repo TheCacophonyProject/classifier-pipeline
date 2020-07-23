@@ -52,8 +52,8 @@ class DataGenerator(keras.utils.Sequence):
         self.all_y = None
         self.on_epoch_end()
 
-    def get_data(self, to_categorical=False):
-        X, y, _ = self._data(self.indexes, to_categorical=to_categorical)
+    def get_data(self, catog=False):
+        X, y, _ = self._data(self.indexes, to_categorical=catog)
         return X, y
 
     def __len__(self):
@@ -94,7 +94,7 @@ class DataGenerator(keras.utils.Sequence):
         "Updates indexes after each epoch"
         if self.shuffle:
             np.random.shuffle(self.indexes)
-        self.all_x, self.all_y = self.get_data(to_catogorical=True)
+        self.all_x, self.all_y = self.get_data(catog=True)
 
     def _data(self, indexes, to_categorical=True):
         "Generates data containing batch_size samples"  # X : (n_samples, *dim, n_channels)
