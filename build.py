@@ -335,12 +335,13 @@ def diverse_validation(cameras, labels, max_cameras):
     all_labels = set(labels)
     for tag in low_data:
         all_labels.discard(tag)
-
+    lbl_counts = {}
+    for label in all_labels:
+        lbl_counts[label] = 0
     missing_labels = list(all_labels)
     # - set(most_diverse.label_to_bins.keys()))
     np.random.shuffle(missing_labels)
     np.random.shuffle(cameras)
-    lbl_counts = {}
     for label, count in most_diverse.label_frames.items():
         lbl_counts[label] = count
         if count >= 1000:
@@ -351,7 +352,7 @@ def diverse_validation(cameras, labels, max_cameras):
     missing_i = 0
 
     # min label
-    min_count = next(iter(lbl_counts.values()))[0]
+    min_count = next(iter(lbl_counts.values()))
     for i, label in enumerate(missing_labels):
         if lbl_counts[label] < min_count:
             missing_i = i
@@ -383,7 +384,7 @@ def diverse_validation(cameras, labels, max_cameras):
             break
 
         # always add to min label
-        min_count = next(iter(lbl_counts.values()))[0]
+        min_count = next(iter(lbl_counts.values()))
         for i, label in enumerate(missing_labels):
             if lbl_counts[label] < min_count:
                 missing_i = i
@@ -428,7 +429,7 @@ def split_dataset_by_cameras(db, dataset, build_config):
     for i, bin_id in enumerate(wallaby.label_to_bins["wallaby"]):
         bin = wallaby.bins[bin_id]
         for track in bin:
-            wallaby_count += track.important_frames
+            wallaby_count += len(track.important_frames)
             track.camera = "Wallaby-2"
             wallaby_validate.add_track(track)
         remove.append(bin_id)
