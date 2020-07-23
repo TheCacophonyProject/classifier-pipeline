@@ -73,6 +73,8 @@ class NewModel:
         self.preserve_labels = preserve_labels
         self.pretrained_model = self.params.get("model", "resnetv2")
         self.preprocess_fn = None
+        self.validate = None
+        self.train = None
 
     def base_model(self, input_shape):
         if self.pretrained_model == "resnet":
@@ -257,14 +259,17 @@ class NewModel:
         )
 
     def close(self):
-        pass
+        if self.validate:
+            self.validate.stop_load()
+        if self.train:
+            self.train.stop_load()
 
     def train_model(self, epochs, run_name):
         self.log_dir = os.path.join(self.log_base, run_name)
         os.makedirs(self.log_base, exist_ok=True)
         if not self.model:
             self.build_model()
-        train = DataGenerator(
+        self.train = DataGenerator(
             self.datasets.train,
             self.datasets.train.labels,
             len(self.datasets.train.labels),
@@ -274,9 +279,10 @@ class NewModel:
             use_filtered=self.params.get("use_filtered", False),
             shuffle=True,
             model_preprocess=self.preprocess_fn,
+            epochs=epochs,
         )
         global validate
-        validate = DataGenerator(
+        self.validate = DataGenerator(
             self.datasets.validation,
             self.datasets.train.labels,
             len(self.datasets.train.labels),
@@ -286,15 +292,17 @@ class NewModel:
             use_filtered=self.params.get("use_filtered", False),
             shuffle=True,
             model_preprocess=self.preprocess_fn,
+            epochs=epochs,
         )
+        validate = self.validate
         cm_callback = tf.keras.callbacks.LambdaCallback(
             on_epoch_end=log_confusion_matrix
         )
         global file_writer_cm
         file_writer_cm = tf.summary.create_file_writer(self.log_dir + "/cm")
         history = self.model.fit(
-            train,
-            validation_data=validate,
+            self.train,
+            validation_data=self.validate,
             epochs=epochs,
             shuffle=False,
             callbacks=[
@@ -304,7 +312,8 @@ class NewModel:
                 cm_callback,
             ],  # log metrics
         )
-
+        self.validate.stop_load()
+        self.train.stop_load()
         self.save(run_name)
         for key, value in history.history.items():
             plt.figure()

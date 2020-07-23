@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from ml_tools.dataset import TrackChannels
+import multiprocessing
+import time
 
 FRAME_SIZE = 48
 
@@ -27,7 +29,12 @@ class DataGenerator(keras.utils.Sequence):
         lstm=False,
         use_thermal=False,
         use_filtered=False,
+        buffer_size=128,
+        epochs=10,
     ):
+        self.preloader_queue = multiprocessing.Queue(buffer_size)
+        self.preloader_stop_flag = False
+
         self.labels = labels
         self.model_preprocess = model_preprocess
         self.use_thermal = use_thermal
@@ -50,7 +57,26 @@ class DataGenerator(keras.utils.Sequence):
         self.n_channels = n_channels
         self.all_x = None
         self.all_y = None
+        self.batch_index = 0
+        self.cur_epoch = 0
+        self.epochs = epochs
         self.on_epoch_end()
+        self.preloader_threads = [
+            multiprocessing.Process(target=preloader, args=(self.preloader_queue, self))
+            for _ in range(1)
+        ]
+        for thread in self.preloader_threads:
+            thread.start()
+
+    def stop_load(self):
+        self.preloader_stop_flag = True
+        for thread in self.preloader_threads:
+            if hasattr(thread, "terminate"):
+                # note this will corrupt the queue, so reset it
+                thread.terminate()
+                self.preloader_queue = None
+            else:
+                thread.exit()
 
     def get_data(self, catog=False):
         X, y, _ = self._data(self.indexes, to_categorical=catog)
@@ -61,40 +87,26 @@ class DataGenerator(keras.utils.Sequence):
 
         return int(np.floor(self.dataset.frames / self.batch_size))
 
+    def loadbatch(self):
+        index = self.batch_index
+        indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
+        X, y, clips = self._data(indexes)
+        # self.batch_index += 1
+        return X, y
+
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
-        # indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
-        X = self.all_x[index * self.batch_size : (index + 1) * self.batch_size]
-        y = self.all_y[index * self.batch_size : (index + 1) * self.batch_size]
+        X, y = self.preloader_queue.get()
         return X, y
-        # Generate data
-        # X, y, clips = self._data(indexes)
-        # if self.dataset.name == "train":
-        #     #
-        #     fig = plt.figure(figsize=(48, 48))
-        #     for i in range(len(X)):
-        #         axes = fig.add_subplot(4, 10, i + 1)
-        #         axes.set_title(
-        #             "{} - {} track {} frame {}".format(
-        #                 self.labels[np.argmax(np.array(y[i]))],
-        #                 clips[i].clip_id,
-        #                 clips[i].track_id,
-        #                 clips[i].frame_num,
-        #             )
-        #         )
-        #         plt.imshow(tf.keras.preprocessing.image.array_to_img(X[i]))
-        #     plt.savefig("testimage.png")
-        #     plt.close(fig)
-        # raise "save err"
-
-        # return X, y
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
         if self.shuffle:
             np.random.shuffle(self.indexes)
-        self.all_x, self.all_y = self.get_data(catog=True)
+        self.batch_index = 0
+        self.cur_epoch += 1
+        # self.all_x, self.all_y = self.get_data(catog=True)
 
     def _data(self, indexes, to_categorical=True):
         "Generates data containing batch_size samples"  # X : (n_samples, *dim, n_channels)
@@ -231,3 +243,27 @@ def preprocess_frame(
         data = data * 255
         data = preprocess_fn(data)
     return data
+
+
+# continue to read examples until queue is full
+def preloader(q, dataset):
+    """ add a segment into buffer """
+    logging.info(
+        " -started async fetcher for %s with augment=%s",
+        dataset.dataset.name,
+        dataset.augment,
+    )
+    while not dataset.preloader_stop_flag and dataset.cur_epoch <= dataset.epochs:
+        if not q.full():
+            q.put(dataset.loadbatch())
+            dataset.batch_index += 1
+            if dataset.batch_index > len(dataset):
+                dataset.on_epoch_end()
+            # logging.info(
+            #     "loaded batch %s %s %s",
+            #     dataset.cur_epoch,
+            #     dataset.dataset.name,
+            #     dataset.batch_index,
+            # )
+        else:
+            time.sleep(0.1)
