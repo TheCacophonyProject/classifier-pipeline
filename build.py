@@ -370,9 +370,10 @@ def diverse_validation(cameras, labels, max_cameras):
 
                     if label in missing_labels and lbl_counts[label] > 1000:
                         missing_labels.remove(label)
+                print(lbl_counts)
                 del cameras[i]
                 missing_i = 0
-                # missing = len(missing_labels) / len(all_labels)
+                missing = len(missing_labels) / len(all_labels)
                 break
     print("missing", missing)
     return validate_data
