@@ -372,7 +372,7 @@ class Track:
             return np.int16(np.stack((thermal, filtered, empty, empty, mask), axis=0))
         return frame
 
-    def set_end(self, fps):
+    def set_end_s(self, fps):
         self.end_s = (self.end_frame + 1) / fps
 
     @property

@@ -55,12 +55,13 @@ class RecordingMatch:
         unmatched = [match for match in self.matches if not match.tag_match()]
         better = [match for match in self.matches if match.improvement]
         worse = [match for match in self.matches if not match.improvement]
+        print("*******Classifying******")
         print(
             "matches {}\tmismatches {}\tunmatched {}".format(
                 len(matched), len(unmatched), len(self.unmatched_tracks)
             )
         )
-
+        print("*******Tracking******")
         print("better {}\t worse {}".format(len(better), len(worse)))
         if len(self.unmatched_tests) > 0:
             print("unmatched tests {}\t ".format(len(self.unmatched_tests)))
@@ -179,7 +180,7 @@ class TestClassify:
         self.results = []
         self.classifier = get_classifier(self.classifier_config)
 
-    def run_tests(self, base_dir):
+    def run_tests(self):
         for test in self.test_config.recording_tests:
             logging.info("testing {} ".format(test.filename))
             clip, predictions = self.clip_classifier.classify_file(test.filename)
@@ -219,9 +220,6 @@ def parse_args():
         default="smoketest/tracking-tests.yml",
         help="YML file containing tests",
     )
-    parser.add_argument(
-        "-b", "--base_dir", default="smoketest/clips", help="Base directory of clips",
-    )
     args = parser.parse_args()
     return args
 
@@ -236,7 +234,7 @@ def main():
     init_logging()
     args = parse_args()
     test = TestClassify(args)
-    test.run_tests(Path(args.base_dir))
+    test.run_tests()
     test.write_results()
     test.print_summary()
 

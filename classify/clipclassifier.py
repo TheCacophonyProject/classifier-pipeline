@@ -297,8 +297,8 @@ class ClipClassifier(CPTVFileProcessor):
             track_info["num_frames"] = prediction.num_frames
             track_info["frame_start"] = track.start_frame
             track_info["frame_end"] = track.end_frame
-            track_info["label"] = self.classifier.labels[prediction.best_label_index]
-            track_info["confidence"] = round(prediction.score(), 2)
+            track_info["label"] = prediction.predicted_tag(self.classifier.labels)
+            track_info["confidence"] = round(prediction.max_score, 2)
             track_info["clarity"] = round(prediction.clarity, 3)
             track_info["average_novelty"] = round(prediction.average_novelty, 2)
             track_info["max_novelty"] = round(prediction.max_novelty, 2)

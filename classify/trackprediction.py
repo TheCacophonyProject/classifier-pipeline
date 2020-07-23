@@ -26,7 +26,7 @@ class Predictions:
             return prediction.guesses(self.labels)
         return []
 
-    def print_prediction(self, track_id):
+    def print_predictions(self, track_id):
         self.prediction_for(track_id).print_prediction(self.labels)
 
     def prediction_description(self, track_id):
@@ -229,7 +229,9 @@ class TrackPrediction:
 
     def print_prediction(self, labels):
         logging.info(
-            "Track {} is {}".format(self.track_id, self.get_classified_footer(labels))
+            "Track {} prediction {}".format(
+                self.track_id, self.get_classified_footer(labels)
+            )
         )
 
     def guesses(self, labels):
