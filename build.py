@@ -350,7 +350,7 @@ def diverse_validation(cameras, labels, max_cameras):
     label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
     while (
         len(val_cameras) <= max_cameras
-        or missing != 0
+        and missing != 0
     ):
         for i, camera in enumerate(cameras):
             if label in camera.label_to_bins:
@@ -365,16 +365,17 @@ def diverse_validation(cameras, labels, max_cameras):
 
                     if label in missing_labels and lbl_counts[label] > MIN_FRAMES:
                         missing_labels.remove(label)
-
+                print(lbl_counts)
                 del cameras[i]
                 missing = len(missing_labels) / len(all_labels)
+                print("missing percent", missing)
                 break
         if len(missing_labels) == 0:
             break
         # always add to min label
         label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
 
-    return val_cameras
+    return val_cameras, cameras
 
 def split_wallaby_cameras(dataset, cameras):
     wallaby = dataset.cameras_by_id["Wallaby-None"]
@@ -421,7 +422,7 @@ def split_dataset_by_cameras(db, dataset, build_config):
 
 
     wallaby, wallaby_validate = split_wallaby_cameras(dataset,cameras)
-    validate_data = diverse_validation(cameras, dataset.labels, validation_cameras)
+    validate_data, cameras = diverse_validation(cameras, dataset.labels, validation_cameras)
 
     train_data = cameras
     train_data.append(wallaby)
@@ -440,7 +441,6 @@ def split_dataset_by_cameras(db, dataset, build_config):
     )
 
     validate_data.append(wallaby_validate)
-
     add_camera_data(
         dataset.labels,
         validation,
