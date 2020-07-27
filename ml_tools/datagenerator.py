@@ -43,7 +43,7 @@ class DataGenerator(keras.utils.Sequence):
         self.lstm = lstm
         # default
         if not self.use_thermal and not self.use_filtered and not self.lstm:
-            self.use_filtered = True
+            self.use_thermal = True
         self.dim = dim
         self.augment = dataset.enable_augmentation
         self.batch_size = batch_size
@@ -103,8 +103,6 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
-
-        print("get", self.dataset.name, index)
         X, y = self.preloader_queue.get()
         return X, y
 
