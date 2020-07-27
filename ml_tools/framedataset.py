@@ -279,7 +279,6 @@ class Camera:
         return frames
 
     def add_track(self, track_header):
-
         if track_header.bin_id not in self.bins:
             self.bins[track_header.bin_id] = []
 
@@ -520,7 +519,6 @@ class FrameDataset:
             frame_sample.frame_num,
             channels=channels
         )
-        # label = self.db.get_tag(frame_sample.clip_id, frame_sample.track_id)
         return data, label
 
     def rebalance(self, label_cap=1000, exclude=[]):

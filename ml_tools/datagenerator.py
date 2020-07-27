@@ -32,6 +32,7 @@ class DataGenerator(keras.utils.Sequence):
         buffer_size=128,
         epochs=10,
         load_threads=1,
+        preload=True,
     ):
 
 
@@ -60,21 +61,26 @@ class DataGenerator(keras.utils.Sequence):
         self.cur_epoch = 0
         self.epochs = epochs
 
-        self.preloader_queue = multiprocessing.Queue(buffer_size)
-        self.preloader_stop_flag = False
-        self.load_queue = multiprocessing.Queue(len(self) + 1)
+        self.preload = preloader
         self.on_epoch_end(load=True)
 
-        self.preloader_threads = [
-            multiprocessing.Process(
-                target=preloader, args=(self.preloader_queue, self.load_queue, self)
-            )
-            for _ in range(load_threads)
-        ]
-        for thread in self.preloader_threads:
-            thread.start()
+        if self.preload:
+            self.preloader_queue = multiprocessing.Queue(buffer_size)
+            self.preloader_stop_flag = False
+            self.load_queue = multiprocessing.Queue(len(self) + 1)
+
+            self.preloader_threads = [
+                multiprocessing.Process(
+                    target=preloader, args=(self.preloader_queue, self.load_queue, self)
+                )
+                for _ in range(load_threads)
+            ]
+            for thread in self.preloader_threads:
+                thread.start()
 
     def stop_load(self):
+        if not self.preload:
+            return
         self.preloader_stop_flag = True
         for thread in self.preloader_threads:
             if hasattr(thread, "terminate"):
@@ -84,6 +90,7 @@ class DataGenerator(keras.utils.Sequence):
             else:
                 thread.exit()
 
+    # get all data
     def get_data(self, catog=False):
         X, y, _ = self._data(self.indexes, to_categorical=catog)
         return X, y
@@ -96,14 +103,17 @@ class DataGenerator(keras.utils.Sequence):
     def loadbatch(self, index):
         start = time.time()
         indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
-        X, y, clips = self._data(indexes)
+        X, y, _ = self._data(indexes)
         logging.debug("Time to get data %s", time.time()-start)
         return X, y
 
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
-        X, y = self.preloader_queue.get()
+        if self.preload:
+            X, y = self.preloader_queue.get()
+        else:
+            X,y = self.loadbatch(index)
         return X, y
 
     def on_epoch_end(self, load=True):
@@ -111,6 +121,7 @@ class DataGenerator(keras.utils.Sequence):
         if self.shuffle:
             np.random.shuffle(self.indexes)
         if load:
+            # for some reason it always requests 0 twice
             self.load_queue.put(0)
             for i in range(len(self)):
                 self.load_queue.put(i)
@@ -163,8 +174,8 @@ class DataGenerator(keras.utils.Sequence):
             clips.append(frame)
 
         if to_categorical:
-            return X, keras.utils.to_categorical(y, num_classes=self.n_classes), clips
-        return X, y, clips
+            y =  keras.utils.to_categorical(y, num_classes=self.n_classes)
+        return X, y,clips
 
 
 def resize(image, dim):
@@ -231,12 +242,6 @@ def preprocess_frame(
     max = int(np.percentile(data, 100 - percent))
     min = int(np.percentile(data, percent))
     if max == min:
-        #     logging.error(
-        #         "frame max and min are the same clip %s track %s frame %s",
-        #         frame.clip_id,
-        #         frame.track_id,
-        #         frame.frame_num,
-        #     )
         return None
 
     data -= min
@@ -274,8 +279,6 @@ def preloader(q, load_queue, dataset):
             q.put(dataset.loadbatch(batch_i))
             if batch_i + 1 == len(dataset):
                 dataset.cur_epoch+=1
-            #     # should wait for othe processes to finish
-            #     dataset.on_epoch_end(load=True)
             logging.debug(
                 "loaded batch %s %s %s",
                 dataset.cur_epoch,

@@ -16,6 +16,7 @@ from ml_tools.framedataset import FrameDataset, dataset_db_path, Camera
 
 MIN_BINS = 4
 MIN_FRAMES = 1000
+LOW_DATA_LABELS = ["wallaby"]
 
 
 def show_tracks_breakdown(dataset):
@@ -315,112 +316,73 @@ def print_data(dataset):
 
 # idea is to try get a bit of all labels in validation set
 # take 1 of the top 4 diverse CameraSegments
-# then randomly pick a missing label and try find a camera
-# until we either have reached max cameras, or aren't missing labels
+# then pick a missing label and try to find a camera
+# until we either have reached max cameras, or there aren't any labels with less
+# than MIN_FRAMES frames
 def diverse_validation(cameras, labels, max_cameras):
-    validate_data = []
-    sorted(cameras, key=lambda camera: len(camera.label_to_bins.keys()), reverse=True)
+    val_cameras = []
+    cameras = sorted(cameras, key=lambda camera: len(camera.label_to_bins.keys()), reverse=True)
     most_diverse_i = np.random.randint(0, 4)
     most_diverse = cameras[most_diverse_i]
     del cameras[most_diverse_i]
+    val_cameras.append(most_diverse)
 
-    # camers_by_label = {}
-    # for label in labels:
-    #     for camera in cameras:
-    #         if label in camera.label_to_bins.keys():
-    #             lbl_cameras = camera_by_label.setdefault(label, [])
-    #             lbl_cmaers.append(camera)
-    # dont want to bother with these
-    low_data = ["wallaby"]
-    all_labels = set(labels)
-    for tag in low_data:
-        all_labels.discard(tag)
+    all_labels = labels.copy()
+    for tag in LOW_DATA_LABELS:
+        if tag in all_labels:
+            all_labels.remove(tag)
     lbl_counts = {}
     for label in all_labels:
         lbl_counts[label] = 0
-    missing_labels = list(all_labels)
-    # - set(most_diverse.label_to_bins.keys()))
-    np.random.shuffle(missing_labels)
-    np.random.shuffle(cameras)
+    missing_labels = all_labels.copy()
     for label, count in most_diverse.label_frames.items():
         lbl_counts[label] = count
-        if count >= 1000:
+        if count >= MIN_FRAMES:
             missing_labels.remove(label)
-    print(lbl_counts)
-    validate_data.append(most_diverse)
+
+    # randomize camera order so we dont always pick the same cameras
+    np.random.shuffle(cameras)
+
     missing = len(missing_labels) / len(all_labels)
     missing_i = 0
 
     # min label
-    min_count = next(iter(lbl_counts.values()))
-    for i, label in enumerate(missing_labels):
-        if lbl_counts[label] < min_count:
-            missing_i = i
+    label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
     while (
-        len(validate_data) <= max_cameras
-        and missing != 0
-        and missing_i < len(missing_labels)
+        len(val_cameras) <= max_cameras
+        or missing != 0
     ):
-        print("get missing label", missing_i, missing_labels)
-
-        label = missing_labels[missing_i]
         for i, camera in enumerate(cameras):
             if label in camera.label_to_bins:
-                print("found label", label, "adding camera", camera.camera)
-                validate_data.append(camera)
+                val_cameras.append(camera)
+
+                # update validation counts
                 for label, count in camera.label_frames.items():
                     if label in lbl_counts:
                         lbl_counts[label] += count
                     else:
                         lbl_counts[label] = count
 
-                    if label in missing_labels and lbl_counts[label] > 1000:
+                    if label in missing_labels and lbl_counts[label] > MIN_FRAMES:
                         missing_labels.remove(label)
-                print(lbl_counts)
+
                 del cameras[i]
                 missing = len(missing_labels) / len(all_labels)
                 break
         if len(missing_labels) == 0:
             break
-
         # always add to min label
-        min_count = next(iter(lbl_counts.values()))
-        for i, label in enumerate(missing_labels):
-            if lbl_counts[label] < min_count:
-                missing_i = i
-        # or randomize
-        # missing_i = random.randint(0, len(missing_labels) - 1)
+        label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
 
-    print("missing", missing)
-    return validate_data
+    return val_cameras
 
-
-def split_dataset_by_cameras(db, dataset, build_config):
-
-    train_percent = 0.7
-    validation_percent = 0.3
-    test_cameras = 0
-    print(dataset.labels)
-    train = FrameDataset(db, "train")
-    validation = FrameDataset(db, "validation")
-    test = FrameDataset(db, "test")
-
-    cameras = list(dataset.cameras_by_id.values())
-    camera_count = len(cameras)
-    remaining_cameras = camera_count - test_cameras
-    print("camera count", camera_count)
-    validation_cameras = min(5, round(remaining_cameras * validation_percent))
-    remaining_cameras -= validation_cameras
-    train_cameras = remaining_cameras
-
+def split_wallaby_cameras(dataset, cameras):
     wallaby = dataset.cameras_by_id["Wallaby-None"]
-    # del dataset.cameras_by_id["Wallaby-None"]
     for i, camera in enumerate(cameras):
         if camera.camera == "Wallaby-None":
-            print("removed wallaby none")
             del cameras[i]
             break
-    # cameras.remove("Wallaby-None")
+
     wallaby_validate = Camera("Wallaby-2")
     remove = []
     last_index = 0
@@ -434,7 +396,7 @@ def split_dataset_by_cameras(db, dataset, build_config):
             wallaby_validate.add_track(track)
         remove.append(bin_id)
         last_index = i
-        if wallaby_count > 1000:
+        if wallaby_count > MIN_FRAMES:
             break
     wallaby.label_to_bins["wallaby"] = wallaby.label_to_bins["wallaby"][
         last_index + 1 :
@@ -442,18 +404,25 @@ def split_dataset_by_cameras(db, dataset, build_config):
     print("wallaby length is now", len(wallaby.label_to_bins["wallaby"]))
     for bin in remove:
         del wallaby.bins[bin]
+    return wallaby, wallaby_validate
 
-    # want a test set that covers all labels
-    # randomize order
-    diverse = True
-    validate_data = []
-    if diverse:
-        validate_data = diverse_validation(cameras, dataset.labels, validation_cameras)
-        validation_cameras -= len(validate_data)
-        max(0, validation_cameras)
-    np.random.shuffle(cameras)
+def split_dataset_by_cameras(db, dataset, build_config):
 
-    # train_data = cameras[:train_cameras]
+    train_percent = 0.7
+    validation_percent = 0.3
+    test_cameras = 0
+    train = FrameDataset(db, "train")
+    validation = FrameDataset(db, "validation")
+    test = FrameDataset(db, "test")
+
+    cameras = list(dataset.cameras_by_id.values())
+    camera_count = len(cameras)
+    validation_cameras = min(5, round(camera_count * validation_percent))
+
+
+    wallaby, wallaby_validate = split_wallaby_cameras(dataset,cameras)
+    validate_data = diverse_validation(cameras, dataset.labels, validation_cameras)
+
     train_data = cameras
     train_data.append(wallaby)
     required_samples = build_config.test_set_count
@@ -470,7 +439,6 @@ def split_dataset_by_cameras(db, dataset, build_config):
         build_config.max_frames_per_track,
     )
 
-    # validate_data.extend(cameras[train_cameras : train_cameras + validation_cameras])
     validate_data.append(wallaby_validate)
 
     add_camera_data(
@@ -565,7 +533,7 @@ def get_distribution(labels, cameras, max_frames_per_track):
         label_data[label] = {
             "cameras": lbl_cameras,
             "frames": frames,
-            "max_frames": max(frames, 1000),
+            "max_frames": max(frames, MIN_FRAMES),
         }
         if frames > 0 and label not in ["wallaby", "human"]:
             if min_count is None:
