@@ -7,6 +7,7 @@ Date December 2017
 Handles reading and writing tracks (or segments) to a large database.  Uses HDF5 as a backing store.
 
 """
+import time
 import h5py
 import os
 import logging
@@ -330,6 +331,17 @@ class TrackDatabase:
             track_node = clips[str(clip_id)][str(track_number)]
             return track_node.attrs["tag"]
 
+    def get_frame(self, clip_id, track_number, frame, channels = None):
+        with HDF5Manager(self.database) as f:
+            clips = f["clips"]
+            track_node = clips[str(clip_id)][str(track_number)]
+            if channels:
+                return track_node[str(frame)][channels], track_node.attrs["tag"]
+            else:
+                return track_node[str(frame)][channels], track_node.attrs["tag"]
+
+        return None
+
     def get_track(self, clip_id, track_number, start_frame=None, end_frame=None):
         """
         Fetches a track data from database with optional slicing.
@@ -339,6 +351,11 @@ class TrackDatabase:
         :param end_frame: last frame of slice to return (exclusive).
         :return: a list of numpy arrays of shape [channels, height, width] and of type np.int16
         """
+        # start = time.time()
+        # other = self.get_frame(clip_id, track_number, start_frame)
+        # print("get frame,", start_frame, time.time()-start)
+        # start = time.time()
+
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             track_node = clips[str(clip_id)][str(track_number)]
@@ -350,9 +367,11 @@ class TrackDatabase:
             result = []
             for frame_number in range(start_frame, end_frame):
                 # we use [:,:,:] to force loading of all data.
-                result.append(track_node[str(frame_number)][:, :, :])
+                result.append(track_node[str(frame_number)][:])
+        # print("get track,", start_frame, end_frame, time.time()-start)
 
-            return result
+
+        return result
 
     def remove_clip(self, clip_id):
         """

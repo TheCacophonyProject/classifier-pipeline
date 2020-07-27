@@ -34,8 +34,7 @@ class DataGenerator(keras.utils.Sequence):
         load_threads=1,
     ):
 
-        self.preloader_queue = multiprocessing.Queue(buffer_size)
-        self.preloader_stop_flag = False
+
 
         self.labels = labels
         self.model_preprocess = model_preprocess
@@ -48,22 +47,22 @@ class DataGenerator(keras.utils.Sequence):
         self.dim = dim
         self.augment = dataset.enable_augmentation
         self.batch_size = batch_size
-        self.sequence_size = sequence_size
         self.dataset = dataset
         self.size = len(dataset.frame_samples)
-        if not self.lstm:
+
+        if self.lstm:
+            self.sequence_size = sequence_size
             self.size = self.size
         self.indexes = np.arange(self.size)
         self.shuffle = shuffle
         self.n_classes = num_classes
         self.n_channels = n_channels
-        self.all_x = None
-        self.all_y = None
-        self.batch_index = 0
         self.cur_epoch = 0
         self.epochs = epochs
-        self.load_queue = multiprocessing.Queue(len(self) + 1)
 
+        self.preloader_queue = multiprocessing.Queue(buffer_size)
+        self.preloader_stop_flag = False
+        self.load_queue = multiprocessing.Queue(len(self) + 1)
         self.on_epoch_end(load=True)
 
         self.preloader_threads = [
@@ -95,19 +94,20 @@ class DataGenerator(keras.utils.Sequence):
         return int(np.floor(self.dataset.frames / self.batch_size))
 
     def loadbatch(self, index):
-        # index = self.batch_index
+        start = time.time()
         indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
         X, y, clips = self._data(indexes)
-        # self.batch_index += 1
+        logging.debug("Time to get data %s", time.time()-start)
         return X, y
 
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
+        print("get", self.dataset.name, index)
         X, y = self.preloader_queue.get()
         return X, y
 
-    def on_epoch_end(self, load=False):
+    def on_epoch_end(self, load=True):
         "Updates indexes after each epoch"
         if self.shuffle:
             np.random.shuffle(self.indexes)
@@ -115,9 +115,8 @@ class DataGenerator(keras.utils.Sequence):
             self.load_queue.put(0)
             for i in range(len(self)):
                 self.load_queue.put(i)
-        self.batch_index = 0
+
         self.cur_epoch += 1
-        # self.all_x, self.all_y = self.get_data(catog=True)
 
     def _data(self, indexes, to_categorical=True):
         "Generates data containing batch_size samples"  # X : (n_samples, *dim, n_channels)
@@ -129,11 +128,15 @@ class DataGenerator(keras.utils.Sequence):
 
         y = np.empty((len(indexes)), dtype=int)
         clips = []
+        if self.use_thermal:
+            channels= TrackChannels.thermal
+        else:
+            channels = TrackChannels.filtered
         # Generate data
         for i, index in enumerate(indexes):
             segment_i = index
             frame = self.dataset.frame_samples[segment_i]
-            data, label = self.dataset.fetch_frame(frame)
+            data, label = self.dataset.fetch_frame(frame,channels=channels)
             if label not in self.labels:
                 continue
             if self.lstm:
@@ -145,6 +148,7 @@ class DataGenerator(keras.utils.Sequence):
                     self.use_thermal,
                     self.augment,
                     self.model_preprocess,
+                    filter_channels = False
                 )
                 if data is None:
                     logging.error(
@@ -211,13 +215,14 @@ def augement_frame(frame, dim):
 
 
 def preprocess_frame(
-    data, output_dim, use_thermal=True, augment=False, preprocess_fn=None
+    data, output_dim, use_thermal=True, augment=False, preprocess_fn=None, filter_channels=True
 ):
-    if use_thermal:
-        channel = TrackChannels.thermal
-    else:
-        channel = TrackChannels.filtered
-    data = data[channel]
+    if filter_channels:
+        if use_thermal:
+            channel = TrackChannels.thermal
+        else:
+            channel = TrackChannels.filtered
+        data = data[channel]
 
     # normalizes data, constrast stretch good or bad?
     if augment:
@@ -264,13 +269,15 @@ def preloader(q, load_queue, dataset):
         dataset.dataset.name,
         dataset.augment,
     )
-    while not dataset.preloader_stop_flag and dataset.cur_epoch <= dataset.epochs:
+    while not dataset.preloader_stop_flag:
         if not q.full():
             batch_i = load_queue.get()
             q.put(dataset.loadbatch(batch_i))
             if batch_i + 1 == len(dataset):
-                dataset.on_epoch_end(load=True)
-            logging.info(
+                dataset.cur_epoch+=1
+            #     # should wait for othe processes to finish
+            #     dataset.on_epoch_end(load=True)
+            logging.debug(
                 "loaded batch %s %s %s",
                 dataset.cur_epoch,
                 dataset.dataset.name,

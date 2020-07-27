@@ -280,7 +280,7 @@ class NewModel:
             shuffle=True,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
-            load_threads=4,
+            load_threads=1,
         )
         global validate
         self.validate = DataGenerator(
