@@ -321,7 +321,9 @@ def print_data(dataset):
 # than MIN_FRAMES frames
 def diverse_validation(cameras, labels, max_cameras):
     val_cameras = []
-    cameras = sorted(cameras, key=lambda camera: len(camera.label_to_bins.keys()), reverse=True)
+    cameras = sorted(
+        cameras, key=lambda camera: len(camera.label_to_bins.keys()), reverse=True
+    )
     most_diverse_i = np.random.randint(0, 4)
     most_diverse = cameras[most_diverse_i]
     del cameras[most_diverse_i]
@@ -348,10 +350,7 @@ def diverse_validation(cameras, labels, max_cameras):
 
     # min label
     label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
-    while (
-        len(val_cameras) <= max_cameras
-        and missing != 0
-    ):
+    while len(val_cameras) <= max_cameras and missing != 0:
         for i, camera in enumerate(cameras):
             if label in camera.label_to_bins:
                 val_cameras.append(camera)
@@ -376,6 +375,7 @@ def diverse_validation(cameras, labels, max_cameras):
         label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
 
     return val_cameras, cameras
+
 
 def split_wallaby_cameras(dataset, cameras):
     wallaby = dataset.cameras_by_id["Wallaby-None"]
@@ -407,6 +407,7 @@ def split_wallaby_cameras(dataset, cameras):
         del wallaby.bins[bin]
     return wallaby, wallaby_validate
 
+
 def split_dataset_by_cameras(db, dataset, build_config):
 
     train_percent = 0.7
@@ -420,9 +421,10 @@ def split_dataset_by_cameras(db, dataset, build_config):
     camera_count = len(cameras)
     validation_cameras = min(5, round(camera_count * validation_percent))
 
-
-    wallaby, wallaby_validate = split_wallaby_cameras(dataset,cameras)
-    validate_data, cameras = diverse_validation(cameras, dataset.labels, validation_cameras)
+    wallaby, wallaby_validate = split_wallaby_cameras(dataset, cameras)
+    validate_data, cameras = diverse_validation(
+        cameras, dataset.labels, validation_cameras
+    )
 
     train_data = cameras
     train_data.append(wallaby)
@@ -488,7 +490,9 @@ def add_random_camera_samples(
     cur_camera = 0
     print("max frames for ", label, max_frames)
     # 1 from each camera, until nothing left
-    while num_cameras > 0 and dataset.samples_for(label) < max_frames:
+    while num_cameras > 0 and (
+        max_frames is None or dataset.samples_for(label) < max_frames
+    ):
         camera = cameras[cur_camera]
         # bin_id = random.sample(cam_bins, 1)[0]
         # tracks = camera_data[camera_i].bins[bin_id]
@@ -562,14 +566,18 @@ def add_camera_data(
     cap_bin_weight=None,
     max_segments_per_track=None,
     max_frames_per_track=None,
+    dont_limit=["bird"],
 ):
     label_cap, label_data = get_distribution(labels, cameras, max_frames_per_track)
 
     for label, data in label_data.items():
-
+        limit = data["max_frames"]
+        if label in dont_limit:
+            limit = None
+            print("dont limit", label)
         cameras = data["cameras"]
         add_random_camera_samples(
-            dataset, cameras, label, data["max_frames"],
+            dataset, cameras, label, limit,
         )
 
 

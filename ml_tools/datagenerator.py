@@ -61,13 +61,14 @@ class DataGenerator(keras.utils.Sequence):
         self.cur_epoch = 0
         self.epochs = epochs
 
-        self.preload = preloader
-        self.on_epoch_end(load=True)
+        self.preload = preload
+        if self.preload:
+            self.load_queue = multiprocessing.Queue(len(self) + 1)
+        self.on_epoch_end(load=preload)
 
         if self.preload:
             self.preloader_queue = multiprocessing.Queue(buffer_size)
             self.preloader_stop_flag = False
-            self.load_queue = multiprocessing.Queue(len(self) + 1)
 
             self.preloader_threads = [
                 multiprocessing.Process(

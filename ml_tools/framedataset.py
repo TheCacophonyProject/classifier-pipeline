@@ -310,7 +310,7 @@ class FrameDataset:
     def __init__(self, track_db: TrackDatabase, name="Dataset", config=None):
         # database holding track data
         self.db = track_db
-
+        self.label_mapping = None
         # name of this dataset
         self.name = name
 
@@ -355,6 +355,7 @@ class FrameDataset:
             "tags": 0,
             "segment_mass": 0,
         }
+
     def set_read_only(self, read_only):
         self.db.set_read_only(read_only)
 
@@ -375,10 +376,18 @@ class FrameDataset:
         :label: label to check
         :return: (segments, tracks, bins, weight)
         """
-        label_tracks = self.tracks_by_label.get(label, [])
-        label_frames = self.labels_to_samples.get(label, [])
-        tracks = len(label_tracks)
-        return len(label_frames), tracks, tracks, 1
+        label_tracks = 0
+        label_frames = 0
+        tracks = 0
+        if self.label_mapping:
+            for key, value in self.label_mapping.items():
+                if value == label:
+                    tracks += len(self.tracks_by_label.get(key, []))
+                    label_frames += len(self.labels_to_samples.get(key, []))
+        else:
+            tracks = len(self.tracks_by_label.get(label, []))
+            label_frames = len(self.labels_to_samples.get(label, []))
+        return label_frames, tracks, tracks, 1
 
     def load_tracks(self, shuffle=False):
         """
@@ -517,25 +526,69 @@ class FrameDataset:
             frame_sample.clip_id,
             frame_sample.track_id,
             frame_sample.frame_num,
-            channels=channels
+            channels=channels,
         )
+        if self.label_mapping:
+            label = self.label_mapping[label]
         return data, label
 
-    def rebalance(self, label_cap=1000, exclude=[]):
+    def binarize(self, set_one, lbl_one, set_two=None, lbl_two="other", ratio=1):
+        set_one_count = 0
+        self.label_mapping = {}
+        for label in set_one:
+            set_one_count += len(self.labels_to_samples[label])
+            self.label_mapping[label] = lbl_one
+
+        if set_two is None:
+            set_two = set(self.labels) - set(set_one)
+        print(set_two)
+        set_two_count = 0
+        for label in set_two:
+            set_two_count += len(self.labels_to_samples[label])
+            self.label_mapping[label] = lbl_two
+
+        percent = None
+        percent2 = None
+
+        if set_two_count > set_one_count:
+            percent2 = set_one_count / set_two_count
+        else:
+            percent = set_two_count / set_one_count
+
+        # set_one_cap = set_one_count / len()
+        tracks_by_id, new_samples = self.rebalance(cap_percent=percent, labels=set_one)
+        tracks_by_id2, new_samples2 = self.rebalance(
+            cap_percent=percent2, labels=set_two
+        )
+        self.labels = [lbl_one, lbl_two]
+        self.tracks_by_id = tracks_by_id
+        self.frame_samples = new_samples
+        self.tracks_by_id.update(tracks_by_id2)
+        self.frame_samples.extend(new_samples2)
+
+    def rebalance(
+        self, label_cap=None, cap_percent=None, exclude=[], labels=None, update=False
+    ):
         new_samples = []
         tracks_by_id = {}
         tracks = []
-        for key, value in self.labels_to_samples.items():
+        if labels is None:
+            labels = self.labels.copy()
+        for label in labels:
+            value = self.labels_to_samples[label]
             track_ids = set()
-            self.tracks_by_label[key] = track_ids
-            if key in exclude:
-                self.labels.remove(key)
+            self.tracks_by_label[label] = track_ids
+            if label in exclude:
+                self.labels.remove(label)
                 continue
 
             np.random.shuffle(value)
             if label_cap:
                 value = value[:label_cap]
-            self.labels_to_samples[key] = value
+            if cap_percent:
+                new_length = int(len(value) * cap_percent)
+                value = value[:new_length]
+            self.labels_to_samples[label] = value
             for i in value:
                 track_id = TrackHeader.get_name(
                     self.frame_samples[i].clip_id, self.frame_samples[i].track_id
@@ -545,9 +598,10 @@ class FrameDataset:
                 track_ids.add(track_id)
                 tracks_by_id[track_id] = track
                 new_samples.append(self.frame_samples[i])
-
-        self.tracks_by_id = tracks_by_id
-        self.frame_samples = new_samples
+        if update:
+            self.tracks_by_id = tracks_by_id
+            self.frame_samples = new_samples
+        return tracks_by_id, new_samples
 
     def get_label_frames_count(self, label):
         """ Returns the total important frames for all tracks of given class. """

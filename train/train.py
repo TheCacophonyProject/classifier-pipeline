@@ -9,10 +9,10 @@ from ml_tools.framedataset import dataset_db_path
 from ml_tools.newmodel import NewModel
 
 
-def train_model(run_name, conf, hyper_params, grid_search=False):
+def train_model(run_name, conf, hyper_params, grid_search=False, weights=None):
     """Trains a model with the given hyper parameters.
     """
-    run_name = os.path.join("train", run_name)
+    # run_name = os.path.join("train", run_name)
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
     # but we don't load the dataset till after that, so we load it here just to count the number of labels...
@@ -39,20 +39,24 @@ def train_model(run_name, conf, hyper_params, grid_search=False):
     #
 
     model.import_dataset(datasets_filename)
+    # model.binarize()
     # model.rebalance(
-    #     100, 50,
-    # )
+    #     None,
+    #     None,
     #     exclude=[
-    #         # "false-positive",
+    #         "possum",
+    #         "false-positive",
     #         # "mustelid",
-    #         # "human",
-    #         #     "insect",
-    #         #     "leporidae",
-    #         #     "cat",
+    #         "human",
+    #         "insect",
+    #         "leporidae",
+    #         "cat",
+    #         "hedgehog",
     #         # "wallaby",
-    #         #     "bird",
-    #         #     "rodent",
+    #         "bird",
+    #         "rodent",
     #     ],
+    #     update=True,
     # )
     if grid_search:
         print("Searching hparams")
@@ -85,7 +89,8 @@ def train_model(run_name, conf, hyper_params, grid_search=False):
     print()
     print("Found {0:.1f}K training examples".format(model.datasets.train.rows / 1000))
     print()
-
+    if weights:
+        model.load_weights(weights, meta=False)
     model.train_model(
         epochs=conf.train.epochs,
         run_name=run_name + " " + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),

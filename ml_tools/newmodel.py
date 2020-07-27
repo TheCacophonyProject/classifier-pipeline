@@ -54,6 +54,7 @@ class NewModel:
         # dictionary containing current hyper parameters
         self.params = {
             # augmentation
+            "base_training": False,
             "augmentation": True,
             "thermal_threshold": 10,
             "scale_frequency": 0.5,
@@ -170,8 +171,7 @@ class NewModel:
         base_model, preprocess = self.base_model((self.frame_size, self.frame_size, 3))
         self.preprocess_fn = preprocess
 
-        base_model.trainable = False
-        x = base_model(inputs, training=False)  # IMPORTANT
+        x = base_model(inputs, training=self.params["base_training"])  # IMPORTANT
 
         if self.params["lstm"]:
             # not tested
@@ -183,6 +183,16 @@ class NewModel:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
             preds = tf.keras.layers.Dense(len(self.labels), activation="softmax")(x)
             self.model = tf.keras.models.Model(inputs, outputs=preds)
+        for i, layer in enumerate(self.model.layers):
+            print(i, layer.name)
+
+        if self.params.get("retrain_layer") is not None:
+            for i, layer in enumerate(base_model.layers):
+                print(i, layer.name)
+
+                layer.trainable = i >= self.params["retrain_layer"]
+        else:
+            base_model.trainable = self.params["base_training"]
 
         self.model.summary()
 
@@ -213,11 +223,13 @@ class NewModel:
         optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
         return optimizer
 
-    def load_weights(self, file):
+    def load_weights(self, file, meta=True):
         if not self.model:
             self.build_model()
         self.model.load_weights(file)
-        self.load_meta(os.path.basename(file))
+        if meta:
+            self.load_meta(os.path.basename(file))
+        print("loading weights", file)
 
     def load_model(self, dir):
         self.model = tf.keras.models.load_model(dir)
@@ -403,10 +415,20 @@ class NewModel:
         output = self.model.predict(frame[np.newaxis, :])
         return output[0]
 
-    def rebalance(self, train_cap=1000, validate_cap=500, exclude=[]):
+    def binarize(self):
         # set samples of each label to have a maximum cap, and exclude labels
-        self.datasets.train.rebalance(train_cap, exclude)
-        self.datasets.validation.rebalance(validate_cap, exclude)
+        self.datasets.train.binarize(["bird"], lbl_one="Bird", lbl_two="Pest")
+        self.datasets.validation.binarize(["bird"], lbl_one="Bird", lbl_two="Pest")
+        self.set_labels()
+
+    def rebalance(self, train_cap=1000, validate_cap=500, exclude=[], update=True):
+        # set samples of each label to have a maximum cap, and exclude labels
+        self.datasets.train.rebalance(
+            label_cap=train_cap, exclude=exclude, update=update
+        )
+        self.datasets.validation.rebalance(
+            label_cap=validate_cap, exclude=exclude, update=update
+        )
         self.set_labels()
 
     def set_labels(self):
