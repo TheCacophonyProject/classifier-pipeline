@@ -356,6 +356,8 @@ class FrameDataset:
             "tags": 0,
             "segment_mass": 0,
         }
+    def set_read_only(self, read_only):
+        self.db.set_read_only(read_only)
 
     @property
     def rows(self):

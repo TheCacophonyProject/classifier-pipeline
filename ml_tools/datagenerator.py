@@ -103,6 +103,7 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
+
         print("get", self.dataset.name, index)
         X, y = self.preloader_queue.get()
         return X, y

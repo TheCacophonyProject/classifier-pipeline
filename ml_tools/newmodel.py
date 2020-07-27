@@ -280,7 +280,7 @@ class NewModel:
             shuffle=True,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
-            load_threads=1,
+            load_threads=4,
         )
         global validate
         self.validate = DataGenerator(
@@ -437,6 +437,10 @@ class NewModel:
         self.datasets.train.enable_augmentation = self.params["augmentation"]
         self.datasets.validation.enable_augmentation = False
         self.datasets.test.enable_augmentation = False
+        self.datasets.train.set_read_only(True)
+        self.datasets.validation.set_read_only(True)
+        self.datasets.test.set_read_only(True)
+
         for dataset in datasets:
             if ignore_labels:
                 for label in ignore_labels:

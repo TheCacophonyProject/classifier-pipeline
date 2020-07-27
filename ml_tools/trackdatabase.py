@@ -18,7 +18,7 @@ import numpy as np
 from classify.trackprediction import TrackPrediction
 
 special_datasets = ["background_frame", "predictions"]
-
+read_only = False
 
 class HDF5Manager:
     """ Class to handle locking of HDF5 files. """
@@ -35,7 +35,8 @@ class HDF5Manager:
     def __enter__(self):
         # note: we might not have to lock when in read only mode?
         # this could improve performance
-        self.lock.acquire()
+        if not read_only:
+            self.lock.acquire()
         self.f = h5py.File(self.db, self.mode)
         return self.f
 
@@ -43,11 +44,12 @@ class HDF5Manager:
         try:
             self.f.close()
         finally:
-            self.lock.release()
+            if not read_only:
+                self.lock.release()
 
 
 class TrackDatabase:
-    def __init__(self, database_filename):
+    def __init__(self, database_filename,read_only=False):
         """
         Initialises given database.  If database does not exist an empty one is created.
         :param database_filename: filename of database
@@ -60,6 +62,10 @@ class TrackDatabase:
             f = h5py.File(database_filename, "w")
             f.create_group("clips")
             f.close()
+
+    def set_read_only(self,r_only):
+        global read_only
+        read_only = r_only
 
     def get_labels(self):
         with HDF5Manager(self.database) as f:
