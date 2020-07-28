@@ -28,6 +28,7 @@ from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 from track.region import Region
 
+MIN_TEMP_DEV = 150
 CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
 FRAMES_PER_SECOND = 9
@@ -36,7 +37,7 @@ MASS_DIFF_PERCENT = 0.20
 MAX_VELOCITY = 2
 MAX_CROP_PERCENT = 0.3
 MIN_CLARITY = 20
-MIN_PERCENT = 85
+MIN_PERCENT = 90
 
 RES_X = 160
 RES_Y = 120
@@ -101,7 +102,6 @@ class TrackHeader:
         self.median_mass = np.median(frame_mass)
         self.mass_deviation = MASS_DIFF_PERCENT * np.amax(frame_mass)
         self.mean_mass = np.mean(frame_mass)
-        # print("mass max", np.amax(frame_mass), self.median_mass, np.amin(frame_mass))
 
     def get_sample_frame(self):
         if len(self.important_frames) == 0:
@@ -113,6 +113,7 @@ class TrackHeader:
     # trying to get only clear frames
     def set_important_frames(self, labels, min_mass=None):
         # this needs more testing
+
         if self.predictions is not None:
             fp_i = None
             # if self.label in labels:
@@ -120,8 +121,9 @@ class TrackHeader:
             if "false-positive" in labels:
                 fp_i = list(labels).index("false-positive")
             best_preds = []
-            print
             for i, pred in enumerate(self.predictions):
+                if self.frame_mass[i] < self.mean_mass:
+                    continue
                 best = np.argsort(pred)[-1]
 
                 if self.label != "false-positive" and fp_i and best == fp_i:
@@ -354,6 +356,7 @@ class FrameDataset:
             "date": 0,
             "tags": 0,
             "segment_mass": 0,
+            "temp": 0,
         }
 
     def set_read_only(self, read_only):
@@ -394,11 +397,11 @@ class FrameDataset:
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
+        labels = self.db.get_labels()
         counter = 0
         track_ids = self.db.get_all_track_ids()
         if shuffle:
             np.random.shuffle(track_ids)
-        labels = self.db.get_labels()
         for clip_id, track_number in track_ids:
             if self.add_track(clip_id, track_number, labels):
                 counter += 1
@@ -428,7 +431,6 @@ class FrameDataset:
             clip_id, clip_meta, track_meta, predictions
         )
         track_header.set_important_frames(labels, self.min_frame_mass)
-
         self.tracks_by_id[track_header.track_id] = track_header
 
         camera = self.cameras_by_id.setdefault(
@@ -436,6 +438,7 @@ class FrameDataset:
         )
         self.camera_names.add(track_header.camera_id)
         camera.add_track(track_header)
+
         if track_header.label not in self.labels:
             self.labels.append(track_header.label)
         self.tracks_by_label.setdefault(track_header.label, set())

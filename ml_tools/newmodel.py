@@ -292,7 +292,7 @@ class NewModel:
             shuffle=True,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
-            load_threads=7,
+            load_threads=1,
         )
         global validate
         self.validate = DataGenerator(

@@ -351,6 +351,11 @@ class Test:
     def save_db(self, clip_id, track_id):
         db = TrackDatabase(os.path.join(self.config.tracks_folder, "dataset.hdf5"))
         clip_meta = db.get_clip_meta(clip_id)
+        print(
+            clip_meta["mean_background_value"],
+            clip_meta["temp_thresh"],
+            clip_meta["mean_background_value"] - clip_meta["temp_thresh"],
+        )
         track_meta = db.get_track_meta(clip_id, track_id)
         predictions = db.get_track_predictions(clip_id, track_id)
         track_header = TrackHeader.from_meta(
@@ -360,25 +365,33 @@ class Test:
         track_header.set_important_frames(labels, 0)
         start_offset = track_meta["start_frame"]
         self.save_trackheader_important(
-            db, track_header, "db" + str(clip_id), start_offset
+            db,
+            track_header,
+            "db" + str(clip_id),
+            start_offset,
+            clip_meta["temp_thresh"],
         )
 
-    def save_trackheader_important(self, db, track_header, filename, start_offset):
+    def save_trackheader_important(
+        self, db, track_header, filename, start_offset, temp_thresh
+    ):
         prefix = "best"
+        track_header.important_frames.sort()
+
         print(track_header.track_number, "predictions", track_header.important_frames)
         rows = round(len(track_header.important_frames) / 5.0) + 1
         fig = plt.figure(figsize=(52, 52))
-        track_header.important_frames.sort()
         for i, frame_i in enumerate(track_header.important_frames):
 
             pred = track_header.predictions[frame_i]
             label = self.classifier.labels[np.argmax(np.array(pred))]
             axes = fig.add_subplot(rows, 5, i + 1)
             axes.set_title(
-                "{}-{}-{}".format(
-                    frame_i + start_offset,
+                "{}-{}-{}-m{}".format(
+                    frame_i,
                     label,
-                    np.max(track_header.predictions[frame_i])
+                    np.max(track_header.predictions[frame_i]),
+                    track_header.frame_mass[frame_i]
                     # track_prediction.get_classified_footer(
                     #     self.classifier.labels, frame_i + start_offset - 1
                     # ),
@@ -386,14 +399,35 @@ class Test:
             )
             frame = db.get_track(
                 track_header.clip_id, track_header.track_number, frame_i, frame_i + 1,
-            )[0][0]
-            frame = np.float32(frame)
-            temp_min = np.amin(frame)
+            )[0]
+            animal = frame[0] * frame[4]
+            not_animal = frame[0] - animal
+            non_animal_max = np.percentile(not_animal, 90)
+            temp_min = np.percentile(animal[animal > 0], 50)
+            print(
+                "non 80 percent",
+                non_animal_max,
+                "animal 10 percent",
+                temp_min,
+                "ignore",
+                temp_min - non_animal_max < 0,
+            )
+            #
+            # print("animal stats", np.amax(animal), np.amin(animal[animal > 0]))
+            # print("not_animal stats", np.amax(not_animal), np.amin(not_animal))
+
+            frame = np.float32(animal)
+            temp_min = np.amin(frame[frame > 0])
             temp_max = np.amax(frame)
+            # frame -= temp_min
+
+            print(frame_i, temp_max, temp_min, np.mean(frame), np.std(frame))
             frame = (frame - temp_min) / (temp_max - temp_min)
             colorized = np.uint8(255.0 * self.previewer.colourmap(frame))
             plt.imshow(colorized[:, :, :3])
-        plt.savefig("{}-{}-{}.png".format(prefix, filename, track_header.track_number))
+        plt.savefig(
+            "mask{}-{}-{}.png".format(prefix, filename, track_header.track_number)
+        )
         plt.close(fig)
 
 
@@ -436,7 +470,10 @@ model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
 test = Test(config, model_file)
-test.save_db("454309", "213500")
+test.save_db("15240", "137312")
+
+test.save_db("606492", "257695")
+
 # /clips/10130/10130
 # exit(0)
 raise "EX"

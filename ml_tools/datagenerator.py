@@ -35,8 +35,6 @@ class DataGenerator(keras.utils.Sequence):
         preload=True,
     ):
 
-
-
         self.labels = labels
         self.model_preprocess = model_preprocess
         self.use_thermal = use_thermal
@@ -104,8 +102,27 @@ class DataGenerator(keras.utils.Sequence):
     def loadbatch(self, index):
         start = time.time()
         indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
-        X, y, _ = self._data(indexes)
-        logging.debug("Time to get data %s", time.time()-start)
+        X, y, clips = self._data(indexes)
+        logging.debug("Time to get data %s", time.time() - start)
+        # if self.dataset.name == "train":
+        #     fig = plt.figure(figsize=(48, 48))
+        #     for i in range(len(X)):
+        #         if i >= 40:
+        #             break
+        #         axes = fig.add_subplot(4, 10, i + 1)
+        #         axes.set_title(
+        #             "{} - {} track {} frame {}".format(
+        #                 self.labels[np.argmax(np.array(y[i]))],
+        #                 clips[i].clip_id,
+        #                 clips[i].track_id,
+        #                 clips[i].frame_num,
+        #             )
+        #         )
+        #         plt.imshow(tf.keras.preprocessing.image.array_to_img(X[i]))
+        #     plt.savefig("testimage.png")
+        #     plt.close(fig)
+        #     print("saved image")
+        #     raise "SAVED"
         return X, y
 
     def __getitem__(self, index):
@@ -114,7 +131,7 @@ class DataGenerator(keras.utils.Sequence):
         if self.preload:
             X, y = self.preloader_queue.get()
         else:
-            X,y = self.loadbatch(index)
+            X, y = self.loadbatch(index)
         return X, y
 
     def on_epoch_end(self, load=True):
@@ -140,14 +157,14 @@ class DataGenerator(keras.utils.Sequence):
         y = np.empty((len(indexes)), dtype=int)
         clips = []
         if self.use_thermal:
-            channels= TrackChannels.thermal
+            channels = TrackChannels.thermal
         else:
             channels = TrackChannels.filtered
         # Generate data
         for i, index in enumerate(indexes):
             segment_i = index
             frame = self.dataset.frame_samples[segment_i]
-            data, label = self.dataset.fetch_frame(frame,channels=channels)
+            data, label = self.dataset.fetch_frame(frame, channels=channels)
             if label not in self.labels:
                 continue
             if self.lstm:
@@ -159,7 +176,7 @@ class DataGenerator(keras.utils.Sequence):
                     self.use_thermal,
                     self.augment,
                     self.model_preprocess,
-                    filter_channels = False
+                    filter_channels=False,
                 )
                 if data is None:
                     logging.error(
@@ -175,8 +192,8 @@ class DataGenerator(keras.utils.Sequence):
             clips.append(frame)
 
         if to_categorical:
-            y =  keras.utils.to_categorical(y, num_classes=self.n_classes)
-        return X, y,clips
+            y = keras.utils.to_categorical(y, num_classes=self.n_classes)
+        return X, y, clips
 
 
 def resize(image, dim):
@@ -226,7 +243,12 @@ def augement_frame(frame, dim):
 
 
 def preprocess_frame(
-    data, output_dim, use_thermal=True, augment=False, preprocess_fn=None, filter_channels=True
+    data,
+    output_dim,
+    use_thermal=True,
+    augment=False,
+    preprocess_fn=None,
+    filter_channels=True,
 ):
     if filter_channels:
         if use_thermal:
@@ -279,7 +301,7 @@ def preloader(q, load_queue, dataset):
             batch_i = load_queue.get()
             q.put(dataset.loadbatch(batch_i))
             if batch_i + 1 == len(dataset):
-                dataset.cur_epoch+=1
+                dataset.cur_epoch += 1
             logging.debug(
                 "loaded batch %s %s %s",
                 dataset.cur_epoch,
