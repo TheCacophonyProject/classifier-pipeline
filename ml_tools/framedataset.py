@@ -535,7 +535,9 @@ class FrameDataset:
             label = self.label_mapping[label]
         return data, label
 
-    def binarize(self, set_one, lbl_one, set_two=None, lbl_two="other", ratio=1):
+    def binarize(
+        self, set_one, lbl_one, set_two=None, lbl_two="other", ratio=1, keep_fp=True
+    ):
         set_one_count = 0
         self.label_mapping = {}
         for label in set_one:
@@ -544,12 +546,14 @@ class FrameDataset:
 
         if set_two is None:
             set_two = set(self.labels) - set(set_one)
-        print(set_two)
+        if keep_fp:
+            set_two.discard("false-positive")
+            self.label_mapping["false-positive"] = "false-positive"
+
         set_two_count = 0
         for label in set_two:
             set_two_count += len(self.labels_to_samples[label])
             self.label_mapping[label] = lbl_two
-
         percent = None
         percent2 = None
 
@@ -564,10 +568,19 @@ class FrameDataset:
             cap_percent=percent2, labels=set_two
         )
         self.labels = [lbl_one, lbl_two]
+
+        if keep_fp:
+            tracks_by_id3, new_samples3 = self.rebalance(
+                cap_percent=None, labels=["false-positive"]
+            )
+            self.labels.append("false-positive")
         self.tracks_by_id = tracks_by_id
         self.frame_samples = new_samples
         self.tracks_by_id.update(tracks_by_id2)
         self.frame_samples.extend(new_samples2)
+        if keep_fp:
+            self.tracks_by_id.update(tracks_by_id3)
+            self.frame_samples.extend(new_samples3)
 
     def rebalance(
         self, label_cap=None, cap_percent=None, exclude=[], labels=None, update=False

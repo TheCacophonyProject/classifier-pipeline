@@ -420,6 +420,7 @@ class NewModel:
         self.datasets.train.binarize(["bird"], lbl_one="Bird", lbl_two="Pest")
         self.datasets.validation.binarize(["bird"], lbl_one="Bird", lbl_two="Pest")
         self.set_labels()
+        print(self.labels)
 
     def rebalance(self, train_cap=1000, validate_cap=500, exclude=[], update=True):
         # set samples of each label to have a maximum cap, and exclude labels

@@ -350,7 +350,7 @@ def diverse_validation(cameras, labels, max_cameras):
 
     # min label
     label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
-    while len(val_cameras) <= max_cameras and missing != 0:
+    while len(val_cameras) <= max_cameras or missing != 0:
         for i, camera in enumerate(cameras):
             if label in camera.label_to_bins:
                 val_cameras.append(camera)
@@ -373,16 +373,19 @@ def diverse_validation(cameras, labels, max_cameras):
             break
         # always add to min label
         label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
+    print(missing_labels, missing)
+    print(lbl_counts)
 
     return val_cameras, cameras
 
 
 def split_wallaby_cameras(dataset, cameras):
     wallaby = dataset.cameras_by_id["Wallaby-None"]
-    for i, camera in enumerate(cameras):
-        if camera.camera == "Wallaby-None":
-            del cameras[i]
-            break
+    cameras.remove(wallaby)
+    # for i, camera in enumerate(cameras):
+    #     if camera.camera == "Wallaby-None":
+    #         del cameras[i]
+    #         break
 
     wallaby_validate = Camera("Wallaby-2")
     remove = []
@@ -422,12 +425,18 @@ def split_dataset_by_cameras(db, dataset, build_config):
     validation_cameras = min(5, round(camera_count * validation_percent))
 
     wallaby, wallaby_validate = split_wallaby_cameras(dataset, cameras)
+
+    # has all the rabbits so put in training
+    rabbits = dataset.cameras_by_id["ruru19w44a-[-36.03915 174.51675]"]
+    cameras.remove(rabbits)
+
     validate_data, cameras = diverse_validation(
         cameras, dataset.labels, validation_cameras
     )
 
     train_data = cameras
     train_data.append(wallaby)
+    train_data.append(rabbits)
     required_samples = build_config.test_set_count
     required_bins = build_config.test_set_bins
 

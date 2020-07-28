@@ -104,25 +104,7 @@ class DataGenerator(keras.utils.Sequence):
         indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
         X, y, clips = self._data(indexes)
         logging.debug("Time to get data %s", time.time() - start)
-        # if self.dataset.name == "train":
-        #     fig = plt.figure(figsize=(48, 48))
-        #     for i in range(len(X)):
-        #         if i >= 40:
-        #             break
-        #         axes = fig.add_subplot(4, 10, i + 1)
-        #         axes.set_title(
-        #             "{} - {} track {} frame {}".format(
-        #                 self.labels[np.argmax(np.array(y[i]))],
-        #                 clips[i].clip_id,
-        #                 clips[i].track_id,
-        #                 clips[i].frame_num,
-        #             )
-        #         )
-        #         plt.imshow(tf.keras.preprocessing.image.array_to_img(X[i]))
-        #     plt.savefig("testimage.png")
-        #     plt.close(fig)
-        #     print("saved image")
-        #     raise "SAVED"
+
         return X, y
 
     def __getitem__(self, index):
@@ -310,3 +292,23 @@ def preloader(q, load_queue, dataset):
             )
         else:
             time.sleep(0.1)
+
+
+def savebatch(X, y):
+    fig = plt.figure(figsize=(48, 48))
+    for i in range(len(X)):
+        if i >= 40:
+            break
+        axes = fig.add_subplot(4, 10, i + 1)
+        axes.set_title(
+            "{} - {} track {} frame {}".format(
+                self.labels[np.argmax(np.array(y[i]))],
+                clips[i].clip_id,
+                clips[i].track_id,
+                clips[i].frame_num,
+            )
+        )
+        plt.imshow(tf.keras.preprocessing.image.array_to_img(X[i]))
+    plt.savefig("testimage.png")
+    plt.close(fig)
+    print("saved image")
