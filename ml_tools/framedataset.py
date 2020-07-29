@@ -584,13 +584,15 @@ class FrameDataset:
             percent += 0.1
             percent = min(1, percent)
         # set_one_cap = set_one_count / len()
-        tracks_by_id, new_samples = self.rebalance(cap_percent=0.01, labels=set_one)
-        tracks_by_id2, new_samples2 = self.rebalance(cap_percent=0.01, labels=set_two)
+        tracks_by_id, new_samples = self.rebalance(cap_percent=percent, labels=set_one)
+        tracks_by_id2, new_samples2 = self.rebalance(
+            cap_percent=percent2, labels=set_two
+        )
         self.labels = [lbl_one, lbl_two]
 
         if keep_fp:
             tracks_by_id3, new_samples3 = self.rebalance(
-                label_cap=int(set_one_count * 0.1), labels=["false-positive"]
+                label_cap=int(set_one_count * 0.5), labels=["false-positive"]
             )
             self.labels.append("false-positive")
         self.tracks_by_id = tracks_by_id
