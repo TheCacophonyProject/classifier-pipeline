@@ -583,7 +583,7 @@ class FrameDataset:
 
         if keep_fp:
             tracks_by_id3, new_samples3 = self.rebalance(
-                cap_percent=None, labels=["false-positive"]
+                label_cap=set_one_count * 0.5, labels=["false-positive"]
             )
             self.labels.append("false-positive")
         self.tracks_by_id = tracks_by_id
