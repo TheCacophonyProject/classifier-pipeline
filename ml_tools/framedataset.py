@@ -603,7 +603,9 @@ class FrameDataset:
         if labels is None:
             labels = self.labels.copy()
         for label in labels:
-            value = self.labels_to_samples[label]
+            value = self.labels_to_samples.get(label)
+            if not value:
+                continue
             track_ids = set()
             self.tracks_by_label[label] = track_ids
             if label in exclude:
