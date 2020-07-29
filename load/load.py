@@ -70,7 +70,6 @@ def parse_params():
 
 
 def load_clips(config, args):
-
     loader = ClipLoader(config, args.reprocess)
     target = args.target
     if target is None:

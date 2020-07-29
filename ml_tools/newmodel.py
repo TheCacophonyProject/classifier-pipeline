@@ -443,8 +443,10 @@ class NewModel:
 
     def binarize(self):
         # set samples of each label to have a maximum cap, and exclude labels
-        self.datasets.train.binarize(["bird"], lbl_one="Bird", lbl_two="Pest")
-        self.datasets.validation.binarize(["bird"], lbl_one="Bird", lbl_two="Pest")
+        self.datasets.train.binarize(["wallaby"], lbl_one="Wallaby", lbl_two="Not")
+        self.datasets.validation.binarize(["wallaby"], lbl_one="Wallaby", lbl_two="Not")
+        self.datasets.test.binarize(["wallaby"], lbl_one="Wallaby", lbl_two="Not")
+
         self.set_labels()
         print(self.labels)
 
@@ -454,6 +456,9 @@ class NewModel:
             label_cap=train_cap, exclude=exclude, update=update
         )
         self.datasets.validation.rebalance(
+            label_cap=validate_cap, exclude=exclude, update=update
+        )
+        self.datasets.test.rebalance(
             label_cap=validate_cap, exclude=exclude, update=update
         )
         self.set_labels()

@@ -17,7 +17,8 @@ from ml_tools.framedataset import FrameDataset, dataset_db_path, Camera
 
 MIN_BINS = 4
 MIN_FRAMES = 1000
-LOW_DATA_LABELS = ["wallaby"]
+LOW_DATA_LABELS = ["wallaby", "human", "dog"]
+CAP_DATA = True
 
 
 def show_tracks_breakdown(dataset):
@@ -303,6 +304,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-d", "--date", help="Use clips after this")
+    parser.add_argument("--dont-cap", action="count", help="Dont cap numbers")
 
     args = parser.parse_args()
     if args.date:
@@ -599,7 +601,7 @@ def add_camera_data(
 
     for label, data in label_data.items():
         limit = data["max_frames"]
-        if label in dont_limit:
+        if label in dont_limit or not CAP_DATA:
             limit = None
             print("dont limit", label)
         cameras = data["cameras"]
@@ -652,6 +654,9 @@ def test_dataset(db, config, date):
 def main():
     init_logging()
     args = parse_args()
+    global CAP_DATA
+    if args.dont_cap:
+        CAP_DATA = not args.dont_cap
     config = load_config(args.config_file)
     build_config = config.build
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))

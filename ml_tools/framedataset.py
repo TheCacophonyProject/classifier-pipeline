@@ -567,9 +567,13 @@ class FrameDataset:
 
         if set_two_count > set_one_count:
             percent2 = set_one_count / set_two_count
+            # allow 10% more
+            percent2 += 0.1
+            percent2 = min(1, percent2)
         else:
             percent = set_two_count / set_one_count
-
+            percent += 0.1
+            percent = min(1, percent)
         # set_one_cap = set_one_count / len()
         tracks_by_id, new_samples = self.rebalance(cap_percent=percent, labels=set_one)
         tracks_by_id2, new_samples2 = self.rebalance(

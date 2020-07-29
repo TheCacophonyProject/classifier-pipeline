@@ -45,12 +45,19 @@ def process_job(loader, queue, model_file):
     classifier = NewModel()
     classifier.load_model(model_file)
     logging.info("Loaded model")
+    i = 0
     while True:
+        i += 1
         clip = queue.get()
-        if clip == "DONE":
-            break
-        else:
-            loader.process_file(str(clip), classifier)
+        try:
+            if clip == "DONE":
+                break
+            else:
+                loader.process_file(str(clip), classifier)
+            if i % 50 == 0:
+                logging.debug("%s jobs left", queue.qsize())
+        except:
+            pass
 
 
 def prediction_job(queue, db, model_file):
@@ -62,7 +69,10 @@ def prediction_job(queue, db, model_file):
         if clip == "DONE":
             break
         else:
-            db.add_predictions(str(clip), classifier)
+            try:
+                db.add_predictions(str(clip), classifier)
+            except:
+                pass
 
 
 # job[0].add_prediction(job[1])
@@ -170,12 +180,14 @@ class ClipLoader:
             root = self.config.source_folder
 
         jobs = []
+        job_count = 0
         for folder_path, _, files in os.walk(root):
             for name in files:
                 if os.path.splitext(name)[1] == ".cptv":
                     full_path = os.path.join(folder_path, name)
                     job_queue.put(full_path)
-
+                    job_count += 1
+        logging.debug("Processing %d", job_count)
         for i in range(len(processes)):
             job_queue.put("DONE")
         for process in processes:

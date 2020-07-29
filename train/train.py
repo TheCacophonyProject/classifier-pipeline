@@ -39,7 +39,7 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None):
     #
 
     model.import_dataset(datasets_filename)
-    # model.binarize()
+    model.binarize()
     # model.rebalance(
     #     None,
     #     None,
