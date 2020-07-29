@@ -309,13 +309,19 @@ class FrameDataset:
     disk.
     """
 
-    def __init__(self, track_db: TrackDatabase, name="Dataset", config=None):
+    def __init__(
+        self,
+        track_db: TrackDatabase,
+        name="Dataset",
+        config=None,
+        important_frames=True,
+    ):
         # database holding track data
         self.db = track_db
         self.label_mapping = None
         # name of this dataset
         self.name = name
-
+        self.important_frames = important_frames
         # list of our tracks
         self.camera_names = set()
         self.cameras_by_id = {}
@@ -432,7 +438,10 @@ class FrameDataset:
         track_header = TrackHeader.from_meta(
             clip_id, clip_meta, track_meta, predictions
         )
-        track_header.set_important_frames(labels, self.min_frame_mass)
+        if self.important_frames:
+            track_header.set_important_frames(labels, self.min_frame_mass)
+        else:
+            track_header.important_frames = [i for i in range(track_header.frames)]
         self.tracks_by_id[track_header.track_id] = track_header
 
         camera = self.cameras_by_id.setdefault(
@@ -575,15 +584,13 @@ class FrameDataset:
             percent += 0.1
             percent = min(1, percent)
         # set_one_cap = set_one_count / len()
-        tracks_by_id, new_samples = self.rebalance(cap_percent=percent, labels=set_one)
-        tracks_by_id2, new_samples2 = self.rebalance(
-            cap_percent=percent2, labels=set_two
-        )
+        tracks_by_id, new_samples = self.rebalance(cap_percent=0.01, labels=set_one)
+        tracks_by_id2, new_samples2 = self.rebalance(cap_percent=0.01, labels=set_two)
         self.labels = [lbl_one, lbl_two]
 
         if keep_fp:
             tracks_by_id3, new_samples3 = self.rebalance(
-                label_cap=set_one_count * 0.5, labels=["false-positive"]
+                label_cap=int(set_one_count * 0.1), labels=["false-positive"]
             )
             self.labels.append("false-positive")
         self.tracks_by_id = tracks_by_id

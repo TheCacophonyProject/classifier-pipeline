@@ -640,7 +640,7 @@ def show_predicted_stats(db):
 
 
 def test_dataset(db, config, date):
-    test = FrameDataset(db, "dataset", config)
+    test = FrameDataset(db, "test", config, important_frames=False)
     tracks_loaded, total_tracks = test.load_tracks(shuffle=True, after_date=date)
     test.add_tracks()
     print("Test Loaded {}/{} tracks".format(tracks_loaded, total_tracks,))

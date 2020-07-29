@@ -267,7 +267,7 @@ class NewModel:
 
         if history:
             model_stats["history"] = history.history
-        if test_accuracy:
+        if test_results:
             model_stats["test_loss"] = test_results[0]
             model_stats["test_acc"] = test_results[1]
 
