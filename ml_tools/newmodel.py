@@ -183,14 +183,19 @@ class NewModel:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
             preds = tf.keras.layers.Dense(len(self.labels), activation="softmax")(x)
             self.model = tf.keras.models.Model(inputs, outputs=preds)
-        for i, layer in enumerate(self.model.layers):
-            print(i, layer.name)
 
         if self.params.get("retrain_layer") is not None:
             for i, layer in enumerate(base_model.layers):
                 print(i, layer.name)
 
-                layer.trainable = i >= self.params["retrain_layer"]
+                if layer.name.endswith("_bn"):
+                    # apparently this shouldn't matter as we set base_training = False
+                    layer.trainable = False
+                    # layer.momentum = 0.9
+
+                    print("dont train", i, layer.name)
+                else:
+                    layer.trainable = i >= self.params["retrain_layer"]
         else:
             base_model.trainable = self.params["base_training"]
 

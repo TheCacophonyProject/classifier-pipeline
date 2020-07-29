@@ -400,16 +400,19 @@ def split_wallaby_cameras(dataset, cameras):
         return None, None
     wallaby = dataset.cameras_by_id["Wallaby-None"]
     cameras.remove(wallaby)
-    # for i, camera in enumerate(cameras):
-    #     if camera.camera == "Wallaby-None":
-    #         del cameras[i]
-    #         break
 
     wallaby_validate = Camera("Wallaby-2")
     remove = []
     last_index = 0
     wallaby_count = 0
-    print("wallaby bins", len(wallaby.label_to_bins["wallaby"]))
+    total = wallaby.label_frame_count("wallaby")
+    wallaby_validate_frames = max(total * 0.2, MIN_FRAMES)
+    print(
+        "wallaby bins",
+        len(wallaby.label_to_bins["wallaby"]),
+        total,
+        wallaby_validate_frames,
+    )
     for i, bin_id in enumerate(wallaby.label_to_bins["wallaby"]):
         bin = wallaby.bins[bin_id]
         for track in bin:
@@ -418,7 +421,7 @@ def split_wallaby_cameras(dataset, cameras):
             wallaby_validate.add_track(track)
         remove.append(bin_id)
         last_index = i
-        if wallaby_count > MIN_FRAMES:
+        if wallaby_count > wallaby_validate_frames:
             break
     wallaby.label_to_bins["wallaby"] = wallaby.label_to_bins["wallaby"][
         last_index + 1 :
@@ -436,7 +439,6 @@ def split_dataset_by_cameras(db, dataset, build_config):
     test_cameras = 0
     train = FrameDataset(db, "train")
     validation = FrameDataset(db, "validation")
-    test = FrameDataset(db, "test")
 
     cameras = list(dataset.cameras_by_id.values())
     camera_count = len(cameras)
@@ -445,7 +447,6 @@ def split_dataset_by_cameras(db, dataset, build_config):
     wallaby, wallaby_validate = split_wallaby_cameras(dataset, cameras)
 
     # has all the rabbits so put in training
-
     rabbits = dataset.cameras_by_id.get("ruru19w44a-[-36.03915 174.51675]")
     if rabbits:
         cameras.remove(rabbits)
@@ -484,25 +485,6 @@ def split_dataset_by_cameras(db, dataset, build_config):
         build_config.max_segments_per_track,
         build_config.max_frames_per_track,
     )
-    # print("validated")
-    # # validation.add_cameras(validate_data)
-    # add_camera_data(
-    #     dataset.labels,
-    #     test,
-    #     test_data,
-    #     required_samples,
-    #     required_bins,
-    #     build_config.max_segments_per_track,
-    #     build_config.max_frames_per_track,
-    #
-    # )
-
-    # balance out the classes
-    # train.balance_weights()
-    # validation.balance_weights()
-
-    # test.balance_resample(required_samples=build_config.test_set_count)
-
     return train, validation
 
 
@@ -660,8 +642,7 @@ def main():
     config = load_config(args.config_file)
     build_config = config.build
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
-    # show_predicted_stats(db)
-    # return
+
     dataset = FrameDataset(db, "dataset", config)
     tracks_loaded, total_tracks = dataset.load_tracks(
         shuffle=True, before_date=args.date

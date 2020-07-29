@@ -265,7 +265,7 @@ class Camera:
 
         return track, f
 
-    def label_frame_count(self, label, max_frames_per_track):
+    def label_frame_count(self, label, max_frames_per_track=None):
         if label not in self.label_to_bins:
             return 0
         bins = self.label_to_bins[label]
