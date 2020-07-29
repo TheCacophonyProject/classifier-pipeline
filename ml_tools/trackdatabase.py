@@ -16,9 +16,11 @@ import datetime
 from multiprocessing import Lock
 import numpy as np
 from classify.trackprediction import TrackPrediction
+from dateutil.parser import parse as parse_date
 
 special_datasets = ["background_frame", "predictions"]
 read_only = False
+
 
 class HDF5Manager:
     """ Class to handle locking of HDF5 files. """
@@ -49,7 +51,7 @@ class HDF5Manager:
 
 
 class TrackDatabase:
-    def __init__(self, database_filename,read_only=False):
+    def __init__(self, database_filename, read_only=False):
         """
         Initialises given database.  If database does not exist an empty one is created.
         :param database_filename: filename of database
@@ -63,7 +65,7 @@ class TrackDatabase:
             f.create_group("clips")
             f.close()
 
-    def set_read_only(self,r_only):
+    def set_read_only(self, r_only):
         global read_only
         read_only = r_only
 
@@ -265,6 +267,20 @@ class TrackDatabase:
             f.flush()
             group.attrs["finished"] = True
 
+    def latest_date(self):
+        start_time = None
+
+        with HDF5Manager(self.database) as f:
+            clips = f["clips"]
+            results = {}
+            for clip_id in clips:
+                clip_start = clips[clip_id].attrs["start_time"]
+                if clip_start:
+                    if start_time is None or clip_start > start_time:
+                        start_time = clip_start
+
+        return start_time
+
     def get_all_clip_ids(self):
         """
         Returns a list of clip_id, track_number pairs.
@@ -276,7 +292,7 @@ class TrackDatabase:
                 results[clip_id] = [track_id for track_id in clips[clip_id]]
         return results
 
-    def get_all_track_ids(self):
+    def get_all_track_ids(self, before_date=None, after_date=None):
         """
         Returns a list of clip_id, track_number pairs.
         """
@@ -287,6 +303,12 @@ class TrackDatabase:
                 clip = clips[clip_id]
                 if not clip.attrs.get("finished"):
                     continue
+                date = parse_date(clip.attrs["start_time"])
+                if before_date and date >= before_date:
+                    continue
+                if after_date and date < after_date:
+                    continue
+
                 for track in clip:
                     if track not in special_datasets:
                         result.append((clip_id, track))
@@ -337,7 +359,7 @@ class TrackDatabase:
             track_node = clips[str(clip_id)][str(track_number)]
             return track_node.attrs["tag"]
 
-    def get_frame(self, clip_id, track_number, frame, channels = None):
+    def get_frame(self, clip_id, track_number, frame, channels=None):
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             track_node = clips[str(clip_id)][str(track_number)]
@@ -375,7 +397,6 @@ class TrackDatabase:
                 # we use [:,:,:] to force loading of all data.
                 result.append(track_node[str(frame_number)][:])
         # print("get track,", start_frame, end_frame, time.time()-start)
-
 
         return result
 

@@ -392,14 +392,16 @@ class FrameDataset:
             label_frames = len(self.labels_to_samples.get(label, []))
         return label_frames, tracks, tracks, 1
 
-    def load_tracks(self, shuffle=False):
+    def load_tracks(self, shuffle=False, before_date=None, after_date=None):
         """
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
         labels = self.db.get_labels()
         counter = 0
-        track_ids = self.db.get_all_track_ids()
+        track_ids = self.db.get_all_track_ids(
+            before_date=before_date, after_date=after_date
+        )
         if shuffle:
             np.random.shuffle(track_ids)
         for clip_id, track_number in track_ids:
@@ -491,17 +493,23 @@ class FrameDataset:
 
         return False
 
-    def add_tracks(self, tracks, max_frames_per_track=None):
+    def add_tracks(self, tracks=None, max_frames_per_track=None):
         """
         Adds list of tracks to dataset
         :param tracks: list of TrackHeader
         :param track_filter: optional filter
         """
         result = 0
+        if tracks is None:
+            tracks = self.tracks_by_id.values()
         for track in tracks:
             if self.add_track_header_frames(track, max_frames_per_track):
                 result += 1
         return result
+
+    def add_track_header_frames(self, track_header, max_frames_per_track=None):
+        for frame in track_header.important_frames:
+            self.add_track_header_frame(track_header, frame)
 
     def add_track_header_frame(self, track_header, frame):
         f = FrameSample(track_header.clip_id, track_header.track_number, frame)

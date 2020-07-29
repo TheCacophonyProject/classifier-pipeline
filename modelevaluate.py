@@ -1,3 +1,5 @@
+import pickle
+from dateutil.parser import parse
 import argparse
 import logging
 import os
@@ -24,16 +26,21 @@ class ModelEvalute:
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
         """
         t0 = datetime.now()
-        logging.info("classifier loading")
+        logging.info("classifier loading %s", model_file)
 
         self.classifier = NewModel(train_config=self.config.train)
         self.classifier.load_model(model_file)
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
-    def evaluate(self, labels=None):
+    def evaluate_dataset(self, dataset_file):
+        datasets = pickle.load(open(dataset_file, "rb"))
+        results = self.classifier.evaluate(datasets[2])
+        print("Dataset", dataset_file, "loss,acc", results)
+
+    def evaluate(self, labels=None, after_date=None):
         stats = {}
         total = 0
-        track_ids = self.db.get_all_track_ids()
+        track_ids = self.db.get_all_track_ids(after_date=after_date)
         for clip_id, track_id in track_ids:
             clip_meta = self.db.get_clip_meta(clip_id)
             track_meta = self.db.get_track_meta(clip_id, track_id)
@@ -57,11 +64,9 @@ class ModelEvalute:
             )
             predicted_lbl = self.classifier.labels[track_prediction.best_label_index]
             # if tag != wallaby and predicted_lbl == "not"
-            if (
-                tag != "wallaby"
-                and predicted_lbl == "not"
-                or (predicted_lbl == "wallaby" and predicted_lbl == tag)
-            ):
+            if track_prediction.score() < 0.85:
+                predicted_lbl = "notconfident"
+            if predicted_lbl == tag:
                 stat["correct"] += 1
             else:
                 stat["incorrect"].append(predicted_lbl)
@@ -78,7 +83,9 @@ def load_args():
         "--model-file",
         help="Path to model file to use, will override config model",
     )
+    parser.add_argument("-t", "--dataset", help="Dataset file to use")
 
+    parser.add_argument("-d", "--date", help="Use clips after this")
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     args = parser.parse_args()
     return args
@@ -105,4 +112,11 @@ model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
 ev = ModelEvalute(config, model_file)
-ev.evaluate()
+date = None
+if args.date:
+    date = parse(args.date)
+
+if args.dataset:
+    ev.evaluate_dataset(args.dataset)
+else:
+    ev.evaluate(after_date=date)

@@ -249,7 +249,7 @@ class NewModel:
         self.preprocess_fn = self.get_preprocess_fn()
         self.frame_size = self.params.get("frame_size", 48)
 
-    def save(self, run_name=MODEL_NAME):
+    def save(self, run_name=MODEL_NAME, history=None, test_results=None):
         # create a save point
         self.model.save(
             os.path.join(self.checkpoint_folder, run_name), save_format="tf"
@@ -264,6 +264,13 @@ class NewModel:
         model_stats["version"] = self.VERSION
         model_stats["frame_size"] = self.frame_size
         model_stats["model"] = self.pretrained_model
+
+        if history:
+            model_stats["history"] = history.history
+        if test_accuracy:
+            model_stats["test_loss"] = test_results[0]
+            model_stats["test_acc"] = test_results[1]
+
         json.dump(
             model_stats,
             open(os.path.join(self.checkpoint_folder, run_name, "metadata.txt"), "w"),
@@ -328,7 +335,26 @@ class NewModel:
         )
         self.validate.stop_load()
         self.train.stop_load()
-        self.save(run_name)
+        test_accuracy = None
+        if self.datasets.test:
+            test = DataGenerator(
+                self.datasets.test,
+                self.datasets.train.labels,
+                len(self.datasets.train.labels),
+                batch_size=self.params.get("batch_size", 32),
+                lstm=self.params.get("lstm", False),
+                use_thermal=self.params.get("use_thermal", False),
+                use_filtered=self.params.get("use_filtered", False),
+                shuffle=False,
+                model_preprocess=self.preprocess_fn,
+                epochs=1,
+                load_threads=1,
+            )
+            test_accuracy = self.model.evaluate(test)
+            test.stop_load()
+
+            logging.info("Test accuracy is %s", test_accuracy)
+        self.save(run_name, history=history, test_results=test_accuracy)
         for key, value in history.history.items():
             plt.figure()
             plt.plot(value, label="Training {}".format(key))
@@ -533,7 +559,6 @@ class NewModel:
             optimizer=opt, loss=self.loss(), metrics=["accuracy"],
         )
         history = self.model.fit(train, epochs=epochs,)
-
         _, accuracy = self.model.evaluate(validate)
         return accuracy
 
@@ -627,6 +652,25 @@ class NewModel:
         # plt.savefig("testimage.png")
         # plt.close(NewModel.fig)
         return track_prediction
+
+    def evaluate(self, dataset):
+        test = DataGenerator(
+            dataset,
+            self.labels,
+            len(self.labels),
+            batch_size=self.params.get("batch_size", 32),
+            lstm=self.params.get("lstm", False),
+            use_thermal=self.params.get("use_thermal", False),
+            use_filtered=self.params.get("use_filtered", False),
+            shuffle=False,
+            model_preprocess=self.preprocess_fn,
+            epochs=1,
+            load_threads=1,
+        )
+        test_accuracy = self.model.evaluate(test)
+        test.stop_load()
+
+        logging.info("Test accuracy is %s", test_accuracy)
 
 
 def plot_confusion_matrix(cm, class_names):

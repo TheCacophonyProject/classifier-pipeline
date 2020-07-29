@@ -8,6 +8,7 @@ import os
 import pickle
 import random
 import numpy as np
+from dateutil.parser import parse
 
 from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
@@ -298,11 +299,20 @@ def get_previous_validation_bins(filename):
     return test_bins
 
 
-def load_config():
+def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
+    parser.add_argument("-d", "--date", help="Use clips after this")
+
     args = parser.parse_args()
-    config = Config.load_from_file(args.config_file)
+    if args.date:
+        args.date = parse(args.date)
+    return args
+
+
+def load_config(config_file):
+
+    config = Config.load_from_file(config_file)
     return config
 
 
@@ -350,7 +360,8 @@ def diverse_validation(cameras, labels, max_cameras):
 
     # min label
     label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
-    while len(val_cameras) <= max_cameras or missing != 0:
+    while len(val_cameras) <= max_cameras and missing != 0:
+        found = False
         for i, camera in enumerate(cameras):
             if label in camera.label_to_bins:
                 val_cameras.append(camera)
@@ -368,7 +379,10 @@ def diverse_validation(cameras, labels, max_cameras):
                 del cameras[i]
                 missing = len(missing_labels) / len(all_labels)
                 print("missing percent", missing)
+                found = True
                 break
+        if not found:
+            break
         if len(missing_labels) == 0:
             break
         # always add to min label
@@ -380,6 +394,8 @@ def diverse_validation(cameras, labels, max_cameras):
 
 
 def split_wallaby_cameras(dataset, cameras):
+    if "Wallaby-None" not in dataset.cameras_by_id:
+        return None, None
     wallaby = dataset.cameras_by_id["Wallaby-None"]
     cameras.remove(wallaby)
     # for i, camera in enumerate(cameras):
@@ -427,16 +443,20 @@ def split_dataset_by_cameras(db, dataset, build_config):
     wallaby, wallaby_validate = split_wallaby_cameras(dataset, cameras)
 
     # has all the rabbits so put in training
-    rabbits = dataset.cameras_by_id["ruru19w44a-[-36.03915 174.51675]"]
-    cameras.remove(rabbits)
+
+    rabbits = dataset.cameras_by_id.get("ruru19w44a-[-36.03915 174.51675]")
+    if rabbits:
+        cameras.remove(rabbits)
 
     validate_data, cameras = diverse_validation(
         cameras, dataset.labels, validation_cameras
     )
 
     train_data = cameras
-    train_data.append(wallaby)
-    train_data.append(rabbits)
+    if wallaby:
+        train_data.append(wallaby)
+    if rabbits:
+        train_data.append(rabbits)
     required_samples = build_config.test_set_count
     required_bins = build_config.test_set_bins
 
@@ -450,8 +470,8 @@ def split_dataset_by_cameras(db, dataset, build_config):
         build_config.max_segments_per_track,
         build_config.max_frames_per_track,
     )
-
-    validate_data.append(wallaby_validate)
+    if wallaby_validate:
+        validate_data.append(wallaby_validate)
     add_camera_data(
         dataset.labels,
         validation,
@@ -481,9 +501,7 @@ def split_dataset_by_cameras(db, dataset, build_config):
 
     # test.balance_resample(required_samples=build_config.test_set_count)
 
-    print_sample_frames(dataset, train, validation, test)
-    print_cameras(train, validation, test)
-    return train, validation, test
+    return train, validation
 
 
 def add_random_camera_samples(
@@ -619,16 +637,30 @@ def show_predicted_stats(db):
     return
 
 
+def test_dataset(db, config, date):
+    test = FrameDataset(db, "dataset", config)
+    tracks_loaded, total_tracks = test.load_tracks(shuffle=True, after_date=date)
+    test.add_tracks()
+    print("Test Loaded {}/{} tracks".format(tracks_loaded, total_tracks,))
+    for key, value in test.filtered_stats.items():
+        if value != 0:
+            print("Test  {} filtered {}".format(key, value))
+
+    return test
+
+
 def main():
     init_logging()
-
-    config = load_config()
+    args = parse_args()
+    config = load_config(args.config_file)
     build_config = config.build
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
     # show_predicted_stats(db)
     # return
     dataset = FrameDataset(db, "dataset", config)
-    tracks_loaded, total_tracks = dataset.load_tracks(shuffle=True)
+    tracks_loaded, total_tracks = dataset.load_tracks(
+        shuffle=True, before_date=args.date
+    )
 
     # keep label order conistent
     dataset.labels.sort()
@@ -639,8 +671,6 @@ def main():
     print()
     show_tracks_breakdown(dataset)
     print()
-    # show_segments_breakdown(dataset)
-    # print()
     show_important_frames_breakdown(dataset)
     print()
     show_cameras_breakdown(dataset)
@@ -648,13 +678,13 @@ def main():
 
     print("Splitting data set into train / validation")
     datasets = split_dataset_by_cameras(db, dataset, build_config)
-    # if build_config.use_previous_split:
-    #     split = get_previous_validation_bins(build_config.previous_split)
-    #     datasets = split_dataset(db, dataset, build_config, split)
-    # else:Cameras per set:
 
-    #     datasets = split_dataset(db, dataset, build_config)
+    # get test
+    test = test_dataset(db, config, args.date)
+    datasets = (*datasets, test)
 
+    print_sample_frames(dataset, *datasets)
+    print_cameras(*datasets)
     pickle.dump(datasets, open(dataset_db_path(config), "wb"))
 
 

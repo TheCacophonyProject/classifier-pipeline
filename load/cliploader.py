@@ -96,8 +96,8 @@ class ClipLoader:
             self.config.load.cache_to_disk,
         )
         self.classifier = None
-        # self.load_classifier(self.config.classify.model)
-        # self.database.set_labels(self.classifier.labels)
+        self.load_classifier(self.config.classify.model)
+        self.database.set_labels(self.classifier.labels)
 
     def missing_predictions(self):
         print("missing predictions")
@@ -193,8 +193,6 @@ class ClipLoader:
         # that we have processed it.
         self.database.create_clip(clip)
         for track in clip.tracks:
-            print(track.confidence)
-
             if self.classifier:
                 track_prediction = TrackPrediction(
                     track.get_id(), track.start_frame, True

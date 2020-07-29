@@ -183,7 +183,6 @@ class Previewer:
         frame_width, frame_height = FRAME_SIZE, FRAME_SIZE
 
         for id, track in enumerate(clip.tracks):
-            print(track.get_id())
             video_frames = []
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
