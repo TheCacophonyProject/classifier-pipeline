@@ -616,7 +616,7 @@ class FrameDataset:
                 percent2 = set_one_count / set_two_count
                 # allow 10% more
                 if self.name != "validation":
-                    percent2 += 0.1
+                    percent2 += 0.05
                 percent2 = min(1, percent2)
             else:
                 percent = set_two_count / set_one_count
