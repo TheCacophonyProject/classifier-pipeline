@@ -25,7 +25,7 @@ from ml_tools import tools
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 import ml_tools.globals as globs
 from ml_tools.newmodel import NewModel
-from ml_tools.dataset import Preprocessor
+from ml_tools.dataset import Preprocessor, TrackChannels
 from ml_tools.previewer import Previewer
 from track.track import Track
 from config.config import Config
@@ -348,6 +348,40 @@ class Test:
             with open(meta_filename, "w") as f:
                 json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
 
+    def multi_clip(self, db, track_header, clip_meta):
+        # frame_i = track_header.important_frames[1]
+        frames = db.get_track(track_header.clip_id, track_header.track_number, 0)
+
+        background = np.float32(db.get_clip_background(track_header.clip_id))
+        tools.frame_to_jpg(background, "background1.jpg")
+        newbackground = background.copy()
+        i = 0
+        start = 0
+        for i, frame in enumerate(frames):
+            region = track_header.track_bounds[start + i]
+            rect = tools.Rectangle.from_ltrb(*region)
+            if i == len(frames) - 1:
+                print("use thermal")
+                # filtrered = frame[TrackChannels.filtered]
+                # filtrered[filtered > 0] = 1
+                # new_back = np.float32(db.get_clip_background(track_header.clip_id))
+                subimage = rect.subimage(background)
+
+                frame = frame[TrackChannels.filtered]
+                subimage[:, :] += np.float32(frame)
+                # background += new_back
+            else:
+                frame = frame[TrackChannels.filtered]
+                subimage = rect.subimage(background)
+
+                # frame -= subimage
+                subimage[:, :] += np.float32(frame * 0.2)
+            # print(background)
+            # newbackground += background
+            # background = np.float32(db.get_clip_background(track_header.clip_id))
+
+        tools.frame_to_jpg(background, "background2.jpg")
+
     def save_db(self, clip_id, track_id):
         db = TrackDatabase(os.path.join(self.config.tracks_folder, "dataset.hdf5"))
         clip_meta = db.get_clip_meta(clip_id)
@@ -363,6 +397,8 @@ class Test:
         )
         labels = db.get_labels()
         track_header.set_important_frames(labels, 0)
+        self.multi_clip(db, track_header, clip_meta)
+        return
         start_offset = track_meta["start_frame"]
         self.save_trackheader_important(
             db,
@@ -470,12 +506,12 @@ model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
 test = Test(config, model_file)
-test.save_db("15240", "137312")
+test.save_db("30426", "122345")
 
-test.save_db("606492", "257695")
-
+# test.save_db("606492", "257695")
+exit(0)
 # /clips/10130/10130
 # exit(0)
-raise "EX"
+# raise "EX"
 # test.classifier.evaluate()
 test.process_file(args.source)

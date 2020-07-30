@@ -47,11 +47,13 @@ class DataGenerator(keras.utils.Sequence):
         self.augment = dataset.enable_augmentation
         self.batch_size = batch_size
         self.dataset = dataset
-        self.size = len(dataset.frame_samples)
 
         if self.lstm:
             self.sequence_size = sequence_size
-            self.size = self.size
+            self.size = dataset.rows
+        else:
+            self.size = len(dataset.frame_samples)
+
         self.indexes = np.arange(self.size)
         self.shuffle = shuffle
         self.n_classes = num_classes
@@ -97,7 +99,7 @@ class DataGenerator(keras.utils.Sequence):
     def __len__(self):
         "Denotes the number of batches per epoch"
 
-        return int(np.floor(self.dataset.frames / self.batch_size))
+        return int(np.floor(self.dataset.rows / self.batch_size))
 
     def loadbatch(self, index):
         start = time.time()
@@ -143,14 +145,27 @@ class DataGenerator(keras.utils.Sequence):
         else:
             channels = TrackChannels.filtered
         # Generate data
+
         for i, index in enumerate(indexes):
             segment_i = index
-            frame = self.dataset.frame_samples[segment_i]
-            data, label = self.dataset.fetch_frame(frame, channels=channels)
+            if self.lstm:
+                segment = self.dataset.segments[index]
+                data = self.dataset.fetch_segment(segment, augment=False)
+                label = segment.label
+            else:
+                frame = self.dataset.frame_samples[segment_i]
+                data, label = self.dataset.fetch_frame(frame, channels=channels)
             if label not in self.labels:
                 continue
             if self.lstm:
-                raise "LSTM not implemented"
+                data = preprocess_lstm(
+                    data,
+                    self.dim,
+                    self.use_thermal,
+                    self.augment,
+                    self.model_preprocess,
+                    filter_channels=False,
+                )
             else:
                 data = preprocess_frame(
                     data,
@@ -160,14 +175,14 @@ class DataGenerator(keras.utils.Sequence):
                     self.model_preprocess,
                     filter_channels=False,
                 )
-                if data is None:
-                    logging.error(
-                        "error pre processing frame (i.e.max and min are the same) clip %s track %s frame %s",
-                        frame.clip_id,
-                        frame.track_id,
-                        frame.frame_num,
-                    )
-                    continue
+            if data is None:
+                logging.error(
+                    "error pre processing frame (i.e.max and min are the same) clip %s track %s frame %s",
+                    frame.clip_id,
+                    frame.track_id,
+                    frame.frame_num,
+                )
+                continue
 
             X[i,] = data
             y[i] = self.labels.index(label)
@@ -224,6 +239,76 @@ def augement_frame(frame, dim):
     return image.numpy()
 
 
+def augement_lstm(data, dim):
+
+    if random.random() > 0.50:
+        for i, image in enumerate(data):
+
+            data[i] = tf.image.rot90(image)
+    if random.random() > 0.50:
+        for i, image in enumerate(data):
+            data[i] = tf.image.flip_left_right(image)
+
+        # maybes thisd should only be sometimes, as otherwise our validation set
+    # if random.random() > 0.20:
+    return data
+    # image = tf.image.random_contrast(image, 0.8, 1.2)
+    # # image = tf.image.random_brightness(image, max_delta=0.05)  # Random brightness
+    # image = tf.minimum(image, 1.0)
+    # image = tf.maximum(image, 0.0)
+    # return image.numpy()
+
+
+def preprocess_lstm(
+    data,
+    output_dim,
+    use_thermal=True,
+    augment=False,
+    preprocess_fn=None,
+    filter_channels=True,
+):
+    if filter_channels:
+        if use_thermal:
+            channel = TrackChannels.thermal
+        else:
+            channel = TrackChannels.filtered
+        data = data[:, channel]
+    for i, frame in enumerate(data):
+        data[i] = convert(reisze_cv(frame, output_dim))
+        # image = convert(frame)
+    # normalizes data, constrast stretch good or bad?
+    if augment:
+        percent = random.randint(0, 2)
+    else:
+        percent = 0
+    max = int(np.percentile(data, 100 - percent))
+    min = int(np.percentile(data, percent))
+    if max == min:
+        return None
+
+    data -= min
+    data = data / (max - min)
+    np.clip(data, a_min=0, a_max=None, out=data)
+
+    data = data[np.newaxis, :]
+    data = np.transpose(data, (2, 3, 1))
+    data = np.repeat(data, output_dim[2], axis=2)
+
+    if augment:
+        data = augement_lstm(data, output_dim)
+        data = np.clip(data, a_min=0, a_max=None, out=data)
+    else:
+        data = reisze_cv(data, output_dim)
+
+    # pre proce expects values in range 0-255
+    if preprocess_fn:
+        for i, frame in enumerate(data):
+
+            frame = frame * 255
+            data[i] = preprocess_fn(frame)
+    return data
+
+
 def preprocess_frame(
     data,
     output_dim,
@@ -232,6 +317,7 @@ def preprocess_frame(
     preprocess_fn=None,
     filter_channels=True,
 ):
+
     if filter_channels:
         if use_thermal:
             channel = TrackChannels.thermal
