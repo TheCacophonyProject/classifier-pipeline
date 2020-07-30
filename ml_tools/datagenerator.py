@@ -146,7 +146,13 @@ class DataGenerator(keras.utils.Sequence):
         for i, index in enumerate(indexes):
             segment_i = index
             frame = self.dataset.frame_samples[segment_i]
-            data, label = self.dataset.fetch_frame(frame, channels=channels)
+            try:
+                data, label = self.dataset.fetch_frame(frame, channels=channels)
+                # label = label.lower()
+                # print("label is", label, self.labels)
+            except:
+                print("couldn't fetch", frame)
+                continue
             if label not in self.labels:
                 continue
             if self.lstm:
@@ -262,6 +268,7 @@ def preprocess_frame(
         data = np.clip(data, a_min=0, a_max=None, out=data)
     else:
         data = reisze_cv(data, output_dim)
+        data = convert(data)
 
     # pre proce expects values in range 0-255
     if preprocess_fn:

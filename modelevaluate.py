@@ -30,10 +30,18 @@ class ModelEvalute:
 
         self.classifier = NewModel(train_config=self.config.train)
         self.classifier.load_model(model_file)
+
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
     def evaluate_dataset(self, dataset_file):
         datasets = pickle.load(open(dataset_file, "rb"))
+        datasets[2].db = self.db
+        datasets[2].binarize(
+            ["wallaby"], lbl_one="wallaby", lbl_two="not", keep_fp=True
+        )
+        for label in datasets[2].labels:
+            print(label, datasets[2].get_counts(label))
+        print()
         results = self.classifier.evaluate(datasets[2])
         print("Dataset", dataset_file, "loss,acc", results)
 

@@ -111,10 +111,15 @@ class TrackHeader:
         return f
 
     # trying to get only clear frames
-    def set_important_frames(self, labels, min_mass=None):
+    def set_important_frames(self, labels, min_mass=None, use_predictions=True):
         # this needs more testing
+        if not use_predictions:
+            self.important_frames = [
+                i for i, mass in enumerate(self.frame_mass) if mass >= self.mean_mass
+            ]
+            np.random.shuffle(self.important_frames)
 
-        if self.predictions is not None:
+        elif self.predictions is not None:
             fp_i = None
             # if self.label in labels:
             #     label_i = list(labels).index(self.label)
@@ -438,10 +443,9 @@ class FrameDataset:
         track_header = TrackHeader.from_meta(
             clip_id, clip_meta, track_meta, predictions
         )
-        if self.important_frames:
-            track_header.set_important_frames(labels, self.min_frame_mass)
-        else:
-            track_header.important_frames = [i for i in range(track_header.frames)]
+        track_header.set_important_frames(
+            labels, self.min_frame_mass, use_predictions=self.important_frames
+        )
         self.tracks_by_id[track_header.track_id] = track_header
 
         camera = self.cameras_by_id.setdefault(
