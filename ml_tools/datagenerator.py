@@ -33,8 +33,9 @@ class DataGenerator(keras.utils.Sequence):
         epochs=10,
         load_threads=1,
         preload=True,
+        resample=False,
     ):
-
+        self.resample = resample
         self.labels = labels
         self.model_preprocess = model_preprocess
         self.use_thermal = use_thermal
@@ -118,6 +119,10 @@ class DataGenerator(keras.utils.Sequence):
 
     def on_epoch_end(self, load=True):
         "Updates indexes after each epoch"
+        if self.resample:
+            self.dataset.resample("wallaby")
+            self.size = len(self.dataset.frame_samples)
+            self.indexes = np.arange(self.size)
         if self.shuffle:
             np.random.shuffle(self.indexes)
         if load:

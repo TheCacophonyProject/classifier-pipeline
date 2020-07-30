@@ -111,15 +111,10 @@ class TrackHeader:
         return f
 
     # trying to get only clear frames
-    def set_important_frames(self, labels, min_mass=None, use_predictions=True):
+    def set_important_frames(self, labels, min_mass=None):
         # this needs more testing
-        if not use_predictions:
-            self.important_frames = [
-                i for i, mass in enumerate(self.frame_mass) if mass >= self.mean_mass
-            ]
-            np.random.shuffle(self.important_frames)
 
-        elif self.predictions is not None:
+        if self.predictions is not None:
             fp_i = None
             # if self.label in labels:
             #     label_i = list(labels).index(self.label)
@@ -302,10 +297,11 @@ class Camera:
 
 
 class FrameSample:
-    def __init__(self, clip_id, track_id, frame_num):
+    def __init__(self, clip_id, track_id, frame_num, label):
         self.clip_id = clip_id
         self.track_id = track_id
         self.frame_num = frame_num
+        self.label = label
 
 
 class FrameDataset:
@@ -327,6 +323,7 @@ class FrameDataset:
         # name of this dataset
         self.name = name
         self.important_frames = important_frames
+        self.original_samples = None
         # list of our tracks
         self.camera_names = set()
         self.cameras_by_id = {}
@@ -443,9 +440,10 @@ class FrameDataset:
         track_header = TrackHeader.from_meta(
             clip_id, clip_meta, track_meta, predictions
         )
-        track_header.set_important_frames(
-            labels, self.min_frame_mass, use_predictions=self.important_frames
-        )
+        if self.important_frames:
+            track_header.set_important_frames(labels, self.min_frame_mass)
+        else:
+            track_header.important_frames = [i for i in range(track_header.frames)]
         self.tracks_by_id[track_header.track_id] = track_header
 
         camera = self.cameras_by_id.setdefault(
@@ -525,7 +523,9 @@ class FrameDataset:
             self.add_track_header_frame(track_header, frame)
 
     def add_track_header_frame(self, track_header, frame):
-        f = FrameSample(track_header.clip_id, track_header.track_number, frame)
+        f = FrameSample(
+            track_header.clip_id, track_header.track_number, frame, track_header.label
+        )
         self.frame_samples.append(f)
 
         # this is just to print counts
@@ -556,8 +556,34 @@ class FrameDataset:
             label = self.label_mapping[label]
         return data, label
 
+    def resample(self, keep_all, ratio=1.1):
+        if self.original_samples is None:
+            self.original_samples = self.frame_samples.copy()
+
+        self.frame_samples = [
+            sample for sample in self.original_samples if sample.label == keep_all
+        ]
+
+        total_size = len(self.frame_samples) * 1.1
+        # labels to samples isn't updated when binarized, but cna be used for finding data labels
+        labels = [
+            label
+            for label, samples in self.labels_to_samples.items()
+            if len(samples) > 0
+        ]
+        amount_per = int(total_size / len(labels))
+        np.random.shuffle(labels)
+        for label in labels:
+            samples = [
+                sample for sample in self.original_samples if sample.label == label
+            ]
+            take = min(len(samples), amount_per)
+            new_samples = np.random.choice(samples, take, replace=False)
+            self.frame_samples.extend(new_samples)
+            logging.debug("Resample %s taking %s", len(new_samples), label)
+
     def binarize(
-        self, set_one, lbl_one, set_two=None, lbl_two="other", ratio=1, keep_fp=True
+        self, set_one, lbl_one, set_two=None, lbl_two="other", scale=True, keep_fp=False
     ):
         set_one_count = 0
         self.label_mapping = {}
@@ -567,44 +593,49 @@ class FrameDataset:
 
         if set_two is None:
             set_two = set(self.labels) - set(set_one)
+
+        # for wallaby testing as the 2 get confused
+        set_two.discard("mustelid")
+        del self.labels_to_samples["mustelid"]
+        self.labels = [lbl_one, lbl_two]
+
         if keep_fp:
             set_two.discard("false-positive")
             self.label_mapping["false-positive"] = "false-positive"
+            self.labels.append("false-positive")
 
         set_two_count = 0
         for label in set_two:
             set_two_count += len(self.labels_to_samples[label])
             self.label_mapping[label] = lbl_two
-        percent = None
-        percent2 = None
+        percent = 1
+        percent2 = 1
 
-        if set_two_count > set_one_count:
-            percent2 = set_one_count / set_two_count
-            # allow 10% more
-            if self.name != "validation":
-                percent2 += 0.1
-            percent2 = min(1, percent2)
-        else:
-            percent = set_two_count / set_one_count
-            percent += 0.1
-            percent = min(1, percent)
-        # set_one_cap = set_one_count / len()
+        if scale:
+            if set_two_count > set_one_count:
+                percent2 = set_one_count / set_two_count
+                # allow 10% more
+                if self.name != "validation":
+                    percent2 += 0.1
+                percent2 = min(1, percent2)
+            else:
+                percent = set_two_count / set_one_count
+                percent += 0.1
+                percent = min(1, percent)
+            # set_one_cap = set_one_count / len()
         tracks_by_id, new_samples = self.rebalance(cap_percent=percent, labels=set_one)
         tracks_by_id2, new_samples2 = self.rebalance(
             cap_percent=percent2, labels=set_two
         )
-        self.labels = [lbl_one, lbl_two]
 
-        if keep_fp:
-            tracks_by_id3, new_samples3 = self.rebalance(
-                label_cap=int(set_one_count * 0.5), labels=["false-positive"]
-            )
-            self.labels.append("false-positive")
         self.tracks_by_id = tracks_by_id
         self.frame_samples = new_samples
         self.tracks_by_id.update(tracks_by_id2)
         self.frame_samples.extend(new_samples2)
         if keep_fp:
+            tracks_by_id3, new_samples3 = self.rebalance(
+                label_cap=int(set_one_count * 0.5), labels=["false-positive"]
+            )
             self.tracks_by_id.update(tracks_by_id3)
             self.frame_samples.extend(new_samples3)
 

@@ -305,6 +305,7 @@ class NewModel:
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=4,
+            resample=True,
         )
         global validate
         self.validate = DataGenerator(
@@ -448,7 +449,9 @@ class NewModel:
 
     def binarize(self):
         # set samples of each label to have a maximum cap, and exclude labels
-        self.datasets.train.binarize(["wallaby"], lbl_one="Wallaby", lbl_two="Not")
+        self.datasets.train.binarize(
+            ["wallaby"], lbl_one="Wallaby", lbl_two="Not", scale=False
+        )
         self.datasets.validation.binarize(["wallaby"], lbl_one="Wallaby", lbl_two="Not")
         self.datasets.test.binarize(["wallaby"], lbl_one="Wallaby", lbl_two="Not")
 
