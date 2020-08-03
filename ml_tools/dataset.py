@@ -517,7 +517,8 @@ class Dataset:
 
         # database holding track data
         self.db = track_db
-
+        self.label_mapping = None
+        self.original_segments = None
         # name of this dataset
         self.name = name
 
@@ -592,17 +593,28 @@ class Dataset:
         :label: label to check
         :return: (segments, tracks, bins, weight)
         """
-        label_tracks = self.tracks_by_label.get(label, [])
-        segments = sum(len(track.segments) for track in label_tracks)
-        weight = self.get_label_weight(label)
-        tracks = len(label_tracks)
-        bins = len(
-            [
-                tracks
-                for bin_name, tracks in self.tracks_by_bin.items()
-                if len(tracks) > 0 and tracks[0].label == label
-            ]
-        )
+        segments = 0
+        tracks = 0
+        bins = 0
+        weight = 0
+        if self.label_mapping:
+            for key, value in self.label_mapping.items():
+                if value == label:
+                    label_tracks = self.tracks_by_label.get(key, [])
+                    tracks += len(label_tracks)
+                    segments += sum(len(track.segments) for track in label_tracks)
+        else:
+            label_tracks = self.tracks_by_label.get(label, [])
+            segments = sum(len(track.segments) for track in label_tracks)
+            weight = self.get_label_weight(label)
+            tracks = len(label_tracks)
+            bins = len(
+                [
+                    tracks
+                    for bin_name, tracks in self.tracks_by_bin.items()
+                    if len(tracks) > 0 and tracks[0].label == label
+                ]
+            )
         return segments, tracks, bins, weight
 
     def set_read_only(self, read_only):
@@ -1190,6 +1202,141 @@ class Dataset:
                     self.preloader_queue = None
                 else:
                     thread.exit()
+
+    def resample(self, keep_all, ratio=1.1):
+        if self.original_segments is None:
+            self.original_segments = self.segments
+
+        self.segments = [
+            sample for sample in self.original_segments if sample.label == keep_all
+        ]
+
+        total_size = len(self.segments) * 1.1
+        # labels to samples isn't updated when binarized, but cna be used for finding data labels
+        other_labels = [
+            sample.label
+            for sample in self.original_segments
+            if sample.label != keep_all
+        ]
+        other_labels = set(other_labels)
+        print(other_labels)
+        amount_per = int(total_size / len(other_labels))
+        other_labels = list(other_labels)
+        np.random.shuffle(other_labels)
+        for label in other_labels:
+            segments = [
+                sample for sample in self.original_segments if sample.label == label
+            ]
+            take = min(len(segments), amount_per)
+            new_segments = np.random.choice(segments, take, replace=False)
+            self.segments.extend(new_segments)
+            logging.debug("Resample %s taking %s", len(new_segments), label)
+
+    def binarize(
+        self, set_one, lbl_one, set_two=None, lbl_two="other", scale=True, keep_fp=False
+    ):
+        set_one_count = 0
+        self.label_mapping = {}
+        for label in set_one:
+            label_tracks = self.tracks_by_label.get(label, [])
+            segments = sum(len(track.segments) for track in label_tracks)
+            set_one_count += segments
+            self.label_mapping[label] = lbl_one
+
+        if set_two is None:
+            set_two = set(self.labels) - set(set_one)
+
+        # for wallaby testing as the 2 get confused
+        set_two.discard("mustelid")
+        # del self.labels_to_samples["mustelid"]
+        self.labels = [lbl_one, lbl_two]
+
+        if keep_fp:
+            set_two.discard("false-positive")
+            self.label_mapping["false-positive"] = "false-positive"
+            self.labels.append("false-positive")
+
+        set_two_count = 0
+        for label in set_two:
+            label_tracks = self.tracks_by_label.get(label, [])
+            segments = sum(len(track.segments) for track in label_tracks)
+            set_two_count += segments
+            self.label_mapping[label] = lbl_two
+        percent = 1
+        percent2 = 1
+
+        if scale:
+            if set_two_count > set_one_count:
+                percent2 = set_one_count / set_two_count
+                # allow 10% more
+                if self.name != "validation":
+                    percent2 += 0.05
+                percent2 = min(1, percent2)
+            else:
+                percent = set_two_count / set_one_count
+                percent += 0.1
+                percent = min(1, percent)
+            # set_one_cap = set_one_count / len()
+        tracks_by_id, new_segments = self.rebalance(cap_percent=percent, labels=set_one)
+        tracks_by_id2, new_segments2 = self.rebalance(
+            cap_percent=percent2, labels=set_two
+        )
+        self.tracks_by_id = tracks_by_id
+        self.segments = new_segments
+        self.tracks_by_id.update(tracks_by_id2)
+        self.segments.extend(new_segments2)
+        if keep_fp:
+            tracks_by_id3, new_segments3 = self.rebalance(
+                label_cap=int(set_one_count * 0.5), labels=["false-positive"]
+            )
+            self.tracks_by_id.update(tracks_by_id3)
+            self.segments.extend(new_segments3)
+
+    def rebalance(
+        self, label_cap=None, cap_percent=None, exclude=[], labels=None, update=False
+    ):
+        new_segments = []
+        tracks_by_id = {}
+        tracks = []
+        if labels is None:
+            labels = self.labels.copy()
+        for label in labels:
+            label_tracks = self.tracks_by_label.get(label, [])
+            segments = [segment for track in label_tracks for segment in track.segments]
+            # value = self.labels_to_samples.get(label)
+            if not label_tracks:
+                continue
+            track_ids = set()
+
+            if label in exclude:
+                self.labels.remove(label)
+                continue
+
+            np.random.shuffle(segments)
+            if label_cap:
+                segments = segments[:label_cap]
+            if cap_percent:
+                new_length = int(len(segments) * cap_percent)
+                segments = segments[:new_length]
+
+            for track in label_tracks:
+                track.segments = []
+            for segment in segments:
+
+                # track_id = TrackHeader.get_name(
+                #     self.frame_samples[i].clip_id, self.frame_samples[i].track_id
+                # )
+                print(segment.track)
+                track_ids.add(segment.track)
+                segment.track.segments.append(segment)
+                tracks_by_id[segment.track.track_id] = segment.track
+                new_segments.append(segment)
+            self.tracks_by_label[label] = list(track_ids)
+        if update:
+
+            self.tracks_by_id = tracks_by_id
+            self.segments = new_segments
+        return tracks_by_id, new_segments
 
 
 # continue to read examples until queue is full

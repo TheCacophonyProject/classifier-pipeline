@@ -312,6 +312,7 @@ class NewModel:
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=self.params.get("train_load_threads", 1),
+            resample=True,
         )
         global validate
         self.validate = DataGenerator(
@@ -455,9 +456,11 @@ class NewModel:
 
     def binarize(self):
         # set samples of each label to have a maximum cap, and exclude labels
-        self.datasets.train.binarize(["wallaby"], lbl_one="Wallaby", lbl_two="Not")
-        self.datasets.validation.binarize(["wallaby"], lbl_one="Wallaby", lbl_two="Not")
-        self.datasets.test.binarize(["wallaby"], lbl_one="Wallaby", lbl_two="Not")
+        self.datasets.train.binarize(
+            ["wallaby"], lbl_one="wallaby", lbl_two="Not", scale=False
+        )
+        self.datasets.validation.binarize(["wallaby"], lbl_one="wallaby", lbl_two="Not")
+        self.datasets.test.binarize(["wallaby"], lbl_one="wallaby", lbl_two="Not")
 
         self.set_labels()
         print(self.labels)
@@ -620,9 +623,9 @@ class NewModel:
     def add_lstm(self, cnn):
         input_layer = tf.keras.Input(shape=(27, self.frame_size, self.frame_size, 3))
         encoded_frames = tf.keras.layers.TimeDistributed(cnn)(input_layer)
-        encoded_sequence = tf.keras.layers.LSTM(self.params["lstm_units"])(
-            encoded_frames
-        )
+        encoded_sequence = tf.keras.layers.LSTM(
+            self.params["lstm_units"], dropout=self.params["keep_prob"]
+        )(encoded_frames)
         hidden_layer = tf.keras.layers.Dense(1024, activation="relu")(encoded_sequence)
         preds = tf.keras.layers.Dense(
             len(self.datasets.train.labels), activation="softmax"

@@ -33,7 +33,9 @@ class DataGenerator(keras.utils.Sequence):
         epochs=10,
         load_threads=1,
         preload=True,
+        resample=False,
     ):
+        self.resample = resample
 
         self.labels = labels
         self.model_preprocess = model_preprocess
@@ -120,6 +122,10 @@ class DataGenerator(keras.utils.Sequence):
 
     def on_epoch_end(self, load=True):
         "Updates indexes after each epoch"
+        if self.resample:
+            self.dataset.resample("wallaby")
+            self.size = len(self.dataset.segments)
+            self.indexes = np.arange(self.dataset.rows)
         if self.shuffle:
             np.random.shuffle(self.indexes)
         if load:
@@ -151,7 +157,10 @@ class DataGenerator(keras.utils.Sequence):
             if self.lstm:
                 segment = self.dataset.segments[index]
                 data = self.dataset.fetch_segment(segment, augment=self.augment)
-                label = segment.label
+                if self.dataset.label_mapping:
+                    label = self.dataset.label_mapping[segment.label]
+                else:
+                    label = segment.label
                 frame = segment
             else:
                 frame = self.dataset.frame_samples[segment_i]
@@ -334,7 +343,7 @@ def preprocess_frame(
 def preloader(q, load_queue, dataset):
     """ add a segment into buffer """
     logging.info(
-        " -started async fetcher for %s wisavebatchth augment=%s",
+        " -started async fetcher for %s augment=%s",
         dataset.dataset.name,
         dataset.augment,
     )
