@@ -340,6 +340,12 @@ class TrackDatabase:
                 return track["predictions"][:]
         return None
 
+    def get_clip_background(self, clip_id):
+        with HDF5Manager(self.database) as f:
+            # print(f["clips"][str(clip_id)])
+            return f["clips"][str(clip_id)]["background_frame"][:]
+        return None
+
     def get_clip_meta(self, clip_id):
         """
         Gets metadata for given clip
@@ -391,7 +397,6 @@ class TrackDatabase:
                 start_frame = 0
             if end_frame is None:
                 end_frame = track_node.attrs["frames"]
-
             result = []
             for frame_number in range(start_frame, end_frame):
                 # we use [:,:,:] to force loading of all data.

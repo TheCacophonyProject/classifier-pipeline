@@ -29,13 +29,14 @@ class DataGenerator(keras.utils.Sequence):
         lstm=False,
         use_thermal=False,
         use_filtered=False,
-        buffer_size=128,
+        buffer_size=64,
         epochs=10,
         load_threads=1,
         preload=True,
         resample=False,
     ):
         self.resample = resample
+
         self.labels = labels
         self.model_preprocess = model_preprocess
         self.use_thermal = use_thermal
@@ -48,14 +49,16 @@ class DataGenerator(keras.utils.Sequence):
         self.augment = dataset.enable_augmentation
         self.batch_size = batch_size
         self.dataset = dataset
-        self.size = len(dataset.frame_samples)
 
         if self.lstm:
             self.sequence_size = sequence_size
-            self.size = self.size
+            self.size = dataset.rows
+        else:
+            self.size = len(dataset.frame_samples)
+
         self.indexes = np.arange(self.size)
         self.shuffle = shuffle
-        self.n_classes = num_classes
+        self.n_classes = len(self.labels)
         self.n_channels = n_channels
         self.cur_epoch = 0
         self.epochs = epochs
@@ -98,7 +101,7 @@ class DataGenerator(keras.utils.Sequence):
     def __len__(self):
         "Denotes the number of batches per epoch"
 
-        return int(np.floor(self.dataset.frames / self.batch_size))
+        return int(np.floor(self.dataset.rows / self.batch_size))
 
     def loadbatch(self, index):
         start = time.time()
@@ -121,8 +124,8 @@ class DataGenerator(keras.utils.Sequence):
         "Updates indexes after each epoch"
         if self.resample:
             self.dataset.resample("wallaby")
-            self.size = len(self.dataset.frame_samples)
-            self.indexes = np.arange(self.size)
+            self.size = len(self.dataset.segments)
+            self.indexes = np.arange(self.dataset.rows)
         if self.shuffle:
             np.random.shuffle(self.indexes)
         if load:
@@ -148,20 +151,31 @@ class DataGenerator(keras.utils.Sequence):
         else:
             channels = TrackChannels.filtered
         # Generate data
-        for i, index in enumerate(indexes):
+        data_i = 0
+        for index in indexes:
             segment_i = index
-            frame = self.dataset.frame_samples[segment_i]
-            try:
+            if self.lstm:
+                segment = self.dataset.segments[index]
+                data = self.dataset.fetch_segment(segment, augment=self.augment)
+                if self.dataset.label_mapping:
+                    label = self.dataset.label_mapping[segment.label]
+                else:
+                    label = segment.label
+                frame = segment
+            else:
+                frame = self.dataset.frame_samples[segment_i]
                 data, label = self.dataset.fetch_frame(frame, channels=channels)
-                # label = label.lower()
-                # print("label is", label, self.labels)
-            except:
-                print("couldn't fetch", frame)
-                continue
             if label not in self.labels:
                 continue
             if self.lstm:
-                raise "LSTM not implemented"
+                data = preprocess_lstm(
+                    data,
+                    self.dim,
+                    self.use_thermal,
+                    self.augment,
+                    self.model_preprocess,
+                    filter_channels=True,
+                )
             else:
                 data = preprocess_frame(
                     data,
@@ -171,19 +185,23 @@ class DataGenerator(keras.utils.Sequence):
                     self.model_preprocess,
                     filter_channels=False,
                 )
-                if data is None:
-                    logging.error(
-                        "error pre processing frame (i.e.max and min are the same) clip %s track %s frame %s",
-                        frame.clip_id,
-                        frame.track_id,
-                        frame.frame_num,
-                    )
-                    continue
+            if data is None:
+                data = self.dataset.fetch_segment(segment, augment=self.augment)
+                # logging.error(
+                #     "error pre processing frame (i.e.max and min are the same) clip %s track %s frame %s",
+                #     frame.clip_id,
+                #     frame.track_id,
+                #     frame.frame_num,
+                # )
+                continue
 
-            X[i,] = data
-            y[i] = self.labels.index(label)
+            X[data_i,] = data
+            y[data_i] = self.labels.index(label)
             clips.append(frame)
-
+            data_i += 1
+        # print(data_i, len(y), len(y[:data_i]))
+        X = X[:data_i]
+        y = y[:data_i]
         if to_categorical:
             y = keras.utils.to_categorical(y, num_classes=self.n_classes)
         return X, y, clips
@@ -235,6 +253,46 @@ def augement_frame(frame, dim):
     return image.numpy()
 
 
+def preprocess_lstm(
+    data,
+    output_dim,
+    use_thermal=True,
+    augment=False,
+    preprocess_fn=None,
+    filter_channels=True,
+):
+    if filter_channels:
+        if use_thermal:
+            channel = TrackChannels.thermal
+        else:
+            channel = TrackChannels.filtered
+        data = data[:, channel]
+    # normalizes data, constrast stretch good or bad?
+    if augment:
+        percent = random.randint(0, 2)
+    else:
+        percent = 0
+    max = int(np.percentile(data, 100 - percent))
+    min = int(np.percentile(data, percent))
+    if max == min:
+        #     print("max and min are same")
+        return None
+    data -= min
+    data = data / (max - min)
+    np.clip(data, a_min=0, a_max=None, out=data)
+    data = data[..., np.newaxis]
+
+    # data = np.transpose(data, (2, 3, 0))
+    data = np.repeat(data, output_dim[2], axis=3)
+    # pre proce expects values in range 0-255
+    if preprocess_fn:
+        for i, frame in enumerate(data):
+
+            frame = frame * 255
+            data[i] = preprocess_fn(frame)
+    return data
+
+
 def preprocess_frame(
     data,
     output_dim,
@@ -243,6 +301,7 @@ def preprocess_frame(
     preprocess_fn=None,
     filter_channels=True,
 ):
+
     if filter_channels:
         if use_thermal:
             channel = TrackChannels.thermal
@@ -264,8 +323,7 @@ def preprocess_frame(
     data = data / (max - min)
     np.clip(data, a_min=0, a_max=None, out=data)
 
-    data = data[np.newaxis, :]
-    data = np.transpose(data, (1, 2, 0))
+    data = data[..., np.newaxis]
     data = np.repeat(data, output_dim[2], axis=2)
 
     if augment:
@@ -286,7 +344,7 @@ def preprocess_frame(
 def preloader(q, load_queue, dataset):
     """ add a segment into buffer """
     logging.info(
-        " -started async fetcher for %s with augment=%s",
+        " -started async fetcher for %s augment=%s",
         dataset.dataset.name,
         dataset.augment,
     )
@@ -309,18 +367,23 @@ def preloader(q, load_queue, dataset):
 def savebatch(X, y):
     fig = plt.figure(figsize=(48, 48))
     for i in range(len(X)):
-        if i >= 40:
+        if i >= 19:
             break
-        axes = fig.add_subplot(4, 10, i + 1)
-        axes.set_title(
-            "{} - {} track {} frame {}".format(
-                self.labels[np.argmax(np.array(y[i]))],
-                clips[i].clip_id,
-                clips[i].track_id,
-                clips[i].frame_num,
+
+        for x_i, img in enumerate(X[i]):
+            axes = fig.add_subplot(20, 27, i * 27 + x_i + 1)
+            axes.set_title(
+                "{} ".format(
+                    y[i]
+                    # , clips[i].clip_id, clips[i].track_id, clips[i].frame_num,
+                )
             )
-        )
-        plt.imshow(tf.keras.preprocessing.image.array_to_img(X[i]))
-    plt.savefig("testimage.png")
+            plt.axis("off")
+
+            img = plt.imshow(tf.keras.preprocessing.image.array_to_img(img))
+            img.set_cmap("hot")
+
+    plt.savefig("testimage.png", bbox_inches="tight")
     plt.close(fig)
     print("saved image")
+    raise "DONE"

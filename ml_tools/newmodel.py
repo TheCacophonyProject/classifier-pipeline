@@ -175,7 +175,14 @@ class NewModel:
 
         if self.params["lstm"]:
             # not tested
-            self.add_lstm(base_model)
+            x = tf.keras.layers.GlobalAveragePooling2D()(x)
+            x = tf.keras.layers.Dense(1024, activation="relu")(x)
+            # for i in dense_sizes:
+            #     x = tf.keras.layers.Dense(i, activation="relu")(x)
+
+            cnn = tf.keras.models.Model(inputs, outputs=x)
+
+            self.model = self.add_lstm(cnn)
         else:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
@@ -304,7 +311,7 @@ class NewModel:
             shuffle=True,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
-            load_threads=4,
+            load_threads=self.params.get("train_load_threads", 1),
             resample=True,
         )
         global validate
@@ -450,10 +457,10 @@ class NewModel:
     def binarize(self):
         # set samples of each label to have a maximum cap, and exclude labels
         self.datasets.train.binarize(
-            ["wallaby"], lbl_one="Wallaby", lbl_two="Not", scale=False
+            ["wallaby"], lbl_one="wallaby", lbl_two="Not", scale=False
         )
-        self.datasets.validation.binarize(["wallaby"], lbl_one="Wallaby", lbl_two="Not")
-        self.datasets.test.binarize(["wallaby"], lbl_one="Wallaby", lbl_two="Not")
+        self.datasets.validation.binarize(["wallaby"], lbl_one="wallaby", lbl_two="Not")
+        self.datasets.test.binarize(["wallaby"], lbl_one="wallaby", lbl_two="Not")
 
         self.set_labels()
         print(self.labels)
@@ -613,31 +620,20 @@ class NewModel:
             ["{}={}".format(param, value) for param, value in self.params.items()]
         )
 
-    def add_lstm(self, base_model):
-        model2 = tf.keras.models.Model(inputs=base_model.input, outputs=x)
-
+    def add_lstm(self, cnn):
         input_layer = tf.keras.Input(shape=(27, self.frame_size, self.frame_size, 3))
-        curr_layer = tf.keras.layers.TimeDistributed(model2)(input_layer)
-        curr_layer = tf.keras.layers.Reshape(target_shape=(27, 2048))(curr_layer)
-        memory_output, memory_state = self.lstm(curr_layer)
-        x = memory_output
-        x = tf.keras.layers.Dense(self.params["lstm_units"], activation="relu")(x)
-
-        tf.identity(memory_state, "state_out")
+        encoded_frames = tf.keras.layers.TimeDistributed(cnn)(input_layer)
+        encoded_sequence = tf.keras.layers.LSTM(
+            self.params["lstm_units"], dropout=self.params["keep_prob"]
+        )(encoded_frames)
+        hidden_layer = tf.keras.layers.Dense(1024, activation="relu")(encoded_sequence)
+        hidden_layer = tf.keras.layers.Dense(512, activation="relu")(hidden_layer)
 
         preds = tf.keras.layers.Dense(
             len(self.datasets.train.labels), activation="softmax"
-        )(x)
+        )(hidden_layer)
 
-        self.model = tf.keras.models.Model(input_layer, preds)
-
-        #
-        #         encoded_frames = tf.keras.layers.TimeDistributed(self.model)(input_layer)
-        #         encoded_sequence = LSTM(512)(encoded_frames)
-        #
-        # hidden_layer = Dense(1024, activation="relu")(encoded_sequence)
-        # outputs = Dense(50, activation="softmax")(hidden_layer)
-        # model = Model([inputs], outputs)
+        return tf.keras.models.Model(input_layer, preds)
 
     def lstm(self, inputs):
         lstm_cell = tf.keras.layers.LSTMCell(

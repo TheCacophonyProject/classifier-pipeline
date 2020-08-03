@@ -32,12 +32,6 @@ CPTV_FILE_HEIGHT = 120
 FRAMES_PER_SECOND = 9
 
 
-MAX_VELOCITY = 2
-MAX_CROP_PERCENT = 0.3
-MIN_CLARITY = 20
-MIN_PERCENT = 60
-
-
 class TrackChannels:
     """ Indexes to channels in track. """
 
@@ -65,11 +59,8 @@ class TrackHeader:
         track_bounds,
         frame_temp_median,
         frames_per_second,
-        predictions,
-        correct_prediction,
     ):
-        self.predictions = predictions
-        self.correct_prediction = correct_prediction
+
         self.filtered_stats = {"segment_mass": 0}
         # reference to clip this segment came from
         self.clip_id = clip_id
@@ -101,69 +92,6 @@ class TrackHeader:
         self.frames_per_second = frames_per_second
         self.calculate_velocity()
         self.calculate_frame_crop()
-        self.important_frames = []
-        self.important_predicted = 0
-
-    def set_important_frames(self, labels):
-        frames = set()
-        for i, vel in enumerate(self.frame_velocity):
-            if vel[0] > MAX_VELOCITY or vel[1] > MAX_VELOCITY:
-                continue
-            if self.frame_crop[i] > MAX_CROP_PERCENT:
-                continue
-            frames.add(i)
-
-        if self.predictions is not None:
-            label_i = None
-            fp_i = None
-            if self.label in labels:
-                label_i = list(labels).index(self.label)
-            if "false-positive" in labels:
-                fp_i = list(labels).index("false-positive")
-            clear_frames = set()
-            clear_frames = []
-            best_preds = []
-            incorrect_best = []
-
-            for i, pred in enumerate(self.predictions):
-                best = np.argsort(pred)
-                if fp_i and best[-1] == fp_i:
-                    continue
-
-                clarity = best[-1] - best[-2]
-                if clarity < MIN_CLARITY:
-                    clear_frames.append((i, clarity))
-
-                if label_i:
-                    pred_percent = pred[label_i]
-                    if pred_percent > MIN_PERCENT:
-                        best_preds.append((i, pred_percent))
-
-                if not self.correct_prediction:
-                    if pred[best[-1]] > MIN_PERCENT:
-                        incorrect_best.append((i, pred[best[-1]]))
-
-            sorted(clear_frames, reverse=True, key=lambda frame: frame[1])
-            sorted(best_preds, reverse=True, key=lambda frame: frame[1])
-            sorted(incorrect_best, reverse=True, key=lambda frame: frame[1])
-
-            pred_frames = set()
-            pred_frames.update(f[0] for f in clear_frames[:2])
-            pred_frames.update(f[0] for f in best_preds[:2])
-            pred_frames.update(f[0] for f in incorrect_best[:2])
-            pred_frames = frames.intersection(pred_frames)
-            self.important_predicted = len(pred_frames)
-            frames = frames - pred_frames
-            pred_frames = list(pred_frames)
-            pred_frames.extend(list(frames))
-            self.important_frames = pred_frames
-            return
-
-            # if len(pred_frames) > 0:
-            #     frames = pred_frames
-            # print("using prediction", frames)
-        self.important_frames = list(frames)
-        # print("setting important frames", frames)
 
     def calculate_frame_crop(self):
         # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
@@ -244,29 +172,27 @@ class TrackHeader:
 
     @property
     def bin_id(self):
-        return self.track_id
-        #
-        # # name of the bin to assign this track to.
-        # # .dat file has no location attribute
-        # if self.__dict__.get("location") is not None:
-        #     return "{}-{}-{}-{}-{}-{}".format(
-        #         self.location[0],
-        #         self.location[1],
-        #         str(self.start_time.date()),
-        #         self.camera,
-        #         self.label,
-        #         self.clip_id,
-        #     )
-        # else:
-        #     return (
-        #         str(self.start_time.date())
-        #         + "-"
-        #         + self.camera
-        #         + "-"
-        #         + self.label
-        #         + "-"
-        #         + self.clip_id
-        #     )
+        # name of the bin to assign this track to.
+        # .dat file has no location attribute
+        if self.__dict__.get("location") is not None:
+            return "{}-{}-{}-{}-{}-{}".format(
+                self.location[0],
+                self.location[1],
+                str(self.start_time.date()),
+                self.camera,
+                self.label,
+                self.clip_id,
+            )
+        else:
+            return (
+                str(self.start_time.date())
+                + "-"
+                + self.camera
+                + "-"
+                + self.label
+                + "-"
+                + self.clip_id
+            )
 
     @property
     def weight(self):
@@ -280,8 +206,6 @@ class TrackHeader:
     @staticmethod
     def from_meta(clip_id, clip_meta, track_meta):
         """ Creates a track header from given metadata. """
-        predictions = track_meta.get("predictions", None)
-        correct_prediction = track_meta.get("correct_prediction", None)
 
         start_time = dateutil.parser.parse(track_meta["start_time"])
         end_time = dateutil.parser.parse(track_meta["end_time"])
@@ -314,8 +238,6 @@ class TrackHeader:
             track_bounds=np.asarray(bounds_history),
             frame_temp_median=frame_temp_median,
             frames_per_second=frames_per_second,
-            predictions=predictions,
-            correct_prediction=correct_prediction,
         )
         return header
 
@@ -331,7 +253,6 @@ class CameraSegments:
         self.bin_segment_sum = {}
         self.segment_sum = 0
         self.segments = 0
-        self.important_sum = 0
 
     def add_track(self, track_header):
 
@@ -349,7 +270,6 @@ class CameraSegments:
 
         segment_length = len(track_header.segments)
         self.bin_segment_sum[track_header.bin_id] += segment_length
-        self.important_sum += len(track_header.important_frames)
         self.segment_sum += segment_length
         self.segments += 1
 
@@ -525,13 +445,13 @@ class Preprocessor:
         assert len(data) == len(
             reference_level
         ), "Reference level shape and data shape not match."
-        # ref_avg = np.average(reference_level)
+        ref_avg = np.average(reference_level)
 
         # gp surely should take the same value from each frame
-        # data[:, 0, :, :] -= ref_avg
+        data[:, 0, :, :] -= ref_avg
 
         # reference thermal levels to the reference level
-        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
+        # data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
 
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
@@ -597,7 +517,8 @@ class Dataset:
 
         # database holding track data
         self.db = track_db
-
+        self.label_mapping = None
+        self.original_segments = None
         # name of this dataset
         self.name = name
 
@@ -611,7 +532,6 @@ class Dataset:
         # writes the frame motion into the center of the optical flow channels
         self.encode_frame_offsets_in_flow = False
 
-        self.frame_samples = []
         # cumulative distribution function for segments.  Allows for super fast weighted random sampling.
         self.segment_cdf = []
 
@@ -673,18 +593,32 @@ class Dataset:
         :label: label to check
         :return: (segments, tracks, bins, weight)
         """
-        label_tracks = self.tracks_by_label.get(label, [])
-        important = sum(len(track.important_frames) for track in label_tracks)
-        weight = self.get_label_weight(label)
-        tracks = len(label_tracks)
-        bins = len(
-            [
-                tracks
-                for bin_name, tracks in self.tracks_by_bin.items()
-                if len(tracks) > 0 and tracks[0].label == label
-            ]
-        )
-        return important, tracks, bins, weight
+        segments = 0
+        tracks = 0
+        bins = 0
+        weight = 0
+        if self.label_mapping:
+            for key, value in self.label_mapping.items():
+                if value == label:
+                    label_tracks = self.tracks_by_label.get(key, [])
+                    tracks += len(label_tracks)
+                    segments += sum(len(track.segments) for track in label_tracks)
+        else:
+            label_tracks = self.tracks_by_label.get(label, [])
+            segments = sum(len(track.segments) for track in label_tracks)
+            weight = self.get_label_weight(label)
+            tracks = len(label_tracks)
+            bins = len(
+                [
+                    tracks
+                    for bin_name, tracks in self.tracks_by_bin.items()
+                    if len(tracks) > 0 and tracks[0].label == label
+                ]
+            )
+        return segments, tracks, bins, weight
+
+    def set_read_only(self, read_only):
+        self.db.set_read_only(read_only)
 
     def next_batch(self, n, disable_async=False, force_no_augmentation=False):
         """
@@ -735,24 +669,19 @@ class Dataset:
 
         return batch_X, batch_y
 
-    def load_tracks(self, shuffle=True):
+    def load_tracks(self):
         """
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
         counter = 0
         track_ids = self.db.get_all_track_ids()
-        labels = self.db.get_labels()
-        if shuffle:
-            np.random.shuffle(track_ids)
         for clip_id, track_number in track_ids:
-            if self.add_track(clip_id, track_number, labels):
+            if self.add_track(clip_id, track_number):
                 counter += 1
         return [counter, len(track_ids)]
 
-    def add_tracks(
-        self, tracks, max_segments_per_track=None, max_frames_per_track=None
-    ):
+    def add_tracks(self, tracks, max_segments_per_track=None):
         """
         Adds list of tracks to dataset
         :param tracks: list of TrackHeader
@@ -760,32 +689,9 @@ class Dataset:
         """
         result = 0
         for track in tracks:
-            if self.add_track_header_frames(track, max_frames_per_track):
+            if self.add_track_header(track, max_segments_per_track):
                 result += 1
         return result
-
-    def add_track_header_frames(self, track_header, max_frames_per_track=None):
-        if track_header.track_id in self.track_by_id:
-            return False
-        # gp test less segments more tracks
-        if max_frames_per_track is not None:
-            if len(track_header.important_frames) > max_frames_per_track:
-                important_frames = track_header.important_frames[
-                    0 : track_header.important_predicted
-                ][:max_frames_per_track]
-                remaining = max_frames_per_track - len(important_frames)
-                important_frames.extend(
-                    random.sample(track_header.important_frames, remaining)
-                )
-                track_header.important_frames = important_frames
-
-        self.tracks.append(track_header)
-        self.add_track_to_mappings(track_header)
-        # for frame  in track_header.important_frames:
-        #     self.frame_samples.append((track_header.clip_id,track_header.track_number,frame))
-
-        # self.segments.extend(track_header.segments)
-        return True
 
     def add_track_header(self, track_header, max_segments_per_track=None):
         if track_header.track_id in self.track_by_id:
@@ -802,7 +708,7 @@ class Dataset:
         self.segments.extend(track_header.segments)
         return True
 
-    def add_track(self, clip_id, track_number, labels):
+    def add_track(self, clip_id, track_number):
         """
         Creates segments for track and adds them to the dataset
         :param clip_id: id of tracks clip
@@ -822,8 +728,6 @@ class Dataset:
         if self.filter_track(clip_meta, track_meta):
             return False
         track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
-        track_header.set_important_frames(labels)
-
         self.tracks.append(track_header)
 
         segment_frame_spacing = self.segment_spacing * track_header.frames_per_second
@@ -985,12 +889,7 @@ class Dataset:
         )
         return data
 
-    def fetch_frame(self, clip_id, track_id, frame_num):
-        data = self.db.get_track(clip_id, track_id, frame_num, frame_num + 1)
-        label = self.db.get_label(clip_id, track_id)
-        return data[0], label
-
-    def fetch_segment(self, segment: SegmentHeader, augment=False, preprocess=True):
+    def fetch_segment(self, segment: SegmentHeader, augment=False):
         """
         Fetches data for segment.
         :param segment: The segment header to fetch
@@ -1031,20 +930,15 @@ class Dataset:
                 "invalid segment length %d, expected %d", len(data), len(segment_width)
             )
 
-        if preprocess:
-            data = Preprocessor.apply(
-                data,
-                segment.track.frame_temp_median[first_frame:last_frame],
-                segment.track.frame_velocity[first_frame:last_frame],
-                augment=augment,
-                default_inset=self.DEFAULT_INSET,
-            )
-
-        return (
+        data = Preprocessor.apply(
             data,
             segment.track.frame_temp_median[first_frame:last_frame],
             segment.track.frame_velocity[first_frame:last_frame],
+            augment=augment,
+            default_inset=self.DEFAULT_INSET,
         )
+
+        return data
 
     def sample_segment(self):
         """ Returns a random segment from weighted list. """
@@ -1241,17 +1135,6 @@ class Dataset:
         """ Calculates the CDF used for fast random sampling """
         self.segment_cdf = []
         prob = 0
-        for track in self.tracks:
-            prob += len(track.important_frames)
-            self.segment_cdf.append(prob)
-        if len(self.segment_cdf) > 0:
-            normalizer = self.segment_cdf[-1]
-            self.segment_cdf = [x / normalizer for x in self.segment_cdf]
-
-    def rebuild_cdf_old(self):
-        """ Calculates the CDF used for fast random sampling """
-        self.segment_cdf = []
-        prob = 0
         for segment in self.segments:
             prob += segment.weight
             self.segment_cdf.append(prob)
@@ -1263,12 +1146,6 @@ class Dataset:
         """ Returns the total weight for all segments of given label. """
         tracks = self.tracks_by_label.get(label)
         return sum(track.weight for track in tracks) if tracks else 0
-
-    def get_label_important_count(self, label):
-        """ Returns the total important frames for all tracks of given class. """
-        tracks = self.tracks_by_label.get(label, [])
-        result = sum([len(track.important_frames) for track in tracks])
-        return result
 
     def get_label_segments_count(self, label):
         """ Returns the total weight for all segments of given class. """
@@ -1325,6 +1202,139 @@ class Dataset:
                     self.preloader_queue = None
                 else:
                     thread.exit()
+
+    def resample(self, keep_all, ratio=1.1):
+        if self.original_segments is None:
+            self.original_segments = self.segments
+
+        self.segments = [
+            sample for sample in self.original_segments if sample.label == keep_all
+        ]
+
+        total_size = len(self.segments) * 1.1
+        # labels to samples isn't updated when binarized, but cna be used for finding data labels
+        other_labels = [
+            sample.label
+            for sample in self.original_segments
+            if sample.label != keep_all
+        ]
+        other_labels = set(other_labels)
+        amount_per = int(total_size / len(other_labels))
+        other_labels = list(other_labels)
+        np.random.shuffle(other_labels)
+        for label in other_labels:
+            segments = [
+                sample for sample in self.original_segments if sample.label == label
+            ]
+            take = min(len(segments), amount_per)
+            new_segments = np.random.choice(segments, take, replace=False)
+            self.segments.extend(new_segments)
+            logging.debug("Resample %s taking %s", len(new_segments), label)
+
+    def binarize(
+        self, set_one, lbl_one, set_two=None, lbl_two="other", scale=True, keep_fp=False
+    ):
+        set_one_count = 0
+        self.label_mapping = {}
+        for label in set_one:
+            label_tracks = self.tracks_by_label.get(label, [])
+            segments = sum(len(track.segments) for track in label_tracks)
+            set_one_count += segments
+            self.label_mapping[label] = lbl_one
+
+        if set_two is None:
+            set_two = set(self.labels) - set(set_one)
+
+        # for wallaby testing as the 2 get confused
+        set_two.discard("mustelid")
+        # del self.labels_to_samples["mustelid"]
+        self.labels = [lbl_one, lbl_two]
+
+        if keep_fp:
+            set_two.discard("false-positive")
+            self.label_mapping["false-positive"] = "false-positive"
+            self.labels.append("false-positive")
+
+        set_two_count = 0
+        for label in set_two:
+            label_tracks = self.tracks_by_label.get(label, [])
+            segments = sum(len(track.segments) for track in label_tracks)
+            set_two_count += segments
+            self.label_mapping[label] = lbl_two
+        percent = 1
+        percent2 = 1
+
+        if scale:
+            if set_two_count > set_one_count:
+                percent2 = set_one_count / set_two_count
+                # allow 10% more
+                if self.name != "validation":
+                    percent2 += 0.05
+                percent2 = min(1, percent2)
+            else:
+                percent = set_two_count / set_one_count
+                percent += 0.1
+                percent = min(1, percent)
+            # set_one_cap = set_one_count / len()
+        tracks_by_id, new_segments = self.rebalance(cap_percent=percent, labels=set_one)
+        tracks_by_id2, new_segments2 = self.rebalance(
+            cap_percent=percent2, labels=set_two
+        )
+        self.tracks_by_id = tracks_by_id
+        self.segments = new_segments
+        self.tracks_by_id.update(tracks_by_id2)
+        self.segments.extend(new_segments2)
+        if keep_fp:
+            tracks_by_id3, new_segments3 = self.rebalance(
+                label_cap=int(set_one_count * 0.5), labels=["false-positive"]
+            )
+            self.tracks_by_id.update(tracks_by_id3)
+            self.segments.extend(new_segments3)
+
+    def rebalance(
+        self, label_cap=None, cap_percent=None, exclude=[], labels=None, update=False
+    ):
+        new_segments = []
+        tracks_by_id = {}
+        tracks = []
+        if labels is None:
+            labels = self.labels.copy()
+        for label in labels:
+            label_tracks = self.tracks_by_label.get(label, [])
+            segments = [segment for track in label_tracks for segment in track.segments]
+            # value = self.labels_to_samples.get(label)
+            if not label_tracks:
+                continue
+            track_ids = set()
+
+            if label in exclude:
+                self.labels.remove(label)
+                continue
+
+            np.random.shuffle(segments)
+            if label_cap:
+                segments = segments[:label_cap]
+            if cap_percent:
+                new_length = int(len(segments) * cap_percent)
+                segments = segments[:new_length]
+
+            for track in label_tracks:
+                track.segments = []
+            for segment in segments:
+
+                # track_id = TrackHeader.get_name(
+                #     self.frame_samples[i].clip_id, self.frame_samples[i].track_id
+                # )
+                track_ids.add(segment.track)
+                segment.track.segments.append(segment)
+                tracks_by_id[segment.track.track_id] = segment.track
+                new_segments.append(segment)
+            self.tracks_by_label[label] = list(track_ids)
+        if update:
+
+            self.tracks_by_id = tracks_by_id
+            self.segments = new_segments
+        return tracks_by_id, new_segments
 
 
 # continue to read examples until queue is full
