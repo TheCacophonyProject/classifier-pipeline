@@ -1219,7 +1219,6 @@ class Dataset:
             if sample.label != keep_all
         ]
         other_labels = set(other_labels)
-        print(other_labels)
         amount_per = int(total_size / len(other_labels))
         other_labels = list(other_labels)
         np.random.shuffle(other_labels)
@@ -1326,7 +1325,6 @@ class Dataset:
                 # track_id = TrackHeader.get_name(
                 #     self.frame_samples[i].clip_id, self.frame_samples[i].track_id
                 # )
-                print(segment.track)
                 track_ids.add(segment.track)
                 segment.track.segments.append(segment)
                 tracks_by_id[segment.track.track_id] = segment.track
