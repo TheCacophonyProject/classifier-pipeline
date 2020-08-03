@@ -2,7 +2,8 @@ import os
 import io
 
 import tensorflow as tf
-from tensorboard.plugins import projector
+
+# from tensorboard.plugins import projector
 import numpy as np
 import matplotlib.pyplot as plt
 import os.path
