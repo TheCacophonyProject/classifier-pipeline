@@ -171,7 +171,7 @@ class Model:
         assert set(self.datasets.train.labels).issubset(
             set(self.datasets.validation.labels)
         )
-        assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
+        # assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
 
     @property
     def batch_size(self):
@@ -829,9 +829,9 @@ class Model:
         self.datasets.validation.stop_async_load()
 
     def close(self):
-        """ 
+        """
         Cleans up memory used by model by closing any open sessions or aync loaders.
-        :return: 
+        :return:
         """
         self.session.close()
         self.stop_async()
