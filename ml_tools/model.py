@@ -172,7 +172,7 @@ class Model:
         assert set(self.datasets.train.labels).issubset(
             set(self.datasets.validation.labels)
         )
-        assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
+        # assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
 
     @property
     def batch_size(self):
