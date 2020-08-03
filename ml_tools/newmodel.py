@@ -176,7 +176,7 @@ class NewModel:
         if self.params["lstm"]:
             # not tested
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
-
+            x = tf.keras.layers.Dense(1024, activation="relu")(x)
             # for i in dense_sizes:
             #     x = tf.keras.layers.Dense(i, activation="relu")(x)
 
@@ -627,6 +627,8 @@ class NewModel:
             self.params["lstm_units"], dropout=self.params["keep_prob"]
         )(encoded_frames)
         hidden_layer = tf.keras.layers.Dense(1024, activation="relu")(encoded_sequence)
+        hidden_layer = tf.keras.layers.Dense(512, activation="relu")(hidden_layer)
+
         preds = tf.keras.layers.Dense(
             len(self.datasets.train.labels), activation="softmax"
         )(hidden_layer)
