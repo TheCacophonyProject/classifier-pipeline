@@ -12,8 +12,11 @@ import numpy as np
 from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
-from ml_tools.dataset import Dataset, dataset_db_path, CameraSegments
+from ml_tools.dataset import Dataset, dataset_db_path, Camera
 
+LOW_DATA_LABELS = ["wallaby", "human", "dog"]
+MIN_FRAMES = 1000
+CAP_DATA = True
 
 MIN_BINS = 4
 
@@ -42,6 +45,19 @@ def show_segments_breakdown(dataset):
     for label in dataset.labels:
         count = sum([len(track.segments) for track in dataset.tracks_by_label[label]])
         print("  {:<20} {} segments".format(label, count))
+
+
+def show_important_frames_breakdown(dataset):
+    print("important frames breakdown:")
+    for label in dataset.labels:
+        tracks = dataset.tracks_by_label[label]
+        count = sum(
+            [
+                len(dataset.tracks_by_id[track_id].important_frames)
+                for track_id in tracks
+            ]
+        )
+        print("  {:<20} {} frames".format(label, count))
 
 
 def prefill_bins(
@@ -223,11 +239,11 @@ def print_cameras(train, validation, test):
     print("Cameras per set:")
     print("-" * 90)
     print("Train")
-    print(train.cameras)
+    print(train.camera_names)
     print("Validation")
-    print(validation.cameras)
+    print(validation.camera_names)
     print("Test")
-    print(test.cameras)
+    print(test.camera_names)
 
 
 def print_segments(dataset, train, validation, test):
@@ -261,12 +277,20 @@ def get_previous_validation_bins(filename):
     return test_bins
 
 
-def load_config():
+def load_config(config_file):
+    return Config.load_from_file(config_file)
+
+
+def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
+    parser.add_argument("-d", "--date", help="Use clips after this")
+    parser.add_argument("--dont-cap", action="count", help="Dont cap numbers")
+
     args = parser.parse_args()
-    config = Config.load_from_file(args.config_file)
-    return config
+    if args.date:
+        args.date = parse(args.date)
+    return args
 
 
 def print_data(dataset):
@@ -275,6 +299,114 @@ def print_data(dataset):
             for tag, t_data in enumerate(l_data):
                 for date, d_data in enumerate(t_data):
                     print("{},{},{},{},{}".format(camera, loc, tag, data, len(d_data)))
+
+
+# idea is to try get a bit of all labels in validation set
+# take 1 of the top 4 diverse CameraSegments
+# then pick a missing label and try to find a camera
+# until we either have reached max cameras, or there aren't any labels with less
+# than MIN_FRAMES frames
+def diverse_validation(cameras, labels, max_cameras):
+    val_cameras = []
+    cameras = sorted(
+        cameras, key=lambda camera: len(camera.label_to_bins.keys()), reverse=True
+    )
+    most_diverse_i = np.random.randint(0, 4)
+    most_diverse = cameras[most_diverse_i]
+    del cameras[most_diverse_i]
+    val_cameras.append(most_diverse)
+
+    all_labels = labels.copy()
+    for tag in LOW_DATA_LABELS:
+        if tag in all_labels:
+            all_labels.remove(tag)
+    lbl_counts = {}
+    for label in all_labels:
+        lbl_counts[label] = 0
+    missing_labels = all_labels.copy()
+    for label, count in most_diverse.label_frames.items():
+        lbl_counts[label] = count
+        if count >= MIN_FRAMES:
+            missing_labels.remove(label)
+
+    # randomize camera order so we dont always pick the same cameras
+    np.random.shuffle(cameras)
+
+    missing = len(missing_labels) / len(all_labels)
+    missing_i = 0
+
+    # min label
+    label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
+    while len(val_cameras) <= max_cameras and missing != 0:
+        found = False
+        for i, camera in enumerate(cameras):
+            if label in camera.label_to_bins:
+                val_cameras.append(camera)
+
+                # update validation counts
+                for label, count in camera.label_frames.items():
+                    if label in lbl_counts:
+                        lbl_counts[label] += count
+                    else:
+                        lbl_counts[label] = count
+
+                    if label in missing_labels and lbl_counts[label] > MIN_FRAMES:
+                        missing_labels.remove(label)
+                print(lbl_counts)
+                del cameras[i]
+                missing = len(missing_labels) / len(all_labels)
+                print("missing percent", missing)
+                found = True
+                break
+        if not found:
+            break
+        if len(missing_labels) == 0:
+            break
+        # always add to min label
+        label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
+    print(missing_labels, missing)
+    print(lbl_counts)
+
+    return val_cameras, cameras
+
+
+def split_wallaby_cameras(dataset, cameras):
+    if "Wallaby-None" not in dataset.cameras_by_id:
+        return None, None
+    wallaby = dataset.cameras_by_id["Wallaby-None"]
+    cameras.remove(wallaby)
+
+    wallaby_validate = Camera("Wallaby-2")
+    remove = []
+    last_index = 0
+    wallaby_count = 0
+    total = wallaby.label_frame_count("wallaby")
+    wallaby_validate_frames = max(total * 0.2, MIN_FRAMES)
+    print(
+        "wallaby bins",
+        len(wallaby.label_to_bins["wallaby"]),
+        total,
+        wallaby_validate_frames,
+    )
+    for i, bin_id in enumerate(wallaby.label_to_bins["wallaby"]):
+        bin = wallaby.bins[bin_id]
+        for track in bin:
+            wallaby_count += len(track.important_frames)
+            track.camera = "Wallaby-2"
+            wallaby_validate.add_track(track)
+            wallaby.segments -= 1
+            wallaby.segment_sum -= len(track.segments)
+        remove.append(bin_id)
+        last_index = i
+        if wallaby_count > wallaby_validate_frames:
+            break
+    wallaby.label_to_bins["wallaby"] = wallaby.label_to_bins["wallaby"][
+        last_index + 1 :
+    ]
+    print("wallaby length is now", len(wallaby.label_to_bins["wallaby"]))
+    for bin in remove:
+        del wallaby.bins[bin]
+    return wallaby, wallaby_validate
 
 
 def split_dataset_by_cameras(db, dataset, build_config):
@@ -286,71 +418,30 @@ def split_dataset_by_cameras(db, dataset, build_config):
     train = Dataset(db, "train")
     validation = Dataset(db, "validation")
     test = Dataset(db, "test")
-    camera_count = len(dataset.camera_bins)
-    remaining_cameras = camera_count - test_cameras
-    validation_cameras = max(1, round(remaining_cameras * validation_percent))
-    remaining_cameras -= validation_cameras
-    train_cameras = remaining_cameras
+    train_data = []
+    cameras = list(dataset.cameras_by_id.values())
+    camera_count = len(cameras)
+    validation_cameras = min(5, round(camera_count * validation_percent))
 
     camera_data = dataset.camera_bins
+    wallaby, wallaby_validate = split_wallaby_cameras(dataset, cameras)
+    if wallaby:
+        train_data.append(wallaby)
+    # has all the rabbits so put in training
+    rabbits = dataset.cameras_by_id.get("ruru19w44a-[-36.03915 174.51675]")
+    if rabbits:
+        cameras.remove(rabbits)
+        train_data.append(rabbits)
+    validate_data, cameras = diverse_validation(
+        cameras, dataset.labels, validation_cameras
+    )
+    if wallaby_validate:
+        validate_data.append(wallaby_validate)
 
-    wallaby = camera_data["Wallaby-None"]
-    del camera_data["Wallaby-None"]
-    wallaby_validate = CameraSegments("Wallaby-2")
-    remove = []
-    last_index = 0
-    print("wallaby bins", len(wallaby.label_to_bins["wallaby"]))
-    for i, bin_id in enumerate(wallaby.label_to_bins["wallaby"]):
-        bin = wallaby.bins[bin_id]
-        print("tracks for bin", len(bin), bin_id)
-        for track in bin:
-            wallaby_validate.add_track(track)
-            wallaby.segments -= 1
-            wallaby.segment_sum -= len(track.segments)
-        remove.append(bin_id)
-        last_index = i
-        if wallaby_validate.segments > 100:
-            break
-    wallaby.label_to_bins["wallaby"] = wallaby.label_to_bins["wallaby"][
-        last_index + 1 :
-    ]
-    print("wallaby length is now", len(wallaby.label_to_bins["wallaby"]))
-    for bin in remove:
-        del wallaby.bins[bin]
-
-    # want a test set that covers all labels
-    cameras = list(camera_data.values())
-    # randomize order
-    cameras.sort(key=lambda x: np.random.random_sample())
-    test_i = -1
-    test_data = []
-    most_diverse = None
-    most_diverse_i = None
-
-    for i, camera in enumerate(cameras):
-        if most_diverse is None or len(camera.label_to_bins.keys()) > len(
-            most_diverse.label_to_bins.keys()
-        ):
-            most_diverse = camera
-            most_diverse_i = i
-        if len(camera.label_to_bins.keys()) == len(dataset.labels):
-            test_data.append(camera)
-            test_i = i
-            break
-    assert most_diverse or len(test_data) > 0, "No test camera found with all labels"
-
-    if len(test_data) == 0:
-        test_data.append(most_diverse)
-        test_i = most_diverse_i
-    # assert len(test_data) > 0, "No test camera found with all labels"
-    del cameras[test_i]
-
-    train_data = cameras[:train_cameras]
-    train_data.append(wallaby)
     required_samples = build_config.test_set_count
     required_bins = build_config.test_set_bins
-
-    add_camera_data(
+    print(train_data)
+    add_camera_segments(
         dataset.labels,
         train,
         train_data,
@@ -359,11 +450,9 @@ def split_dataset_by_cameras(db, dataset, build_config):
         build_config.cap_bin_weight,
         build_config.max_segments_per_track,
     )
+    print(validate_data)
 
-    validate_data = cameras[train_cameras : train_cameras + validation_cameras]
-    validate_data.append(wallaby_validate)
-
-    add_camera_data(
+    add_camera_segments(
         dataset.labels,
         validation,
         validate_data,
@@ -372,17 +461,6 @@ def split_dataset_by_cameras(db, dataset, build_config):
         build_config.cap_bin_weight,
         build_config.max_segments_per_track,
     )
-    print("validated")
-    # validation.add_cameras(validate_data)
-    add_camera_data(
-        dataset.labels,
-        test,
-        test_data,
-        required_samples,
-        required_bins,
-        build_config.max_segments_per_track,
-    )
-
     # balance out the classes
     train.balance_weights()
     validation.balance_weights()
@@ -415,15 +493,9 @@ def add_random_camera_samples(
     while num_cameras > 0 and needs_more_bins(
         dataset, label, used_bins, required_samples, required_bins
     ):
+
+        print(sample_set, label)
         camera_i, cam_bins = sample_set[cur_camera]
-        bin_id = random.sample(cam_bins, 1)[0]
-        tracks = camera_data[camera_i].bins[bin_id]
-        dataset.add_tracks(tracks, segments_per_track)
-        dataset.cameras.add(camera_data[camera_i].camera)
-
-        cam_bins.remove(bin_id)
-        used_bins.append(bin_id)
-
         if len(cam_bins) == 0:
             num_cameras -= 1
             del sample_set[cur_camera]
@@ -431,13 +503,20 @@ def add_random_camera_samples(
                 cur_camera %= num_cameras
             continue
 
+        bin_id = random.sample(cam_bins, 1)[0]
+        tracks = camera_data[camera_i].bins[bin_id]
+        dataset.add_tracks(tracks, segments_per_track)
+
+        cam_bins.remove(bin_id)
+        used_bins.append(bin_id)
+
         cur_camera += 1
         cur_camera %= num_cameras
     if num_cameras == 0:
         print("ran out of data for {} dataset {}".format(label, dataset.name))
 
 
-def add_camera_data(
+def add_camera_segments(
     labels,
     dataset,
     cameras,
@@ -463,7 +542,6 @@ def add_camera_data(
                 continue
 
             bins.append((i, camera_data.label_to_bins[label]))
-
         add_random_camera_samples(
             dataset,
             cameras,
@@ -482,10 +560,83 @@ def add_camera_data(
         dataset.balance_bins(max_bin_segments)
 
 
+def add_random_camera_frames(
+    dataset, cameras, label, max_frames,
+):
+    """
+        add random samples from the sample_set to every dataset in
+        fill_datasets until the bin requirements are met
+        Updates the bins in sample_set and used_bins
+        """
+    used_bins = []
+    num_cameras = len(cameras)
+    cur_camera = 0
+    print("max frames for ", label, max_frames)
+    # 1 from each camera, until nothing left
+    while num_cameras > 0 and (
+        max_frames is None or dataset.samples_for(label) < max_frames
+    ):
+        camera = cameras[cur_camera]
+        # bin_id = random.sample(cam_bins, 1)[0]
+        # tracks = camera_data[camera_i].bins[bin_id]
+        track, f = camera.sample_frame(label)
+        if f is not None:
+            dataset.add_track_header_frame(track, f)
+
+        if camera.label_tracks(label) == 0:
+            num_cameras -= 1
+            del cameras[cur_camera]
+            if num_cameras > 0:
+                cur_camera %= num_cameras
+            # print("removed a camera", num_cameras, cur_camera)
+            continue
+
+        cur_camera += 1
+        cur_camera %= num_cameras
+    if num_cameras == 0:
+        print("use all data for {} dataset {}".format(label, dataset.name))
+
+
+def add_camera_frames(
+    labels,
+    dataset,
+    cameras,
+    required_samples,
+    required_bins,
+    cap_bin_weight=None,
+    max_segments_per_track=None,
+    max_frames_per_track=None,
+    dont_limit=["bird"],
+):
+    label_cap, label_data = get_distribution(labels, cameras, max_frames_per_track)
+
+    for label, data in label_data.items():
+        limit = data["max_frames"]
+        if label in dont_limit or not CAP_DATA:
+            limit = None
+            print("dont limit", label)
+        cameras = data["cameras"]
+        add_random_camera_frames(
+            dataset, cameras, label, limit,
+        )
+
+
+def test_dataset(db, config, date):
+    test = FrameDataset(db, "test", config, important_frames=False)
+    tracks_loaded, total_tracks = test.load_tracks(shuffle=True, after_date=date)
+    test.add_tracks()
+    print("Test Loaded {}/{} tracks".format(tracks_loaded, total_tracks,))
+    for key, value in test.filtered_stats.items():
+        if value != 0:
+            print("Test  {} filtered {}".format(key, value))
+
+    return test
+
+
 def main():
     init_logging()
-
-    config = load_config()
+    args = parse_args()
+    config = load_config(args.config_file)
     build_config = config.build
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
     dataset = Dataset(db, "dataset", config)

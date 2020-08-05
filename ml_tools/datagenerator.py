@@ -364,6 +364,24 @@ def preloader(q, load_queue, dataset):
             time.sleep(0.1)
 
 
+def saveimages(X, filename="testimage"):
+    fig = plt.figure(figsize=(100, 100))
+    rows = int(np.ceil(len(X) / 20))
+    for x_i, x_img in enumerate(X):
+        axes = fig.add_subplot(rows, 20, x_i + 1)
+        plt.axis("off")
+        x_img = np.asarray(x_img)
+        if len(x_img.shape) == 2:
+            x_img = x_img[..., np.newaxis]
+            x_img = np.repeat(x_img, 3, axis=2)
+
+        img = plt.imshow(tf.keras.preprocessing.image.array_to_img(x_img))
+        img.set_cmap("hot")
+
+    plt.savefig("{}.png".format(filename), bbox_inches="tight")
+    plt.close(fig)
+
+
 def savebatch(X, y):
     fig = plt.figure(figsize=(48, 48))
     for i in range(len(X)):
@@ -386,4 +404,4 @@ def savebatch(X, y):
     plt.savefig("testimage.png", bbox_inches="tight")
     plt.close(fig)
     print("saved image")
-    raise "DONE"
+    # raise "DONE"

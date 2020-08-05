@@ -1,3 +1,4 @@
+import numpy as np
 import pickle
 from dateutil.parser import parse
 import argparse
@@ -29,7 +30,7 @@ class ModelEvalute:
         logging.info("classifier loading %s", model_file)
 
         self.classifier = NewModel(train_config=self.config.train)
-        self.classifier.load_model(model_file)
+        self.classifier.load_weights(model_file)
 
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
@@ -53,15 +54,19 @@ class ModelEvalute:
             clip_meta = self.db.get_clip_meta(clip_id)
             track_meta = self.db.get_track_meta(clip_id, track_id)
             tag = track_meta.get("tag")
+            if tag != "wallaby":
+                continue
             if not tag:
                 continue
             if labels and tag not in labels:
                 continue
             total += 1
+            print("Classifying clip", clip_id, "track", track_id)
+
             stat = stats.setdefault(tag, {"correct": 0, "incorrect": []})
             track_data = self.db.get_track(clip_id, track_id)
             track_prediction = self.classifier.classify_track(track_id, track_data)
-            print("clip", clip_id, "track", track_id)
+            mean = np.mean(track_prediction.original, axis=0)
             print(
                 "tagged as",
                 tag,
@@ -69,7 +74,10 @@ class ModelEvalute:
                 self.classifier.labels[track_prediction.best_label_index],
                 " accuracy:",
                 round(track_prediction.score(), 2),
+                " rolling average:",
+                mean,
             )
+
             predicted_lbl = self.classifier.labels[track_prediction.best_label_index]
             # if tag != wallaby and predicted_lbl == "not"
             if track_prediction.score() < 0.85:

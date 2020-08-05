@@ -15,6 +15,7 @@ MIN_PERCENT = 0.85
 RES_X = 160
 RES_Y = 120
 EDGE_PIXELS = 1
+UNIFORM_PRIOR = False
 
 
 class Predictions:
@@ -139,6 +140,7 @@ class TrackPrediction:
         self.important_frames = []
         self.clearest_frames = []
         self.best_predictions = []
+        self.original = []
 
     def classified_clip(self, predictions, novelties, last_frame):
         self.last_frame_classified = last_frame
@@ -149,12 +151,16 @@ class TrackPrediction:
         self.max_novelty = max(self.novelties)
         self.novelty_sum = sum(self.novelties)
 
-    def classified_frame(self, frame_number, prediction, novelty=0):
+    def classified_frame(self, frame_number, prediction, novelty=0, smooth=True):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
+        self.original.append(prediction)
+        if smooth:
+            prediction, novelty = self.smooth_prediction(prediction, novelty)
         if novelty:
             self.max_novelty = max(self.max_novelty, novelty)
             self.novelty_sum += novelty
+
         if self.keep_all:
             # if len(self.predictions) == 1:
             # print(self.predictions[0])
@@ -172,6 +178,30 @@ class TrackPrediction:
             self.class_best_score = prediction
         else:
             self.class_best_score = np.maximum(self.class_best_score, prediction)
+
+    def smooth_prediction(self, prediction, novelty):
+        prediction_smooth = 0.1
+        smooth_novelty = None
+        prev_prediction = None
+        if len(self.predictions):
+            prev_prediction = self.predictions[-1]
+        num_labels = len(prediction)
+        if prev_prediction is None:
+            if UNIFORM_PRIOR:
+                smooth_prediction = np.ones([num_labels]) * (1 / num_labels)
+            else:
+                smooth_prediction = prediction
+            if novelty:
+                smooth_novelty = 0.5
+        else:
+            smooth_prediction = (
+                1 - prediction_smooth
+            ) * prev_prediction + prediction_smooth * prediction
+            if novelty:
+                smooth_novelty = (
+                    1 - prediction_smooth
+                ) * smooth_novelty + prediction_smooth * novelty
+        return smooth_prediction, smooth_novelty
 
     def get_priority(self, frame_number):
         skipepd_frames = frame_number - self.last_frame_classified

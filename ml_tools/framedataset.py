@@ -558,7 +558,7 @@ class FrameDataset:
 
     def resample(self, keep_all, ratio=1.1):
         if self.original_samples is None:
-            self.original_samples = self.frame_samples.copy()
+            self.original_samples = self.frame_samples
 
         self.frame_samples = [
             sample for sample in self.original_samples if sample.label == keep_all
@@ -583,7 +583,14 @@ class FrameDataset:
             logging.debug("Resample %s taking %s", len(new_samples), label)
 
     def binarize(
-        self, set_one, lbl_one, set_two=None, lbl_two="other", scale=True, keep_fp=False
+        self,
+        set_one,
+        lbl_one,
+        set_two=None,
+        lbl_two="other",
+        scale=True,
+        keep_fp=False,
+        remove_label=None,
     ):
         set_one_count = 0
         self.label_mapping = {}
@@ -593,10 +600,12 @@ class FrameDataset:
 
         if set_two is None:
             set_two = set(self.labels) - set(set_one)
-
-        # for wallaby testing as the 2 get confused
-        set_two.discard("mustelid")
-        del self.labels_to_samples["mustelid"]
+        if remove_labels:
+            for label in remove_labsl:
+                set_two.discard(label)
+                set_one.discard(label)
+                if label in self.labels_to_samples:
+                    del self.labels_to_samples[label]
         self.labels = [lbl_one, lbl_two]
 
         if keep_fp:
@@ -681,6 +690,32 @@ class FrameDataset:
     def get_label_frames_count(self, label):
         """ Returns the total important frames for all tracks of given class. """
         return len(self.labels_to_samples.get(label, []))
+
+    def show_predicted_stats(self):
+        tracks = self.db.get_all_track_ids()
+        labels = list(self.db.get_labels())
+        mustelid = labels.index("mustelid")
+        stats = {}
+        for track in tracks:
+            meta = self.db.get_track_meta(track[0], track[1])
+            tag = meta.get("tag", None)
+            if tag is None:
+                continue
+            stat = stats.setdefault(tag, {"correct": 0, "wrong": {}, "total": 0})
+            predictions = self.db.get_track_predictions(track[0], track[1])
+            # print(np.max(predictions,axis=0))
+            max_i = np.argmax(np.max(predictions, axis=0))
+            # print(max_i)
+            # print(labels)
+            predicted = labels[max_i]
+            stat["total"] += 1
+            if predicted == tag:
+                stat["correct"] += 1
+            else:
+                stat["wrong"].setdefault(predicted, 0)
+                stat["wrong"][predicted] += 1
+
+        print(stats)
 
 
 def get_cropped_fraction(region: tools.Rectangle, width, height):

@@ -7,7 +7,12 @@ import logging
 from tensorboard.plugins.hparams import api as hp
 
 from collections import namedtuple
-from ml_tools.datagenerator import DataGenerator, preprocess_frame
+from ml_tools.datagenerator import (
+    DataGenerator,
+    preprocess_frame,
+    preprocess_lstm,
+    saveimages,
+)
 import numpy as np
 import os
 import time
@@ -30,10 +35,6 @@ HP_LEARNING_RATE = hp.HParam(
 )
 
 METRIC_ACCURACY = "accuracy"
-
-validate = None
-model = None
-file_writer_cm = None
 
 
 class NewModel:
@@ -174,12 +175,10 @@ class NewModel:
         x = base_model(inputs, training=self.params["base_training"])  # IMPORTANT
 
         if self.params["lstm"]:
-            # not tested
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
-            x = tf.keras.layers.Dense(1024, activation="relu")(x)
-            # for i in dense_sizes:
-            #     x = tf.keras.layers.Dense(i, activation="relu")(x)
-
+            for i in dense_sizes:
+                x = tf.keras.layers.Dense(i, activation="relu")(x)
+            # gp not sure how many should be pre lstm, and how many post
             cnn = tf.keras.models.Model(inputs, outputs=x)
 
             self.model = self.add_lstm(cnn)
@@ -193,14 +192,10 @@ class NewModel:
 
         if self.params.get("retrain_layer") is not None:
             for i, layer in enumerate(base_model.layers):
-                print(i, layer.name)
-
                 if layer.name.endswith("_bn"):
                     # apparently this shouldn't matter as we set base_training = False
                     layer.trainable = False
-                    # layer.momentum = 0.9
-
-                    print("dont train", i, layer.name)
+                    logging.debug("dont train %s %s", i, layer.name)
                 else:
                     layer.trainable = i >= self.params["retrain_layer"]
         else:
@@ -211,14 +206,13 @@ class NewModel:
         self.model.compile(
             optimizer=self.optimizer(), loss=self.loss(), metrics=["accuracy"],
         )
-        global model
-        model = self.model
 
     def loss(self):
         softmax = tf.keras.losses.CategoricalCrossentropy(
             label_smoothing=self.params["label_smoothing"],
         )
-        return softmax
+        losses = dict(pred=softmax)
+        return losses
 
     def optimizer(self):
         if self.params["learning_rate_decay"] != 1.0:
@@ -235,23 +229,18 @@ class NewModel:
         optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
         return optimizer
 
-    def load_weights(self, file, meta=True):
+    def load_weights(self, dir, meta=True):
+
+        if meta:
+            self.load_meta(dir)
         if not self.model:
             self.build_model()
-        self.model.load_weights(file)
-        if meta:
-            self.load_meta(os.path.basename(file))
-        print("loading weights", file)
+        self.model.load_weights(dir + "/variables/variables")
 
     def load_model(self, dir):
         self.model = tf.keras.models.load_model(dir)
         self.load_meta(dir)
-        # base_model = tf.keras.applications.ResNet50V2(
-        #     weights="imagenet", include_top=False
-        # )
-        # base_model.summary()
-        # for i, layer in enumerate(base_model.layers):
-        #     print(i, layer.name)
+        self.model.summary()
 
     def load_meta(self, dir):
         meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
@@ -314,7 +303,6 @@ class NewModel:
             load_threads=self.params.get("train_load_threads", 1),
             resample=True,
         )
-        global validate
         self.validate = DataGenerator(
             self.datasets.validation,
             self.datasets.train.labels,
@@ -328,12 +316,13 @@ class NewModel:
             epochs=epochs,
             load_threads=1,
         )
-        validate = self.validate
-        cm_callback = tf.keras.callbacks.LambdaCallback(
-            on_epoch_end=log_confusion_matrix
-        )
-        global file_writer_cm
         file_writer_cm = tf.summary.create_file_writer(self.log_dir + "/cm")
+
+        cm_callback = tf.keras.callbacks.LambdaCallback(
+            on_epoch_end=lambda epoch, logs: log_confusion_matrix(
+                epoch, logs, self.model, self.validate, file_writer_cm
+            )
+        )
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
@@ -365,9 +354,9 @@ class NewModel:
             )
             test_accuracy = self.model.evaluate(test)
             test.stop_load()
-
             logging.info("Test accuracy is %s", test_accuracy)
         self.save(run_name, history=history, test_results=test_accuracy)
+
         for key, value in history.history.items():
             plt.figure()
             plt.plot(value, label="Training {}".format(key))
@@ -407,50 +396,31 @@ class NewModel:
         data = np.repeat(data, 3, axis=2)
         return data
 
-    def preprocess_old(self, frame):
-        frame = [
-            frame[0, :, :],
-            frame[1, :, :],
-            frame[4, :, :],
-        ]
-
-        frame = np.transpose(frame, (1, 2, 0))
-        frame = frame[
-            np.newaxis,
-        ]
-
-    def classify_frameold(self, frame):
-        frame = [
-            frame[0, :, :],
-            frame[1, :, :],
-            frame[4, :, :],
-        ]
-
-        frame = np.transpose(frame, (1, 2, 0))
-        frame = frame[
-            np.newaxis,
-        ]
-        # print(frame.shape)
-
-        output = self.model.predict(frame)
-        # print(output)
-        return output[0]
-
     def classify_frame(self, frame, preprocess=True):
 
         if preprocess:
-            frame = preprocess_frame(
-                frame,
-                (self.frame_size, self.frame_size, 3),
-                self.params.get("use_thermal", True),
-                augment=False,
-                preprocess_fn=self.preprocess_fn,
-            )
-        # if NewModel.plt_i < 41:
-        #     axes = NewModel.fig.add_subplot(4, 10, NewModel.plt_i)
-        #     plt.imshow(tf.keras.preprocessing.image.array_to_img(frame))
-        #
-        #     NewModel.plt_i += 1
+            if self.lstm:
+                median = []
+                for f in frame:
+                    median.append(np.median(f[0]))
+
+                data = Preprocessor.apply(frame, median, default_inset=0,)
+                data = preprocess_lstm(
+                    data,
+                    (self.frame_size, self.frame_size, 3),
+                    self.params.get("use_thermal", True),
+                    augment=False,
+                    preprocess_fn=self.preprocess_fn,
+                )
+                frame = data
+            else:
+                frame = preprocess_frame(
+                    frame,
+                    (self.frame_size, self.frame_size, 3),
+                    self.params.get("use_thermal", True),
+                    augment=False,
+                    preprocess_fn=self.preprocess_fn,
+                )
         output = self.model.predict(frame[np.newaxis, :])
         return output[0]
 
@@ -463,7 +433,6 @@ class NewModel:
         self.datasets.test.binarize(["wallaby"], lbl_one="wallaby", lbl_two="Not")
 
         self.set_labels()
-        print(self.labels)
 
     def rebalance(self, train_cap=1000, validate_cap=500, exclude=[], update=True):
         # set samples of each label to have a maximum cap, and exclude labels
@@ -621,45 +590,65 @@ class NewModel:
         )
 
     def add_lstm(self, cnn):
-        input_layer = tf.keras.Input(shape=(27, self.frame_size, self.frame_size, 3))
+        # with tf.variable_scope("state"):
+        # zero_state = tf.zeros(
+        #     shape=[self.params["batch_size"], self.params["lstm_units"], 2],
+        #     dtype=tf.float32,
+        # )
+        # self.state_in = tf.compat.v1.placeholder_with_default(
+        #     input=zero_state,
+        #     shape=[None, self.params["lstm_units"], 2],
+        #     name="state_in",
+        # )
+        # init_state = (self.state_in[:, :, 0], self.state_in[:, :, 1])
+
+        input_layer = tf.keras.Input(shape=(None, self.frame_size, self.frame_size, 3))
         encoded_frames = tf.keras.layers.TimeDistributed(cnn)(input_layer)
-        encoded_sequence = tf.keras.layers.LSTM(
-            self.params["lstm_units"], dropout=self.params["keep_prob"]
+        lstm_outputs = tf.keras.layers.LSTM(
+            self.params["lstm_units"],
+            dropout=self.params["keep_prob"],
+            return_state=False,
         )(encoded_frames)
-        hidden_layer = tf.keras.layers.Dense(1024, activation="relu")(encoded_sequence)
+
+        hidden_layer = tf.keras.layers.Dense(1024, activation="relu")(lstm_outputs)
         hidden_layer = tf.keras.layers.Dense(512, activation="relu")(hidden_layer)
 
         preds = tf.keras.layers.Dense(
-            len(self.datasets.train.labels), activation="softmax"
+            len(self.labels), activation="softmax", name="pred"
         )(hidden_layer)
+        model = tf.keras.models.Model(input_layer, preds)
+        return model
 
-        return tf.keras.models.Model(input_layer, preds)
-
-    def lstm(self, inputs):
-        lstm_cell = tf.keras.layers.LSTMCell(
-            self.params["lstm_units"], dropout=self.params["keep_prob"]
-        )
-        rnn = tf.keras.layers.RNN(
-            lstm_cell,
-            return_sequences=True,
-            return_state=True,
-            dtype=tf.float32,
-            unroll=False,
-        )
-        # whole_seq_output, final_memory_state, final_carry_state = rnn(inputs)
-        lstm_outputs, lstm_state_1, lstm_state_2 = rnn(inputs)
-
-        lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
-        lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-        return lstm_output, lstm_state
+    #
+    # def lstm(self, inputs):
+    #     lstm_cell = tf.keras.layers.LSTMCell(
+    #         self.params["lstm_units"], dropout=self.params["keep_prob"]
+    #     )
+    #     rnn = tf.keras.layers.RNN(
+    #         lstm_cell,
+    #         return_sequences=True,
+    #         return_state=True,
+    #         dtype=tf.float32,
+    #         unroll=False,
+    #     )
+    #     # whole_seq_output, final_memory_state, final_carry_state = rnn(inputs)
+    #     lstm_outputs, lstm_state_1, lstm_state_2 = rnn(inputs)
+    #
+    #     lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
+    #     lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
+    #     return lstm_output, lstm_state
 
     def classify_track(self, track_id, data, keep_all=True):
         track_prediction = TrackPrediction(track_id, 0, keep_all)
-        for i, frame in enumerate(data):
-            prediction = self.classify_frame(frame)
+        if self.lstm:
+            prediction = self.classify_frame(data)
             track_prediction.classified_frame(i, prediction, None)
-        # plt.savefig("testimage.png")
-        # plt.close(NewModel.fig)
+
+        else:
+            for i, frame in enumerate(data):
+                prediction = self.classify_frame(frame)
+                track_prediction.classified_frame(i, prediction, None)
+
         return track_prediction
 
     def evaluate(self, dataset):
@@ -713,7 +702,7 @@ def plot_confusion_matrix(cm, class_names):
     return figure
 
 
-def log_confusion_matrix(epoch, logs):
+def log_confusion_matrix(epoch, logs, model, validate, writer):
     # Use the model to predict the values from the validation dataset.
     x, y = validate.get_data()
     test_pred_raw = model.predict(x)
@@ -726,7 +715,7 @@ def log_confusion_matrix(epoch, logs):
     cm_image = plot_to_image(figure)
 
     # Log the confusion matrix as an image summary.
-    with file_writer_cm.as_default():
+    with writer.as_default():
         tf.summary.image("Confusion Matrix", cm_image, step=epoch)
 
 
