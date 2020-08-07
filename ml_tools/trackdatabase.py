@@ -314,9 +314,9 @@ class TrackDatabase:
                     if track not in special_datasets:
                         result.append((clip_id, track))
                 i += 1
-                if i > 300:
-                    pass
-                    # break
+                if i > 100:
+                    # pass
+                    break
         return result
 
     def get_track_meta(self, clip_id, track_number):

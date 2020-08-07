@@ -29,12 +29,14 @@ class DataGenerator(keras.utils.Sequence):
         lstm=False,
         use_thermal=False,
         use_filtered=False,
-        buffer_size=64,
+        buffer_size=128,
         epochs=10,
         load_threads=1,
         preload=True,
         resample=False,
+        balance_labels=True,
     ):
+        self.balance_labels = balance_labels
         self.resample = resample
 
         self.labels = labels
@@ -52,11 +54,7 @@ class DataGenerator(keras.utils.Sequence):
 
         if self.lstm:
             self.sequence_size = sequence_size
-            self.size = dataset.rows
-        else:
-            self.size = len(dataset.frame_samples)
-
-        self.indexes = np.arange(self.size)
+        self.samples = None
         self.shuffle = shuffle
         self.n_classes = len(self.labels)
         self.n_channels = n_channels
@@ -65,11 +63,11 @@ class DataGenerator(keras.utils.Sequence):
 
         self.preload = preload
         if self.preload:
-            self.load_queue = multiprocessing.Queue(len(self) + 1)
+            self.load_queue = multiprocessing.Queue()
         self.on_epoch_end(load=preload)
-
         if self.preload:
             self.preloader_queue = multiprocessing.Queue(buffer_size)
+            print("buffer", buffer_size)
             self.preloader_stop_flag = False
 
             self.preloader_threads = [
@@ -95,18 +93,18 @@ class DataGenerator(keras.utils.Sequence):
 
     # get all data
     def get_data(self, catog=False):
-        X, y, _ = self._data(self.indexes, to_categorical=catog)
+        X, y, _ = self._data(self.samples, to_categorical=catog)
         return X, y
 
     def __len__(self):
         "Denotes the number of batches per epoch"
 
-        return int(np.floor(self.dataset.rows / self.batch_size))
+        return int(len(self.samples) / self.batch_size)
 
     def loadbatch(self, index):
         start = time.time()
-        indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
-        X, y, clips = self._data(indexes)
+        samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
+        X, y, clips = self._data(samples)
         logging.debug("Time to get data %s", time.time() - start)
 
         return X, y
@@ -124,10 +122,12 @@ class DataGenerator(keras.utils.Sequence):
         "Updates indexes after each epoch"
         if self.resample:
             self.dataset.resample("wallaby")
-            self.size = len(self.dataset.segments)
-            self.indexes = np.arange(self.dataset.rows)
+
+        self.samples = self.dataset.epoch_samples(
+            replace=False, balance_labels=self.balance_labels
+        )
         if self.shuffle:
-            np.random.shuffle(self.indexes)
+            np.random.shuffle(self.samples)
         if load:
             # for some reason it always requests 0 twice
             self.load_queue.put(0)
@@ -136,15 +136,15 @@ class DataGenerator(keras.utils.Sequence):
 
         self.cur_epoch += 1
 
-    def _data(self, indexes, to_categorical=True):
+    def _data(self, samples, to_categorical=True):
         "Generates data containing batch_size samples"  # X : (n_samples, *dim, n_channels)
         # Initialization
         if self.lstm:
-            X = np.empty((len(indexes), self.sequence_size, *self.dim))
+            X = np.empty((len(samples), self.sequence_size, *self.dim))
         else:
-            X = np.empty((len(indexes), *self.dim))
+            X = np.empty((len(samples), *self.dim))
 
-        y = np.empty((len(indexes)), dtype=int)
+        y = np.empty((len(samples)), dtype=int)
         clips = []
         if self.use_thermal:
             channels = TrackChannels.thermal
@@ -152,18 +152,17 @@ class DataGenerator(keras.utils.Sequence):
             channels = TrackChannels.filtered
         # Generate data
         data_i = 0
-        for index in indexes:
-            segment_i = index
+        for sample in samples:
             if self.lstm:
-                segment = self.dataset.segments[index]
-                data = self.dataset.fetch_segment(segment, augment=self.augment)
+                data = self.dataset.fetch_segment(sample, augment=self.augment)
                 if self.dataset.label_mapping:
-                    label = self.dataset.label_mapping[segment.label]
+                    label = self.dataset.label_mapping[sample.label]
                 else:
-                    label = segment.label
-                frame = segment
+                    label = sample.label
+                frame = sample
             else:
-                frame = self.dataset.frame_samples[segment_i]
+                frame = sample
+                # self.dataset.frame_samples[segment_i]
                 data, label = self.dataset.fetch_frame(frame, channels=channels)
             if label not in self.labels:
                 continue
@@ -186,7 +185,6 @@ class DataGenerator(keras.utils.Sequence):
                     filter_channels=False,
                 )
             if data is None:
-                data = self.dataset.fetch_segment(segment, augment=self.augment)
                 # logging.error(
                 #     "error pre processing frame (i.e.max and min are the same) clip %s track %s frame %s",
                 #     frame.clip_id,

@@ -7,7 +7,7 @@ Dataset used for training a tensorflow model from track data.
 Tracks are broken into segments.  Filtered, and then passed to the trainer using a weighted random sample.
 
 """
-
+import random
 import logging
 import math
 import multiprocessing
@@ -222,9 +222,9 @@ class TrackHeader:
         """ Returns total weight for all segments in this track"""
         return sum(segment.weight for segment in self.segments)
 
-    @staticmethod
-    def get_name(clip_id, track_id):
-        return str(clip_id) + "-" + str(track_id)
+    @property
+    def unique_id(self):
+        return "{}-{}".format(self.clip_id, self.track_id)
 
     @staticmethod
     def from_meta(clip_id, clip_meta, track_meta, predictions=None):
@@ -269,12 +269,14 @@ class TrackHeader:
         return header
 
     def __repr__(self):
-        return self.bin_id
+        return self.unique_id
 
 
 class Camera:
     def __init__(self, camera):
         self.label_to_bins = {}
+        self.label_to_tracks = {}
+
         self.bins = {}
         self.camera = camera
         self.bin_segment_sum = {}
@@ -303,23 +305,39 @@ class Camera:
 
         return track, f
 
-    def label_frame_count(self, label, max_frames_per_track=None):
-        if label not in self.label_to_bins:
+    def label_segment_count(
+        self, label, max_segments_per_track=None,
+    ):
+        if label not in self.label_to_tracks:
             return 0
-        bins = self.label_to_bins[label]
+        tracks = self.label_to_tracks[label].values()
         frames = 0
-        for bin in bins:
-            tracks = self.bins[bin]
-            for track in tracks:
-                if max_frames_per_track:
-                    frames += max(len(track.important_frames), max_frames_per_track)
-                else:
-                    frames += len(track.important_frames)
+        for track in tracks:
+            if max_segments_per_track:
+                frames += max(len(track.segments), max_segments_per_track)
+            else:
+                frames += len(track.segments)
+
+        return frames
+
+    def label_frame_count(
+        self, label, max_frames_per_track=None,
+    ):
+        if label not in self.label_to_tracks:
+            return 0
+        tracks = self.label_to_tracks[label].values()
+        frames = 0
+        for track in tracks:
+            if max_frames_per_track:
+                frames += max(len(track.important_frames), max_frames_per_track)
+            else:
+                frames += len(track.important_frames)
 
         return frames
 
     def add_track(self, track_header):
-
+        tracks = self.label_to_tracks.setdefault(track_header.label, {})
+        tracks[track_header.unique_id] = track_header
         if track_header.bin_id not in self.bins:
             self.bins[track_header.bin_id] = []
             self.bin_segment_sum[track_header.bin_id] = 0
@@ -615,9 +633,11 @@ class Dataset:
 
         # cumulative distribution function for segments.  Allows for super fast weighted random sampling.
         self.segment_cdf = []
-
+        self.cdf_by_label = {}
         # segments list
         self.segments = []
+        self.segments_by_label = {}
+
         self.frame_samples = []
         self.clips_to_samples = {}
         self.labels_to_samples = {}
@@ -737,7 +757,7 @@ class Dataset:
 
             return np.asarray(batch_X), np.asarray(batch_y)
 
-        segments = [self.sample_segment() for _ in range(n)]
+        segments = self.sample_segments(n)
 
         batch_X = []
         batch_y = []
@@ -815,7 +835,7 @@ class Dataset:
         """
 
         # make sure we don't already have this track
-        if TrackHeader.get_name(clip_id, track_id) in self.tracks_by_bin:
+        if "{}-{}".format(clip_id, track_id) in self.tracks_by_bin:
             return False
 
         clip_meta = self.db.get_clip_meta(clip_id)
@@ -847,8 +867,6 @@ class Dataset:
             "segment_mass"
         ]
         self.segments.extend(track_header.segments)
-        if track_header.label not in self.labels:
-            self.labels.append(track_header.label)
         self.add_track_to_mappings(track_header)
 
         return True
@@ -901,10 +919,12 @@ class Dataset:
         bins.append(track_header)
 
         if track_header.label not in self.tracks_by_label:
+
             self.labels.append(track_header.label)
             self.tracks_by_label[track_header.label] = []
         self.tracks_by_label[track_header.label].append(track_header)
-
+        segs = self.segments_by_label.setdefault(track_header.label, [])
+        segs.extend(track_header.segments)
         camera = self.cameras_by_id.setdefault(
             track_header.camera_id, Camera(track_header.camera_id)
         )
@@ -1038,13 +1058,48 @@ class Dataset:
 
         return data
 
-    def sample_segment(self):
+    def epoch_samples(self, dont_cap=None, replace=True, balance_labels=True):
+        labels = self.labels
+        segments = []
+        if dont_cap:
+            for label in dont_cap:
+                if label in labels:
+                    count = len(self.segments_by_label.get(label, []))
+                    new = self.sample_segments(count, replace=replace, label=label)
+                if new is not None:
+                    segments.extend(new)
+
+        chance = 1 / len(self.labels)
+        label_cap = int(chance * len(self.segments))
+        for label in labels:
+            count = min(label_cap, len(self.segments_by_label.get(label, [])))
+            new = self.sample_segments(count, replace=replace, label=label)
+            if new is not None:
+                segments.extend(new)
+        if self.important_frames:
+            pass
+        else:
+            pass
+        return segments
+
+    def sample_segments(self, count, replace=True, label=None):
         """ Returns a random segment from weighted list. """
-        if not self.segments:
+        if label:
+            segments = self.segments_by_label.get(label, [])
+            cdf = self.cdf_by_label.get(label, [])
+            print(
+                "get count",
+                self.name,
+                count,
+                label,
+                set([seg.track for seg in segments]),
+            )
+        else:
+            segments = self.segments
+            cdf = self.segment_cdf
+        if not segments:
             return None
-        roll = random.random()
-        index = bisect(self.segment_cdf, roll)
-        return self.segments[index]
+        return np.random.choice(segments, count, replace=replace, p=cdf)
 
     def load_all(self, force=False):
         """ Loads all X and y into dataset if required. """
@@ -1081,7 +1136,57 @@ class Dataset:
 
         self.rebuild_cdf()
 
-    def balance_bins(self, max_bin_weight):
+    def balance_labels(self, labels=None, exclude_labels=None, high_tracks_first=False):
+        if labels is None:
+            labels = self.labels
+        if exclude_labels:
+            for label in exclude_labels:
+                if label in labels:
+                    labels.remove(label)
+        chance = 1 / len(self.labels)
+        label_cap = chance * len(self.segments)
+        for label in labels:
+            label_tracks = self.tracks_by_label.get(label, [])
+            label_segments = sum([len(track.segments) for track in label_tracks])
+            remove = label_segments - label_cap
+            removed = 0
+            if high_tracks_first:
+                tracks_by_segments = {}
+                for track in label_tracks:
+                    seg_tracks = tracks_by_segments.setdefault(len(track.segments), [])
+                    seg_tracks.append(track)
+                seg_counts = list(tracks_by_segments.keys())
+                seg_counts.sort(reverse=True)
+
+            while removed < remove:
+                if high_tracks_first:
+                    seg_count = seg_counts[0]
+                    high_tracks = tracks_by_segments[seg_count]
+                    track = random.choice(high_tracks)
+                    high_tracks.remove(track)
+                    seg_tracks = tracks_by_segments.setdefault(seg_count - 1, [])
+                    seg_tracks.append(track)
+                    insert_at = 1
+                    if len(high_tracks) == 0:
+                        insert_at = 0
+                        del seg_counts[0]
+                    if len(seg_tracks) == 1:
+                        seg_counts.insert(insert_at, seg_count - 1)
+                else:
+                    track = np.random.choice(label_tracks)
+                if len(track.segments) == 0:
+                    label_tracks.remove(track)
+                    continue
+                seg = random.choice(track.segments)
+                track.segments.remove(seg)
+                self.segments.remove(seg)
+                self.segments_by_label[label].remove(seg)
+                if len(track.segments) == 0:
+                    label_tracks.remove(track)
+
+                removed += 1
+
+    def balance_bins(self, max_bin_weight=None):
         """
         Adjusts weights so that bins with a number number of segments aren't sampled so frequently.
         :param max_bin_weight: bins with more weight than this number will be scaled back to this weight.
@@ -1089,11 +1194,18 @@ class Dataset:
 
         for bin_name, tracks in self.tracks_by_bin.items():
             bin_weight = sum(track.weight for track in tracks)
-            if bin_weight > max_bin_weight:
+            if bin_weight == 0:
+                continue
+            if max_bin_weight is None:
+                scale_factor = 1 / bin_weight
+                # means each bin has equal possiblity
+            elif bin_weight > max_bin_weight:
                 scale_factor = max_bin_weight / bin_weight
-                for track in tracks:
-                    for segment in track.segments:
-                        segment.weight *= scale_factor
+            else:
+                scale_factor = 1
+            for track in tracks:
+                for segment in track.segments:
+                    segment.weight *= scale_factor
 
         self.rebuild_cdf()
 
@@ -1232,13 +1344,19 @@ class Dataset:
     def rebuild_cdf(self):
         """ Calculates the CDF used for fast random sampling """
         self.segment_cdf = []
-        prob = 0
+        total = 0
         for segment in self.segments:
-            prob += segment.weight
-            self.segment_cdf.append(prob)
+            total += segment.weight
+            self.segment_cdf.append(segment.weight)
+            cdf = self.cdf_by_label.setdefault(segment.label, [])
+            cdf.append(segment.weight)
         if len(self.segment_cdf) > 0:
-            normalizer = self.segment_cdf[-1]
-            self.segment_cdf = [x / normalizer for x in self.segment_cdf]
+            # normalizer = self.segment_cdf[-1]
+            self.segment_cdf = [x / total for x in self.segment_cdf]
+        for key, cdf in self.cdf_by_label.items():
+            total = sum(cdf)
+            # print("sum is", total, cdf)
+            self.cdf_by_label[key] = [x / total for x in cdf]
 
     def get_label_weight(self, label):
         """ Returns the total weight for all segments of given label. """
@@ -1337,11 +1455,12 @@ class Dataset:
         lbl_two="other",
         scale=True,
         keep_fp=False,
-        remove_label=None,
+        remove_labels=None,
     ):
         set_one_count = 0
         self.label_mapping = {}
         for label in set_one:
+
             label_tracks = self.tracks_by_label.get(label, [])
             segments = sum(len(track.segments) for track in label_tracks)
             set_one_count += segments
@@ -1350,7 +1469,7 @@ class Dataset:
         if set_two is None:
             set_two = set(self.labels) - set(set_one)
         if remove_labels:
-            for label in remove_labsl:
+            for label in remove_labels:
                 set_two.discard(label)
         self.labels = [lbl_one, lbl_two]
 
