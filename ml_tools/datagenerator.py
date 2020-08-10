@@ -33,11 +33,9 @@ class DataGenerator(keras.utils.Sequence):
         epochs=10,
         load_threads=1,
         preload=True,
-        resample=False,
         balance_labels=True,
     ):
         self.balance_labels = balance_labels
-        self.resample = resample
 
         self.labels = labels
         self.model_preprocess = model_preprocess
@@ -67,7 +65,6 @@ class DataGenerator(keras.utils.Sequence):
         self.on_epoch_end(load=preload)
         if self.preload:
             self.preloader_queue = multiprocessing.Queue(buffer_size)
-            print("buffer", buffer_size)
             self.preloader_stop_flag = False
 
             self.preloader_threads = [
@@ -93,7 +90,7 @@ class DataGenerator(keras.utils.Sequence):
 
     # get all data
     def get_data(self, catog=False):
-        X, y, _ = self._data(self.samples, to_categorical=catog)
+        X, y = self._data(self.samples, to_categorical=catog)
         return X, y
 
     def __len__(self):
@@ -104,7 +101,7 @@ class DataGenerator(keras.utils.Sequence):
     def loadbatch(self, index):
         start = time.time()
         samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
-        X, y, clips = self._data(samples)
+        X, y = self._data(samples)
         logging.debug("Time to get data %s", time.time() - start)
 
         return X, y
@@ -118,14 +115,14 @@ class DataGenerator(keras.utils.Sequence):
             X, y = self.loadbatch(index)
         return X, y
 
+    def reload_epoch(self):
+        self.load_queue.put(0)
+        for i in range(len(self)):
+            self.load_queue.put(i)
+
     def on_epoch_end(self, load=True):
         "Updates indexes after each epoch"
-        if self.resample:
-            self.dataset.resample("wallaby")
-
-        self.samples = self.dataset.epoch_samples(
-            replace=False, balance_labels=self.balance_labels
-        )
+        self.samples = self.dataset.epoch_samples(replace=False)
         if self.shuffle:
             np.random.shuffle(self.samples)
         if load:
@@ -145,7 +142,6 @@ class DataGenerator(keras.utils.Sequence):
             X = np.empty((len(samples), *self.dim))
 
         y = np.empty((len(samples)), dtype=int)
-        clips = []
         if self.use_thermal:
             channels = TrackChannels.thermal
         else:
@@ -153,17 +149,10 @@ class DataGenerator(keras.utils.Sequence):
         # Generate data
         data_i = 0
         for sample in samples:
-            if self.lstm:
-                data = self.dataset.fetch_segment(sample, augment=self.augment)
-                if self.dataset.label_mapping:
-                    label = self.dataset.label_mapping[sample.label]
-                else:
-                    label = sample.label
-                frame = sample
-            else:
-                frame = sample
-                # self.dataset.frame_samples[segment_i]
-                data, label = self.dataset.fetch_frame(frame, channels=channels)
+            data, label = self.dataset.fetch_sample(
+                sample, augment=self.augment, channels=channels
+            )
+
             if label not in self.labels:
                 continue
             if self.lstm:
@@ -185,24 +174,21 @@ class DataGenerator(keras.utils.Sequence):
                     filter_channels=False,
                 )
             if data is None:
-                # logging.error(
-                #     "error pre processing frame (i.e.max and min are the same) clip %s track %s frame %s",
-                #     frame.clip_id,
-                #     frame.track_id,
-                #     frame.frame_num,
-                # )
+                logging.error(
+                    "error pre processing frame (i.e.max and min are the same)sample %s",
+                    sample,
+                )
                 continue
 
             X[data_i,] = data
             y[data_i] = self.labels.index(label)
-            clips.append(frame)
             data_i += 1
         # print(data_i, len(y), len(y[:data_i]))
         X = X[:data_i]
         y = y[:data_i]
         if to_categorical:
             y = keras.utils.to_categorical(y, num_classes=self.n_classes)
-        return X, y, clips
+        return X, y
 
 
 def resize(image, dim):

@@ -39,6 +39,10 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None):
     #
 
     model.import_dataset(datasets_filename)
+    model.binarize(
+        set_one=["wallaby"], label_one="wallaby", set_two=None, label_two="Not"
+    )
+
     # model.binarize()
     # model.rebalance(50, 50)
     #     None,
@@ -87,7 +91,11 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None):
     print("---------------------")
     print(model.hyperparams_string)
     print()
-    print("Found {0:.1f}K training examples".format(model.datasets.train.rows / 1000))
+    print(
+        "Found {0:.1f}K training examples".format(
+            model.datasets.train.sample_count / 1000
+        )
+    )
     print()
     if weights:
         model.load_weights(weights, meta=False)

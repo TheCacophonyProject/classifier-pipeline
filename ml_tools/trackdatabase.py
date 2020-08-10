@@ -296,7 +296,6 @@ class TrackDatabase:
         """
         Returns a list of clip_id, track_number pairs.
         """
-        i = 0
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             result = []
@@ -313,10 +312,6 @@ class TrackDatabase:
                 for track in clip:
                     if track not in special_datasets:
                         result.append((clip_id, track))
-                i += 1
-                if i > 100:
-                    # pass
-                    break
         return result
 
     def get_track_meta(self, clip_id, track_number):

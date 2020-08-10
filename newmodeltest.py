@@ -1,3 +1,5 @@
+import PIL as pillow
+
 import matplotlib.pyplot as plt
 from ml_tools.framedataset import TrackHeader
 from ml_tools.trackdatabase import TrackDatabase
@@ -48,8 +50,8 @@ class Test:
             self.config.classify.cache_to_disk,
         )
         self.classifier = None
-        self.load_classifier(model_file)
-        self.predictions = Predictions(self.classifier.labels)
+        # self.load_classifier(model_file)
+        # self.predictions = Predictions(self.classifier.labels)
 
     def load_classifier(self, model_file):
         """
@@ -353,34 +355,67 @@ class Test:
         frames = db.get_track(track_header.clip_id, track_header.track_number, 0)
 
         background = np.float32(db.get_clip_background(track_header.clip_id))
-        tools.frame_to_jpg(background, "background1.jpg")
         newbackground = background.copy()
         i = 0
         start = 0
+        # test = np.zeros(background.shape)
+        prev = None
+        value = 60
+
         for i, frame in enumerate(frames):
             region = track_header.track_bounds[start + i]
             rect = tools.Rectangle.from_ltrb(*region)
-            if i == len(frames) - 1:
-                print("use thermal")
-                # filtrered = frame[TrackChannels.filtered]
-                # filtrered[filtered > 0] = 1
-                # new_back = np.float32(db.get_clip_background(track_header.clip_id))
-                subimage = rect.subimage(background)
+            # x = int(rect.mid_x)
+            # y = int(rect.mid_y)
+            # if prev is not None:
+            #     if prev[0] == x and prev[1] == y:
+            #         print("stationary")
+            #         value *= 1.1
+            #     else:
+            #         value = 60
+            # prev = (x, y)
+            # test[y][x] = value
+            # print(value)
 
-                frame = frame[TrackChannels.filtered]
-                subimage[:, :] += np.float32(frame)
-                # background += new_back
-            else:
-                frame = frame[TrackChannels.filtered]
-                subimage = rect.subimage(background)
-
-                # frame -= subimage
-                subimage[:, :] += np.float32(frame * 0.2)
+            # if i == len(frames) - 1:
+            #     print("use thermal")
+            #     # filtrered = frame[TrackChannels.filtered]
+            #     # filtrered[filtered > 0] = 1
+            #     # new_back = np.float32(db.get_clip_background(track_header.clip_id))
+            #     subimage = rect.subimage(background)
+            #
+            #     frame = frame[TrackChannels.filtered]
+            #
+            #     subimage[:, :] += np.float32(frame)
+            #     # background += new_back
+            # else:
+            frame = frame[TrackChannels.filtered]
+            subimage = rect.subimage(background)
+            # print(frame)
+            # max = np.amax(frame)
+            # scale = 255 / max
+            # frame = frame * scale
+            # print(max)
+            # print(scale)
+            # print(frame)
+            # frame -= subimage
+            subimage[:, :] += np.float32(frame)
             # print(background)
             # newbackground += background
             # background = np.float32(db.get_clip_background(track_header.clip_id))
+        # self.save_img(background, "wallabyoverlay.png")
+        tools.frame_to_jpg(background, "birdoverlay.jpg")
 
-        tools.frame_to_jpg(background, "background2.jpg")
+    def save_img(self, data, filename="newmodeltest.png"):
+        if len(data.shape) == 2:
+            data = data[..., np.newaxis]
+            data = np.repeat(data, 3, axis=2)
+            # data[:, :, 1] = 0
+            # data[:, :, 2] = 0
+        print(data.shape)
+        img = pillow.Image.fromarray(np.uint8(data))  # ignore alpha
+
+        img.save(filename, "PNG")
 
     def save_db(self, clip_id, track_id):
         db = TrackDatabase(os.path.join(self.config.tracks_folder, "dataset.hdf5"))
@@ -506,7 +541,8 @@ model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
 test = Test(config, model_file)
-test.save_db("30426", "122345")
+# bird
+test.save_db("603530", "257125")
 
 # test.save_db("606492", "257695")
 exit(0)

@@ -211,8 +211,8 @@ class NewModel:
         softmax = tf.keras.losses.CategoricalCrossentropy(
             label_smoothing=self.params["label_smoothing"],
         )
-        losses = dict(pred=softmax)
-        return losses
+        # losses = dict(pred=softmax)
+        return softmax
 
     def optimizer(self):
         if self.params["learning_rate_decay"] != 1.0:
@@ -302,7 +302,6 @@ class NewModel:
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=self.params.get("train_load_threads", 1),
-            resample=False,
         )
         self.validate = DataGenerator(
             self.datasets.validation,
@@ -340,7 +339,7 @@ class NewModel:
         self.validate.stop_load()
         self.train.stop_load()
         test_accuracy = None
-        if self.datasets.test:
+        if self.datasets.test and self.datasets.test.has_data():
             test = DataGenerator(
                 self.datasets.test,
                 self.datasets.train.labels,
@@ -426,14 +425,19 @@ class NewModel:
         output = self.model.predict(frame[np.newaxis, :])
         return output[0]
 
-    def binarize(self):
+    def binarize(
+        self, set_one, label_one, set_two, label_two, scale=False, keep_fp=False
+    ):
         # set samples of each label to have a maximum cap, and exclude labels
         self.datasets.train.binarize(
-            ["wallaby"], lbl_one="wallaby", lbl_two="Not", scale=False
+            set_one, lbl_one=label_one, lbl_two=label_two, scale=scale, keep_fp=keep_fp
         )
-        self.datasets.validation.binarize(["wallaby"], lbl_one="wallaby", lbl_two="Not")
-        self.datasets.test.binarize(["wallaby"], lbl_one="wallaby", lbl_two="Not")
-
+        self.datasets.validation.binarize(
+            set_one, lbl_one=label_one, lbl_two=label_two, scale=scale, keep_fp=keep_fp
+        )
+        self.datasets.test.binarize(
+            set_one, lbl_one=label_one, lbl_two=label_two, scale=scale, keep_fp=keep_fp
+        )
         self.set_labels()
 
     def rebalance(self, train_cap=1000, validate_cap=500, exclude=[], update=True):
@@ -477,22 +481,25 @@ class NewModel:
         self.datasets.train.enable_augmentation = self.params["augmentation"]
         self.datasets.validation.enable_augmentation = False
         self.datasets.test.enable_augmentation = False
-        self.datasets.train.set_read_only(True)
-        self.datasets.validation.set_read_only(True)
-        self.datasets.test.set_read_only(True)
-
         for dataset in datasets:
+            dataset.set_read_only(True)
+            dataset.use_segments = self.params.get("use_segments", False)
+
             if ignore_labels:
                 for label in ignore_labels:
                     dataset.remove_label(label)
 
         logging.info(
-            "Training frames: {0:.1f}k".format(self.datasets.train.rows / 1000)
+            "Training samples: {0:.1f}k".format(self.datasets.train.sample_count / 1000)
         )
         logging.info(
-            "Validation frames: {0:.1f}k".format(self.datasets.validation.rows / 1000)
+            "Validation samples: {0:.1f}k".format(
+                self.datasets.validation.sample_count / 1000
+            )
         )
-        logging.info("Test segments: {0:.1f}k".format(self.datasets.test.rows / 1000))
+        logging.info(
+            "Test samples: {0:.1f}k".format(self.datasets.test.sample_count / 1000)
+        )
         logging.info("Labels: {}".format(self.labels))
 
     #  was some problem with batch norm in old tensorflows
@@ -673,6 +680,7 @@ class NewModel:
         logging.info("Test accuracy is %s", test_accuracy)
 
 
+# from tensorflow examples
 def plot_confusion_matrix(cm, class_names):
     """
   Returns a matplotlib figure containing the plotted confusion matrix.
