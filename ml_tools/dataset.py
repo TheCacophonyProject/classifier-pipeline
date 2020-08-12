@@ -740,8 +740,13 @@ class Dataset:
         counts = []
         for label in labels:
             counts.append(len(self.samples_for(label, remapped=remapped)))
-        index = math.floor(len(counts) * 0.25)
+        index = math.floor(len(counts) * 0.40)
         counts.sort()
+        birds = self.samples_for("bird", remapped=remapped)
+        if len(birds) > 0:
+            return len(birds)
+        # return 4096
+
         return counts[index]
         # return int(np.percentile(counts, 25))
 
@@ -1169,7 +1174,7 @@ class Dataset:
                 labels.remove(label)
         # chance = 1 / len(self.labels)
         label_cap = self.get_label_caps(labels, remapped=True)
-
+        # label_cap = 10
         for label in labels:
             count = min(label_cap, len(self.samples_for(label, remapped=True)))
             new = self.get_sample(count, replace=replace, label=label)

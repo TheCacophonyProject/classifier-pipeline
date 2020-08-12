@@ -118,6 +118,7 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
+        print(self.dataset.name, "requesting ", index)
         if self.preload:
             X, y = self.preloader_queue.get()
         else:
@@ -226,7 +227,9 @@ class DataGenerator(keras.utils.Sequence):
                     self.model_preprocess,
                     filter_channels=False,
                 )
-                # savemovement(data, self.dataset.name)
+                # savemovement(
+                #     data, "{}-{}".format(sample.track.unique_id, sample.start_frame)
+                # )
             else:
                 data = preprocess_frame(
                     data,
@@ -416,6 +419,7 @@ def preloader(q, load_queue, dataset):
     while not dataset.preloader_stop_flag:
         if not q.full():
             batch_i = load_queue.get()
+            print(dataset.dataset.name, "loading batch", batch_i)
             q.put(dataset.loadbatch(batch_i))
             if batch_i + 1 == len(dataset):
                 dataset.cur_epoch += 1
@@ -455,7 +459,7 @@ def savemovement(data, filename):
     img.save(filename + "g.png")
     img = Image.fromarray(np.uint8(data[:, :, 2] * 255))
     img.save(filename + "b.png")
-    raise "EX"
+    # raise "EX"
 
 
 def savebatch(X, y):
