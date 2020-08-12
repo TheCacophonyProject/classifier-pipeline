@@ -229,6 +229,7 @@ class DataGenerator(keras.utils.Sequence):
                 )
                 # savemovement(
                 #     data, "{}-{}".format(sample.track.unique_id, sample.start_frame)
+
                 # )
             else:
                 data = preprocess_frame(
@@ -419,8 +420,9 @@ def preloader(q, load_queue, dataset):
     while not dataset.preloader_stop_flag:
         if not q.full():
             batch_i = load_queue.get()
-            print(dataset.dataset.name, "loading batch", batch_i)
             q.put(dataset.loadbatch(batch_i))
+            print(dataset.dataset.name, "loaded batch", batch_i)
+
             if batch_i + 1 == len(dataset):
                 dataset.cur_epoch += 1
             logging.debug(
