@@ -724,6 +724,7 @@ def plot_confusion_matrix(cm, class_names):
 
 def log_confusion_matrix(epoch, logs, model, validate, writer):
     # Use the model to predict the values from the validation dataset.
+    print("doing confusing")
     x, y = validate.get_data()
     test_pred_raw = model.predict(x)
     test_pred = np.argmax(test_pred_raw, axis=1)
@@ -737,6 +738,7 @@ def log_confusion_matrix(epoch, logs, model, validate, writer):
     # Log the confusion matrix as an image summary.
     with writer.as_default():
         tf.summary.image("Confusion Matrix", cm_image, step=epoch)
+    print("done confusion")
 
 
 def plot_to_image(figure):

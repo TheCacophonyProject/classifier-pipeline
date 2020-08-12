@@ -177,12 +177,13 @@ class DataGenerator(keras.utils.Sequence):
         # Generate data
         data_i = 0
         for sample in samples:
-            data, label = self.dataset.fetch_sample(
-                sample, augment=self.augment, channels=channels
-            )
+            if not self.movement:
+                data, label = self.dataset.fetch_sample(
+                    sample, augment=self.augment, channels=channels
+                )
 
-            if label not in self.labels:
-                continue
+                if label not in self.labels:
+                    continue
             if self.lstm:
                 data = preprocess_lstm(
                     data,
@@ -193,14 +194,22 @@ class DataGenerator(keras.utils.Sequence):
                     filter_channels=True,
                 )
             elif self.movement:
+                data = self.dataset.db.get_track(
+                    sample.track.clip_id, sample.track.track_id
+                )
+                segment = self.dataset.fetch_segment(
+                    sample, augment=self.augment, frames=data
+                )
+                label = self.dataset.mapped_label(sample.label)
                 if self.use_thermal:
                     channel = TrackChannels.thermal
                 else:
                     channel = TrackChannels.filtered
-                data = data[:, channel]
+                segment = segment[:, channel]
 
                 dots, overlay = self.dataset.movement(sample.track)
-                square = self.square_clip(data)
+                start = time.time()
+                square = self.square_clip(segment)
                 max = np.amax(square)
                 min = np.amin(square)
                 if max == min:
@@ -228,8 +237,8 @@ class DataGenerator(keras.utils.Sequence):
                     filter_channels=False,
                 )
                 # savemovement(
-                #     data, "{}-{}".format(sample.track.unique_id, sample.start_frame)
-
+                #     data,
+                #     "samples/{}-{}".format(sample.track.unique_id, sample.start_frame),
                 # )
             else:
                 data = preprocess_frame(
@@ -453,15 +462,25 @@ def saveimages(X, filename="testimage"):
     plt.close(fig)
 
 
-def savemovement(data, filename):
+def normalize(data, new_max=1):
+    max = np.amax(data)
+    min = np.amin(data)
+    data -= min
+    data = data / (max - min) * new_max
+    return data
 
-    img = Image.fromarray(np.uint8(data[:, :, 0] * 255))
-    img.save(filename + "r.png")
-    img = Image.fromarray(np.uint8(data[:, :, 1] * 255))
-    img.save(filename + "g.png")
-    img = Image.fromarray(np.uint8(data[:, :, 2] * 255))
-    img.save(filename + "b.png")
-    # raise "EX"
+
+def savemovement(data, filename):
+    r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
+    g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
+    b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
+    normalize(r, 255)
+    normalize(g, 255)
+    normalize(b, 255)
+    concat = np.concatenate((r, g, b), axis=1)  # horizontally
+    img = Image.fromarray(np.uint8(concat))
+    d = ImageDraw.Draw(img)
+    img.save(filename + "rgb.png")
 
 
 def savebatch(X, y):

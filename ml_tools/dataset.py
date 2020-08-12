@@ -1107,7 +1107,7 @@ class Dataset:
             return self.fetch_segment(sample, augment), label
         return self.fetch_frame(sample, channels=channels)
 
-    def fetch_segment(self, segment: SegmentHeader, augment=False):
+    def fetch_segment(self, segment: SegmentHeader, augment=False, frames=None):
         """
         Fetches data for segment.
         :param segment: The segment header to fetch
@@ -1139,10 +1139,12 @@ class Dataset:
             jitter = 0
         first_frame += jitter
         last_frame += jitter
-
-        data = self.db.get_track(
-            segment.clip_id, segment.track.track_id, first_frame, last_frame
-        )
+        if frames:
+            data = frames[first_frame:last_frame]
+        else:
+            data = self.db.get_track(
+                segment.clip_id, segment.track.track_id, first_frame, last_frame
+            )
 
         if len(data) != segment_width:
             logging.error(
@@ -1780,9 +1782,10 @@ class Dataset:
         else:
             return len(self.frame_samples) > 0
 
-    def movement(self, track_header):
+    def movement(self, track_header, frames=None):
         # = segment.track_header
-        frames = self.db.get_track(track_header.clip_id, track_header.track_id)
+        if not frames:
+            frames = self.db.get_track(track_header.clip_id, track_header.track_id)
         i = 0
         start = 0
         dots = np.zeros((Preprocessor.FRAME_SIZE * 5, Preprocessor.FRAME_SIZE * 5))
@@ -1800,7 +1803,6 @@ class Dataset:
             subimage = rect.subimage(overlay)
 
             subimage[:, :] += np.float32(frame)
-
             x = int(rect.mid_x)
             y = int(rect.mid_y)
             if prev is not None:
