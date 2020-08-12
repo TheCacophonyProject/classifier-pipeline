@@ -8,6 +8,7 @@ import os
 import pickle
 import random
 import numpy as np
+from dateutil.parser import parse as parse_date
 
 from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
@@ -148,7 +149,7 @@ def parse_args():
 
     args = parser.parse_args()
     if args.date:
-        args.date = parse(args.date)
+        args.date = parse_date(args.date)
     return args
 
 
