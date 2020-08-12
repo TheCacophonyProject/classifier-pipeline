@@ -1,3 +1,6 @@
+from PIL import Image, ImageDraw, ImageFont, ImageColor
+
+import math
 import random
 import logging
 import tensorflow.keras as keras
@@ -8,8 +11,10 @@ import matplotlib.pyplot as plt
 from ml_tools.dataset import TrackChannels
 import multiprocessing
 import time
+from ml_tools.dataset import Preprocessor
 
 FRAME_SIZE = 48
+FRAMES_PER_SECOND = 9
 
 
 class DataGenerator(keras.utils.Sequence):
@@ -25,7 +30,6 @@ class DataGenerator(keras.utils.Sequence):
         dim=(FRAME_SIZE, FRAME_SIZE, 3),
         n_channels=5,
         shuffle=True,
-        sequence_size=27,
         lstm=False,
         use_thermal=False,
         use_filtered=False,
@@ -33,6 +37,7 @@ class DataGenerator(keras.utils.Sequence):
         epochs=10,
         load_threads=1,
         preload=True,
+        use_movement=False,
         balance_labels=True,
     ):
         self.balance_labels = balance_labels
@@ -45,13 +50,15 @@ class DataGenerator(keras.utils.Sequence):
         # default
         if not self.use_thermal and not self.use_filtered and not self.lstm:
             self.use_thermal = True
+        if use_movement:
+            self.movement = use_movement
+            self.square = int(math.sqrt(round(dataset.segment_length * 9)))
+
         self.dim = dim
         self.augment = dataset.enable_augmentation
         self.batch_size = batch_size
         self.dataset = dataset
 
-        if self.lstm:
-            self.sequence_size = sequence_size
         self.samples = None
         self.shuffle = shuffle
         self.n_classes = len(self.labels)
@@ -75,6 +82,8 @@ class DataGenerator(keras.utils.Sequence):
             ]
             for thread in self.preloader_threads:
                 thread.start()
+
+        print("movement", self.movement, "filtered?", self.use_filtered)
 
     def stop_load(self):
         if not self.preload:
@@ -133,13 +142,31 @@ class DataGenerator(keras.utils.Sequence):
 
         self.cur_epoch += 1
 
+    def square_clip(self, data):
+        i = 0
+        frame_size = Preprocessor.FRAME_SIZE
+        background = np.zeros((self.square * frame_size, self.square * frame_size))
+        for x in range(self.square):
+            for y in range(self.square):
+                i += 1
+                if i >= len(data):
+                    frame = data[-1]
+                else:
+                    frame = data[i]
+                background[
+                    x * frame_size : (x + 1) * frame_size,
+                    y * frame_size : (y + 1) * frame_size,
+                ] = np.float32(frame)
+        return background
+
     def _data(self, samples, to_categorical=True):
         "Generates data containing batch_size samples"  # X : (n_samples, *dim, n_channels)
         # Initialization
-        if self.lstm:
-            X = np.empty((len(samples), self.sequence_size, *self.dim))
-        else:
-            X = np.empty((len(samples), *self.dim))
+        # if self.lstm:
+        #     X = []np.empty((len(samples), self.sequence_size, *self.dim))
+        # else:
+        X = []
+        # np.empty((len(samples), *self.dim))
 
         y = np.empty((len(samples)), dtype=int)
         if self.use_thermal:
@@ -164,6 +191,42 @@ class DataGenerator(keras.utils.Sequence):
                     self.model_preprocess,
                     filter_channels=True,
                 )
+            elif self.movement:
+                if self.use_thermal:
+                    channel = TrackChannels.thermal
+                else:
+                    channel = TrackChannels.filtered
+                data = data[:, channel]
+
+                dots, overlay = self.dataset.movement(sample.track)
+                square = self.square_clip(data)
+                max = np.amax(square)
+                min = np.amin(square)
+                if max == min:
+                    continue
+                square -= min
+                square = square / (max - min)
+
+                np.clip(square, a_min=0, a_max=None, out=square)
+
+                dots = dots / 255
+                overlay = overlay / np.amax(overlay)
+
+                data = np.empty((square.shape[0], square.shape[1], 3))
+
+                data[:, :, 0] = square
+                data[:, :, 1] = dots
+                data[:, :, 2] = overlay
+                # print("max data", np.amax(square), np.amax(dots), np.amax(overlay))
+                data = preprocess_movement(
+                    data,
+                    self.dim,
+                    self.use_thermal,
+                    self.augment,
+                    self.model_preprocess,
+                    filter_channels=False,
+                )
+                # savemovement(data, self.dataset.name)
             else:
                 data = preprocess_frame(
                     data,
@@ -180,7 +243,7 @@ class DataGenerator(keras.utils.Sequence):
                 )
                 continue
 
-            X[data_i,] = data
+            X.append(data)
             y[data_i] = self.labels.index(label)
             data_i += 1
         # print(data_i, len(y), len(y[:data_i]))
@@ -188,7 +251,7 @@ class DataGenerator(keras.utils.Sequence):
         y = y[:data_i]
         if to_categorical:
             y = keras.utils.to_categorical(y, num_classes=self.n_classes)
-        return X, y
+        return np.array(X), y
 
 
 def resize(image, dim):
@@ -237,6 +300,23 @@ def augement_frame(frame, dim):
     return image.numpy()
 
 
+def preprocess_movement(
+    data,
+    output_dim,
+    use_thermal=True,
+    augment=False,
+    preprocess_fn=None,
+    filter_channels=True,
+):
+
+    if preprocess_fn:
+        for i, frame in enumerate(data):
+
+            frame = frame * 255
+            data[i] = preprocess_fn(frame)
+    return data
+
+
 def preprocess_lstm(
     data,
     output_dim,
@@ -252,10 +332,10 @@ def preprocess_lstm(
             channel = TrackChannels.filtered
         data = data[:, channel]
     # normalizes data, constrast stretch good or bad?
-    if augment:
-        percent = random.randint(0, 2)
-    else:
-        percent = 0
+    # if augment:
+    #     percent = random.randint(0, 2)
+    # else:
+    percent = 0
     max = int(np.percentile(data, 100 - percent))
     min = int(np.percentile(data, percent))
     if max == min:
@@ -294,10 +374,11 @@ def preprocess_frame(
         data = data[channel]
 
     # normalizes data, constrast stretch good or bad?
-    if augment:
-        percent = random.randint(0, 2)
-    else:
-        percent = 0
+    # if augment:
+    #     percent = random.randint(0, 2)
+    # else:
+    #     percent = 0
+    percent = 0
     max = int(np.percentile(data, 100 - percent))
     min = int(np.percentile(data, percent))
     if max == min:
@@ -364,6 +445,17 @@ def saveimages(X, filename="testimage"):
 
     plt.savefig("{}.png".format(filename), bbox_inches="tight")
     plt.close(fig)
+
+
+def savemovement(data, filename):
+
+    img = Image.fromarray(np.uint8(data[:, :, 0] * 255))
+    img.save(filename + "r.png")
+    img = Image.fromarray(np.uint8(data[:, :, 1] * 255))
+    img.save(filename + "g.png")
+    img = Image.fromarray(np.uint8(data[:, :, 2] * 255))
+    img.save(filename + "b.png")
+    raise "EX"
 
 
 def savebatch(X, y):

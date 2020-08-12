@@ -1,5 +1,6 @@
 import itertools
 import io
+import math
 from ml_tools.dataset import TrackChannels
 import tensorflow as tf
 import pickle
@@ -167,9 +168,15 @@ class NewModel:
 
     def build_model(self, dense_sizes=[1024, 512]):
         # note the model already applies batch_norm
-        inputs = tf.keras.Input(shape=(self.frame_size, self.frame_size, 3))
+        width = self.frame_size
+        if self.params.get("movement", False):
+            width = (
+                int(math.sqrt(round(self.datasets.train.segment_length * 9)))
+                * self.frame_size
+            )
+        inputs = tf.keras.Input(shape=(width, width, 3))
 
-        base_model, preprocess = self.base_model((self.frame_size, self.frame_size, 3))
+        base_model, preprocess = self.base_model((width, width, 3))
         self.preprocess_fn = preprocess
 
         x = base_model(inputs, training=self.params["base_training"])  # IMPORTANT
@@ -302,6 +309,7 @@ class NewModel:
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=self.params.get("train_load_threads", 1),
+            use_movement=self.params.get("movement", False),
         )
         self.validate = DataGenerator(
             self.datasets.validation,
@@ -316,6 +324,7 @@ class NewModel:
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=1,
+            use_movement=self.params.get("movement", False),
         )
         file_writer_cm = tf.summary.create_file_writer(self.log_dir + "/cm")
 
@@ -348,6 +357,7 @@ class NewModel:
                 lstm=self.params.get("lstm", False),
                 use_thermal=self.params.get("use_thermal", False),
                 use_filtered=self.params.get("use_filtered", False),
+                use_movement=self.params.get("movement", False),
                 shuffle=False,
                 model_preprocess=self.preprocess_fn,
                 epochs=1,

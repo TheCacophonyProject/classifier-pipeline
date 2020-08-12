@@ -1,7 +1,9 @@
-import PIL as pillow
+import cv2
+import math
+import pickle
+from PIL import Image, ImageDraw, ImageFont, ImageColor
 
 import matplotlib.pyplot as plt
-from ml_tools.framedataset import TrackHeader
 from ml_tools.trackdatabase import TrackDatabase
 
 from ml_tools.dataset import dataset_db_path
@@ -27,7 +29,7 @@ from ml_tools import tools
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 import ml_tools.globals as globs
 from ml_tools.newmodel import NewModel
-from ml_tools.dataset import Preprocessor, TrackChannels
+from ml_tools.dataset import Preprocessor, TrackChannels, dataset_db_path
 from ml_tools.previewer import Previewer
 from track.track import Track
 from config.config import Config
@@ -350,62 +352,71 @@ class Test:
             with open(meta_filename, "w") as f:
                 json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
 
-    def multi_clip(self, db, track_header, clip_meta):
+    def multi_clip(self, db, track_header, filename):
         # frame_i = track_header.important_frames[1]
-        frames = db.get_track(track_header.clip_id, track_header.track_number, 0)
+        frames = db.get_track(track_header.clip_id, track_header.track_id, 0)
 
-        background = np.float32(db.get_clip_background(track_header.clip_id))
-        newbackground = background.copy()
-        i = 0
+        # background = np.float32(db.get_clip_background(track_header.clip_id))
+        # print("background multi for", track_header.clip_id)
+        #
+        # newbackground = background.copy()
+        # background[:, :] = 255
         start = 0
-        # test = np.zeros(background.shape)
-        prev = None
-        value = 60
+        background = np.zeros((120, 160))
 
         for i, frame in enumerate(frames):
             region = track_header.track_bounds[start + i]
             rect = tools.Rectangle.from_ltrb(*region)
-            # x = int(rect.mid_x)
-            # y = int(rect.mid_y)
-            # if prev is not None:
-            #     if prev[0] == x and prev[1] == y:
-            #         print("stationary")
-            #         value *= 1.1
-            #     else:
-            #         value = 60
-            # prev = (x, y)
-            # test[y][x] = value
-            # print(value)
-
-            # if i == len(frames) - 1:
-            #     print("use thermal")
-            #     # filtrered = frame[TrackChannels.filtered]
-            #     # filtrered[filtered > 0] = 1
-            #     # new_back = np.float32(db.get_clip_background(track_header.clip_id))
-            #     subimage = rect.subimage(background)
-            #
-            #     frame = frame[TrackChannels.filtered]
-            #
-            #     subimage[:, :] += np.float32(frame)
-            #     # background += new_back
-            # else:
             frame = frame[TrackChannels.filtered]
             subimage = rect.subimage(background)
-            # print(frame)
-            # max = np.amax(frame)
-            # scale = 255 / max
-            # frame = frame * scale
-            # print(max)
-            # print(scale)
-            # print(frame)
-            # frame -= subimage
-            subimage[:, :] += np.float32(frame)
-            # print(background)
-            # newbackground += background
-            # background = np.float32(db.get_clip_background(track_header.clip_id))
-        # self.save_img(background, "wallabyoverlay.png")
-        tools.frame_to_jpg(background, "birdoverlay.jpg")
 
+            subimage[:, :] += np.float32(frame)
+        max = np.amax(background)
+        background /= max
+        background *= 255
+        img = Image.fromarray(np.uint8(background))
+        img.save(filename + ".png", "PNG")
+        return img
+        # tools.frame_to_jpg(background, "birdoverlay.jpg")
+
+    def square_clip(self, db, track_header, filename, width=6):
+        # frame_i = track_header.important_frames[1]
+        frames = db.get_track(track_header.clip_id, track_header.track_id, 0)
+
+        # background = np.float32(db.get_clip_background(track_header.clip_id))
+        # print("background multi for", track_header.clip_id)
+        #
+        # newbackground = background.copy()
+        # background[:, :] = 255
+        start = 0
+        background = np.zeros((288, 288))
+        frame_size = 48
+        i = 0
+        for x in range(width):
+            for y in range(width):
+                i += 1
+                if i >= len(frames):
+                    frame = frames[-1]
+                else:
+                    frame = frames[i]
+                frame = frame[TrackChannels.filtered]
+                frame = cv2.resize(
+                    frame,
+                    dsize=(frame_size, frame_size),
+                    interpolation=cv2.INTER_LINEAR,
+                )
+                background[
+                    x * frame_size : (x + 1) * frame_size,
+                    y * frame_size : (y + 1) * frame_size,
+                ] = np.float32(frame)
+        max = np.amax(background)
+        background /= max
+        background *= 255
+        img = Image.fromarray(np.uint8(background))
+        img.save(filename + ".png", "PNG")
+        return img
+
+    # tools.frame_to_jpg(background, "birdoverlay.jpg")
     def save_img(self, data, filename="newmodeltest.png"):
         if len(data.shape) == 2:
             data = data[..., np.newaxis]
@@ -416,6 +427,58 @@ class Test:
         img = pillow.Image.fromarray(np.uint8(data))  # ignore alpha
 
         img.save(filename, "PNG")
+
+    def movement(self, db, track_header, filename):
+        frames = db.get_track(track_header.clip_id, track_header.track_id, 0)
+        i = 0
+        start = 0
+        test = np.zeros((120, 160))
+        test[:, :] = 255
+        test = test[..., np.newaxis]
+
+        test = np.repeat(test, 4, axis=2)
+
+        prev = None
+        value = 60
+        img = Image.fromarray(np.uint8(test))  # ignore alpha
+
+        d = ImageDraw.Draw(img)
+        for i, frame in enumerate(frames):
+            region = track_header.track_bounds[start + i]
+            rect = tools.Rectangle.from_ltrb(*region)
+            x = int(rect.mid_x)
+            y = int(rect.mid_y)
+            if prev is not None:
+                if prev[0] == x and prev[1] == y:
+                    value *= 1.1
+                else:
+                    value = 60
+                distance = math.sqrt(pow(prev[0] - x, 2) + pow(prev[1] - y, 2))
+
+                distance *= 21.25
+                distance = min(distance, 255)
+                d.line(prev + (x, y), fill=(0, int(distance), 0, 255), width=1)
+                # d.point([prev], fill=colour)
+
+            prev = (x, y)
+            colour = (int(value), 0, 0, 255)
+        for i, frame in enumerate(frames):
+            region = track_header.track_bounds[start + i]
+            rect = tools.Rectangle.from_ltrb(*region)
+            x = int(rect.mid_x)
+            y = int(rect.mid_y)
+            if prev is not None:
+                if prev[0] == x and prev[1] == y:
+                    value *= 1.1
+                else:
+                    value = 60
+            prev = (x, y)
+            colour = (int(value), 0, 0, 255)
+            d.point([prev], fill=colour)
+
+        img.save(filename + ".png", "PNG")
+        return img
+        # self.save_img(background, "{}.png".format(filename))
 
     def save_db(self, clip_id, track_id):
         db = TrackDatabase(os.path.join(self.config.tracks_folder, "dataset.hdf5"))
@@ -451,7 +514,7 @@ class Test:
 
         print(track_header.track_number, "predictions", track_header.important_frames)
         rows = round(len(track_header.important_frames) / 5.0) + 1
-        fig = plt.figure(figsize=(52, 52))
+        fibird_motiong = plt.figure(figsize=(52, 52))
         for i, frame_i in enumerate(track_header.important_frames):
 
             pred = track_header.predictions[frame_i]
@@ -501,6 +564,64 @@ class Test:
         )
         plt.close(fig)
 
+    def save_motion_images(self, dataset, label, n=10):
+        tracks = dataset.tracks_by_label[label][:n]
+        images = []
+        for track in tracks:
+            # img = self.movement(
+            #     dataset.db, track, "samples/{}-{}".format(label, track.unique_id)
+            # )
+            img, multi = dataset.movement(track)
+            # multi = self.multi_clip(
+            #     dataset.db, track, "samples/{}multi-{}".format(label, track.unique_id)
+            # )
+            square = self.square_clip(
+                dataset.db, track, "samples/{}square-{}".format(label, track.unique_id)
+            )
+            max = np.amax(multi)
+            multi /= max
+            multi *= 255
+
+            multi = Image.fromarray(np.uint8(multi))
+            img = Image.fromarray(np.uint8(img))
+
+            if img is not None:
+                images.append((track, img.resize((248, 248), Image.NEAREST)))
+                images.append((track, multi.resize((248, 248), Image.NEAREST)))
+                images.append((track, square))
+                print(images[-1])
+
+        n = len(images)
+        rows = int(math.sqrt(n))
+        columns = math.ceil(n / rows)
+        total_width = columns * 248
+        total_height = rows * 248
+
+        new_im = Image.new("RGB", (total_width, total_height))
+        d = ImageDraw.Draw(new_im)
+        fnt = ImageFont.truetype(tools.resource_path("Ubuntu-R.ttf"), 8)
+
+        y_offset = 0
+        index = 0
+        print(len(images))
+        for x in range(rows):
+            x_offset = 0
+            for y in range(columns):
+                if index > len(images):
+                    break
+                im = images[index]
+                print(index, im[1])
+
+                new_im.paste(im[1], (x_offset, y_offset))
+                d.text((x_offset, y_offset), im[0].unique_id, fill=(0, 0, 0), font=fnt)
+
+                x_offset += im[1].size[0]
+                index += 1
+
+            y_offset += 248
+
+        new_im.save("samples/{}.png".format(label))
+
 
 def load_args():
     parser = argparse.ArgumentParser()
@@ -509,10 +630,10 @@ def load_args():
         "--model-file",
         help="Path to model file to use, will override config model",
     )
-    parser.add_argument(
-        "source",
-        help='a CPTV file to process, or a folder name, or "all" for all files within subdirectories of source folder.',
-    )
+    # parser.add_argument(
+    #     "source",
+    #     help='a CPTV file to process, or a folder name, or "all" for all files within subdirectories of source folder.',
+    # )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     args = parser.parse_args()
@@ -533,6 +654,12 @@ def init_logging(timestamps=False):
     )
 
 
+def load_dataset(config):
+    datasets_filename = dataset_db_path(config)
+    datasets = pickle.load(open(datasets_filename, "rb"))
+    return datasets
+
+
 args = load_args()
 init_logging()
 config = Config.load_from_file(args.config_file)
@@ -541,8 +668,12 @@ model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
 test = Test(config, model_file)
-# bird
-test.save_db("603530", "257125")
+datasets = load_dataset(config)
+test.save_motion_images(datasets[0], "rodent")
+
+# # bird
+# test.save_db("603530", "257125")
+# test.process_file(args.source)
 
 # test.save_db("606492", "257695")
 exit(0)
@@ -550,4 +681,3 @@ exit(0)
 # exit(0)
 # raise "EX"
 # test.classifier.evaluate()
-test.process_file(args.source)

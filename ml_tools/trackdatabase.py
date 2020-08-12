@@ -343,7 +343,10 @@ class TrackDatabase:
     def get_clip_background(self, clip_id):
         with HDF5Manager(self.database) as f:
             # print(f["clips"][str(clip_id)])
-            return f["clips"][str(clip_id)]["background_frame"][:]
+            clip = f["clips"][str(clip_id)]
+            if "background_frame" in clip:
+                return clip["background_frame"][:]
+        print("no background")
         return None
 
     def get_clip_meta(self, clip_id):

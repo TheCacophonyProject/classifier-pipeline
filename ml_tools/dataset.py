@@ -7,6 +7,8 @@ Dataset used for training a tensorflow model from track data.
 Tracks are broken into segments.  Filtered, and then passed to the trainer using a weighted random sample.
 
 """
+from PIL import Image, ImageDraw, ImageFont, ImageColor
+
 import random
 import logging
 import math
@@ -584,8 +586,8 @@ class Preprocessor:
 
         # set filtered track to delta frames
         reference = np.clip(data[:, 0], 20, 999)
-        data[0, 1] = 0
-        data[1:, 1] = reference[1:] - reference[:-1]
+        # data[0, 1] = 0
+        # data[1:, 1] = reference[1:] - reference[:-1]
 
         # -------------------------------------------
         # finally apply and additional augmentation
@@ -707,7 +709,6 @@ class Dataset:
             self.segment_length = 3
             # number of seconds segments are spaced apart
             self.segment_spacing = 1
-
         self.filtered_stats = {
             "confidence": 0,
             "trap": 0,
@@ -923,9 +924,10 @@ class Dataset:
         track_header.set_important_frames(
             labels, self.min_frame_mass, self.use_predictions
         )
-        segment_frame_spacing = self.segment_spacing * track_header.frames_per_second
-        segment_width = self.segment_length * track_header.frames_per_second
-
+        segment_frame_spacing = round(
+            self.segment_spacing * track_header.frames_per_second
+        )
+        segment_width = round(self.segment_length * track_header.frames_per_second)
         track_header.calculate_segments(
             track_meta["mass_history"],
             segment_frame_spacing,
@@ -1107,7 +1109,8 @@ class Dataset:
         :param augment: if true applies data augmentation
         :return: segment data of shape [frames, channels, height, width]
         """
-        segment_width = self.segment_length * segment.track.frames_per_second
+        segment_width = round(self.segment_length * segment.track.frames_per_second)
+
         # if we are requesting a segment smaller than the default segment size take it from the middle.
         unused_frames = segment.frames - segment_width
         if unused_frames < 0:
@@ -1771,6 +1774,60 @@ class Dataset:
             return len(self.segments) > 0
         else:
             return len(self.frame_samples) > 0
+
+    def movement(self, track_header):
+        # = segment.track_header
+        frames = self.db.get_track(track_header.clip_id, track_header.track_id)
+        i = 0
+        start = 0
+        dots = np.zeros((Preprocessor.FRAME_SIZE * 5, Preprocessor.FRAME_SIZE * 5))
+        overlay = np.zeros((Preprocessor.FRAME_SIZE * 5, Preprocessor.FRAME_SIZE * 5))
+
+        prev = None
+        value = 60
+        img = Image.fromarray(np.uint8(dots))  # ignore alpha
+
+        d = ImageDraw.Draw(img)
+        for i, frame in enumerate(frames):
+            region = track_header.track_bounds[start + i]
+            rect = tools.Rectangle.from_ltrb(*region)
+            frame = frame[TrackChannels.filtered]
+            subimage = rect.subimage(overlay)
+
+            subimage[:, :] += np.float32(frame)
+
+            x = int(rect.mid_x)
+            y = int(rect.mid_y)
+            if prev is not None:
+                if prev[0] == x and prev[1] == y:
+                    value *= 1.1
+                else:
+                    value = 60
+                distance = math.sqrt(pow(prev[0] - x, 2) + pow(prev[1] - y, 2))
+
+                distance *= 21.25
+                distance = min(distance, 255)
+                d.line(prev + (x, y), fill=int(distance), width=1)
+                # d.point([prev], fill=colour)
+
+            prev = (x, y)
+            colour = int(value)
+        for i, frame in enumerate(frames):
+            region = track_header.track_bounds[start + i]
+            rect = tools.Rectangle.from_ltrb(*region)
+            x = int(rect.mid_x)
+            y = int(rect.mid_y)
+            if prev is not None:
+                if prev[0] == x and prev[1] == y:
+                    value *= 1.1
+                else:
+                    value = 60
+            prev = (x, y)
+            colour = int(value)
+            d.point([prev], fill=colour)
+
+        # img.save(filename + ".png", "PNG")
+        return np.array(img), overlay
 
 
 # continue to read examples until queue is full

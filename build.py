@@ -260,11 +260,13 @@ def split_wallaby_cameras(dataset, cameras):
     return wallaby, wallaby_validate
 
 
-def split_dataset_by_cameras(db, dataset, build_config, args, balance_bins=True):
+def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
+    build_config = config.build
     validation_percent = 0.3
-    train = Dataset(db, "train")
-    validation = Dataset(db, "validation")
-    test = Dataset(db, "test")
+    train = Dataset(db, "train", config)
+    validation = Dataset(db, "validation", config)
+    test = Dataset(db, "test", config)
+
     train_data = []
     cameras = list(dataset.cameras_by_id.values())
     camera_count = len(cameras)
@@ -423,7 +425,7 @@ def main():
     print()
 
     print("Splitting data set into train / validation")
-    datasets = split_dataset_by_cameras(db, dataset, build_config, args)
+    datasets = split_dataset_by_cameras(db, dataset, config, args)
     # if build_config.use_previous_split:
     #     split = get_previous_validation_bins(build_config.previous_split)
     #     datasets = split_dataset(db, dataset, build_config, split)

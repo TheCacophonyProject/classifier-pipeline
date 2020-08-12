@@ -40,7 +40,7 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None):
 
     model.import_dataset(datasets_filename)
     model.binarize(
-        set_one=["wallaby"], label_one="wallaby", set_two=None, label_two="Not"
+        set_one=["hedgehog"], label_one="hedgehog", set_two=None, label_two="Not"
     )
 
     # model.binarize()
