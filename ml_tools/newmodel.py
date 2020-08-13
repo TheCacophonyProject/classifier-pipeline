@@ -325,6 +325,7 @@ class NewModel:
             epochs=epochs,
             load_threads=1,
             use_movement=self.params.get("movement", False),
+            keep_epoch=True,
         )
         file_writer_cm = tf.summary.create_file_writer(self.log_dir + "/cm")
 
@@ -724,13 +725,21 @@ def plot_confusion_matrix(cm, class_names):
 
 def log_confusion_matrix(epoch, logs, model, validate, writer):
     # Use the model to predict the values from the validation dataset.
-    print("doing confusing")
-    x, y = validate.get_data()
+    print("doing confusing", epoch)
+    x, y = validate.get_data(epoch)
+    # Calculate the confusion matrix.
+    if validate.keep_epoch:
+        x = np.array(x)
+        y = np.array(y)
+        x = x.reshape(-1, *x.shape[2:])
+        y = y.reshape(-1, *y.shape[2:])
+        y = np.argmax(y, axis=1)
+        validate.epoch_data[epoch] = []
     test_pred_raw = model.predict(x)
     test_pred = np.argmax(test_pred_raw, axis=1)
-    # Calculate the confusion matrix.
 
     cm = confusion_matrix(y, test_pred)
+
     # Log the confusion matrix as an image summary.
     figure = plot_confusion_matrix(cm, class_names=validate.labels)
     cm_image = plot_to_image(figure)

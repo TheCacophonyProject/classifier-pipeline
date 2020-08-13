@@ -39,7 +39,9 @@ class DataGenerator(keras.utils.Sequence):
         preload=True,
         use_movement=False,
         balance_labels=True,
+        keep_epoch=False,
     ):
+        self.keep_epoch = keep_epoch
         self.balance_labels = balance_labels
 
         self.labels = labels
@@ -65,7 +67,7 @@ class DataGenerator(keras.utils.Sequence):
         self.n_channels = n_channels
         self.cur_epoch = 0
         self.epochs = epochs
-
+        self.epoch_data = []
         self.preload = preload
         if self.preload:
             self.load_queue = multiprocessing.Queue()
@@ -98,7 +100,9 @@ class DataGenerator(keras.utils.Sequence):
                 thread.exit()
 
     # get all data
-    def get_data(self, catog=False):
+    def get_data(self, epoch=0, catog=False):
+        if self.keep_epoch:
+            return self.epoch_data[epoch][0], self.epoch_data[epoch][1]
         X, y = self._data(self.samples, to_categorical=catog)
         return X, y
 
@@ -123,6 +127,10 @@ class DataGenerator(keras.utils.Sequence):
             X, y = self.preloader_queue.get()
         else:
             X, y = self.loadbatch(index)
+        if self.keep_epoch:
+            self.epoch_data[self.cur_epoch - 1][0].append(X)
+            self.epoch_data[self.cur_epoch - 1][1].append(y)
+            # (X, y))
         return X, y
 
     def reload_epoch(self):
@@ -132,7 +140,10 @@ class DataGenerator(keras.utils.Sequence):
 
     def on_epoch_end(self, load=True):
         "Updates indexes after each epoch"
+        self.epoch_data.append(([], []))
+        print("reset the epoch", self.dataset.name)
         self.samples = self.dataset.epoch_samples(replace=False)
+        print("epoch ended", self.dataset.name)
         if self.shuffle:
             np.random.shuffle(self.samples)
         if load:
@@ -140,7 +151,6 @@ class DataGenerator(keras.utils.Sequence):
             self.load_queue.put(0)
             for i in range(len(self)):
                 self.load_queue.put(i)
-
         self.cur_epoch += 1
 
     def square_clip(self, data):
@@ -207,7 +217,7 @@ class DataGenerator(keras.utils.Sequence):
                     channel = TrackChannels.filtered
                 segment = segment[:, channel]
 
-                dots, overlay = self.dataset.movement(sample.track)
+                dots, overlay = self.dataset.movement(sample.track, data)
                 start = time.time()
                 square = self.square_clip(segment)
                 max = np.amax(square)
