@@ -9,7 +9,6 @@ Tracks are broken into segments.  Filtered, and then passed to the trainer using
 """
 from PIL import Image, ImageDraw, ImageFont, ImageColor
 
-import random
 import logging
 import math
 import multiprocessing
@@ -486,6 +485,7 @@ class Preprocessor:
         augment=False,
         encode_frame_offsets_in_flow=False,
         default_inset=2,
+        keep_aspect=False,
     ):
         """
         Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
@@ -543,17 +543,50 @@ class Preprocessor:
                 crop_region.left : crop_region.right,
             ]
 
+            if keep_aspect:
+                height, width = cropped_frame[0].shape
+                min_dim = min(width, height)
+                scale = Preprocessor.FRAME_SIZE / min_dim
+                target_size = (round(height * scale), round(width * scale))
+                # print("target is", target_size)
+            else:
+                target_size = (Preprocessor.FRAME_SIZE, Preprocessor.FRAME_SIZE)
             scaled_frame = [
                 cv2.resize(
                     cropped_frame[channel],
-                    dsize=(Preprocessor.FRAME_SIZE, Preprocessor.FRAME_SIZE),
+                    dsize=target_size,
                     interpolation=cv2.INTER_LINEAR
                     if channel != TrackChannels.mask
                     else cv2.INTER_NEAREST,
                 )
                 for channel in range(channels)
             ]
-            scaled_frame = np.float32(scaled_frame)
+            # print(max_dim)
+            if keep_aspect and max_dim > Preprocessor.FRAME_SIZE:
+                height, width = scaled_frame[0].shape
+                max_dim = max(height, width)
+                crop_start = 0
+                if augment:
+                    crop = max_dim - Preprocessor.FRAME_SIZE
+                    crop_start = random.randint(0, crop)
+                for i, channel in enumerate(scaled_frame):
+                    if height > width:
+                        scaled_frame[i] = channel[
+                            crop_start : crop_start + Preprocessor.FRAME_SIZE, :
+                        ]
+
+                    else:
+                        scaled_frame[i] = channel[
+                            :, crop_start : crop_start + Preprocessor.FRAME_SIZE
+                        ]
+                    print(
+                        "cropping",
+                        crop_start,
+                        ":",
+                        crop_start + Preprocessor.FRAME_SIZE,
+                    )
+                    print(scaled_frame[i].shape)
+            scaled_frame = np.asarray(scaled_frame)
 
             scaled_frames.append(scaled_frame)
 

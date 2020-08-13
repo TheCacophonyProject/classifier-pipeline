@@ -71,7 +71,8 @@ class DataGenerator(keras.utils.Sequence):
         self.preload = preload
         if self.preload:
             self.load_queue = multiprocessing.Queue()
-        self.on_epoch_end(load=preload)
+        self.on_epoch_end()
+        self.load_next_epoch()
         if self.preload:
             self.preloader_queue = multiprocessing.Queue(buffer_size)
             self.preloader_stop_flag = False
@@ -84,8 +85,6 @@ class DataGenerator(keras.utils.Sequence):
             ]
             for thread in self.preloader_threads:
                 thread.start()
-
-        print("movement", self.movement, "filtered?", self.use_filtered)
 
     def stop_load(self):
         if not self.preload:
@@ -122,7 +121,7 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
-        print(self.dataset.name, "requesting ", index)
+        logging.debug("%s requsting index %s", self.dataset.name, index)
         if self.preload:
             X, y = self.preloader_queue.get()
         else:
@@ -131,26 +130,26 @@ class DataGenerator(keras.utils.Sequence):
             self.epoch_data[self.cur_epoch - 1][0].append(X)
             self.epoch_data[self.cur_epoch - 1][1].append(y)
             # (X, y))
+        if (index + 1) == len(self):
+            self.load_next_epoch()
         return X, y
 
-    def reload_epoch(self):
+    def load_next_epoch(self):
+        self.samples = self.dataset.epoch_samples(replace=False)
+        if self.shuffle:
+            np.random.shuffle(self.samples)
+
+        # for some reason it always requests 0 twice
         self.load_queue.put(0)
         for i in range(len(self)):
             self.load_queue.put(i)
 
-    def on_epoch_end(self, load=True):
+    def on_epoch_end(self):
         "Updates indexes after each epoch"
         self.epoch_data.append(([], []))
-        print("reset the epoch", self.dataset.name)
-        self.samples = self.dataset.epoch_samples(replace=False)
-        print("epoch ended", self.dataset.name)
-        if self.shuffle:
-            np.random.shuffle(self.samples)
-        if load:
-            # for some reason it always requests 0 twice
-            self.load_queue.put(0)
-            for i in range(len(self)):
-                self.load_queue.put(i)
+        logging.debug("epoch ended for %s", self.dataset.name)
+
+        # self.load_next_epoch()
         self.cur_epoch += 1
 
     def square_clip(self, data):
@@ -440,8 +439,6 @@ def preloader(q, load_queue, dataset):
         if not q.full():
             batch_i = load_queue.get()
             q.put(dataset.loadbatch(batch_i))
-            print(dataset.dataset.name, "loaded batch", batch_i)
-
             if batch_i + 1 == len(dataset):
                 dataset.cur_epoch += 1
             logging.debug(
