@@ -266,10 +266,10 @@ class DataGenerator(keras.utils.Sequence):
                     self.model_preprocess,
                     filter_channels=False,
                 )
-                savemovement(
-                    data,
-                    "samples/{}-{}".format(sample.track.unique_id, sample.start_frame),
-                )
+                # savemovement(
+                #     data,
+                #     "samples/{}-{}".format(sample.track.unique_id, sample.start_frame),
+                # )
             else:
                 data = preprocess_frame(
                     data,
