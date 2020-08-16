@@ -726,16 +726,18 @@ def plot_confusion_matrix(cm, class_names):
 def log_confusion_matrix(epoch, logs, model, validate, writer):
     # Use the model to predict the values from the validation dataset.
     print("doing confusing", epoch)
-    x, y = validate.get_data(epoch)
+    y = validate.get_epoch_predictions(epoch)
+    validate.use_previous_epoch = epoch
     # Calculate the confusion matrix.
     if validate.keep_epoch:
-        x = np.array(x)
+        # x = np.array(x)
         y = np.array(y)
-        x = x.reshape(-1, *x.shape[2:])
         y = y.reshape(-1, *y.shape[2:])
         y = np.argmax(y, axis=1)
-        validate.epoch_data[epoch] = []
-    test_pred_raw = model.predict(x)
+    test_pred_raw = model.predict(validate)
+    validate.epoch_data[epoch] = []
+    validate.use_previous_epoch = None
+
     test_pred = np.argmax(test_pred_raw, axis=1)
 
     cm = confusion_matrix(y, test_pred)

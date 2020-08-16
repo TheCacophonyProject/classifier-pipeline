@@ -402,6 +402,7 @@ class SegmentHeader:
         self.track = track
         # first frame of this segment referenced by start of track
         self.start_frame = start_frame
+        self.end_frame = start_frame + frames
         # length of segment in frames
         self.frames = frames
         # relative weight of the segment (higher is sampled more often)
@@ -1140,7 +1141,9 @@ class Dataset:
             return self.fetch_segment(sample, augment), label
         return self.fetch_frame(sample, channels=channels)
 
-    def fetch_segment(self, segment: SegmentHeader, augment=False, frames=None):
+    def fetch_segment(
+        self, segment: SegmentHeader, augment=False, frames=None, preprocess=True
+    ):
         """
         Fetches data for segment.
         :param segment: The segment header to fetch
@@ -1159,7 +1162,8 @@ class Dataset:
             )
         first_frame = segment.start_frame + (unused_frames // 2)
         last_frame = segment.start_frame + (unused_frames // 2) + segment_width
-
+        if unused_frames != 0:
+            raise "Unused frame"
         if augment and unused_frames > 0:
             # jitter first frame
             prev_frames = first_frame
@@ -1183,16 +1187,17 @@ class Dataset:
             logging.error(
                 "invalid segment length %d, expected %d", len(data), len(segment_width)
             )
-
-        data = Preprocessor.apply(
-            data,
-            segment.track.frame_temp_median[first_frame:last_frame],
-            segment.track.frame_velocity[first_frame:last_frame],
-            augment=augment,
-            default_inset=self.DEFAULT_INSET,
-        )
-
-        return data
+        if preprocess:
+            data = Preprocessor.apply(
+                data,
+                segment.track.frame_temp_median[first_frame:last_frame],
+                segment.track.frame_velocity[first_frame:last_frame],
+                augment=augment,
+                default_inset=self.DEFAULT_INSET,
+            )
+            return data
+        else:
+            return data
 
     def epoch_samples(self, dont_cap=None, replace=True):
         if len(self.labels) == 0:
@@ -1209,7 +1214,7 @@ class Dataset:
                 labels.remove(label)
         # chance = 1 / len(self.labels)
         label_cap = self.get_label_caps(labels, remapped=True)
-        # label_cap = 10
+        label_cap = 10
         for label in labels:
             count = min(label_cap, len(self.samples_for(label, remapped=True)))
             new = self.get_sample(count, replace=replace, label=label)
@@ -1815,12 +1820,11 @@ class Dataset:
         else:
             return len(self.frame_samples) > 0
 
-    def movement(self, track_header, frames=None):
+    def movement(self, start_frame, track_header, frames=None):
         # = segment.track_header
         if not frames:
             frames = self.db.get_track(track_header.clip_id, track_header.track_id)
         i = 0
-        start = 0
         dots = np.zeros((Preprocessor.FRAME_SIZE * 5, Preprocessor.FRAME_SIZE * 5))
         overlay = np.zeros((Preprocessor.FRAME_SIZE * 5, Preprocessor.FRAME_SIZE * 5))
 
@@ -1830,7 +1834,7 @@ class Dataset:
 
         d = ImageDraw.Draw(img)
         for i, frame in enumerate(frames):
-            region = track_header.track_bounds[start + i]
+            region = track_header.track_bounds[start_frame + i]
             rect = tools.Rectangle.from_ltrb(*region)
             frame = frame[TrackChannels.filtered]
             subimage = rect.subimage(overlay)
@@ -1853,7 +1857,7 @@ class Dataset:
             prev = (x, y)
             colour = int(value)
         for i, frame in enumerate(frames):
-            region = track_header.track_bounds[start + i]
+            region = track_header.track_bounds[start_frame + i]
             rect = tools.Rectangle.from_ltrb(*region)
             x = int(rect.mid_x)
             y = int(rect.mid_y)

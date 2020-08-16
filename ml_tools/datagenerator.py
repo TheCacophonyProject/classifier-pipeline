@@ -41,6 +41,7 @@ class DataGenerator(keras.utils.Sequence):
         balance_labels=True,
         keep_epoch=False,
     ):
+        self.use_previous_epoch = None
         self.keep_epoch = keep_epoch
         self.balance_labels = balance_labels
 
@@ -71,8 +72,9 @@ class DataGenerator(keras.utils.Sequence):
         self.preload = preload
         if self.preload:
             self.load_queue = multiprocessing.Queue()
-        self.on_epoch_end()
         self.load_next_epoch()
+        self.on_epoch_end()
+
         if self.preload:
             self.preloader_queue = multiprocessing.Queue(buffer_size)
             self.preloader_stop_flag = False
@@ -98,10 +100,18 @@ class DataGenerator(keras.utils.Sequence):
             else:
                 thread.exit()
 
+    def get_epoch_predictions(self, epoch):
+        if self.keep_epoch:
+            return self.epoch_data[epoch][1]
+        return none
+
     # get all data
     def get_data(self, epoch=0, catog=False):
-        if self.keep_epoch:
-            return self.epoch_data[epoch][0], self.epoch_data[epoch][1]
+        if self.keep_epoch and self.use_previous_epoch is not None:
+            return (
+                self.epoch_data[self.use_previous_epoch][0],
+                self.epoch_data[self.use_previous_epoch][1],
+            )
         X, y = self._data(self.samples, to_categorical=catog)
         return X, y
 
@@ -127,8 +137,8 @@ class DataGenerator(keras.utils.Sequence):
         else:
             X, y = self.loadbatch(index)
         if self.keep_epoch:
-            self.epoch_data[self.cur_epoch - 1][0].append(X)
-            self.epoch_data[self.cur_epoch - 1][1].append(y)
+            self.epoch_data[self.cur_epoch - 1][0][index] = X
+            self.epoch_data[self.cur_epoch - 1][1][index] = y
             # (X, y))
         if (index + 1) == len(self):
             self.load_next_epoch()
@@ -146,7 +156,8 @@ class DataGenerator(keras.utils.Sequence):
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
-        self.epoch_data.append(([], []))
+        batches = len(self)
+        self.epoch_data.append(([None] * batches, [None] * batches))
         logging.debug("epoch ended for %s", self.dataset.name)
 
         # self.load_next_epoch()
@@ -203,20 +214,30 @@ class DataGenerator(keras.utils.Sequence):
                     filter_channels=True,
                 )
             elif self.movement:
-                data = self.dataset.db.get_track(
-                    sample.track.clip_id, sample.track.track_id
-                )
-                segment = self.dataset.fetch_segment(
-                    sample, augment=self.augment, frames=data
+                data = self.dataset.fetch_segment(
+                    sample, augment=self.augment, preprocess=False
                 )
                 label = self.dataset.mapped_label(sample.label)
                 if self.use_thermal:
                     channel = TrackChannels.thermal
                 else:
                     channel = TrackChannels.filtered
+
+                segment = Preprocessor.apply(
+                    data,
+                    sample.track.frame_temp_median[
+                        sample.start_frame : sample.start_frame + len(data)
+                    ],
+                    sample.track.frame_velocity[
+                        sample.start_frame : sample.start_frame + len(data)
+                    ],
+                    augment=self.augment,
+                )
                 segment = segment[:, channel]
 
-                dots, overlay = self.dataset.movement(sample.track, data)
+                dots, overlay = self.dataset.movement(
+                    sample.start_frame, sample.track, data
+                )
                 start = time.time()
                 square = self.square_clip(segment)
                 max = np.amax(square)
@@ -245,10 +266,10 @@ class DataGenerator(keras.utils.Sequence):
                     self.model_preprocess,
                     filter_channels=False,
                 )
-                # savemovement(
-                #     data,
-                #     "samples/{}-{}".format(sample.track.unique_id, sample.start_frame),
-                # )
+                savemovement(
+                    data,
+                    "samples/{}-{}".format(sample.track.unique_id, sample.start_frame),
+                )
             else:
                 data = preprocess_frame(
                     data,
@@ -442,9 +463,9 @@ def preloader(q, load_queue, dataset):
             if batch_i + 1 == len(dataset):
                 dataset.cur_epoch += 1
             logging.debug(
-                "loaded batch %s %s %s",
-                dataset.cur_epoch,
+                "Preloader %s loaded batch epoch %s batch %s",
                 dataset.dataset.name,
+                dataset.cur_epoch,
                 batch_i,
             )
         else:
