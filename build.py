@@ -247,6 +247,7 @@ def split_wallaby_cameras(dataset, cameras):
             wallaby_count += len(track.segments)
             track.camera = "Wallaby-2"
             wallaby_validate.add_track(track)
+            wallaby.remove_track(track)
         remove.append(bin_id)
         last_index = i
         if wallaby_count > wallaby_validate_segments:
