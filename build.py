@@ -168,6 +168,9 @@ def print_data(dataset):
 # than MIN_FRAMES frames
 def diverse_validation(cameras, labels, max_cameras):
     val_cameras = []
+
+    return val_cameras, cameras
+
     # cameras = sorted(
     #     cameras, key=lambda camera: len(camera.label_to_bins.keys()), reverse=True
     # )
@@ -233,22 +236,19 @@ def split_wallaby_cameras(dataset, cameras):
         return None, None
     wallaby = dataset.cameras_by_id["Wallaby-None"]
     cameras.remove(wallaby)
-
+    print("wallaby bin", len(wallaby.bins))
     wallaby_validate = Camera("Wallaby-2")
     remove = []
     last_index = 0
     wallaby_count = 0
-    total = wallaby.label_frame_count("wallaby")
+    total = wallaby.label_segment_count("wallaby")
     wallaby_validate_segments = max(total * 0.2, MIN_FRAMES)
-
     for i, bin_id in enumerate(wallaby.label_to_bins["wallaby"]):
         bin = wallaby.bins[bin_id]
         for track in bin:
             wallaby_count += len(track.segments)
             track.camera = "Wallaby-2"
             wallaby_validate.add_track(track)
-            wallaby.segments -= 1
-            wallaby.segment_sum -= len(track.segments)
         remove.append(bin_id)
         last_index = i
         if wallaby_count > wallaby_validate_segments:
@@ -277,8 +277,10 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
     print("total cameras", camera_count)
 
     wallaby, wallaby_validate = split_wallaby_cameras(dataset, cameras)
+    print(len(wallaby.bins), "val", len(wallaby_validate.bins))
     if wallaby:
         train_data.append(wallaby)
+        print("adding", wallaby.camera)
     # has all the rabbits so put in training
     rabbits = dataset.cameras_by_id.get("ruru19w44a-[-36.03915 174.51675]")
     if rabbits:

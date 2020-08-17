@@ -136,7 +136,13 @@ class NewModel:
                 ),
                 tf.keras.applications.inception_resnet_v2.preprocess_input,
             )
-
+        elif self.pretrained_model == "inceptionv3":
+            return (
+                tf.keras.applications.InceptionV3(
+                    weights="imagenet", include_top=False, input_shape=input_shape,
+                ),
+                tf.keras.applications.inception_v3.preprocess_input,
+            )
         raise "Could not find model" + self.pretrained_model
 
     def get_preprocess_fn(self):
@@ -163,7 +169,8 @@ class NewModel:
 
         elif self.pretrained_model == "inceptionresnetv2":
             return tf.keras.applications.inception_resnet_v2.preprocess_input
-
+        elif self.pretrained_model == "inceptionv3":
+            return tf.keras.applications.inception_v3.preprocess_input
         return None
 
     def build_model(self, dense_sizes=[1024, 512]):
@@ -726,18 +733,25 @@ def plot_confusion_matrix(cm, class_names):
 def log_confusion_matrix(epoch, logs, model, validate, writer):
     # Use the model to predict the values from the validation dataset.
     print("doing confusing", epoch)
-    y = validate.get_epoch_predictions(epoch)
+    batch_y = validate.get_epoch_predictions(epoch)
     validate.use_previous_epoch = epoch
     # Calculate the confusion matrix.
     if validate.keep_epoch:
         # x = np.array(x)
-        y = np.array(y)
-        y = y.reshape(-1, *y.shape[2:])
-        y = np.argmax(y, axis=1)
+        y = []
+        for batch in batch_y:
+            y.extend(np.argmax(batch, axis=1))
+    else:
+        y = batch_y
+    print("predicting")
     test_pred_raw = model.predict(validate)
+    print("predicted")
     validate.epoch_data[epoch] = []
-    validate.use_previous_epoch = None
 
+    # reset validation generator will be 1 epoch ahead
+    validate.use_previous_epoch = None
+    validate.cur_epoch -= 1
+    del validate.epoch_data[-1]
     test_pred = np.argmax(test_pred_raw, axis=1)
 
     cm = confusion_matrix(y, test_pred)

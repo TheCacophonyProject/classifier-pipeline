@@ -383,6 +383,11 @@ class Camera:
 
         return frames
 
+    def remove_track(self, track):
+        self.segments -= 1
+        self.segment_sum -= len(track.segments)
+        del self.label_to_tracks["wallaby"][track.unique_id]
+
     def add_track(self, track_header):
         tracks = self.label_to_tracks.setdefault(track_header.label, {})
         tracks[track_header.unique_id] = track_header
@@ -1240,7 +1245,7 @@ class Dataset:
                 labels.remove(label)
         # chance = 1 / len(self.labels)
         label_cap = self.get_label_caps(labels, remapped=True)
-        # label_cap = 10
+        label_cap = 100
         for label in labels:
             count = min(label_cap, len(self.samples_for(label, remapped=True)))
             new = self.get_sample(count, replace=replace, label=label)

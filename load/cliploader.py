@@ -225,7 +225,6 @@ class ClipLoader:
                 if classifier:
                     prediction = classifier.classify_frame(np.copy(frame))
                     track_prediction.classified_frame(region.frame_number, prediction)
-            print("creating track")
             self.database.add_track(
                 clip.get_id(),
                 track,

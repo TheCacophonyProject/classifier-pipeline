@@ -308,7 +308,6 @@ class TrackDatabase:
                     continue
                 if after_date and date < after_date:
                     continue
-
                 for track in clip:
                     if track not in special_datasets:
                         result.append((clip_id, track))
@@ -407,7 +406,8 @@ class TrackDatabase:
             if original:
                 track_node = track_node["original"]
             else:
-                track_node = track_node["cropped"]
+                pass
+                # track_node = track_node["cropped"]
             for frame_number in range(start_frame, end_frame):
                 # we use [:,:,:] to force loading of all data.
                 result.append(track_node[str(frame_number)][:])

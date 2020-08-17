@@ -102,16 +102,12 @@ class DataGenerator(keras.utils.Sequence):
 
     def get_epoch_predictions(self, epoch):
         if self.keep_epoch:
+            print("getting predictions", epoch)
             return self.epoch_data[epoch][1]
         return none
 
     # get all data
     def get_data(self, epoch=0, catog=False):
-        if self.keep_epoch and self.use_previous_epoch is not None:
-            return (
-                self.epoch_data[self.use_previous_epoch][0],
-                self.epoch_data[self.use_previous_epoch][1],
-            )
         X, y = self._data(self.samples, to_categorical=catog)
         return X, y
 
@@ -132,6 +128,11 @@ class DataGenerator(keras.utils.Sequence):
         "Generate one batch of data"
         # Generate indexes of the batch
         logging.debug("%s requsting index %s", self.dataset.name, index)
+        if self.keep_epoch and self.use_previous_epoch is not None:
+            return (
+                self.epoch_data[self.use_previous_epoch][0],
+                self.epoch_data[self.use_previous_epoch][1],
+            )
         if self.preload:
             X, y = self.preloader_queue.get()
         else:
@@ -499,9 +500,9 @@ def normalize(data, new_max=1):
 
 
 def savemovement(data, filename):
-    r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
-    g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
-    b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
+    r = Image.fromarray(np.uint8(data[:, :, 0]))
+    g = Image.fromarray(np.uint8(data[:, :, 1]))
+    b = Image.fromarray(np.uint8(data[:, :, 2]))
     normalize(r, 255)
     normalize(g, 255)
     normalize(b, 255)
