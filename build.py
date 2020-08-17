@@ -169,8 +169,6 @@ def print_data(dataset):
 def diverse_validation(cameras, labels, max_cameras):
     val_cameras = []
 
-    return val_cameras, cameras
-
     # cameras = sorted(
     #     cameras, key=lambda camera: len(camera.label_to_bins.keys()), reverse=True
     # )
