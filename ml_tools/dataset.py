@@ -534,9 +534,17 @@ class Preprocessor:
         left_offset = random.randint(0, 5) if augment else default_inset
         right_offset = random.randint(0, 5) if augment else default_inset
 
-        scaled_frames = []
+        data = np.empty(
+            (
+                len(frames),
+                frames[0].shape[0],
+                Preprocessor.FRAME_SIZE,
+                Preprocessor.FRAME_SIZE,
+            ),
+            dtype=np.float32,
+        )
 
-        for frame in frames:
+        for i, frame in enumerate(frames):
 
             channels, frame_height, frame_width = frame.shape
 
@@ -615,12 +623,11 @@ class Preprocessor:
                         crop_start + Preprocessor.FRAME_SIZE,
                     )
                     print(scaled_frame[i].shape)
-            scaled_frame = np.asarray(scaled_frame)
+                scaled_frame = np.asarray(scaled_frame)
 
-            scaled_frames.append(scaled_frame)
-
+            data[i] = scaled_frame
         # convert back into [F,C,H,W] array.
-        data = np.float32(scaled_frames)
+        # data = np.float32(scaled_frames)
 
         # -------------------------------------------
         # next adjust temperature and flow levels
@@ -1245,7 +1252,7 @@ class Dataset:
                 labels.remove(label)
         # chance = 1 / len(self.labels)
         label_cap = self.get_label_caps(labels, remapped=True)
-        # label_cap = 100
+        # label_cap = 500
         for label in labels:
             count = min(label_cap, len(self.samples_for(label, remapped=True)))
             new = self.get_sample(count, replace=replace, label=label)
@@ -1552,7 +1559,7 @@ class Dataset:
             return self.label_mapping.get(label, label)
         return label
 
-    def rebuild_frame_cdf(self, balance_labels=False):
+    def rebuild_frame_cdf(self, balance_labels=False, lbl_p=None):
         self.frame_cdf = []
         total = 0
         self.frame_label_cdf = {}
@@ -1574,7 +1581,9 @@ class Dataset:
         for key, cdf in self.frame_label_cdf.items():
             if balance_labels:
                 cdf = np.float32(cdf) / len(cdf)
-
+                if lbl_p and key in lbl_p:
+                    cdf = cdf * lbl_p[key]
+                    print("multiplying", key, lbl_p[key])
             total = sum(cdf)
             self.frame_label_cdf[key] = [x / total for x in cdf]
 
@@ -1597,11 +1606,22 @@ class Dataset:
         segments, if balance labels is set each label has an equal chance of
         being chosen
         """
+        p = {
+            "bird": 20,
+            "possum": 20,
+            "rodent": 20,
+            "hedgehog": 20,
+            "cat": 5,
+            "insect": 1,
+            "leporidae": 5,
+            "mustelid": 5,
+            "false-positive": 1,
+            "wallaby": 20,
+        }
+        self.rebuild_segment_cdf(balance_labels=balance_labels, lbl_p=p)
+        self.rebuild_frame_cdf(balance_labels=balance_labels, lbl_p=p)
 
-        self.rebuild_segment_cdf(balance_labels=False)
-        self.rebuild_frame_cdf(balance_labels=False)
-
-    def rebuild_segment_cdf(self, balance_labels=False):
+    def rebuild_segment_cdf(self, balance_labels=False, lbl_p=None):
         """ Calculates the CDF used for fast random sampling """
         self.segment_cdf = []
         total = 0
@@ -1616,10 +1636,15 @@ class Dataset:
             self.segment_cdf = [x / total for x in self.segment_cdf]
         for key, cdf in self.segment_label_cdf.items():
             if balance_labels:
-                cdf = np.float32(cdf) / len(cdf)
-            total = sum(cdf)
-            self.segment_label_cdf[key] = [x / total for x in cdf]
+                cdf = np.float64(cdf) / len(cdf)
+                if lbl_p and key in lbl_p:
+                    cdf *= lbl_p[key]
 
+            total = sum(cdf)
+            if total > 0:
+                self.segment_label_cdf[key] = [x / total for x in cdf]
+            else:
+                self.segment_label_cdf[key] = np.zeros((cdf.shape))
         # do this after so labels are balanced
         if self.label_mapping:
             mapped_cdf = {}
@@ -1775,7 +1800,6 @@ class Dataset:
                 percent = set_two_count / set_one_count
                 percent += 0.1
                 percent = min(1, percent)
-
         # set_one_cap = set_one_count / len()
         tracks_by_id, new_samples = self.rebalance(cap_percent=percent, labels=set_one)
         tracks_by_id2, new_samples2 = self.rebalance(

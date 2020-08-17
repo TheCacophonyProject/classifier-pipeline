@@ -259,6 +259,12 @@ class DataGenerator(keras.utils.Sequence):
                 data[:, :, 1] = dots
                 data[:, :, 2] = overlay
                 # print("max data", np.amax(square), np.amax(dots), np.amax(overlay))
+                # savemovement(
+                #     data,
+                #     "samples/{}-{}-{}".format(
+                #         self.dataset.name, sample.track.unique_id, sample.start_frame
+                #     ),
+                # )
                 data = preprocess_movement(
                     data,
                     self.dim,
@@ -267,10 +273,7 @@ class DataGenerator(keras.utils.Sequence):
                     self.model_preprocess,
                     filter_channels=False,
                 )
-                # savemovement(
-                #     data,
-                #     "samples/{}-{}".format(sample.track.unique_id, sample.start_frame),
-                # )
+
             else:
                 data = preprocess_frame(
                     data,
@@ -500,9 +503,9 @@ def normalize(data, new_max=1):
 
 
 def savemovement(data, filename):
-    r = Image.fromarray(np.uint8(data[:, :, 0]))
-    g = Image.fromarray(np.uint8(data[:, :, 1]))
-    b = Image.fromarray(np.uint8(data[:, :, 2]))
+    r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
+    g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
+    b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
     normalize(r, 255)
     normalize(g, 255)
     normalize(b, 255)
