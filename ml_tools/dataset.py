@@ -598,14 +598,15 @@ class Preprocessor:
                 )
                 for channel in range(channels)
             ]
-            # print(max_dim)
+            height, width = scaled_frame[0].shape
+            max_dim = max(height, width)
             if keep_aspect and max_dim > Preprocessor.FRAME_SIZE:
-                height, width = scaled_frame[0].shape
-                max_dim = max(height, width)
+
                 crop_start = 0
                 if augment:
                     crop = max_dim - Preprocessor.FRAME_SIZE
                     crop_start = random.randint(0, crop)
+                crop_start = 0
                 for i, channel in enumerate(scaled_frame):
                     if height > width:
                         scaled_frame[i] = channel[
@@ -616,13 +617,6 @@ class Preprocessor:
                         scaled_frame[i] = channel[
                             :, crop_start : crop_start + Preprocessor.FRAME_SIZE
                         ]
-                    print(
-                        "cropping",
-                        crop_start,
-                        ":",
-                        crop_start + Preprocessor.FRAME_SIZE,
-                    )
-                    print(scaled_frame[i].shape)
                 scaled_frame = np.asarray(scaled_frame)
 
             data[i] = scaled_frame
@@ -1251,7 +1245,8 @@ class Dataset:
                     samples.extend(new)
                 labels.remove(label)
         # chance = 1 / len(self.labels)
-        label_cap = self.get_label_caps(labels, remapped=True)
+        label_cap = self.get_label_caps(labels, remapped=True) * 2
+        print("getting", label_cap, "per label")
         # label_cap = 500
         for label in labels:
             count = min(label_cap, len(self.samples_for(label, remapped=True)))
@@ -1583,7 +1578,6 @@ class Dataset:
                 cdf = np.float32(cdf) / len(cdf)
                 if lbl_p and key in lbl_p:
                     cdf = cdf * lbl_p[key]
-                    print("multiplying", key, lbl_p[key])
             total = sum(cdf)
             self.frame_label_cdf[key] = [x / total for x in cdf]
 
