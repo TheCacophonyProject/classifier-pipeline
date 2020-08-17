@@ -379,7 +379,9 @@ class TrackDatabase:
 
         return None
 
-    def get_track(self, clip_id, track_number, start_frame=None, end_frame=None):
+    def get_track(
+        self, clip_id, track_number, start_frame=None, end_frame=None, original=False
+    ):
         """
         Fetches a track data from database with optional slicing.
         :param clip_id: id of the clip
@@ -396,11 +398,16 @@ class TrackDatabase:
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             track_node = clips[str(clip_id)][str(track_number)]
+
             if start_frame is None:
                 start_frame = 0
             if end_frame is None:
                 end_frame = track_node.attrs["frames"]
             result = []
+            if original:
+                track_node = track_node["original"]
+            else:
+                track_node = track_node["cropped"]
             for frame_number in range(start_frame, end_frame):
                 # we use [:,:,:] to force loading of all data.
                 result.append(track_node[str(frame_number)][:])
@@ -451,12 +458,15 @@ class TrackDatabase:
             clip_node = clips[clip_id]
             has_prediction = False
             track_node = clip_node.create_group(track_id)
+            cropped_frame = track_node.create_group("cropped")
+            thermal_frame = track_node.create_group("original")
 
             # write each frame out individually, as they will probably be different sizes.
 
-            for frame_number in range(frames):
-
-                channels, height, width = track_data[frame_number].shape
+            for frame_i, frame_data in enumerate(track_data):
+                cropped = frame_data[1]
+                original = frame_data[0]
+                channels, height, width = cropped.shape
 
                 # using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
                 chunks = (1, height, width)
@@ -464,16 +474,28 @@ class TrackDatabase:
                 dims = (channels, height, width)
 
                 if opts is not None:
-                    frame_node = track_node.create_dataset(
-                        str(frame_number), dims, chunks=chunks, **opts, dtype=np.int16
+                    frame_node = cropped_frame.create_dataset(
+                        str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
+                    )
+                    thermal_node = thermal_frame.create_dataset(
+                        str(frame_i),
+                        original.shape,
+                        chunks=original.shape,
+                        **opts,
+                        dtype=np.int16,
                     )
                 else:
-                    frame_node = track_node.create_dataset(
-                        str(frame_number), dims, chunks=chunks, dtype=np.int16
+                    frame_node = cropped_frame.create_dataset(
+                        str(frame_i), dims, chunks=chunks, dtype=np.int16
                     )
-
-                frame_node[:, :, :] = track_data[frame_number]
-
+                    thermal_node = thermal_frame.create_dataset(
+                        str(frame_i),
+                        original.shape,
+                        chunks=original.shape,
+                        dtype=np.int16,
+                    )
+                thermal_node[:, :] = original
+                frame_node[:, :, :] = cropped
             # write out attributes
             if track:
                 track_stats = track.get_stats()

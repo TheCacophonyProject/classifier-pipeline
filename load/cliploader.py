@@ -42,9 +42,9 @@ from classify.trackprediction import TrackPrediction
 
 
 def process_job(loader, queue, model_file):
-    classifier = NewModel()
-    classifier.load_model(model_file)
-    logging.info("Loaded model")
+    # classifier = NewModel()
+    # classifier.load_model(model_file)
+    # logging.info("Loaded model")
     i = 0
     while True:
         i += 1
@@ -53,11 +53,11 @@ def process_job(loader, queue, model_file):
             if clip == "DONE":
                 break
             else:
-                loader.process_file(str(clip), classifier)
+                loader.process_file(str(clip))
             if i % 50 == 0:
                 logging.debug("%s jobs left", queue.qsize())
-        except:
-            pass
+        except Exception as e:
+            logging.error("Process_job error %s", e)
 
 
 def prediction_job(queue, db, model_file):
@@ -71,8 +71,8 @@ def prediction_job(queue, db, model_file):
         else:
             try:
                 db.add_predictions(str(clip), classifier)
-            except:
-                pass
+            except Exception as e:
+                logging.error("Process_job error %s", e)
 
 
 # job[0].add_prediction(job[1])
@@ -149,24 +149,6 @@ class ClipLoader:
         for process in processes:
             process.join()
 
-    #
-    # def process_all(self, root=None, checkpoint=None):
-    #     self.load_classifier(self.config.classify.model)
-    #     self.database.set_labels(self.classifier.labels)
-    #     if root is None:
-    #         root = self.config.source_folder
-    #
-    #     jobs = []
-    #     for folder_path, _, files in os.walk(root):
-    #         for name in files:
-    #             if os.path.splitext(name)[1] == ".cptv":
-    #                 full_path = os.path.join(folder_path, name)
-    #                 jobs.append((self, full_path))
-    #
-    #     jobs.sort(key=lambda x: x[1])
-    #
-    #     self._process_jobs(jobs)
-
     def process_all(self, root):
         job_queue = Queue()
         processes = []
@@ -231,16 +213,19 @@ class ClipLoader:
             track_data = []
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
-                frame = track.crop_by_region(frame, region, filter_mask_by_region=False)
+                cropped = track.crop_by_region(
+                    frame, region, filter_mask_by_region=False
+                )
+                thermal = frame.thermal
 
                 # zero out the filtered channel
                 if not self.config.load.include_filtered_channel:
-                    frame[TrackChannels.filtered] = 0
-                track_data.append(frame)
+                    cropped[TrackChannels.filtered] = 0
+                track_data.append((frame.thermal, cropped))
                 if classifier:
                     prediction = classifier.classify_frame(np.copy(frame))
                     track_prediction.classified_frame(region.frame_number, prediction)
-
+            print("creating track")
             self.database.add_track(
                 clip.get_id(),
                 track,
@@ -286,7 +271,7 @@ class ClipLoader:
         confidence = track_tag.get("confidence", 0)
         return tag and tag not in excluded_tags and confidence >= min_confidence
 
-    def process_file(self, filename, classifier=None):
+    def process_file(self, filename, classifier=None, add_frame=True):
         start = time.time()
         base_filename = os.path.splitext(os.path.basename(filename))[0]
 

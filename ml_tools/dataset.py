@@ -18,7 +18,7 @@ import random
 import threading
 import time
 from bisect import bisect
-
+import json
 import cv2
 import dateutil
 import numpy as np
@@ -64,6 +64,7 @@ class TrackHeader:
         predictions,
         correct_prediction,
         frame_mass,
+        start_frame,
     ):
         self.predictions = predictions
         self.correct_prediction = correct_prediction
@@ -78,6 +79,7 @@ class TrackHeader:
         self.label = label
         # date and time of the start of the track
         self.start_time = start_time
+        self.start_frame = start_frame
         # duration in seconds
         self.duration = duration
         # camera this track came from
@@ -103,6 +105,27 @@ class TrackHeader:
         self.frame_mass = frame_mass
         self.median_mass = np.median(frame_mass)
         self.mean_mass = np.mean(frame_mass)
+
+    def toJSON(self):
+        meta_dict = {}
+        meta_dict["clip_id"] = int(self.clip_id)
+        meta_dict["track_id"] = int(self.track_id)
+        meta_dict["camera"] = self.camera
+        meta_dict["num_frames"] = int(self.num_frames)
+        positions = []
+        for region in self.track_bounds:
+            positions.append(region.tolist())
+
+        meta_dict["frames_per_second"] = int(self.frames_per_second)
+        meta_dict["track_bounds"] = positions
+        meta_dict["start_frame"] = int(self.start_frame)
+        if self.location is not None:
+            meta_dict["location_hash"] = "{}{}".format(
+                hash(self.location[0]), hash(self.location[1])
+            )
+        meta_dict["label"] = self.label
+
+        return json.dumps(meta_dict, indent=3)
 
     def add_sample(self, sample, use_segments):
         if use_segments:
@@ -289,6 +312,7 @@ class TrackHeader:
             predictions=predictions,
             correct_prediction=correct_prediction,
             frame_mass=track_meta["mass_history"],
+            start_frame=track_start_frame,
         )
         return header
 
@@ -402,7 +426,6 @@ class SegmentHeader:
         self.track = track
         # first frame of this segment referenced by start of track
         self.start_frame = start_frame
-        self.end_frame = start_frame + frames
         # length of segment in frames
         self.frames = frames
         # relative weight of the segment (higher is sampled more often)
@@ -988,7 +1011,9 @@ class Dataset:
         if self.banned_clips and source in self.banned_clips:
             self.filtered_stats["banned"] += 1
             return True
-
+        if "tag" not in track_meta:
+            self.filtered_stats["tags"] += 1
+            return True
         if track_meta["tag"] not in self.included_labels:
             self.filtered_stats["tags"] += 1
             return True
@@ -1107,20 +1132,21 @@ class Dataset:
         y = np.int32([self.labels.index(segment.label) for segment in self.segments])
         return X, y
 
-    def fetch_track(self, track: TrackHeader):
+    def fetch_track(self, track: TrackHeader, original=False, preprocess=True):
         """
         Fetches data for an entire track
         :param track: the track to fetch
         :return: segment data of shape [frames, channels, height, width]
         """
-        data = self.db.get_track(track.clip_id, track.track_id, 0, track.frames)
-        data = Preprocessor.apply(
-            data,
-            reference_level=track.frame_temp_median,
-            frame_velocity=track.frame_velocity,
-            encode_frame_offsets_in_flow=self.encode_frame_offsets_in_flow,
-            default_inset=self.DEFAULT_INSET,
-        )
+        data = self.db.get_track(track.clip_id, track.track_id, original=original)
+        if preprocess:
+            data = Preprocessor.apply(
+                data,
+                reference_level=track.frame_temp_median,
+                frame_velocity=track.frame_velocity,
+                encode_frame_offsets_in_flow=self.encode_frame_offsets_in_flow,
+                default_inset=self.DEFAULT_INSET,
+            )
         return data
 
     def fetch_frame(self, frame_sample, channels=None):
