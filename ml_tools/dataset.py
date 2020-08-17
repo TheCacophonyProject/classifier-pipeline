@@ -1245,7 +1245,7 @@ class Dataset:
                 labels.remove(label)
         # chance = 1 / len(self.labels)
         label_cap = self.get_label_caps(labels, remapped=True)
-        label_cap = 100
+        # label_cap = 100
         for label in labels:
             count = min(label_cap, len(self.samples_for(label, remapped=True)))
             new = self.get_sample(count, replace=replace, label=label)
