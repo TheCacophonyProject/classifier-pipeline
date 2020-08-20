@@ -312,7 +312,7 @@ class NewModel:
             buffer_size=self.params.get("buffer_size", 128),
             use_thermal=self.params.get("use_thermal", False),
             use_filtered=self.params.get("use_filtered", False),
-            shuffle=True,
+            shuffle=False,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=self.params.get("train_load_threads", 1),
@@ -327,7 +327,7 @@ class NewModel:
             lstm=self.params.get("lstm", False),
             use_thermal=self.params.get("use_thermal", False),
             use_filtered=self.params.get("use_filtered", False),
-            shuffle=True,
+            shuffle=False,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=1,
@@ -444,17 +444,42 @@ class NewModel:
         return output[0]
 
     def binarize(
-        self, set_one, label_one, set_two, label_two, scale=False, keep_fp=False
+        self,
+        set_one,
+        label_one,
+        set_two,
+        label_two,
+        scale=False,
+        keep_fp=False,
+        shuffle=False,
     ):
         # set samples of each label to have a maximum cap, and exclude labels
         self.datasets.train.binarize(
-            set_one, lbl_one=label_one, lbl_two=label_two, scale=scale, keep_fp=keep_fp
+            set_one,
+            lbl_one=label_one,
+            set_two=set_two,
+            lbl_two=label_two,
+            scale=scale,
+            keep_fp=keep_fp,
+            shuffle=shuffle,
         )
         self.datasets.validation.binarize(
-            set_one, lbl_one=label_one, lbl_two=label_two, scale=scale, keep_fp=keep_fp
+            set_one,
+            lbl_one=label_one,
+            set_two=set_two,
+            lbl_two=label_two,
+            scale=scale,
+            keep_fp=keep_fp,
+            shuffle=shuffle,
         )
         self.datasets.test.binarize(
-            set_one, lbl_one=label_one, lbl_two=label_two, scale=scale, keep_fp=keep_fp
+            set_one,
+            lbl_one=label_one,
+            set_two=set_two,
+            lbl_two=label_two,
+            scale=scale,
+            keep_fp=keep_fp,
+            shuffle=shuffle,
         )
         self.set_labels()
 
@@ -733,25 +758,27 @@ def plot_confusion_matrix(cm, class_names):
 def log_confusion_matrix(epoch, logs, model, validate, writer):
     # Use the model to predict the values from the validation dataset.
     print("doing confusing", epoch)
-    batch_y = validate.get_epoch_predictions(epoch)
-    validate.use_previous_epoch = epoch
-    # Calculate the confusion matrix.
-    if validate.keep_epoch:
-        # x = np.array(x)
-        y = []
-        for batch in batch_y:
-            y.extend(np.argmax(batch, axis=1))
-    else:
-        y = batch_y
-    print("predicting")
-    test_pred_raw = model.predict(validate)
-    print("predicted")
-    validate.epoch_data[epoch] = []
+    # batch_y = validate.get_epoch_predictions(epoch)
+    # validate.use_previous_epoch = epoch
+    # # Calculate the confusion matrix.
+    # if validate.keep_epoch:
+    #     # x = np.array(x)
+    #     y = []
+    #     for batch in batch_y:
+    #         y.extend(np.argmax(batch, axis=1))
+    # else:
+    #     y = batch_y
 
-    # reset validation generator will be 1 epoch ahead
-    validate.use_previous_epoch = None
-    validate.cur_epoch -= 1
-    del validate.epoch_data[-1]
+    print("predicting")
+    x, y = validate.get_data(epoch=epoch)
+    test_pred_raw = model.predict(x)
+    print("predicted")
+    # validate.epoch_data[epoch] = []
+    #
+    # # reset validation generator will be 1 epoch ahead
+    # validate.use_previous_epoch = None
+    # validate.cur_epoch -= 1
+    # del validate.epoch_data[-1]
     test_pred = np.argmax(test_pred_raw, axis=1)
 
     cm = confusion_matrix(y, test_pred)

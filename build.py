@@ -273,13 +273,10 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
     validation_cameras = max(
         MIN_VALIDATE_CAMERAS, round(camera_count * validation_percent)
     )
-    print("total cameras", camera_count)
 
     wallaby, wallaby_validate = split_wallaby_cameras(dataset, cameras)
-    print(len(wallaby.bins), "val", len(wallaby_validate.bins))
     if wallaby:
         train_data.append(wallaby)
-        print("adding", wallaby.camera)
     # has all the rabbits so put in training
     rabbits = dataset.cameras_by_id.get("ruru19w44a-[-36.03915 174.51675]")
     if rabbits:

@@ -232,7 +232,6 @@ class TrackHeader:
 
             if segment_frames != segment_width:
                 continue
-
             if segment_min_mass and segment_avg_mass < segment_min_mass:
                 self.filtered_stats["segment_mass"] += 1
                 continue
@@ -513,7 +512,7 @@ class Preprocessor:
         frame_velocity=None,
         augment=False,
         encode_frame_offsets_in_flow=False,
-        default_inset=2,
+        default_inset=0,
         keep_aspect=False,
     ):
         """
@@ -529,10 +528,10 @@ class Preprocessor:
         # first we scale to the standard size
 
         # adjusting the corners makes the algorithm robust to tracking differences.
-        top_offset = random.randint(0, 5) if augment else default_inset
-        bottom_offset = random.randint(0, 5) if augment else default_inset
-        left_offset = random.randint(0, 5) if augment else default_inset
-        right_offset = random.randint(0, 5) if augment else default_inset
+        top_offset = random.randint(0, 1) if augment else default_inset
+        bottom_offset = random.randint(0, 1) if augment else default_inset
+        left_offset = random.randint(0, 1) if augment else default_inset
+        right_offset = random.randint(0, 1) if augment else default_inset
 
         data = np.empty(
             (
@@ -766,7 +765,7 @@ class Dataset:
             self.banned_clips = config.build.banned_clips
             self.included_labels = config.labels
             self.clip_before_date = config.build.clip_end_date
-            self.segment_min_mass = config.build.test_min_mass
+            self.segment_min_mass = config.build.train_min_mass
         else:
             # number of seconds each segment should be
             self.segment_length = 3
@@ -1231,7 +1230,7 @@ class Dataset:
         else:
             return data
 
-    def epoch_samples(self, dont_cap=None, replace=True):
+    def epoch_samples(self, dont_cap=None, replace=True, shuffle=True):
         if len(self.labels) == 0:
             return []
         labels = self.labels.copy()
@@ -1240,18 +1239,20 @@ class Dataset:
             for label in dont_cap:
                 if label in labels:
                     count = len(self.samples_for(label, remapped=True))
-                    new = self.get_sample(count, replace=replace, label=label)
+                    new = self.get_sample(
+                        count, replace=replace, label=label, shuffle=shuffle
+                    )
                 if new is not None:
                     samples.extend(new)
                 labels.remove(label)
         # chance = 1 / len(self.labels)
         label_cap = self.get_label_caps(labels, remapped=True) * 2
         print("getting", label_cap, "per label")
-        # label_cap = 500
+        label_cap = 100
         for label in labels:
             count = min(label_cap, len(self.samples_for(label, remapped=True)))
-            new = self.get_sample(count, replace=replace, label=label)
-            if new is not None:
+            new = self.get_sample(count, replace=replace, label=label, shuffle=shuffle)
+            if new is not None and len(new) > 0:
                 samples.extend(new)
         return samples
 
@@ -1265,7 +1266,7 @@ class Dataset:
             return self.segment_label_cdf.get(label, [])
         return self.frame_label_cdf.get(label, [])
 
-    def get_sample(self, count, replace=True, label=None):
+    def get_sample(self, count, replace=True, label=None, shuffle=True):
         """ Returns a random frames from weighted list. """
         if label:
             samples = self.samples_for(label, remapped=True)
@@ -1275,7 +1276,11 @@ class Dataset:
             cdf = self.cdf()
         if not samples:
             return None
-        return np.random.choice(samples, count, replace=replace, p=cdf)
+        if shuffle:
+            return np.random.choice(samples, count, replace=replace, p=cdf)
+        else:
+            count = min(count, len(samples))
+            return samples[:count]
 
     def load_all(self, force=False):
         """ Loads all X and y into dataset if required. """
@@ -1756,6 +1761,7 @@ class Dataset:
         keep_fp=False,
         remove_labels=None,
         balance_labels=True,
+        shuffle=True,
     ):
         set_one_count = 0
         self.label_mapping = {}
@@ -1770,7 +1776,6 @@ class Dataset:
             for label in remove_labels:
                 set_two.discard(label)
         self.labels = [lbl_one, lbl_two]
-
         if keep_fp:
             set_two.discard("false-positive")
             self.label_mapping["false-positive"] = "false-positive"
@@ -1795,9 +1800,11 @@ class Dataset:
                 percent += 0.1
                 percent = min(1, percent)
         # set_one_cap = set_one_count / len()
-        tracks_by_id, new_samples = self.rebalance(cap_percent=percent, labels=set_one)
+        tracks_by_id, new_samples = self.rebalance(
+            cap_percent=percent, labels=set_one, shuffle=shuffle
+        )
         tracks_by_id2, new_samples2 = self.rebalance(
-            cap_percent=percent2, labels=set_two
+            cap_percent=percent2, labels=set_two, shuffle=shuffle
         )
         self.tracks_by_bin = tracks_by_id
         samples = new_samples
@@ -1816,7 +1823,13 @@ class Dataset:
         self.rebuild_cdf(balance_labels=balance_labels)
 
     def rebalance(
-        self, label_cap=None, cap_percent=None, exclude=[], labels=None, update=False
+        self,
+        label_cap=None,
+        cap_percent=None,
+        exclude=[],
+        labels=None,
+        update=False,
+        shuffle=True,
     ):
         new_samples = []
         tracks_by_id = {}
@@ -1833,8 +1846,8 @@ class Dataset:
             if label in exclude:
                 labels.remove(label)
             track_ids = set()
-
-            np.random.shuffle(samples)
+            if shuffle:
+                np.random.shuffle(samples)
             if label_cap:
                 samples = samples[:label_cap]
             if cap_percent:

@@ -1,4 +1,5 @@
 from PIL import Image, ImageDraw, ImageFont, ImageColor
+from pathlib import Path
 
 import math
 import random
@@ -53,10 +54,10 @@ class DataGenerator(keras.utils.Sequence):
         # default
         if not self.use_thermal and not self.use_filtered and not self.lstm:
             self.use_thermal = True
+        self.movement = use_movement
         if use_movement:
-            self.movement = use_movement
             self.square = int(math.sqrt(round(dataset.segment_length * 9)))
-
+            dim = (dim[0] * self.square, dim[1] * self.square, dim[2])
         self.dim = dim
         self.augment = dataset.enable_augmentation
         self.batch_size = batch_size
@@ -102,7 +103,6 @@ class DataGenerator(keras.utils.Sequence):
 
     def get_epoch_predictions(self, epoch):
         if self.keep_epoch:
-            print("getting predictions", epoch)
             return self.epoch_data[epoch][1]
         return none
 
@@ -146,7 +146,7 @@ class DataGenerator(keras.utils.Sequence):
         return X, y
 
     def load_next_epoch(self):
-        self.samples = self.dataset.epoch_samples(replace=False)
+        self.samples = self.dataset.epoch_samples(replace=False, shuffle=False)
         if self.shuffle:
             np.random.shuffle(self.samples)
 
@@ -184,11 +184,14 @@ class DataGenerator(keras.utils.Sequence):
     def _data(self, samples, to_categorical=True):
         "Generates data containing batch_size samples"  # X : (n_samples, *dim, n_channels)
         # Initialization
-        # if self.lstm:
-        #     X = []np.empty((len(samples), self.sequence_size, *self.dim))
+        if self.lstm:
+            X = np.empty((len(samples), self.sequence_size, *self.dim))
+        else:
+            X = np.empty((len(samples), *self.dim,))
+
         # else:
-        X = []
-        # np.empty((len(samples), *self.dim))
+        # X = []
+        y = np.empty((len(samples), *self.dim))
 
         y = np.empty((len(samples)), dtype=int)
         if self.use_thermal:
@@ -256,13 +259,16 @@ class DataGenerator(keras.utils.Sequence):
                 data = np.empty((square.shape[0], square.shape[1], 3))
 
                 data[:, :, 0] = square
-                data[:, :, 1] = dots
-                data[:, :, 2] = overlay
+                data[:, :, 1] = dots  # dots
+                data[:, :, 2] = overlay  # overlay
                 # print("max data", np.amax(square), np.amax(dots), np.amax(overlay))
                 # savemovement(
                 #     data,
-                #     "samples/{}-{}-{}".format(
-                #         self.dataset.name, sample.track.unique_id, sample.start_frame
+                #     "samples/{}/{}/{}-{}".format(
+                #         self.dataset.name,
+                #         sample.label,
+                #         sample.track.unique_id,
+                #         sample.start_frame,
                 #     ),
                 # )
                 data = preprocess_movement(
@@ -284,13 +290,13 @@ class DataGenerator(keras.utils.Sequence):
                     filter_channels=False,
                 )
             if data is None:
-                logging.error(
-                    "error pre processing frame (i.e.max and min are the same)sample %s",
-                    sample,
-                )
+                # logging.error(
+                #     "error pre processing frame (i.e.max and min are the same)sample %s",
+                #     sample,
+                # )
                 continue
 
-            X.append(data)
+            X[data_i] = data
             y[data_i] = self.labels.index(label)
             data_i += 1
         # print(data_i, len(y), len(y[:data_i]))
@@ -503,6 +509,7 @@ def normalize(data, new_max=1):
 
 
 def savemovement(data, filename):
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
     r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
     g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
     b = Image.fromarray(np.uint8(data[:, :, 2] * 255))

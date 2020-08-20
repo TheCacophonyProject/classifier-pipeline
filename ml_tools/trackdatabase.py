@@ -311,6 +311,7 @@ class TrackDatabase:
                 for track in clip:
                     if track not in special_datasets:
                         result.append((clip_id, track))
+
         return result
 
     def get_track_meta(self, clip_id, track_number):

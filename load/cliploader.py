@@ -55,7 +55,7 @@ def process_job(loader, queue, model_file):
             else:
                 loader.process_file(str(clip))
             if i % 50 == 0:
-                logging.debug("%s jobs left", queue.qsize())
+                logging.info("%s jobs left", queue.qsize())
         except Exception as e:
             logging.error("Process_job error %s", e)
 
@@ -169,7 +169,7 @@ class ClipLoader:
                     full_path = os.path.join(folder_path, name)
                     job_queue.put(full_path)
                     job_count += 1
-        logging.debug("Processing %d", job_count)
+        logging.info("Processing %d", job_count)
         for i in range(len(processes)):
             job_queue.put("DONE")
         for process in processes:
