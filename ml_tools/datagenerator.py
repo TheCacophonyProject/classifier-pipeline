@@ -185,7 +185,7 @@ class DataGenerator(keras.utils.Sequence):
         "Generates data containing batch_size samples"  # X : (n_samples, *dim, n_channels)
         # Initialization
         if self.lstm:
-            X = np.empty((len(samples), self.sequence_size, *self.dim))
+            X = np.empty((len(samples), samples[0].frames, *self.dim))
         else:
             X = np.empty((len(samples), *self.dim,))
 
@@ -259,7 +259,7 @@ class DataGenerator(keras.utils.Sequence):
                 data = np.empty((square.shape[0], square.shape[1], 3))
 
                 data[:, :, 0] = square
-                data[:, :, 1] = dots  # dots
+                data[:, :, 1] = square  # dots
                 data[:, :, 2] = overlay  # overlay
                 # print("max data", np.amax(square), np.amax(dots), np.amax(overlay))
                 # savemovement(
@@ -313,7 +313,7 @@ def resize(image, dim):
     return image.numpy()
 
 
-def reisze_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
+def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
         image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
     )
@@ -325,7 +325,7 @@ def convert(image):
 
 
 def augement_frame(frame, dim):
-    frame = reisze_cv(
+    frame = resize_cv(
         frame,
         dim,
         extra_h=random.randint(0, int(FRAME_SIZE * 0.1)),

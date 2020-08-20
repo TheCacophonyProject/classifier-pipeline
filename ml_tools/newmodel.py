@@ -47,9 +47,9 @@ class NewModel:
     MODEL_DESCRIPTION = "Pre trained resnet"
     VERSION = "0.3.0"
 
-    def __init__(self, train_config=None, labels=None, preserve_labels=False):
+    def __init__(self, train_config=None, labels=None):
 
-        self.frame_size = 48
+        self.frame_size = Preprocessor.FRAME_SIZE
         self.model = None
         self.datasets = None
         # namedtuple("Datasets", "train, validation, test")
@@ -60,10 +60,8 @@ class NewModel:
             "augmentation": True,
             "thermal_threshold": 10,
             "scale_frequency": 0.5,
-            # dropout
             "keep_prob": 0.5,
             "lstm": False,
-            # training
             "batch_size": 16,
         }
         if train_config:
@@ -73,7 +71,6 @@ class NewModel:
             self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
             self.params.update(train_config.hyper_params)
         self.labels = labels
-        self.preserve_labels = preserve_labels
         self.pretrained_model = self.params.get("model", "resnetv2")
         self.preprocess_fn = None
         self.validate = None
@@ -143,7 +140,7 @@ class NewModel:
                 ),
                 tf.keras.applications.inception_v3.preprocess_input,
             )
-        raise "Could not find model" + self.pretrained_model
+        raise Exception("Could not find model" + self.pretrained_model)
 
     def get_preprocess_fn(self):
         if self.pretrained_model == "resnet":
@@ -269,7 +266,7 @@ class NewModel:
         self.model.save(
             os.path.join(self.checkpoint_folder, run_name), save_format="tf"
         )
-
+        #  save metadata
         model_stats = {}
         model_stats["name"] = self.MODEL_NAME
         model_stats["description"] = self.MODEL_DESCRIPTION
@@ -312,11 +309,11 @@ class NewModel:
             buffer_size=self.params.get("buffer_size", 128),
             use_thermal=self.params.get("use_thermal", False),
             use_filtered=self.params.get("use_filtered", False),
-            shuffle=False,
+            shuffle=self.params.get("shuffle", True),
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=self.params.get("train_load_threads", 1),
-            use_movement=self.params.get("movement", False),
+            use_movement=self.params.get("use_movement", False),
         )
         self.validate = DataGenerator(
             self.datasets.validation,
@@ -327,11 +324,11 @@ class NewModel:
             lstm=self.params.get("lstm", False),
             use_thermal=self.params.get("use_thermal", False),
             use_filtered=self.params.get("use_filtered", False),
-            shuffle=False,
+            shuffle=self.params.get("shuffle", True),
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=1,
-            use_movement=self.params.get("movement", False),
+            use_movement=self.params.get("use_movement", False),
             keep_epoch=True,
         )
         file_writer_cm = tf.summary.create_file_writer(self.log_dir + "/cm")
@@ -375,13 +372,6 @@ class NewModel:
             test.stop_load()
             logging.info("Test accuracy is %s", test_accuracy)
         self.save(run_name, history=history, test_results=test_accuracy)
-
-        for key, value in history.history.items():
-            plt.figure()
-            plt.plot(value, label="Training {}".format(key))
-            plt.ylabel("{}".format(key))
-            plt.title("Training {}".format(key))
-            plt.savefig("{}.png".format(key))
 
     def preprocess(self, frame, data):
         if self.use_thermal:
@@ -758,27 +748,26 @@ def plot_confusion_matrix(cm, class_names):
 def log_confusion_matrix(epoch, logs, model, validate, writer):
     # Use the model to predict the values from the validation dataset.
     print("doing confusing", epoch)
-    # batch_y = validate.get_epoch_predictions(epoch)
-    # validate.use_previous_epoch = epoch
-    # # Calculate the confusion matrix.
-    # if validate.keep_epoch:
-    #     # x = np.array(x)
-    #     y = []
-    #     for batch in batch_y:
-    #         y.extend(np.argmax(batch, axis=1))
-    # else:
-    #     y = batch_y
+    batch_y = validate.get_epoch_predictions(epoch)
+    validate.use_previous_epoch = epoch
+    # Calculate the confusion matrix.
+    if validate.keep_epoch:
+        # x = np.array(x)
+        y = []
+        for batch in batch_y:
+            y.extend(np.argmax(batch, axis=1))
+    else:
+        y = batch_y
 
     print("predicting")
-    x, y = validate.get_data(epoch=epoch)
-    test_pred_raw = model.predict(x)
+    test_pred_raw = model.predict(validate)
     print("predicted")
-    # validate.epoch_data[epoch] = []
-    #
-    # # reset validation generator will be 1 epoch ahead
-    # validate.use_previous_epoch = None
-    # validate.cur_epoch -= 1
-    # del validate.epoch_data[-1]
+    validate.epoch_data[epoch] = []
+
+    # reset validation generator will be 1 epoch ahead
+    validate.use_previous_epoch = None
+    validate.cur_epoch -= 1
+    del validate.epoch_data[-1]
     test_pred = np.argmax(test_pred_raw, axis=1)
 
     cm = confusion_matrix(y, test_pred)
