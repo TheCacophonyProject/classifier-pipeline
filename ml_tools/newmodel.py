@@ -183,7 +183,9 @@ class NewModel:
         base_model, preprocess = self.base_model((width, width, 3))
         self.preprocess_fn = preprocess
 
-        x = base_model(inputs, training=self.params["base_training"])  # IMPORTANT
+        x = base_model(
+            inputs, training=self.params.get("base_training", False)
+        )  # IMPORTANT
 
         if self.params["lstm"]:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
@@ -210,7 +212,7 @@ class NewModel:
                 else:
                     layer.trainable = i >= self.params["retrain_layer"]
         else:
-            base_model.trainable = self.params["base_training"]
+            base_model.trainable = self.params.get("base_training", False)
 
         self.model.summary()
 
@@ -338,6 +340,7 @@ class NewModel:
                 epoch, logs, self.model, self.validate, file_writer_cm
             )
         )
+        checkpoints = self.checkpoints()
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
@@ -347,7 +350,8 @@ class NewModel:
                 tf.keras.callbacks.TensorBoard(
                     self.log_dir, write_graph=True, write_images=True
                 ),
-                cm_callback,
+                *checkpoints
+                # cm_callback,
             ],  # log metrics
         )
         self.validate.stop_load()
@@ -372,6 +376,31 @@ class NewModel:
             test.stop_load()
             logging.info("Test accuracy is %s", test_accuracy)
         self.save(run_name, history=history, test_results=test_accuracy)
+
+    def checkpoints(self):
+        val_loss = os.path.join(self.checkpoint_folder, "val_loss")
+
+        checkpoint_loss = tf.keras.callbacks.ModelCheckpoint(
+            val_loss,
+            monitor="val_loss",
+            verbose=1,
+            save_best_only=True,
+            save_weights_only=False,
+            mode="auto",
+            save_frequency=1,
+        )
+        val_loss = os.path.join(self.checkpoint_folder, "val_acc")
+
+        checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
+            val_loss,
+            monitor="val_acc",
+            verbose=1,
+            save_best_only=True,
+            save_weights_only=False,
+            mode="max",
+            save_frequency=1,
+        )
+        return [checkpoint_acc, checkpoint_loss]
 
     def preprocess(self, frame, data):
         if self.use_thermal:
@@ -422,6 +451,7 @@ class NewModel:
                     preprocess_fn=self.preprocess_fn,
                 )
                 frame = data
+
             else:
                 frame = preprocess_frame(
                     frame,
@@ -489,13 +519,7 @@ class NewModel:
     def set_labels(self):
         # preserve label order if needed, this should be used when retraining
         # on a model already trained with our data
-        if self.labels is None or self.preserve_labels == False:
-            self.labels = self.datasets.train.labels
-        else:
-            for label in self.datasets.train.labels:
-                if label not in self.labels:
-                    self.labels.append(label)
-            self.datasets.train.labels = label
+        self.labels = self.datasets.train.labels
 
     def import_dataset(self, dataset_filename, ignore_labels=None):
         """
@@ -692,6 +716,48 @@ class NewModel:
                 track_prediction.classified_frame(i, prediction, None)
 
         return track_prediction
+
+    def confusion(self, dataset, filename="confusion.png"):
+        dataset.binarize(
+            ["wallaby"],
+            lbl_one="wallaby",
+            set_two=None,
+            lbl_two="not",
+            scale=False,
+            keep_fp=False,
+            shuffle=True,
+        )
+        dataset.set_read_only(True)
+        dataset.use_segments = self.params.get("use_segments", False)
+        test = DataGenerator(
+            dataset,
+            self.labels,
+            len(self.labels),
+            batch_size=self.params.get("batch_size", 32),
+            lstm=self.params.get("lstm", False),
+            use_thermal=self.params.get("use_thermal", False),
+            use_filtered=self.params.get("use_filtered", False),
+            shuffle=False,
+            model_preprocess=self.preprocess_fn,
+            epochs=1,
+            load_threads=1,
+            keep_epoch=True,
+        )
+        test_pred_raw = self.model.predict(test)
+        test.stop_load()
+        test_pred = np.argmax(test_pred_raw, axis=1)
+
+        batch_y = test.get_epoch_predictions()
+        y = []
+        for batch in batch_y:
+            y.extend(np.argmax(batch, axis=1))
+
+        # test.epoch_data = None
+        cm = confusion_matrix(y, test_pred)
+
+        # Log the confusion matrix as an image summary.
+        figure = plot_confusion_matrix(cm, class_names=test.labels)
+        plt.savefig(filename, format="png")
 
     def evaluate(self, dataset):
         test = DataGenerator(

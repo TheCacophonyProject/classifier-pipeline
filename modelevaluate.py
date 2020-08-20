@@ -1,3 +1,5 @@
+from ml_tools.framedataset import dataset_db_path
+
 import numpy as np
 import pickle
 from dateutil.parser import parse
@@ -33,6 +35,10 @@ class ModelEvalute:
         self.classifier.load_weights(model_file)
 
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
+
+    def save_confusion(self, dataset_file, output_file):
+        datasets = pickle.load(open(dataset_file, "rb"))
+        self.classifier.confusion(datasets[1], output_file)
 
     def evaluate_dataset(self, dataset_file):
         datasets = pickle.load(open(dataset_file, "rb"))
@@ -100,6 +106,7 @@ def load_args():
         help="Path to model file to use, will override config model",
     )
     parser.add_argument("-t", "--dataset", help="Dataset file to use")
+    parser.add_argument("--confusion", help="Save confusion matrix image")
 
     parser.add_argument("-d", "--date", help="Use clips after this")
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
@@ -131,8 +138,14 @@ ev = ModelEvalute(config, model_file)
 date = None
 if args.date:
     date = parse(args.date)
+if args.confusion is not None:
+    if args.dataset:
+        dataset_file = args.dataset
+    else:
+        dataset_file = dataset_db_path(config)
 
-if args.dataset:
+    ev.save_confusion(dataset_file, args.confusion)
+elif args.dataset:
     ev.evaluate_dataset(args.dataset)
 else:
     ev.evaluate(after_date=date)

@@ -101,10 +101,10 @@ class DataGenerator(keras.utils.Sequence):
             else:
                 thread.exit()
 
-    def get_epoch_predictions(self, epoch):
+    def get_epoch_predictions(self, epoch=-1):
         if self.keep_epoch:
             return self.epoch_data[epoch][1]
-        return none
+        return None
 
     # get all data
     def get_data(self, epoch=0, catog=False):
@@ -448,7 +448,7 @@ def preprocess_frame(
         data = augement_frame(data, output_dim)
         data = np.clip(data, a_min=0, a_max=None, out=data)
     else:
-        data = reisze_cv(data, output_dim)
+        data = resize_cv(data, output_dim)
         data = convert(data)
 
     # pre proce expects values in range 0-255
