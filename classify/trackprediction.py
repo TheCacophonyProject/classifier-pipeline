@@ -92,7 +92,9 @@ class TrackPrediction:
         if self.class_best_score is None:
             self.class_best_score = smoothed_prediction
         else:
-            self.class_best_score = np.maximum(self.class_best_score, prediction)
+            self.class_best_score = np.maximum(
+                self.class_best_score, smoothed_prediction
+            )
 
     def smooth_prediction(self, prediction, novelty, adjust_multiplier):
         prediction_smooth = 0.1
