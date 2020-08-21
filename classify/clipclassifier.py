@@ -147,24 +147,12 @@ class ClipClassifier(CPTVFileProcessor):
                 # cropped frames don't do so well so restrict their score
                 cropped_weight = 0.7 if region.was_cropped else 1.0
 
-                prediction *= mass_weight * cropped_weight
-
-            if smooth_prediction is None:
-                if UNIFORM_PRIOR:
-                    smooth_prediction = np.ones([num_labels]) * (1 / num_labels)
-                else:
-                    smooth_prediction = prediction
-                smooth_novelty = 0.5
-            else:
-                smooth_prediction = (
-                    1 - prediction_smooth
-                ) * smooth_prediction + prediction_smooth * prediction
-                smooth_novelty = (
-                    1 - prediction_smooth
-                ) * smooth_novelty + prediction_smooth * novelty
-            track_prediction.classified_frame(
-                region.frame_number, smooth_prediction, smooth_novelty
-            )
+                track_prediction.classified_frame(
+                    region.frame_number,
+                    prediction,
+                    novelty,
+                    mass_weight * cropped_weight,
+                )
         return track_prediction
 
     @property
@@ -264,7 +252,7 @@ class ClipClassifier(CPTVFileProcessor):
         if self.previewer:
             logging.info("Exporting preview to '{}'".format(mpeg_filename))
             self.previewer.export_clip_preview(mpeg_filename, clip, self.predictions)
-        logging.info("saving meta data")
+        logging.info("saving meta data %s", meta_filename)
         self.save_metadata(filename, meta_filename, clip)
         self.predictions.clear_predictions()
 
@@ -312,6 +300,13 @@ class ClipClassifier(CPTVFileProcessor):
             track_info["average_novelty"] = round(prediction.average_novelty, 2)
             track_info["max_novelty"] = round(prediction.max_novelty, 2)
             track_info["all_class_confidences"] = {}
+
+            # numpy data wont serialize
+            prediction_data = []
+            for pred in prediction.predictions:
+                pred_list = [int(round(p * 100)) for p in pred]
+                prediction_data.append(pred_list)
+            track_info["predictions"] = prediction_data
             for i, value in enumerate(prediction.class_best_score):
                 label = self.classifier.labels[i]
                 track_info["all_class_confidences"][label] = round(float(value), 3)
