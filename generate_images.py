@@ -135,4 +135,5 @@ if args.base_folder:
 if not os.path.isdir(base_dir):
     logging.debug("Creating %s", base_dir)
     os.mkdir(base_dir)
-save_all(datasets[0], config.worker_threads, os.path.join(base_dir, datasets[0].name))
+for dataset in datasets:
+    save_all(dataset, config.worker_threads, os.path.join(base_dir, dataset.name))
