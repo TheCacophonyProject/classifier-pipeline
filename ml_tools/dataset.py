@@ -929,7 +929,7 @@ class Dataset:
         if shuffle:
             np.random.shuffle(track_ids)
         for clip_id, track_id in track_ids:
-            if self.add_track(clip_id, track_id, labels):
+            if self.load_track(clip_id, track_id, labels):
                 counter += 1
         return [counter, len(track_ids)]
 
@@ -962,7 +962,7 @@ class Dataset:
         # self.frame_samples.extend(samples)
         return True
 
-    def add_track(self, clip_id, track_id, labels):
+    def load_track(self, clip_id, track_id, labels):
         """
         Creates segments for track and adds them to the dataset
         :param clip_id: id of tracks clip

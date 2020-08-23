@@ -265,7 +265,6 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
     validation_percent = 0.3
     train = Dataset(db, "train", config)
     validation = Dataset(db, "validation", config)
-    test = Dataset(db, "test", config)
 
     train_data = []
     cameras = list(dataset.cameras_by_id.values())
@@ -293,7 +292,6 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
     add_camera_segments(dataset.labels, validation, validate_data, balance_bins)
     # balance out the classes
 
-    print_cameras(train, validation, test)
     if args.bl:
         train.balance_labels_and_remove(high_tracks_first=True)
         validation.balance_labels_and_remove()
@@ -308,10 +306,7 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
     if args.bw:
         train.balance_weights()
         validation.balance_weights()
-
-    print_counts(dataset, train, validation, test)
-    print_cameras(train, validation, test)
-    return train, validation, test
+    return train, validation
 
 
 def add_camera_segments(
@@ -386,10 +381,9 @@ def add_camera_frames(
 
 
 def test_dataset(db, config, date):
-    test = FrameDataset(db, "test", config, important_frames=False)
+    test = Dataset(db, "test", config)
     tracks_loaded, total_tracks = test.load_tracks(shuffle=True, after_date=date)
-    test.add_tracks()
-    print("Test Loaded {}/{} tracks".format(tracks_loaded, total_tracks,))
+    print("Test Loaded {}/{} tracks".format(tracks_loaded, total_tracks))
     for key, value in test.filtered_stats.items():
         if value != 0:
             print("Test  {} filtered {}".format(key, value))
@@ -404,7 +398,7 @@ def main():
     build_config = config.build
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
     dataset = Dataset(db, "dataset", config)
-    tracks_loaded, total_tracks = dataset.load_tracks()
+    tracks_loaded, total_tracks = dataset.load_tracks(before_date=args.date)
     print(
         "Loaded {}/{} tracks, found {:.1f}k segments".format(
             tracks_loaded, total_tracks, len(dataset.segments) / 1000
@@ -425,6 +419,10 @@ def main():
 
     print("Splitting data set into train / validation")
     datasets = split_dataset_by_cameras(db, dataset, config, args)
+    test = test_dataset(db, config, args.date)
+    datasets = (*datasets, test)
+    print_counts(dataset, *datasets)
+    print_cameras(*datasets)
     # if build_config.use_previous_split:
     #     split = get_previous_validation_bins(build_config.previous_split)
     #     datasets = split_dataset(db, dataset, build_config, split)
