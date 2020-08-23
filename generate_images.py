@@ -59,8 +59,12 @@ def save_track(dataset, track, folder, labels_dir, ext="png"):
 
 
 def save_metadata(track, folder):
+    meta_dir = os.path.join(clip_dir, track.label)
+    if not os.path.isdir(meta_dir):
+        logging.debug("Creating %s", meta_dir)
+        os.mkdir(meta_dir)
     filename = "{}-{}.txt".format(track.clip_id, track.track_id)
-    fullpath = os.path.join(folder, filename)
+    fullpath = os.path.join(meta_dir, filename)
     with open(fullpath, "w") as f:
         f.write(track.toJSON())
 
