@@ -150,8 +150,8 @@ class ClipClassifier(CPTVFileProcessor):
                 track_prediction.classified_frame(
                     region.frame_number,
                     prediction,
-                    novelty,
-                    mass_weight * cropped_weight,
+                    mass_scale=mass_weight * cropped_weight,
+                    novelty=novelty,
                 )
         return track_prediction
 

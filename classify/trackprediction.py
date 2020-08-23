@@ -71,14 +71,14 @@ class TrackPrediction:
         self.max_novelty = max(self.smoothed_novelties)
         self.novelty_sum = sum(self.smoothed_novelties)
 
-    def classified_frame(self, frame_number, prediction, novelty, adjust_multiplier):
+    def classified_frame(self, frame_number, prediction, mass_scale=1, novelty=None):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
         if novelty:
             self.max_novelty = max(self.max_novelty, novelty)
             self.novelty_sum += novelty
         smoothed_prediction, smoothed_novelty = self.smooth_prediction(
-            prediction, novelty, adjust_multiplier
+            prediction, mass_scale=mass_scale, novelty=novelty
         )
         if self.keep_all:
             self.predictions.append(prediction)
@@ -96,11 +96,11 @@ class TrackPrediction:
                 self.class_best_score, smoothed_prediction
             )
 
-    def smooth_prediction(self, prediction, novelty, adjust_multiplier):
+    def smooth_prediction(self, prediction, mass_scale=1, novelty=None):
         prediction_smooth = 0.1
         smooth_novelty = None
         prev_prediction = None
-        adjusted_prediction = prediction * adjust_multiplier
+        adjusted_prediction = prediction * mass_scale
         if len(self.smoothed_predictions):
             prev_prediction = self.smoothed_predictions[-1]
         num_labels = len(prediction)
