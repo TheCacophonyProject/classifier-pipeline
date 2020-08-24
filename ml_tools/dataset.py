@@ -629,8 +629,6 @@ class Preprocessor:
             reference_level
         ), "Reference level shape and data shape not match."
         ref_avg = np.average(reference_level)
-        # gp surely should take the same value from each frame
-        # data[:, 0, :, :] -= ref_avg
 
         # reference thermal levels to the reference level
         data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
@@ -1077,30 +1075,6 @@ class Dataset:
         self.camera_names.add(track_header.camera_id)
         camera.add_track(track_header)
 
-    # used to see distribution of clips etc
-    # def add_bin_distribution_info(self, track_header):
-    #     cam_bin = self.camera_bins.get(track_header.camera)
-    #     if cam_bin is None:
-    #         cam_bin = {}
-    #         self.camera_bins[track_header.camera] = cam_bin
-    #     loc = "{}".format(track_header.location)
-    #     loc_bin = cam_bin.get(loc)
-    #     if loc_bin is None:
-    #         loc_bin = {}
-    #         cam_bin[loc] = loc_bin
-
-    #     date_bin = loc_bin.get(track_header.start_time.date())
-    #     if date_bin is None:
-    #         date_bin = {}
-    #         loc_bin[track_header.start_time.date()] = date_bin
-
-    #     label_bin = date_bin.get(track_header.label)
-    #     if label_bin is None:
-    #         label_bin = {}
-    #         date_bin[track_header.label] = label_bin
-
-    #     label_bin[track_header.clip_id] = track_header.location
-
     def filter_segments(self, avg_mass, ignore_labels=None):
         """
         Removes any segments with an average mass less than the given avg_mass
@@ -1230,7 +1204,7 @@ class Dataset:
         else:
             return data
 
-    def epoch_samples(self, dont_cap=None, replace=True, shuffle=True):
+    def epoch_samples(self, dont_cap=None, replace=True, random=True):
         if len(self.labels) == 0:
             return []
         labels = self.labels.copy()
@@ -1240,18 +1214,18 @@ class Dataset:
                 if label in labels:
                     count = len(self.samples_for(label, remapped=True))
                     new = self.get_sample(
-                        count, replace=replace, label=label, shuffle=shuffle
+                        count, replace=replace, label=label, random=random
                     )
                 if new is not None:
                     samples.extend(new)
                 labels.remove(label)
         # chance = 1 / len(self.labels)
-        label_cap = self.get_label_caps(labels, remapped=True)
+        label_cap = self.get_label_caps(labels, remapped=True) * 3
+        # label_cap = 10
         print("getting", label_cap, "per label")
-        # label_cap = 20
         for label in labels:
             count = min(label_cap, len(self.samples_for(label, remapped=True)))
-            new = self.get_sample(count, replace=replace, label=label, shuffle=shuffle)
+            new = self.get_sample(count, replace=replace, label=label, random=random)
             if new is not None and len(new) > 0:
                 samples.extend(new)
         return samples
@@ -1266,7 +1240,7 @@ class Dataset:
             return self.segment_label_cdf.get(label, [])
         return self.frame_label_cdf.get(label, [])
 
-    def get_sample(self, count, replace=True, label=None, shuffle=True):
+    def get_sample(self, count, replace=True, label=None, random=True):
         """ Returns a random frames from weighted list. """
         if label:
             samples = self.samples_for(label, remapped=True)
@@ -1276,7 +1250,7 @@ class Dataset:
             cdf = self.cdf()
         if not samples:
             return None
-        if shuffle:
+        if random:
             return np.random.choice(samples, count, replace=replace, p=cdf)
         else:
             count = min(count, len(samples))
@@ -1882,25 +1856,37 @@ class Dataset:
         else:
             return len(self.frame_samples) > 0
 
-    def movement(self, start_frame, track_header, frames=None):
-        # = segment.track_header
+    def movement(
+        self,
+        start_frame,
+        track_header,
+        dim=None,
+        frames=None,
+        channel=TrackChannels.filtered,
+    ):
+        """Return 2 images describing the movement, one has dots representing
+         the centre of mass, the other is a collage of all frames
+         """
         if not frames:
             frames = self.db.get_track(track_header.clip_id, track_header.track_id)
         i = 0
-        dots = np.zeros((Preprocessor.FRAME_SIZE * 5, Preprocessor.FRAME_SIZE * 5))
-        overlay = np.zeros((Preprocessor.FRAME_SIZE * 5, Preprocessor.FRAME_SIZE * 5))
+        if dim is None:
+            # gp should be from track data
+            dim = (120, 160)
+        dots = np.zeros(dim)
+        overlay = np.zeros(dim)
 
         prev = None
         value = 60
         img = Image.fromarray(np.uint8(dots))  # ignore alpha
 
         d = ImageDraw.Draw(img)
+        # draw movment lines and draw frame overlay
         for i, frame in enumerate(frames):
             region = track_header.track_bounds[start_frame + i]
             rect = tools.Rectangle.from_ltrb(*region)
-            frame = frame[TrackChannels.filtered]
+            frame = frame[channel]
             subimage = rect.subimage(overlay)
-
             subimage[:, :] += np.float32(frame)
             x = int(rect.mid_x)
             y = int(rect.mid_y)
@@ -1914,10 +1900,11 @@ class Dataset:
                 distance *= 21.25
                 distance = min(distance, 255)
                 d.line(prev + (x, y), fill=int(distance), width=1)
-                # d.point([prev], fill=colour)
 
             prev = (x, y)
             colour = int(value)
+
+        # then draw dots so they go over the top
         for i, frame in enumerate(frames):
             region = track_header.track_bounds[start_frame + i]
             rect = tools.Rectangle.from_ltrb(*region)
@@ -1932,7 +1919,6 @@ class Dataset:
             colour = int(value)
             d.point([prev], fill=colour)
 
-        # img.save(filename + ".png", "PNG")
         return np.array(img), overlay
 
 

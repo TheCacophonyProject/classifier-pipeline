@@ -40,28 +40,9 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None):
 
     model.import_dataset(datasets_filename)
     model.binarize(
-        set_one=["wallaby"], label_one="wallaby", set_two=["bird"], label_two="bird"
+        set_one=["wallaby"], label_one="wallaby", set_two=None, label_two="not"
     )
 
-    # model.binarize()
-    # model.rebalance(50, 50)
-    #     None,
-    #     None,
-    #     exclude=[
-    #         "possum",
-    #         "false-positive",
-    #         # "mustelid",
-    #         "human",
-    #         "insect",
-    #         "leporidae",
-    #         "cat",
-    #         "hedgehog",
-    #         # "wallaby",
-    #         "bird",
-    #         "rodent",
-    #     ],
-    #     update=True,
-    # )
     if grid_search:
         print("Searching hparams")
         model.test_hparams()

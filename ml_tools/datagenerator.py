@@ -41,7 +41,9 @@ class DataGenerator(keras.utils.Sequence):
         use_movement=False,
         balance_labels=True,
         keep_epoch=False,
+        randomize_epoch=True,
     ):
+        self.randomize_epoch = randomize_epoch
         self.use_previous_epoch = None
         self.keep_epoch = keep_epoch
         self.balance_labels = balance_labels
@@ -51,7 +53,7 @@ class DataGenerator(keras.utils.Sequence):
         self.use_thermal = use_thermal
         self.use_filtered = use_filtered
         self.lstm = lstm
-        # default
+
         if not self.use_thermal and not self.use_filtered and not self.lstm:
             self.use_thermal = True
         self.movement = use_movement
@@ -62,7 +64,6 @@ class DataGenerator(keras.utils.Sequence):
         self.augment = dataset.enable_augmentation
         self.batch_size = batch_size
         self.dataset = dataset
-
         self.samples = None
         self.shuffle = shuffle
         self.n_classes = len(self.labels)
@@ -73,8 +74,10 @@ class DataGenerator(keras.utils.Sequence):
         self.preload = preload
         if self.preload:
             self.load_queue = multiprocessing.Queue()
+
         self.load_next_epoch()
         self.on_epoch_end()
+        self.cur_epoch = 0
 
         if self.preload:
             self.preloader_queue = multiprocessing.Queue(buffer_size)
@@ -138,36 +141,37 @@ class DataGenerator(keras.utils.Sequence):
         else:
             X, y = self.loadbatch(index)
         if self.keep_epoch:
-            self.epoch_data[self.cur_epoch - 1][0][index] = X
-            self.epoch_data[self.cur_epoch - 1][1][index] = y
+            self.epoch_data[self.cur_epoch][0][index] = X
+            self.epoch_data[self.cur_epoch][1][index] = y
             # (X, y))
         if (index + 1) == len(self):
             self.load_next_epoch()
         return X, y
 
     def load_next_epoch(self):
-        self.samples = self.dataset.epoch_samples(replace=False, shuffle=False)
+        self.samples = self.dataset.epoch_samples(
+            replace=False, random=self.randomize_epoch
+        )
         if self.shuffle:
             np.random.shuffle(self.samples)
-
-        # for some reason it always requests 0 twice
-        self.load_queue.put(0)
-        for i in range(len(self)):
-            self.load_queue.put(i)
+        if self.preload:
+            # for some reason it always requests 0 twice
+            self.load_queue.put(0)
+            for i in range(len(self)):
+                self.load_queue.put(i)
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
         batches = len(self)
         self.epoch_data.append(([None] * batches, [None] * batches))
         logging.debug("epoch ended for %s", self.dataset.name)
-
-        # self.load_next_epoch()
         self.cur_epoch += 1
 
     def square_clip(self, data):
-        i = 0
+        # lay each frame out side by side in rows
         frame_size = Preprocessor.FRAME_SIZE
         background = np.zeros((self.square * frame_size, self.square * frame_size))
+        i = 0
         for x in range(self.square):
             for y in range(self.square):
                 i += 1
@@ -175,6 +179,7 @@ class DataGenerator(keras.utils.Sequence):
                     frame = data[-1]
                 else:
                     frame = data[i]
+                frame = normalize(frame)
                 background[
                     x * frame_size : (x + 1) * frame_size,
                     y * frame_size : (y + 1) * frame_size,
@@ -222,10 +227,6 @@ class DataGenerator(keras.utils.Sequence):
                     sample, augment=self.augment, preprocess=False
                 )
                 label = self.dataset.mapped_label(sample.label)
-                if self.use_thermal:
-                    channel = TrackChannels.thermal
-                else:
-                    channel = TrackChannels.filtered
 
                 segment = Preprocessor.apply(
                     data,
@@ -237,31 +238,27 @@ class DataGenerator(keras.utils.Sequence):
                     ],
                     augment=self.augment,
                 )
+                if self.use_thermal:
+                    channel = TrackChannels.thermal
+                else:
+                    channel = TrackChannels.filtered
+
                 segment = segment[:, channel]
 
-                dots, overlay = self.dataset.movement(
-                    sample.start_frame, sample.track, data
-                )
-                start = time.time()
                 square = self.square_clip(segment)
-                max = np.amax(square)
-                min = np.amin(square)
-                if max == min:
-                    continue
-                square -= min
-                square = square / (max - min)
-
-                np.clip(square, a_min=0, a_max=None, out=square)
-
+                dots, overlay = self.dataset.movement(
+                    sample.start_frame,
+                    sample.track,
+                    dim=square.shape,
+                    frames=data,
+                    channel=channel,
+                )
                 dots = dots / 255
-                overlay = overlay / np.amax(overlay)
-
+                overlay = normalize(overlay, min=0)
                 data = np.empty((square.shape[0], square.shape[1], 3))
-
                 data[:, :, 0] = square
-                data[:, :, 1] = square  # dots
+                data[:, :, 1] = dots  # dots
                 data[:, :, 2] = overlay  # overlay
-                # print("max data", np.amax(square), np.amax(dots), np.amax(overlay))
                 # savemovement(
                 #     data,
                 #     "samples/{}/{}/{}-{}".format(
@@ -271,14 +268,7 @@ class DataGenerator(keras.utils.Sequence):
                 #         sample.start_frame,
                 #     ),
                 # )
-                data = preprocess_movement(
-                    data,
-                    self.dim,
-                    self.use_thermal,
-                    self.augment,
-                    self.model_preprocess,
-                    filter_channels=False,
-                )
+                data = preprocess_movement(data, self.model_preprocess,)
 
             else:
                 data = preprocess_frame(
@@ -290,16 +280,16 @@ class DataGenerator(keras.utils.Sequence):
                     filter_channels=False,
                 )
             if data is None:
-                # logging.error(
-                #     "error pre processing frame (i.e.max and min are the same)sample %s",
-                #     sample,
-                # )
+                logging.warn(
+                    "error pre processing frame (i.e.max and min are the same)sample %s",
+                    sample,
+                )
                 continue
 
             X[data_i] = data
             y[data_i] = self.labels.index(label)
             data_i += 1
-        # print(data_i, len(y), len(y[:data_i]))
+        # remove data that was null
         X = X[:data_i]
         y = y[:data_i]
         if to_categorical:
@@ -354,17 +344,11 @@ def augement_frame(frame, dim):
 
 
 def preprocess_movement(
-    data,
-    output_dim,
-    use_thermal=True,
-    augment=False,
-    preprocess_fn=None,
-    filter_channels=True,
+    data, preprocess_fn=None,
 ):
 
     if preprocess_fn:
         for i, frame in enumerate(data):
-
             frame = frame * 255
             data[i] = preprocess_fn(frame)
     return data
@@ -388,14 +372,7 @@ def preprocess_lstm(
     # if augment:
     #     percent = random.randint(0, 2)
     # else:
-    percent = 0
-    max = int(np.percentile(data, 100 - percent))
-    min = int(np.percentile(data, percent))
-    if max == min:
-        #     print("max and min are same")
-        return None
-    data -= min
-    data = data / (max - min)
+    data = normalize(data)
     np.clip(data, a_min=0, a_max=None, out=data)
     data = data[..., np.newaxis]
 
@@ -426,19 +403,7 @@ def preprocess_frame(
             channel = TrackChannels.filtered
         data = data[channel]
 
-    # normalizes data, constrast stretch good or bad?
-    # if augment:
-    #     percent = random.randint(0, 2)
-    # else:
-    #     percent = 0
-    percent = 0
-    max = int(np.percentile(data, 100 - percent))
-    min = int(np.percentile(data, percent))
-    if max == min:
-        return None
-
-    data -= min
-    data = data / (max - min)
+    data = normalize(data)
     np.clip(data, a_min=0, a_max=None, out=data)
 
     data = data[..., np.newaxis]
@@ -500,9 +465,11 @@ def saveimages(X, filename="testimage"):
     plt.close(fig)
 
 
-def normalize(data, new_max=1):
-    max = np.amax(data)
-    min = np.amin(data)
+def normalize(data, min=None, max=None, new_max=1):
+    if max is None:
+        max = np.amax(data)
+    if min is None:
+        min = np.amin(data)
     data -= min
     data = data / (max - min) * new_max
     return data
@@ -513,9 +480,9 @@ def savemovement(data, filename):
     r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
     g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
     b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
-    normalize(r, 255)
-    normalize(g, 255)
-    normalize(b, 255)
+    normalize(r, new_max=255)
+    normalize(g, new_max=255)
+    normalize(b, new_max=255)
     concat = np.concatenate((r, g, b), axis=1)  # horizontally
     img = Image.fromarray(np.uint8(concat))
     d = ImageDraw.Draw(img)

@@ -331,7 +331,7 @@ class NewModel:
             epochs=epochs,
             load_threads=1,
             use_movement=self.params.get("use_movement", False),
-            keep_epoch=True,
+            keep_epoch=False,
         )
         file_writer_cm = tf.summary.create_file_writer(self.log_dir + "/cm")
 
@@ -340,7 +340,7 @@ class NewModel:
                 epoch, logs, self.model, self.validate, file_writer_cm
             )
         )
-        checkpoints = self.checkpoints()
+        checkpoints = self.checkpoints(run_name)
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
@@ -370,15 +370,15 @@ class NewModel:
                 shuffle=False,
                 model_preprocess=self.preprocess_fn,
                 epochs=1,
-                load_threads=1,
+                load_threads=4,
             )
             test_accuracy = self.model.evaluate(test)
             test.stop_load()
             logging.info("Test accuracy is %s", test_accuracy)
         self.save(run_name, history=history, test_results=test_accuracy)
 
-    def checkpoints(self):
-        val_loss = os.path.join(self.checkpoint_folder, "val_loss")
+    def checkpoints(self, run_name):
+        val_loss = os.path.join(self.checkpoint_folder, run_name, "val_loss")
 
         checkpoint_loss = tf.keras.callbacks.ModelCheckpoint(
             val_loss,
@@ -393,7 +393,7 @@ class NewModel:
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_loss,
-            monitor="val_acc",
+            monitor="val_accuracy",
             verbose=1,
             save_best_only=True,
             save_weights_only=False,
