@@ -263,7 +263,7 @@ class KerasModel:
         self.frame_size = self.params.get("frame_size", 48)
         self.square_width = meta.get("square_width")
         self.lstm = self.params.get("lstm", False)
-        self.use_movement = (self.params.get("use_movement", False),)
+        self.use_movement = self.params.get("use_movement", False)
 
     def save(self, run_name=MODEL_NAME, history=None, test_results=None):
         # create a save point
@@ -786,6 +786,7 @@ class KerasModel:
             lstm=self.params.get("lstm", False),
             use_thermal=self.params.get("use_thermal", False),
             use_filtered=self.params.get("use_filtered", False),
+            use_movement=self.params.get("use_movement", False),
             shuffle=False,
             model_preprocess=self.preprocess_fn,
             epochs=1,
