@@ -823,7 +823,7 @@ class KerasModel:
             model_preprocess=self.preprocess_fn,
             epochs=1,
             load_threads=self.params.get("train_load_threads", 1),
-            label_cap=False,
+            cap_samples=False,
         )
         test_accuracy = self.model.evaluate(test)
         test.stop_load()
