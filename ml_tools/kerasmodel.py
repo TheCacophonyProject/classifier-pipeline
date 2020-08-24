@@ -790,7 +790,7 @@ class KerasModel:
             shuffle=False,
             model_preprocess=self.preprocess_fn,
             epochs=1,
-            load_threads=1,
+            load_threads=self.params.get("train_load_threads", 1),
             keep_epoch=True,
         )
         test_pred_raw = self.model.predict(test)
@@ -818,10 +818,11 @@ class KerasModel:
             lstm=self.params.get("lstm", False),
             use_thermal=self.params.get("use_thermal", False),
             use_filtered=self.params.get("use_filtered", False),
+            use_movement=self.params.get("use_movement", False),
             shuffle=False,
             model_preprocess=self.preprocess_fn,
             epochs=1,
-            load_threads=1,
+            load_threads=self.params.get("train_load_threads", 1),
         )
         test_accuracy = self.model.evaluate(test)
         test.stop_load()
