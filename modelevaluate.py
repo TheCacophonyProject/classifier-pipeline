@@ -44,7 +44,7 @@ class ModelEvalute:
         datasets = pickle.load(open(dataset_file, "rb"))
         datasets[2].db = self.db
         datasets[2].binarize(
-            ["wallaby"], lbl_one="wallaby", lbl_two="not", keep_fp=True
+            ["wallaby"], lbl_one="wallaby", lbl_two="not", keep_fp=False, scale=False
         )
         for label in datasets[2].labels:
             print(label, datasets[2].get_counts(label))

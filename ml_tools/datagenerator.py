@@ -94,6 +94,14 @@ class DataGenerator(keras.utils.Sequence):
             ]
             for thread in self.preloader_threads:
                 thread.start()
+        print(
+            "datagen for ",
+            self.dataset.name,
+            " shuffle?",
+            self.shuffle,
+            " cap",
+            self.cap_samples,
+        )
 
     def stop_load(self):
         if not self.preload:
