@@ -774,7 +774,7 @@ class KerasModel:
             lbl_two="not",
             scale=False,
             keep_fp=False,
-            shuffle=True,
+            shuffle=False,
         )
         dataset.set_read_only(True)
         dataset.use_segments = self.params.get("use_segments", False)
@@ -823,6 +823,7 @@ class KerasModel:
             model_preprocess=self.preprocess_fn,
             epochs=1,
             load_threads=self.params.get("train_load_threads", 1),
+            label_cap=False,
         )
         test_accuracy = self.model.evaluate(test)
         test.stop_load()

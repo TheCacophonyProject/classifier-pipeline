@@ -494,7 +494,9 @@ class SegmentHeader:
         return self.track.bin_id
 
     def __str__(self):
-        return "offset:{0} weight:{1:.1f}".format(self.start_frame, self.weight)
+        return "{0} label {1} offset:{2} weight:{3:.1f}".format(
+            self.unique_track_id, self.label, self.start_frame, self.weight
+        )
 
 
 class Preprocessor:
@@ -1232,7 +1234,7 @@ class Dataset:
             if new is not None and len(new) > 0:
                 samples.extend(new)
         labels = [sample.label for sample in samples]
-        print(self.name, "sample is", labels)
+        # print(self.name, "sample is", labels)
         return samples
 
     def cdf(self):
