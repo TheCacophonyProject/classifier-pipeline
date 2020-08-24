@@ -1222,7 +1222,7 @@ class Dataset:
         # # chance = 1 / len(self.labels)
         if cap_samples:
             label_cap = self.get_label_caps(labels, remapped=True) * 2
-            # label_cap = 10
+            # label_cap = 100
             print("getting", label_cap, "per label")
         cap = None
         for label in labels:
@@ -1231,6 +1231,8 @@ class Dataset:
             new = self.get_sample(cap=cap, replace=replace, label=label, random=random)
             if new is not None and len(new) > 0:
                 samples.extend(new)
+        labels = [sample.label for sample in samples]
+        print(self.name, "sample is", labels)
         return samples
 
     def cdf(self):
@@ -1559,10 +1561,6 @@ class Dataset:
             self.frame_cdf = [x / total for x in self.frame_cdf]
 
         for key, cdf in self.frame_label_cdf.items():
-            if balance_labels:
-                cdf = np.float32(cdf) / len(cdf)
-                if lbl_p and key in lbl_p:
-                    cdf = cdf * lbl_p[key]
             total = sum(cdf)
             self.frame_label_cdf[key] = [x / total for x in cdf]
 
@@ -1571,6 +1569,11 @@ class Dataset:
             for key, value in self.frame_label_cdf.items():
                 if key in self.label_mapping:
                     new_label = self.label_mapping[key]
+                    if balance_labels:
+                        value = np.float64(value) / len(value)
+                        if lbl_p and key in lbl_p:
+                            value *= lbl_p[key]
+                    cdf = mapped_cdf.setdefault(new_label, [])
                     cdf = mapped_cdf.setdefault(new_label, [])
                     cdf.extend(value)
 
@@ -1614,11 +1617,6 @@ class Dataset:
         if len(self.segment_cdf) > 0:
             self.segment_cdf = [x / total for x in self.segment_cdf]
         for key, cdf in self.segment_label_cdf.items():
-            if balance_labels:
-                cdf = np.float64(cdf) / len(cdf)
-                if lbl_p and key in lbl_p:
-                    cdf *= lbl_p[key]
-
             total = sum(cdf)
             if total > 0:
                 self.segment_label_cdf[key] = [x / total for x in cdf]
@@ -1630,7 +1628,10 @@ class Dataset:
             for key, value in self.segment_label_cdf.items():
                 if key in self.label_mapping:
                     new_label = self.label_mapping[key]
-
+                    if balance_labels:
+                        value = np.float64(value) / len(value)
+                        if lbl_p and key in lbl_p:
+                            value *= lbl_p[key]
                     cdf = mapped_cdf.setdefault(new_label, [])
 
                     cdf.extend(value)

@@ -244,6 +244,8 @@ class DataGenerator(keras.utils.Sequence):
                     regions,
                     channel,
                     self.model_preprocess,
+                    sample,
+                    self.dataset.name,
                 )
 
             else:
@@ -327,7 +329,7 @@ def square_clip(data, square_width):
                 frame = data[-1]
             else:
                 frame = data[i]
-            _, error = normalize(frame)
+            frame, error = normalize(frame)
             success = success and error
             background[
                 x * frame_size : (x + 1) * frame_size,
@@ -397,25 +399,36 @@ def movement(
 
 
 def preprocess_movement(
-    data, segment, square_width, regions, channel, preprocess_fn=None
+    data,
+    segment,
+    square_width,
+    regions,
+    channel,
+    preprocess_fn=None,
+    sample=None,
+    dataset=None,
 ):
 
     segment = segment[:, channel]
-
     square, success = square_clip(segment, square_width)
     if not success:
         return None
     dots, overlay = movement(data, regions, dim=square.shape, channel=channel,)
     dots = dots / 255
-    _, success = normalize(overlay, min=0)
+    overlay, success = normalize(overlay, min=0)
     if not success:
         return None
     data = np.empty((square.shape[0], square.shape[1], 3))
     data[:, :, 0] = square
     data[:, :, 1] = dots  # dots
     data[:, :, 2] = overlay  # overlay
-
-    # savemovement(data, "samples/{}/{}-{}".format("test", 1234, 1))
+    #
+    # savemovement(
+    #     data,
+    #     "samples/{}/{}/{}-{}".format(
+    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
+    #     ),
+    # )
 
     if preprocess_fn:
         for i, frame in enumerate(data):
@@ -433,7 +446,7 @@ def preprocess_lstm(
     # if augment:
     #     percent = random.randint(0, 2)
     # else:
-    _, success = normalize(data)
+    data, success = normalize(data)
     np.clip(data, a_min=0, a_max=None, out=data)
     data = data[..., np.newaxis]
 
@@ -454,7 +467,7 @@ def preprocess_frame(
 
     data = data[channel]
 
-    _, success = normalize(data)
+    data, success = normalize(data)
     np.clip(data, a_min=0, a_max=None, out=data)
     data = data[..., np.newaxis]
     data = np.repeat(data, 3, axis=2)
@@ -532,9 +545,6 @@ def savemovement(data, filename):
     r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
     g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
     b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
-    normalize(r, new_max=255)
-    normalize(g, new_max=255)
-    normalize(b, new_max=255)
     concat = np.concatenate((r, g, b), axis=1)  # horizontally
     img = Image.fromarray(np.uint8(concat))
     d = ImageDraw.Draw(img)

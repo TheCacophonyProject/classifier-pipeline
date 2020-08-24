@@ -518,7 +518,7 @@ class KerasModel:
         label_two,
         scale=False,
         keep_fp=False,
-        shuffle=False,
+        shuffle=True,
     ):
         # set samples of each label to have a maximum cap, and exclude labels
         self.datasets.train.binarize(
