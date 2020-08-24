@@ -174,10 +174,8 @@ class KerasModel:
         # note the model already applies batch_norm
         width = self.frame_size
         if self.params.get("use_movement", False):
-            width = (
-                int(math.sqrt(round(self.datasets.train.segment_length * 9)))
-                * self.frame_size
-            )
+            width = self.square_width * self.frame_size
+
         inputs = tf.keras.Input(shape=(width, width, 3), name="input")
 
         base_model, preprocess = self.base_model((width, width, 3))
@@ -290,7 +288,7 @@ class KerasModel:
             model_stats["test_acc"] = test_results[1]
 
         if self.params.get("use_movement", False):
-            model_stats["square_width"] = self.test.square_width
+            model_stats["square_width"] = self.train.square_width
         json.dump(
             model_stats,
             open(os.path.join(self.checkpoint_folder, run_name, "metadata.txt"), "w"),
@@ -306,8 +304,7 @@ class KerasModel:
     def train_model(self, epochs, run_name):
         self.log_dir = os.path.join(self.log_base, run_name)
         os.makedirs(self.log_base, exist_ok=True)
-        if not self.model:
-            self.build_model()
+
         self.train = DataGenerator(
             self.datasets.train,
             self.datasets.train.labels,
@@ -338,6 +335,10 @@ class KerasModel:
             load_threads=1,
             use_movement=self.params.get("use_movement", False),
         )
+        self.square_width = self.validate.square_width
+
+        if not self.model:
+            self.build_model()
         file_writer_cm = tf.summary.create_file_writer(self.log_dir + "/cm")
 
         cm_callback = tf.keras.callbacks.LambdaCallback(
