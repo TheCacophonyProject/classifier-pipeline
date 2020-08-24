@@ -10,7 +10,7 @@ import sys
 from config.config import Config
 from datetime import datetime
 
-from ml_tools.newmodel import NewModel
+from ml_tools.kerasmodel import KerasModel
 from ml_tools.trackdatabase import TrackDatabase
 from classify.trackprediction import Predictions, TrackPrediction
 
@@ -31,7 +31,7 @@ class ModelEvalute:
         t0 = datetime.now()
         logging.info("classifier loading %s", model_file)
 
-        self.classifier = NewModel(train_config=self.config.train)
+        self.classifier = KerasModel(train_config=self.config.train)
         self.classifier.load_weights(model_file)
 
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
