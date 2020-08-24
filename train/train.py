@@ -6,7 +6,7 @@ import tensorflow as tf
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ, Model_CNN
 from model_resnet import ResnetModel
 from ml_tools.framedataset import dataset_db_path
-from ml_tools.newmodel import NewModel
+from ml_tools.kerasmodel import KerasModel
 
 
 def train_model(run_name, conf, hyper_params, grid_search=False, weights=None):
@@ -30,8 +30,8 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None):
         model = Model_CNN(
             labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )
-    elif conf.train.model == "new model":
-        model = NewModel(train_config=conf.train, labels=conf.labels)
+    elif conf.train.model == "keras":
+        model = KerasModel(train_config=conf.train, labels=conf.labels)
     else:
         model = ModelCRNN_LQ(
             labels=len(labels), train_config=conf.train, training=True, **hyper_params

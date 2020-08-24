@@ -13,6 +13,7 @@ from ml_tools.datagenerator import (
     preprocess_frame,
     preprocess_lstm,
     saveimages,
+    preprocess_movement,
 )
 import numpy as np
 import os
@@ -38,13 +39,11 @@ HP_LEARNING_RATE = hp.HParam(
 METRIC_ACCURACY = "accuracy"
 
 
-class NewModel:
+class KerasModel:
     """ Defines a deep learning model """
 
-    # fig = plt.figure(figsize=(48, 48))
-    # plt_i = 1
-    MODEL_NAME = "new model"
-    MODEL_DESCRIPTION = "Pre trained resnet"
+    MODEL_NAME = "keras model"
+    MODEL_DESCRIPTION = "Using pre trained keras application models"
     VERSION = "0.3.0"
 
     def __init__(self, train_config=None, labels=None):
@@ -52,7 +51,6 @@ class NewModel:
         self.frame_size = Preprocessor.FRAME_SIZE
         self.model = None
         self.datasets = None
-        # namedtuple("Datasets", "train, validation, test")
         # dictionary containing current hyper parameters
         self.params = {
             # augmentation
@@ -75,6 +73,8 @@ class NewModel:
         self.preprocess_fn = None
         self.validate = None
         self.train = None
+        self.lstm = (self.params.get("lstm", False),)
+        self.use_movement = (self.params.get("use_movement", False),)
 
     def base_model(self, input_shape):
         if self.pretrained_model == "resnet":
@@ -224,7 +224,6 @@ class NewModel:
         softmax = tf.keras.losses.CategoricalCrossentropy(
             label_smoothing=self.params["label_smoothing"],
         )
-        # losses = dict(pred=softmax)
         return softmax
 
     def optimizer(self):
@@ -262,6 +261,9 @@ class NewModel:
         self.pretrained_model = self.params.get("model", "resnetv2")
         self.preprocess_fn = self.get_preprocess_fn()
         self.frame_size = self.params.get("frame_size", 48)
+        self.square_width = meta.get("square_width")
+        self.lstm = (self.params.get("lstm", False),)
+        self.use_movement = (self.params.get("use_movement", False),)
 
     def save(self, run_name=MODEL_NAME, history=None, test_results=None):
         # create a save point
@@ -285,6 +287,8 @@ class NewModel:
             model_stats["test_loss"] = test_results[0]
             model_stats["test_acc"] = test_results[1]
 
+        if self.params.get("use_movement", False):
+            model_stats["square_width"] = self.test.square_width
         json.dump(
             model_stats,
             open(os.path.join(self.checkpoint_folder, run_name, "metadata.txt"), "w"),
@@ -331,7 +335,6 @@ class NewModel:
             epochs=epochs,
             load_threads=1,
             use_movement=self.params.get("use_movement", False),
-            keep_epoch=False,
         )
         file_writer_cm = tf.summary.create_file_writer(self.log_dir + "/cm")
 
@@ -433,6 +436,46 @@ class NewModel:
         data = np.transpose(data, (1, 2, 0))
         data = np.repeat(data, 3, axis=2)
         return data
+
+    def classify_frames(self, data, preprocess=True):
+        if self.params.get("use_thermal", False):
+            channel = TrackChannels.thermal
+        else:
+            channel = TrackChannels.filtered
+        if self.lstm:
+            median = []
+            for f in data:
+                median.append(np.median(f[0]))
+
+            data = Preprocessor.apply(frame, median, default_inset=0,)
+            data = preprocess_lstm(
+                data,
+                (self.frame_size, self.frame_size, 3),
+                channel,
+                augment=False,
+                preprocess_fn=self.preprocess_fn,
+            )
+            frame = data
+        elif self.use_movement:
+            frames_per_classify = self.square_width ** 2
+            frames = len(data)
+            n_squares = math.ceil(float(frames) / self.square_width)
+            median = np.zeros((len(f)))
+            for i, f in enumerate(data):
+                median[i] = np.median(f[0])
+
+            data = Preprocessor.apply(frame, median, default_inset=0,)
+            for i in range(n_squares):
+                start = i * frames_per_classify
+                end = start + frames_per_classify
+                if end > len(data):
+                    end = len(data)
+                    start = len(data) - frames_per_classify
+                data = data[start:end, :, :]
+                segment = Preprocessor.apply(data, medians[start:end])
+                preprocess_movement(
+                    data, segment, self.square_width, [], channel, self.preprocess_fn
+                )
 
     def classify_frame(self, frame, preprocess=True):
 
@@ -709,6 +752,8 @@ class NewModel:
         if self.lstm:
             prediction = self.classify_frame(data)
             track_prediction.classified_frame(i, prediction, None)
+        elif self.use_movement:
+            prediction = self.classify_frames(data)
 
         else:
             for i, frame in enumerate(data):

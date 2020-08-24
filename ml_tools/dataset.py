@@ -1220,7 +1220,7 @@ class Dataset:
                     samples.extend(new)
                 labels.remove(label)
         # chance = 1 / len(self.labels)
-        label_cap = self.get_label_caps(labels, remapped=True) * 3
+        label_cap = self.get_label_caps(labels, remapped=True) * 2
         # label_cap = 10
         print("getting", label_cap, "per label")
         for label in labels:

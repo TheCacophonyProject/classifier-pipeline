@@ -13,6 +13,7 @@ from ml_tools.dataset import TrackChannels
 import multiprocessing
 import time
 from ml_tools.dataset import Preprocessor
+from ml_tools import tools
 
 FRAME_SIZE = 48
 FRAMES_PER_SECOND = 9
@@ -58,8 +59,8 @@ class DataGenerator(keras.utils.Sequence):
             self.use_thermal = True
         self.movement = use_movement
         if use_movement:
-            self.square = int(math.sqrt(round(dataset.segment_length * 9)))
-            dim = (dim[0] * self.square, dim[1] * self.square, dim[2])
+            self.square_width = int(math.sqrt(round(dataset.segment_length * 9)))
+            dim = (dim[0] * self.square_width, dim[1] * self.square_width, dim[2])
         self.dim = dim
         self.augment = dataset.enable_augmentation
         self.batch_size = batch_size
@@ -167,25 +168,6 @@ class DataGenerator(keras.utils.Sequence):
         logging.debug("epoch ended for %s", self.dataset.name)
         self.cur_epoch += 1
 
-    def square_clip(self, data):
-        # lay each frame out side by side in rows
-        frame_size = Preprocessor.FRAME_SIZE
-        background = np.zeros((self.square * frame_size, self.square * frame_size))
-        i = 0
-        for x in range(self.square):
-            for y in range(self.square):
-                i += 1
-                if i >= len(data):
-                    frame = data[-1]
-                else:
-                    frame = data[i]
-                frame = normalize(frame)
-                background[
-                    x * frame_size : (x + 1) * frame_size,
-                    y * frame_size : (y + 1) * frame_size,
-                ] = np.float32(frame)
-        return background
-
     def _data(self, samples, to_categorical=True):
         "Generates data containing batch_size samples"  # X : (n_samples, *dim, n_channels)
         # Initialization
@@ -205,6 +187,11 @@ class DataGenerator(keras.utils.Sequence):
             channels = TrackChannels.filtered
         # Generate data
         data_i = 0
+        if self.use_thermal:
+            channel = TrackChannels.thermal
+        else:
+            channel = TrackChannels.filtered
+
         for sample in samples:
             if not self.movement:
                 data, label = self.dataset.fetch_sample(
@@ -215,12 +202,7 @@ class DataGenerator(keras.utils.Sequence):
                     continue
             if self.lstm:
                 data = preprocess_lstm(
-                    data,
-                    self.dim,
-                    self.use_thermal,
-                    self.augment,
-                    self.model_preprocess,
-                    filter_channels=True,
+                    data, self.dim, channel, self.augment, self.model_preprocess,
                 )
             elif self.movement:
                 data = self.dataset.fetch_segment(
@@ -238,46 +220,22 @@ class DataGenerator(keras.utils.Sequence):
                     ],
                     augment=self.augment,
                 )
-                if self.use_thermal:
-                    channel = TrackChannels.thermal
-                else:
-                    channel = TrackChannels.filtered
 
-                segment = segment[:, channel]
-
-                square = self.square_clip(segment)
-                dots, overlay = self.dataset.movement(
-                    sample.start_frame,
-                    sample.track,
-                    dim=square.shape,
-                    frames=data,
-                    channel=channel,
+                regions = sample.track.track_bounds[
+                    sample.start_frame : sample.start_frame + self.square_width ** 2
+                ]
+                data = preprocess_movement(
+                    data,
+                    segment,
+                    self.square_width,
+                    regions,
+                    channel,
+                    self.model_preprocess,
                 )
-                dots = dots / 255
-                overlay = normalize(overlay, min=0)
-                data = np.empty((square.shape[0], square.shape[1], 3))
-                data[:, :, 0] = square
-                data[:, :, 1] = dots  # dots
-                data[:, :, 2] = overlay  # overlay
-                # savemovement(
-                #     data,
-                #     "samples/{}/{}/{}-{}".format(
-                #         self.dataset.name,
-                #         sample.label,
-                #         sample.track.unique_id,
-                #         sample.start_frame,
-                #     ),
-                # )
-                data = preprocess_movement(data, self.model_preprocess,)
 
             else:
                 data = preprocess_frame(
-                    data,
-                    self.dim,
-                    self.use_thermal,
-                    self.augment,
-                    self.model_preprocess,
-                    filter_channels=False,
+                    data, self.dim, channel, self.augment, self.model_preprocess,
                 )
             if data is None:
                 logging.warn(
@@ -343,9 +301,102 @@ def augement_frame(frame, dim):
     return image.numpy()
 
 
-def preprocess_movement(
-    data, preprocess_fn=None,
+def square_clip(data, square_width):
+    # lay each frame out side by side in rows
+    frame_size = Preprocessor.FRAME_SIZE
+    background = np.zeros((square_width * frame_size, square_width * frame_size))
+    i = 0
+    for x in range(square_width):
+        for y in range(square_width):
+            i += 1
+            if i >= len(data):
+                frame = data[-1]
+            else:
+                frame = data[i]
+            frame = normalize(frame)
+            background[
+                x * frame_size : (x + 1) * frame_size,
+                y * frame_size : (y + 1) * frame_size,
+            ] = np.float32(frame)
+    return background
+
+
+def movement(
+    frames, regions, dim=None, channel=TrackChannels.filtered,
 ):
+    """Return 2 images describing the movement, one has dots representing
+     the centre of mass, the other is a collage of all frames
+     """
+
+    i = 0
+    if dim is None:
+        # gp should be from track data
+        dim = (120, 160)
+    dots = np.zeros(dim)
+    overlay = np.zeros(dim)
+
+    prev = None
+    value = 60
+    img = Image.fromarray(np.uint8(dots))  # ignore alpha
+
+    d = ImageDraw.Draw(img)
+    # draw movment lines and draw frame overlay
+    for i, frame in enumerate(frames):
+        region = regions[i]
+        rect = tools.Rectangle.from_ltrb(*region)
+        frame = frame[channel]
+        subimage = rect.subimage(overlay)
+        subimage[:, :] += np.float32(frame)
+        x = int(rect.mid_x)
+        y = int(rect.mid_y)
+        if prev is not None:
+            if prev[0] == x and prev[1] == y:
+                value *= 1.1
+            else:
+                value = 60
+            distance = math.sqrt(pow(prev[0] - x, 2) + pow(prev[1] - y, 2))
+
+            distance *= 21.25
+            distance = min(distance, 255)
+            d.line(prev + (x, y), fill=int(distance), width=1)
+
+        prev = (x, y)
+        colour = int(value)
+
+    # then draw dots so they go over the top
+    for i, frame in enumerate(frames):
+        region = regions[i]
+        rect = tools.Rectangle.from_ltrb(*region)
+        x = int(rect.mid_x)
+        y = int(rect.mid_y)
+        if prev is not None:
+            if prev[0] == x and prev[1] == y:
+                value *= 1.1
+            else:
+                value = 60
+        prev = (x, y)
+        colour = int(value)
+        d.point([prev], fill=colour)
+
+    return np.array(img), overlay
+
+
+def preprocess_movement(
+    data, segment, square_width, regions, channel, preprocess_fn=None
+):
+
+    segment = segment[:, channel]
+
+    square = square_clip(segment, square_width)
+    dots, overlay = movement(data, regions, dim=square.shape, channel=channel,)
+    dots = dots / 255
+    overlay = normalize(overlay, min=0)
+    data = np.empty((square.shape[0], square.shape[1], 3))
+    data[:, :, 0] = square
+    data[:, :, 1] = dots  # dots
+    data[:, :, 2] = overlay  # overlay
+
+    # savemovement(data, "samples/{}/{}-{}".format("test", 1234, 1))
 
     if preprocess_fn:
         for i, frame in enumerate(data):
@@ -355,19 +406,10 @@ def preprocess_movement(
 
 
 def preprocess_lstm(
-    data,
-    output_dim,
-    use_thermal=True,
-    augment=False,
-    preprocess_fn=None,
-    filter_channels=True,
+    data, output_dim, channel, augment=False, preprocess_fn=None,
 ):
-    if filter_channels:
-        if use_thermal:
-            channel = TrackChannels.thermal
-        else:
-            channel = TrackChannels.filtered
-        data = data[:, channel]
+
+    data = data[:, channel]
     # normalizes data, constrast stretch good or bad?
     # if augment:
     #     percent = random.randint(0, 2)
@@ -388,20 +430,10 @@ def preprocess_lstm(
 
 
 def preprocess_frame(
-    data,
-    output_dim,
-    use_thermal=True,
-    augment=False,
-    preprocess_fn=None,
-    filter_channels=True,
+    data, output_dim, channel, augment=False, preprocess_fn=None,
 ):
 
-    if filter_channels:
-        if use_thermal:
-            channel = TrackChannels.thermal
-        else:
-            channel = TrackChannels.filtered
-        data = data[channel]
+    data = data[channel]
 
     data = normalize(data)
     np.clip(data, a_min=0, a_max=None, out=data)
