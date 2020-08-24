@@ -207,9 +207,12 @@ class DataGenerator(keras.utils.Sequence):
                     data, self.dim, channel, self.augment, self.model_preprocess,
                 )
             elif self.movement:
-                data = self.dataset.fetch_segment(
-                    sample, augment=self.augment, preprocess=False
-                )
+                try:
+                    data = self.dataset.fetch_segment(
+                        sample, augment=self.augment, preprocess=False
+                    )
+                except:
+                    continue
                 label = self.dataset.mapped_label(sample.label)
 
                 segment = Preprocessor.apply(
@@ -308,6 +311,7 @@ def square_clip(data, square_width):
     frame_size = Preprocessor.FRAME_SIZE
     background = np.zeros((square_width * frame_size, square_width * frame_size))
     i = 0
+    success = True
     for x in range(square_width):
         for y in range(square_width):
             i += 1
@@ -315,12 +319,13 @@ def square_clip(data, square_width):
                 frame = data[-1]
             else:
                 frame = data[i]
-            frame = normalize(frame)
+            _, error = normalize(frame)
+            success = success and error
             background[
                 x * frame_size : (x + 1) * frame_size,
                 y * frame_size : (y + 1) * frame_size,
             ] = np.float32(frame)
-    return background
+    return background, success
 
 
 def movement(
@@ -389,10 +394,14 @@ def preprocess_movement(
 
     segment = segment[:, channel]
 
-    square = square_clip(segment, square_width)
+    square, success = square_clip(segment, square_width)
+    if not success:
+        return None
     dots, overlay = movement(data, regions, dim=square.shape, channel=channel,)
     dots = dots / 255
-    overlay = normalize(overlay, min=0)
+    _, success = normalize(overlay, min=0)
+    if not success:
+        return None
     data = np.empty((square.shape[0], square.shape[1], 3))
     data[:, :, 0] = square
     data[:, :, 1] = dots  # dots
@@ -416,7 +425,7 @@ def preprocess_lstm(
     # if augment:
     #     percent = random.randint(0, 2)
     # else:
-    data = normalize(data)
+    _, success = normalize(data)
     np.clip(data, a_min=0, a_max=None, out=data)
     data = data[..., np.newaxis]
 
@@ -437,11 +446,10 @@ def preprocess_frame(
 
     data = data[channel]
 
-    data = normalize(data)
+    _, success = normalize(data)
     np.clip(data, a_min=0, a_max=None, out=data)
-
     data = data[..., np.newaxis]
-    data = np.repeat(data, output_dim[2], axis=2)
+    data = np.repeat(data, 3, axis=2)
 
     if augment:
         data = augement_frame(data, output_dim)
@@ -504,9 +512,11 @@ def normalize(data, min=None, max=None, new_max=1):
         max = np.amax(data)
     if min is None:
         min = np.amin(data)
+    if max == min:
+        return data / max, False
     data -= min
     data = data / (max - min) * new_max
-    return data
+    return data, True
 
 
 def savemovement(data, filename):

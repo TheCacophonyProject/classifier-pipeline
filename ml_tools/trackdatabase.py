@@ -407,7 +407,8 @@ class TrackDatabase:
             if original:
                 track_node = track_node["original"]
             else:
-                track_node = track_node["cropped"]
+                if "cropped" in track_node:
+                    track_node = track_node["cropped"]
             for frame_number in range(start_frame, end_frame):
                 # we use [:,:,:] to force loading of all data.
                 result.append(track_node[str(frame_number)][:])

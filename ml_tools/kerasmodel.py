@@ -797,7 +797,7 @@ class KerasModel:
         test.stop_load()
         test_pred = np.argmax(test_pred_raw, axis=1)
 
-        batch_y = test.get_epoch_predictions()
+        batch_y = test.get_epoch_predictions(0)
         y = []
         for batch in batch_y:
             y.extend(np.argmax(batch, axis=1))
