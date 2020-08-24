@@ -1204,28 +1204,31 @@ class Dataset:
         else:
             return data
 
-    def epoch_samples(self, dont_cap=None, replace=True, random=True):
+    def epoch_samples(self, cap_samples=None, replace=True, random=True):
         if len(self.labels) == 0:
             return []
         labels = self.labels.copy()
         samples = []
-        if dont_cap:
-            for label in dont_cap:
-                if label in labels:
-                    count = len(self.samples_for(label, remapped=True))
-                    new = self.get_sample(
-                        count, replace=replace, label=label, random=random
-                    )
-                if new is not None:
-                    samples.extend(new)
-                labels.remove(label)
-        # chance = 1 / len(self.labels)
-        label_cap = self.get_label_caps(labels, remapped=True) * 2
-        # label_cap = 10
-        print("getting", label_cap, "per label")
+        # if dont_cap:
+        #     for label in labels:
+        #         count = len(self.samples_for(label, remapped=True))
+        #         new = self.get_sample(
+        #             count, replace=replace, label=label, random=random
+        #         )
+        #         if new is not None:
+        #             samples.extend(new)
+        #         labels.remove(label)
+        #     return sample
+        # # chance = 1 / len(self.labels)
+        if cap_samples:
+            label_cap = self.get_label_caps(labels, remapped=True) * 2
+            # label_cap = 10
+            print("getting", label_cap, "per label")
+        cap = None
         for label in labels:
-            count = min(label_cap, len(self.samples_for(label, remapped=True)))
-            new = self.get_sample(count, replace=replace, label=label, random=random)
+            if cap_samples:
+                cap = min(label_cap, len(self.samples_for(label, remapped=True)))
+            new = self.get_sample(cap=cap, replace=replace, label=label, random=random)
             if new is not None and len(new) > 0:
                 samples.extend(new)
         return samples
@@ -1240,7 +1243,7 @@ class Dataset:
             return self.segment_label_cdf.get(label, [])
         return self.frame_label_cdf.get(label, [])
 
-    def get_sample(self, count, replace=True, label=None, random=True):
+    def get_sample(self, cap=None, replace=True, label=None, random=True):
         """ Returns a random frames from weighted list. """
         if label:
             samples = self.samples_for(label, remapped=True)
@@ -1250,11 +1253,14 @@ class Dataset:
             cdf = self.cdf()
         if not samples:
             return None
+        if cap is None:
+            return samples
+
         if random:
-            return np.random.choice(samples, count, replace=replace, p=cdf)
+            return np.random.choice(samples, cap, replace=replace, p=cdf)
         else:
-            count = min(count, len(samples))
-            return samples[:count]
+            cap = min(cap, len(samples))
+            return samples[:cap]
 
     def load_all(self, force=False):
         """ Loads all X and y into dataset if required. """

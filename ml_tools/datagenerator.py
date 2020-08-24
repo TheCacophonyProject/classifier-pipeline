@@ -43,7 +43,9 @@ class DataGenerator(keras.utils.Sequence):
         balance_labels=True,
         keep_epoch=False,
         randomize_epoch=True,
+        cap_samples=True,
     ):
+        self.cap_samples = cap_samples
         self.randomize_epoch = randomize_epoch
         self.use_previous_epoch = None
         self.keep_epoch = keep_epoch
@@ -151,7 +153,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def load_next_epoch(self):
         self.samples = self.dataset.epoch_samples(
-            replace=False, random=self.randomize_epoch
+            cap_samples=self.cap_samples, replace=False, random=self.randomize_epoch
         )
         if self.shuffle:
             np.random.shuffle(self.samples)

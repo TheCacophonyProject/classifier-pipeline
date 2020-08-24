@@ -173,12 +173,12 @@ class KerasModel:
     def build_model(self, dense_sizes=[1024, 512]):
         # note the model already applies batch_norm
         width = self.frame_size
-        if self.params.get("movement", False):
+        if self.params.get("use_movement", False):
             width = (
                 int(math.sqrt(round(self.datasets.train.segment_length * 9)))
                 * self.frame_size
             )
-        inputs = tf.keras.Input(shape=(width, width, 3))
+        inputs = tf.keras.Input(shape=(width, width, 3), name="input")
 
         base_model, preprocess = self.base_model((width, width, 3))
         self.preprocess_fn = preprocess
@@ -200,7 +200,9 @@ class KerasModel:
 
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
-            preds = tf.keras.layers.Dense(len(self.labels), activation="softmax")(x)
+            preds = tf.keras.layers.Dense(
+                len(self.labels), activation="softmax", name="prediction"
+            )(x)
             self.model = tf.keras.models.Model(inputs, outputs=preds)
 
         if self.params.get("retrain_layer") is not None:
@@ -262,7 +264,7 @@ class KerasModel:
         self.preprocess_fn = self.get_preprocess_fn()
         self.frame_size = self.params.get("frame_size", 48)
         self.square_width = meta.get("square_width")
-        self.lstm = (self.params.get("lstm", False),)
+        self.lstm = self.params.get("lstm", False)
         self.use_movement = (self.params.get("use_movement", False),)
 
     def save(self, run_name=MODEL_NAME, history=None, test_results=None):
@@ -353,7 +355,7 @@ class KerasModel:
                 tf.keras.callbacks.TensorBoard(
                     self.log_dir, write_graph=True, write_images=True
                 ),
-                *checkpoints
+                # *checkpoints
                 # cm_callback,
             ],  # log metrics
         )
@@ -369,11 +371,12 @@ class KerasModel:
                 lstm=self.params.get("lstm", False),
                 use_thermal=self.params.get("use_thermal", False),
                 use_filtered=self.params.get("use_filtered", False),
-                use_movement=self.params.get("movement", False),
+                use_movement=self.params.get("use_movement", False),
                 shuffle=False,
                 model_preprocess=self.preprocess_fn,
                 epochs=1,
                 load_threads=4,
+                cap_samples=False,
             )
             test_accuracy = self.model.evaluate(test)
             test.stop_load()
