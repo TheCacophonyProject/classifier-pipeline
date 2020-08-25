@@ -321,7 +321,7 @@ def square_clip(data, square_width):
     frame_size = Preprocessor.FRAME_SIZE
     background = np.zeros((square_width * frame_size, square_width * frame_size))
     i = 0
-    success = True
+    success = False
     for x in range(square_width):
         for y in range(square_width):
             i += 1
@@ -329,8 +329,10 @@ def square_clip(data, square_width):
                 frame = data[-1]
             else:
                 frame = data[i]
-            frame, error = normalize(frame)
-            success = success and error
+            frame, norm_success = normalize(frame)
+            if not norm_success:
+                continue
+            success = True
             background[
                 x * frame_size : (x + 1) * frame_size,
                 y * frame_size : (y + 1) * frame_size,
@@ -410,6 +412,7 @@ def preprocess_movement(
 ):
 
     segment = segment[:, channel]
+    # as long as one frame is fine
     square, success = square_clip(segment, square_width)
     if not success:
         return None

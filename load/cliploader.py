@@ -26,7 +26,7 @@ import logging
 import multiprocessing
 import time
 from ml_tools.dataset import dataset_db_path
-from ml_tools.newmodel import NewModel
+from ml_tools.kerasmodel import KerasModel
 import numpy as np
 from ml_tools import tools
 from ml_tools.dataset import TrackChannels

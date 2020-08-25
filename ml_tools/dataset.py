@@ -159,7 +159,11 @@ class TrackHeader:
     # trying to get only clear frames
     def set_important_frames(self, labels, min_mass=None, use_predictions=False):
         # this needs more testing
-        frames = [i for i, mass in enumerate(self.frame_mass) if mass >= self.mean_mass]
+        frames = [
+            i
+            for i, mass in enumerate(self.frame_mass)
+            if mass >= self.mean_mass and (min_mass is None or mass >= min)
+        ]
         np.random.shuffle(frames)
 
         if self.predictions is not None and use_predictions:
