@@ -356,7 +356,7 @@ class KerasModel:
                 tf.keras.callbacks.TensorBoard(
                     self.log_dir, write_graph=True, write_images=True
                 ),
-                # *checkpoints
+                *checkpoints
                 # cm_callback,
             ],  # log metrics
         )
@@ -396,7 +396,7 @@ class KerasModel:
             mode="auto",
             save_frequency=1,
         )
-        val_loss = os.path.join(self.checkpoint_folder, "val_acc")
+        val_loss = os.path.join(self.checkpoint_folder, run_name, "val_acc")
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
             val_loss,
@@ -810,6 +810,9 @@ class KerasModel:
         plt.savefig(filename, format="png")
 
     def evaluate(self, dataset):
+        dataset.set_read_only(True)
+        dataset.use_segments = self.params.get("use_segments", False)
+
         test = DataGenerator(
             dataset,
             self.labels,

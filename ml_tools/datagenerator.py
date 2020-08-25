@@ -179,22 +179,14 @@ class DataGenerator(keras.utils.Sequence):
         self.cur_epoch += 1
 
     def _data(self, samples, to_categorical=True):
-        "Generates data containing batch_size samples"  # X : (n_samples, *dim, n_channels)
+        "Generates data containing batch_size samples"
         # Initialization
         if self.lstm:
             X = np.empty((len(samples), samples[0].frames, *self.dim))
         else:
             X = np.empty((len(samples), *self.dim,))
 
-        # else:
-        # X = []
-        y = np.empty((len(samples), *self.dim))
-
         y = np.empty((len(samples)), dtype=int)
-        if self.use_thermal:
-            channels = TrackChannels.thermal
-        else:
-            channels = TrackChannels.filtered
         # Generate data
         data_i = 0
         if self.use_thermal:
@@ -203,23 +195,13 @@ class DataGenerator(keras.utils.Sequence):
             channel = TrackChannels.filtered
 
         for sample in samples:
-            if not self.movement:
-                data, label = self.dataset.fetch_sample(
-                    sample, augment=self.augment, channels=channels
-                )
-
-                if label not in self.labels:
-                    continue
-            if self.lstm:
-                data = preprocess_lstm(
-                    data, self.dim, channel, self.augment, self.model_preprocess,
-                )
-            elif self.movement:
+            if self.movement:
                 try:
                     data = self.dataset.fetch_segment(
                         sample, augment=self.augment, preprocess=False
                     )
-                except:
+                except Exception as inst:
+                    logging.error("Error fetching sample %s %s", sample, inst)
                     continue
                 label = self.dataset.mapped_label(sample.label)
 
@@ -247,11 +229,25 @@ class DataGenerator(keras.utils.Sequence):
                     sample,
                     self.dataset.name,
                 )
-
             else:
-                data = preprocess_frame(
-                    data, self.dim, channel, self.augment, self.model_preprocess,
-                )
+                try:
+                    data, label = self.dataset.fetch_sample(
+                        sample, augment=self.augment, channels=channel
+                    )
+
+                    if label not in self.labels:
+                        continue
+                except Exception as inst:
+                    logging.error("Error fetching samples %s %s", sample, inst)
+                    continue
+                if self.lstm:
+                    data = preprocess_lstm(
+                        data, self.dim, channel, self.augment, self.model_preprocess,
+                    )
+                else:
+                    data = preprocess_frame(
+                        data, self.dim, None, self.augment, self.model_preprocess,
+                    )
             if data is None:
                 logging.warn(
                     "error pre processing frame (i.e.max and min are the same)sample %s",
@@ -467,8 +463,8 @@ def preprocess_lstm(
 def preprocess_frame(
     data, output_dim, channel, augment=False, preprocess_fn=None,
 ):
-
-    data = data[channel]
+    if channel:
+        data = data[channel]
 
     data, success = normalize(data)
     np.clip(data, a_min=0, a_max=None, out=data)
