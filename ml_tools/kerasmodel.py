@@ -488,6 +488,8 @@ class KerasModel:
                     channel,
                     self.preprocess_fn,
                 )
+                if frames is None:
+                    continue
                 output = self.model.predict(frames[np.newaxis, :])
                 predictions.append(output[0])
         return predictions
@@ -755,6 +757,7 @@ class KerasModel:
             prediction = self.classify_frame(data)
             track_prediction.classified_frame(i, prediction, None)
         elif self.use_movement:
+            print("using movement")
             predictions = self.classify_frames(data, regions=regions)
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)

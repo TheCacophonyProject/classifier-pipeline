@@ -398,6 +398,9 @@ def movement(
     return np.array(img), overlay
 
 
+save_i = 0
+
+
 def preprocess_movement(
     data,
     segment,
@@ -423,6 +426,9 @@ def preprocess_movement(
     data[:, :, 0] = square
     data[:, :, 1] = dots  # dots
     data[:, :, 2] = overlay  # overlay
+    global save_i
+    savemovement(data, "test{}".format(save_i))
+    save_i += 1
     #
     # savemovement(
     #     data,

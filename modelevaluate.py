@@ -83,20 +83,25 @@ class ModelEvalute:
                 track.track_id, track_data, regions=track.track_bounds
             )
             mean = np.mean(track_prediction.original, axis=0)
+            if track_prediction.best_label_index is not None:
+                predicted_lbl = self.classifier.labels[
+                    track_prediction.best_label_index
+                ]
+            else:
+                predicted_lbl = "nothing"
             print(
                 "tagged as",
                 tag,
                 "label",
-                self.classifier.labels[track_prediction.best_label_index],
+                predicted_lbl,
                 " accuracy:",
-                round(track_prediction.score(), 2),
+                track_prediction.score(),
                 " rolling average:",
                 mean,
             )
 
-            predicted_lbl = self.classifier.labels[track_prediction.best_label_index]
             # if tag != wallaby and predicted_lbl == "not"
-            if track_prediction.score() < 0.85:
+            if track_prediction.score() is None or track_prediction.score() < 0.85:
                 predicted_lbl = "notconfident"
             if predicted_lbl == tag:
                 stat["correct"] += 1
