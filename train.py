@@ -46,6 +46,7 @@ def load_config():
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-g", "--grid", action="count", help="Grid Search hparams")
     parser.add_argument("-w", "--weights", help="Fine tune using these weights")
+    parser.add_argument("-t", "--type", type=int, help="training type")
 
     parser.add_argument(
         "name", default="unnammed", help="Name of training job",
@@ -61,7 +62,9 @@ def main():
     # tf.logging.set_verbosity(3)
 
     os.makedirs(conf.train.train_dir, exist_ok=True)
-    train_model(args.name, conf, conf.train.hyper_params, args.grid, args.weights)
+    train_model(
+        args.name, conf, conf.train.hyper_params, args.grid, args.weights, args.type
+    )
 
 
 if __name__ == "__main__":

@@ -45,7 +45,9 @@ class DataGenerator(keras.utils.Sequence):
         randomize_epoch=True,
         cap_samples=True,
         cap_at=None,
+        type=0,
     ):
+        self.type = type
         self.cap_at = cap_at
         self.cap_samples = cap_samples
         self.randomize_epoch = randomize_epoch
@@ -234,6 +236,7 @@ class DataGenerator(keras.utils.Sequence):
                     self.model_preprocess,
                     sample,
                     self.dataset.name,
+                    self.type,
                 )
             else:
                 try:
@@ -413,6 +416,7 @@ def preprocess_movement(
     preprocess_fn=None,
     sample=None,
     dataset=None,
+    type=0,
 ):
 
     segment = segment[:, channel]
@@ -426,9 +430,19 @@ def preprocess_movement(
     if not success:
         return None
     data = np.empty((square.shape[0], square.shape[1], 3))
-    data[:, :, 0] = square
-    data[:, :, 1] = dots  # dots
-    data[:, :, 2] = overlay  # overlay
+    if type == 0:
+        data[:, :, 0] = square
+        data[:, :, 1] = square  # dots
+        data[:, :, 2] = square  # overlay
+    elif type == 1:
+        data[:, :, 0] = square
+        data[:, :, 1] = square  # dots
+        data[:, :, 2] = overlay  # overlay
+    elif type == 2:
+        data[:, :, 0] = square
+        data[:, :, 1] = dots  # dots
+        data[:, :, 2] = overlay  # overlay
+
     #
     # savemovement(
     #     data,

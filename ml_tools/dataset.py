@@ -1232,7 +1232,7 @@ class Dataset:
                 label_cap = len(self.samples_for(cap_at))
             else:
                 label_cap = self.get_label_caps(labels, remapped=True) * 2
-            # label_cap = 100
+            # label_cap = 10
             print("getting", label_cap, "per label")
         cap = None
         for label in labels:

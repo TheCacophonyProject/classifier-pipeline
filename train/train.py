@@ -9,7 +9,7 @@ from ml_tools.framedataset import dataset_db_path
 from ml_tools.kerasmodel import KerasModel
 
 
-def train_model(run_name, conf, hyper_params, grid_search=False, weights=None):
+def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, type=0):
     """Trains a model with the given hyper parameters.
     """
     # run_name = os.path.join("train", run_name)
@@ -31,7 +31,7 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None):
             labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )
     elif conf.train.model == "keras":
-        model = KerasModel(train_config=conf.train, labels=conf.labels)
+        model = KerasModel(train_config=conf.train, labels=conf.labels, type=type)
     else:
         model = ModelCRNN_LQ(
             labels=len(labels), train_config=conf.train, training=True, **hyper_params

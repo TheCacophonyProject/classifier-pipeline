@@ -46,8 +46,8 @@ class KerasModel:
     MODEL_DESCRIPTION = "Using pre trained keras application models"
     VERSION = "0.3.0"
 
-    def __init__(self, train_config=None, labels=None):
-
+    def __init__(self, train_config=None, labels=None, type=0):
+        self.type = type
         self.frame_size = Preprocessor.FRAME_SIZE
         self.model = None
         self.datasets = None
@@ -280,7 +280,7 @@ class KerasModel:
         model_stats["version"] = self.VERSION
         model_stats["frame_size"] = self.frame_size
         model_stats["model"] = self.pretrained_model
-
+        model_stats["type"] = self.type
         if history:
             model_stats["history"] = history.history
         if test_results:
@@ -319,6 +319,7 @@ class KerasModel:
             epochs=epochs,
             load_threads=self.params.get("train_load_threads", 1),
             use_movement=self.params.get("use_movement", False),
+            type=self.type,
         )
         self.validate = DataGenerator(
             self.datasets.validation,
@@ -335,6 +336,7 @@ class KerasModel:
             load_threads=1,
             use_movement=self.params.get("use_movement", False),
             cap_at="wallaby",
+            type=self.type,
         )
         self.square_width = self.validate.square_width
 
@@ -379,6 +381,7 @@ class KerasModel:
                 epochs=1,
                 load_threads=4,
                 cap_samples=False,
+                type=self.type,
             )
             test_accuracy = self.model.evaluate(test)
             test.stop_load()
