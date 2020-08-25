@@ -44,7 +44,9 @@ class DataGenerator(keras.utils.Sequence):
         keep_epoch=False,
         randomize_epoch=True,
         cap_samples=True,
+        cap_at=None,
     ):
+        self.cap_at = cap_at
         self.cap_samples = cap_samples
         self.randomize_epoch = randomize_epoch
         self.use_previous_epoch = None
@@ -160,8 +162,12 @@ class DataGenerator(keras.utils.Sequence):
         return X, y
 
     def load_next_epoch(self):
+
         self.samples = self.dataset.epoch_samples(
-            cap_samples=self.cap_samples, replace=False, random=self.randomize_epoch
+            cap_samples=self.cap_samples,
+            replace=False,
+            random=self.randomize_epoch,
+            cap_at=self.cap_at,
         )
         if self.shuffle:
             np.random.shuffle(self.samples)
@@ -418,15 +424,15 @@ def preprocess_movement(
     square, success = square_clip(segment, square_width)
     if not success:
         return None
-    dots, overlay = movement(data, regions, dim=square.shape, channel=channel,)
-    dots = dots / 255
-    overlay, success = normalize(overlay, min=0)
-    if not success:
-        return None
+    # dots, overlay = movement(data, regions, dim=square.shape, channel=channel,)
+    # dots = dots / 255
+    # overlay, success = normalize(overlay, min=0)
+    # if not success:
+    # return None
     data = np.empty((square.shape[0], square.shape[1], 3))
     data[:, :, 0] = square
-    data[:, :, 1] = dots  # dots
-    data[:, :, 2] = overlay  # overlay
+    data[:, :, 1] = square  # dots
+    data[:, :, 2] = square  # overlay
     #
     # savemovement(
     #     data,

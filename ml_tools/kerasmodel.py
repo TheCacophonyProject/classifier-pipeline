@@ -334,6 +334,7 @@ class KerasModel:
             epochs=epochs,
             load_threads=1,
             use_movement=self.params.get("use_movement", False),
+            cap_at="wallaby",
         )
         self.square_width = self.validate.square_width
 

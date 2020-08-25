@@ -1211,7 +1211,7 @@ class Dataset:
         else:
             return data
 
-    def epoch_samples(self, cap_samples=None, replace=True, random=True):
+    def epoch_samples(self, cap_samples=None, replace=True, random=True, cap_at=None):
         if len(self.labels) == 0:
             return []
         labels = self.labels.copy()
@@ -1228,7 +1228,10 @@ class Dataset:
         #     return sample
         # # chance = 1 / len(self.labels)
         if cap_samples:
-            label_cap = self.get_label_caps(labels, remapped=True) * 2
+            if cap_at:
+                label_cap = len(self.samples_for(cap_at))
+            else:
+                label_cap = self.get_label_caps(labels, remapped=True) * 2
             # label_cap = 100
             print("getting", label_cap, "per label")
         cap = None
