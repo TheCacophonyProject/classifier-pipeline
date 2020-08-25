@@ -367,10 +367,15 @@ class TrackDatabase:
             track_node = clips[str(clip_id)][str(track_number)]
             return track_node.attrs["tag"]
 
-    def get_frame(self, clip_id, track_number, frame, channels=None):
+    def get_frame(self, clip_id, track_number, frame, channels=None, original=False):
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             track_node = clips[str(clip_id)][str(track_number)]
+            if original:
+                track_node = track_node["original"]
+            else:
+                if "cropped" in track_node:
+                    track_node = track_node["cropped"]
             if channels:
                 return track_node[str(frame)][channels], track_node.attrs["tag"]
             else:
