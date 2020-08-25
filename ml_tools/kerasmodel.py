@@ -441,7 +441,8 @@ class KerasModel:
         data = np.repeat(data, 3, axis=2)
         return data
 
-    def classify_frames(self, data, preprocess=True):
+    def classify_frames(self, data, preprocess=True, regions=None):
+        predictions = []
         if self.params.get("use_thermal", False):
             channel = TrackChannels.thermal
         else:
@@ -459,54 +460,51 @@ class KerasModel:
                 augment=False,
                 preprocess_fn=self.preprocess_fn,
             )
-            frame = data
+            output = self.model.predict(data[np.newaxis, :])
+            predictions.append(output[0])
         elif self.use_movement:
             frames_per_classify = self.square_width ** 2
             frames = len(data)
-            n_squares = math.ceil(float(frames) / self.square_width)
-            median = np.zeros((len(f)))
-            for i, f in enumerate(data):
-                median[i] = np.median(f[0])
 
-            data = Preprocessor.apply(frame, median, default_inset=0,)
+            n_squares = math.ceil(float(frames) / frames_per_classify)
+            median = np.zeros((frames_per_classify))
             for i in range(n_squares):
                 start = i * frames_per_classify
                 end = start + frames_per_classify
                 if end > len(data):
                     end = len(data)
                     start = len(data) - frames_per_classify
-                data = data[start:end, :, :]
-                segment = Preprocessor.apply(data, medians[start:end])
-                preprocess_movement(
-                    data, segment, self.square_width, [], channel, self.preprocess_fn
+
+                square_data = data[start:end]
+                segment = square_data
+                for i, f in enumerate(segment):
+                    median[i] = np.median(f[0])
+                segment = Preprocessor.apply(segment, median)
+                frames = preprocess_movement(
+                    square_data,
+                    segment,
+                    self.square_width,
+                    regions[start:end],
+                    channel,
+                    self.preprocess_fn,
                 )
+                output = self.model.predict(frames[np.newaxis, :])
+                predictions.append(output[0])
+        return predictions
 
     def classify_frame(self, frame, preprocess=True):
-
+        if self.params.get("use_thermal", False):
+            channel = TrackChannels.thermal
+        else:
+            channel = TrackChannels.filtered
         if preprocess:
-            if self.lstm:
-                median = []
-                for f in frame:
-                    median.append(np.median(f[0]))
-
-                data = Preprocessor.apply(frame, median, default_inset=0,)
-                data = preprocess_lstm(
-                    data,
-                    (self.frame_size, self.frame_size, 3),
-                    self.params.get("use_thermal", True),
-                    augment=False,
-                    preprocess_fn=self.preprocess_fn,
-                )
-                frame = data
-
-            else:
-                frame = preprocess_frame(
-                    frame,
-                    (self.frame_size, self.frame_size, 3),
-                    self.params.get("use_thermal", True),
-                    augment=False,
-                    preprocess_fn=self.preprocess_fn,
-                )
+            frame = preprocess_frame(
+                frame,
+                (self.frame_size, self.frame_size, 3),
+                channel,
+                augment=False,
+                preprocess_fn=self.preprocess_fn,
+            )
         output = self.model.predict(frame[np.newaxis, :])
         return output[0]
 
@@ -751,13 +749,15 @@ class KerasModel:
     #     lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
     #     return lstm_output, lstm_state
 
-    def classify_track(self, track_id, data, keep_all=True):
+    def classify_track(self, track_id, data, keep_all=True, regions=None):
         track_prediction = TrackPrediction(track_id, 0, keep_all)
         if self.lstm:
             prediction = self.classify_frame(data)
             track_prediction.classified_frame(i, prediction, None)
         elif self.use_movement:
-            prediction = self.classify_frames(data)
+            predictions = self.classify_frames(data, regions=regions)
+            for i, prediction in enumerate(predictions):
+                track_prediction.classified_frame(i, prediction, None)
 
         else:
             for i, frame in enumerate(data):

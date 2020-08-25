@@ -534,6 +534,7 @@ class Preprocessor:
         # first we scale to the standard size
 
         # adjusting the corners makes the algorithm robust to tracking differences.
+        # gp changed to 0,1 maybe should be a percent of the frame size
         top_offset = random.randint(0, 1) if augment else default_inset
         bottom_offset = random.randint(0, 1) if augment else default_inset
         left_offset = random.randint(0, 1) if augment else default_inset

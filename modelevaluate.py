@@ -76,7 +76,9 @@ class ModelEvalute:
 
             stat = stats.setdefault(tag, {"correct": 0, "incorrect": []})
             track_data = self.db.get_track(clip_id, track_id)
-            track_prediction = self.classifier.classify_track(track_id, track_data)
+            track_prediction = self.classifier.classify_track(
+                track_id, track_data, regions=track_meta["bounds_history"]
+            )
             mean = np.mean(track_prediction.original, axis=0)
             print(
                 "tagged as",
@@ -143,14 +145,12 @@ ev = ModelEvalute(config, model_file)
 date = None
 if args.date:
     date = parse(args.date)
-if args.confusion is not None:
-    if args.dataset:
-        dataset_file = args.dataset
-    else:
-        dataset_file = dataset_db_path(config)
 
-    ev.save_confusion(dataset_file, args.confusion)
-elif args.dataset:
-    ev.evaluate_dataset(args.dataset)
+if args.dataset:
+    dataset_file = args.dataset
 else:
-    ev.evaluate(after_date=date)
+    dataset_file = dataset_db_path(config)
+if args.confusion is not None:
+    ev.save_confusion(dataset_file, args.confusion)
+else:
+    ev.evaluate_dataset(dataset_file)

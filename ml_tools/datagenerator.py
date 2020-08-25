@@ -356,10 +356,12 @@ def movement(
 
     d = ImageDraw.Draw(img)
     # draw movment lines and draw frame overlay
+
     for i, frame in enumerate(frames):
         region = regions[i]
         rect = tools.Rectangle.from_ltrb(*region)
         frame = frame[channel]
+
         subimage = rect.subimage(overlay)
         subimage[:, :] += np.float32(frame)
         x = int(rect.mid_x)
@@ -463,9 +465,8 @@ def preprocess_lstm(
 def preprocess_frame(
     data, output_dim, channel, augment=False, preprocess_fn=None,
 ):
-    if channel:
+    if channel is not None:
         data = data[channel]
-
     data, success = normalize(data)
     np.clip(data, a_min=0, a_max=None, out=data)
     data = data[..., np.newaxis]
