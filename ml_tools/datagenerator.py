@@ -395,10 +395,11 @@ def movement(
         colour = int(value)
         d.point([prev], fill=colour)
 
-    return np.array(img), overlay
-
-
-save_i = 0
+    dots = np.zeros(dim)
+    last_frame = frames[-1][channel]
+    shape = last_frame.shape
+    dots[0 : shape[0], 0 : shape[1]] = last_frame
+    return dots, overlay
 
 
 def preprocess_movement(
@@ -426,9 +427,6 @@ def preprocess_movement(
     data[:, :, 0] = square
     data[:, :, 1] = dots  # dots
     data[:, :, 2] = overlay  # overlay
-    global save_i
-    savemovement(data, "test{}".format(save_i))
-    save_i += 1
     #
     # savemovement(
     #     data,
