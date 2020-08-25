@@ -40,10 +40,11 @@ class ModelEvalute:
         datasets = pickle.load(open(dataset_file, "rb"))
         self.classifier.confusion(datasets[1], output_file)
 
-    def evaluate_dataset(self, dataset_file):
+    def evaluate_dataset(self, dataset_file, tracks=False):
         datasets = pickle.load(open(dataset_file, "rb"))
-        datasets[2].db = self.db
-        datasets[2].binarize(
+        dataset = datasets[2]
+        dataset.db = self.db
+        dataset.binarize(
             ["wallaby"],
             lbl_one="wallaby",
             lbl_two="not",
@@ -51,20 +52,22 @@ class ModelEvalute:
             scale=False,
             shuffle=False,
         )
-        for label in datasets[2].labels:
-            print(label, datasets[2].get_counts(label))
+        for label in dataset.labels:
+            print(label, dataset.get_counts(label))
+        if tracks:
+            self.evaluate_tracks(dataset)
+            return
+
         print()
-        results = self.classifier.evaluate(datasets[2])
+        results = self.classifier.evaluate(dataset)
         print("Dataset", dataset_file, "loss,acc", results)
 
-    def evaluate(self, labels=None, after_date=None):
+    def evaluate_tracks(self, dataset):
+        labels = dataset.labels
         stats = {}
         total = 0
-        track_ids = self.db.get_all_track_ids(after_date=after_date)
-        for clip_id, track_id in track_ids:
-            clip_meta = self.db.get_clip_meta(clip_id)
-            track_meta = self.db.get_track_meta(clip_id, track_id)
-            tag = track_meta.get("tag")
+        for track in dataset.tracks:
+            tag = track.label
             if tag != "wallaby":
                 continue
             if not tag:
@@ -72,12 +75,12 @@ class ModelEvalute:
             if labels and tag not in labels:
                 continue
             total += 1
-            print("Classifying clip", clip_id, "track", track_id)
+            print("Classifying clip", track.clip_id, "track", track.track_id)
 
             stat = stats.setdefault(tag, {"correct": 0, "incorrect": []})
-            track_data = self.db.get_track(clip_id, track_id)
+            track_data = self.db.get_track(track.clip_id, track.track_id)
             track_prediction = self.classifier.classify_track(
-                track_id, track_data, regions=track_meta["bounds_history"]
+                track.track_id, track_data, regions=track.track_bounds
             )
             mean = np.mean(track_prediction.original, axis=0)
             print(
@@ -114,6 +117,9 @@ def load_args():
     )
     parser.add_argument("-t", "--dataset", help="Dataset file to use")
     parser.add_argument("--confusion", help="Save confusion matrix image")
+    parser.add_argument(
+        "--tracks", action="count", help="Evaluate whole track rather than samples"
+    )
 
     parser.add_argument("-d", "--date", help="Use clips after this")
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
@@ -153,4 +159,4 @@ else:
 if args.confusion is not None:
     ev.save_confusion(dataset_file, args.confusion)
 else:
-    ev.evaluate_dataset(dataset_file)
+    ev.evaluate_dataset(dataset_file, args.tracks)
