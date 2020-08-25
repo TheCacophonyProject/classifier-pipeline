@@ -401,11 +401,7 @@ def movement(
         colour = int(value)
         d.point([prev], fill=colour)
 
-    dots = np.zeros(dim)
-    last_frame = frames[-1][channel]
-    shape = last_frame.shape
-    dots[0 : shape[0], 0 : shape[1]] = last_frame
-    return dots, overlay
+    return np.array(img), overlay
 
 
 def preprocess_movement(
@@ -424,15 +420,15 @@ def preprocess_movement(
     square, success = square_clip(segment, square_width)
     if not success:
         return None
-    # dots, overlay = movement(data, regions, dim=square.shape, channel=channel,)
-    # dots = dots / 255
-    # overlay, success = normalize(overlay, min=0)
-    # if not success:
-    # return None
+    dots, overlay = movement(data, regions, dim=square.shape, channel=channel,)
+    dots = dots / 255
+    overlay, success = normalize(overlay, min=0)
+    if not success:
+        return None
     data = np.empty((square.shape[0], square.shape[1], 3))
     data[:, :, 0] = square
-    data[:, :, 1] = square  # dots
-    data[:, :, 2] = square  # overlay
+    data[:, :, 1] = dots  # dots
+    data[:, :, 2] = overlay  # overlay
     #
     # savemovement(
     #     data,
