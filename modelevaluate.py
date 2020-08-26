@@ -77,7 +77,7 @@ class ModelEvalute:
             total += 1
             print("Classifying clip", track.clip_id, "track", track.track_id)
 
-            stat = stats.setdefault(tag, {"correct": 0, "incorrect": []})
+            stat = stats.setdefault(tag, {"correct": 0, "incorrect": [], "total": 0})
             track_data = self.db.get_track(track.clip_id, track.track_id)
             track_prediction = self.classifier.classify_track(
                 track.track_id, track_data, regions=track.track_bounds
@@ -101,15 +101,20 @@ class ModelEvalute:
             )
 
             # if tag != wallaby and predicted_lbl == "not"
-            if track_prediction.score() is None or track_prediction.score() < 0.85:
-                predicted_lbl = "notconfident"
+            # if track_prediction.score() is None or track_prediction.score() < 0.85:
+            #     predicted_lbl = "notconfident"
             if predicted_lbl == tag:
                 stat["correct"] += 1
             else:
                 stat["incorrect"].append(predicted_lbl)
+            stat["total"] += 1
             # break
-        print("total is", total)
         print(stats)
+        print("total is", total)
+        for k, v in stats.items():
+            correct_per = round(100 * float(v["correct"]) / v["total"])
+            print("Stats for {} {}% correct".format(k, correct_per))
+
         # break
 
 

@@ -472,7 +472,7 @@ class KerasModel:
             n_squares = math.ceil(float(frames) / frames_per_classify)
             median = np.zeros((frames_per_classify))
             frame_sample = np.arange(frames)
-            np.random.shuffle(frames)
+            np.random.shuffle(frame_sample)
             for i in range(n_squares):
                 if self.type == 4:
                     region_data = regions
