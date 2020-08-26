@@ -480,12 +480,14 @@ class KerasModel:
                     seg_frames = frame_sample[:frames_per_classify]
                     if len(seg_frames) == 0:
                         break
-                    print("using", seg_frames)
+                    # print("using", seg_frames)
                     segment = []
+                    median = np.zeros((len(seg_frames)))
                     # update remaining
                     frame_sample = frame_sample[frames_per_classify:]
-                    for i, f in enumerate(seg_frames):
-                        f = data[i]
+                    seg_frames.sort()
+                    for i, frame_i in enumerate(seg_frames):
+                        f = data[frame_i]
                         segment.append(f)
                         median[i] = np.median(f[0])
                     segment = Preprocessor.apply(segment, median)
