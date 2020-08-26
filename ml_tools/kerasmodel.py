@@ -491,6 +491,7 @@ class KerasModel:
                     regions[start:end],
                     channel,
                     self.preprocess_fn,
+                    type=self.type,
                 )
                 if frames is None:
                     continue
@@ -834,6 +835,7 @@ class KerasModel:
             epochs=1,
             load_threads=self.params.get("train_load_threads", 1),
             cap_samples=False,
+            type=self.type,
         )
         test_accuracy = self.model.evaluate(test)
         test.stop_load()
