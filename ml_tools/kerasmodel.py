@@ -264,6 +264,8 @@ class KerasModel:
         self.square_width = meta.get("square_width")
         self.lstm = self.params.get("lstm", False)
         self.use_movement = self.params.get("use_movement", False)
+        self.type = self.params.get("type")
+        print("type is", self.type)
 
     def save(self, run_name=MODEL_NAME, history=None, test_results=None):
         # create a save point
