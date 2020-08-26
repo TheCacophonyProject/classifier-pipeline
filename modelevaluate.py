@@ -88,6 +88,7 @@ class ModelEvalute:
                     "incorrect": [],
                     "total": 0,
                     "incorrect_ids": [],
+                    "incorrect_acc": [],
                 },
             )
             track_data = self.db.get_track(track.clip_id, track.track_id)
@@ -123,6 +124,8 @@ class ModelEvalute:
             else:
                 stat["incorrect_ids"].append(track.unique_id)
                 stat["incorrect"].append(predicted_lbl)
+                stat["incorrect_acc"].append(track_prediction.score())
+
             stat["total"] += 1
             if total > 10:
                 break
