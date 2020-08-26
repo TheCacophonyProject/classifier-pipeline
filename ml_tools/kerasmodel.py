@@ -180,7 +180,6 @@ class KerasModel:
 
         base_model, preprocess = self.base_model((width, width, 3))
         self.preprocess_fn = preprocess
-
         x = base_model(
             inputs, training=self.params.get("base_training", False)
         )  # IMPORTANT
@@ -472,23 +471,37 @@ class KerasModel:
 
             n_squares = math.ceil(float(frames) / frames_per_classify)
             median = np.zeros((frames_per_classify))
+            frame_sample = np.arange(frames)
+            frame_sample.shuffle()
+            self.type = 4
             for i in range(n_squares):
-                start = i * frames_per_classify
-                end = start + frames_per_classify
-                if end > len(data):
-                    end = len(data)
-                    start = len(data) - frames_per_classify
+                if self.type == 4:
+                    region_data = regions
+                    square_data = data
+                    print("getting ", frame_sample[:frames_per_classify], " frames")
+                    segment = square_data[frame_sample[:frames_per_classify]]
+                    frame_sample = frame_sample[frames_per_classify:]
+                    for i, f in enumerate(segment):
+                        median[i] = np.median(f[0])
+                    segment = Preprocessor.apply(segment, median)
+                else:
+                    start = i * frames_per_classify
+                    end = start + frames_per_classify
+                    if end > len(data):
+                        end = len(data)
+                        start = len(data) - frames_per_classify
 
-                square_data = data[start:end]
-                segment = square_data
-                for i, f in enumerate(segment):
-                    median[i] = np.median(f[0])
-                segment = Preprocessor.apply(segment, median)
+                    square_data = data[start:end]
+                    region_data = regions[start:end]
+                    segment = square_data
+                    for i, f in enumerate(segment):
+                        median[i] = np.median(f[0])
+                    segment = Preprocessor.apply(segment, median)
                 frames = preprocess_movement(
                     square_data,
                     segment,
                     self.square_width,
-                    regions[start:end],
+                    region_data,
                     channel,
                     self.preprocess_fn,
                     type=self.type,
