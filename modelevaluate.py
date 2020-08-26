@@ -1,3 +1,4 @@
+from ml_tools.dataset import Preprocessor
 from ml_tools.framedataset import dataset_db_path
 
 import numpy as np
@@ -9,7 +10,7 @@ import os
 import sys
 from config.config import Config
 from datetime import datetime
-
+from ml_tools.datagenerator import preprocess_movement
 from ml_tools.kerasmodel import KerasModel
 from ml_tools.trackdatabase import TrackDatabase
 from classify.trackprediction import Predictions, TrackPrediction
@@ -68,16 +69,27 @@ class ModelEvalute:
         total = 0
         for track in dataset.tracks:
             tag = track.label
-            if tag != "wallaby":
-                continue
+            # if tag != "wallaby":
+            #     continue
             if not tag:
                 continue
-            if labels and tag not in labels:
-                continue
+            # if labels and tag not in labels:
+            #     continue
+            tag = dataset.mapped_label(tag)
             total += 1
             print("Classifying clip", track.clip_id, "track", track.track_id)
 
-            stat = stats.setdefault(tag, {"correct": 0, "incorrect": [], "total": 0})
+            stat = stats.setdefault(
+                tag,
+                {
+                    "correct": 0,
+                    "correct_acc": [],
+                    "correct_ids": [],
+                    "incorrect": [],
+                    "total": 0,
+                    "incorrect_ids": [],
+                },
+            )
             track_data = self.db.get_track(track.clip_id, track.track_id)
             track_prediction = self.classifier.classify_track(
                 track.track_id, track_data, regions=track.track_bounds
@@ -105,10 +117,15 @@ class ModelEvalute:
             #     predicted_lbl = "notconfident"
             if predicted_lbl == tag:
                 stat["correct"] += 1
+                stat["correct_acc"].append(track_prediction.score())
+                stat["correct_ids"].append(track.unique_id)
+
             else:
+                stat["incorrect_ids"].append(track.unique_id)
                 stat["incorrect"].append(predicted_lbl)
             stat["total"] += 1
-            # break
+            if total > 10:
+                break
         print(stats)
         print("total is", total)
         for k, v in stats.items():
@@ -116,6 +133,19 @@ class ModelEvalute:
             print("Stats for {} {}% correct".format(k, correct_per))
 
         # break
+
+    def save_track(self, clip_id, track_id, type=4):
+        track_data = self.db.get_track(clip_id, track_id)
+        track_meta = self.db.get_track_meta(clip_id, track_id)
+        seg_data = track_data[0:25]
+        median = []
+        for f in seg_data:
+            median.append(np.median(f[0]))
+        data = Preprocessor.apply(seg_data, median, default_inset=0,)
+
+        preprocess_movement(
+            track_data, data, 5, track_meta["bounds_history"], 1, type=type
+        )
 
 
 def load_args():
@@ -162,6 +192,8 @@ ev = ModelEvalute(config, model_file, args.type)
 date = None
 if args.date:
     date = parse(args.date)
+
+# ev.save_track("645661", "269585")
 
 if args.dataset:
     dataset_file = args.dataset
