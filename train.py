@@ -46,7 +46,7 @@ def load_config():
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-g", "--grid", action="count", help="Grid Search hparams")
     parser.add_argument("-w", "--weights", help="Fine tune using these weights")
-    parser.add_argument("-t", "--type", type=int, help="training type")
+    parser.add_argument("-t", "--type", type=int, default=0, help="training type")
 
     parser.add_argument(
         "name", default="unnammed", help="Name of training job",

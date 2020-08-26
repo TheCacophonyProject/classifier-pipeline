@@ -205,28 +205,55 @@ class DataGenerator(keras.utils.Sequence):
         for sample in samples:
             if self.movement:
                 try:
-                    data = self.dataset.fetch_segment(
-                        sample, augment=self.augment, preprocess=False
-                    )
+                    if self.type >= 3:
+                        data = self.dataset.fetch_track(sample.track, preprocess=False)
+
+                    else:
+                        data = self.dataset.fetch_segment(sample, preprocess=False)
                 except Exception as inst:
                     logging.error("Error fetching sample %s %s", sample, inst)
                     continue
                 label = self.dataset.mapped_label(sample.label)
+                if self.type == 3:
+                    segment_data = data[
+                        sample.start_frame : sample.start_frame + sample.frames
+                    ]
+                    ref = sample.track.frame_temp_median[
+                        sample.start_frame : sample.start_frame + len(segment_data)
+                    ]
+                    print("segment_data", len(segment_data), "ref", len(ref))
+                elif self.type == 4:
 
-                segment = Preprocessor.apply(
-                    data,
-                    sample.track.frame_temp_median[
-                        sample.start_frame : sample.start_frame + len(data)
-                    ],
-                    sample.track.frame_velocity[
-                        sample.start_frame : sample.start_frame + len(data)
-                    ],
-                    augment=self.augment,
-                )
+                    frames = np.random.choice(
+                        sample.track.important_frames,
+                        min(sample.frames, len(sample.track.important_frames)),
+                        replace=False,
+                    )
+                    # print("using frames", frames)
+                    segment_data = []
+                    ref = []
 
-                regions = sample.track.track_bounds[
-                    sample.start_frame : sample.start_frame + self.square_width ** 2
-                ]
+                    frames = [frame.frame_num for frame in frames]
+                    # sort??? or rather than random just apply a 1 second step
+
+                    frames.sort()
+                    for frame_num in frames:
+                        segment_data.append(data[frame_num])
+                        ref.append(sample.track.frame_temp_median[frame_num])
+                else:
+                    segment_data = data
+                    ref = (
+                        sample.track.frame_temp_median[
+                            sample.start_frame : sample.start_frame + len(data)
+                        ],
+                    )
+                segment = Preprocessor.apply(segment_data, ref, augment=self.augment,)
+                if self.type < 3:
+                    regions = sample.track.track_bounds[
+                        sample.start_frame : sample.start_frame + sample.frames
+                    ]
+                else:
+                    regions = sample.track.track_bounds
                 data = preprocess_movement(
                     data,
                     segment,
@@ -321,7 +348,7 @@ def augement_frame(frame, dim):
     return image.numpy()
 
 
-def square_clip(data, square_width):
+def square_clip(data, square_width, type=None):
     # lay each frame out side by side in rows
     frame_size = Preprocessor.FRAME_SIZE
     background = np.zeros((square_width * frame_size, square_width * frame_size))
@@ -331,7 +358,11 @@ def square_clip(data, square_width):
         for y in range(square_width):
             i += 1
             if i >= len(data):
-                frame = data[-1]
+                if type == 4:
+                    frame_i = random.randint(0, len(data) - 1)
+                    frame = data[frame_i]
+                else:
+                    frame = data[-1]
             else:
                 frame = data[i]
             frame, norm_success = normalize(frame)
@@ -421,7 +452,7 @@ def preprocess_movement(
 
     segment = segment[:, channel]
     # as long as one frame is fine
-    square, success = square_clip(segment, square_width)
+    square, success = square_clip(segment, square_width, type)
     if not success:
         return None
     dots, overlay = movement(data, regions, dim=square.shape, channel=channel,)
@@ -438,18 +469,18 @@ def preprocess_movement(
         data[:, :, 0] = square
         data[:, :, 1] = square  # dots
         data[:, :, 2] = overlay  # overlay
-    elif type == 2:
+    else:
         data[:, :, 0] = square
         data[:, :, 1] = dots  # dots
         data[:, :, 2] = overlay  # overlay
 
     #
-    # savemovement(
-    #     data,
-    #     "samples/{}/{}/{}-{}".format(
-    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
-    #     ),
-    # )
+    savemovement(
+        data,
+        "samples/{}/{}/{}-{}".format(
+            dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
+        ),
+    )
 
     if preprocess_fn:
         for i, frame in enumerate(data):
