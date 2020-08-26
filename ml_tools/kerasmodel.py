@@ -472,16 +472,21 @@ class KerasModel:
             n_squares = math.ceil(float(frames) / frames_per_classify)
             median = np.zeros((frames_per_classify))
             frame_sample = np.arange(frames)
-            frame_sample.shuffle()
-            self.type = 4
+            np.random.shuffle(frames)
             for i in range(n_squares):
                 if self.type == 4:
                     region_data = regions
                     square_data = data
-                    print("getting ", frame_sample[:frames_per_classify], " frames")
-                    segment = square_data[frame_sample[:frames_per_classify]]
+                    seg_frames = frame_sample[:frames_per_classify]
+                    if len(seg_frames) == 0:
+                        break
+                    print("using", seg_frames)
+                    segment = []
+                    # update remaining
                     frame_sample = frame_sample[frames_per_classify:]
-                    for i, f in enumerate(segment):
+                    for i, f in enumerate(seg_frames):
+                        f = data[i]
+                        segment.append(f)
                         median[i] = np.median(f[0])
                     segment = Preprocessor.apply(segment, median)
                 else:
