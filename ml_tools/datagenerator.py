@@ -221,7 +221,6 @@ class DataGenerator(keras.utils.Sequence):
                     ref = sample.track.frame_temp_median[
                         sample.start_frame : sample.start_frame + len(segment_data)
                     ]
-                    print("segment_data", len(segment_data), "ref", len(ref))
                 elif self.type == 4:
 
                     frames = np.random.choice(
@@ -473,12 +472,12 @@ def preprocess_movement(
         data[:, :, 2] = overlay  # overlay
 
     #
-    savemovement(
-        data,
-        "samples/{}/{}/{}-{}".format(
-            dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
-        ),
-    )
+    # savemovement(
+    #     data,
+    #     "samples/{}/{}/{}-{}".format(
+    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
+    #     ),
+    # )
 
     if preprocess_fn:
         for i, frame in enumerate(data):
