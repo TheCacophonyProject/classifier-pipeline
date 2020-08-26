@@ -242,11 +242,9 @@ class DataGenerator(keras.utils.Sequence):
                         ref.append(sample.track.frame_temp_median[frame_num])
                 else:
                     segment_data = data
-                    ref = (
-                        sample.track.frame_temp_median[
-                            sample.start_frame : sample.start_frame + len(data)
-                        ],
-                    )
+                    ref = sample.track.frame_temp_median[
+                        sample.start_frame : sample.start_frame + len(data)
+                    ]
                 segment = Preprocessor.apply(segment_data, ref, augment=self.augment,)
                 if self.type < 3:
                     regions = sample.track.track_bounds[
