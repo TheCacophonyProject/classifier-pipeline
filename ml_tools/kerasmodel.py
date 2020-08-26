@@ -398,18 +398,16 @@ class KerasModel:
             save_best_only=True,
             save_weights_only=False,
             mode="auto",
-            save_frequency=1,
         )
-        val_loss = os.path.join(self.checkpoint_folder, run_name, "val_acc")
+        val_acc = os.path.join(self.checkpoint_folder, run_name, "val_acc")
 
         checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
-            val_loss,
+            val_acc,
             monitor="val_accuracy",
             verbose=1,
             save_best_only=True,
             save_weights_only=False,
             mode="max",
-            save_frequency=1,
         )
         return [checkpoint_acc, checkpoint_loss]
 
