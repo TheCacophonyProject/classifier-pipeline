@@ -798,6 +798,7 @@ class KerasModel:
             epochs=1,
             load_threads=self.params.get("train_load_threads", 1),
             keep_epoch=True,
+            type=self.type,
         )
         test_pred_raw = self.model.predict(test)
         test.stop_load()

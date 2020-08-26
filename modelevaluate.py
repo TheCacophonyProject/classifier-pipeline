@@ -16,14 +16,14 @@ from classify.trackprediction import Predictions, TrackPrediction
 
 
 class ModelEvalute:
-    def __init__(self, config, model_file):
+    def __init__(self, config, model_file, type):
         self.model_file = model_file
         self.classifier = None
         self.config = config
-        self.load_classifier(model_file)
+        self.load_classifier(model_file, type)
         self.db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
 
-    def load_classifier(self, model_file):
+    def load_classifier(self, model_file, type):
         """
         Returns a classifier object, which is created on demand.
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
@@ -31,7 +31,7 @@ class ModelEvalute:
         t0 = datetime.now()
         logging.info("classifier loading %s", model_file)
 
-        self.classifier = KerasModel(train_config=self.config.train)
+        self.classifier = KerasModel(train_config=self.config.train, type=type)
         self.classifier.load_weights(model_file)
 
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
@@ -125,6 +125,7 @@ def load_args():
     parser.add_argument(
         "--tracks", action="count", help="Evaluate whole track rather than samples"
     )
+    parser.add_argument("--type", type=int, help="training type")
 
     parser.add_argument("-d", "--date", help="Use clips after this")
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
@@ -152,7 +153,7 @@ config = Config.load_from_file(args.config_file)
 model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
-ev = ModelEvalute(config, model_file)
+ev = ModelEvalute(config, model_file, args.type)
 date = None
 if args.date:
     date = parse(args.date)
