@@ -221,7 +221,7 @@ class DataGenerator(keras.utils.Sequence):
                     ref = sample.track.frame_temp_median[
                         sample.start_frame : sample.start_frame + len(segment_data)
                     ]
-                elif self.type == 4:
+                elif self.type >= 4:
 
                     frames = np.random.choice(
                         sample.track.important_frames,
@@ -349,13 +349,13 @@ def square_clip(data, square_width, type=None):
     # lay each frame out side by side in rows
     frame_size = Preprocessor.FRAME_SIZE
     background = np.zeros((square_width * frame_size, square_width * frame_size))
+
     i = 0
     success = False
     for x in range(square_width):
         for y in range(square_width):
-            i += 1
             if i >= len(data):
-                if type == 4:
+                if type >= 4:
                     frame_i = random.randint(0, len(data) - 1)
                     frame = data[frame_i]
                 else:
@@ -363,6 +363,7 @@ def square_clip(data, square_width, type=None):
             else:
                 frame = data[i]
             frame, norm_success = normalize(frame)
+
             if not norm_success:
                 continue
             success = True
@@ -370,11 +371,13 @@ def square_clip(data, square_width, type=None):
                 x * frame_size : (x + 1) * frame_size,
                 y * frame_size : (y + 1) * frame_size,
             ] = np.float32(frame)
+            i += 1
+
     return background, success
 
 
 def movement(
-    frames, regions, dim=None, channel=TrackChannels.filtered,
+    frames, regions, dim=None, channel=TrackChannels.filtered, require_movement=False
 ):
     """Return 2 images describing the movement, one has dots representing
      the centre of mass, the other is a collage of all frames
@@ -393,27 +396,32 @@ def movement(
 
     d = ImageDraw.Draw(img)
     # draw movment lines and draw frame overlay
-
+    center_distance = 0
+    min_distance = 2
+    prev_rect = None
     for i, frame in enumerate(frames):
         region = regions[i]
         rect = tools.Rectangle.from_ltrb(*region)
         frame = frame[channel]
 
-        subimage = rect.subimage(overlay)
-        subimage[:, :] += np.float32(frame)
         x = int(rect.mid_x)
         y = int(rect.mid_y)
         if prev is not None:
             if prev[0] == x and prev[1] == y:
-                value *= 1.1
+                value *= 1
             else:
                 value = 60
             distance = math.sqrt(pow(prev[0] - x, 2) + pow(prev[1] - y, 2))
-
+            center_distance += distance
             distance *= 21.25
             distance = min(distance, 255)
-            d.line(prev + (x, y), fill=int(distance), width=1)
+            d.line(prev + (x, y), fill=int(value), width=1)
+        if not require_movement or (prev is None or center_distance > min_distance):
 
+            subimage = rect.subimage(overlay)
+            subimage[:, :] += np.float32(frame)
+            center_distance = 0
+            min_distance = rect.width / 2.0
         prev = (x, y)
         colour = int(value)
 
@@ -425,9 +433,9 @@ def movement(
         y = int(rect.mid_y)
         if prev is not None:
             if prev[0] == x and prev[1] == y:
-                value *= 1.1
+                value *= 1
             else:
-                value = 60
+                value = 120
         prev = (x, y)
         colour = int(value)
         d.point([prev], fill=colour)
@@ -452,7 +460,9 @@ def preprocess_movement(
     square, success = square_clip(segment, square_width, type)
     if not success:
         return None
-    dots, overlay = movement(data, regions, dim=square.shape, channel=channel,)
+    dots, overlay = movement(
+        data, regions, dim=square.shape, channel=channel, require_movement=type >= 5
+    )
     dots = dots / 255
     overlay, success = normalize(overlay, min=0)
     if not success:
@@ -475,7 +485,7 @@ def preprocess_movement(
     # savemovement(
     #     data,
     #     "samples/{}/{}/{}-{}".format(
-    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
+    #  save       dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
     #     ),
     # )
 
@@ -582,6 +592,8 @@ def normalize(data, min=None, max=None, new_max=1):
     if min is None:
         min = np.amin(data)
     if max == min:
+        if max == 0:
+            return np.zeros((data.shape)), False
         return data / max, False
     data -= min
     data = data / (max - min) * new_max
