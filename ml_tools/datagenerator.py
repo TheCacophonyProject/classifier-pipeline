@@ -417,7 +417,6 @@ def movement(
             distance = min(distance, 255)
             d.line(prev + (x, y), fill=int(value), width=1)
         if not require_movement or (prev is None or center_distance > min_distance):
-
             subimage = rect.subimage(overlay)
             subimage[:, :] += np.float32(frame)
             center_distance = 0

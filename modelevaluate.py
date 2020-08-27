@@ -137,7 +137,7 @@ class ModelEvalute:
 
         # break
 
-    def save_track(self, clip_id, track_id, type=6):
+    def save_track(self, clip_id, track_id, type=5):
         track_data = self.db.get_track(clip_id, track_id)
         track_meta = self.db.get_track_meta(clip_id, track_id)
         seg_data = track_data[0:25]
@@ -196,7 +196,7 @@ date = None
 if args.date:
     date = parse(args.date)
 
-ev.save_track("645661", "269585")
+# ev.save_track("645661", "269585")
 
 if args.dataset:
     dataset_file = args.dataset
