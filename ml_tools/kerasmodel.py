@@ -336,7 +336,6 @@ class KerasModel:
             epochs=epochs,
             load_threads=1,
             use_movement=self.params.get("use_movement", False),
-            cap_at="wallaby",
             type=self.type,
         )
         self.square_width = self.validate.square_width
@@ -794,15 +793,15 @@ class KerasModel:
         return track_prediction
 
     def confusion(self, dataset, filename="confusion.png"):
-        dataset.binarize(
-            ["wallaby"],
-            lbl_one="wallaby",
-            set_two=None,
-            lbl_two="not",
-            scale=False,
-            keep_fp=False,
-            shuffle=False,
-        )
+        # dataset.binarize(
+        #     ["wallaby"],
+        #     lbl_one="wallaby",
+        #     set_two=None,
+        #     lbl_two="not",
+        #     scale=False,
+        #     keep_fp=False,
+        #     shuffle=False,
+        # )
         dataset.set_read_only(True)
         dataset.use_segments = self.params.get("use_segments", False)
         test = DataGenerator(

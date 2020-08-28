@@ -1234,6 +1234,9 @@ class Dataset:
                 label_cap = self.get_label_caps(labels, remapped=True)
             # label_cap = 100
             print("getting", label_cap, "per label")
+        # label_cap *= len(labels)
+        # print("getting", label_cap)
+        # samples = self.get_sample(label_cap, replace=replace, random=random)
         cap = None
         for label in labels:
             if cap_samples:
@@ -1608,7 +1611,7 @@ class Dataset:
             "leporidae": 5,
             "mustelid": 5,
             "false-positive": 1,
-            "wallaby": 20,
+            "wallaby": 10,
         }
         self.rebuild_segment_cdf(balance_labels=balance_labels, lbl_p=p)
         self.rebuild_frame_cdf(balance_labels=balance_labels, lbl_p=p)
