@@ -45,14 +45,14 @@ class ModelEvalute:
         datasets = pickle.load(open(dataset_file, "rb"))
         dataset = datasets[2]
         dataset.db = self.db
-        # dataset.binarize(
-        #     ["wallaby"],
-        #     lbl_one="wallaby",
-        #     lbl_two="not",
-        #     keep_fp=False,
-        #     scale=False,
-        #     shuffle=False,
-        # )
+        dataset.binarize(
+            ["wallaby"],
+            lbl_one="wallaby",
+            lbl_two="not",
+            keep_fp=False,
+            scale=False,
+            shuffle=False,
+        )
         for label in dataset.labels:
             print(label, dataset.get_counts(label))
         if tracks:
