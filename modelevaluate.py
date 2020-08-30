@@ -45,14 +45,14 @@ class ModelEvalute:
         datasets = pickle.load(open(dataset_file, "rb"))
         dataset = datasets[2]
         dataset.db = self.db
-        dataset.binarize(
-            ["wallaby"],
-            lbl_one="wallaby",
-            lbl_two="not",
-            keep_fp=False,
-            scale=False,
-            shuffle=False,
-        )
+        # dataset.binarize(
+        #     ["wallaby"],
+        #     lbl_one="wallaby",
+        #     lbl_two="not",
+        #     keep_fp=False,
+        #     scale=False,
+        #     shuffle=False,
+        # )
         for label in dataset.labels:
             print(label, dataset.get_counts(label))
         if tracks:
@@ -118,13 +118,13 @@ class ModelEvalute:
             #     predicted_lbl = "notconfident"
             if predicted_lbl == tag:
                 stat["correct"] += 1
-                stat["correct_acc"].append(track_prediction.score())
-                stat["correct_ids"].append(track.unique_id)
+                # stat["correct_acc"].append(track_prediction.score())
+                # stat["correct_ids"].append(track.unique_id)
 
             else:
                 stat["incorrect_ids"].append(track.unique_id)
-                stat["incorrect"].append(predicted_lbl)
-                stat["incorrect_acc"].append(track_prediction.score())
+                # stat["incorrect"].append(predicted_lbl)
+                # stat["incorrect_acc"].append(track_prediction.score())
 
             stat["total"] += 1
             if total > 10:
