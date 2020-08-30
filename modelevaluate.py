@@ -127,8 +127,7 @@ class ModelEvalute:
                 # stat["incorrect_acc"].append(track_prediction.score())
 
             stat["total"] += 1
-            if total > 10:
-                break
+
         print(stats)
         print("total is", total)
         for k, v in stats.items():
