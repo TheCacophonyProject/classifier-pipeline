@@ -47,7 +47,6 @@ class ModelEvalute:
             keep_fp=False,
             scale=False,
             shuffle=False,
-            cap_at="wallaby",
         )
         self.classifier.confusion(dataset, output_file)
 
