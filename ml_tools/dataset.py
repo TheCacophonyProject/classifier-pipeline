@@ -162,7 +162,7 @@ class TrackHeader:
         frames = [
             i
             for i, mass in enumerate(self.frame_mass)
-            if mass >= self.mean_mass and (min_mass is None or mass >= min)
+            if mass >= self.mean_mass and (min_mass is None or mass >= min_mass)
         ]
         np.random.shuffle(frames)
 
@@ -1239,8 +1239,11 @@ class Dataset:
         # samples = self.get_sample(label_cap, replace=replace, random=random)
         cap = None
         for label in labels:
+
             if cap_samples:
                 cap = min(label_cap, len(self.samples_for(label, remapped=True)))
+            if label == "false-positive":
+                cap = min(label_cap * 0.2, len(self.samples_for(label, remapped=True)))
             new = self.get_sample(cap=cap, replace=replace, label=label, random=random)
             if new is not None and len(new) > 0:
                 samples.extend(new)

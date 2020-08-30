@@ -376,6 +376,46 @@ def square_clip(data, square_width, type=None):
     return background, success
 
 
+def square_clip_flow(data_flow_h, data_flow_v, square_width, type=None):
+    # lay each frame out side by side in rows
+    frame_size = Preprocessor.FRAME_SIZE
+    background = np.zeros((square_width * frame_size, square_width * frame_size))
+
+    i = 0
+    success = False
+    for x in range(square_width):
+        for y in range(square_width):
+            if i >= len(data_flow_h):
+                if type >= 4:
+                    frame_i = random.randint(0, len(data_flow_h) - 1)
+                    flow_h = data_flow_h[frame_i]
+                    flow_v = data_flow_v[frame_i]
+
+                else:
+                    flow_v = data_flow_v[-1]
+                    flow_h = data_flow_h[-1]
+
+            else:
+                flow_v = data_flow_v[i]
+                flow_h = data_flow_h[i]
+
+            flow_magnitude = (
+                np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
+            )
+            frame, norm_success = normalize(flow_magnitude)
+
+            if not norm_success:
+                continue
+            success = True
+            background[
+                x * frame_size : (x + 1) * frame_size,
+                y * frame_size : (y + 1) * frame_size,
+            ] = np.float32(frame)
+            i += 1
+
+    return background, success
+
+
 def movement(
     frames, regions, dim=None, channel=TrackChannels.filtered, require_movement=False
 ):
@@ -453,7 +493,10 @@ def preprocess_movement(
     dataset=None,
     type=0,
 ):
-
+    flow_h = segment[:, TrackChannels.flow_h]
+    flow_v = segment[:, TrackChannels.flow_v]
+    if type == 7:
+        square_flow, success = square_clip_flow(flow_h, flow_v, square_width, type)
     segment = segment[:, channel]
     # as long as one frame is fine
     square, success = square_clip(segment, square_width, type)
@@ -475,18 +518,23 @@ def preprocess_movement(
         data[:, :, 0] = square
         data[:, :, 1] = square  # dots
         data[:, :, 2] = overlay  # overlay
+    elif type == 7:
+        print("using type 7")
+        data[:, :, 0] = square
+        data[:, :, 1] = square_flow  # dots
+        data[:, :, 2] = overlay  # overlay
     else:
         data[:, :, 0] = square
         data[:, :, 1] = dots  # dots
         data[:, :, 2] = overlay  # overlay
 
     #
-    # savemovement(
-    #     data,
-    #     "samples/{}/{}/{}-{}".format(
-    #  save       dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
-    #     ),
-    # )
+    savemovement(
+        data,
+        "samples/{}/{}/{}-{}".format(
+            dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
+        ),
+    )
 
     if preprocess_fn:
         for i, frame in enumerate(data):
