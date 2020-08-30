@@ -587,15 +587,27 @@ class Preprocessor:
             ]
 
             if keep_aspect:
-                scaled_frames = data[i]
-                for channel, scaled_frame in enumerate(scaled_frames):
-                    subimage = crop_region.subimage(scaled_frame)
-                    subimage[:, :] = cropped_frame[channel]
-                continue
+
                 height, width = cropped_frame[0].shape
-                min_dim = min(width, height)
+                min_dim = max(width, height)
                 scale = Preprocessor.FRAME_SIZE / min_dim
                 target_size = (round(height * scale), round(width * scale))
+                scaled_frames = data[i]
+                for channel, scaled_frame in enumerate(scaled_frames):
+                    cropped_data = cropped_frame[channel]
+                    w, h = cropped_data.shape
+                    if w > Preprocessor.FRAME_SIZE or h > Preprocessor.FRAME_SIZE:
+                        cropped_data = cv2.resize(
+                            cropped_data,
+                            dsize=target_size,
+                            interpolation=cv2.INTER_LINEAR
+                            if channel != TrackChannels.mask
+                            else cv2.INTER_NEAREST,
+                        )
+
+                    w, h = cropped_data.shape
+                    scaled_frame[:w, :h] = cropped_data
+                continue
                 # print("target is", target_size)
             else:
                 target_size = (Preprocessor.FRAME_SIZE, Preprocessor.FRAME_SIZE)

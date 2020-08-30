@@ -531,13 +531,13 @@ def preprocess_movement(
         data[:, :, 1] = dots  # dots
         data[:, :, 2] = overlay  # overlay
 
-    #
-    savemovement(
-        data,
-        "samples/{}/{}/{}-{}".format(
-            dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
-        ),
-    )
+    # #
+    # savemovement(
+    #     data,
+    #     "samples/{}/{}/{}-{}".format(
+    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
+    #     ),
+    # )
 
     if preprocess_fn:
         for i, frame in enumerate(data):
