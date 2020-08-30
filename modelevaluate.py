@@ -39,7 +39,17 @@ class ModelEvalute:
 
     def save_confusion(self, dataset_file, output_file):
         datasets = pickle.load(open(dataset_file, "rb"))
-        self.classifier.confusion(datasets[1], output_file)
+        dataset = datasets[1]
+        dataset.binarize(
+            ["wallaby"],
+            lbl_one="wallaby",
+            lbl_two="not",
+            keep_fp=False,
+            scale=False,
+            shuffle=False,
+            cap_at="wallaby",
+        )
+        self.classifier.confusion(dataset, output_file)
 
     def evaluate_dataset(self, dataset_file, tracks=False):
         datasets = pickle.load(open(dataset_file, "rb"))
