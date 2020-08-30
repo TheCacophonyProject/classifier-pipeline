@@ -244,7 +244,9 @@ class DataGenerator(keras.utils.Sequence):
                     ref = sample.track.frame_temp_median[
                         sample.start_frame : sample.start_frame + len(data)
                     ]
-                segment = Preprocessor.apply(segment_data, ref, augment=self.augment,)
+                segment = Preprocessor.apply(
+                    segment_data, ref, augment=self.augment, keep_aspect=self.type == 6
+                )
                 if self.type < 3:
                     regions = sample.track.track_bounds[
                         sample.start_frame : sample.start_frame + sample.frames
@@ -493,9 +495,10 @@ def preprocess_movement(
     dataset=None,
     type=0,
 ):
-    flow_h = segment[:, TrackChannels.flow_h]
-    flow_v = segment[:, TrackChannels.flow_v]
+
     if type == 7:
+        flow_h = segment[:, TrackChannels.flow_h]
+        flow_v = segment[:, TrackChannels.flow_v]
         square_flow, success = square_clip_flow(flow_h, flow_v, square_width, type)
     segment = segment[:, channel]
     # as long as one frame is fine
@@ -529,12 +532,12 @@ def preprocess_movement(
         data[:, :, 2] = overlay  # overlay
 
     #
-    # savemovement(
-    #     data,
-    #     "samples/{}/{}/{}-{}".format(
-    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
-    #     ),
-    # )
+    savemovement(
+        data,
+        "samples/{}/{}/{}-{}".format(
+            dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
+        ),
+    )
 
     if preprocess_fn:
         for i, frame in enumerate(data):

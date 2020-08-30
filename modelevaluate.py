@@ -38,6 +38,7 @@ class ModelEvalute:
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
     def save_confusion(self, dataset_file, output_file):
+
         datasets = pickle.load(open(dataset_file, "rb"))
         dataset = datasets[1]
         dataset.binarize(
@@ -48,6 +49,8 @@ class ModelEvalute:
             scale=False,
             shuffle=False,
         )
+        for label in dataset.labels:
+            print(label, dataset.get_counts(label))
         self.classifier.confusion(dataset, output_file)
 
     def evaluate_dataset(self, dataset_file, tracks=False):

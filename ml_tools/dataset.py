@@ -540,7 +540,7 @@ class Preprocessor:
         left_offset = random.randint(0, 1) if augment else default_inset
         right_offset = random.randint(0, 1) if augment else default_inset
 
-        data = np.empty(
+        data = np.zeros(
             (
                 len(frames),
                 frames[0].shape[0],
@@ -587,6 +587,11 @@ class Preprocessor:
             ]
 
             if keep_aspect:
+                scaled_frames = data[i]
+                for channel, scaled_frame in enumerate(scaled_frames):
+                    subimage = crop_region.subimage(scaled_frame)
+                    subimage[:, :] = cropped_frame[channel]
+                continue
                 height, width = cropped_frame[0].shape
                 min_dim = min(width, height)
                 scale = Preprocessor.FRAME_SIZE / min_dim
@@ -1242,12 +1247,12 @@ class Dataset:
 
             if cap_samples:
                 cap = min(label_cap, len(self.samples_for(label, remapped=True)))
-                if label == "false-positive":
-                    cap = min(
-                        int(label_cap * 0.2),
-                        len(self.samples_for(label, remapped=True)),
-                    )
-                    print("capping false?")
+                # if label == "false-positive":
+                #     cap = min(
+                #         int(label_cap * 0.2),
+                #         len(self.samples_for(label, remapped=True)),
+                #     )
+                #     print("capping false?")
             new = self.get_sample(cap=cap, replace=replace, label=label, random=random)
             if new is not None and len(new) > 0:
                 samples.extend(new)
