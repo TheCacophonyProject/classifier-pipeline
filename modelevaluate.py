@@ -1,3 +1,4 @@
+import time
 from multiprocessing import Process, Queue
 
 from ml_tools.dataset import Preprocessor
@@ -18,6 +19,22 @@ from ml_tools.trackdatabase import TrackDatabase
 from classify.trackprediction import Predictions, TrackPrediction
 
 VISIT_INTERVAL = 10 * 60
+
+
+class SmallTrack:
+    def __init__(self, track):
+        self.camera = track.camera
+        self.clip_id = track.clip_id
+        self.track_id = track.track_id
+        self.label = track.label
+        # date and time of the start of the track
+        self.start_time = track.start_time
+        self.start_frame = track.start_frame
+        # duration in seconds
+        self.duration = track.duration
+
+    def __repr__(self):
+        return "{}-{}".format(self.clip_id, self.track_id)
 
 
 class CameraResults:
@@ -78,14 +95,13 @@ class Visit:
                 self.what = lbl
 
 
-def process_job(queue, dataset, model_file, train_config, results_queue, overall_queue):
+def process_job(queue, dataset, model_file, train_config, results_queue):
 
     classifier = KerasModel(train_config=train_config)
     classifier.load_weights(model_file)
     logging.info("Loaded model")
     i = 0
-    results = {}
-    overall_stats = {}
+
     while True:
         i += 1
         track = queue.get()
@@ -107,9 +123,7 @@ def process_job(queue, dataset, model_file, train_config, results_queue, overall
                 mean = np.mean(track_prediction.original, axis=0)
                 max_lbl = np.argmax(mean)
                 predicted_lbl = classifier.labels[max_lbl]
-                cam_results = results.setdefault(
-                    track.camera, CameraResults(track.camera)
-                )
+
                 vel_sum = [abs(vel[0]) + abs(vel[1]) for vel in track.frame_velocity]
 
                 sure = True
@@ -121,38 +135,16 @@ def process_job(queue, dataset, model_file, train_config, results_queue, overall
                     sure = max_perc > 0.85 and not wallaby_tagged
                     # require movement to be sure of not
                     sure = sure and np.mean(vel_sum) > 0.6
-                cam_results.add_result(track, predicted_lbl, np.amax(mean), sure, tag)
-                # print("mean is", mean)
-                # print("velocity", np.mean(vel_sum), sum(vel_sum))
-                # print(track, predicted_lbl, "should be ", tag, " am i sure?", sure)
-                result = overall_stats.setdefault(
-                    tag,
-                    {
-                        "correct": 0,
-                        "correct_acc": [],
-                        "correct_ids": [],
-                        "incorrect": 0,
-                        "total": 0,
-                        "incorrect_ids": [],
-                        "incorrect_acc": [],
-                    },
+                results_queue.put(
+                    (SmallTrack(track), predicted_lbl, np.amax(mean), sure, tag)
                 )
-                result["total"] += 1
-                if predicted_lbl == tag:
-                    result["correct"] += 1
-                    # stat["correct_acc"].append(track_prediction.score())
-                    # result["correct_ids"].append(track.unique_id)
-
-                else:
-                    result["incorrect"] += 1
-                    # result["incorrect_ids"].append(track.unique_id)
             if i % 50 == 0:
                 logging.info("%s jobs left", queue.qsize())
         except Exception as e:
             logging.error("Process_job error %s", e)
     # results_queue.put(results)
-    results_queue.put(results)
-    overall_queue.put(overall_stats)
+    # results_queue.put(results)
+    # overall_queue.put(overall_stats)
     return
 
 
@@ -216,7 +208,6 @@ class ModelEvalute:
     def evaluate_tracks(self, dataset):
         dataset.set_read_only(True)
         results_queue = Queue()
-        overall_queue = Queue()
 
         job_queue = Queue()
         processes = []
@@ -229,7 +220,6 @@ class ModelEvalute:
                     self.model_file,
                     self.config.train,
                     results_queue,
-                    overall_queue,
                 ),
             )
             processes.append(p)
@@ -239,18 +229,53 @@ class ModelEvalute:
         for i in range(len(processes)):
             job_queue.put("DONE")
 
-        merged_results = {}
-        for i in range(len(processes)):
-            result = results_queue.get()
-            for key, cam_result in result.items():
-                if key in merged_results:
-                    merged_results[key].track_results.extend(cam_result.track_results)
+        cam_results = {}
+        overall_stats = {}
+        while True:
+            alive = [p for p in processes if p.is_alive()]
+            if results_queue.empty():
+                if len(alive) == 0:
+                    logging.info("got all results")
+                    break
                 else:
-                    merged_results[key] = cam_result
+                    time.sleep(2)
+                    continue
+            result = results_queue.get()
+
+            track = result[0]
+            predicted_lbl = result[1]
+            mean = result[2]
+            sure = result[3]
+            expected_lbl = result[4]
+
+            cam_result = cam_results.setdefault(
+                track.camera, CameraResults(track.camera)
+            )
+            cam_result.add_result(
+                track, predicted_lbl, np.amax(mean), sure, expected_lbl
+            )
+
+            result = overall_stats.setdefault(
+                expected_lbl,
+                {
+                    "correct": 0,
+                    "correct_acc": [],
+                    "correct_ids": [],
+                    "incorrect": 0,
+                    "total": 0,
+                    "incorrect_ids": [],
+                    "incorrect_acc": [],
+                },
+            )
+            result["total"] += 1
+            if predicted_lbl == expected_lbl:
+                result["correct"] += 1
+            else:
+                result["incorrect"] += 1
 
         # visit stats
         visit_stats = {}
-        for cam in merged_results.values():
+        for cam in cam_results.values():
             cam.calc_visits()
             print("Camera", cam.camera)
             for visit in cam.visits:
@@ -277,24 +302,9 @@ class ModelEvalute:
             )
             print("Visit Stats for {} {}% correct".format(k, correct_per))
 
-        # over all stats
-        stats = {}
-        while not overall_queue.empty():
-            result = overall_queue.get()
-            for key, value in result.items():
-                if key in stats:
-                    stat = stats[key]
-                    for r_key, r_value in value.items():
-                        if isinstance(r_value, list):
-                            stat.setdefault(r_key, []).extend(r_value)
-                        else:
-                            existing = stat.get(r_key, 0)
-                            stat[r_key] = r_value + existing
-                else:
-                    stats[key] = value
         #
         print("Non visit stats")
-        for k, v in stats.items():
+        for k, v in overall_stats.items():
             correct_per = round(100 * float(v["correct"]) / v["total"])
             print("Stats for {} {}% correct".format(k, correct_per))
 
