@@ -42,10 +42,7 @@ class CameraResults:
                 self.visits.append(last_visit)
             else:
                 time_diff = result[0].start_time - last_visit.end_time
-                if (
-                    time_diff.total_seconds() < VISIT_INTERVAL
-                    and last_visit.expected == result[4]
-                ):
+                if time_diff.total_seconds() < VISIT_INTERVAL:
                     same_lbl = result[1] == last_visit.what
 
                     if same_lbl or not result[3]:
@@ -65,10 +62,14 @@ class Visit:
         self.end_time = None
         self.score = None
         self.expected = expected
+        self.sure = None
 
     def add_track(self, track, lbl, score, sure, expected):
         if self.start_time is None:
+            self.sure = sure
             self.start_time = track.start_time
+        else:
+            self.sure = self.sure or sure
         self.tracks.append(track)
         self.end_time = track.start_time + timedelta(seconds=track.duration)
 
@@ -234,15 +235,8 @@ class ModelEvalute:
             )
             processes.append(p)
             p.start()
-        i = 0
         for track in dataset.tracks:
-            # if track.clip_id != 631989:
-            #     continue
-            if track.label == "wallaby" and track.camera == "Wallaby":
-                i += 1
-                job_queue.put(track)
-            if i > 4:
-                break
+            job_queue.put(track)
         for i in range(len(processes)):
             job_queue.put("DONE")
 
