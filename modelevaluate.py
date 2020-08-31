@@ -210,7 +210,6 @@ class ModelEvalute:
             self.evaluate_tracks(dataset)
             return
 
-        print()
         results = self.classifier.evaluate(dataset)
         print("Dataset", dataset_file, "loss,acc", results)
 
@@ -240,7 +239,6 @@ class ModelEvalute:
         for i in range(len(processes)):
             job_queue.put("DONE")
 
-        stats = {}
         merged_results = {}
         for i in range(len(processes)):
             result = results_queue.get()
@@ -250,6 +248,7 @@ class ModelEvalute:
                 else:
                     merged_results[key] = cam_result
 
+        # visit stats
         visit_stats = {}
         for cam in merged_results.values():
             cam.calc_visits()
@@ -277,6 +276,9 @@ class ModelEvalute:
                 100 * float(v["correct"]) / (v["correct"] + v["incorrect"])
             )
             print("Visit Stats for {} {}% correct".format(k, correct_per))
+
+        # over all stats
+        stats = {}
         while not overall_queue.empty():
             result = overall_queue.get()
             for key, value in result.items():
