@@ -474,8 +474,9 @@ class KerasModel:
             median = np.zeros((frames_per_classify))
             frame_sample = np.arange(frames)
             np.random.shuffle(frame_sample)
+            print("classifying with", n_squares)
             for i in range(n_squares):
-                if self.type == 4:
+                if self.type >= 4:
                     region_data = regions
                     square_data = data
                     seg_frames = frame_sample[:frames_per_classify]
@@ -505,6 +506,7 @@ class KerasModel:
                     for i, f in enumerate(segment):
                         median[i] = np.median(f[0])
                     segment = Preprocessor.apply(segment, median)
+                print("square_data", len(square_data))
                 frames = preprocess_movement(
                     square_data,
                     segment,
@@ -515,6 +517,7 @@ class KerasModel:
                     type=self.type,
                 )
                 if frames is None:
+                    print("frames are none")
                     continue
                 output = self.model.predict(frames[np.newaxis, :])
                 predictions.append(output[0])

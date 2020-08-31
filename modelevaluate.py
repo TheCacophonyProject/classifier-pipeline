@@ -26,8 +26,10 @@ class CameraResults:
         self.track_results = []
         self.visits = []
 
-    def add_result(self, track, predicted_lbl, prediction_score):
-        self.track_results.append((track, predicted_lbl, prediction_score))
+    def add_result(self, track, predicted_lbl, prediction_score, sure, expected):
+        self.track_results.append(
+            (track, predicted_lbl, prediction_score, sure, expected)
+        )
 
     def calc_visits(self):
         start_sorted = sorted(self.track_results, key=lambda res: res[0].start_time)
@@ -35,49 +37,57 @@ class CameraResults:
         self.visits = []
         for result in start_sorted:
             if last_visit is None:
-                last_visit = Visit(self.camera)
+                last_visit = Visit(self.camera, result[4])
                 last_visit.add_track(*result)
                 self.visits.append(last_visit)
             else:
-                time_diff = last_visit.end_time - result[0].start_time
-                if time_diff.total_seconds() < VISIT_INTERVAL:
-                    last_visit.add_track(*result)
-                else:
-                    last_visit = Visit(self.camera)
-                    last_visit.add_track(*result)
-                    self.visits.append(last_visit)
+                time_diff = result[0].start_time - last_visit.end_time
+                if (
+                    time_diff.total_seconds() < VISIT_INTERVAL
+                    and last_visit.expected == result[4]
+                ):
+                    same_lbl = result[1] == last_visit.what
+
+                    if same_lbl or not result[3]:
+                        last_visit.add_track(*result)
+                        continue
+                last_visit = Visit(self.camera, result[4])
+                last_visit.add_track(*result)
+                self.visits.append(last_visit)
 
 
 class Visit:
-    def __init__(self, camera):
+    def __init__(self, camera, expected):
         self.camera = camera
         self.what = None
         self.tracks = []
         self.start_time = None
         self.end_time = None
         self.score = None
+        self.expected = expected
 
-    def add_track(self, track, lbl, score):
+    def add_track(self, track, lbl, score, sure, expected):
         if self.start_time is None:
             self.start_time = track.start_time
         self.tracks.append(track)
         self.end_time = track.start_time + timedelta(seconds=track.duration)
 
         if self.score is None or score > self.score:
-            self.what = lbl
+            if lbl == "wallaby" or self.what is None:
+                self.what = lbl
 
 
-def process_job(queue, dataset, model_file, train_config, results_queue):
+def process_job(queue, dataset, model_file, train_config, results_queue, overall_queue):
 
     classifier = KerasModel(train_config=train_config)
     classifier.load_weights(model_file)
     logging.info("Loaded model")
     i = 0
     results = {}
+    overall_stats = {}
     while True:
         i += 1
         track = queue.get()
-        print("processing", track)
         try:
             if track == "DONE":
                 break
@@ -90,41 +100,58 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
                 track_prediction = classifier.classify_track(
                     track.track_id, track_data, regions=track.track_bounds
                 )
+                counts = [0, 0]
+                for pred in track_prediction.original:
+                    counts[np.argmax(pred)] += 1
                 mean = np.mean(track_prediction.original, axis=0)
                 max_lbl = np.argmax(mean)
                 predicted_lbl = classifier.labels[max_lbl]
                 cam_results = results.setdefault(
                     track.camera, CameraResults(track.camera)
                 )
-                cam_results.add_result(track, predicted_lbl, np.amax(mean))
+                vel_sum = [abs(vel[0]) + abs(vel[1]) for vel in track.frame_velocity]
 
-                # result = results.setdefault(
-                #     tag,
-                #     {
-                #         "correct": 0,
-                #         "correct_acc": [],
-                #         "correct_ids": [],
-                #         "incorrect": [],
-                #         "total": 0,
-                #         "incorrect_ids": [],
-                #         "incorrect_acc": [],
-                #     },
-                # )
-                # result["total"] += 1
-                # if predicted_lbl == tag:
-                #     result["correct"] += 1
-                #     # stat["correct_acc"].append(track_prediction.score())
-                #     result["correct_ids"].append(track.unique_id)
-                #
-                # else:
-                #     result["incorrect_ids"].append(track.unique_id)
+                sure = True
+                if predicted_lbl != tag and tag == "wallaby":
+                    total = counts[0] + counts[1]
+                    wallaby_tagged = counts[0] / total > 0.1
+                    max_perc = np.amax(mean)
+
+                    sure = max_perc > 0.85 and not wallaby_tagged
+                    # require movement to be sure of not
+                    sure = sure and np.mean(vel_sum) > 0.6
+                cam_results.add_result(track, predicted_lbl, np.amax(mean), sure, tag)
+                # print("mean is", mean)
+                # print("velocity", np.mean(vel_sum), sum(vel_sum))
+                # print(track, predicted_lbl, "should be ", tag, " am i sure?", sure)
+                result = overall_stats.setdefault(
+                    tag,
+                    {
+                        "correct": 0,
+                        "correct_acc": [],
+                        "correct_ids": [],
+                        "incorrect": 0,
+                        "total": 0,
+                        "incorrect_ids": [],
+                        "incorrect_acc": [],
+                    },
+                )
+                result["total"] += 1
+                if predicted_lbl == tag:
+                    result["correct"] += 1
+                    # stat["correct_acc"].append(track_prediction.score())
+                    # result["correct_ids"].append(track.unique_id)
+
+                else:
+                    result["incorrect"] += 1
+                    # result["incorrect_ids"].append(track.unique_id)
             if i % 50 == 0:
                 logging.info("%s jobs left", queue.qsize())
         except Exception as e:
             logging.error("Process_job error %s", e)
     # results_queue.put(results)
     results_queue.put(results)
-    print("adding ", results)
+    overall_queue.put(overall_stats)
     return
 
 
@@ -189,6 +216,7 @@ class ModelEvalute:
     def evaluate_tracks(self, dataset):
         dataset.set_read_only(True)
         results_queue = Queue()
+        overall_queue = Queue()
 
         job_queue = Queue()
         processes = []
@@ -201,54 +229,79 @@ class ModelEvalute:
                     self.model_file,
                     self.config.train,
                     results_queue,
+                    overall_queue,
                 ),
             )
             processes.append(p)
             p.start()
-        for track in dataset.tracks[:2]:
-            if track.label and track.camera == "Hubble 4-2":
+        i = 0
+        for track in dataset.tracks:
+            # if track.clip_id != 631989:
+            #     continue
+            if track.label == "wallaby" and track.camera == "Wallaby":
+                i += 1
                 job_queue.put(track)
+            if i > 4:
+                break
         for i in range(len(processes)):
             job_queue.put("DONE")
-        # for process in processes:
-        #     print("join", process)
-        #     process.join()
-        # print("joined", results_queue.qsize())
+
         stats = {}
         merged_results = {}
         for i in range(len(processes)):
             result = results_queue.get()
-            print("merge results", result)
             for key, cam_result in result.items():
                 if key in merged_results:
                     merged_results[key].track_results.extend(cam_result.track_results)
                 else:
                     merged_results[key] = cam_result
+
+        visit_stats = {}
         for cam in merged_results.values():
             cam.calc_visits()
-            print(cam.camera)
+            print("Camera", cam.camera)
             for visit in cam.visits:
-                print(visit.start_time, visit.end_time, visit.what, visit.tracks)
-        # while not results_queue.empty():
-        #     result = results_queue.get()
-        #     print("merge results", result)
-        #     for key, value in result.items():
-        #         if key in stats:
-        #             stat = stats[key]
-        #             for r_key, r_value in value.items():
-        #                 if isinstance(r_value, list):
-        #                     stat.setdefault(r_key, []).extend(r_value)
-        #                 else:
-        #                     existing = stat.get(r_key, 0)
-        #                     stat[r_key] = r_value + existing
-        #         else:
-        #             stats[key] = value
+                v_stat = visit_stats.setdefault(
+                    visit.expected, {"correct": 0, "incorrect": 0}
+                )
+                if visit.expected == visit.what:
+                    v_stat["correct"] += len(visit.tracks)
+                else:
+                    v_stat["incorrect"] += len(visit.tracks)
+                print(
+                    "Visit Start {} - End {} What {} Expected {}, Tracks {}".format(
+                        visit.start_time,
+                        visit.end_time,
+                        visit.what,
+                        visit.expected,
+                        visit.tracks,
+                    )
+                )
+        print("visit _stats", visit_stats)
+        for k, v in visit_stats.items():
+            correct_per = round(
+                100 * float(v["correct"]) / (v["correct"] + v["incorrect"])
+            )
+            print("Visit Stats for {} {}% correct".format(k, correct_per))
+        while not overall_queue.empty():
+            result = overall_queue.get()
+            for key, value in result.items():
+                if key in stats:
+                    stat = stats[key]
+                    for r_key, r_value in value.items():
+                        if isinstance(r_value, list):
+                            stat.setdefault(r_key, []).extend(r_value)
+                        else:
+                            existing = stat.get(r_key, 0)
+                            stat[r_key] = r_value + existing
+                else:
+                    stats[key] = value
         #
-        # print(stats)
-        # for k, v in stats.items():
-        #     correct_per = round(100 * float(v["correct"]) / v["total"])
-        #     print("Stats for {} {}% correct".format(k, correct_per))
-        #
+        print("Non visit stats")
+        for k, v in stats.items():
+            correct_per = round(100 * float(v["correct"]) / v["total"])
+            print("Stats for {} {}% correct".format(k, correct_per))
+
         # # break
 
     def save_track(self, clip_id, track_id, type=5):
