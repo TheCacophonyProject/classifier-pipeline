@@ -1,3 +1,5 @@
+from multiprocessing import Process, Queue
+
 from ml_tools.dataset import Preprocessor
 from ml_tools.framedataset import dataset_db_path
 
@@ -9,11 +11,121 @@ import logging
 import os
 import sys
 from config.config import Config
-from datetime import datetime
+from datetime import datetime, timedelta
 from ml_tools.datagenerator import preprocess_movement
 from ml_tools.kerasmodel import KerasModel
 from ml_tools.trackdatabase import TrackDatabase
 from classify.trackprediction import Predictions, TrackPrediction
+
+VISIT_INTERVAL = 10 * 60
+
+
+class CameraResults:
+    def __init__(self, camera):
+        self.camera = camera
+        self.track_results = []
+        self.visits = []
+
+    def add_result(self, track, predicted_lbl, prediction_score):
+        self.track_results.append((track, predicted_lbl, prediction_score))
+
+    def calc_visits(self):
+        start_sorted = sorted(self.track_results, key=lambda res: res[0].start_time)
+        last_visit = None
+        self.visits = []
+        for result in start_sorted:
+            if last_visit is None:
+                last_visit = Visit(self.camera)
+                last_visit.add_track(*result)
+                self.visits.append(last_visit)
+            else:
+                time_diff = last_visit.end_time - result[0].start_time
+                if time_diff.total_seconds() < VISIT_INTERVAL:
+                    last_visit.add_track(*result)
+                else:
+                    last_visit = Visit(self.camera)
+                    last_visit.add_track(*result)
+                    self.visits.append(last_visit)
+
+
+class Visit:
+    def __init__(self, camera):
+        self.camera = camera
+        self.what = None
+        self.tracks = []
+        self.start_time = None
+        self.end_time = None
+        self.score = None
+
+    def add_track(self, track, lbl, score):
+        if self.start_time is None:
+            self.start_time = track.start_time
+        self.tracks.append(track)
+        self.end_time = track.start_time + timedelta(seconds=track.duration)
+
+        if self.score is None or score > self.score:
+            self.what = lbl
+
+
+def process_job(queue, dataset, model_file, train_config, results_queue):
+
+    classifier = KerasModel(train_config=train_config)
+    classifier.load_weights(model_file)
+    logging.info("Loaded model")
+    i = 0
+    results = {}
+    while True:
+        i += 1
+        track = queue.get()
+        print("processing", track)
+        try:
+            if track == "DONE":
+                break
+            else:
+                tag = track.label
+                if not tag:
+                    continue
+                tag = dataset.mapped_label(tag)
+                track_data = dataset.db.get_track(track.clip_id, track.track_id)
+                track_prediction = classifier.classify_track(
+                    track.track_id, track_data, regions=track.track_bounds
+                )
+                mean = np.mean(track_prediction.original, axis=0)
+                max_lbl = np.argmax(mean)
+                predicted_lbl = classifier.labels[max_lbl]
+                cam_results = results.setdefault(
+                    track.camera, CameraResults(track.camera)
+                )
+                cam_results.add_result(track, predicted_lbl, np.amax(mean))
+
+                # result = results.setdefault(
+                #     tag,
+                #     {
+                #         "correct": 0,
+                #         "correct_acc": [],
+                #         "correct_ids": [],
+                #         "incorrect": [],
+                #         "total": 0,
+                #         "incorrect_ids": [],
+                #         "incorrect_acc": [],
+                #     },
+                # )
+                # result["total"] += 1
+                # if predicted_lbl == tag:
+                #     result["correct"] += 1
+                #     # stat["correct_acc"].append(track_prediction.score())
+                #     result["correct_ids"].append(track.unique_id)
+                #
+                # else:
+                #     result["incorrect_ids"].append(track.unique_id)
+            if i % 50 == 0:
+                logging.info("%s jobs left", queue.qsize())
+        except Exception as e:
+            logging.error("Process_job error %s", e)
+    # results_queue.put(results)
+    results_queue.put(results)
+    print("adding ", results)
+    return
 
 
 class ModelEvalute:
@@ -21,8 +133,8 @@ class ModelEvalute:
         self.model_file = model_file
         self.classifier = None
         self.config = config
-        self.load_classifier(model_file, type)
-        self.db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
+        # self.load_classifier(model_file, type)
+        # self.db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
 
     def load_classifier(self, model_file, type):
         """
@@ -56,7 +168,6 @@ class ModelEvalute:
     def evaluate_dataset(self, dataset_file, tracks=False):
         datasets = pickle.load(open(dataset_file, "rb"))
         dataset = datasets[2]
-        dataset.db = self.db
         dataset.binarize(
             ["wallaby"],
             lbl_one="wallaby",
@@ -76,77 +187,69 @@ class ModelEvalute:
         print("Dataset", dataset_file, "loss,acc", results)
 
     def evaluate_tracks(self, dataset):
-        labels = dataset.labels
+        dataset.set_read_only(True)
+        results_queue = Queue()
+
+        job_queue = Queue()
+        processes = []
+        for i in range(max(1, config.worker_threads)):
+            p = Process(
+                target=process_job,
+                args=(
+                    job_queue,
+                    dataset,
+                    self.model_file,
+                    self.config.train,
+                    results_queue,
+                ),
+            )
+            processes.append(p)
+            p.start()
+        for track in dataset.tracks[:2]:
+            if track.label and track.camera == "Hubble 4-2":
+                job_queue.put(track)
+        for i in range(len(processes)):
+            job_queue.put("DONE")
+        # for process in processes:
+        #     print("join", process)
+        #     process.join()
+        # print("joined", results_queue.qsize())
         stats = {}
-        total = 0
-        for track in dataset.tracks:
-            tag = track.label
-            # if tag != "wallaby":
-            #     continue
-            if not tag:
-                continue
-            # if labels and tag not in labels:
-            #     continue
-            tag = dataset.mapped_label(tag)
-            total += 1
-            print("Classifying clip", track.clip_id, "track", track.track_id)
-
-            stat = stats.setdefault(
-                tag,
-                {
-                    "correct": 0,
-                    "correct_acc": [],
-                    "correct_ids": [],
-                    "incorrect": [],
-                    "total": 0,
-                    "incorrect_ids": [],
-                    "incorrect_acc": [],
-                },
-            )
-            track_data = self.db.get_track(track.clip_id, track.track_id)
-            track_prediction = self.classifier.classify_track(
-                track.track_id, track_data, regions=track.track_bounds
-            )
-            mean = np.mean(track_prediction.original, axis=0)
-            if track_prediction.best_label_index is not None:
-                predicted_lbl = self.classifier.labels[
-                    track_prediction.best_label_index
-                ]
-            else:
-                predicted_lbl = "nothing"
-            print(
-                "tagged as",
-                tag,
-                "label",
-                predicted_lbl,
-                " accuracy:",
-                track_prediction.score(),
-                " rolling average:",
-                mean,
-            )
-
-            # if tag != wallaby and predicted_lbl == "not"
-            # if track_prediction.score() is None or track_prediction.score() < 0.85:
-            #     predicted_lbl = "notconfident"
-            if predicted_lbl == tag:
-                stat["correct"] += 1
-                # stat["correct_acc"].append(track_prediction.score())
-                # stat["correct_ids"].append(track.unique_id)
-
-            else:
-                stat["incorrect_ids"].append(track.unique_id)
-                # stat["incorrect"].append(predicted_lbl)
-                # stat["incorrect_acc"].append(track_prediction.score())
-
-            stat["total"] += 1
-
-        print(stats)
-        print("total is", total)
-        for k, v in stats.items():
-            correct_per = round(100 * float(v["correct"]) / v["total"])
-            print("Stats for {} {}% correct".format(k, correct_per))
-
-        # break
+        merged_results = {}
+        for i in range(len(processes)):
+            result = results_queue.get()
+            print("merge results", result)
+            for key, cam_result in result.items():
+                if key in merged_results:
+                    merged_results[key].track_results.extend(cam_result.track_results)
+                else:
+                    merged_results[key] = cam_result
+        for cam in merged_results.values():
+            cam.calc_visits()
+            print(cam.camera)
+            for visit in cam.visits:
+                print(visit.start_time, visit.end_time, visit.what, visit.tracks)
+        # while not results_queue.empty():
+        #     result = results_queue.get()
+        #     print("merge results", result)
+        #     for key, value in result.items():
+        #         if key in stats:
+        #             stat = stats[key]
+        #             for r_key, r_value in value.items():
+        #                 if isinstance(r_value, list):
+        #                     stat.setdefault(r_key, []).extend(r_value)
+        #                 else:
+        #                     existing = stat.get(r_key, 0)
+        #                     stat[r_key] = r_value + existing
+        #         else:
+        #             stats[key] = value
+        #
+        # print(stats)
+        # for k, v in stats.items():
+        #     correct_per = round(100 * float(v["correct"]) / v["total"])
+        #     print("Stats for {} {}% correct".format(k, correct_per))
+        #
+        # # break
 
     def save_track(self, clip_id, track_id, type=5):
         track_data = self.db.get_track(clip_id, track_id)
