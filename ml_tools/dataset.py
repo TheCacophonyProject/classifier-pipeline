@@ -672,7 +672,7 @@ class Preprocessor:
         reference = np.clip(data[:, 0], 20, 999)
         # data[0, 1] = 0
         # data[1:, 1] = reference[1:] - reference[:-1]
-
+        flipped = False
         # -------------------------------------------
         # finally apply and additional augmentation
         if augment:
@@ -689,12 +689,13 @@ class Preprocessor:
                 data[:, 0] += level_adjust
 
             if random.random() <= 0.50:
+                flipped = True
                 # when we flip the frame remember to flip the horizontal velocity as well
                 data = np.flip(data, axis=3)
                 data[:, 2] = -data[:, 2]
 
         np.clip(data[:, 0, :, :], a_min=0, a_max=None, out=data[:, 0, :, :])
-        return data
+        return data, flipped
 
 
 class Dataset:
