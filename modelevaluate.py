@@ -135,9 +135,9 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
                     sure = max_perc > 0.85 and not wallaby_tagged
                     # require movement to be sure of not
                     sure = sure and np.mean(vel_sum) > 0.6
-                results_queue.put(
-                    (SmallTrack(track), predicted_lbl, np.amax(mean), sure, tag)
-                )
+
+                track_dict = SmallTrack(track).__dict__
+                results_queue.put((track_dict, predicted_lbl, np.amax(mean), sure, tag))
             if i % 50 == 0:
                 logging.info("%s jobs left", queue.qsize())
         except Exception as e:
