@@ -132,7 +132,7 @@ class DataGenerator(keras.utils.Sequence):
     def __len__(self):
         "Denotes the number of batches per epoch"
 
-        return int(len(self.samples) / self.batch_size)
+        return int(math.ceil(len(self.samples) / self.batch_size))
 
     def loadbatch(self, index):
         start = time.time()
