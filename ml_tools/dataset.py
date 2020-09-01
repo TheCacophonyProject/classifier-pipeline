@@ -1234,38 +1234,17 @@ class Dataset:
             return []
         labels = self.labels.copy()
         samples = []
-        # if dont_cap:
-        #     for label in labels:
-        #         count = len(self.samples_for(label, remapped=True))
-        #         new = self.get_sample(
-        #             count, replace=replace, label=label, random=random
-        #         )
-        #         if new is not None:
-        #             samples.extend(new)
-        #         labels.remove(label)
-        #     return sample
-        # # chance = 1 / len(self.labels)
         if cap_samples:
             if cap_at:
                 label_cap = len(self.samples_for(cap_at))
             else:
                 label_cap = self.get_label_caps(labels, remapped=True)
-            # label_cap = 100
             print("getting", label_cap, "per label")
-        # label_cap *= len(labels)
-        # print("getting", label_cap)
-        # samples = self.get_sample(label_cap, replace=replace, random=random)
+
         cap = None
         for label in labels:
-
             if cap_samples:
                 cap = min(label_cap, len(self.samples_for(label, remapped=True)))
-                # if label == "false-positive":
-                #     cap = min(
-                #         int(label_cap * 0.2),
-                #         len(self.samples_for(label, remapped=True)),
-                #     )
-                #     print("capping false?")
             new = self.get_sample(cap=cap, replace=replace, label=label, random=random)
             if new is not None and len(new) > 0:
                 samples.extend(new)

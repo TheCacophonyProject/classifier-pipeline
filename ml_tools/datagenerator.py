@@ -64,6 +64,7 @@ class DataGenerator(keras.utils.Sequence):
         if not self.use_thermal and not self.use_filtered and not self.lstm:
             self.use_thermal = True
         self.movement = use_movement
+        self.square_width = None
         if use_movement:
             self.square_width = int(math.sqrt(round(dataset.segment_length * 9)))
             dim = (dim[0] * self.square_width, dim[1] * self.square_width, dim[2])
