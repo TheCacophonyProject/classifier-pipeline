@@ -565,12 +565,12 @@ def preprocess_movement(
         data[:, :, 2] = overlay  # overlay
 
     # #
-    savemovement(
-        data,
-        "samples/{}/{}/{}-{}-{}".format(
-            dataset, sample.label, sample.track.clip_id, sample.track.track_id, flip
-        ),
-    )
+    # savemovement(
+    #     data,
+    #     "samples/{}/{}/{}-{}-{}".format(
+    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, flip
+    #     ),
+    # )
 
     if preprocess_fn:
         for i, frame in enumerate(data):

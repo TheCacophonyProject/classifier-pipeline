@@ -491,7 +491,7 @@ class KerasModel:
                         f = data[frame_i]
                         segment.append(f)
                         median[i] = np.median(f[0])
-                    segment = Preprocessor.apply(segment, median)
+                    segment, flipped = Preprocessor.apply(segment, median)
                 else:
                     start = i * frames_per_classify
                     end = start + frames_per_classify
@@ -504,7 +504,7 @@ class KerasModel:
                     segment = square_data
                     for i, f in enumerate(segment):
                         median[i] = np.median(f[0])
-                    segment = Preprocessor.apply(segment, median)
+                    segment, flipped = Preprocessor.apply(segment, median)
                 frames = preprocess_movement(
                     square_data,
                     segment,
@@ -513,6 +513,7 @@ class KerasModel:
                     channel,
                     self.preprocess_fn,
                     type=self.type,
+                    flip=flipped,
                 )
                 if frames is None:
                     print("frames are none")
