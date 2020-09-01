@@ -136,7 +136,7 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
                     # require movement to be sure of not
                     sure = sure and np.mean(vel_sum) > 0.6
 
-                track_dict = SmallTrack(track).__dict__
+                track_dict = SmallTrack(track.__dict__).__dict__
                 results_queue.put((track_dict, predicted_lbl, np.amax(mean), sure, tag))
             if i % 50 == 0:
                 logging.info("%s jobs left", queue.qsize())
