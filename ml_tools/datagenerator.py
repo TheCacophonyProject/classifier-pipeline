@@ -483,10 +483,10 @@ def movement(
     # then draw dots so they go over the top
     for i, frame in enumerate(frames):
         region = regions[i]
-        if flip:
-            pre = region[0]
-            region[0] = 160 - region[2]
-            region[2] = 160 - pre
+        # if flip:
+        #     pre = region[0]
+        #     region[0] = 160 - region[2]
+        #     region[2] = 160 - pre
         rect = tools.Rectangle.from_ltrb(*region)
         x = int(rect.mid_x)
         y = int(rect.mid_y)
@@ -565,12 +565,12 @@ def preprocess_movement(
         data[:, :, 2] = overlay  # overlay
 
     # #
-    # savemovement(
-    #     data,
-    #     "samples/{}/{}/{}-{}-{}".format(
-    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, flip
-    #     ),
-    # )
+    savemovement(
+        data,
+        "samples/{}/{}/{}-{}-{}".format(
+            dataset, sample.label, sample.track.clip_id, sample.track.track_id, flip
+        ),
+    )
 
     if preprocess_fn:
         for i, frame in enumerate(data):
