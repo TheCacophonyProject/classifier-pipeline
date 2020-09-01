@@ -782,14 +782,17 @@ class KerasModel:
         track_prediction = TrackPrediction(track_id, 0, keep_all)
         if self.lstm:
             prediction = self.classify_frame(data)
-            track_prediction.classified_frame(i, prediction, None)
+            track_prediction.classified_frame(0, prediction, None)
         elif self.use_movement:
             predictions = self.classify_frames(data, regions=regions)
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
 
         else:
+            skip = 9
             for i, frame in enumerate(data):
+                if i % skip == 0:
+                    continue
                 prediction = self.classify_frame(frame)
                 track_prediction.classified_frame(i, prediction, None)
 

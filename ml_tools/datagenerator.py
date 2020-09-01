@@ -522,7 +522,6 @@ def preprocess_movement(
         data[:, :, 1] = square  # dots
         data[:, :, 2] = overlay  # overlay
     elif type == 7:
-        print("using type 7")
         data[:, :, 0] = square
         data[:, :, 1] = square_flow  # dots
         data[:, :, 2] = overlay  # overlay

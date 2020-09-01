@@ -23,15 +23,15 @@ VISIT_INTERVAL = 10 * 60
 
 class SmallTrack:
     def __init__(self, track):
-        self.camera = track["camera"]
-        self.clip_id = track["clip_id"]
-        self.track_id = track["track_id"]
-        self.label = track["label"]
+        self.camera = track.camera
+        self.clip_id = track.clip_id
+        self.track_id = track.track_id
+        self.label = track.label
         # date and time of the start of the track
-        self.start_time = track["start_time"]
-        self.start_frame = track["start_frame"]
+        self.start_time = track.start_time
+        self.start_frame = track.start_frame
         # duration in seconds
-        self.duration = track["duration"]
+        self.duration = track.duration
 
     def __repr__(self):
         return "{}-{}".format(self.clip_id, self.track_id)
@@ -85,14 +85,12 @@ class Visit:
         if self.start_time is None:
             self.sure = sure
             self.start_time = track.start_time
-        else:
-            self.sure = self.sure or sure
+
         self.tracks.append(track)
         self.end_time = track.start_time + timedelta(seconds=track.duration)
-
-        if self.score is None or score > self.score:
-            if lbl == "wallaby" or self.what is None:
-                self.what = lbl
+        if self.what is None or not self.sure and sure:
+            self.what = lbl
+            self.sure = self.sure or sure
 
 
 def process_job(queue, dataset, model_file, train_config, results_queue):
@@ -109,10 +107,10 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
             if track == "DONE":
                 break
             else:
-                tag = track.label
-                if not tag:
+                expected_tag = track.label
+                if not expected_tag:
                     continue
-                tag = dataset.mapped_label(tag)
+                expected_tag = dataset.mapped_label(expected_tag)
                 track_data = dataset.db.get_track(track.clip_id, track.track_id)
                 track_prediction = classifier.classify_track(
                     track.track_id, track_data, regions=track.track_bounds
@@ -127,7 +125,7 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
                 vel_sum = [abs(vel[0]) + abs(vel[1]) for vel in track.frame_velocity]
 
                 sure = True
-                if predicted_lbl != tag and tag == "wallaby":
+                if expected_tag == "wallaby":
                     total = counts[0] + counts[1]
                     wallaby_tagged = counts[0] / total > 0.1
                     max_perc = np.amax(mean)
@@ -136,36 +134,35 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
                     # require movement to be sure of not
                     sure = sure and np.mean(vel_sum) > 0.6
 
-                track_dict = SmallTrack(track.__dict__).__dict__
-                results_queue.put((track_dict, predicted_lbl, np.amax(mean), sure, tag))
+                pickled_track = pickle.dumps(SmallTrack(track))
+                results_queue.put(
+                    (pickled_track, predicted_lbl, np.amax(mean), sure, expected_tag)
+                )
             if i % 50 == 0:
                 logging.info("%s jobs left", queue.qsize())
         except Exception as e:
             logging.error("Process_job error %s", e)
-    # results_queue.put(results)
-    # results_queue.put(results)
-    # overall_queue.put(overall_stats)
     return
 
 
 class ModelEvalute:
-    def __init__(self, config, model_file, type):
+    def __init__(self, config, model_file):
         self.model_file = model_file
         self.classifier = None
         self.config = config
         # self.load_classifier(model_file, type)
         # self.db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
 
-    def load_classifier(self, model_file, type):
+    def load_classifier(self):
         """
         Returns a classifier object, which is created on demand.
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
         """
         t0 = datetime.now()
-        logging.info("classifier loading %s", model_file)
+        logging.info("classifier loading %s", self.model_file)
 
-        self.classifier = KerasModel(train_config=self.config.train, type=type)
-        self.classifier.load_weights(model_file)
+        self.classifier = KerasModel(train_config=self.config.train)
+        self.classifier.load_weights(self.model_file)
 
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
@@ -183,6 +180,7 @@ class ModelEvalute:
         )
         for label in dataset.labels:
             print(label, dataset.get_counts(label))
+        self.load_classifier()
         self.classifier.confusion(dataset, output_file)
 
     def evaluate_dataset(self, dataset_file, tracks=False):
@@ -202,6 +200,7 @@ class ModelEvalute:
             self.evaluate_tracks(dataset)
             return
 
+        self.load_classifier()
         results = self.classifier.evaluate(dataset)
         print("Dataset", dataset_file, "loss,acc", results)
 
@@ -224,7 +223,7 @@ class ModelEvalute:
             )
             processes.append(p)
             p.start()
-        for track in dataset.tracks[:20]:
+        for track in dataset.tracks[:1]:
             job_queue.put(track)
         for i in range(len(processes)):
             job_queue.put("DONE")
@@ -242,7 +241,7 @@ class ModelEvalute:
                     continue
             result = results_queue.get()
 
-            track = SmallTrack(result[0])
+            track = pickle.loads(result[0])
             predicted_lbl = result[1]
             mean = result[2]
             sure = result[3]
@@ -364,7 +363,7 @@ config = Config.load_from_file(args.config_file)
 model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
-ev = ModelEvalute(config, model_file, args.type)
+ev = ModelEvalute(config, model_file)
 date = None
 if args.date:
     date = parse(args.date)
