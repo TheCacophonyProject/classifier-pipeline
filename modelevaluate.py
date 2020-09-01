@@ -23,15 +23,15 @@ VISIT_INTERVAL = 10 * 60
 
 class SmallTrack:
     def __init__(self, track):
-        self.camera = track.camera
-        self.clip_id = track.clip_id
-        self.track_id = track.track_id
-        self.label = track.label
+        self.camera = track["camera"]
+        self.clip_id = track["clip_id"]
+        self.track_id = track["track_id"]
+        self.label = track["label"]
         # date and time of the start of the track
-        self.start_time = track.start_time
-        self.start_frame = track.start_frame
+        self.start_time = track["start_time"]
+        self.start_frame = track["start_frame"]
         # duration in seconds
-        self.duration = track.duration
+        self.duration = track["duration"]
 
     def __repr__(self):
         return "{}-{}".format(self.clip_id, self.track_id)
@@ -242,7 +242,7 @@ class ModelEvalute:
                     continue
             result = results_queue.get()
 
-            track = result[0]
+            track = SmallTrack(result[0])
             predicted_lbl = result[1]
             mean = result[2]
             sure = result[3]
