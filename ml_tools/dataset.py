@@ -687,7 +687,9 @@ class Preprocessor:
 
                 data[:, 0] *= contrast_adjust
                 data[:, 0] += level_adjust
-
+                # augment filtered, no need for brightness, as will normalize anyway
+                data[:, 1] *= contrast_adjust
+                # data[:, 1] += level_adjust
             if random.random() <= 0.50:
                 flipped = True
                 # when we flip the frame remember to flip the horizontal velocity as well

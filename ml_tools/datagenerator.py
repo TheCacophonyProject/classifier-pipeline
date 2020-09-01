@@ -325,8 +325,8 @@ def augement_frame(frame, dim):
     frame = resize_cv(
         frame,
         dim,
-        extra_h=random.randint(0, int(FRAME_SIZE * 0.1)),
-        extra_v=random.randint(0, int(FRAME_SIZE * 0.1)),
+        extra_h=random.randint(0, int(FRAME_SIZE * 0.05)),
+        extra_v=random.randint(0, int(FRAME_SIZE * 0.05)),
     )
 
     image = convert(frame)
@@ -335,11 +335,11 @@ def augement_frame(frame, dim):
     # )  # Add 6 pixels of padding
     image = tf.image.random_crop(
         image, size=[dim[0], dim[1], 3]
-    )  # Random crop back to 28x28
+    )  # Random crop back to 48x 48
     if random.random() > 0.50:
-        rotated = tf.image.rot90(image)
+        image = tf.image.rot90(image)
     if random.random() > 0.50:
-        flipped = tf.image.flip_left_right(image)
+        image = tf.image.flip_left_right(image)
 
         # maybes thisd should only be sometimes, as otherwise our validation set
     # if random.random() > 0.20:
