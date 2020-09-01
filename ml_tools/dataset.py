@@ -1587,12 +1587,14 @@ class Dataset:
 
         for track in self.tracks:
             for frame in track.important_frames:
-                self.frame_cdf.append(track.frame_weight)
-                total += track.frame_weight
+                frame_weight = track.frame_weight
+                if lbl_p and track.label in lbl_p:
+                    frame_weight *= lbl_p[track.label]
+                total += frame_weight
 
-                # weight should make chance even for all labels???
-                label = track.label
-                cdf = self.frame_label_cdf.setdefault(label, [])
+                self.frame_cdf.append(frame_weight)
+
+                cdf = self.frame_label_cdf.setdefault(track.label, [])
                 cdf.append(track.frame_weight)
 
         if len(self.frame_cdf) > 0:
@@ -1611,7 +1613,6 @@ class Dataset:
                         value = np.float64(value) / len(value)
                         if lbl_p and key in lbl_p:
                             value *= lbl_p[key]
-                    cdf = mapped_cdf.setdefault(new_label, [])
                     cdf = mapped_cdf.setdefault(new_label, [])
                     cdf.extend(value)
 
@@ -1647,8 +1648,11 @@ class Dataset:
         total = 0
         self.segment_label_cdf = {}
         for segment in self.segments:
-            total += segment.weight
-            self.segment_cdf.append(segment.weight)
+            seg_weight = segment.weight
+            if lbl_p and segment.track.label in lbl_p:
+                seg_weight *= lbl_p[segment.track.label]
+            total += seg_weight
+            self.segment_cdf.append(seg_weight)
             label = segment.track.label
             cdf = self.segment_label_cdf.setdefault(label, [])
             cdf.append(segment.weight)
