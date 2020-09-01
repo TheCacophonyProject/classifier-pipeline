@@ -1,22 +1,19 @@
-import time
-from multiprocessing import Process, Queue
-
-from ml_tools.dataset import Preprocessor
-from ml_tools.framedataset import dataset_db_path
-
-import numpy as np
-import pickle
-from dateutil.parser import parse
 import argparse
 import logging
-import os
+import pickle
+import time
 import sys
+
+from dateutil.parser import parse
 from config.config import Config
 from datetime import datetime, timedelta
+import numpy as np
+
+from multiprocessing import Process, Queue
 from ml_tools.datagenerator import preprocess_movement
+from ml_tools.dataset import Preprocessor
+from ml_tools.framedataset import dataset_db_path
 from ml_tools.kerasmodel import KerasModel
-from ml_tools.trackdatabase import TrackDatabase
-from classify.trackprediction import Predictions, TrackPrediction
 
 VISIT_INTERVAL = 10 * 60
 
@@ -121,7 +118,6 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
                 mean = np.mean(track_prediction.original, axis=0)
                 max_lbl = np.argmax(mean)
                 predicted_lbl = classifier.labels[max_lbl]
-
                 vel_sum = [abs(vel[0]) + abs(vel[1]) for vel in track.frame_velocity]
 
                 sure = True
@@ -166,34 +162,11 @@ class ModelEvalute:
 
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
-    def save_confusion(self, dataset_file, output_file):
-
-        datasets = pickle.load(open(dataset_file, "rb"))
-        dataset = datasets[1]
-        dataset.binarize(
-            ["wallaby"],
-            lbl_one="wallaby",
-            lbl_two="not",
-            keep_fp=False,
-            scale=False,
-            shuffle=False,
-        )
-        for label in dataset.labels:
-            print(label, dataset.get_counts(label))
+    def save_confusion(self, dataset, output_file):
         self.load_classifier()
         self.classifier.confusion(dataset, output_file)
 
-    def evaluate_dataset(self, dataset_file, tracks=False):
-        datasets = pickle.load(open(dataset_file, "rb"))
-        dataset = datasets[2]
-        dataset.binarize(
-            ["wallaby"],
-            lbl_one="wallaby",
-            lbl_two="not",
-            keep_fp=False,
-            scale=False,
-            shuffle=False,
-        )
+    def evaluate_dataset(self, dataset, tracks=False):
         for label in dataset.labels:
             print(label, dataset.get_counts(label))
         if tracks:
@@ -330,7 +303,13 @@ def load_args():
         "--model-file",
         help="Path to model file to use, will override config model",
     )
-    parser.add_argument("-t", "--dataset", help="Dataset file to use")
+    parser.add_argument(
+        "-s",
+        "--dataset",
+        type=int,
+        default=2,
+        help="Dataset to use 0 - Training, 1 - Validation, 2 - Train (Default)",
+    )
     parser.add_argument("--confusion", help="Save confusion matrix image")
     parser.add_argument(
         "--tracks", action="count", help="Evaluate whole track rather than samples"
@@ -370,11 +349,31 @@ if args.date:
 
 # ev.save_track("645661", "269585")
 
-if args.dataset:
-    dataset_file = args.dataset
-else:
-    dataset_file = dataset_db_path(config)
+dataset_file = dataset_db_path(config)
+
+
+datasets = pickle.load(open(dataset_file, "rb"))
+dataset = datasets[args.dataset]
+dataset.binarize(
+    ["wallaby"],
+    lbl_one="wallaby",
+    lbl_two="not",
+    keep_fp=False,
+    scale=False,
+    shuffle=False,
+)
+logging.info(
+    "Dataset loaded %s, using labels %s, mapped labels %s",
+    dataset.name,
+    dataset.labels,
+    dataset.label_mapping,
+)
+logging.info("%s %s / %s / %s", "label", "segments", "frames", "tracks")
+for label in dataset.labels:
+    segments, frames, tracks, _, _ = dataset.get_counts(label)
+    logging.info("%s %s / %s / %s", label, segments, frames, tracks)
+
 if args.confusion is not None:
-    ev.save_confusion(dataset_file, args.confusion)
+    ev.save_confusion(dataset, args.confusion)
 else:
-    ev.evaluate_dataset(dataset_file, args.tracks)
+    ev.evaluate_dataset(dataset, args.tracks)

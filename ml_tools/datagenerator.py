@@ -515,7 +515,8 @@ def preprocess_movement(
     type=0,
     flip=False,
 ):
-
+    # doesn't seem to improve anything, infact makes worse
+    flip = False
     if type == 7:
         flow_h = segment[:, TrackChannels.flow_h]
         flow_v = segment[:, TrackChannels.flow_v]

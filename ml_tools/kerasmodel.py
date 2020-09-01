@@ -800,15 +800,6 @@ class KerasModel:
         return track_prediction
 
     def confusion(self, dataset, filename="confusion.png"):
-        # dataset.binarize(
-        #     ["wallaby"],
-        #     lbl_one="wallaby",
-        #     set_two=None,
-        #     lbl_two="not",
-        #     scale=False,
-        #     keep_fp=False,
-        #     shuffle=False,
-        # )
         dataset.set_read_only(True)
         dataset.use_segments = self.params.get("use_segments", False)
         test = DataGenerator(
@@ -826,7 +817,8 @@ class KerasModel:
             load_threads=self.params.get("train_load_threads", 1),
             keep_epoch=True,
             type=self.type,
-            cap_at="wallaby",
+            cap_samples=False,
+            # cap_at="wallaby",
         )
         test_pred_raw = self.model.predict(test)
         test.stop_load()

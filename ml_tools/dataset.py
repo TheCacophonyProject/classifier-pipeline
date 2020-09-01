@@ -1583,7 +1583,6 @@ class Dataset:
         self.frame_cdf = []
         total = 0
         self.frame_label_cdf = {}
-        total_tracks = len(self.tracks)
 
         for track in self.tracks:
             for frame in track.important_frames:
