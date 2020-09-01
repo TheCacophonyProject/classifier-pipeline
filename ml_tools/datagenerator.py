@@ -244,7 +244,7 @@ class DataGenerator(keras.utils.Sequence):
                     ref = sample.track.frame_temp_median[
                         sample.start_frame : sample.start_frame + len(data)
                     ]
-                segment = Preprocessor.apply(
+                segment, flipped = Preprocessor.apply(
                     segment_data, ref, augment=self.augment, keep_aspect=self.type == 6
                 )
                 if self.type < 3:
@@ -253,6 +253,7 @@ class DataGenerator(keras.utils.Sequence):
                     ]
                 else:
                     regions = sample.track.track_bounds
+
                 data = preprocess_movement(
                     data,
                     segment,
@@ -263,6 +264,7 @@ class DataGenerator(keras.utils.Sequence):
                     sample,
                     self.dataset.name,
                     self.type,
+                    flip=flipped,
                 )
             else:
                 try:
@@ -419,7 +421,12 @@ def square_clip_flow(data_flow_h, data_flow_v, square_width, type=None):
 
 
 def movement(
-    frames, regions, dim=None, channel=TrackChannels.filtered, require_movement=False
+    frames,
+    regions,
+    dim=None,
+    channel=TrackChannels.filtered,
+    require_movement=False,
+    flip=False,
 ):
     """Return 2 images describing the movement, one has dots representing
      the centre of mass, the other is a collage of all frames
@@ -443,9 +450,16 @@ def movement(
     prev_rect = None
     for i, frame in enumerate(frames):
         region = regions[i]
-        rect = tools.Rectangle.from_ltrb(*region)
-        frame = frame[channel]
 
+        if flip:
+            pre = region[0]
+            region[0] = 160 - region[2]
+            region[2] = 160 - pre
+        rect = tools.Rectangle.from_ltrb(*region)
+
+        frame = frame[channel]
+        if flip:
+            frame = np.flip(frame, axis=1)
         x = int(rect.mid_x)
         y = int(rect.mid_y)
         if prev is not None:
@@ -469,9 +483,14 @@ def movement(
     # then draw dots so they go over the top
     for i, frame in enumerate(frames):
         region = regions[i]
+        if flip:
+            pre = region[0]
+            region[0] = 160 - region[2]
+            region[2] = 160 - pre
         rect = tools.Rectangle.from_ltrb(*region)
         x = int(rect.mid_x)
         y = int(rect.mid_y)
+
         if prev is not None:
             if prev[0] == x and prev[1] == y:
                 value *= 1
@@ -494,6 +513,7 @@ def preprocess_movement(
     sample=None,
     dataset=None,
     type=0,
+    flip=False,
 ):
 
     if type == 7:
@@ -511,7 +531,12 @@ def preprocess_movement(
     if not success:
         return None
     dots, overlay = movement(
-        data, regions, dim=square.shape, channel=channel, require_movement=type >= 5
+        data,
+        regions,
+        dim=square.shape,
+        channel=channel,
+        require_movement=type >= 5,
+        flip=flip,
     )
     dots = dots / 255
     overlay, success = normalize(overlay, min=0)
@@ -542,8 +567,8 @@ def preprocess_movement(
     # #
     # savemovement(
     #     data,
-    #     "samples/{}/{}/{}-{}".format(
-    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, 1
+    #     "samples/{}/{}/{}-{}-{}".format(
+    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, flip
     #     ),
     # )
 
