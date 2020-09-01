@@ -249,6 +249,7 @@ class KerasModel:
         self.model.load_weights(dir + "/variables/variables")
 
     def load_model(self, dir):
+        logging.info("Loading %s", dir)
         self.model = tf.keras.models.load_model(dir)
         self.load_meta(dir)
         self.model.summary()

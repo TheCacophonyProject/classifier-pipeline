@@ -156,7 +156,7 @@ class DataGenerator(keras.utils.Sequence):
         else:
             X, y = self.loadbatch(index)
         if self.keep_epoch:
-            self.epoch_data[self.cur_epoch][0][index] = X
+            self.epoch_data[self.cur_epoch][0][index] = None
             self.epoch_data[self.cur_epoch][1][index] = y
             # (X, y))
         if (index + 1) == len(self):
