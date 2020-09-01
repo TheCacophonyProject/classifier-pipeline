@@ -357,11 +357,11 @@ def square_clip(data, square_width, type=None):
     for x in range(square_width):
         for y in range(square_width):
             if i >= len(data):
-                if type >= 4:
-                    frame_i = random.randint(0, len(data) - 1)
-                    frame = data[frame_i]
-                else:
-                    frame = data[-1]
+                # if type >= 4:
+                #     frame_i = random.randint(0, len(data) - 1)
+                #     frame = data[frame_i]
+                # else:
+                frame = data[-1]
             else:
                 frame = data[i]
             frame, norm_success = normalize(frame)
@@ -500,6 +500,11 @@ def preprocess_movement(
         flow_h = segment[:, TrackChannels.flow_h]
         flow_v = segment[:, TrackChannels.flow_v]
         square_flow, success = square_clip_flow(flow_h, flow_v, square_width, type)
+    if type == 8:
+        square_therm, success = square_clip(
+            segment[:, TrackChannels.thermal], square_width, type
+        )
+
     segment = segment[:, channel]
     # as long as one frame is fine
     square, success = square_clip(segment, square_width, type)
@@ -524,6 +529,10 @@ def preprocess_movement(
     elif type == 7:
         data[:, :, 0] = square
         data[:, :, 1] = square_flow  # dots
+        data[:, :, 2] = overlay  # overlay
+    elif type == 8:
+        data[:, :, 0] = square
+        data[:, :, 1] = square_therm  # dots
         data[:, :, 2] = overlay  # overlay
     else:
         data[:, :, 0] = square
