@@ -223,7 +223,7 @@ class ModelEvalute:
             )
             processes.append(p)
             p.start()
-        for track in dataset.tracks[:1]:
+        for track in dataset.tracks:
             job_queue.put(track)
         for i in range(len(processes)):
             job_queue.put("DONE")
