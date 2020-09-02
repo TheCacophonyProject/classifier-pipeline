@@ -578,6 +578,7 @@ class KerasModel:
             shuffle=shuffle,
         )
         self.set_labels()
+        self.datasets.train.random_segments()
 
     def rebalance(self, train_cap=1000, validate_cap=500, exclude=[], update=True):
         # set samples of each label to have a maximum cap, and exclude labels

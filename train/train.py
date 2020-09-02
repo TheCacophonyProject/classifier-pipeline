@@ -42,7 +42,6 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
     model.binarize(
         set_one=["wallaby"], label_one="wallaby", set_two=None, label_two="not"
     )
-
     if grid_search:
         print("Searching hparams")
         model.test_hparams()
@@ -77,6 +76,7 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
             model.datasets.train.sample_count / 1000
         )
     )
+    raise "DONE"
     print()
     if weights:
         model.load_weights(weights, meta=False)

@@ -219,13 +219,57 @@ class TrackHeader:
             prev = (x, y)
 
     def calculate_segments(
-        self, mass_history, segment_frame_spacing, segment_width, segment_min_mass=None
+        self,
+        mass_history,
+        segment_frame_spacing,
+        segment_width,
+        segment_min_mass=None,
+        random=False,
     ):
         self.segments = []
-        if len(mass_history) < segment_width:
+        if random and len(self.important_frames) < segment_width / 2.0:
+            # dont want to repeat too many frames
+            return
+        elif len(mass_history) < segment_width:
             return
         segment_count = (len(mass_history) - segment_width) // segment_frame_spacing
         segment_count += 1
+        if random:
+            # take any segment_width frames, this could be done each epoch
+            for i in range(segment_count):
+                frames = np.random.choice(
+                    self.important_frames,
+                    min(segment_width, len(self.important_frames)),
+                    replace=False,
+                )
+                remaining = segment_width - len(frames)
+                # sample another batch
+                if remaining > 0:
+                    frames.extend(
+                        np.random.choice(
+                            self.important_frames, remaining, replace=False,
+                        )
+                    )
+                frames = [frame.frame_num for frame in frames]
+                frames.sort()
+                mass_slice = mass_history[frames]
+                segment_avg_mass = np.mean(mass_slice)
+                if segment_avg_mass < 50:
+                    segment_weight_factor = 0.75
+                elif segment_avg_mass < 100:
+                    segment_weight_factor = 1
+                else:
+                    segment_weight_factor = 1.2
+                segment = SegmentHeader(
+                    track=self,
+                    start_frame=0,
+                    frames=segment_width,
+                    weight=segment_weight_factor,
+                    avg_mass=segment_avg_mass,
+                    frames_numbers=frames,
+                )
+                self.segments.append(segment)
+
         # scan through track looking for good segments to add to our datset
         for i in range(segment_count):
             segment_start = i * segment_frame_spacing
@@ -429,7 +473,15 @@ class FrameSample:
 class SegmentHeader:
     """ Header for segment. """
 
-    def __init__(self, track: TrackHeader, start_frame, frames, weight, avg_mass):
+    def __init__(
+        self,
+        track: TrackHeader,
+        start_frame,
+        frames,
+        weight,
+        avg_mass,
+        frame_numbers=None,
+    ):
         # reference to track this segment came from
         self.track = track
         # first frame of this segment referenced by start of track
@@ -440,6 +492,7 @@ class SegmentHeader:
         self.weight = weight
         # average mass of the segment
         self.avg_mass = avg_mass
+        self.frame_numbers = frame_numbers
 
     @property
     def unique_track_id(self):
@@ -1885,70 +1938,26 @@ class Dataset:
         else:
             return len(self.frame_samples) > 0
 
-    def movement(
-        self,
-        start_frame,
-        track_header,
-        dim=None,
-        frames=None,
-        channel=TrackChannels.filtered,
-    ):
-        """Return 2 images describing the movement, one has dots representing
-         the centre of mass, the other is a collage of all frames
-         """
-        if not frames:
-            frames = self.db.get_track(track_header.clip_id, track_header.track_id)
-        i = 0
-        if dim is None:
-            # gp should be from track data
-            dim = (120, 160)
-        dots = np.zeros(dim)
-        overlay = np.zeros(dim)
+    def random_segments(self, balance_labels=True):
+        self.segments = []
+        self.segments_by_label = {}
 
-        prev = None
-        value = 60
-        img = Image.fromarray(np.uint8(dots))  # ignore alpha
+        for track in self.tracks:
+            segment_frame_spacing = round(
+                self.segment_spacing * track.frames_per_second
+            )
+            segment_width = round(self.segment_length * track.frames_per_second)
 
-        d = ImageDraw.Draw(img)
-        # draw movment lines and draw frame overlay
-        for i, frame in enumerate(frames):
-            region = track_header.track_bounds[start_frame + i]
-            rect = tools.Rectangle.from_ltrb(*region)
-            frame = frame[channel]
-            subimage = rect.subimage(overlay)
-            subimage[:, :] += np.float32(frame)
-            x = int(rect.mid_x)
-            y = int(rect.mid_y)
-            if prev is not None:
-                if prev[0] == x and prev[1] == y:
-                    value *= 1.1
-                else:
-                    value = 60
-                distance = math.sqrt(pow(prev[0] - x, 2) + pow(prev[1] - y, 2))
-
-                distance *= 21.25
-                distance = min(distance, 255)
-                d.line(prev + (x, y), fill=int(distance), width=1)
-
-            prev = (x, y)
-            colour = int(value)
-
-        # then draw dots so they go over the top
-        for i, frame in enumerate(frames):
-            region = track_header.track_bounds[start_frame + i]
-            rect = tools.Rectangle.from_ltrb(*region)
-            x = int(rect.mid_x)
-            y = int(rect.mid_y)
-            if prev is not None:
-                if prev[0] == x and prev[1] == y:
-                    value *= 1.1
-                else:
-                    value = 60
-            prev = (x, y)
-            colour = int(value)
-            d.point([prev], fill=colour)
-
-        return np.array(img), overlay
+            track.calculate_segments(
+                track.frame_mass,
+                segment_frame_spacing,
+                segment_width,
+                self.segment_min_mass,
+            )
+            self.segments.extend(track.segments)
+            segs = self.segments_by_label.setdefault(track.label, [])
+            segs.extend(track.segments)
+        self.rebuild_cdf(balance_labels=balance_labels)
 
 
 # continue to read examples until queue is full
