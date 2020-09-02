@@ -8,7 +8,7 @@ Tracks are broken into segments.  Filtered, and then passed to the trainer using
 
 """
 from PIL import Image, ImageDraw, ImageFont, ImageColor
-
+import itertools as it
 import logging
 import math
 import multiprocessing
@@ -226,23 +226,30 @@ class TrackHeader:
         segment_min_mass=None,
         random=False,
     ):
-        self.segments = []
-        if random and len(self.important_frames) < segment_width / 2.0:
+        if random and self.num_sample_frames < segment_width / 2.0:
             # dont want to repeat too many frames
             return
         elif len(mass_history) < segment_width:
             return
         segment_count = (len(mass_history) - segment_width) // segment_frame_spacing
         segment_count += 1
+
         if random:
+            remaining = segment_width - self.num_sample_frames
+            sample_size = min(segment_width, self.num_sample_frames)
+
+            segment_count = max(0, (self.num_sample_frames - segment_width) // 4)
+            segment_count += 1
+            self.segments = []
             # take any segment_width frames, this could be done each epoch
             for i in range(segment_count):
-                frames = np.random.choice(
-                    self.important_frames,
-                    min(segment_width, len(self.important_frames)),
-                    replace=False,
+                frames = list(
+                    np.random.choice(
+                        self.important_frames,
+                        min(segment_width, len(self.important_frames)),
+                        replace=False,
+                    )
                 )
-                remaining = segment_width - len(frames)
                 # sample another batch
                 if remaining > 0:
                     frames.extend(
@@ -266,7 +273,7 @@ class TrackHeader:
                     frames=segment_width,
                     weight=segment_weight_factor,
                     avg_mass=segment_avg_mass,
-                    frames_numbers=frames,
+                    frame_indices=frames,
                 )
                 self.segments.append(segment)
 
@@ -480,7 +487,7 @@ class SegmentHeader:
         frames,
         weight,
         avg_mass,
-        frame_numbers=None,
+        frame_indices=None,
     ):
         # reference to track this segment came from
         self.track = track
@@ -492,7 +499,7 @@ class SegmentHeader:
         self.weight = weight
         # average mass of the segment
         self.avg_mass = avg_mass
-        self.frame_numbers = frame_numbers
+        self.frame_indices = frame_indices
 
     @property
     def unique_track_id(self):
@@ -1953,6 +1960,7 @@ class Dataset:
                 segment_frame_spacing,
                 segment_width,
                 self.segment_min_mass,
+                random=True,
             )
             self.segments.extend(track.segments)
             segs = self.segments_by_label.setdefault(track.label, [])

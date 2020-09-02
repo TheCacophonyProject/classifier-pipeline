@@ -165,7 +165,8 @@ class DataGenerator(keras.utils.Sequence):
         return X, y
 
     def load_next_epoch(self):
-
+        # if self.type == 9:
+        #     self.dataset.random_segments()
         self.samples = self.dataset.epoch_samples(
             cap_samples=self.cap_samples,
             replace=False,

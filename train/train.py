@@ -40,7 +40,11 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
 
     model.import_dataset(datasets_filename)
     model.binarize(
-        set_one=["wallaby"], label_one="wallaby", set_two=None, label_two="not"
+        set_one=["wallaby"],
+        label_one="wallaby",
+        set_two=None,
+        label_two="not",
+        random_segments=type == 9,
     )
     if grid_search:
         print("Searching hparams")
@@ -64,7 +68,29 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
             )
         )
     print()
-
+    print(
+        "number of tracks with no segments",
+        len(
+            [track for track in model.datasets.train.tracks if len(track.segments) == 0]
+        ),
+    )
+    model.datasets.train.random_segments()
+    print(
+        "number of tracks after with no segments",
+        len(
+            [track for track in model.datasets.train.tracks if len(track.segments) == 0]
+        ),
+    )
+    for label in model.datasets.train.labels:
+        print(
+            "{:<20} {:<20} {:<20} {:<20}".format(
+                label,
+                "{}/{}/{}/{:.1f}".format(*model.datasets.train.get_counts(label)),
+                "{}/{}/{}/{:.1f}".format(*model.datasets.validation.get_counts(label)),
+                "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
+            )
+        )
+    print()
     print("Training started")
     print("---------------------")
     print("Hyper parameters")

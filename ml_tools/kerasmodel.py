@@ -548,37 +548,24 @@ class KerasModel:
         scale=False,
         keep_fp=False,
         shuffle=True,
+        random_segments=False,
     ):
+        for fld in self.datasets._fields:
+            dataset = getattr(self.datasets, fld)
+            if random_segments:
+                dataset.random_segments()
+            dataset.binarize(
+                set_one,
+                lbl_one=label_one,
+                set_two=set_two,
+                lbl_two=label_two,
+                scale=scale,
+                keep_fp=keep_fp,
+                shuffle=shuffle,
+            )
         # set samples of each label to have a maximum cap, and exclude labels
-        self.datasets.train.binarize(
-            set_one,
-            lbl_one=label_one,
-            set_two=set_two,
-            lbl_two=label_two,
-            scale=scale,
-            keep_fp=keep_fp,
-            shuffle=shuffle,
-        )
-        self.datasets.validation.binarize(
-            set_one,
-            lbl_one=label_one,
-            set_two=set_two,
-            lbl_two=label_two,
-            scale=scale,
-            keep_fp=keep_fp,
-            shuffle=shuffle,
-        )
-        self.datasets.test.binarize(
-            set_one,
-            lbl_one=label_one,
-            set_two=set_two,
-            lbl_two=label_two,
-            scale=scale,
-            keep_fp=keep_fp,
-            shuffle=shuffle,
-        )
+
         self.set_labels()
-        self.datasets.train.random_segments()
 
     def rebalance(self, train_cap=1000, validate_cap=500, exclude=[], update=True):
         # set samples of each label to have a maximum cap, and exclude labels
