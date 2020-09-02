@@ -68,28 +68,7 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
             )
         )
     print()
-    print(
-        "number of tracks with no segments",
-        len(
-            [track for track in model.datasets.train.tracks if len(track.segments) == 0]
-        ),
-    )
-    model.datasets.train.random_segments()
-    print(
-        "number of tracks after with no segments",
-        len(
-            [track for track in model.datasets.train.tracks if len(track.segments) == 0]
-        ),
-    )
-    for label in model.datasets.train.labels:
-        print(
-            "{:<20} {:<20} {:<20} {:<20}".format(
-                label,
-                "{}/{}/{}/{:.1f}".format(*model.datasets.train.get_counts(label)),
-                "{}/{}/{}/{:.1f}".format(*model.datasets.validation.get_counts(label)),
-                "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
-            )
-        )
+
     print()
     print("Training started")
     print("---------------------")
@@ -102,8 +81,6 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
             model.datasets.train.sample_count / 1000
         )
     )
-    raise "DONE"
-    print()
     if weights:
         model.load_weights(weights, meta=False)
     model.train_model(
