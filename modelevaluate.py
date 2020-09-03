@@ -353,7 +353,7 @@ dataset_file = dataset_db_path(config)
 
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
-ev.save_track("575914", "249216", dataset.db)
+# ev.save_track("575914", "249216", dataset.db)
 dataset.binarize(
     ["wallaby"],
     lbl_one="wallaby",

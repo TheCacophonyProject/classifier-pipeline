@@ -85,7 +85,7 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
         model.load_weights(weights, meta=False)
     model.train_model(epochs=conf.train.epochs, run_name=run_name + "_" + "TEST")
     # datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),
-    model.save()
+    # model.save()
     model.close()
 
     # this shouldn't be nessesary, but unfortunately my model.close isn't cleaning up everything.

@@ -482,7 +482,7 @@ class KerasModel:
             for f in data:
                 median.append(np.median(f[0]))
 
-            data = Preprocessor.apply(data, median, default_inset=0,)
+            data, _ = Preprocessor.apply(data, median, default_inset=0,)
             data = preprocess_lstm(
                 data,
                 (self.frame_size, self.frame_size, 3),
