@@ -293,7 +293,32 @@ class KerasModel:
             model_stats["square_width"] = self.train.square_width
         json.dump(
             model_stats,
-            open(os.path.join(self.checkpoint_folder, run_name, "metadata.txt"), "w"),
+            open(
+                os.path.join(
+                    self.checkpoint_folder, run_name, "val_acc", "metadata.txt"
+                ),
+                "w",
+            ),
+            indent=4,
+        )
+        json.dump(
+            model_stats,
+            open(
+                os.path.join(
+                    self.checkpoint_folder, run_name, "val_loss", "metadata.txt"
+                ),
+                "w",
+            ),
+            indent=4,
+        )
+        json.dump(
+            model_stats,
+            open(
+                os.path.join(
+                    self.checkpoint_folder, run_name, "val_acc", "metadata.txt"
+                ),
+                "w",
+            ),
             indent=4,
         )
 
