@@ -282,9 +282,9 @@ class ModelEvalute:
 
         # # break
 
-    def save_track(self, clip_id, track_id, type=5):
-        track_data = self.db.get_track(clip_id, track_id)
-        track_meta = self.db.get_track_meta(clip_id, track_id)
+    def save_track(self, clip_id, track_id, db, type=5):
+        track_data = db.get_track(clip_id, track_id)
+        track_meta = db.get_track_meta(clip_id, track_id)
         seg_data = track_data[0:25]
         median = []
         for f in seg_data:
@@ -347,13 +347,13 @@ date = None
 if args.date:
     date = parse(args.date)
 
-# ev.save_track("645661", "269585")
 
 dataset_file = dataset_db_path(config)
 
 
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
+ev.save_track("575914", "249216", dataset.db)
 dataset.binarize(
     ["wallaby"],
     lbl_one="wallaby",

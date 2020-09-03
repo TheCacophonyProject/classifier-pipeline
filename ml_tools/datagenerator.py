@@ -423,12 +423,7 @@ def square_clip_flow(data_flow_h, data_flow_v, square_width, type=None):
 
 
 def movement(
-    frames,
-    regions,
-    dim=None,
-    channel=TrackChannels.filtered,
-    require_movement=False,
-    flip=False,
+    frames, regions, dim=None, channel=TrackChannels.filtered, require_movement=False,
 ):
     """Return 2 images describing the movement, one has dots representing
      the centre of mass, the other is a collage of all frames
@@ -452,16 +447,9 @@ def movement(
     prev_rect = None
     for i, frame in enumerate(frames):
         region = regions[i]
-
-        if flip:
-            pre = region[0]
-            region[0] = 160 - region[2]
-            region[2] = 160 - pre
         rect = tools.Rectangle.from_ltrb(*region)
 
         frame = frame[channel]
-        if flip:
-            frame = np.flip(frame, axis=1)
         x = int(rect.mid_x)
         y = int(rect.mid_y)
         if prev is not None:
@@ -485,10 +473,6 @@ def movement(
     # then draw dots so they go over the top
     for i, frame in enumerate(frames):
         region = regions[i]
-        # if flip:
-        #     pre = region[0]
-        #     region[0] = 160 - region[2]
-        #     region[2] = 160 - pre
         rect = tools.Rectangle.from_ltrb(*region)
         x = int(rect.mid_x)
         y = int(rect.mid_y)
@@ -518,7 +502,7 @@ def preprocess_movement(
     flip=False,
 ):
     # doesn't seem to improve anything, infact makes worse
-    flip = False
+    # flip = False
     if type == 7:
         flow_h = segment[:, TrackChannels.flow_h]
         flow_v = segment[:, TrackChannels.flow_v]
@@ -534,17 +518,16 @@ def preprocess_movement(
     if not success:
         return None
     dots, overlay = movement(
-        data,
-        regions,
-        dim=square.shape,
-        channel=channel,
-        require_movement=type >= 5,
-        flip=flip,
+        data, regions, dim=square.shape, channel=channel, require_movement=type >= 5,
     )
     dots = dots / 255
     overlay, success = normalize(overlay, min=0)
     if not success:
         return None
+    if flip and type == 10:
+        overlay = np.flip(overlay, axis=1)
+        dots = np.flip(dots, axis=1)
+
     data = np.empty((square.shape[0], square.shape[1], 3))
     if type == 0:
         data[:, :, 0] = square
@@ -568,12 +551,12 @@ def preprocess_movement(
         data[:, :, 2] = overlay  # overlay
 
     # #
-    # savemovement(
-    #     data,
-    #     "samples/{}/{}/{}-{}-{}".format(
-    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, flip
-    #     ),
-    # )
+    savemovement(
+        data,
+        "samples/{}/{}/{}-{}-{}".format(
+            dataset, sample.label, sample.track.clip_id, sample.track.track_id, flip
+        ),
+    )
 
     if preprocess_fn:
         for i, frame in enumerate(data):
