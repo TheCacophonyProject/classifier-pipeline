@@ -749,7 +749,7 @@ class Preprocessor:
                 data[:, 0] += level_adjust
                 # gp will put back in but want to keep same for now so can test objectively
                 # augment filtered, no need for brightness, as will normalize anyway
-                # data[:, 1] *= contrast_adjust
+                data[:, 1] *= contrast_adjust
                 # data[:, 1] += level_adjust
             if random.random() <= 0.50:
                 flipped = True
