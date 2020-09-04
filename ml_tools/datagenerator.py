@@ -337,8 +337,8 @@ def augement_frame(frame, dim):
     image = tf.image.random_crop(
         image, size=[dim[0], dim[1], 3]
     )  # Random crop back to 48x 48
-    if random.random() > 0.50:
-        image = tf.image.rot90(image)
+    # if random.random() > 0.50:
+    #     image = tf.image.rot90(image)
     if random.random() > 0.50:
         image = tf.image.flip_left_right(image)
 

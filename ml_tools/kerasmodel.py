@@ -241,7 +241,7 @@ class KerasModel:
         return optimizer
 
     def load_weights(self, dir, meta=True):
-
+        logging.info("loading weights %s", dir)
         if meta:
             self.load_meta(dir)
         if not self.model:
