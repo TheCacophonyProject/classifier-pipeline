@@ -665,6 +665,7 @@ class KerasModel:
         dense_size = hparams[HP_DENSE_SIZES].split()
         for i, size in enumerate(dense_size):
             dense_size[i] = int(size)
+
         self.train = DataGenerator(
             self.datasets.train,
             self.datasets.train.labels,
@@ -674,13 +675,14 @@ class KerasModel:
             buffer_size=self.params.get("buffer_size", 128),
             use_thermal=self.params.get("use_thermal", False),
             use_filtered=self.params.get("use_filtered", False),
-            shuffle=self.params.get("shuffle", True),
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=self.params.get("train_load_threads", 1),
             use_movement=self.params.get("use_movement", False),
             type=self.type,
             cap_at="wallaby",
+            randomize_epoch=False,
+            shuffle=False,
         )
         self.validate = DataGenerator(
             self.datasets.validation,
@@ -691,15 +693,16 @@ class KerasModel:
             lstm=self.params.get("lstm", False),
             use_thermal=self.params.get("use_thermal", False),
             use_filtered=self.params.get("use_filtered", False),
-            shuffle=self.params.get("shuffle", True),
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=1,
             use_movement=self.params.get("use_movement", False),
             type=self.type,
             cap_at="wallaby",
+            randomize_epoch=False,
+            shuffle=False,
         )
-        self.square_width = self.validate.square_width
+        self.square_width = self.train.square_width
         self.build_model(dense_sizes=dense_size)
 
         opt = None
@@ -712,7 +715,7 @@ class KerasModel:
             optimizer=opt, loss=self.loss(), metrics=["accuracy"],
         )
         self.model.fit(
-            self.train, epochs=epochs,
+            self.train, epochs=epochs, shuffle=False, validation_data=self.validate
         )
         _, accuracy = self.model.evaluate(self.validate)
         return accuracy
@@ -743,6 +746,8 @@ class KerasModel:
                         session_num += 1
 
     def run(self, log_dir, hparams):
+        self.datasets.train.set_samples(cap_at="wallaby")
+        self.datasets.validation.set_samples(cap_at="wallaby")
         with tf.summary.create_file_writer(log_dir).as_default():
             hp.hparams(hparams)  # record the values used in this trial
             accuracy = self.train_test_model(hparams, log_dir)

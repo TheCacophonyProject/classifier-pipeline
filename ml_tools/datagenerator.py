@@ -173,6 +173,7 @@ class DataGenerator(keras.utils.Sequence):
             random=self.randomize_epoch,
             cap_at=self.cap_at,
         )
+
         if self.shuffle:
             np.random.shuffle(self.samples)
         if self.preload:

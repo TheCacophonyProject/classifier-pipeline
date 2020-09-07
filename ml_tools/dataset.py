@@ -1292,6 +1292,15 @@ class Dataset:
         else:
             return data
 
+    def set_samples(self, cap_at=None):
+        samples = self.epoch_samples(cap_at=cap_at, cap_samples=True)
+        self.segments_by_label = {}
+        for seg in samples:
+            segs = self.segments_by_label.setdefault(seg.track.label, [])
+            segs.append(seg)
+        self.segments = samples
+        self.rebuild_cdf()
+
     def epoch_samples(self, cap_samples=None, replace=True, random=True, cap_at=None):
         if len(self.labels) == 0:
             return []
@@ -1302,8 +1311,6 @@ class Dataset:
                 label_cap = len(self.samples_for(cap_at))
             else:
                 label_cap = self.get_label_caps(labels, remapped=True)
-            print("getting", label_cap, "per label")
-
         cap = None
         for label in labels:
             if cap_samples:
@@ -1884,6 +1891,9 @@ class Dataset:
             self.segments = new_samples
         else:
             self.frame_samples = new_samples
+        if shuffle:
+            np.random.shuffle(self.segments)
+            np.random.shuffle(self.frame_samples)
         self.rebuild_cdf(balance_labels=balance_labels)
 
     def rebalance(
