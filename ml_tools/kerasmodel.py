@@ -26,12 +26,11 @@ from sklearn.metrics import confusion_matrix
 
 #
 HP_DENSE_SIZES = hp.HParam(
-    "dense_sizes",
-    hp.Discrete(["1024 1024 1024 1024 512", "1024 512", "512", "128", "64"]),
+    "dense_sizes", hp.Discrete(["1024 1024 1024 1024 512", "1024 512"]),
 )
 
-HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
-HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam", "sgd"]))
+HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([16, 32, 64]))
+HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
 HP_LEARNING_RATE = hp.HParam(
     "learning_rate", hp.Discrete([0.0001, 0.001, 0.01, 0.1, 1.0])
 )
@@ -294,12 +293,7 @@ class KerasModel:
             model_stats["square_width"] = self.train.square_width
         json.dump(
             model_stats,
-            open(
-                os.path.join(
-                    self.checkpoint_folder, run_name, "val_acc", "metadata.txt"
-                ),
-                "w",
-            ),
+            open(os.path.join(self.checkpoint_folder, run_name, "metadata.txt"), "w",),
             indent=4,
         )
         json.dump(
@@ -668,32 +662,47 @@ class KerasModel:
         print("learning1", accuracy)
 
     # GRID SEARCH
-    def train_test_model(self, hparams, log_dir, epochs=1):
+    def train_test_model(self, hparams, log_dir, epochs=4):
         # if not self.model:
         dense_size = hparams[HP_DENSE_SIZES].split()
         for i, size in enumerate(dense_size):
             dense_size[i] = int(size)
         self.build_model(dense_sizes=dense_size)
-        train = DataGenerator(
+        self.train = DataGenerator(
             self.datasets.train,
+            self.datasets.train.labels,
             len(self.datasets.train.labels),
             batch_size=hparams.get(HP_BATCH_SIZE, 32),
             lstm=self.params.get("lstm", False),
+            buffer_size=self.params.get("buffer_size", 128),
             use_thermal=self.params.get("use_thermal", False),
             use_filtered=self.params.get("use_filtered", False),
-            shuffle=False,
-            preprocess_fn=self.preprocess_fn,
+            shuffle=self.params.get("shuffle", True),
+            model_preprocess=self.preprocess_fn,
+            epochs=epochs,
+            load_threads=self.params.get("train_load_threads", 1),
+            use_movement=self.params.get("use_movement", False),
+            type=self.type,
+            cap_at="wallaby",
         )
-        validate = DataGenerator(
+        self.validate = DataGenerator(
             self.datasets.validation,
+            self.datasets.train.labels,
             len(self.datasets.train.labels),
             batch_size=hparams.get(HP_BATCH_SIZE, 32),
+            buffer_size=self.params.get("buffer_size", 128),
             lstm=self.params.get("lstm", False),
             use_thermal=self.params.get("use_thermal", False),
             use_filtered=self.params.get("use_filtered", False),
-            shuffle=False,
-            preprocess_fn=self.preprocess_fn,
+            shuffle=self.params.get("shuffle", True),
+            model_preprocess=self.preprocess_fn,
+            epochs=epochs,
+            load_threads=1,
+            use_movement=self.params.get("use_movement", False),
+            type=self.type,
+            cap_at="wallaby",
         )
+
         opt = None
         learning_rate = hparams[HP_LEARNING_RATE]
         if hparams[HP_OPTIMIZER] == "adam":
@@ -703,15 +712,17 @@ class KerasModel:
         self.model.compile(
             optimizer=opt, loss=self.loss(), metrics=["accuracy"],
         )
-        history = self.model.fit(train, epochs=epochs,)
-        _, accuracy = self.model.evaluate(validate)
+        self.model.fit(
+            self.train, epochs=epochs,
+        )
+        _, accuracy = self.model.evaluate(self.validate)
         return accuracy
 
     def test_hparams(self):
         dir = self.log_dir + "/hparam_tuning"
         with tf.summary.create_file_writer(dir).as_default():
             hp.hparams_config(
-                hparams=[HP_BATCH_SIZE, HP_LEARNING_RATE],
+                hparams=[HP_BATCH_SIZE],
                 metrics=[hp.Metric(METRIC_ACCURACY, display_name="Accuracy")],
             )
         session_num = 0
