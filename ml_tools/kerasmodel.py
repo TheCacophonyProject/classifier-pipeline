@@ -718,6 +718,8 @@ class KerasModel:
             self.train, epochs=epochs, shuffle=False, validation_data=self.validate
         )
         _, accuracy = self.model.evaluate(self.validate)
+        self.train.stop_load()
+        self.validate.stop_load()
         return accuracy
 
     def test_hparams(self):
