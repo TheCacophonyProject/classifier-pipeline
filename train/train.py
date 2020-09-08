@@ -39,6 +39,7 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
     #
 
     model.import_dataset(datasets_filename)
+
     model.binarize(
         set_one=["wallaby"],
         label_one="wallaby",
@@ -46,10 +47,6 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
         label_two="not",
         random_segments=type == 9,
     )
-    if grid_search:
-        print("Searching hparams")
-        model.test_hparams()
-        return
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)
     print()
@@ -67,8 +64,20 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
                 "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
             )
         )
+    for label in model.datasets.train.label_mapping.keys():
+        print(
+            "{:<20} {:<20} {:<20} {:<20}".format(
+                label,
+                "{}/{}/{}/{:.1f}".format(*model.datasets.train.get_counts(label)),
+                "{}/{}/{}/{:.1f}".format(*model.datasets.validation.get_counts(label)),
+                "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
+            )
+        )
     print()
-
+    if grid_search:
+        print("Searching hparams")
+        model.test_hparams()
+        return
     print()
     print("Training started")
     print("---------------------")

@@ -904,6 +904,7 @@ class Dataset:
             labels = [
                 key for key, mapped in self.label_mapping.items() if mapped == label
             ]
+            labels.sort()
         else:
             labels.append(label)
         samples = []
@@ -927,7 +928,7 @@ class Dataset:
         frames = 0
         if self.label_mapping:
             for key, value in self.label_mapping.items():
-                if value == label:
+                if key == label or value == label:
                     label_tracks = self.tracks_by_label.get(key, [])
                     tracks += len(label_tracks)
                     segments += sum(len(track.segments) for track in label_tracks)
@@ -1344,7 +1345,6 @@ class Dataset:
             return None
         if cap is None:
             return samples
-
         if random:
             return np.random.choice(samples, cap, replace=replace, p=cdf)
         else:
@@ -1654,17 +1654,20 @@ class Dataset:
 
         if self.label_mapping:
             mapped_cdf = {}
-            for key, value in self.frame_label_cdf.items():
-                if key in self.label_mapping:
-                    new_label = self.label_mapping[key]
-                    if balance_labels:
-                        value = np.float64(value) / len(value)
-                        if lbl_p and key in lbl_p:
-                            value *= lbl_p[key]
-                    cdf = mapped_cdf.setdefault(new_label, [])
-                    cdf.extend(value)
+            labels = list(self.label_mapping.keys())
+            labels.sort()
+            for label in labels:
+                if label not in self.frame_label_cdf:
+                    continue
+                label_cdf = self.frame_label_cdf[label]
+                new_label = self.label_mapping[label]
+                if balance_labels:
+                    if lbl_p and label in lbl_p:
+                        label_cdf = np.float64(label_cdf)
+                        label_cdf *= lbl_p[label]
+                cdf = mapped_cdf.setdefault(new_label, [])
+                cdf.extend(label_cdf)
 
-                self.frame_label_cdf = mapped_cdf
             for key, cdf in mapped_cdf.items():
                 total = sum(cdf)
                 mapped_cdf[key] = [x / total for x in cdf]
@@ -1715,16 +1718,19 @@ class Dataset:
         # do this after so labels are balanced
         if self.label_mapping:
             mapped_cdf = {}
-            for key, value in self.segment_label_cdf.items():
-                if key in self.label_mapping:
-                    new_label = self.label_mapping[key]
-                    if balance_labels:
-                        value = np.float64(value) / len(value)
-                        if lbl_p and key in lbl_p:
-                            value *= lbl_p[key]
-                    cdf = mapped_cdf.setdefault(new_label, [])
-
-                    cdf.extend(value)
+            labels = list(self.label_mapping.keys())
+            labels.sort()
+            for label in labels:
+                if label not in self.frame_label_cdf:
+                    continue
+                label_cdf = self.segment_label_cdf[label]
+                new_label = self.label_mapping[label]
+                if balance_labels:
+                    if lbl_p and label in lbl_p:
+                        label_cdf = np.float64(label_cdf)
+                        label_cdf *= lbl_p[label]
+                cdf = mapped_cdf.setdefault(new_label, [])
+                cdf.extend(label_cdf)
 
             for key, cdf in mapped_cdf.items():
                 total = sum(cdf)

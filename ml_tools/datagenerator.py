@@ -173,7 +173,23 @@ class DataGenerator(keras.utils.Sequence):
             random=self.randomize_epoch,
             cap_at=self.cap_at,
         )
-
+        labels = set([sample.track.label for sample in self.samples])
+        for label in labels:
+            logging.info(
+                "%s epoch %s lbl %s has %s",
+                self.dataset.name,
+                self.cur_epoch,
+                label,
+                len(
+                    [
+                        sample.track.label
+                        for sample in self.samples
+                        if sample.label == label
+                    ]
+                )
+                / len(self.samples)
+                * 200,
+            )
         if self.shuffle:
             np.random.shuffle(self.samples)
         if self.preload:
