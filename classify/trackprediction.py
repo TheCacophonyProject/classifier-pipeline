@@ -104,14 +104,21 @@ class TrackPrediction:
 
     def smooth_prediction(self, prediction, mass_scale=1, novelty=None):
         prediction_smooth = 0.1
-        smooth_novelty = None
+        prev_novelty = None
         prev_prediction = None
+        smooth_novelty = None
         # this creates new array
-        adjusted_prediction = prediction * mass_scale
+        if mass_scale:
+            adjusted_prediction = prediction * mass_scale
+        else:
+            adjusted_prediction = np.copy(prediction)
         if self.fp_index is not None:
             adjusted_prediction[self.fp_index] *= 0.8
         if len(self.smoothed_predictions):
             prev_prediction = self.smoothed_predictions[-1]
+        if len(self.smoothed_novelties):
+            prev_novelty = self.smoothed_novelties[-1]
+
         num_labels = len(prediction)
         if prev_prediction is None:
             if UNIFORM_PRIOR:
@@ -127,7 +134,7 @@ class TrackPrediction:
             if novelty:
                 smooth_novelty = (
                     1 - prediction_smooth
-                ) * smooth_novelty + prediction_smooth * novelty
+                ) * prev_novelty + prediction_smooth * novelty
         return smooth_prediction, smooth_novelty
 
     def get_priority(self, frame_number):

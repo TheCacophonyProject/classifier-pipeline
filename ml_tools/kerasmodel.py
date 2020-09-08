@@ -31,6 +31,7 @@ class KerasModel:
         self.pretrained_model = None
         self.model = None
         self.use_movement = False
+        self.square_width = None
 
     def get_base_model(self, input_shape):
         if self.pretrained_model == "resnet":
@@ -150,7 +151,9 @@ class KerasModel:
         self.labels = meta["labels"]
         self.pretrained_model = self.params.get("model", "resnetv2")
         self.preprocess_fn = self.get_preprocess_fn()
-        self.frame_size = self.params.get("frame_size", 48)
+        self.frame_size = meta.get("frame_size", 48)
+        self.square_width = meta.get("square_width", 1)
+        self.frame_size = self.frame_size * self.square_width
         self.use_movement = self.params.get("use_movement", False)
 
     def get_preprocess_fn(self):
@@ -208,7 +211,9 @@ class KerasModel:
 
         if self.use_movement:
             data = []
-            for frame in clip.frame_buffer:
+            for region in track.bounds_history:
+                frame = clip.frame_buffer.get_frame(region.frame_number)
+                frame = frame.crop_by_region(region)
                 data.append(frame.as_array())
             predictions = self.classify_using_movement(
                 data, regions=track.bounds_history
@@ -260,13 +265,7 @@ class KerasModel:
                 segment.append(f)
 
             frames = preprocess_movement(
-                data,
-                segment,
-                self.square_width,
-                regions,
-                channel,
-                self.preprocess_fn,
-                type=self.type,
+                data, segment, self.square_width, regions, channel, self.preprocess_fn,
             )
             if frames is None:
                 continue

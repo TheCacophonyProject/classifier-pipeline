@@ -16,7 +16,7 @@ import ml_tools.globals as globs
 from ml_tools.model import Model
 from ml_tools.kerasmodel import KerasModel
 
-from ml_tools.dataset import Preprocessor
+from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer
 from track.track import Track
 
@@ -99,7 +99,7 @@ class ClipClassifier(CPTVFileProcessor):
                 if i % self.FRAME_SKIP == 0:
 
                     # we use a tighter cropping here so we disable the default 2 pixel inset
-                    frames = Preprocessor.apply(
+                    frames = preprocess_segment(
                         [track_data], [thermal_reference], default_inset=0
                     )
 
@@ -134,7 +134,6 @@ class ClipClassifier(CPTVFileProcessor):
 
                     # cropped frames don't do so well so restrict their score
                     cropped_weight = 0.7 if region.was_cropped else 1.0
-
                     track_prediction.classified_frame(
                         region.frame_number,
                         prediction,
