@@ -2,6 +2,9 @@ import attr
 import logging
 import numpy as np
 
+# uniform prior stats start with uniform distribution.  This is the safest bet, but means that
+# it takes a while to make predictions.  When off the first prediction is used instead causing
+# faster, but potentially more unstable predictions.
 UNIFORM_PRIOR = False
 
 
@@ -74,14 +77,14 @@ class TrackPrediction:
         self.predictions = predictions
         self.smoothed_novelties = smoothed_novelties
         self.class_best_score = np.max(self.smoothed_predictions, axis=0)
-        self.max_novelty = max(self.smoothed_novelties)
+        self.max_novelty = float(max(self.smoothed_novelties))
         self.novelty_sum = sum(self.smoothed_novelties)
 
     def classified_frame(self, frame_number, prediction, mass_scale=1, novelty=None):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
         if novelty:
-            self.max_novelty = max(self.max_novelty, novelty)
+            self.max_novelty = float(max(self.max_novelty, novelty))
             self.novelty_sum += novelty
         smoothed_prediction, smoothed_novelty = self.smooth_prediction(
             prediction, mass_scale=mass_scale, novelty=novelty
@@ -220,7 +223,6 @@ class TrackPrediction:
             return self.max_novelty
 
         if self.smoothed_novelties is None:
-            print("retuning none")
             return None
         return self.smoothed_novelties[n]
 
@@ -240,7 +242,7 @@ class TrackPrediction:
     @property
     def average_novelty(self):
         """ average novelty for this track """
-        return self.novelty_sum / self.num_frames_classified
+        return float(self.novelty_sum / self.num_frames_classified)
 
     @property
     def clarity(self):

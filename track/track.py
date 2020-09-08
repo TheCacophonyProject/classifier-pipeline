@@ -17,16 +17,23 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import datetime
 import numpy as np
 from collections import namedtuple
 
 from ml_tools.tools import Rectangle, get_clipped_flow
-from ml_tools.dataset import TrackChannels
-import track.region
 from track.region import Region
 
 from ml_tools.tools import eucl_distance
+
+
+class TrackChannels:
+    """ Indexes to channels in track. """
+
+    thermal = 0
+    filtered = 1
+    flow_h = 2
+    flow_v = 3
+    mask = 4
 
 
 class Track:

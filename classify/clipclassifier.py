@@ -73,11 +73,6 @@ class ClipClassifier(CPTVFileProcessor):
         :param track: the track to identify.
         :return: TrackPrediction object
         """
-
-        # uniform prior stats start with uniform distribution.  This is the safest bet, but means that
-        # it takes a while to make predictions.  When off the first prediction is used instead causing
-        # faster, but potentially more unstable predictions.
-
         # go through making classifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         state = None

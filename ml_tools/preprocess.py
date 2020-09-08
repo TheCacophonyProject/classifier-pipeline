@@ -6,8 +6,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-from ml_tools.dataset import TrackChannels
 from ml_tools import tools
+from track.track import TrackChannels
 
 
 # size to scale each frame to when loaded.
@@ -119,7 +119,6 @@ def preprocess_segment(
 
     # set filtered track to delta frames
     if filter_to_delta:
-        print("filter delta?")
         reference = np.clip(data[:, 0], 20, 999)
         data[0, 1] = 0
         data[1:, 1] = reference[1:] - reference[:-1]
@@ -289,7 +288,6 @@ def save_image(data, filename):
     b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
     concat = np.concatenate((r, g, b), axis=1)
     img = Image.fromarray(np.uint8(concat))
-    d = ImageDraw.Draw(img)
     img.save(filename + ".png")
 
 

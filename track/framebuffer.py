@@ -21,7 +21,7 @@ import attr
 import cv2
 import numpy as np
 from ml_tools.framecache import FrameCache
-from ml_tools.dataset import TrackChannels
+from track.track import TrackChannels
 from ml_tools.tools import get_optical_flow_function, get_clipped_flow
 
 

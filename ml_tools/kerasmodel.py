@@ -4,7 +4,7 @@ import json
 import logging
 import tensorflow as tf
 import numpy as np
-from ml_tools.dataset import TrackChannels
+from track.track import TrackChannels
 from classify.trackprediction import TrackPrediction
 from ml_tools.preprocess import (
     preprocess_movement,
@@ -31,7 +31,7 @@ class KerasModel:
         self.pretrained_model = None
         self.model = None
         self.use_movement = False
-        self.square_width = None
+        self.square_width = 1
 
     def get_base_model(self, input_shape):
         if self.pretrained_model == "resnet":
@@ -94,7 +94,11 @@ class KerasModel:
         raise "Could not find model" + self.pretrained_model
 
     def build_model(self, dense_sizes=[1024, 512]):
-        input_shape = (self.frame_size, self.frame_size, 3)
+        input_shape = (
+            self.frame_size * self.square_width,
+            self.frame_size * self.square_width,
+            3,
+        )
         inputs = tf.keras.Input(shape=input_shape)
         base_model, preprocess = self.get_base_model(input_shape)
         self.preprocess_fn = preprocess
@@ -153,7 +157,6 @@ class KerasModel:
         self.preprocess_fn = self.get_preprocess_fn()
         self.frame_size = meta.get("frame_size", 48)
         self.square_width = meta.get("square_width", 1)
-        self.frame_size = self.frame_size * self.square_width
         self.use_movement = self.params.get("use_movement", False)
 
     def get_preprocess_fn(self):
@@ -241,6 +244,11 @@ class KerasModel:
         return track_prediction
 
     def classify_using_movement(self, data, regions):
+        """
+         take any square_width, by square_width amount of frames and sort by
+         time use as the r channel, g and b channel are the overall movment of
+         the track
+        """
         predictions = []
         if self.params.get("use_thermal", False):
             channel = TrackChannels.thermal
@@ -249,10 +257,13 @@ class KerasModel:
 
         frames_per_classify = self.square_width ** 2
         num_frames = len(data)
-        n_squares = math.ceil(float(num_frames) / frames_per_classify)
+
+        # note we can use more classifications but since we are using all regions
+        # with each classify for the over all movement, it doesn't change the result much
+        num_classifies = math.ceil(float(num_frames) / frames_per_classify)
         frame_sample = np.arange(num_frames)
         np.random.shuffle(frame_sample)
-        for i in range(n_squares):
+        for i in range(num_classifies):
             seg_frames = frame_sample[:frames_per_classify]
             if len(seg_frames) == 0:
                 break

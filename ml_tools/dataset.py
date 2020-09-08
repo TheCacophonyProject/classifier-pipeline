@@ -21,7 +21,6 @@ from bisect import bisect
 import dateutil
 import numpy as np
 
-# from load.clip import Clip
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.preprocess import preprocess_segment
