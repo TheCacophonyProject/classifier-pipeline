@@ -169,10 +169,10 @@ def add_random_samples(
     required_bins,
 ):
     """
-        add random samples from the sample_set to every dataset in 
-        fill_datasets until the bin requirements are met
-        Updates the bins in sample_set and used_bins
-        """
+    add random samples from the sample_set to every dataset in
+    fill_datasets until the bin requirements are met
+    Updates the bins in sample_set and used_bins
+    """
     while sample_set and needs_more_bins(
         fill_datasets[0], label, used_bins, required_samples, required_bins
     ):
@@ -364,10 +364,10 @@ def add_random_camera_samples(
     segments_per_track,
 ):
     """
-        add random samples from the sample_set to every dataset in 
-        fill_datasets until the bin requirements are met
-        Updates the bins in sample_set and used_bins
-        """
+    add random samples from the sample_set to every dataset in
+    fill_datasets until the bin requirements are met
+    Updates the bins in sample_set and used_bins
+    """
     used_bins = []
     num_cameras = len(sample_set)
     cur_camera = 0

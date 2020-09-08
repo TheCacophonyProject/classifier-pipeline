@@ -9,8 +9,7 @@ from ml_tools.dataset import dataset_db_path
 
 
 def train_model(run_name, conf, hyper_params):
-    """Trains a model with the given hyper parameters.
-    """
+    """Trains a model with the given hyper parameters."""
     run_name = os.path.join("train", run_name)
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,

@@ -149,7 +149,9 @@ def preprocess_segment(
 
 def reisze_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
-        image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
+        image,
+        dsize=(dim[0] + extra_h, dim[1] + extra_v),
+        interpolation=interpolation,
     )
 
 
@@ -184,7 +186,13 @@ def preprocess_frame(
 
 
 def preprocess_movement(
-    data, segment, square_width, regions, channel, preprocess_fn=None, augment=False,
+    data,
+    segment,
+    square_width,
+    regions,
+    channel,
+    preprocess_fn=None,
+    augment=False,
 ):
     segment = preprocess_segment(
         segment, augment=augment, filter_to_delta=False, default_inset=0
@@ -197,7 +205,11 @@ def preprocess_movement(
     if not success:
         return None
     dots, overlay = movement_images(
-        data, regions, dim=square.shape, channel=channel, require_movement=True,
+        data,
+        regions,
+        dim=square.shape,
+        channel=channel,
+        require_movement=True,
     )
     dots = dots / 255
     overlay, success = normalize(overlay, min=0)
@@ -231,11 +243,15 @@ def normalize(data, min=None, max=None, new_max=1):
 
 
 def movement_images(
-    frames, regions, dim=None, channel=TrackChannels.filtered, require_movement=False,
+    frames,
+    regions,
+    dim=None,
+    channel=TrackChannels.filtered,
+    require_movement=False,
 ):
     """Return 2 images describing the movement, one has dots representing
-     the centre of mass, the other is a collage of all frames
-     """
+    the centre of mass, the other is a collage of all frames
+    """
 
     i = 0
     if dim is None:
