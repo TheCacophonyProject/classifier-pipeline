@@ -9,10 +9,15 @@ class Predictions:
     def __init__(self, labels):
         self.labels = labels
         self.prediction_per_track = {}
+        try:
+            self.fp_index = self.labels.index("false-positive")
+        except ValueError:
+            self.fp_index = None
 
     def get_or_create_prediction(self, track, keep_all=True):
         prediction = self.prediction_per_track.setdefault(
-            track.get_id(), TrackPrediction(track.get_id(), track.start_frame, keep_all)
+            track.get_id(),
+            TrackPrediction(track.get_id(), track.start_frame, self.fp_index, keep_all),
         )
         return prediction
 
@@ -42,11 +47,12 @@ class TrackPrediction:
     track.
     """
 
-    def __init__(self, track_id, start_frame, keep_all=True):
+    def __init__(self, track_id, start_frame, fp_index, keep_all=True):
         self.track_prediction = None
         self.state = None
         self.track_id = track_id
         self.predictions = []
+        self.fp_index = fp_index
         self.smoothed_predictions = []
         self.smoothed_novelties = []
         self.uniform_prior = False
@@ -100,7 +106,10 @@ class TrackPrediction:
         prediction_smooth = 0.1
         smooth_novelty = None
         prev_prediction = None
+        # this creates new array
         adjusted_prediction = prediction * mass_scale
+        if self.fp_index is not None:
+            adjusted_prediction[self.fp_index] *= 0.8
         if len(self.smoothed_predictions):
             prev_prediction = self.smoothed_predictions[-1]
         num_labels = len(prediction)
@@ -140,19 +149,21 @@ class TrackPrediction:
         return self.description(labels)
 
     def get_classified_footer(self, labels, frame_number=None):
-        # self.track_prediction = TrackPrediction(self.predictions, self.novelties)
-        if frame_number is None or frame_number >= len(self.smoothed_novelties):
-            return "({:.1f} {})\nnovelty={:.2f}".format(
-                self.max_score * 10, labels[self.best_label_index], self.max_novelty
-            )
-        if self.smoothed_predictions:
-            return "({:.1f} {})\nnovelty={:.2f}".format(
-                self.score_at_time(frame_number) * 10,
-                labels[self.label_at_time(frame_number)],
-                self.novelty_at(frame_number),
-            )
-        else:
+        if len(self.smoothed_predictions) == 0:
             return "no classification"
+        if frame_number is None or frame_number >= len(self.smoothed_predictions):
+            score = self.max_score * 10
+            label = labels[self.best_label_index]
+            novelty = self.max_novelty
+        else:
+            score = self.score_at_time(frame_number) * 10
+            label = labels[self.label_at_time(frame_number)]
+            novelty = self.novelty_at(frame_number)
+
+        footer = "({:.1f} {})".format(score, label)
+        if novelty:
+            footer = "{}\nnovelty={:.2f}".format(footer, novelty)
+        return footer
 
     def get_result(self, labels):
         if self.smoothed_predictions:
@@ -202,6 +213,7 @@ class TrackPrediction:
             return self.max_novelty
 
         if self.smoothed_novelties is None:
+            print("retuning none")
             return None
         return self.smoothed_novelties[n]
 
