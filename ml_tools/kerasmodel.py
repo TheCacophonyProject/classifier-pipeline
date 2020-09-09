@@ -340,7 +340,7 @@ class KerasModel:
             load_threads=self.params.get("train_load_threads", 1),
             use_movement=self.params.get("use_movement", False),
             type=self.type,
-            cap_at="wallaby",
+            cap_at="bird",
         )
         self.validate = DataGenerator(
             self.datasets.validation,
@@ -357,7 +357,7 @@ class KerasModel:
             load_threads=1,
             use_movement=self.params.get("use_movement", False),
             type=self.type,
-            cap_at="wallaby",
+            cap_at="bird",
         )
         self.square_width = self.validate.square_width
 
