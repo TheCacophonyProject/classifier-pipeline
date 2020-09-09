@@ -355,9 +355,9 @@ datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
 # ev.save_track("575914", "249216", dataset.db)
 dataset.binarize(
-    ["wallaby"],
-    lbl_one="wallaby",
-    lbl_two="not",
+    ["bird"],
+    lbl_one="bird",
+    lbl_two="predator",
     keep_fp=False,
     scale=False,
     shuffle=False,
