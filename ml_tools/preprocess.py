@@ -1,13 +1,10 @@
 import cv2
-import math
 import random
-from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw
-
 from ml_tools import tools
 from track.track import TrackChannels
+from ml_tools import imageprocessing
 
 
 # size to scale each frame to when loaded.
@@ -147,14 +144,6 @@ def preprocess_segment(
     return data
 
 
-def reisze_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
-    return cv2.resize(
-        image,
-        dsize=(dim[0] + extra_h, dim[1] + extra_v),
-        interpolation=interpolation,
-    )
-
-
 def preprocess_frame(
     data, output_dim, use_thermal=True, augment=False, preprocess_fn=None
 ):
@@ -176,7 +165,7 @@ def preprocess_frame(
     data = data[np.newaxis, :]
     data = np.transpose(data, (1, 2, 0))
     data = np.repeat(data, output_dim[2], axis=2)
-    data = reisze_cv(data, output_dim)
+    data = imageprocessing.reisze_cv(data, output_dim)
 
     # preprocess expects values in range 0-255
     if preprocess_fn:
@@ -186,13 +175,7 @@ def preprocess_frame(
 
 
 def preprocess_movement(
-    data,
-    segment,
-    square_width,
-    regions,
-    channel,
-    preprocess_fn=None,
-    augment=False,
+    data, segment, frames_per_row, regions, channel, preprocess_fn=None, augment=False,
 ):
     segment = preprocess_segment(
         segment, augment=augment, filter_to_delta=False, default_inset=0
@@ -201,18 +184,16 @@ def preprocess_movement(
     segment = segment[:, channel]
 
     # as long as one frame it's fine
-    square, success = square_clip(segment, square_width, (FRAME_SIZE, FRAME_SIZE), type)
+    square, success = imageprocessing.square_clip(
+        segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+    )
     if not success:
         return None
-    dots, overlay = movement_images(
-        data,
-        regions,
-        dim=square.shape,
-        channel=channel,
-        require_movement=True,
+    dots, overlay = imageprocessing.movement_images(
+        data, regions, dim=square.shape, channel=channel, require_movement=True,
     )
     dots = dots / 255
-    overlay, success = normalize(overlay, min=0)
+    overlay, success = imageprocessing.normalize(overlay, min=0)
     if not success:
         return None
 
@@ -226,107 +207,3 @@ def preprocess_movement(
             frame = frame * 255
             data[i] = preprocess_fn(frame)
     return data
-
-
-def normalize(data, min=None, max=None, new_max=1):
-    if max is None:
-        max = np.amax(data)
-    if min is None:
-        min = np.amin(data)
-    if max == min:
-        if max == 0:
-            return np.zeros((data.shape)), False
-        return data / max, False
-    data -= min
-    data = data / (max - min) * new_max
-    return data, True
-
-
-def movement_images(
-    frames,
-    regions,
-    dim=None,
-    channel=TrackChannels.filtered,
-    require_movement=False,
-):
-    """Return 2 images describing the movement, one has dots representing
-    the centre of mass, the other is a collage of all frames
-    """
-
-    i = 0
-    if dim is None:
-        # gp should be from track data
-        dim = (120, 160)
-    dots = np.zeros(dim)
-    overlay = np.zeros(dim)
-
-    prev = None
-    colour = 60
-    img = Image.fromarray(np.uint8(dots))
-
-    d = ImageDraw.Draw(img)
-    # draw movment lines and draw frame overlay
-    center_distance = 0
-    min_distance = 2
-    for i, frame in enumerate(frames):
-        region = regions[i]
-
-        x = int(region.mid_x)
-        y = int(region.mid_y)
-
-        if prev is not None:
-            distance = math.sqrt(pow(prev[0] - x, 2) + pow(prev[1] - y, 2))
-            center_distance += distance
-            d.line(prev + (x, y), fill=colour, width=1)
-        if not require_movement or (prev is None or center_distance > min_distance):
-            frame = frame[channel]
-            subimage = region.subimage(overlay)
-            subimage[:, :] += np.float32(frame)
-            center_distance = 0
-            min_distance = region.width / 2.0
-        prev = (x, y)
-
-    # then draw dots so they go over the top
-    colour = 120
-    for i, frame in enumerate(frames):
-        region = regions[i]
-        x = int(region.mid_x)
-        y = int(region.mid_y)
-        d.point([prev], fill=colour)
-
-    return np.array(img), overlay
-
-
-def save_image(data, filename):
-    Path(filename).parent.mkdir(parents=True, exist_ok=True)
-    r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
-    g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
-    b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
-    concat = np.concatenate((r, g, b), axis=1)
-    img = Image.fromarray(np.uint8(concat))
-    img.save(filename + ".png")
-
-
-def square_clip(data, square_width, tile_dim, type=None):
-    # lay each frame out side by side in rows
-    new_frame = np.zeros((square_width * tile_dim[0], square_width * tile_dim[1]))
-
-    i = 0
-    success = False
-    for x in range(square_width):
-        for y in range(square_width):
-            if i >= len(data):
-                frame = data[-1]
-            else:
-                frame = data[i]
-            frame, norm_success = normalize(frame)
-            if not norm_success:
-                continue
-            success = True
-            new_frame[
-                x * tile_dim[0] : (x + 1) * tile_dim[0],
-                y * tile_dim[1] : (y + 1) * tile_dim[1],
-            ] = np.float32(frame)
-            i += 1
-
-    return new_frame, success
