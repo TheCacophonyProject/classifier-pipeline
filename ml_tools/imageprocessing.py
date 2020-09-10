@@ -69,7 +69,7 @@ def movement_images(
         region = regions[i]
         x = int(region.mid_x)
         y = int(region.mid_y)
-        d.point([prev], fill=dot_colour)
+        d.point([(x, y)], fill=dot_colour)
 
     return np.array(img), overlay
 
