@@ -254,7 +254,9 @@ class TrackHeader:
                 if remaining > 0:
                     frames.extend(
                         np.random.choice(
-                            self.important_frames, remaining, replace=False,
+                            self.important_frames,
+                            remaining,
+                            replace=False,
                         )
                     )
                 frames = [frame.frame_num for frame in frames]
@@ -408,7 +410,9 @@ class Camera:
         return track, f
 
     def label_segment_count(
-        self, label, max_segments_per_track=None,
+        self,
+        label,
+        max_segments_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -423,7 +427,9 @@ class Camera:
         return frames
 
     def label_frame_count(
-        self, label, max_frames_per_track=None,
+        self,
+        label,
+        max_frames_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -1312,6 +1318,7 @@ class Dataset:
                 label_cap = len(self.samples_for(cap_at))
             else:
                 label_cap = self.get_label_caps(labels, remapped=True)
+            label_cap = 10
         cap = None
         for label in labels:
             if cap_samples:
@@ -1499,8 +1506,8 @@ class Dataset:
 
     def is_heavy_bin(self, bin_id, max_bin_segments, max_validation_set_track_duration):
         """
-            heavy bins are bins with more tracks whiche xceed track duration or max bin_segments
-            """
+        heavy bins are bins with more tracks whiche xceed track duration or max bin_segments
+        """
         bin_segments = self.get_bin_segments_count(bin_id)
         max_track_duration = self.get_bin_max_track_duration(bin_id)
         return (
@@ -1512,8 +1519,8 @@ class Dataset:
         self, bins, max_bin_segments, max_validation_set_track_duration
     ):
         """
-            heavy bins are bins with more tracks whiche xceed track duration or max bin_segments
-            """
+        heavy bins are bins with more tracks whiche xceed track duration or max bin_segments
+        """
         heavy_bins, normal_bins = [], []
         for bin_id in bins:
             if bin_id in self.tracks_by_bin:
@@ -1674,7 +1681,7 @@ class Dataset:
             self.frame_label_cdf = mapped_cdf
 
     def rebuild_cdf(self, balance_labels=False):
-        """ Calculates the CDF used for fast random sampling for frames and
+        """Calculates the CDF used for fast random sampling for frames and
         segments, if balance labels is set each label has an equal chance of
         being chosen
         """

@@ -27,7 +27,7 @@ from sklearn.metrics import confusion_matrix
 #
 HP_DENSE_SIZES = hp.HParam(
     "dense_sizes",
-    hp.Discrete(["1024 1024 1024 512"]),
+    hp.Discrete(["1024 1024 1024 512", "1024 512"]),
 )
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([16, 32, 64]))
@@ -689,7 +689,7 @@ class KerasModel:
         print("learning1", accuracy)
 
     # GRID SEARCH
-    def train_test_model(self, hparams, log_dir, epochs=4):
+    def train_test_model(self, hparams, log_dir, epochs=1):
         # if not self.model:
         dense_size = hparams[HP_DENSE_SIZES].split()
         for i, size in enumerate(dense_size):
@@ -781,6 +781,7 @@ class KerasModel:
                         print("--- Starting trial: %s" % run_name)
                         print({h.name: hparams[h] for h in hparams})
                         self.run(dir + "/" + run_name, hparams)
+                        return
                         session_num += 1
 
     def run(self, log_dir, hparams):
