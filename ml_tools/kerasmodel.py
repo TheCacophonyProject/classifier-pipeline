@@ -35,6 +35,7 @@ HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
 HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.0001, 0.001, 0.01]))
 
 METRIC_ACCURACY = "accuracy"
+METRIC_LOSS = "loss"
 
 
 class KerasModel:
@@ -744,13 +745,13 @@ class KerasModel:
             loss=self.loss(),
             metrics=["accuracy"],
         )
-        self.model.fit(
+        history = self.model.fit(
             self.train, epochs=epochs, shuffle=False, validation_data=self.validate
         )
-        _, accuracy = self.model.evaluate(self.validate)
+        # _, accuracy = self.model.evaluate(self.validate)
         self.train.stop_load()
         self.validate.stop_load()
-        return accuracy
+        return history
 
     def test_hparams(self):
         self.datasets.train.set_samples(cap_at="wallaby")
@@ -759,7 +760,10 @@ class KerasModel:
         with tf.summary.create_file_writer(dir).as_default():
             hp.hparams_config(
                 hparams=[HP_BATCH_SIZE],
-                metrics=[hp.Metric(METRIC_ACCURACY, display_name="Accuracy")],
+                metrics=[
+                    hp.Metric(METRIC_ACCURACY, display_name="Accuracy"),
+                    hp.Metric(METRIC_LOSS, display_name="Loss"),
+                ],
             )
         session_num = 0
 
@@ -783,8 +787,14 @@ class KerasModel:
 
         with tf.summary.create_file_writer(log_dir).as_default():
             hp.hparams(hparams)  # record the values used in this trial
-            accuracy = self.train_test_model(hparams, log_dir)
-            tf.summary.scalar(METRIC_ACCURACY, accuracy, step=1)
+            history = self.train_test_model(hparams, log_dir)
+            val_accuracy = history.history["val_accuracy"]
+            val_loss = history.history["val_loss"]
+
+            for step, accuracy in enumerate(val_accuracy):
+                loss = val_loss[step]
+                tf.summary.scalar(METRIC_ACCURACY, accuracy, step=step)
+                tf.summary.scalar(METRIC_LOSS, loss, step=step)
 
     @property
     def hyperparams_string(self):
