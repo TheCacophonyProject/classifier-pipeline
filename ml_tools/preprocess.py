@@ -175,7 +175,13 @@ def preprocess_frame(
 
 
 def preprocess_movement(
-    data, segment, frames_per_row, regions, channel, preprocess_fn=None, augment=False,
+    data,
+    segment,
+    frames_per_row,
+    regions,
+    channel,
+    preprocess_fn=None,
+    augment=False,
 ):
     segment = preprocess_segment(
         segment, augment=augment, filter_to_delta=False, default_inset=0
@@ -190,7 +196,11 @@ def preprocess_movement(
     if not success:
         return None
     dots, overlay = imageprocessing.movement_images(
-        data, regions, dim=square.shape, channel=channel, require_movement=True,
+        data,
+        regions,
+        dim=square.shape,
+        channel=channel,
+        require_movement=True,
     )
     dots = dots / 255
     overlay, success = imageprocessing.normalize(overlay, min=0)
