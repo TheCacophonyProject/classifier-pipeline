@@ -105,8 +105,8 @@ class Rectangle:
         self.bottom = min(self.bottom, bounds.bottom)
 
     def subimage(self, image):
-        """ Returns a subsection of the original image bounded by this rectangle
-            :param image mumpy array of dims [height, width]
+        """Returns a subsection of the original image bounded by this rectangle
+        :param image mumpy array of dims [height, width]
         """
         return image[
             self.top : self.top + self.height, self.left : self.left + self.width
@@ -498,8 +498,8 @@ def zoom_image(
 def read_track_files(
     track_folder, min_tracks=50, ignore_classes=["false-positive"], track_filter=None
 ):
-    """ Read in the tracks files from folder. Returns tupple containing list of class names and dictionary mapping from
-        class name to list of racks."""
+    """Read in the tracks files from folder. Returns tupple containing list of class names and dictionary mapping from
+    class name to list of racks."""
 
     # gather up all the tracks we can find and show how many of each class exist
 
@@ -605,8 +605,8 @@ def get_classification_info(model, batch_X, batch_y):
 
 # todo: change this to classify track.
 def classify_segment(model, segment, verbose=False):
-    """ Loop through frames in the segment, classifying them, then output a probability distribution of the class
-        of this segment """
+    """Loop through frames in the segment, classifying them, then output a probability distribution of the class
+    of this segment"""
     frames = segment.shape[0]
 
     prediction_history = []

@@ -59,8 +59,7 @@ def axis_search(conf):
 
 
 def run_job(tracker, job_name, conf, hyper_params=None):
-    """Run a job with given hyper parameters, and log its results.
-    """
+    """Run a job with given hyper parameters, and log its results."""
     if tracker.is_done(job_name):
         return
     if not hyper_params:
@@ -80,8 +79,7 @@ class JobTracker:
         open(self.filename, "w").close()  # Create/truncate
 
     def is_done(self, job_name):
-        """Returns True if this job has been processed before.
-        """
+        """Returns True if this job has been processed before."""
         with open(self.filename, "r") as f:
             return any(line.split(",", 1)[0] == job_name for line in f)
 

@@ -145,7 +145,7 @@ class ClipLoader:
         return valid_tracks
 
     def _track_meta_is_valid(self, track_meta):
-        """ 
+        """
         Tracks are valid if their confidence meets the threshold and they are
         not in the excluded_tags list, defined in the config.
         """

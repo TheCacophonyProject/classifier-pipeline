@@ -986,8 +986,8 @@ class Dataset:
 
     def is_heavy_bin(self, bin_id, max_bin_segments, max_validation_set_track_duration):
         """
-            heavy bins are bins with more tracks whiche xceed track duration or max bin_segments
-            """
+        heavy bins are bins with more tracks whiche xceed track duration or max bin_segments
+        """
         bin_segments = self.get_bin_segments_count(bin_id)
         max_track_duration = self.get_bin_max_track_duration(bin_id)
         return (
@@ -999,8 +999,8 @@ class Dataset:
         self, bins, max_bin_segments, max_validation_set_track_duration
     ):
         """
-            heavy bins are bins with more tracks whiche xceed track duration or max bin_segments
-            """
+        heavy bins are bins with more tracks whiche xceed track duration or max bin_segments
+        """
         heavy_bins, normal_bins = [], []
         for bin_id in bins:
             if bin_id in self.tracks_by_bin:
