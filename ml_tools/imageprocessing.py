@@ -19,6 +19,7 @@ def movement_images(
     overlay = np.zeros(dim)
 
     prev = None
+    prev_overlay = None
     line_colour = 60
     dot_colour = 120
 
@@ -36,18 +37,22 @@ def movement_images(
 
         # writing dot image
         if prev is not None:
-            distance = eucl_distance(prev, (x, y,))
-            center_distance += distance
             d.line(prev + (x, y), fill=line_colour, width=1)
+        prev = (x, y)
 
         # writing overlay image
-        if not require_movement or (prev is None or center_distance > min_distance):
+        if require_movement and prev_overlay:
+            center_distance = eucl_distance(prev_overlay, (x, y,))
+
+        if (
+            prev_overlay is None or center_distance > min_distance
+        ) or not require_movement:
             frame = frame[channel]
             subimage = region.subimage(overlay)
             subimage[:, :] += np.float32(frame)
             center_distance = 0
             min_distance = pow(region.width / 2.0, 2)
-        prev = (x, y)
+            prev_overlay = (x, y)
 
     # then draw dots to dot image so they go over the top
     for i, frame in enumerate(frames):

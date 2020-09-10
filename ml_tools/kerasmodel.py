@@ -269,8 +269,6 @@ class KerasModel:
         np.random.shuffle(frame_sample)
         for i in range(num_classifies):
             seg_frames = frame_sample[:frames_per_classify]
-            if len(seg_frames) == 0:
-                break
             segment = []
             # update remaining
             frame_sample = frame_sample[frames_per_classify:]
