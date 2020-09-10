@@ -480,8 +480,7 @@ def movement(
     center_distance = 0
     min_distance = 2
     for i, frame in enumerate(frames):
-        region = regions[i]
-        rect = tools.Rectangle.from_ltrb(*region)
+        region = tools.Rectangle.from_ltrb(*regions[i])
         x = int(region.mid_x)
         y = int(region.mid_y)
 
@@ -513,10 +512,9 @@ def movement(
 
     # then draw dots so they go over the top
     for i, frame in enumerate(frames):
-        region = regions[i]
-        rect = tools.Rectangle.from_ltrb(*region)
-        x = int(rect.mid_x)
-        y = int(rect.mid_y)
+        region = tools.Rectangle.from_ltrb(*regions[i])
+        x = int(region.mid_x)
+        y = int(region.mid_y)
         d.point((x, y), fill=dot_colour)
 
     return np.array(img), overlay
