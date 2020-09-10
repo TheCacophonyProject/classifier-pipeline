@@ -10,8 +10,7 @@ from ml_tools.kerasmodel import KerasModel
 
 
 def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, type=0):
-    """Trains a model with the given hyper parameters.
-    """
+    """Trains a model with the given hyper parameters."""
     # run_name = os.path.join("train", run_name)
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
