@@ -254,9 +254,7 @@ class TrackHeader:
                 if remaining > 0:
                     frames.extend(
                         np.random.choice(
-                            self.important_frames,
-                            remaining,
-                            replace=False,
+                            self.important_frames, remaining, replace=False,
                         )
                     )
                 frames = [frame.frame_num for frame in frames]
@@ -410,9 +408,7 @@ class Camera:
         return track, f
 
     def label_segment_count(
-        self,
-        label,
-        max_segments_per_track=None,
+        self, label, max_segments_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -427,9 +423,7 @@ class Camera:
         return frames
 
     def label_frame_count(
-        self,
-        label,
-        max_frames_per_track=None,
+        self, label, max_frames_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -1318,7 +1312,6 @@ class Dataset:
                 label_cap = len(self.samples_for(cap_at))
             else:
                 label_cap = self.get_label_caps(labels, remapped=True)
-            label_cap = 10
         cap = None
         for label in labels:
             if cap_samples:

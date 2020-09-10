@@ -26,8 +26,7 @@ from sklearn.metrics import confusion_matrix
 
 #
 HP_DENSE_SIZES = hp.HParam(
-    "dense_sizes",
-    hp.Discrete(["1024 1024 1024 512", "1024 512"]),
+    "dense_sizes", hp.Discrete(["1024 1024 1024 512", "1024 512"]),
 )
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([16, 32, 64]))
@@ -79,9 +78,7 @@ class KerasModel:
         if self.pretrained_model == "resnet":
             return (
                 tf.keras.applications.ResNet50(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
@@ -102,54 +99,42 @@ class KerasModel:
         elif self.pretrained_model == "vgg16":
             return (
                 tf.keras.applications.VGG16(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.vgg16.preprocess_input,
             )
         elif self.pretrained_model == "vgg19":
             return (
                 tf.keras.applications.VGG19(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.vgg19.preprocess_input,
             )
         elif self.pretrained_model == "mobilenet":
             return (
                 tf.keras.applications.MobileNetV2(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.mobilenet_v2.preprocess_input,
             )
         elif self.pretrained_model == "densenet121":
             return (
                 tf.keras.applications.DenseNet121(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.densenet.preprocess_input,
             )
         elif self.pretrained_model == "inceptionresnetv2":
             return (
                 tf.keras.applications.InceptionResNetV2(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.inception_resnet_v2.preprocess_input,
             )
         elif self.pretrained_model == "inceptionv3":
             return (
                 tf.keras.applications.InceptionV3(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.inception_v3.preprocess_input,
             )
@@ -229,9 +214,7 @@ class KerasModel:
         self.model.summary()
 
         self.model.compile(
-            optimizer=self.optimizer(),
-            loss=self.loss(),
-            metrics=["accuracy"],
+            optimizer=self.optimizer(), loss=self.loss(), metrics=["accuracy"],
         )
 
     def loss(self):
@@ -309,10 +292,7 @@ class KerasModel:
             model_stats["square_width"] = self.train.square_width
         json.dump(
             model_stats,
-            open(
-                os.path.join(self.checkpoint_folder, run_name, "metadata.txt"),
-                "w",
-            ),
+            open(os.path.join(self.checkpoint_folder, run_name, "metadata.txt"), "w",),
             indent=4,
         )
         json.dump(
@@ -496,11 +476,7 @@ class KerasModel:
             for f in data:
                 median.append(np.median(f[0]))
 
-            data, _ = Preprocessor.apply(
-                data,
-                median,
-                default_inset=0,
-            )
+            data, _ = Preprocessor.apply(data, median, default_inset=0,)
             data = preprocess_lstm(
                 data,
                 (self.frame_size, self.frame_size, 3),
@@ -675,21 +651,17 @@ class KerasModel:
         _, accuracy = self.model.evaluate(dataset)
         print("dynamic", accuracy)
         tf.keras.backend.set_learning_phase(0)
-        self.load_model(
-            os.path.join(self.checkpoint_folder, "resnet50/"),
-        )
+        self.load_model(os.path.join(self.checkpoint_folder, "resnet50/"),)
         _, accuracy = self.model.evaluate(dataset)
         print("learning0", accuracy)
 
         tf.keras.backend.set_learning_phase(1)
-        self.load_model(
-            os.path.join(self.checkpoint_folder, "resnet50/"),
-        )
+        self.load_model(os.path.join(self.checkpoint_folder, "resnet50/"),)
         _, accuracy = self.model.evaluate(dataset)
         print("learning1", accuracy)
 
     # GRID SEARCH
-    def train_test_model(self, hparams, log_dir, epochs=1):
+    def train_test_model(self, hparams, log_dir, epochs=3):
         # if not self.model:
         dense_size = hparams[HP_DENSE_SIZES].split()
         for i, size in enumerate(dense_size):
@@ -741,9 +713,7 @@ class KerasModel:
         else:
             opt = tf.keras.optimizers.SGD(learning_rate=learning_rate)
         self.model.compile(
-            optimizer=opt,
-            loss=self.loss(),
-            metrics=["accuracy"],
+            optimizer=opt, loss=self.loss(), metrics=["accuracy"],
         )
         history = self.model.fit(
             self.train, epochs=epochs, shuffle=False, validation_data=self.validate
@@ -781,7 +751,6 @@ class KerasModel:
                         print("--- Starting trial: %s" % run_name)
                         print({h.name: hparams[h] for h in hparams})
                         self.run(dir + "/" + run_name, hparams)
-                        return
                         session_num += 1
 
     def run(self, log_dir, hparams):
