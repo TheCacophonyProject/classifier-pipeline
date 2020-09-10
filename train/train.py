@@ -41,10 +41,10 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
     model.import_dataset(datasets_filename)
 
     model.binarize(
-        set_one=["bird"],
-        label_one="bird",
+        set_one=["wallaby"],
+        label_one="wallaby",
         set_two=None,
-        label_two="predator",
+        label_two="not",
         random_segments=type == 9,
     )
     # display the data set summary
