@@ -81,9 +81,9 @@ Single frame models use 48 x 48 frames to classify/train
 ![picture alt](readme/wallabyframe.png "Wallaby Frame")
 
 Multi frame models use:
- * 25 frames arranges in a square for the red channel
- * Dots describing the centre of all tracked region and lines connecting the dots for the green channel
- * Track Filtered frames overlaid where they have moved enough from the previous overlay for the blue channel
+ * 25 frames arranged in a square for the red channel
+ * Dots describing the centre of all tracked regions and lines connecting the dots for the green channel
+ * Track Filtered frames overlaid where they have moved enough from the previous overlaid frame for the blue channel
 
 ![picture alt](readme/wallabymovement.png "Wallaby Movement")
 
