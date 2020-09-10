@@ -710,7 +710,7 @@ class KerasModel:
             type=self.type,
             cap_at="wallaby",
             randomize_epoch=False,
-            shuffle=False,
+            shuffle=True,
         )
         self.validate = DataGenerator(
             self.datasets.validation,
@@ -728,7 +728,7 @@ class KerasModel:
             type=self.type,
             cap_at="wallaby",
             randomize_epoch=False,
-            shuffle=False,
+            shuffle=True,
         )
         self.square_width = self.train.square_width
         self.build_model(dense_sizes=dense_size)
