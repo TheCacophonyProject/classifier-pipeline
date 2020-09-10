@@ -27,7 +27,7 @@ from sklearn.metrics import confusion_matrix
 #
 HP_DENSE_SIZES = hp.HParam(
     "dense_sizes",
-    hp.Discrete(["1024 512"]),
+    hp.Discrete(["1024 1024 1024 512"]),
 )
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([16, 32, 64]))
