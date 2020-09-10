@@ -211,7 +211,12 @@ class DataGenerator(keras.utils.Sequence):
         if self.lstm:
             X = np.empty((len(samples), samples[0].frames, *self.dim))
         else:
-            X = np.empty((len(samples), *self.dim,))
+            X = np.empty(
+                (
+                    len(samples),
+                    *self.dim,
+                )
+            )
 
         y = np.empty((len(samples)), dtype=int)
         # Generate data
@@ -298,11 +303,19 @@ class DataGenerator(keras.utils.Sequence):
                     continue
                 if self.lstm:
                     data = preprocess_lstm(
-                        data, self.dim, channel, self.augment, self.model_preprocess,
+                        data,
+                        self.dim,
+                        channel,
+                        self.augment,
+                        self.model_preprocess,
                     )
                 else:
                     data = preprocess_frame(
-                        data, self.dim, None, self.augment, self.model_preprocess,
+                        data,
+                        self.dim,
+                        None,
+                        self.augment,
+                        self.model_preprocess,
                     )
             if data is None:
                 logging.warn(
@@ -330,7 +343,9 @@ def resize(image, dim):
 
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
-        image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
+        image,
+        dsize=(dim[0] + extra_h, dim[1] + extra_v),
+        interpolation=interpolation,
     )
 
 
@@ -440,52 +455,61 @@ def square_clip_flow(data_flow_h, data_flow_v, square_width, type=None):
 
 
 def movement(
-    frames, regions, dim=None, channel=TrackChannels.filtered, require_movement=False,
+    frames,
+    regions,
+    dim=None,
+    channel=TrackChannels.filtered,
+    require_movement=False,
 ):
     """Return 2 images describing the movement, one has dots representing
-     the centre of mass, the other is a collage of all frames
-     """
+    the centre of mass, the other is a collage of all frames
+    """
 
     i = 0
-    if dim is None:
-        # gp should be from track data
-        dim = (120, 160)
     dots = np.zeros(dim)
     overlay = np.zeros(dim)
 
     prev = None
-    value = 60
+    prev_overlay = None
+    line_colour = 60
+    dot_colour = 120
     img = Image.fromarray(np.uint8(dots))  # ignore alpha
 
     d = ImageDraw.Draw(img)
     # draw movment lines and draw frame overlay
     center_distance = 0
     min_distance = 2
-    prev_rect = None
     for i, frame in enumerate(frames):
         region = regions[i]
         rect = tools.Rectangle.from_ltrb(*region)
+        x = int(region.mid_x)
+        y = int(region.mid_y)
 
-        frame = frame[channel]
-        x = int(rect.mid_x)
-        y = int(rect.mid_y)
+        # writing dot image
         if prev is not None:
-            if prev[0] == x and prev[1] == y:
-                value *= 1
-            else:
-                value = 60
-            distance = math.sqrt(pow(prev[0] - x, 2) + pow(prev[1] - y, 2))
-            center_distance += distance
-            distance *= 21.25
-            distance = min(distance, 255)
-            d.line(prev + (x, y), fill=int(value), width=1)
-        if not require_movement or (prev is None or center_distance > min_distance):
-            subimage = rect.subimage(overlay)
+            d.line(prev + (x, y), fill=line_colour, width=1)
+        prev = (x, y)
+
+        # writing overlay image
+        if require_movement and prev_overlay:
+            center_distance = tools.eucl_distance(
+                prev_overlay,
+                (
+                    x,
+                    y,
+                ),
+            )
+
+        if (
+            prev_overlay is None or center_distance > min_distance
+        ) or not require_movement:
+            frame = frame[channel]
+            subimage = region.subimage(overlay)
             subimage[:, :] += np.float32(frame)
             center_distance = 0
-            min_distance = rect.width / 2.0
+            min_distance = pow(region.width / 2.0, 2)
+            prev_overlay = (x, y)
         prev = (x, y)
-        colour = int(value)
 
     # then draw dots so they go over the top
     for i, frame in enumerate(frames):
@@ -493,15 +517,7 @@ def movement(
         rect = tools.Rectangle.from_ltrb(*region)
         x = int(rect.mid_x)
         y = int(rect.mid_y)
-
-        if prev is not None:
-            if prev[0] == x and prev[1] == y:
-                value *= 1
-            else:
-                value = 120
-        prev = (x, y)
-        colour = int(value)
-        d.point([prev], fill=colour)
+        d.point((x, y), fill=dot_colour)
 
     return np.array(img), overlay
 
@@ -535,7 +551,11 @@ def preprocess_movement(
     if not success:
         return None
     dots, overlay = movement(
-        data, regions, dim=square.shape, channel=channel, require_movement=type >= 5,
+        data,
+        regions,
+        dim=square.shape,
+        channel=channel,
+        require_movement=type >= 5,
     )
     dots = dots / 255
     overlay, success = normalize(overlay, min=0)
@@ -583,7 +603,11 @@ def preprocess_movement(
 
 
 def preprocess_lstm(
-    data, output_dim, channel, augment=False, preprocess_fn=None,
+    data,
+    output_dim,
+    channel,
+    augment=False,
+    preprocess_fn=None,
 ):
 
     data = data[:, channel]
@@ -607,7 +631,11 @@ def preprocess_lstm(
 
 
 def preprocess_frame(
-    data, output_dim, channel, augment=False, preprocess_fn=None,
+    data,
+    output_dim,
+    channel,
+    augment=False,
+    preprocess_fn=None,
 ):
     if channel is not None:
         data = data[channel]
