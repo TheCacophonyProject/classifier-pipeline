@@ -10,7 +10,7 @@ import numpy as np
 from classify.trackprediction import Predictions
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
-from ml_tools.dataset import Preprocessor
+from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer
 from ml_tools import tools
 from .cptvrecorder import CPTVRecorder
@@ -163,7 +163,7 @@ class PiClassifier(Processor):
             else:
                 track_data = track.crop_by_region(frame, region)
                 # we use a tighter cropping here so we disable the default 2 pixel inset
-                frames = Preprocessor.apply(
+                frames = preprocess_segment(
                     [track_data], [thermal_reference], default_inset=0
                 )
                 if frames is None:

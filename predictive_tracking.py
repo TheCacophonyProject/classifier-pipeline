@@ -24,9 +24,9 @@ from kalman.main import main
 
 class PredatorTracker:
     """Predator tracker class: - Finds centroid of animal
-                               - Uses kalman filter to smooth effects of occlusion
-                               - Determines direction vector of animal
-                               - Predicts future position of animal"""
+    - Uses kalman filter to smooth effects of occlusion
+    - Determines direction vector of animal
+    - Predicts future position of animal"""
 
     GREEN = (0, 255, 0)
     RED = (0, 0, 255)

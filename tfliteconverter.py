@@ -140,11 +140,11 @@ def representative_dataset_gen():
 
 def get_feed_dict(X, state_in=None):
     """
-        Returns a feed dictionary for TensorFlow placeholders.
-        :param X: The examples to classify
-        :param state_in: (optional) states from previous classification.  Used to maintain internal state across runs
-        :return:
-        """
+    Returns a feed dictionary for TensorFlow placeholders.
+    :param X: The examples to classify
+    :param state_in: (optional) states from previous classification.  Used to maintain internal state across runs
+    :return:
+    """
     result = [None] * len(input_map)
     if state_in is None:
         result[input_map["state_in:0"][0]] = np.float32(np.zeros((1, 512, 2)))

@@ -13,13 +13,13 @@ DBUS_PATH = "/org/cacophony/thermalrecorder"
 
 class Service(object):
     """
-        <node>
-            <interface name='org.cacophony.thermalrecorder'>
-                <method name='TakeSnapshot'>
-                    <arg type='s' name='response' direction='out'/>
-                </method>
-            </interface>
-        </node>
+    <node>
+        <interface name='org.cacophony.thermalrecorder'>
+            <method name='TakeSnapshot'>
+                <arg type='s' name='response' direction='out'/>
+            </method>
+        </interface>
+    </node>
     """
 
     def __init__(self, processor):

@@ -1,13 +1,20 @@
+import math
 import os
 import json
 import logging
 import tensorflow as tf
-import cv2
 import numpy as np
-from ml_tools.dataset import TrackChannels
+from track.track import TrackChannels
+from classify.trackprediction import TrackPrediction
+from ml_tools.preprocess import (
+    preprocess_movement,
+    preprocess_frame,
+)
 
 
 class KerasModel:
+    """ Defines a deep learning model using the tensorflow v2 keras framework """
+
     def __init__(self, train_config=None):
         self.params = {
             # augmentation
@@ -25,12 +32,16 @@ class KerasModel:
         self.frame_size = None
         self.pretrained_model = None
         self.model = None
+        self.use_movement = False
+        self.square_width = 1
 
     def get_base_model(self, input_shape):
         if self.pretrained_model == "resnet":
             return (
                 tf.keras.applications.ResNet50(
-                    weights="imagenet", include_top=False, input_shape=input_shape,
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
@@ -51,35 +62,45 @@ class KerasModel:
         elif self.pretrained_model == "vgg16":
             return (
                 tf.keras.applications.VGG16(
-                    weights="imagenet", include_top=False, input_shape=input_shape,
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
                 ),
                 tf.keras.applications.vgg16.preprocess_input,
             )
         elif self.pretrained_model == "vgg19":
             return (
                 tf.keras.applications.VGG19(
-                    weights="imagenet", include_top=False, input_shape=input_shape,
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
                 ),
                 tf.keras.applications.vgg19.preprocess_input,
             )
         elif self.pretrained_model == "mobilenet":
             return (
                 tf.keras.applications.MobileNetV2(
-                    weights="imagenet", include_top=False, input_shape=input_shape,
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
                 ),
                 tf.keras.applications.mobilenet_v2.preprocess_input,
             )
         elif self.pretrained_model == "densenet121":
             return (
                 tf.keras.applications.DenseNet121(
-                    weights="imagenet", include_top=False, input_shape=input_shape,
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
                 ),
                 tf.keras.applications.densenet.preprocess_input,
             )
         elif self.pretrained_model == "inceptionresnetv2":
             return (
                 tf.keras.applications.InceptionResNetV2(
-                    weights="imagenet", include_top=False, input_shape=input_shape,
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
                 ),
                 tf.keras.applications.inception_resnet_v2.preprocess_input,
             )
@@ -87,7 +108,11 @@ class KerasModel:
         raise "Could not find model" + self.pretrained_model
 
     def build_model(self, dense_sizes=[1024, 512]):
-        input_shape = (self.frame_size, self.frame_size, 3)
+        input_shape = (
+            self.frame_size * self.square_width,
+            self.frame_size * self.square_width,
+            3,
+        )
         inputs = tf.keras.Input(shape=input_shape)
         base_model, preprocess = self.get_base_model(input_shape)
         self.preprocess_fn = preprocess
@@ -100,7 +125,9 @@ class KerasModel:
         preds = tf.keras.layers.Dense(len(self.labels), activation="softmax")(x)
         self.model = tf.keras.models.Model(inputs, outputs=preds)
         self.model.compile(
-            optimizer=self.optimizer(), loss=self.loss(), metrics=["accuracy"],
+            optimizer=self.optimizer(),
+            loss=self.loss(),
+            metrics=["accuracy"],
         )
 
     def loss(self):
@@ -144,7 +171,9 @@ class KerasModel:
         self.labels = meta["labels"]
         self.pretrained_model = self.params.get("model", "resnetv2")
         self.preprocess_fn = self.get_preprocess_fn()
-        self.frame_size = self.params.get("frame_size", 48)
+        self.frame_size = meta.get("frame_size", 48)
+        self.square_width = meta.get("square_width", 1)
+        self.use_movement = self.params.get("use_movement", False)
 
     def get_preprocess_fn(self):
         if self.pretrained_model == "resnet":
@@ -188,40 +217,93 @@ class KerasModel:
         output = self.model.predict(frame[np.newaxis, :])
         return output[0]
 
+    def classify_track(
+        self,
+        clip,
+        track,
+        keep_all=True,
+    ):
+        try:
+            fp_index = self.labels.index("false-positive")
+        except ValueError:
+            fp_index = None
+        track_prediction = TrackPrediction(
+            track.get_id(), track.start_frame, fp_index, keep_all
+        )
 
-def reisze_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
-    return cv2.resize(
-        image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
-    )
+        if self.use_movement:
+            data = []
+            for region in track.bounds_history:
+                frame = clip.frame_buffer.get_frame(region.frame_number)
+                frame = frame.crop_by_region(region)
+                data.append(frame.as_array())
+            predictions = self.classify_using_movement(
+                data, regions=track.bounds_history
+            )
+            for i, prediction in enumerate(predictions):
+                track_prediction.classified_frame(i, prediction, None)
+        else:
+            for i, region in enumerate(track.bounds_history):
 
+                frame = clip.frame_buffer.get_frame(region.frame_number)
+                track_data = track.crop_by_region(frame, region)
+                prediction = self.classify_frame(track_data)
+                mass = region.mass
+                # we use the square-root here as the mass is in units squared.
+                # this effectively means we are giving weight based on the diameter
+                # of the object rather than the mass.
+                mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
 
-def preprocess_frame(
-    data, output_dim, use_thermal=True, augment=False, preprocess_fn=None
-):
-    if use_thermal:
-        channel = TrackChannels.thermal
-    else:
-        channel = TrackChannels.filtered
-    data = data[channel]
+                # cropped frames don't do so well so restrict their score
+                cropped_weight = 0.7 if region.was_cropped else 1.0
+                track_prediction.classified_frame(
+                    i, prediction, mass_weight * cropped_weight
+                )
 
-    # normalizes data, constrast stretch good or bad?
-    percent = 0
-    max = int(np.percentile(data, 100 - percent))
-    min = int(np.percentile(data, percent))
-    if max == min:
-        return None
+        return track_prediction
 
-    data -= min
-    data = data / (max - min)
-    np.clip(data, a_min=0, a_max=None, out=data)
+    def classify_using_movement(self, data, regions):
+        """
+        take any square_width, by square_width amount of frames and sort by
+        time use as the r channel, g and b channel are the overall movment of
+        the track
+        """
+        predictions = []
+        if self.params.get("use_thermal", False):
+            channel = TrackChannels.thermal
+        else:
+            channel = TrackChannels.filtered
 
-    data = data[np.newaxis, :]
-    data = np.transpose(data, (1, 2, 0))
-    data = np.repeat(data, output_dim[2], axis=2)
-    data = reisze_cv(data, output_dim)
+        frames_per_classify = self.square_width ** 2
+        num_frames = len(data)
 
-    # preprocess expects values in range 0-255
-    if preprocess_fn:
-        data = data * 255
-        data = preprocess_fn(data)
-    return data
+        # note we can use more classifications but since we are using all track
+        # bounding regions with each classify for the over all movement, it
+        # doesn't change the result much
+        # take frames_per_classify random frames, sort by time then use this to classify
+        num_classifies = math.ceil(float(num_frames) / frames_per_classify)
+        frame_sample = np.arange(num_frames)
+        np.random.shuffle(frame_sample)
+        for i in range(num_classifies):
+            seg_frames = frame_sample[:frames_per_classify]
+            segment = []
+            # update remaining
+            frame_sample = frame_sample[frames_per_classify:]
+            seg_frames.sort()
+            for frame_i in seg_frames:
+                f = data[frame_i]
+                segment.append(f)
+
+            frames = preprocess_movement(
+                data,
+                segment,
+                self.square_width,
+                regions,
+                channel,
+                self.preprocess_fn,
+            )
+            if frames is None:
+                continue
+            output = self.model.predict(frames[np.newaxis, :])
+            predictions.append(output[0])
+        return predictions

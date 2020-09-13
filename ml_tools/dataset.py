@@ -18,14 +18,12 @@ import threading
 import time
 from bisect import bisect
 
-import cv2
 import dateutil
 import numpy as np
-import scipy.ndimage
 
-# from load.clip import Clip
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
+from ml_tools.preprocess import preprocess_segment
 
 CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
@@ -347,145 +345,6 @@ class SegmentHeader:
 
     def __str__(self):
         return "offset:{0} weight:{1:.1f}".format(self.start_frame, self.weight)
-
-
-class Preprocessor:
-    """ Handles preprocessing of track data. """
-
-    # size to scale each frame to when loaded.
-    FRAME_SIZE = 48
-
-    MIN_SIZE = 4
-
-    @staticmethod
-    def apply(
-        frames,
-        reference_level,
-        frame_velocity=None,
-        augment=False,
-        encode_frame_offsets_in_flow=False,
-        default_inset=2,
-    ):
-        """
-        Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
-        :param frames: a list of np array of shape [C, H, W]
-        :param reference_level: thermal reference level for each frame in data
-        :param frame_velocity: velocity (x,y) for each frame.
-        :param augment: if true applies a slightly random crop / scale
-        :param default_inset: the default number of pixels to inset when no augmentation is applied.
-        """
-
-        # -------------------------------------------
-        # first we scale to the standard size
-
-        # adjusting the corners makes the algorithm robust to tracking differences.
-        top_offset = random.randint(0, 5) if augment else default_inset
-        bottom_offset = random.randint(0, 5) if augment else default_inset
-        left_offset = random.randint(0, 5) if augment else default_inset
-        right_offset = random.randint(0, 5) if augment else default_inset
-
-        scaled_frames = []
-
-        for frame in frames:
-
-            channels, frame_height, frame_width = frame.shape
-
-            if (
-                frame_height < Preprocessor.MIN_SIZE
-                or frame_width < Preprocessor.MIN_SIZE
-            ):
-                return
-
-            frame_bounds = tools.Rectangle(0, 0, frame_width, frame_height)
-
-            # set up a cropping frame
-            crop_region = tools.Rectangle.from_ltrb(
-                left_offset,
-                top_offset,
-                frame_width - right_offset,
-                frame_height - bottom_offset,
-            )
-
-            # if the frame is too small we make it a little larger
-            while crop_region.width < Preprocessor.MIN_SIZE:
-                crop_region.left -= 1
-                crop_region.right += 1
-                crop_region.crop(frame_bounds)
-            while crop_region.height < Preprocessor.MIN_SIZE:
-                crop_region.top -= 1
-                crop_region.bottom += 1
-                crop_region.crop(frame_bounds)
-
-            cropped_frame = frame[
-                :,
-                crop_region.top : crop_region.bottom,
-                crop_region.left : crop_region.right,
-            ]
-
-            scaled_frame = [
-                cv2.resize(
-                    cropped_frame[channel],
-                    dsize=(Preprocessor.FRAME_SIZE, Preprocessor.FRAME_SIZE),
-                    interpolation=cv2.INTER_LINEAR
-                    if channel != TrackChannels.mask
-                    else cv2.INTER_NEAREST,
-                )
-                for channel in range(channels)
-            ]
-            scaled_frame = np.float32(scaled_frame)
-
-            scaled_frames.append(scaled_frame)
-
-        # convert back into [F,C,H,W] array.
-        data = np.float32(scaled_frames)
-
-        # -------------------------------------------
-        # next adjust temperature and flow levels
-        # get reference level for thermal channel
-        assert len(data) == len(
-            reference_level
-        ), "Reference level shape and data shape not match."
-
-        # reference thermal levels to the reference level
-        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
-
-        # map optical flow down to right level,
-        # we pre-multiplied by 256 to fit into a 16bit int
-        data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
-
-        # write frame motion into center of frame
-        if encode_frame_offsets_in_flow:
-            F, C, H, W = data.shape
-            for x in range(-2, 2 + 1):
-                for y in range(-2, 2 + 1):
-                    data[:, 2 : 3 + 1, H // 2 + y, W // 2 + x] = frame_velocity[:, :]
-
-        # set filtered track to delta frames
-        reference = np.clip(data[:, 0], 20, 999)
-        data[0, 1] = 0
-        data[1:, 1] = reference[1:] - reference[:-1]
-
-        # -------------------------------------------
-        # finally apply and additional augmentation
-
-        if augment:
-            if random.random() <= 0.75:
-                # we will adjust contrast and levels, but only within these bounds.
-                # that is a bright input may have brightness reduced, but not increased.
-                LEVEL_OFFSET = 4
-
-                # apply level and contrast shift
-                level_adjust = random.normalvariate(0, LEVEL_OFFSET)
-                contrast_adjust = tools.random_log(0.9, (1 / 0.9))
-
-                data[:, 0] *= contrast_adjust
-                data[:, 0] += level_adjust
-
-            if random.random() <= 0.50:
-                # when we flip the frame remember to flip the horizontal velocity as well
-                data = np.flip(data, axis=3)
-                data[:, 2] = -data[:, 2]
-        return data
 
 
 class Dataset:
@@ -859,7 +718,7 @@ class Dataset:
         :return: segment data of shape [frames, channels, height, width]
         """
         data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
-        data = Preprocessor.apply(
+        data = preprocess_segment(
             data,
             reference_level=track.frame_temp_median,
             frame_velocity=track.frame_velocity,
@@ -909,7 +768,7 @@ class Dataset:
                 "invalid segment length %d, expected %d", len(data), len(segment_width)
             )
 
-        data = Preprocessor.apply(
+        data = preprocess_segment(
             data,
             segment.track.frame_temp_median[first_frame:last_frame],
             segment.track.frame_velocity[first_frame:last_frame],
@@ -986,8 +845,8 @@ class Dataset:
 
     def is_heavy_bin(self, bin_id, max_bin_segments, max_validation_set_track_duration):
         """
-            heavy bins are bins with more tracks whiche xceed track duration or max bin_segments
-            """
+        heavy bins are bins with more tracks which exceed track duration or max bin_segments
+        """
         bin_segments = self.get_bin_segments_count(bin_id)
         max_track_duration = self.get_bin_max_track_duration(bin_id)
         return (
@@ -999,8 +858,8 @@ class Dataset:
         self, bins, max_bin_segments, max_validation_set_track_duration
     ):
         """
-            heavy bins are bins with more tracks whiche xceed track duration or max bin_segments
-            """
+        heavy bins are bins with more tracks which exceed track duration or max bin_segments
+        """
         heavy_bins, normal_bins = [], []
         for bin_id in bins:
             if bin_id in self.tracks_by_bin:
