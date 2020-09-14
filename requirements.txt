@@ -10,7 +10,7 @@ sklearn
 tables~=3.4
 h5py~=2.7
 pyyaml>=4.2b1
-pillow~=5.4
+pillow~=6.2.0
 attrs~=19.1
 filelock~=3.0.12
 Astral~=1.10.1
