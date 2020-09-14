@@ -415,11 +415,12 @@ class KerasModel:
                 epochs=1,
                 load_threads=4,
                 cap_samples=False,
+                cap_at="wallaby",
                 type=self.type,
             )
-            # test_accuracy = self.model.evaluate(test)
-            # test.stop_load()
-            # logging.info("Test accuracy is %s", test_accuracy)
+            test_accuracy = self.model.evaluate(test)
+            test.stop_load()
+            logging.info("Test accuracy is %s", test_accuracy)
         self.save(run_name, history=history, test_results=test_accuracy)
 
     def checkpoints(self, run_name):
