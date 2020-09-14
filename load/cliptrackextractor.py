@@ -76,6 +76,8 @@ class ClipTrackExtractor:
                 camera_model = reader.model.decode()
             clip.set_model(camera_model)
 
+            # if we have the triggered motion threshold should use that
+            # maybe even override dynamic threshold with this value
             if reader.motion_config:
                 motion_config = yaml.safe_load(reader.motion_config)
                 temp_thresh = motion_config.get("triggeredthresh")
@@ -154,8 +156,8 @@ class ClipTrackExtractor:
 
         # GP dont think this matter with dynamic thresh
         # cap the threshold to something reasonable
-        # threshold = max(self.config.min_threshold, threshold)
-        # threshold = min(self.config.max_threshold, threshold)
+        threshold = max(self.config.min_threshold, threshold)
+        threshold = min(self.config.max_threshold, threshold)
 
         clip.threshold = threshold
         if self.calc_stats:

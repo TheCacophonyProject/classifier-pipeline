@@ -255,7 +255,7 @@ class ClipClassifier(CPTVFileProcessor):
         save_file = {}
         save_file["source"] = filename
         if clip.camera_model:
-            save_file["source"] = clip.camera_model
+            save_file["camera_model"] = clip.camera_model
         save_file["temp_thresh"] = clip.temp_thresh
         save_file["threshold"] = clip.threshold
         start, end = clip.start_and_end_time_absolute()
