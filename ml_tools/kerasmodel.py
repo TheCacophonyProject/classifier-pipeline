@@ -32,7 +32,7 @@ HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
 HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.0001]))
 HP_EPSILON = hp.HParam(
-    "epislon", hp.Discrete([1e-7, 1, 0.1])
+    "epislon", hp.Discrete([1e-7, 1.0, 0.1])
 )  # 1.0 and 0.1 for inception
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
 HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.3]))
