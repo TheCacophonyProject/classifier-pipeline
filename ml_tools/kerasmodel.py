@@ -32,7 +32,8 @@ HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
 HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.0001]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1, 0.1, 1e-7]))
-HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([None]))
+HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
+HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0, 0.3]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -169,7 +170,7 @@ class KerasModel:
             return tf.keras.applications.inception_v3.preprocess_input
         return None
 
-    def build_model(self, dense_sizes=None, retrain_from=None):
+    def build_model(self, dense_sizes=None, retrain_from=None, dropout=None):
         if not dense_sizes:
             dense_sizes = self.params.get("dense_sizes", [1024, 512])
         # note the model already applies batch_norm
@@ -195,9 +196,13 @@ class KerasModel:
             self.model = self.add_lstm(cnn)
         else:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
-
+            if dropout is None:
+                dropout = self.params.get("dropout", None)
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
+                if dropout:
+                    x = tf.keras.layers.Dropout(dropout)(x)
+
             preds = tf.keras.layers.Dense(
                 len(self.labels), activation="softmax", name="prediction"
             )(x)
@@ -672,7 +677,11 @@ class KerasModel:
         # if not self.model:
         dense_size = hparams[HP_DENSE_SIZES].split()
         retrain_layer = hparams[HP_RETRAIN]
-
+        dropout = hparams[HP_DROPOUT]
+        if dropout == 0:
+            dropout = None
+        if retrain_layer == -1:
+            retrain_layer = None
         type = hparams[HP_TYPE]
 
         for i, size in enumerate(dense_size):
@@ -715,7 +724,9 @@ class KerasModel:
             shuffle=True,
         )
         self.square_width = self.train.square_width
-        self.build_model(dense_sizes=dense_size, retrain_from=retrain_layer)
+        self.build_model(
+            dense_sizes=dense_size, retrain_from=retrain_layer, dropout=dropout
+        )
 
         opt = None
         learning_rate = hparams[HP_LEARNING_RATE]
@@ -750,6 +761,7 @@ class KerasModel:
                     HP_EPSILON,
                     HP_TYPE,
                     HP_RETRAIN,
+                    HP_DROPOUT,
                 ],
                 metrics=[
                     hp.Metric(METRIC_ACCURACY, display_name="Accuracy"),
@@ -766,20 +778,22 @@ class KerasModel:
                         for type in HP_TYPE.domain.values:
                             for optimizer in HP_OPTIMIZER.domain.values:
                                 for epsilon in HP_EPSILON.domain.values:
-                                    hparams = {
-                                        HP_DENSE_SIZES: dense_size,
-                                        HP_BATCH_SIZE: batch_size,
-                                        HP_LEARNING_RATE: learning_rate,
-                                        HP_OPTIMIZER: optimizer,
-                                        HP_EPSILON: epsilon,
-                                        HP_TYPE: type,
-                                        HP_RETRAIN: retrain,
-                                    }
-                                    run_name = "run-%d" % session_num
-                                    print("--- Starting trial: %s" % run_name)
-                                    print({h.name: hparams[h] for h in hparams})
-                                    self.run(dir + "/" + run_name, hparams)
-                                    session_num += 1
+                                    for dropout in HP_DROPOUT.domain.values:
+                                        hparams = {
+                                            HP_DENSE_SIZES: dense_size,
+                                            HP_BATCH_SIZE: batch_size,
+                                            HP_LEARNING_RATE: learning_rate,
+                                            HP_OPTIMIZER: optimizer,
+                                            HP_EPSILON: epsilon,
+                                            HP_TYPE: type,
+                                            HP_RETRAIN: retrain,
+                                            HP_DROPOUT: dropout,
+                                        }
+                                        run_name = "run-%d" % session_num
+                                        print("--- Starting trial: %s" % run_name)
+                                        print({h.name: hparams[h] for h in hparams})
+                                        self.run(dir + "/" + run_name, hparams)
+                                        session_num += 1
 
     def run(self, log_dir, hparams):
 
