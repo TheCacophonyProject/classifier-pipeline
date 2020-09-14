@@ -708,7 +708,6 @@ class KerasModel:
             randomize_epoch=False,
             shuffle=True,
         )
-        print("length of validate", len(self.validate))
         self.square_width = self.train.square_width
         self.build_model(dense_sizes=dense_size)
 
