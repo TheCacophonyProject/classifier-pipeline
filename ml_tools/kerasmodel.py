@@ -795,7 +795,7 @@ class KerasModel:
                                         print({h.name: hparams[h] for h in hparams})
                                         self.run(dir + "/" + run_name, hparams)
                                         session_num += 1
-        hparams[HP_RETRAIN]: 249
+        hparams[HP_RETRAIN] = 249
         run_name = "run-%d" % session_num
         print("--- Starting trial: %s" % run_name)
         print({h.name: hparams[h] for h in hparams})
