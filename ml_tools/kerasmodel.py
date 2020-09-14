@@ -32,6 +32,7 @@ HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
 HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.0001]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1, 0.1, 1e-7]))
+HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([None]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -168,7 +169,7 @@ class KerasModel:
             return tf.keras.applications.inception_v3.preprocess_input
         return None
 
-    def build_model(self, dense_sizes=None):
+    def build_model(self, dense_sizes=None, retrain_from=None):
         if not dense_sizes:
             dense_sizes = self.params.get("dense_sizes", [1024, 512])
         # note the model already applies batch_norm
@@ -202,14 +203,16 @@ class KerasModel:
             )(x)
             self.model = tf.keras.models.Model(inputs, outputs=preds)
 
-        if self.params.get("retrain_layer") is not None:
+        if retrain_from is None:
+            retrain_from = self.params.get("retrain_layer")
+        if retrain_from:
             for i, layer in enumerate(base_model.layers):
                 # if layer.name.endswith("_bn"):
                 #     # apparently this shouldn't matter as we set base_training = False
                 #     layer.trainable = False
                 #     logging.debug("dont train %s %s", i, layer.name)
                 # else:
-                layer.trainable = i >= self.params["retrain_layer"]
+                layer.trainable = i >= retrain_from
         else:
             base_model.trainable = self.params.get("base_training", False)
 
@@ -668,6 +671,8 @@ class KerasModel:
     def train_test_model(self, hparams, log_dir, epochs=3):
         # if not self.model:
         dense_size = hparams[HP_DENSE_SIZES].split()
+        retrain_layer = hparams[HP_RETRAIN]
+
         type = hparams[HP_TYPE]
 
         for i, size in enumerate(dense_size):
@@ -710,7 +715,7 @@ class KerasModel:
             shuffle=True,
         )
         self.square_width = self.train.square_width
-        self.build_model(dense_sizes=dense_size)
+        self.build_model(dense_sizes=dense_size, retrain_from=retrain_layer)
 
         opt = None
         learning_rate = hparams[HP_LEARNING_RATE]
@@ -744,6 +749,7 @@ class KerasModel:
                     HP_OPTIMIZER,
                     HP_EPSILON,
                     HP_TYPE,
+                    HP_RETRAIN,
                 ],
                 metrics=[
                     hp.Metric(METRIC_ACCURACY, display_name="Accuracy"),
@@ -754,23 +760,26 @@ class KerasModel:
 
         for batch_size in HP_BATCH_SIZE.domain.values:
             for dense_size in HP_DENSE_SIZES.domain.values:
-                for learning_rate in HP_LEARNING_RATE.domain.values:
-                    for type in HP_TYPE.domain.values:
-                        for optimizer in HP_OPTIMIZER.domain.values:
-                            for epsilon in HP_EPSILON.domain.values:
-                                hparams = {
-                                    HP_DENSE_SIZES: dense_size,
-                                    HP_BATCH_SIZE: batch_size,
-                                    HP_LEARNING_RATE: learning_rate,
-                                    HP_OPTIMIZER: optimizer,
-                                    HP_EPSILON: epsilon,
-                                    HP_TYPE: type,
-                                }
-                                run_name = "run-%d" % session_num
-                                print("--- Starting trial: %s" % run_name)
-                                print({h.name: hparams[h] for h in hparams})
-                                self.run(dir + "/" + run_name, hparams)
-                                session_num += 1
+                for retrain in HP_RETRAIN.domain.values:
+
+                    for learning_rate in HP_LEARNING_RATE.domain.values:
+                        for type in HP_TYPE.domain.values:
+                            for optimizer in HP_OPTIMIZER.domain.values:
+                                for epsilon in HP_EPSILON.domain.values:
+                                    hparams = {
+                                        HP_DENSE_SIZES: dense_size,
+                                        HP_BATCH_SIZE: batch_size,
+                                        HP_LEARNING_RATE: learning_rate,
+                                        HP_OPTIMIZER: optimizer,
+                                        HP_EPSILON: epsilon,
+                                        HP_TYPE: type,
+                                        HP_RETRAIN: retrain,
+                                    }
+                                    run_name = "run-%d" % session_num
+                                    print("--- Starting trial: %s" % run_name)
+                                    print({h.name: hparams[h] for h in hparams})
+                                    self.run(dir + "/" + run_name, hparams)
+                                    session_num += 1
 
     def run(self, log_dir, hparams):
 
