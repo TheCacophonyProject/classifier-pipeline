@@ -574,12 +574,13 @@ class Preprocessor:
     @staticmethod
     def apply(
         frames,
-        reference_level,
+        reference_level=None,
         frame_velocity=None,
         augment=False,
         encode_frame_offsets_in_flow=False,
         default_inset=0,
         keep_aspect=False,
+        flip=None,
     ):
         """
         Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
@@ -603,7 +604,7 @@ class Preprocessor:
         data = np.zeros(
             (
                 len(frames),
-                frames[0].shape[0],
+                len(frames[0]),
                 Preprocessor.FRAME_SIZE,
                 Preprocessor.FRAME_SIZE,
             ),
@@ -709,13 +710,14 @@ class Preprocessor:
         # -------------------------------------------
         # next adjust temperature and flow levels
         # get reference level for thermal channel
-        assert len(data) == len(
-            reference_level
-        ), "Reference level shape and data shape not match."
-        ref_avg = np.average(reference_level)
+        if reference_level is not None:
+            assert len(data) == len(
+                reference_level
+            ), "Reference level shape and data shape not match."
+            ref_avg = np.average(reference_level)
 
-        # reference thermal levels to the reference level
-        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
+            # reference thermal levels to the reference level
+            data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
 
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
@@ -751,7 +753,7 @@ class Preprocessor:
                 # augment filtered, no need for brightness, as will normalize anyway
                 data[:, 1] *= contrast_adjust
                 # data[:, 1] += level_adjust
-            if random.random() <= 0.50:
+            if flip or (flip is None and random.random() <= 0.50):
                 flipped = True
                 # when we flip the frame remember to flip the horizontal velocity as well
                 data = np.flip(data, axis=3)

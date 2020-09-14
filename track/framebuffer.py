@@ -56,15 +56,21 @@ class Frame:
 
     def as_array(self, split_flow=True):
         if split_flow:
-            return [
-                self.thermal,
-                self.filtered,
-                self.flow[:, :, 0] if self.flow is not None else None,
-                self.flow[:, :, 1] if self.flow is not None else None,
-                self.mask,
-            ]
+            return np.asarray(
+                [
+                    self.thermal,
+                    self.filtered,
+                    self.flow[:, :, 0]
+                    if self.flow is not None
+                    else np.zeros((self.thermal.shape)),
+                    self.flow[:, :, 1]
+                    if self.flow is not None
+                    else np.zeros((self.thermal.shape)),
+                    self.mask,
+                ]
+            )
 
-        return [self.thermal, self.filtered, self.flow, self.mask]
+        return np.asarray([self.thermal, self.filtered, self.flow, self.mask])
 
     def generate_optical_flow(self, opt_flow, prev_frame, flow_threshold=40):
         """
@@ -98,6 +104,25 @@ class Frame:
             else:
                 return self.flow_h, self.flow_v
         return None, None
+
+    def crop_by_region(self, region):
+        # make a new frame cropped by region
+        thermal = region.subimage(self.thermal)
+        filtered = region.subimage(self.filtered)
+        mask = region.subimage(self.mask)
+        flow = None
+        if self.flow is not None:
+            flow = region.subimage(self.flow)
+        frame = Frame(
+            thermal,
+            filtered,
+            mask,
+            self.frame_number,
+            flow_clipped=self.flow_clipped,
+            ffc_affected=self.ffc_affected,
+        )
+        frame.flow = flow
+        return frame
 
     @property
     def flow_h(self):

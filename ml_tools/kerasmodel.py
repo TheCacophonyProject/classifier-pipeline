@@ -25,13 +25,12 @@ from classify.trackprediction import TrackPrediction
 from sklearn.metrics import confusion_matrix
 
 #
-HP_DENSE_SIZES = hp.HParam(
-    "dense_sizes", hp.Discrete(["1024 1024 1024 512", "1024 512"]),
-)
+HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 1024 1024 512"]),)
+HP_TYPE = hp.HParam("type", hp.Discrete([0, 10, 11]),)
 
-HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([16, 32, 64]))
+HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
-HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.0001, 0.001, 0.01]))
+HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.0001]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -168,7 +167,9 @@ class KerasModel:
             return tf.keras.applications.inception_v3.preprocess_input
         return None
 
-    def build_model(self, dense_sizes=[1024, 512]):
+    def build_model(self, dense_sizes=None):
+        if not dense_sizes:
+            dense_sizes = self.params.get("dense_sizes", [1024, 512])
         # note the model already applies batch_norm
         width = self.frame_size
         if self.params.get("use_movement", False):
@@ -238,8 +239,10 @@ class KerasModel:
         optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
         return optimizer
 
-    def load_weights(self, dir, meta=True):
-        logging.info("loading weights %s", dir)
+    def load_weights(self, model_path, meta=True):
+        logging.info("loading weights %s", model_path)
+        dir = os.path.dirname(model_path)
+
         self.square_width = 5
         if meta:
             self.load_meta(dir)
@@ -247,9 +250,10 @@ class KerasModel:
             self.build_model()
         self.model.load_weights(dir + "/variables/variables")
 
-    def load_model(self, dir):
-        logging.info("Loading %s", dir)
-        self.model = tf.keras.models.load_model(dir)
+    def load_model(self, model_path):
+        logging.info("Loading %s", model_path)
+        self.model = tf.keras.models.load_model(model_path)
+        dir = os.path.dirname(model_path)
         self.load_meta(dir)
         self.model.summary()
 
@@ -264,7 +268,6 @@ class KerasModel:
         self.lstm = self.params.get("lstm", False)
         self.use_movement = self.params.get("use_movement", False)
         self.type = meta.get("type")
-        print("type is", self.type)
 
     def save(self, run_name=MODEL_NAME, history=None, test_results=None):
         # create a save point
@@ -405,9 +408,9 @@ class KerasModel:
                 cap_samples=False,
                 type=self.type,
             )
-            test_accuracy = self.model.evaluate(test)
-            test.stop_load()
-            logging.info("Test accuracy is %s", test_accuracy)
+            # test_accuracy = self.model.evaluate(test)
+            # test.stop_load()
+            # logging.info("Test accuracy is %s", test_accuracy)
         self.save(run_name, history=history, test_results=test_accuracy)
 
     def checkpoints(self, run_name):

@@ -219,7 +219,10 @@ class DataGenerator(keras.utils.Sequence):
             channel = TrackChannels.thermal
         else:
             channel = TrackChannels.filtered
-
+        num_segments = 1
+        segments = []
+        if self.type == 11:
+            num_segments = 2
         for sample in samples:
             if self.movement:
                 try:
@@ -240,31 +243,32 @@ class DataGenerator(keras.utils.Sequence):
                         sample.start_frame : sample.start_frame + len(segment_data)
                     ]
                 elif self.type >= 4:
+                    segments = []
+                    for i in range(num_segments):
+                        frames = np.random.choice(
+                            sample.track.important_frames,
+                            min(sample.frames, len(sample.track.important_frames)),
+                            replace=False,
+                        )
+                        # print("using frames", frames)
+                        segment_data = []
+                        ref = []
 
-                    frames = np.random.choice(
-                        sample.track.important_frames,
-                        min(sample.frames, len(sample.track.important_frames)),
-                        replace=False,
-                    )
-                    # print("using frames", frames)
-                    segment_data = []
-                    ref = []
+                        frames = [frame.frame_num for frame in frames]
+                        # sort??? or rather than random just apply a 1 second step
 
-                    frames = [frame.frame_num for frame in frames]
-                    # sort??? or rather than random just apply a 1 second step
-
-                    frames.sort()
-                    for frame_num in frames:
-                        segment_data.append(data[frame_num])
-                        ref.append(sample.track.frame_temp_median[frame_num])
+                        frames.sort()
+                        for frame_num in frames:
+                            segment_data.append(data[frame_num])
+                            ref.append(sample.track.frame_temp_median[frame_num])
+                        segments.append((segment_data, ref))
                 else:
                     segment_data = data
                     ref = sample.track.frame_temp_median[
                         sample.start_frame : sample.start_frame + len(data)
                     ]
-                segment, flipped = Preprocessor.apply(
-                    segment_data, ref, augment=self.augment, keep_aspect=self.type == 6
-                )
+                    segments.append((segment_data, ref))
+
                 if self.type < 3:
                     regions = sample.track.track_bounds[
                         sample.start_frame : sample.start_frame + sample.frames
@@ -274,7 +278,7 @@ class DataGenerator(keras.utils.Sequence):
 
                 data = preprocess_movement(
                     data,
-                    segment,
+                    segments,
                     self.square_width,
                     regions,
                     channel,
@@ -282,7 +286,7 @@ class DataGenerator(keras.utils.Sequence):
                     sample,
                     self.dataset.name,
                     self.type,
-                    flip=flipped,
+                    augment=self.augment,
                 )
             else:
                 try:
@@ -460,7 +464,10 @@ def movement(
     center_distance = 0
     min_distance = 2
     for i, frame in enumerate(frames):
-        region = tools.Rectangle.from_ltrb(*regions[i])
+        if isinstance(regions[i], tools.Rectangle):
+            region = regions[i]
+        else:
+            region = tools.Rectangle.from_ltrb(*regions[i])
         x = int(region.mid_x)
         y = int(region.mid_y)
 
@@ -486,7 +493,10 @@ def movement(
 
     # then draw dots so they go over the top
     for i, frame in enumerate(frames):
-        region = tools.Rectangle.from_ltrb(*regions[i])
+        if isinstance(regions[i], tools.Rectangle):
+            region = regions[i]
+        else:
+            region = tools.Rectangle.from_ltrb(*regions[i])
         x = int(region.mid_x)
         y = int(region.mid_y)
         d.point((x, y), fill=dot_colour)
@@ -496,7 +506,7 @@ def movement(
 
 def preprocess_movement(
     data,
-    segment,
+    segments,
     square_width,
     regions,
     channel,
@@ -504,24 +514,35 @@ def preprocess_movement(
     sample=None,
     dataset=None,
     type=0,
-    flip=False,
+    augment=False,
 ):
     # doesn't seem to improve anything, infact makes worse
     # flip = False
     if type == 7:
+        segment = segments[0]
         flow_h = segment[:, TrackChannels.flow_h]
         flow_v = segment[:, TrackChannels.flow_v]
         square_flow, success = square_clip_flow(flow_h, flow_v, square_width, type)
     if type == 8:
+        segment = segments[0]
         square_therm, success = square_clip(
             segment[:, TrackChannels.thermal], square_width, type
         )
+    squares = []
+    flipped = False
+    for segment in segments:
+        segment, flipped_data = Preprocessor.apply(
+            *segment, augment=augment, default_inset=0, flip=flipped,
+        )
+        flipped = flipped_data or flipped
+        segment = segment[:, channel]
+        # as long as one frame is fine
+        square, success = square_clip(segment, square_width, type)
+        if not success:
+            return None
+        squares.append(square)
 
-    segment = segment[:, channel]
-    # as long as one frame is fine
-    square, success = square_clip(segment, square_width, type)
-    if not success:
-        return None
+    square = squares[0]
     dots, overlay = movement(
         data, regions, dim=square.shape, channel=channel, require_movement=type >= 5,
     )
@@ -529,7 +550,7 @@ def preprocess_movement(
     overlay, success = normalize(overlay, min=0)
     if not success:
         return None
-    if flip and type == 10:
+    if flipped and type == 10:
         overlay = np.flip(overlay, axis=1)
         dots = np.flip(dots, axis=1)
 
@@ -550,6 +571,10 @@ def preprocess_movement(
         data[:, :, 0] = square
         data[:, :, 1] = square_therm  # dots
         data[:, :, 2] = overlay  # overlay
+    elif type == 11:
+        data[:, :, 0] = square
+        data[:, :, 1] = squares[1]
+        data[:, :, 2] = overlay  # overlay
     else:
         data[:, :, 0] = square
         data[:, :, 1] = dots  # dots
@@ -559,7 +584,7 @@ def preprocess_movement(
     # savemovement(
     #     data,
     #     "samples/{}/{}/{}-{}-{}".format(
-    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, flip
+    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, flipped
     #     ),
     # )
 
@@ -588,7 +613,6 @@ def preprocess_lstm(
     # pre proce expects values in range 0-255
     if preprocess_fn:
         for i, frame in enumerate(data):
-
             frame = frame * 255
             data[i] = preprocess_fn(frame)
     return data

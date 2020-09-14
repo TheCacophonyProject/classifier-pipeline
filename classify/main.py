@@ -72,7 +72,22 @@ def main():
     model_file = config.classify.model
     if args.model_file:
         model_file = args.model_file
-    clip_classifier = ClipClassifier(config, config.classify_tracking, model_file)
+
+    path, ext = os.path.splitext(model_file)
+    keras_model = False
+    if ext == ".pb":
+        keras_model = True
+        weights_path = os.path.dirname(model_file) + "/variables/variables.index"
+        if not os.path.exists(os.path.join(weights_path)):
+            logging.error("No weights found named '{}'.".format(weights_path))
+            exit(13)
+    elif not os.path.exists(model_file + ".meta"):
+        logging.error("No model found named '{}'.".format(model_file + ".meta"))
+        exit(13)
+
+    clip_classifier = ClipClassifier(
+        config, config.classify_tracking, model_file, keras_model
+    )
 
     # parse start and end dates
     if args.start_date:
@@ -85,12 +100,6 @@ def main():
 
     if not config.use_gpu:
         logging.info("GPU mode disabled.")
-
-    if not os.path.exists(clip_classifier.model_file + ".meta"):
-        logging.error(
-            "No model found named '{}'.".format(clip_classifier.model_file + ".meta")
-        )
-        exit(13)
 
     # just fetch the classifier now so it doesn't impact the benchmarking on the first clip analysed.
     _ = clip_classifier.classifier
