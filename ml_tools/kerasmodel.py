@@ -25,7 +25,7 @@ from classify.trackprediction import TrackPrediction
 from sklearn.metrics import confusion_matrix
 
 #
-HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 512"]),)
+HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 1024 1024 512"]),)
 HP_TYPE = hp.HParam("type", hp.Discrete([12]),)
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
