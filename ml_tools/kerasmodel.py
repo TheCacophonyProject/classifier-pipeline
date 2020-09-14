@@ -667,6 +667,8 @@ class KerasModel:
     def train_test_model(self, hparams, log_dir, epochs=3):
         # if not self.model:
         dense_size = hparams[HP_DENSE_SIZES].split()
+        type = hparams[HP_TYPE]
+
         for i, size in enumerate(dense_size):
             dense_size[i] = int(size)
 
@@ -683,7 +685,7 @@ class KerasModel:
             epochs=epochs,
             load_threads=self.params.get("train_load_threads", 1),
             use_movement=self.params.get("use_movement", False),
-            type=self.type,
+            type=type,
             cap_at="wallaby",
             randomize_epoch=False,
             shuffle=True,
@@ -701,11 +703,12 @@ class KerasModel:
             epochs=epochs,
             load_threads=1,
             use_movement=self.params.get("use_movement", False),
-            type=self.type,
+            type=type,
             cap_at="wallaby",
             randomize_epoch=False,
             shuffle=True,
         )
+        print("length of validate", len(self.validate))
         self.square_width = self.train.square_width
         self.build_model(dense_sizes=dense_size)
 
@@ -743,18 +746,21 @@ class KerasModel:
         for batch_size in HP_BATCH_SIZE.domain.values:
             for dense_size in HP_DENSE_SIZES.domain.values:
                 for learning_rate in HP_LEARNING_RATE.domain.values:
-                    for optimizer in HP_OPTIMIZER.domain.values:
-                        hparams = {
-                            HP_DENSE_SIZES: dense_size,
-                            HP_BATCH_SIZE: batch_size,
-                            HP_LEARNING_RATE: learning_rate,
-                            HP_OPTIMIZER: optimizer,
-                        }
-                        run_name = "run-%d" % session_num
-                        print("--- Starting trial: %s" % run_name)
-                        print({h.name: hparams[h] for h in hparams})
-                        self.run(dir + "/" + run_name, hparams)
-                        session_num += 1
+                    for type in HP_TYPE.domain.values:
+
+                        for optimizer in HP_OPTIMIZER.domain.values:
+                            hparams = {
+                                HP_DENSE_SIZES: dense_size,
+                                HP_BATCH_SIZE: batch_size,
+                                HP_LEARNING_RATE: learning_rate,
+                                HP_OPTIMIZER: optimizer,
+                                HP_TYPE: type,
+                            }
+                            run_name = "run-%d" % session_num
+                            print("--- Starting trial: %s" % run_name)
+                            print({h.name: hparams[h] for h in hparams})
+                            self.run(dir + "/" + run_name, hparams)
+                            session_num += 1
 
     def run(self, log_dir, hparams):
 
