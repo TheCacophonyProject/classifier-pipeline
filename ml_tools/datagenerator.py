@@ -532,7 +532,7 @@ def preprocess_movement(
     flipped = False
     for segment in segments:
         segment, flipped_data = Preprocessor.apply(
-            segment, augment=augment, default_inset=0, flip=flipped,
+            *segment, augment=augment, default_inset=0, flip=flipped,
         )
         flipped = flipped_data or flipped
         segment = segment[:, channel]
