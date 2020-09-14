@@ -31,6 +31,7 @@ HP_TYPE = hp.HParam("type", hp.Discrete([0, 10, 11]),)
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
 HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.0001]))
+HP_EPSILON = hp.HParam("epislon", hp.Discrete([1, 0.1, 1e-7]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -203,12 +204,12 @@ class KerasModel:
 
         if self.params.get("retrain_layer") is not None:
             for i, layer in enumerate(base_model.layers):
-                if layer.name.endswith("_bn"):
-                    # apparently this shouldn't matter as we set base_training = False
-                    layer.trainable = False
-                    logging.debug("dont train %s %s", i, layer.name)
-                else:
-                    layer.trainable = i >= self.params["retrain_layer"]
+                # if layer.name.endswith("_bn"):
+                #     # apparently this shouldn't matter as we set base_training = False
+                #     layer.trainable = False
+                #     logging.debug("dont train %s %s", i, layer.name)
+                # else:
+                layer.trainable = i >= self.params["retrain_layer"]
         else:
             base_model.trainable = self.params.get("base_training", False)
 
@@ -713,10 +714,12 @@ class KerasModel:
 
         opt = None
         learning_rate = hparams[HP_LEARNING_RATE]
+        epsilon = hparams[HP_EPSILON]
+
         if hparams[HP_OPTIMIZER] == "adam":
-            opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+            opt = tf.keras.optimizers.Adam(learning_rate=learning_rate, epsilon=epsilon)
         else:
-            opt = tf.keras.optimizers.SGD(learning_rate=learning_rate)
+            opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, epsilon=epsilon)
         self.model.compile(
             optimizer=opt, loss=self.loss(), metrics=["accuracy"],
         )
@@ -734,7 +737,14 @@ class KerasModel:
         dir = self.log_dir + "/hparam_tuning"
         with tf.summary.create_file_writer(dir).as_default():
             hp.hparams_config(
-                hparams=[HP_BATCH_SIZE],
+                hparams=[
+                    HP_BATCH_SIZE,
+                    HP_DENSE_SIZES,
+                    HP_LEARNING_RATE,
+                    HP_OPTIMIZER,
+                    HP_EPSILON,
+                    HP_TYPE,
+                ],
                 metrics=[
                     hp.Metric(METRIC_ACCURACY, display_name="Accuracy"),
                     hp.Metric(METRIC_LOSS, display_name="Loss"),
@@ -746,20 +756,21 @@ class KerasModel:
             for dense_size in HP_DENSE_SIZES.domain.values:
                 for learning_rate in HP_LEARNING_RATE.domain.values:
                     for type in HP_TYPE.domain.values:
-
                         for optimizer in HP_OPTIMIZER.domain.values:
-                            hparams = {
-                                HP_DENSE_SIZES: dense_size,
-                                HP_BATCH_SIZE: batch_size,
-                                HP_LEARNING_RATE: learning_rate,
-                                HP_OPTIMIZER: optimizer,
-                                HP_TYPE: type,
-                            }
-                            run_name = "run-%d" % session_num
-                            print("--- Starting trial: %s" % run_name)
-                            print({h.name: hparams[h] for h in hparams})
-                            self.run(dir + "/" + run_name, hparams)
-                            session_num += 1
+                            for epsilon in HP_EPSILON.domain.values:
+                                hparams = {
+                                    HP_DENSE_SIZES: dense_size,
+                                    HP_BATCH_SIZE: batch_size,
+                                    HP_LEARNING_RATE: learning_rate,
+                                    HP_OPTIMIZER: optimizer,
+                                    HP_EPSILON: epsilon,
+                                    HP_TYPE: type,
+                                }
+                                run_name = "run-%d" % session_num
+                                print("--- Starting trial: %s" % run_name)
+                                print({h.name: hparams[h] for h in hparams})
+                                self.run(dir + "/" + run_name, hparams)
+                                session_num += 1
 
     def run(self, log_dir, hparams):
 
