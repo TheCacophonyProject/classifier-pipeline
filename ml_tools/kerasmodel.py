@@ -31,7 +31,9 @@ HP_TYPE = hp.HParam("type", hp.Discrete([12]),)
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
 HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.0001]))
-HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
+HP_EPSILON = hp.HParam(
+    "epislon", hp.Discrete([1e-7, 1, 0.1])
+)  # 1.0 and 0.1 for inception
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
 HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.3]))
 
@@ -767,7 +769,7 @@ class KerasModel:
                 ],
             )
         session_num = 0
-
+        hparams = {}
         for batch_size in HP_BATCH_SIZE.domain.values:
             for dense_size in HP_DENSE_SIZES.domain.values:
                 for retrain in HP_RETRAIN.domain.values:
@@ -792,6 +794,12 @@ class KerasModel:
                                         print({h.name: hparams[h] for h in hparams})
                                         self.run(dir + "/" + run_name, hparams)
                                         session_num += 1
+        hparams[HP_RETRAIN]: 249
+        run_name = "run-%d" % session_num
+        print("--- Starting trial: %s" % run_name)
+        print({h.name: hparams[h] for h in hparams})
+        self.run(dir + "/" + run_name, hparams)
+        session_num += 1
 
     def run(self, log_dir, hparams):
 
