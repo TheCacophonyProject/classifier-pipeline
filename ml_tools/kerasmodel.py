@@ -213,6 +213,7 @@ class KerasModel:
         if retrain_from is None:
             retrain_from = self.params.get("retrain_layer")
         if retrain_from:
+            base_model.trainable = True
             for i, layer in enumerate(base_model.layers):
                 # if layer.name.endswith("_bn"):
                 #     # apparently this shouldn't matter as we set base_training = False
