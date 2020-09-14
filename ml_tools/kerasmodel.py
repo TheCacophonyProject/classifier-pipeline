@@ -687,11 +687,11 @@ class KerasModel:
 
         for i, size in enumerate(dense_size):
             dense_size[i] = int(size)
-
+        self.train.batch_size = hparams.get(HP_BATCH_SIZE, 32)
         self.validate.batch_size = hparams.get(HP_BATCH_SIZE, 32)
         self.square_width = self.train.square_width
         self.build_model(
-            dense_sizes=dense_size, retrain_from=retrain_layer, dropout=dropout
+            dense_sizes=dense_size, retrain_from=retrain_layer, dropout=dropout,
         )
 
         opt = None
@@ -708,9 +708,10 @@ class KerasModel:
         history = self.model.fit(
             self.train, epochs=epochs, shuffle=False, validation_data=self.validate
         )
+
         # _, accuracy = self.model.evaluate(self.validate)
         self.train.stop_load()
-        self.validate.stop_load()
+        # self.validate.stop_load()
         return history
 
     def test_hparams(self):
@@ -718,10 +719,12 @@ class KerasModel:
         self.datasets.validation.set_samples(cap_at="wallaby", label_cap=200)
         epochs = 6
         type = 12
+        batch_size = 32
         self.train = DataGenerator(
             self.datasets.train,
             self.datasets.train.labels,
             len(self.datasets.train.labels),
+            batch_size=batch_size,
             lstm=self.params.get("lstm", False),
             buffer_size=self.params.get("buffer_size", 128),
             use_thermal=self.params.get("use_thermal", False),
@@ -739,6 +742,7 @@ class KerasModel:
             self.datasets.validation,
             self.datasets.train.labels,
             len(self.datasets.train.labels),
+            batch_size=batch_size,
             buffer_size=self.params.get("buffer_size", 128),
             lstm=self.params.get("lstm", False),
             use_thermal=self.params.get("use_thermal", False),

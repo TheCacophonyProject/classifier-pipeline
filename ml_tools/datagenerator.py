@@ -82,13 +82,14 @@ class DataGenerator(keras.utils.Sequence):
         self.preload = preload
         if self.preload:
             self.load_queue = multiprocessing.Queue()
-
+        if self.preload:
+            self.preloader_queue = multiprocessing.Queue(buffer_size)
         self.load_next_epoch()
         self.on_epoch_end()
         self.cur_epoch = 0
 
         if self.preload:
-            self.preloader_queue = multiprocessing.Queue(buffer_size)
+            # self.preloader_queue = multiprocessing.Queue(buffer_size)
             self.preloader_stop_flag = False
 
             self.preloader_threads = [
@@ -138,7 +139,9 @@ class DataGenerator(keras.utils.Sequence):
         start = time.time()
         samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
         X, y = self._data(samples)
-        logging.debug("Time to get data %s", time.time() - start)
+        logging.debug(
+            "%s - %s Time to get data %s", self.dataset.name, index, time.time() - start
+        )
 
         return X, y
 
@@ -147,23 +150,28 @@ class DataGenerator(keras.utils.Sequence):
         # Generate indexes of the batch
         logging.debug("%s requsting index %s", self.dataset.name, index)
         if self.keep_epoch and self.use_previous_epoch is not None:
+
             return (
-                self.epoch_data[self.use_previous_epoch][0],
-                self.epoch_data[self.use_previous_epoch][1],
+                self.epoch_data[self.use_previous_epoch][0][
+                    index * self.batch_size : (index + 1) * self.batch_size
+                ],
+                self.epoch_data[self.use_previous_epoch][1][
+                    index * self.batch_size : (index + 1) * self.batch_size
+                ],
             )
         if self.preload:
             X, y = self.preloader_queue.get()
         else:
             X, y = self.loadbatch(index)
         if self.keep_epoch:
-            self.epoch_data[self.cur_epoch][0][index] = None
+            self.epoch_data[self.cur_epoch][0][index] = X
             self.epoch_data[self.cur_epoch][1][index] = y
-            # (X, y))
+
         if (index + 1) == len(self):
-            self.load_next_epoch()
+            self.load_next_epoch(True)
         return X, y
 
-    def load_next_epoch(self):
+    def load_next_epoch(self, reuse=False):
         # if self.type == 9:
         #     self.dataset.random_segments()
 
@@ -184,14 +192,17 @@ class DataGenerator(keras.utils.Sequence):
         #         / len(self.samples)
         #         * 200,
         #     )
-        if self.randomize_epoch is False and self.keep_epoch and self.cur_epoch > 0:
+        if self.randomize_epoch is False and self.keep_epoch and reuse:
+            X = [item for batch in self.epoch_data[self.cur_epoch][0] for item in batch]
+            y = [item for batch in self.epoch_data[self.cur_epoch][1] for item in batch]
             if self.shuffle:
-                self.epoch_data[self.cur_epoch][0] = np.random.shuffle(
-                    self.epoch_data[self.cur_epoch][0]
-                )
-                self.epoch_data[self.cur_epoch][1] = np.random.shuffle(
-                    self.epoch_data[self.cur_epoch][1]
-                )
+                X = np.asarray(X)
+                y = np.asarray(y)
+                indices = np.arange(len(X))
+                np.random.shuffle(indices)
+                X = X[indices]
+                y = y[indices]
+            self.epoch_data[self.cur_epoch] = (X, y)
             self.use_previous_epoch = 0
             logging.debug("Reusing previous epoch data for epoch %s", self.cur_epoch)
             self.stop_load()
@@ -206,10 +217,14 @@ class DataGenerator(keras.utils.Sequence):
             if self.shuffle:
                 np.random.shuffle(self.samples)
         if self.preload:
+            X, y = self.loadbatch(0)
+            # load 0 first, twice
             # for some reason it always requests 0 twice
-            self.load_queue.put(0)
-            for i in range(len(self)):
-                self.load_queue.put(i)
+            self.preloader_queue.put((X, y))
+            self.preloader_queue.put((X, y))
+
+            for i in range(len(self) - 1):
+                self.load_queue.put(i + 1)
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
