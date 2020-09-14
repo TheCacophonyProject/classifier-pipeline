@@ -688,42 +688,7 @@ class KerasModel:
         for i, size in enumerate(dense_size):
             dense_size[i] = int(size)
 
-        self.train = DataGenerator(
-            self.datasets.train,
-            self.datasets.train.labels,
-            len(self.datasets.train.labels),
-            batch_size=hparams.get(HP_BATCH_SIZE, 32),
-            lstm=self.params.get("lstm", False),
-            buffer_size=self.params.get("buffer_size", 128),
-            use_thermal=self.params.get("use_thermal", False),
-            use_filtered=self.params.get("use_filtered", False),
-            model_preprocess=self.preprocess_fn,
-            epochs=epochs,
-            load_threads=self.params.get("train_load_threads", 1),
-            use_movement=self.params.get("use_movement", False),
-            type=type,
-            cap_at="wallaby",
-            randomize_epoch=False,
-            shuffle=True,
-        )
-        self.validate = DataGenerator(
-            self.datasets.validation,
-            self.datasets.train.labels,
-            len(self.datasets.train.labels),
-            batch_size=hparams.get(HP_BATCH_SIZE, 32),
-            buffer_size=self.params.get("buffer_size", 128),
-            lstm=self.params.get("lstm", False),
-            use_thermal=self.params.get("use_thermal", False),
-            use_filtered=self.params.get("use_filtered", False),
-            model_preprocess=self.preprocess_fn,
-            epochs=epochs,
-            load_threads=1,
-            use_movement=self.params.get("use_movement", False),
-            type=type,
-            cap_at="wallaby",
-            randomize_epoch=False,
-            shuffle=True,
-        )
+        self.validate.batch_size = hparams.get(HP_BATCH_SIZE, 32)
         self.square_width = self.train.square_width
         self.build_model(
             dense_sizes=dense_size, retrain_from=retrain_layer, dropout=dropout
@@ -751,6 +716,42 @@ class KerasModel:
     def test_hparams(self):
         self.datasets.train.set_samples(cap_at="wallaby", label_cap=1000)
         self.datasets.validation.set_samples(cap_at="wallaby", label_cap=200)
+        epochs = 6
+        type = 12
+        self.train = DataGenerator(
+            self.datasets.train,
+            self.datasets.train.labels,
+            len(self.datasets.train.labels),
+            lstm=self.params.get("lstm", False),
+            buffer_size=self.params.get("buffer_size", 128),
+            use_thermal=self.params.get("use_thermal", False),
+            use_filtered=self.params.get("use_filtered", False),
+            model_preprocess=self.preprocess_fn,
+            load_threads=self.params.get("train_load_threads", 1),
+            use_movement=self.params.get("use_movement", False),
+            cap_at="wallaby",
+            randomize_epoch=False,
+            shuffle=True,
+            keep_epoch=True,
+            type=type,
+        )
+        self.validate = DataGenerator(
+            self.datasets.validation,
+            self.datasets.train.labels,
+            len(self.datasets.train.labels),
+            buffer_size=self.params.get("buffer_size", 128),
+            lstm=self.params.get("lstm", False),
+            use_thermal=self.params.get("use_thermal", False),
+            use_filtered=self.params.get("use_filtered", False),
+            model_preprocess=self.preprocess_fn,
+            epochs=epochs,
+            use_movement=self.params.get("use_movement", False),
+            cap_at="wallaby",
+            randomize_epoch=False,
+            shuffle=True,
+            keep_epoch=True,
+            type=type,
+        )
         dir = self.log_dir + "/hparam_tuning"
         with tf.summary.create_file_writer(dir).as_default():
             hp.hparams_config(

@@ -166,31 +166,45 @@ class DataGenerator(keras.utils.Sequence):
     def load_next_epoch(self):
         # if self.type == 9:
         #     self.dataset.random_segments()
-        self.samples = self.dataset.epoch_samples(
-            cap_samples=self.cap_samples,
-            replace=False,
-            random=self.randomize_epoch,
-            cap_at=self.cap_at,
-        )
-        labels = set([sample.track.label for sample in self.samples])
-        for label in labels:
-            logging.info(
-                "%s epoch %s lbl %s has %s",
-                self.dataset.name,
-                self.cur_epoch,
-                label,
-                len(
-                    [
-                        sample.track.label
-                        for sample in self.samples
-                        if sample.label == label
-                    ]
+
+        # labels = set([sample.track.label for sample in self.samples])
+        # for label in labels:
+        #     logging.info(
+        #         "%s epoch %s lbl %s has %s",
+        #         self.dataset.name,
+        #         self.cur_epoch,
+        #         label,
+        #         len(
+        #             [
+        #                 sample.track.label
+        #                 for sample in self.samples
+        #                 if sample.label == label
+        #             ]
+        #         )
+        #         / len(self.samples)
+        #         * 200,
+        #     )
+        if self.randomize_epoch is False and self.keep_epoch and self.cur_epoch > 0:
+            if self.shuffle:
+                self.epoch_data[self.cur_epoch][0] = np.random.shuffle(
+                    self.epoch_data[self.cur_epoch][0]
                 )
-                / len(self.samples)
-                * 200,
+                self.epoch_data[self.cur_epoch][1] = np.random.shuffle(
+                    self.epoch_data[self.cur_epoch][1]
+                )
+            self.use_previous_epoch = 0
+            logging.debug("Reusing previous epoch data for epoch %s", self.cur_epoch)
+            self.stop_load()
+            return
+        else:
+            self.samples = self.dataset.epoch_samples(
+                cap_samples=self.cap_samples,
+                replace=False,
+                random=self.randomize_epoch,
+                cap_at=self.cap_at,
             )
-        if self.shuffle:
-            np.random.shuffle(self.samples)
+            if self.shuffle:
+                np.random.shuffle(self.samples)
         if self.preload:
             # for some reason it always requests 0 twice
             self.load_queue.put(0)
