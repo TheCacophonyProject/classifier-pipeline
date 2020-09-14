@@ -74,6 +74,19 @@ A pre-trained model can be used to classify objects within a CPTV video
 
 This will generate a text file listing the animals identified, and create an MPEG preview file.
 
+## Classification and Training Images
+
+Single frame models use 48 x 48 frames to classify/train
+
+![picture alt](readme/wallabyframe.png "Wallaby Frame")
+
+Multi frame models use:
+ * 25 frames arranged in a square for the red channel
+ * Dots describing the centre of all tracked regions and lines connecting the dots for the green channel
+ * Track Filtered frames overlaid where they have moved enough from the previous overlaid frame for the blue channel
+
+![picture alt](readme/wallabymovement.png "Wallaby Movement")
+
 ## Release and Update
 
 1. Create a release on GitHub (https://github.com/TheCacophonyProject/Project-Overview/wiki/Releases)
@@ -99,6 +112,3 @@ This will generate a text file listing the animals identified, and create an MPE
 7. View logs
 
 	`journalctl -u cacophony-processing.thermal@xx.service -f`
-
-
-

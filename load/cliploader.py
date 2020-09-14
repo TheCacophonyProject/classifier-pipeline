@@ -24,14 +24,12 @@ import multiprocessing
 import time
 
 from ml_tools import tools
-from ml_tools.dataset import TrackChannels
-from ml_tools import trackdatabase
 from ml_tools.trackdatabase import TrackDatabase
 
 from ml_tools.previewer import Previewer
 from .clip import Clip
 from .cliptrackextractor import ClipTrackExtractor
-from track.track import Track
+from track.track import Track, TrackChannels
 
 
 def process_job(job):
