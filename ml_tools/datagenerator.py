@@ -532,7 +532,7 @@ def preprocess_movement(
     flipped = False
     for segment in segments:
         segment, flipped_data = Preprocessor.apply(
-            *segment, augment=augment, default_inset=0, flip=flipped,
+            segment, augment=augment, default_inset=0, flip=flipped,
         )
         flipped = flipped_data or flipped
         segment = segment[:, channel]
@@ -555,30 +555,34 @@ def preprocess_movement(
         dots = np.flip(dots, axis=1)
 
     data = np.empty((square.shape[0], square.shape[1], 3))
-    if type == 0:
+    if type == 4:
         data[:, :, 0] = square
-        data[:, :, 1] = square  # dots
-        data[:, :, 2] = square  # overlay
+        data[:, :, 1] = square
+        data[:, :, 2] = square
     elif type == 1:
         data[:, :, 0] = square
-        data[:, :, 1] = square  # dots
-        data[:, :, 2] = overlay  # overlay
+        data[:, :, 1] = square
+        data[:, :, 2] = overlay
     elif type == 7:
         data[:, :, 0] = square
-        data[:, :, 1] = square_flow  # dots
-        data[:, :, 2] = overlay  # overlay
+        data[:, :, 1] = square_flow
+        data[:, :, 2] = overlay
     elif type == 8:
         data[:, :, 0] = square
-        data[:, :, 1] = square_therm  # dots
-        data[:, :, 2] = overlay  # overlay
+        data[:, :, 1] = square_therm
+        data[:, :, 2] = overlay
     elif type == 11:
         data[:, :, 0] = square
         data[:, :, 1] = squares[1]
-        data[:, :, 2] = overlay  # overlay
+        data[:, :, 2] = overlay
+    elif type == 12:
+        data[:, :, 0] = square
+        data[:, :, 1] = np.zeros((dots.shape))
+        data[:, :, 2] = overlay
     else:
         data[:, :, 0] = square
-        data[:, :, 1] = dots  # dots
-        data[:, :, 2] = overlay  # overlay
+        data[:, :, 1] = dots
+        data[:, :, 2] = overlay
 
     # #
     # savemovement(

@@ -25,15 +25,15 @@ from classify.trackprediction import TrackPrediction
 from sklearn.metrics import confusion_matrix
 
 #
-HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 1024 1024 512"]),)
+HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 512"]),)
 HP_TYPE = hp.HParam("type", hp.Discrete([0, 10, 11]),)
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
 HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.0001]))
-HP_EPSILON = hp.HParam("epislon", hp.Discrete([1, 0.1, 1e-7]))
+HP_EPSILON = hp.HParam("epislon", hp.Discrete([0.1, 1e-7, 1.0]))
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
-HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0, 0.3]))
+HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0, 0.3]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -524,7 +524,6 @@ class KerasModel:
                         f = data[frame_i]
                         segment.append(f)
                         median[i] = np.median(f[0])
-                    segment, flipped = Preprocessor.apply(segment, median)
                 else:
                     start = i * frames_per_classify
                     end = start + frames_per_classify
@@ -537,16 +536,14 @@ class KerasModel:
                     segment = square_data
                     for i, f in enumerate(segment):
                         median[i] = np.median(f[0])
-                    segment, flipped = Preprocessor.apply(segment, median)
                 frames = preprocess_movement(
                     square_data,
-                    segment,
+                    [(segment)],
                     self.square_width,
                     region_data,
                     channel,
                     self.preprocess_fn,
                     type=self.type,
-                    flip=flipped,
                 )
                 if frames is None:
                     print("frames are none")
@@ -679,7 +676,7 @@ class KerasModel:
         dense_size = hparams[HP_DENSE_SIZES].split()
         retrain_layer = hparams[HP_RETRAIN]
         dropout = hparams[HP_DROPOUT]
-        if dropout == 0:
+        if dropout == 0.0:
             dropout = None
         if retrain_layer == -1:
             retrain_layer = None
