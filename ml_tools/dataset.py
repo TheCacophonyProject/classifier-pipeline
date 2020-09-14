@@ -1295,8 +1295,10 @@ class Dataset:
         else:
             return data
 
-    def set_samples(self, cap_at=None):
-        samples = self.epoch_samples(cap_at=cap_at, cap_samples=True)
+    def set_samples(self, cap_at=None, label_cap=None):
+        samples = self.epoch_samples(
+            cap_at=cap_at, cap_samples=True, label_cap=label_cap
+        )
         self.segments_by_label = {}
         for seg in samples:
             segs = self.segments_by_label.setdefault(seg.track.label, [])
@@ -1304,12 +1306,14 @@ class Dataset:
         self.segments = samples
         self.rebuild_cdf()
 
-    def epoch_samples(self, cap_samples=None, replace=True, random=True, cap_at=None):
+    def epoch_samples(
+        self, cap_samples=None, replace=True, random=True, cap_at=None, label_cap=None
+    ):
         if len(self.labels) == 0:
             return []
         labels = self.labels.copy()
         samples = []
-        if cap_samples:
+        if cap_samples and label_cap is None:
             if cap_at:
                 label_cap = len(self.samples_for(cap_at))
             else:
