@@ -749,8 +749,8 @@ class KerasModel:
         return history
 
     def test_hparams(self):
-        self.datasets.train.set_samples(cap_at="wallaby")
-        self.datasets.validation.set_samples(cap_at="wallaby")
+        self.datasets.train.set_samples(cap_at="wallaby", label_cap=1000)
+        self.datasets.validation.set_samples(cap_at="wallaby", label_cap=200)
         dir = self.log_dir + "/hparam_tuning"
         with tf.summary.create_file_writer(dir).as_default():
             hp.hparams_config(
