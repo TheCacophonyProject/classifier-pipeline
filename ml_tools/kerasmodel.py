@@ -674,7 +674,7 @@ class KerasModel:
         print("learning1", accuracy)
 
     # GRID SEARCH
-    def train_test_model(self, hparams, log_dir, epochs=3):
+    def train_test_model(self, hparams, log_dir, epochs=6):
         # if not self.model:
         dense_size = hparams[HP_DENSE_SIZES].split()
         retrain_layer = hparams[HP_RETRAIN]
