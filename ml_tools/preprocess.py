@@ -77,7 +77,7 @@ def preprocess_segment(
 
         scaled_frame = [
             cv2.resize(
-                cropped_frame[channel],
+                np.float32(cropped_frame[channel]),
                 dsize=(FRAME_SIZE, FRAME_SIZE),
                 interpolation=cv2.INTER_LINEAR
                 if channel != TrackChannels.mask
@@ -85,7 +85,6 @@ def preprocess_segment(
             )
             for channel in range(channels)
         ]
-        scaled_frame = np.float32(scaled_frame)
 
         scaled_frames.append(scaled_frame)
 
