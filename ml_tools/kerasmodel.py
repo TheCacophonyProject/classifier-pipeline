@@ -417,7 +417,7 @@ class KerasModel:
                 model_preprocess=self.preprocess_fn,
                 epochs=1,
                 load_threads=4,
-                cap_samples=False,
+                cap_samples=True,
                 cap_at="wallaby",
                 type=self.type,
             )
