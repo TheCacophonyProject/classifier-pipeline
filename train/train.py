@@ -73,6 +73,8 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
             )
         )
     print()
+    if weights:
+        model.load_weights(weights, meta=False)
     if grid_search:
         print("Searching hparams")
         model.test_hparams()
@@ -89,8 +91,7 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
             model.datasets.train.sample_count / 1000
         )
     )
-    if weights:
-        model.load_weights(weights, meta=False)
+
     model.train_model(epochs=conf.train.epochs, run_name=run_name + "_" + "TEST")
     # datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),
     # model.save()

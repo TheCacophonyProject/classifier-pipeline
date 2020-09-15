@@ -215,12 +215,12 @@ class KerasModel:
         if retrain_from:
             base_model.trainable = True
             for i, layer in enumerate(base_model.layers):
-                # if layer.name.endswith("_bn"):
-                #     # apparently this shouldn't matter as we set base_training = False
-                #     layer.trainable = False
-                #     logging.debug("dont train %s %s", i, layer.name)
-                # else:
-                layer.trainable = i >= retrain_from
+                if layer.name.endswith("_bn"):
+                    # apparently this shouldn't matter as we set base_training = False
+                    layer.trainable = False
+                    logging.debug("dont train %s %s", i, layer.name)
+                else:
+                    layer.trainable = i >= retrain_from
         else:
             base_model.trainable = self.params.get("base_training", False)
 
