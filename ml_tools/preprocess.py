@@ -77,7 +77,7 @@ def preprocess_segment(
 
         scaled_frame = [
             cv2.resize(
-                cropped_frame[channel],
+                np.float32(cropped_frame[channel]),
                 dsize=(FRAME_SIZE, FRAME_SIZE),
                 interpolation=cv2.INTER_LINEAR
                 if channel != TrackChannels.mask
@@ -85,7 +85,6 @@ def preprocess_segment(
             )
             for channel in range(channels)
         ]
-        scaled_frame = np.float32(scaled_frame)
 
         scaled_frames.append(scaled_frame)
 
@@ -165,7 +164,7 @@ def preprocess_frame(
     data = data[np.newaxis, :]
     data = np.transpose(data, (1, 2, 0))
     data = np.repeat(data, output_dim[2], axis=2)
-    data = imageprocessing.reisze_cv(data, output_dim)
+    data = imageprocessing.resize_cv(data, output_dim)
 
     # preprocess expects values in range 0-255
     if preprocess_fn:
