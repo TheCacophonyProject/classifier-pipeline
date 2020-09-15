@@ -164,7 +164,7 @@ def preprocess_frame(
     data = data[np.newaxis, :]
     data = np.transpose(data, (1, 2, 0))
     data = np.repeat(data, output_dim[2], axis=2)
-    data = imageprocessing.reisze_cv(data, output_dim)
+    data = imageprocessing.resize_cv(data, output_dim)
 
     # preprocess expects values in range 0-255
     if preprocess_fn:
