@@ -287,26 +287,24 @@ class DataGenerator(keras.utils.Sequence):
                             if num_less <= area * 0.05:
                                 continue
                             important.append(frame_sample)
-                        frames = np.random.choice(
-                            important,
-                            min(sample.frames, len(important)),
-                            replace=False,
-                        )
-                        if len(frames) < 10:
-                            logging.error("Important frames filtered for %s", sample)
-                            continue
-                        # print("using frames", frames)
-                        segment_data = []
-                        ref = []
+                    frames = np.random.choice(
+                        important, min(sample.frames, len(important)), replace=False,
+                    )
+                    if len(frames) < 10:
+                        logging.error("Important frames filtered for %s", sample)
+                        continue
+                    # print("using frames", frames)
+                    segment_data = []
+                    ref = []
 
-                        frames = [frame.frame_num for frame in frames]
-                        # sort??? or rather than random just apply a 1 second step
+                    frames = [frame.frame_num for frame in frames]
+                    # sort??? or rather than random just apply a 1 second step
 
-                        frames.sort()
-                        for frame_num in frames:
-                            segment_data.append(data[frame_num])
-                            ref.append(sample.track.frame_temp_median[frame_num])
-                        segments.append((segment_data, ref))
+                    frames.sort()
+                    for frame_num in frames:
+                        segment_data.append(data[frame_num])
+                        ref.append(sample.track.frame_temp_median[frame_num])
+                    segments.append((segment_data, ref))
                 else:
                     segment_data = data
                     ref = sample.track.frame_temp_median[
