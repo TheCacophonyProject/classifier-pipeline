@@ -294,6 +294,7 @@ class DataGenerator(keras.utils.Sequence):
                         )
                         if len(frames) < 10:
                             logging.error("Important frames filtered for %s", sample)
+                            continue
                         # print("using frames", frames)
                         segment_data = []
                         ref = []

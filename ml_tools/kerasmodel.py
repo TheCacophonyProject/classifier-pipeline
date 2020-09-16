@@ -214,7 +214,7 @@ class KerasModel:
             retrain_from = self.params.get("retrain_layer")
         if retrain_from:
             for i, layer in enumerate(base_model.layers):
-                if isinstance(tf.keras.layers.BatchNormalization):
+                if isinstance(layer, tf.keras.layers.BatchNormalization):
                     # apparently this shouldn't matter as we set base_training = False
                     layer.trainable = False
                     logging.info("dont train %s %s", i, layer.name)
