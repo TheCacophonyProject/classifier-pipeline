@@ -116,9 +116,9 @@ class DataGenerator(keras.utils.Sequence):
             if hasattr(thread, "terminate"):
                 # note this will corrupt the queue, so reset it
                 thread.terminate()
-                self.preloader_queue = None
             else:
                 thread.exit()
+        self.preloader_queue = None
 
     def get_epoch_predictions(self, epoch=-1):
         if self.keep_epoch:
