@@ -287,7 +287,10 @@ class DataGenerator(keras.utils.Sequence):
                     )
                     if len(frames) < 10:
                         logging.error(
-                            "Important frames filtered for %s", sample, len(frames)
+                            "Important frames filtered for %s %s / %s",
+                            sample,
+                            len(frames),
+                            len(sample.track.important_frames),
                         )
                         continue
                     # print("using frames", frames)
