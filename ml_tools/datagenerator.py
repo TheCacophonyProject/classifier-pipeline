@@ -286,7 +286,7 @@ class DataGenerator(keras.utils.Sequence):
                                 len(frames),
                                 len(sample.track.important_frames),
                             )
-                            continue
+                            break
                         segment_data = []
                         ref = []
 
@@ -298,6 +298,8 @@ class DataGenerator(keras.utils.Sequence):
                             segment_data.append(data[frame_num])
                             ref.append(sample.track.frame_temp_median[frame_num])
                         segments.append((segment_data, ref))
+                    if len(segments) == 0:
+                        continue
                 else:
                     segment_data = data
                     ref = sample.track.frame_temp_median[
