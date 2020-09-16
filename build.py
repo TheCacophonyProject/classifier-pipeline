@@ -125,6 +125,10 @@ def load_config(config_file):
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--rebuild-important", action="count", help="Rebuild important frames"
+    )
+
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-d", "--date", help="Use clips after this")
     parser.add_argument("--dont-cap", action="count", help="Dont cap numbers")
@@ -310,10 +314,7 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
 
 
 def add_camera_segments(
-    labels,
-    dataset,
-    cameras,
-    balance_bins=None,
+    labels, dataset, cameras, balance_bins=None,
 ):
     all_tracks = []
     for label in labels:
@@ -327,10 +328,7 @@ def add_camera_segments(
 
 
 def add_random_camera_frames(
-    dataset,
-    cameras,
-    label,
-    max_frames,
+    dataset, cameras, label, max_frames,
 ):
     """
     add random samples from the sample_set to every dataset in
@@ -386,10 +384,7 @@ def add_camera_frames(
             print("dont limit", label)
         cameras = data["cameras"]
         add_random_camera_frames(
-            dataset,
-            cameras,
-            label,
-            limit,
+            dataset, cameras, label, limit,
         )
 
 
@@ -404,12 +399,46 @@ def test_dataset(db, config, date):
     return test
 
 
+def recalc_important(dataset_filename, db):
+    datasets = pickle.load(open(dataset_filename, "rb"))
+    print_counts(datasets[0], *datasets)
+
+    for dataset in datasets:
+
+        for track in dataset.tracks:
+            if track.label == "false-positive":
+                continue
+            print(
+                "recalculating",
+                track,
+                len(track.important_frames),
+                track.label,
+                dataset.name,
+            )
+            track_data = db.get_track(track.clip_id, track.track_id, channel=1)
+            track.important_frames = []
+            track.set_important_frames([], 16, False, filtered_data=track_data)
+            print("recalculating", track, len(track.important_frames))
+
+            break
+        dataset.rebuild_cdf()
+    print("after recalculating")
+    print_counts(datasets[0], *datasets)
+
+    return datasets
+
+
 def main():
     init_logging()
     args = parse_args()
     config = load_config(args.config_file)
     build_config = config.build
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
+    if args.rebuild_important:
+        print("rebuild important")
+        datasets = recalc_important(dataset_db_path(config), db)
+        pickle.dump(datasets, open("important.dat", "wb"))
+        return
     dataset = Dataset(db, "dataset", config)
     tracks_loaded, total_tracks = dataset.load_tracks(before_date=args.date)
     print(
