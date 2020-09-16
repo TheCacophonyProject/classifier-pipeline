@@ -166,9 +166,7 @@ class TrackHeader:
             if mass >= self.mean_mass and (min_mass is None or mass >= min_mass):
                 if filtered_data is not None:
                     filtered = filtered_data[i]
-                    area = filtered.shape[0] * filtered.shape[1]
-                    num_zeros = len(filtered[filtered == 0])
-                    if num_zeros < area * 0.05:
+                    if not filtered_is_valid(filtered):
                         logging.debug(
                             "set_important_frames %s frame %s has no zeros in filtered frame",
                             self.unique_id,
@@ -266,9 +264,7 @@ class TrackHeader:
                 if remaining > 0:
                     frames.extend(
                         np.random.choice(
-                            self.important_frames,
-                            remaining,
-                            replace=False,
+                            self.important_frames, remaining, replace=False,
                         )
                     )
                 frames = [frame.frame_num for frame in frames]
@@ -422,9 +418,7 @@ class Camera:
         return track, f
 
     def label_segment_count(
-        self,
-        label,
-        max_segments_per_track=None,
+        self, label, max_segments_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -439,9 +433,7 @@ class Camera:
         return frames
 
     def label_frame_count(
-        self,
-        label,
-        max_frames_per_track=None,
+        self, label, max_frames_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -2044,3 +2036,14 @@ def get_cropped_fraction(region: tools.Rectangle, width, height):
 
 def dataset_db_path(config):
     return os.path.join(config.tracks_folder, "datasets.dat")
+
+
+def filtered_is_valid(filtered):
+    area = filtered.shape[0] * filtered.shape[1]
+    percentile = int(100 - 100 * 16.0 / area)
+    threshold = np.percentile(filtered, percentile)
+    threshold = max(0, threshold - 40)
+    num_less = len(filtered[filtered <= threshold])
+    if num_less <= area * 0.05:
+        return False
+    return True

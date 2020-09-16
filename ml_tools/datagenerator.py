@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from ml_tools.dataset import TrackChannels
 import multiprocessing
 import time
-from ml_tools.dataset import Preprocessor
+from ml_tools.dataset import Preprocessor, filtered_is_valid
 from ml_tools import tools
 
 FRAME_SIZE = 48
@@ -279,19 +279,16 @@ class DataGenerator(keras.utils.Sequence):
                             filtered = data[frame_sample.frame_num][
                                 TrackChannels.filtered
                             ]
-                            area = filtered.shape[0] * filtered.shape[1]
-                            percentile = int(100 - 100 * 16.0 / area)
-                            threshold = np.percentile(filtered, percentile)
-                            threshold = max(0, threshold - 40)
-                            num_less = len(filtered[filtered <= threshold])
-                            if num_less <= area * 0.05:
+                            if not filtered_is_valid(filtered):
                                 continue
                             important.append(frame_sample)
                     frames = np.random.choice(
                         important, min(sample.frames, len(important)), replace=False,
                     )
                     if len(frames) < 10:
-                        logging.error("Important frames filtered for %s", sample)
+                        logging.error(
+                            "Important frames filtered for %s", sample, len(frames)
+                        )
                         continue
                     # print("using frames", frames)
                     segment_data = []
@@ -531,16 +528,16 @@ def movement(
         if (
             prev_overlay is None or center_distance > min_distance
         ) or not require_movement:
-            if use_mask:
-                frame = frame[channel] * (frame[TrackChannels.mask] + 0.5)
-            else:
-                frame = frame[channel]
-
-            subimage = region.subimage(overlay)
-            subimage[:, :] += np.float32(frame)
-            center_distance = 0
-            min_distance = pow(region.width / 2.0, 2)
-            prev_overlay = (x, y)
+            if filtered_is_valid(frame[TrackChannels.filtered]):
+                if use_mask:
+                    frame = frame[channel] * (frame[TrackChannels.mask] + 0.5)
+                else:
+                    frame = frame[channel]
+                subimage = region.subimage(overlay)
+                subimage[:, :] += np.float32(frame)
+                center_distance = 0
+                min_distance = pow(region.width / 2.0, 2)
+                prev_overlay = (x, y)
         prev = (x, y)
 
     # then draw dots so they go over the top
