@@ -239,12 +239,7 @@ class DataGenerator(keras.utils.Sequence):
         if self.lstm:
             X = np.empty((len(samples), samples[0].frames, *self.dim))
         else:
-            X = np.empty(
-                (
-                    len(samples),
-                    *self.dim,
-                )
-            )
+            X = np.empty((len(samples), *self.dim,))
 
         y = np.empty((len(samples)), dtype=int)
         # Generate data
@@ -280,24 +275,24 @@ class DataGenerator(keras.utils.Sequence):
                     segments = []
                     for i in range(num_segments):
                         important = []
-                        for sample in sample.track.important_frames:
-                            filtered = segment_data[sample.frame_num][
+                        for frame_sample in sample.track.important_frames:
+                            filtered = data[frame_sample.frame_num][
                                 TrackChannels.filtered
                             ]
                             area = filtered.shape[0] * filtered.shape[1]
-                            percentile = int(100 - 100 * 16, area)
+                            percentile = int(100 - 100 * 16.0 / area)
                             threshold = np.percentile(filtered, percentile)
                             threshold = max(0, threshold - 40)
                             num_less = len(filtered[filtered <= threshold])
                             if num_less <= area * 0.05:
                                 continue
-                            important.append(i)
+                            important.append(frame_sample)
                         frames = np.random.choice(
                             important,
                             min(sample.frames, len(important)),
                             replace=False,
                         )
-                        if len(frames < 10):
+                        if len(frames) < 10:
                             logging.error("Important frames filtered for %s", sample)
                         # print("using frames", frames)
                         segment_data = []
@@ -350,19 +345,11 @@ class DataGenerator(keras.utils.Sequence):
                     continue
                 if self.lstm:
                     data = preprocess_lstm(
-                        data,
-                        self.dim,
-                        channel,
-                        self.augment,
-                        self.model_preprocess,
+                        data, self.dim, channel, self.augment, self.model_preprocess,
                     )
                 else:
                     data = preprocess_frame(
-                        data,
-                        self.dim,
-                        None,
-                        self.augment,
-                        self.model_preprocess,
+                        data, self.dim, None, self.augment, self.model_preprocess,
                     )
             if data is None:
                 logging.warn(
@@ -390,9 +377,7 @@ def resize(image, dim):
 
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
-        image,
-        dsize=(dim[0] + extra_h, dim[1] + extra_v),
-        interpolation=interpolation,
+        image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
     )
 
 
@@ -542,13 +527,7 @@ def movement(
 
         # writing overlay image
         if require_movement and prev_overlay:
-            center_distance = tools.eucl_distance(
-                prev_overlay,
-                (
-                    x,
-                    y,
-                ),
-            )
+            center_distance = tools.eucl_distance(prev_overlay, (x, y,),)
 
         if (
             prev_overlay is None or center_distance > min_distance
@@ -606,10 +585,7 @@ def preprocess_movement(
     flipped = False
     for segment in segments:
         segment, flipped_data = Preprocessor.apply(
-            *segment,
-            augment=augment,
-            default_inset=0,
-            flip=flipped,
+            *segment, augment=augment, default_inset=0, flip=flipped,
         )
         flipped = flipped_data or flipped
         if type == 13:
@@ -686,11 +662,7 @@ def preprocess_movement(
 
 
 def preprocess_lstm(
-    data,
-    output_dim,
-    channel,
-    augment=False,
-    preprocess_fn=None,
+    data, output_dim, channel, augment=False, preprocess_fn=None,
 ):
 
     data = data[:, channel]
@@ -713,11 +685,7 @@ def preprocess_lstm(
 
 
 def preprocess_frame(
-    data,
-    output_dim,
-    channel,
-    augment=False,
-    preprocess_fn=None,
+    data, output_dim, channel, augment=False, preprocess_fn=None,
 ):
     if channel is not None:
         data = data[channel]
