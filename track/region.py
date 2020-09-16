@@ -59,8 +59,8 @@ class Region(Rectangle):
 
     def calculate_mass(self, filtered, threshold):
         """
-            calculates mass on this frame for this region
-            filtered is assumed to be cropped to the region
+        calculates mass on this frame for this region
+        filtered is assumed to be cropped to the region
         """
         height, width = filtered.shape
         assert (
@@ -71,8 +71,8 @@ class Region(Rectangle):
 
     def calculate_variance(self, filtered, prev_filtered):
         """
-            calculates variance on this frame for this region
-            filtered is assumed to be cropped to the region
+        calculates variance on this frame for this region
+        filtered is assumed to be cropped to the region
         """
         height, width = filtered.shape
         assert (

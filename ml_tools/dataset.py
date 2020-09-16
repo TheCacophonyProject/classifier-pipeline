@@ -157,13 +157,25 @@ class TrackHeader:
         return len(self.important_frames)
 
     # trying to get only clear frames
-    def set_important_frames(self, labels, min_mass=None, use_predictions=False):
+    def set_important_frames(
+        self, labels, min_mass=None, use_predictions=False, filtered_data=None
+    ):
         # this needs more testing
-        frames = [
-            i
-            for i, mass in enumerate(self.frame_mass)
-            if mass >= self.mean_mass and (min_mass is None or mass >= min_mass)
-        ]
+        frames = []
+        for i, mass in enumerate(self.frame_mass):
+            if mass >= self.mean_mass and (min_mass is None or mass >= min_mass):
+                if filtered_data is not None:
+                    filtered = filtered_data[i]
+                    area = filtered.shape[0] * filtered.shape[1]
+                    num_zeros = len(filtered[filtered == 0])
+                    if num_zeros < area * 0.05:
+                        logging.debug(
+                            "set_important_frames %s frame %s has no zeros in filtered frame",
+                            self.unique_id,
+                            i,
+                        )
+                        continue
+                frames.append(i)
         np.random.shuffle(frames)
 
         if self.predictions is not None and use_predictions:
@@ -254,7 +266,9 @@ class TrackHeader:
                 if remaining > 0:
                     frames.extend(
                         np.random.choice(
-                            self.important_frames, remaining, replace=False,
+                            self.important_frames,
+                            remaining,
+                            replace=False,
                         )
                     )
                 frames = [frame.frame_num for frame in frames]
@@ -408,7 +422,9 @@ class Camera:
         return track, f
 
     def label_segment_count(
-        self, label, max_segments_per_track=None,
+        self,
+        label,
+        max_segments_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -423,7 +439,9 @@ class Camera:
         return frames
 
     def label_frame_count(
-        self, label, max_frames_per_track=None,
+        self,
+        label,
+        max_frames_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -1076,20 +1094,25 @@ class Dataset:
         )
         self.tracks.append(track_header)
 
+        track_data = self.db.get_track(
+            clip_id, track_id, channel=TrackChannels.filtered
+        )
+
         # if self.important_frames:
         track_header.set_important_frames(
-            labels, self.min_frame_mass, self.use_predictions
+            labels, self.min_frame_mass, self.use_predictions, filtered_data=track_data
         )
         segment_frame_spacing = round(
             self.segment_spacing * track_header.frames_per_second
         )
         segment_width = round(self.segment_length * track_header.frames_per_second)
-        track_header.calculate_segments(
-            track_meta["mass_history"],
-            segment_frame_spacing,
-            segment_width,
-            self.segment_min_mass,
-        )
+        if len(track_header.important_frames) > segment_width / 3.0:
+            track_header.calculate_segments(
+                track_meta["mass_history"],
+                segment_frame_spacing,
+                segment_width,
+                self.segment_min_mass,
+            )
 
         self.filtered_stats["segment_mass"] += track_header.filtered_stats[
             "segment_mass"

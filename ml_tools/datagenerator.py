@@ -239,7 +239,12 @@ class DataGenerator(keras.utils.Sequence):
         if self.lstm:
             X = np.empty((len(samples), samples[0].frames, *self.dim))
         else:
-            X = np.empty((len(samples), *self.dim,))
+            X = np.empty(
+                (
+                    len(samples),
+                    *self.dim,
+                )
+            )
 
         y = np.empty((len(samples)), dtype=int)
         # Generate data
@@ -274,11 +279,26 @@ class DataGenerator(keras.utils.Sequence):
                 elif self.type >= 4:
                     segments = []
                     for i in range(num_segments):
+                        important = []
+                        for sample in sample.track.important_frames:
+                            filtered = segment_data[sample.frame_num][
+                                TrackChannels.filtered
+                            ]
+                            area = filtered.shape[0] * filtered.shape[1]
+                            percentile = int(100 - 100 * 16, area)
+                            threshold = np.percentile(filtered, percentile)
+                            threshold = max(0, threshold - 40)
+                            num_less = len(filtered[filtered <= threshold])
+                            if num_less <= area * 0.05:
+                                continue
+                            important.append(i)
                         frames = np.random.choice(
-                            sample.track.important_frames,
-                            min(sample.frames, len(sample.track.important_frames)),
+                            important,
+                            min(sample.frames, len(important)),
                             replace=False,
                         )
+                        if len(frames < 10):
+                            logging.error("Important frames filtered for %s", sample)
                         # print("using frames", frames)
                         segment_data = []
                         ref = []
@@ -330,11 +350,19 @@ class DataGenerator(keras.utils.Sequence):
                     continue
                 if self.lstm:
                     data = preprocess_lstm(
-                        data, self.dim, channel, self.augment, self.model_preprocess,
+                        data,
+                        self.dim,
+                        channel,
+                        self.augment,
+                        self.model_preprocess,
                     )
                 else:
                     data = preprocess_frame(
-                        data, self.dim, None, self.augment, self.model_preprocess,
+                        data,
+                        self.dim,
+                        None,
+                        self.augment,
+                        self.model_preprocess,
                     )
             if data is None:
                 logging.warn(
@@ -362,7 +390,9 @@ def resize(image, dim):
 
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
-        image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
+        image,
+        dsize=(dim[0] + extra_h, dim[1] + extra_v),
+        interpolation=interpolation,
     )
 
 
@@ -472,7 +502,12 @@ def square_clip_flow(data_flow_h, data_flow_v, square_width, type=None):
 
 
 def movement(
-    frames, regions, dim=None, channel=TrackChannels.filtered, require_movement=False,
+    frames,
+    regions,
+    dim=None,
+    channel=TrackChannels.filtered,
+    require_movement=False,
+    use_mask=False,
 ):
     """Return 2 images describing the movement, one has dots representing
     the centre of mass, the other is a collage of all frames
@@ -507,12 +542,22 @@ def movement(
 
         # writing overlay image
         if require_movement and prev_overlay:
-            center_distance = tools.eucl_distance(prev_overlay, (x, y,),)
+            center_distance = tools.eucl_distance(
+                prev_overlay,
+                (
+                    x,
+                    y,
+                ),
+            )
 
         if (
             prev_overlay is None or center_distance > min_distance
         ) or not require_movement:
-            frame = frame[channel]
+            if use_mask:
+                frame = frame[channel] * (frame[TrackChannels.mask] + 0.5)
+            else:
+                frame = frame[channel]
+
             subimage = region.subimage(overlay)
             subimage[:, :] += np.float32(frame)
             center_distance = 0
@@ -561,10 +606,17 @@ def preprocess_movement(
     flipped = False
     for segment in segments:
         segment, flipped_data = Preprocessor.apply(
-            *segment, augment=augment, default_inset=0, flip=flipped,
+            *segment,
+            augment=augment,
+            default_inset=0,
+            flip=flipped,
         )
         flipped = flipped_data or flipped
-        segment = segment[:, channel]
+        if type == 13:
+            segment = segment[:, channel] * (segment[:, TrackChannels.mask] + 0.5)
+        else:
+            segment = segment[:, channel]
+
         # as long as one frame is fine
         square, success = square_clip(segment, square_width, type)
         if not success:
@@ -573,7 +625,12 @@ def preprocess_movement(
 
     square = squares[0]
     dots, overlay = movement(
-        data, regions, dim=square.shape, channel=channel, require_movement=type >= 5,
+        data,
+        regions,
+        dim=square.shape,
+        channel=channel,
+        require_movement=type >= 5,
+        use_mask=type == 13,
     )
     dots = dots / 255
     overlay, success = normalize(overlay, min=0)
@@ -604,7 +661,7 @@ def preprocess_movement(
         data[:, :, 0] = square
         data[:, :, 1] = squares[1]
         data[:, :, 2] = overlay
-    elif type == 12:
+    elif type >= 12:
         data[:, :, 0] = square
         data[:, :, 1] = np.zeros((dots.shape))
         data[:, :, 2] = overlay
@@ -629,7 +686,11 @@ def preprocess_movement(
 
 
 def preprocess_lstm(
-    data, output_dim, channel, augment=False, preprocess_fn=None,
+    data,
+    output_dim,
+    channel,
+    augment=False,
+    preprocess_fn=None,
 ):
 
     data = data[:, channel]
@@ -652,7 +713,11 @@ def preprocess_lstm(
 
 
 def preprocess_frame(
-    data, output_dim, channel, augment=False, preprocess_fn=None,
+    data,
+    output_dim,
+    channel,
+    augment=False,
+    preprocess_fn=None,
 ):
     if channel is not None:
         data = data[channel]
@@ -738,7 +803,6 @@ def savemovement(data, filename):
     b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
     concat = np.concatenate((r, g, b), axis=1)  # horizontally
     img = Image.fromarray(np.uint8(concat))
-    d = ImageDraw.Draw(img)
     img.save(filename + "rgb.png")
 
 

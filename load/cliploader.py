@@ -154,7 +154,8 @@ class ClipLoader:
         processes = []
         for i in range(max(1, self.workers_threads)):
             p = Process(
-                target=process_job, args=(self, job_queue, self.config.classify.model),
+                target=process_job,
+                args=(self, job_queue, self.config.classify.model),
             )
             processes.append(p)
             p.start()

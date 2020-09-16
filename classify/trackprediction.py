@@ -50,7 +50,8 @@ class Predictions:
     def set_important_frames(self):
         for track_id, track_prediction in self.prediction_per_track.items():
             print(
-                "set important frames for track starting at", track_prediction.track_id,
+                "set important frames for track starting at",
+                track_prediction.track_id,
             )
             label_i = None
             fp_i = None

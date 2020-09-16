@@ -198,7 +198,10 @@ class TrackDatabase:
         # track_attrs["predictions"]=preds
         height, width = preds.shape
         pred_data = track.create_dataset(
-            "predictions", (height, width), chunks=(height, width), dtype=preds.dtype,
+            "predictions",
+            (height, width),
+            chunks=(height, width),
+            dtype=preds.dtype,
         )
         pred_data[:, :] = preds
 
@@ -385,7 +388,13 @@ class TrackDatabase:
         return None
 
     def get_track(
-        self, clip_id, track_number, start_frame=None, end_frame=None, original=False
+        self,
+        clip_id,
+        track_number,
+        start_frame=None,
+        end_frame=None,
+        original=False,
+        channel=None,
     ):
         """
         Fetches a track data from database with optional slicing.
@@ -416,7 +425,11 @@ class TrackDatabase:
                     track_node = track_node["cropped"]
             for frame_number in range(start_frame, end_frame):
                 # we use [:,:,:] to force loading of all data.
-                result.append(track_node[str(frame_number)][:])
+                if channel:
+                    result.append(track_node[str(frame_number)][channel])
+
+                else:
+                    result.append(track_node[str(frame_number)][:])
         # print("get track,", start_frame, end_frame, time.time()-start)
 
         return result

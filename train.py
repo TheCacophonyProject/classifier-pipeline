@@ -49,7 +49,9 @@ def load_config():
     parser.add_argument("-t", "--type", type=int, default=0, help="training type")
 
     parser.add_argument(
-        "name", default="unnammed", help="Name of training job",
+        "name",
+        default="unnammed",
+        help="Name of training job",
     )
     args = parser.parse_args()
     return Config.load_from_file(args.config_file), args

@@ -289,7 +289,11 @@ class ModelEvalute:
         median = []
         for f in seg_data:
             median.append(np.median(f[0]))
-        data = Preprocessor.apply(seg_data, median, default_inset=0,)
+        data = Preprocessor.apply(
+            seg_data,
+            median,
+            default_inset=0,
+        )
 
         preprocess_movement(
             track_data, data, 5, track_meta["bounds_history"], 1, type=type

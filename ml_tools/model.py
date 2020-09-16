@@ -491,10 +491,10 @@ class Model:
         return threshold_distance, threshold_scale
 
     def update_training_data_examples(self):
-        """ Classifies given data and stores it in model.  This can be used to visualise the logit layout, or to
-            help identify examples that different significantly from that seen during training.
-            A batch of 1000 examples samples from all classes is recommended.
-         """
+        """Classifies given data and stores it in model.  This can be used to visualise the logit layout, or to
+        help identify examples that different significantly from that seen during training.
+        A batch of 1000 examples samples from all classes is recommended.
+        """
 
         sample_X = self.train_samples[0]
 
@@ -829,9 +829,9 @@ class Model:
         self.datasets.validation.stop_async_load()
 
     def close(self):
-        """ 
+        """
         Cleans up memory used by model by closing any open sessions or aync loaders.
-        :return: 
+        :return:
         """
         self.session.close()
         self.stop_async()
