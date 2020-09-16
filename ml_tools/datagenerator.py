@@ -274,37 +274,30 @@ class DataGenerator(keras.utils.Sequence):
                 elif self.type >= 4:
                     segments = []
                     for i in range(num_segments):
-                        important = []
-                        for frame_sample in sample.track.important_frames:
-                            filtered = data[frame_sample.frame_num][
-                                TrackChannels.filtered
-                            ]
-                            if not filtered_is_valid(filtered):
-                                continue
-                            important.append(frame_sample)
-                    frames = np.random.choice(
-                        important, min(sample.frames, len(important)), replace=False,
-                    )
-                    if len(frames) < 10 and len(frames) < sample.track.important_frames:
-                        logging.error(
-                            "Important frames filtered for %s %s / %s",
-                            sample,
-                            len(frames),
-                            len(sample.track.important_frames),
+                        frames = np.random.choice(
+                            sample.track.important_frames,
+                            min(sample.frames, len(sample.track.important_frames)),
+                            replace=False,
                         )
-                        continue
-                    # print("using frames", frames)
-                    segment_data = []
-                    ref = []
+                        if len(frames) < 5:
+                            logging.error(
+                                "Important frames filtered for %s %s / %s",
+                                sample,
+                                len(frames),
+                                len(sample.track.important_frames),
+                            )
+                            continue
+                        segment_data = []
+                        ref = []
 
-                    frames = [frame.frame_num for frame in frames]
-                    # sort??? or rather than random just apply a 1 second step
+                        frames = [frame.frame_num for frame in frames]
+                        # sort??? or rather than random just apply a 1 second step
 
-                    frames.sort()
-                    for frame_num in frames:
-                        segment_data.append(data[frame_num])
-                        ref.append(sample.track.frame_temp_median[frame_num])
-                    segments.append((segment_data, ref))
+                        frames.sort()
+                        for frame_num in frames:
+                            segment_data.append(data[frame_num])
+                            ref.append(sample.track.frame_temp_median[frame_num])
+                        segments.append((segment_data, ref))
                 else:
                     segment_data = data
                     ref = sample.track.frame_temp_median[
