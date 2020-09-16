@@ -2044,6 +2044,6 @@ def filtered_is_valid(filtered):
     threshold = np.percentile(filtered, percentile)
     threshold = max(0, threshold - 40)
     num_less = len(filtered[filtered <= threshold])
-    if num_less <= area * 0.05:
+    if num_less <= area * 0.05 or np.amax(filtered) == np.amin(filtered):
         return False
     return True
