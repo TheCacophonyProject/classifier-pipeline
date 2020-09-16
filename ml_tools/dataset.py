@@ -1742,7 +1742,7 @@ class Dataset:
             labels = list(self.label_mapping.keys())
             labels.sort()
             for label in labels:
-                if label not in self.frame_label_cdf:
+                if label not in self.segment_label_cdf:
                     continue
                 label_cdf = self.segment_label_cdf[label]
                 new_label = self.label_mapping[label]
