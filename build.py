@@ -408,19 +408,21 @@ def recalc_important(dataset_filename, db):
         for track in dataset.tracks:
             if track.label == "false-positive":
                 continue
+
+            pre = len(track.important_frames)
+            track_data = db.get_track(track.clip_id, track.track_id, channel=1)
+            track.important_frames = []
+            track.set_important_frames([], 16, False, filtered_data=track_data)
             print(
-                "recalculating",
+                "recalculated",
                 track,
+                "was",
+                pre,
+                "now",
                 len(track.important_frames),
                 track.label,
                 dataset.name,
             )
-            track_data = db.get_track(track.clip_id, track.track_id, channel=1)
-            track.important_frames = []
-            track.set_important_frames([], 16, False, filtered_data=track_data)
-            print("recalculating", track, len(track.important_frames))
-
-            break
         dataset.rebuild_cdf()
     print("after recalculating")
     print_counts(datasets[0], *datasets)
