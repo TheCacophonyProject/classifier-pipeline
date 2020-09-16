@@ -285,7 +285,7 @@ class DataGenerator(keras.utils.Sequence):
                     frames = np.random.choice(
                         important, min(sample.frames, len(important)), replace=False,
                     )
-                    if len(frames) < 10:
+                    if len(frames) < 10 and len(frames) < sample.track.important_frames:
                         logging.error(
                             "Important frames filtered for %s %s / %s",
                             sample,
