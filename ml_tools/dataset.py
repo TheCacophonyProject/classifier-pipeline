@@ -164,7 +164,7 @@ class TrackHeader:
         frames = []
         for i, mass in enumerate(self.frame_mass):
             if min_mass is None or mass >= min_mass:
-                if self.label is not "false-positive" and filtered_data is not None:
+                if self.label != "false-positive" and filtered_data is not None:
                     filtered = filtered_data[i]
                     if not filtered_is_valid(filtered):
                         logging.debug(

@@ -289,11 +289,7 @@ class ModelEvalute:
         median = []
         for f in seg_data:
             median.append(np.median(f[0]))
-        data = Preprocessor.apply(
-            seg_data,
-            median,
-            default_inset=0,
-        )
+        data = Preprocessor.apply(seg_data, median, default_inset=0,)
 
         preprocess_movement(
             track_data, data, 5, track_meta["bounds_history"], 1, type=type
@@ -357,7 +353,7 @@ dataset_file = dataset_db_path(config)
 
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
-# ev.save_track("575914", "249216", dataset.db)
+ev.save_track("633968", "265542", dataset.db)
 dataset.binarize(
     ["wallaby"],
     lbl_one="wallaby",

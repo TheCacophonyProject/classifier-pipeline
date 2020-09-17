@@ -1,6 +1,6 @@
 from PIL import Image, ImageDraw, ImageFont, ImageColor
 from pathlib import Path
-
+import pickle
 import math
 import random
 import logging
@@ -132,13 +132,12 @@ class DataGenerator(keras.utils.Sequence):
 
         return int(math.ceil(len(self.samples) / self.batch_size))
 
-    def loadbatch(self, index):
+    def loadbatch(self, samples):
         start = time.time()
-        samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
+        # samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
         X, y = self._data(samples)
-        logging.debug(
-            "%s - %s Time to get data %s", self.dataset.name, index, time.time() - start
-        )
+
+        logging.debug("%s  Time to get data %s", self.dataset.name, time.time() - start)
 
         return X, y
 
@@ -213,17 +212,43 @@ class DataGenerator(keras.utils.Sequence):
                 random=self.randomize_epoch,
                 cap_at=self.cap_at,
             )
+            #
             if self.shuffle:
                 np.random.shuffle(self.samples)
         if self.preload:
-            X, y = self.loadbatch(0)
+            # DEBUGGING GP
+            # tracks = set([sample.track for sample in self.samples])
+            # tracks_by_label = {}
+            # for sample in self.samples:
+            #     track = sample.track
+            #     label_tracks = tracks_by_label.setdefault(track.label, [])
+            #     label_tracks.append(track.unique_id)
+            # for key, value in tracks_by_label.items():
+            #     ids = list(value)
+            #     ids.sort()
+            #
+            #     logging.info(
+            #         "%s samples for %s %s %s %s",
+            #         self.dataset.name,
+            #         key,
+            #         self.loaded_epochs + 1,
+            #         len(ids),
+            #         ids,
+            #     )
+            X, y = self.loadbatch(self.samples[: self.batch_size])
             # load 0 first, twice
             # for some reason it always requests 0 twice
             self.preloader_queue.put((X, y))
             self.preloader_queue.put((X, y))
 
             for i in range(len(self) - 1):
-                self.load_queue.put(i + 1)
+                index = i + 1
+                samples = self.samples[
+                    index * self.batch_size : (index + 1) * self.batch_size
+                ]
+                pickled_samples = pickle.dumps((self.loaded_epochs + 1, samples))
+                self.load_queue.put(pickled_samples)
+                # self.load_queue.put(i + 1)
         self.loaded_epochs += 1
 
     def on_epoch_end(self):
@@ -712,16 +737,10 @@ def preloader(q, load_queue, dataset):
     )
     while True:
         if not q.full():
-            batch_i = load_queue.get()
-            q.put(dataset.loadbatch(batch_i))
-            if batch_i + 1 == len(dataset):
-                dataset.cur_epoch += 1
-            logging.debug(
-                "Preloader %s loaded batch epoch %s batch %s",
-                dataset.dataset.name,
-                dataset.cur_epoch,
-                batch_i,
-            )
+            samples = pickle.loads(load_queue.get())
+            dataset.loaded_epochs = samples[0]
+            q.put(dataset.loadbatch(samples[1]))
+
         else:
             time.sleep(0.1)
 
