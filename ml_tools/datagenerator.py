@@ -77,6 +77,7 @@ class DataGenerator(keras.utils.Sequence):
         self.n_classes = len(self.labels)
         self.n_channels = n_channels
         self.cur_epoch = 0
+        self.loaded_epochs = 0
         self.epochs = epochs
         self.epoch_data = []
         self.preload = preload
@@ -89,9 +90,6 @@ class DataGenerator(keras.utils.Sequence):
         self.cur_epoch = 0
 
         if self.preload:
-            # self.preloader_queue = multiprocessing.Queue(buffer_size)
-            self.preloader_stop_flag = False
-
             self.preloader_threads = [
                 multiprocessing.Process(
                     target=preloader, args=(self.preloader_queue, self.load_queue, self)
@@ -111,7 +109,6 @@ class DataGenerator(keras.utils.Sequence):
     def stop_load(self):
         if not self.preload:
             return
-        self.preloader_stop_flag = True
         for thread in self.preloader_threads:
             if hasattr(thread, "terminate"):
                 # note this will corrupt the queue, so reset it
@@ -192,6 +189,8 @@ class DataGenerator(keras.utils.Sequence):
         #         / len(self.samples)
         #         * 200,
         #     )
+        if self.loaded_epochs >= self.epochs:
+            return
         if self.randomize_epoch is False and self.keep_epoch and reuse:
             X = [item for batch in self.epoch_data[self.cur_epoch][0] for item in batch]
             y = [item for batch in self.epoch_data[self.cur_epoch][1] for item in batch]
@@ -225,6 +224,7 @@ class DataGenerator(keras.utils.Sequence):
 
             for i in range(len(self) - 1):
                 self.load_queue.put(i + 1)
+        self.loaded_epochs += 1
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
@@ -710,7 +710,7 @@ def preloader(q, load_queue, dataset):
         dataset.dataset.name,
         dataset.augment,
     )
-    while not dataset.preloader_stop_flag:
+    while True:
         if not q.full():
             batch_i = load_queue.get()
             q.put(dataset.loadbatch(batch_i))
