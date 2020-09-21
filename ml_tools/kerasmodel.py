@@ -25,17 +25,17 @@ from classify.trackprediction import TrackPrediction
 from sklearn.metrics import confusion_matrix
 
 #
-HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 512"]),)
+HP_DENSE_SIZES = hp.HParam(
+    "dense_sizes", hp.Discrete(["1024 512", "1024 1024 1024 512"]),
+)
 HP_TYPE = hp.HParam("type", hp.Discrete([12]))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
-HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.1, 0.01, 0.001, 0.0001]))
-HP_EPSILON = hp.HParam(
-    "epislon", hp.Discrete([1e-7, 1.0, 0.1])
-)  # 1.0 and 0.1 for inception
+HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001, 0.0001]))
+HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
-HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.3]))
+HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.3, 0.0]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -688,6 +688,11 @@ class KerasModel:
             dense_size[i] = int(size)
         self.train.batch_size = hparams.get(HP_BATCH_SIZE, 32)
         self.validate.batch_size = hparams.get(HP_BATCH_SIZE, 32)
+        self.train.loaded_epochs = 0
+        self.validate.loaded_epochs = 0
+        self.train.cur_epoch = 0
+        self.validate.cur_epoch = 0
+
         self.square_width = self.train.square_width
         self.build_model(
             dense_sizes=dense_size, retrain_from=retrain_layer, dropout=dropout,
@@ -755,6 +760,7 @@ class KerasModel:
             keep_epoch=True,
             type=type,
         )
+
         dir = self.log_dir + "/hparam_tuning"
         with tf.summary.create_file_writer(dir).as_default():
             hp.hparams_config(

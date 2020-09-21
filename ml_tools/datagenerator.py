@@ -80,12 +80,12 @@ class DataGenerator(keras.utils.Sequence):
         self.loaded_epochs = 0
         self.epochs = epochs
         self.epoch_data = []
+        self.epoch_stats = []
         self.preload = preload
         if self.preload:
             self.load_queue = multiprocessing.Queue()
         if self.preload:
             self.preloader_queue = multiprocessing.Queue(buffer_size)
-        self.load_next_epoch()
         self.on_epoch_end()
         self.cur_epoch = 0
 
@@ -146,61 +146,62 @@ class DataGenerator(keras.utils.Sequence):
         # Generate indexes of the batch
         logging.debug("%s requsting index %s", self.dataset.name, index)
         if self.keep_epoch and self.use_previous_epoch is not None:
+            X = self.epoch_data[self.use_previous_epoch][0][
+                index * self.batch_size : (index + 1) * self.batch_size
+            ]
 
-            return (
-                self.epoch_data[self.use_previous_epoch][0][
-                    index * self.batch_size : (index + 1) * self.batch_size
-                ],
-                self.epoch_data[self.use_previous_epoch][1][
-                    index * self.batch_size : (index + 1) * self.batch_size
-                ],
-            )
-        if self.preload:
+            y = self.epoch_data[self.use_previous_epoch][1][
+                index * self.batch_size : (index + 1) * self.batch_size
+            ]
+            return (X, y)
+        if self.epoch_data[self.cur_epoch][0][index] is not None:
+            # when tensorflow fits it requests index 0 twice
+            X = self.epoch_data[self.cur_epoch][0][index]
+            y = self.epoch_data[self.cur_epoch][1][index]
+        elif self.preload:
             X, y = self.preloader_queue.get()
         else:
             X, y = self.loadbatch(index)
-        if self.keep_epoch:
-            self.epoch_data[self.cur_epoch][0][index] = X
-            self.epoch_data[self.cur_epoch][1][index] = y
 
-        if (index + 1) == len(self):
-            self.load_next_epoch(True)
+        if self.epoch_data[self.cur_epoch][0][index] is None:
+            epoch_stats = self.epoch_stats[self.cur_epoch]
+            out_y = np.argmax(y, axis=1)
+            indices, counts = np.unique(out_y, return_counts=True)
+            for i, label_index in enumerate(indices):
+                label = self.labels[label_index]
+                count = counts[i]
+                epoch_stats.setdefault(label, 0)
+                epoch_stats[label] += count
+        # always keep a copy of epoch data
+        self.epoch_data[self.cur_epoch][0][index] = X
+        self.epoch_data[self.cur_epoch][1][index] = y
+
+        # can start loading next epoch of training before validation
+        # if (index + 1) == len(self):
+        #     self.load_next_epoch(True)
         return X, y
 
     def load_next_epoch(self, reuse=False):
-        # if self.type == 9:
-        #     self.dataset.random_segments()
 
-        # labels = set([sample.track.label for sample in self.samples])
-        # for label in labels:
-        #     logging.info(
-        #         "%s epoch %s lbl %s has %s",
-        #         self.dataset.name,
-        #         self.cur_epoch,
-        #         label,
-        #         len(
-        #             [
-        #                 sample.track.label
-        #                 for sample in self.samples
-        #                 if sample.label == label
-        #             ]
-        #         )
-        #         / len(self.samples)
-        #         * 200,
-        #     )
         if self.loaded_epochs >= self.epochs:
             return
-        if self.randomize_epoch is False and self.keep_epoch and reuse:
-            X = [item for batch in self.epoch_data[self.cur_epoch][0] for item in batch]
-            y = [item for batch in self.epoch_data[self.cur_epoch][1] for item in batch]
+        if self.randomize_epoch is False and reuse:
+            X = self.epoch_data[0][0]
+            y = self.epoch_data[0][1]
             if self.shuffle:
                 X = np.asarray(X)
                 y = np.asarray(y)
+                if len(X.shape) > 4:
+                    X = [item for batch in self.epoch_data[0][0] for item in batch]
+                    y = [item for batch in self.epoch_data[0][1] for item in batch]
+                X = np.asarray(X)
+                y = np.asarray(y)
+
                 indices = np.arange(len(X))
                 np.random.shuffle(indices)
                 X = X[indices]
                 y = y[indices]
-            self.epoch_data[self.cur_epoch] = (X, y)
+            self.epoch_data[0] = (X, y)
             self.use_previous_epoch = 0
             logging.debug("Reusing previous epoch data for epoch %s", self.cur_epoch)
             self.stop_load()
@@ -235,27 +236,29 @@ class DataGenerator(keras.utils.Sequence):
             #         len(ids),
             #         ids,
             #     )
-            X, y = self.loadbatch(self.samples[: self.batch_size])
-            # load 0 first, twice
-            # for some reason it always requests 0 twice
-            self.preloader_queue.put((X, y))
-            self.preloader_queue.put((X, y))
 
-            for i in range(len(self) - 1):
-                index = i + 1
+            for index in range(len(self)):
                 samples = self.samples[
                     index * self.batch_size : (index + 1) * self.batch_size
                 ]
                 pickled_samples = pickle.dumps((self.loaded_epochs + 1, samples))
                 self.load_queue.put(pickled_samples)
-                # self.load_queue.put(i + 1)
         self.loaded_epochs += 1
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
+        self.load_next_epoch(reuse=len(self.epoch_data) > 0)
         batches = len(self)
+        if not self.keep_epoch and len(self.epoch_data) > 0:
+            # zero last epoch
+            self.epoch_data[-1] = None
+        last_stats = None
+        if len(self.epoch_stats) > 0:
+            last_stats = self.epoch_stats[-1]
+        self.epoch_stats.append({})
         self.epoch_data.append(([None] * batches, [None] * batches))
-        logging.debug("epoch ended for %s", self.dataset.name)
+
+        logging.info("epoch ended for %s %s", self.dataset.name, last_stats)
         self.cur_epoch += 1
 
     def _data(self, samples, to_categorical=True):
