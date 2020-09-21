@@ -153,25 +153,25 @@ class DataGenerator(keras.utils.Sequence):
             y = self.epoch_data[self.use_previous_epoch][1][
                 index * self.batch_size : (index + 1) * self.batch_size
             ]
-            return (X, y)
-        if self.epoch_data[self.cur_epoch][0][index] is not None:
-            # when tensorflow fits it requests index 0 twice
-            X = self.epoch_data[self.cur_epoch][0][index]
-            y = self.epoch_data[self.cur_epoch][1][index]
-        elif self.preload:
-            X, y = self.preloader_queue.get()
         else:
-            X, y = self.loadbatch(index)
+            if self.epoch_data[self.cur_epoch][0][index] is not None:
+                # when tensorflow fits it requests index 0 twice
+                X = self.epoch_data[self.cur_epoch][0][index]
+                y = self.epoch_data[self.cur_epoch][1][index]
+            elif self.preload:
+                X, y = self.preloader_queue.get()
+            else:
+                X, y = self.loadbatch(index)
 
-        if self.epoch_data[self.cur_epoch][0][index] is None:
-            epoch_stats = self.epoch_stats[self.cur_epoch]
-            out_y = np.argmax(y, axis=1)
-            indices, counts = np.unique(out_y, return_counts=True)
-            for i, label_index in enumerate(indices):
-                label = self.labels[label_index]
-                count = counts[i]
-                epoch_stats.setdefault(label, 0)
-                epoch_stats[label] += count
+            if self.epoch_data[self.cur_epoch][0][index] is None:
+                epoch_stats = self.epoch_stats[self.cur_epoch]
+                out_y = np.argmax(y, axis=1)
+                indices, counts = np.unique(out_y, return_counts=True)
+                for i, label_index in enumerate(indices):
+                    label = self.labels[label_index]
+                    count = counts[i]
+                    epoch_stats.setdefault(label, 0)
+                    epoch_stats[label] += count
         # always keep a copy of epoch data
         self.epoch_data[self.cur_epoch][0][index] = X
         self.epoch_data[self.cur_epoch][1][index] = y
@@ -186,24 +186,19 @@ class DataGenerator(keras.utils.Sequence):
         if self.loaded_epochs >= self.epochs:
             return
         if self.randomize_epoch is False and reuse:
-            X = self.epoch_data[0][0]
-            y = self.epoch_data[0][1]
+            X = [item for batch in self.epoch_data[self.cur_epoch][0] for item in batch]
+            y = [item for batch in self.epoch_data[self.cur_epoch][1] for item in batch]
             if self.shuffle:
                 X = np.asarray(X)
                 y = np.asarray(y)
-                if len(X.shape) > 4:
-                    X = [item for batch in self.epoch_data[0][0] for item in batch]
-                    y = [item for batch in self.epoch_data[0][1] for item in batch]
-                X = np.asarray(X)
-                y = np.asarray(y)
-
                 indices = np.arange(len(X))
                 np.random.shuffle(indices)
                 X = X[indices]
                 y = y[indices]
+            self.epoch_data[self.cur_epoch] = None
             self.epoch_data[0] = (X, y)
             self.use_previous_epoch = 0
-            logging.debug("Reusing previous epoch data for epoch %s", self.cur_epoch)
+            logging.info("Reusing previous epoch data for epoch %s", self.cur_epoch)
             self.stop_load()
             return
         else:

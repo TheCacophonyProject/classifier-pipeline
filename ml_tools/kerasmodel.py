@@ -690,8 +690,8 @@ class KerasModel:
         self.validate.batch_size = hparams.get(HP_BATCH_SIZE, 32)
         self.train.loaded_epochs = 0
         self.validate.loaded_epochs = 0
-        self.train.cur_epoch = 0
-        self.validate.cur_epoch = 0
+        # self.train.cur_epoch = 0
+        # self.validate.cur_epoch = 0
 
         self.square_width = self.train.square_width
         self.build_model(
