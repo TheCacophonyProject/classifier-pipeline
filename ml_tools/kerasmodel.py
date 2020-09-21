@@ -198,8 +198,8 @@ class KerasModel:
             self.model = self.add_lstm(cnn)
         else:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
-            if dropout is None:
-                dropout = self.params.get("dropout", None)
+            # if dropout is None:
+            #     dropout = self.params.get("dropout", None)
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
                 if dropout:
