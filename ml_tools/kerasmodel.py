@@ -35,7 +35,7 @@ HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
 HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001, 0.0001]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
-HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.3, 0.0]))
+HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.3, 0.1, 0.0]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -703,8 +703,8 @@ class KerasModel:
         return history
 
     def test_hparams(self):
-        self.datasets.train.set_samples(cap_at="wallaby", label_cap=1000)
-        self.datasets.validation.set_samples(cap_at="wallaby", label_cap=200)
+        self.datasets.train.set_samples(cap_at="wallaby")
+        self.datasets.validation.set_samples(cap_at="wallaby")
         epochs = 6
         type = 12
         batch_size = 32
