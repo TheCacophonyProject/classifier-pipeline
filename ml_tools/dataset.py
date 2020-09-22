@@ -2060,17 +2060,21 @@ def filtered_is_valid(filtered, label):
     threshold = np.percentile(filtered, percentile)
     threshold = max(0, threshold - 40)
 
-    top_left = 1 if np.amax(filtered[0:2][0:2]) > threshold else 0
-    top_right = 1 if np.amax(filtered[0:2][-3:-1]) > threshold else 0
-    bottom_left = 1 if np.amax(filtered[-3:-1][0:2]) > threshold else 0
-    bottom_right = 1 if np.amax(filtered[-3:-1][-3:-1]) > threshold else 0
-    # right = 1 if top_right and bottom_right else 0
-    # left = 1 if bottom_left and top_left else 0
-    # top = 1 if top_left and top_right else 0
-    # bottom = 1 if bottom_left and bottom_right else 0
-    # print("top", top, "right", right, "left", left, "bottom", bottom)
-    # # if (top_left and top_right) or (top_left and top_right)  or (top_left and top_right)
-    if (top_right + bottom_left + top_left + bottom_right) >= 2:
+    rows = math.floor(0.1 * filtered.shape[0])
+    columns = math.floor(0.1 * filtered.shape[1])
+    rows = np.clip(rows, 1, 2)
+    columns = np.clip(columns, 1, 2)
+
+    top_left = 1 if np.amax(filtered[0:rows][:, 0:columns]) > threshold else 0
+    top_right = 1 if np.amax(filtered[0:rows][:, -columns - 1 : -1]) > threshold else 0
+    bottom_left = (
+        1 if np.amax(filtered[-rows - 1 : -1][:, 0:columns]) > threshold else 0
+    )
+    bottom_right = (
+        1 if np.amax(filtered[-rows - 1 : -1][:, -columns - 1 : -1]) > threshold else 0
+    )
+    # try and filter out bogus frames where data is on 3 or more corners
+    if (top_right + bottom_left + top_left + bottom_right) >= 3:
         return False
 
     num_less = len(filtered[filtered <= threshold])
