@@ -154,7 +154,7 @@ class DataGenerator(keras.utils.Sequence):
                 index * self.batch_size : (index + 1) * self.batch_size
             ]
         else:
-            if self.epoch_data[self.cur_epoch][0][index] is not None:
+            if index == 0 and self.epoch_data[self.cur_epoch][0][index] is not None:
                 # when tensorflow fits it requests index 0 twice
                 X = self.epoch_data[self.cur_epoch][0][index]
                 y = self.epoch_data[self.cur_epoch][1][index]
@@ -173,8 +173,9 @@ class DataGenerator(keras.utils.Sequence):
                     epoch_stats.setdefault(label, 0)
                     epoch_stats[label] += count
         # always keep a copy of epoch data
-        self.epoch_data[self.cur_epoch][0][index] = X
-        self.epoch_data[self.cur_epoch][1][index] = y
+        if index == 0 or self.keep_epoch:
+            self.epoch_data[self.cur_epoch][0][index] = X
+            self.epoch_data[self.cur_epoch][1][index] = y
 
         # can start loading next epoch of training before validation
         # if (index + 1) == len(self):
