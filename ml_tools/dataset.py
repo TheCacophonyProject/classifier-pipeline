@@ -164,9 +164,9 @@ class TrackHeader:
         frames = []
         for i, mass in enumerate(self.frame_mass):
             if min_mass is None or mass >= min_mass:
-                if self.label != "false-positive" and filtered_data is not None:
+                if filtered_data is not None:
                     filtered = filtered_data[i]
-                    if not filtered_is_valid(filtered):
+                    if not filtered_is_valid(filtered, self.label):
                         logging.debug(
                             "set_important_frames %s frame %s has no zeros in filtered frame",
                             self.unique_id,
@@ -1332,7 +1332,6 @@ class Dataset:
                 label_cap = len(self.samples_for(cap_at))
             else:
                 label_cap = self.get_label_caps(labels, remapped=True)
-        label_cap = 25
         cap = None
         for label in labels:
             if cap_samples:
@@ -2052,12 +2051,30 @@ def dataset_db_path(config):
     return os.path.join(config.tracks_folder, "datasets.dat")
 
 
-def filtered_is_valid(filtered):
+def filtered_is_valid(filtered, label):
+    if label == "false-positive":
+        return np.amax(filtered) != np.amin(filtered)
+
     area = filtered.shape[0] * filtered.shape[1]
     percentile = int(100 - 100 * 16.0 / area)
     threshold = np.percentile(filtered, percentile)
     threshold = max(0, threshold - 40)
+
+    top_left = 1 if np.amax(filtered[0:2][0:2]) > threshold else 0
+    top_right = 1 if np.amax(filtered[0:2][-3:-1]) > threshold else 0
+    bottom_left = 1 if np.amax(filtered[-3:-1][0:2]) > threshold else 0
+    bottom_right = 1 if np.amax(filtered[-3:-1][-3:-1]) > threshold else 0
+    # right = 1 if top_right and bottom_right else 0
+    # left = 1 if bottom_left and top_left else 0
+    # top = 1 if top_left and top_right else 0
+    # bottom = 1 if bottom_left and bottom_right else 0
+    # print("top", top, "right", right, "left", left, "bottom", bottom)
+    # # if (top_left and top_right) or (top_left and top_right)  or (top_left and top_right)
+    if (top_right + bottom_left + top_left + bottom_right) >= 2:
+        return False
+
     num_less = len(filtered[filtered <= threshold])
+
     if num_less <= area * 0.05 or np.amax(filtered) == np.amin(filtered):
         return False
     return True

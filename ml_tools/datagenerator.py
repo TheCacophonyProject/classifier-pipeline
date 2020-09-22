@@ -508,6 +508,7 @@ def square_clip_flow(data_flow_h, data_flow_v, square_width, type=None):
 def movement(
     frames,
     regions,
+    label=None,
     dim=None,
     channel=TrackChannels.filtered,
     require_movement=False,
@@ -551,7 +552,7 @@ def movement(
         if (
             prev_overlay is None or center_distance > min_distance
         ) or not require_movement:
-            if filtered_is_valid(frame[TrackChannels.filtered]):
+            if filtered_is_valid(frame[TrackChannels.filtered], label):
                 if use_mask:
                     frame = frame[channel] * (frame[TrackChannels.mask] + 0.5)
                 else:
@@ -624,6 +625,7 @@ def preprocess_movement(
     dots, overlay = movement(
         data,
         regions,
+        label=sample.label if sample else None,
         dim=square.shape,
         channel=channel,
         require_movement=type >= 5,
