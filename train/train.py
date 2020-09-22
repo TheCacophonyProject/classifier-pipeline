@@ -39,12 +39,18 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
 
     model.import_dataset(datasets_filename)
 
-    model.binarize(
-        set_one=["wallaby"],
-        label_one="wallaby",
-        set_two=None,
-        label_two="not",
-        random_segments=type == 9,
+    groups = []
+    groups.append((["wallaby"], "wallaby"))
+    groups.append((["insect", "false-positive"], "false-positive"))
+    other_labels = []
+    used_labels = groups[0][0].copy()
+    used_labels.extend(groups[1][0].copy())
+    for label in model.datasets.train.labels:
+        if label not in used_labels:
+            other_labels.append(label)
+    groups.append((other_labels, "not"))
+    model.regroup(
+        groups, random_segments=type == 9,
     )
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)
@@ -63,10 +69,12 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
                 "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
             )
         )
+    print("Mapped labels")
     for label in model.datasets.train.label_mapping.keys():
         print(
-            "{:<20} {:<20} {:<20} {:<20}".format(
+            "{} {:<20} {:<20} {:<20} {:<20}".format(
                 label,
+                model.datasets.train.mapped_label(label),
                 "{}/{}/{}/{:.1f}".format(*model.datasets.train.get_counts(label)),
                 "{}/{}/{}/{:.1f}".format(*model.datasets.validation.get_counts(label)),
                 "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),

@@ -570,30 +570,14 @@ class KerasModel:
         output = self.model.predict(frame[np.newaxis, :])
         return output[0]
 
-    def binarize(
-        self,
-        set_one,
-        label_one,
-        set_two,
-        label_two,
-        scale=False,
-        keep_fp=False,
-        shuffle=True,
-        random_segments=False,
+    def regroup(
+        self, groups, shuffle=True, random_segments=False,
     ):
         for fld in self.datasets._fields:
             dataset = getattr(self.datasets, fld)
             if random_segments:
                 dataset.random_segments()
-            dataset.binarize(
-                set_one,
-                lbl_one=label_one,
-                set_two=set_two,
-                lbl_two=label_two,
-                scale=scale,
-                keep_fp=keep_fp,
-                shuffle=shuffle,
-            )
+            dataset.regroup(groups, shuffle=shuffle)
         # set samples of each label to have a maximum cap, and exclude labels
 
         self.set_labels()

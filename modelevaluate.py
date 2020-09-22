@@ -353,14 +353,19 @@ dataset_file = dataset_db_path(config)
 
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
-ev.save_track("633968", "265542", dataset.db)
-dataset.binarize(
-    ["wallaby"],
-    lbl_one="wallaby",
-    lbl_two="not",
-    keep_fp=False,
-    scale=False,
-    shuffle=False,
+
+groups = []
+groups.append((["wallaby"], "wallaby"))
+other_labels = []
+used_labels = groups[0][0]
+used_labels.extrend(groups[1][0])
+for label in model.datasets.train.labels:
+    if label not in used_labels:
+        other_labels.append(label)
+groups.append((other_labels, "not"))
+
+dataset.regroup(
+    groups, shuffle=False,
 )
 logging.info(
     "Dataset loaded %s, using labels %s, mapped labels %s",

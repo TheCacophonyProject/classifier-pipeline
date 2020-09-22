@@ -1332,6 +1332,7 @@ class Dataset:
                 label_cap = len(self.samples_for(cap_at))
             else:
                 label_cap = self.get_label_caps(labels, remapped=True)
+        label_cap = 25
         cap = None
         for label in labels:
             if cap_samples:
@@ -1848,15 +1849,47 @@ class Dataset:
     #         self.segments.extend(new_segments)
     #         logging.debug("Resample %s taking %s", len(new_segments), label)
 
+    def regroup(
+        self, groups, balance_labels=True, shuffle=True,
+    ):
+        self.label_mapping = {}
+        counts = []
+        new_labels = []
+        for g in groups:
+            new_labels.append(g[1])
+            count = 0
+            for label in g[0]:
+                samples = len(self.samples_for(label))
+                count += samples
+                self.label_mapping[label] = g[1]
+            counts.append(count)
+
+        self.labels = new_labels
+        tracks_by_bin = {}
+        samples = []
+        for g in groups:
+            tracks_by_id, new_samples = self.rebalance(labels=g[0], shuffle=shuffle)
+            tracks_by_bin.update(tracks_by_id)
+            samples.extend(new_samples)
+
+        # tracks_by_id2, new_samples2 = self.rebalance(labels=set_two, shuffle=shuffle)
+        self.tracks_by_bin = tracks_by_bin
+
+        if self.use_segments:
+            self.segments = samples
+        else:
+            self.frame_samples = samples
+        if shuffle:
+            np.random.shuffle(self.segments)
+            np.random.shuffle(self.frame_samples)
+        self.rebuild_cdf(balance_labels=balance_labels)
+
     def binarize(
         self,
         set_one,
         lbl_one,
         set_two=None,
         lbl_two="other",
-        scale=True,
-        keep_fp=False,
-        remove_labels=None,
         balance_labels=True,
         shuffle=True,
     ):
@@ -1885,18 +1918,7 @@ class Dataset:
             self.label_mapping[label] = lbl_two
         percent = 1
         percent2 = 1
-        if scale:
-            if set_two_count > set_one_count:
-                percent2 = set_one_count / set_two_count
-                # allow 10% more
-                if self.name != "validation":
-                    percent2 += 0.05
-                percent2 = min(1, percent2)
-            else:
-                percent = set_two_count / set_one_count
-                percent += 0.1
-                percent = min(1, percent)
-        # set_one_cap = set_one_count / len()
+
         tracks_by_id, new_samples = self.rebalance(
             cap_percent=percent, labels=set_one, shuffle=shuffle
         )
@@ -1923,13 +1945,7 @@ class Dataset:
         self.rebuild_cdf(balance_labels=balance_labels)
 
     def rebalance(
-        self,
-        label_cap=None,
-        cap_percent=None,
-        exclude=[],
-        labels=None,
-        update=False,
-        shuffle=True,
+        self, label_cap=None, cap_percent=None, labels=None, update=False, shuffle=True,
     ):
         new_samples = []
         tracks_by_id = {}
@@ -1943,8 +1959,7 @@ class Dataset:
                 continue
             label_samples = []
             self.set_samples_for(label, label_samples)
-            if label in exclude:
-                labels.remove(label)
+
             track_ids = set()
             if shuffle:
                 np.random.shuffle(samples)
