@@ -349,6 +349,7 @@ class DataGenerator(keras.utils.Sequence):
                     self.dataset.name,
                     self.type,
                     augment=self.augment,
+                    epoch=self.loaded_epochs,
                 )
             else:
                 try:
@@ -586,6 +587,7 @@ def preprocess_movement(
     dataset=None,
     type=0,
     augment=False,
+    epoch=0,
 ):
     # doesn't seem to improve anything, infact makes worse
     # flip = False
@@ -603,9 +605,10 @@ def preprocess_movement(
     flipped = False
     for segment in segments:
         segment, flipped_data = Preprocessor.apply(
-            *segment, augment=augment, default_inset=0, flip=flipped,
+            *segment, augment=augment, default_inset=0
         )
         flipped = flipped_data or flipped
+
         if type == 13:
             segment = segment[:, channel] * (segment[:, TrackChannels.mask] + 0.5)
         else:
@@ -630,7 +633,7 @@ def preprocess_movement(
     overlay, success = normalize(overlay, min=0)
     if not success:
         return None
-    if flipped and type == 10:
+    if flipped and type >= 10:
         overlay = np.flip(overlay, axis=1)
         dots = np.flip(dots, axis=1)
 
@@ -667,8 +670,13 @@ def preprocess_movement(
     # #
     # savemovement(
     #     data,
-    #     "samples/{}/{}/{}-{}-{}".format(
-    #         dataset, sample.label, sample.track.clip_id, sample.track.track_id, flipped
+    #     "samples/{}/{}/{}-{}-{}-{}".format(
+    #         dataset,
+    #         epoch,
+    #         sample.label,
+    #         sample.track.clip_id,
+    #         sample.track.track_id,
+    #         flipped,
     #     ),
     # )
 

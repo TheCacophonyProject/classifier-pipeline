@@ -590,7 +590,6 @@ class Preprocessor:
         encode_frame_offsets_in_flow=False,
         default_inset=0,
         keep_aspect=False,
-        flip=None,
     ):
         """
         Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
@@ -763,7 +762,7 @@ class Preprocessor:
                 # augment filtered, no need for brightness, as will normalize anyway
                 data[:, 1] *= contrast_adjust
                 # data[:, 1] += level_adjust
-            if flip or (flip is None and random.random() <= 0.50):
+            if random.random() <= 0.50:
                 flipped = True
                 # when we flip the frame remember to flip the horizontal velocity as well
                 data = np.flip(data, axis=3)
