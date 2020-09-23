@@ -236,6 +236,8 @@ class TrackHeader:
         segment_min_mass=None,
         random=False,
     ):
+
+        self.segments = []
         if random and self.num_sample_frames < segment_width:
             # dont want to repeat too many frames
             return
@@ -250,7 +252,6 @@ class TrackHeader:
 
             segment_count = max(0, (self.num_sample_frames - segment_width) // 9)
             segment_count += 1
-            self.segments = []
             # take any segment_width frames, this could be done each epoch
             for i in range(segment_count):
                 frames = list(
