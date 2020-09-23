@@ -635,7 +635,7 @@ def preprocess_movement(
     overlay, success = normalize(overlay, min=0)
     if not success:
         return None
-    if flipped and type >= 10:
+    if flipped:
         overlay = np.flip(overlay, axis=1)
         dots = np.flip(dots, axis=1)
 
@@ -660,7 +660,7 @@ def preprocess_movement(
         data[:, :, 0] = square
         data[:, :, 1] = squares[1]
         data[:, :, 2] = overlay
-    elif type >= 12:
+    elif type >= 9:
         data[:, :, 0] = square
         data[:, :, 1] = np.zeros((dots.shape))
         data[:, :, 2] = overlay
