@@ -701,8 +701,8 @@ class KerasModel:
         return history
 
     def test_hparams(self):
-        self.datasets.train.set_samples(cap_at="wallaby")
-        self.datasets.validation.set_samples(cap_at="wallaby")
+        self.datasets.train.set_samples(cap_at="wallaby", label_cap=1000)
+        self.datasets.validation.set_samples(cap_at="wallaby", label_cap=200)
         epochs = 6
         type = 12
         batch_size = 32
