@@ -24,6 +24,8 @@ from ml_tools.dataset import Preprocessor
 from classify.trackprediction import TrackPrediction
 from sklearn.metrics import confusion_matrix
 
+from ml_tools.hyperparams import HyperParams
+
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 512"]),)
 HP_TYPE = hp.HParam("type", hp.Discrete([10, 12]))
@@ -48,20 +50,10 @@ class KerasModel:
 
     def __init__(self, train_config=None, labels=None, type=0):
         self.type = type
-        self.frame_size = Preprocessor.FRAME_SIZE
         self.model = None
         self.datasets = None
         # dictionary containing current hyper parameters
-        self.params = {
-            # augmentation
-            "base_training": False,
-            "augmentation": True,
-            "thermal_threshold": 10,
-            "scale_frequency": 0.5,
-            "keep_prob": 0.5,
-            "lstm": False,
-            "batch_size": 16,
-        }
+        self.params = HyperParams()
         if train_config:
             self.log_base = os.path.join(train_config.train_dir, "logs")
             self.log_dir = self.log_base
@@ -69,124 +61,119 @@ class KerasModel:
             self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
             self.params.update(train_config.hyper_params)
         self.labels = labels
-        self.pretrained_model = self.params.get("model", "resnetv2")
         self.preprocess_fn = None
         self.validate = None
         self.train = None
-        self.lstm = (self.params.get("lstm", False),)
-        self.use_movement = (self.params.get("use_movement", False),)
 
     def base_model(self, input_shape):
-        if self.pretrained_model == "resnet":
+        pretrained_model = self.params.model
+        if pretrained_model == "resnet":
             return (
                 tf.keras.applications.ResNet50(
                     weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
-        elif self.pretrained_model == "resnetv2":
+        elif pretrained_model == "resnetv2":
             return (
                 tf.keras.applications.ResNet50V2(
                     weights="imagenet", include_top=False, input_shape=input_shape
                 ),
                 tf.keras.applications.resnet_v2.preprocess_input,
             )
-        elif self.pretrained_model == "resnet152":
+        elif pretrained_model == "resnet152":
             return (
                 tf.keras.applications.ResNet152(
                     weights="imagenet", include_top=False, input_shape=input_shape
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
-        elif self.pretrained_model == "vgg16":
+        elif pretrained_model == "vgg16":
             return (
                 tf.keras.applications.VGG16(
                     weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.vgg16.preprocess_input,
             )
-        elif self.pretrained_model == "vgg19":
+        elif pretrained_model == "vgg19":
             return (
                 tf.keras.applications.VGG19(
                     weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.vgg19.preprocess_input,
             )
-        elif self.pretrained_model == "mobilenet":
+        elif pretrained_model == "mobilenet":
             return (
                 tf.keras.applications.MobileNetV2(
                     weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.mobilenet_v2.preprocess_input,
             )
-        elif self.pretrained_model == "densenet121":
+        elif pretrained_model == "densenet121":
             return (
                 tf.keras.applications.DenseNet121(
                     weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.densenet.preprocess_input,
             )
-        elif self.pretrained_model == "inceptionresnetv2":
+        elif pretrained_model == "inceptionresnetv2":
             return (
                 tf.keras.applications.InceptionResNetV2(
                     weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.inception_resnet_v2.preprocess_input,
             )
-        elif self.pretrained_model == "inceptionv3":
+        elif pretrained_model == "inceptionv3":
             return (
                 tf.keras.applications.InceptionV3(
                     weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.inception_v3.preprocess_input,
             )
-        raise Exception("Could not find model" + self.pretrained_model)
+        raise Exception("Could not find model" + pretrained_model)
 
     def get_preprocess_fn(self):
-        if self.pretrained_model == "resnet":
+        pretrained_model = self.params.model
+        if pretrained_model == "resnet":
             return tf.keras.applications.resnet.preprocess_input
 
-        elif self.pretrained_model == "resnetv2":
+        elif pretrained_model == "resnetv2":
             return tf.keras.applications.resnet_v2.preprocess_input
 
-        elif self.pretrained_model == "resnet152":
+        elif pretrained_model == "resnet152":
             return tf.keras.applications.resnet.preprocess_input
 
-        elif self.pretrained_model == "vgg16":
+        elif pretrained_model == "vgg16":
             return tf.keras.applications.vgg16.preprocess_input
 
-        elif self.pretrained_model == "vgg19":
+        elif pretrained_model == "vgg19":
             return tf.keras.applications.vgg19.preprocess_input
 
-        elif self.pretrained_model == "mobilenet":
+        elif pretrained_model == "mobilenet":
             return tf.keras.applications.mobilenet_v2.preprocess_input
 
-        elif self.pretrained_model == "densenet121":
+        elif pretrained_model == "densenet121":
             return tf.keras.applications.densenet.preprocess_input
 
-        elif self.pretrained_model == "inceptionresnetv2":
+        elif pretrained_model == "inceptionresnetv2":
             return tf.keras.applications.inception_resnet_v2.preprocess_input
-        elif self.pretrained_model == "inceptionv3":
+        elif pretrained_model == "inceptionv3":
             return tf.keras.applications.inception_v3.preprocess_input
         return None
 
     def build_model(self, dense_sizes=None, retrain_from=None, dropout=None):
-        if not dense_sizes:
-            dense_sizes = self.params.get("dense_sizes", [1024, 512])
-        # note the model already applies batch_norm
-        width = self.frame_size
-        if self.params.get("use_movement", False):
-            width = self.square_width * self.frame_size
+
+        width = self.params.frame_size
+        if self.params.use_movement:
+            width = self.params.square_width * self.params.frame_size
 
         inputs = tf.keras.Input(shape=(width, width, 3), name="input")
 
         base_model, preprocess = self.base_model((width, width, 3))
         self.preprocess_fn = preprocess
-        x = base_model(
-            inputs, training=self.params.get("base_training", False)
-        )  # IMPORTANT
+        x = base_model(inputs, training=self.params.base_training)  # IMPORTANT
 
-        if self.params["lstm"]:
+        if self.params.lstm:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
@@ -196,8 +183,6 @@ class KerasModel:
             self.model = self.add_lstm(cnn)
         else:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
-            # if dropout is None:
-            #     dropout = self.params.get("dropout", None)
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
                 if dropout:
@@ -209,7 +194,7 @@ class KerasModel:
             self.model = tf.keras.models.Model(inputs, outputs=preds)
 
         if retrain_from is None:
-            retrain_from = self.params.get("retrain_layer")
+            retrain_from = self.params.retrain_layer
         if retrain_from:
             for i, layer in enumerate(base_model.layers):
                 if isinstance(layer, tf.keras.layers.BatchNormalization):
@@ -219,7 +204,7 @@ class KerasModel:
                 else:
                     layer.trainable = i >= retrain_from
         else:
-            base_model.trainable = self.params.get("base_training", False)
+            base_model.trainable = self.params.base_training
 
         self.model.summary()
 
@@ -229,14 +214,14 @@ class KerasModel:
 
     def loss(self):
         softmax = tf.keras.losses.CategoricalCrossentropy(
-            label_smoothing=self.params["label_smoothing"],
+            label_smoothing=self.params.label_smoothing,
         )
         return softmax
 
     def optimizer(self):
-        if self.params["learning_rate_decay"] != 1.0:
+        if self.params.learning_rate_decay != 1.0:
             learning_rate = tf.compat.v1.train.exponential_decay(
-                self.params["learning_rate"],
+                self.params.learning_rate,
                 self.global_step,
                 1000,
                 self.params["learning_rate_decay"],
@@ -244,19 +229,25 @@ class KerasModel:
             )
             tf.compat.v1.summary.scalar("params/learning_rate", learning_rate)
         else:
-            learning_rate = self.params["learning_rate"]  # setup optimizer
-        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+            learning_rate = self.params.learning_rate  # setup optimizer
+        if learning_rate:
+            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        else:
+            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
         return optimizer
 
     def load_weights(self, model_path, meta=True):
         logging.info("loading weights %s", model_path)
         dir = os.path.dirname(model_path)
 
-        self.square_width = 5
         if meta:
             self.load_meta(dir)
         if not self.model:
-            self.build_model()
+            self.build_model(
+                dense_sizes=self.params.dense_sizes,
+                retrain_from=self.params.retrain_layer,
+                dropout=self.params.dropout,
+            )
         self.model.load_weights(dir + "/variables/variables")
 
     def load_model(self, model_path):
@@ -268,14 +259,10 @@ class KerasModel:
 
     def load_meta(self, dir):
         meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
-        self.params = meta["hyperparams"]
+        self.params = HyperParams()
+        self.params.update(meta["hyperparams"])
         self.labels = meta["labels"]
-        self.pretrained_model = self.params.get("model", "resnetv2")
         self.preprocess_fn = self.get_preprocess_fn()
-        self.frame_size = self.params.get("frame_size", 48)
-        self.square_width = meta.get("square_width")
-        self.lstm = self.params.get("lstm", False)
-        self.use_movement = self.params.get("use_movement", False)
         self.type = meta.get("type")
 
     def save(self, run_name=MODEL_NAME, history=None, test_results=None):
@@ -294,8 +281,6 @@ class KerasModel:
         model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
         model_stats["version"] = self.VERSION
-        model_stats["frame_size"] = self.frame_size
-        model_stats["model"] = self.pretrained_model
         model_stats["type"] = self.type
         if history:
             model_stats["history"] = history.history
@@ -303,8 +288,6 @@ class KerasModel:
             model_stats["test_loss"] = test_results[0]
             model_stats["test_acc"] = test_results[1]
 
-        if self.params.get("use_movement", False):
-            model_stats["square_width"] = self.train.square_width
         if not os.path.exists(os.path.join(self.checkpoint_folder, run_name)):
             os.mkdir(os.path.join(self.checkpoint_folder, run_name))
         json.dump(
@@ -354,42 +337,46 @@ class KerasModel:
             self.datasets.train,
             self.datasets.train.labels,
             len(self.datasets.train.labels),
-            batch_size=self.params.get("batch_size", 32),
-            lstm=self.params.get("lstm", False),
-            buffer_size=self.params.get("buffer_size", 128),
-            use_thermal=self.params.get("use_thermal", False),
-            use_filtered=self.params.get("use_filtered", False),
-            shuffle=self.params.get("shuffle", True),
+            batch_size=self.params.batch_size,
+            lstm=self.params.lstm,
+            buffer_size=self.params.buffer_size,
+            use_thermal=self.params.use_thermal,
+            use_filtered=self.params.use_filtered,
+            shuffle=self.params.shuffle,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
-            load_threads=self.params.get("train_load_threads", 1),
-            use_movement=self.params.get("use_movement", False),
+            load_threads=self.params.train_load_threads,
+            use_movement=self.params.use_movement,
             type=self.type,
             cap_at="wallaby",
+            square_width=self.params.square_width,
         )
         self.validate = DataGenerator(
             self.datasets.validation,
             self.datasets.train.labels,
             len(self.datasets.train.labels),
-            batch_size=self.params.get("batch_size", 32),
-            buffer_size=self.params.get("buffer_size", 128),
-            lstm=self.params.get("lstm", False),
-            use_thermal=self.params.get("use_thermal", False),
-            use_filtered=self.params.get("use_filtered", False),
-            shuffle=self.params.get("shuffle", True),
+            batch_size=self.params.batch_size,
+            lstm=self.params.lstm,
+            buffer_size=self.params.buffer_size,
+            use_thermal=self.params.use_thermal,
+            use_filtered=self.params.use_filtered,
+            shuffle=self.params.shuffle,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=1,
-            use_movement=self.params.get("use_movement", False),
+            use_movement=self.params.use_movement,
             type=self.type,
             cap_at="wallaby",
+            square_width=self.params.square_width,
         )
-        self.square_width = self.validate.square_width
 
         if not self.model:
-            self.build_model()
+            self.build_model(
+                dense_sizes=self.params.dense_sizes,
+                retrain_from=self.params.retrain_layer,
+                dropout=self.params.dropout,
+            )
         file_writer_cm = tf.summary.create_file_writer(self.log_dir + "/cm")
-
         cm_callback = tf.keras.callbacks.LambdaCallback(
             on_epoch_end=lambda epoch, logs: log_confusion_matrix(
                 epoch, logs, self.model, self.validate, file_writer_cm
@@ -420,11 +407,11 @@ class KerasModel:
                 self.datasets.test,
                 self.datasets.train.labels,
                 len(self.datasets.train.labels),
-                batch_size=self.params.get("batch_size", 32),
-                lstm=self.params.get("lstm", False),
-                use_thermal=self.params.get("use_thermal", False),
-                use_filtered=self.params.get("use_filtered", False),
-                use_movement=self.params.get("use_movement", False),
+                batch_size=self.params.batch_size,
+                lstm=self.params.lstm,
+                use_thermal=self.params.use_thermal,
+                use_filtered=self.params.use_filtered,
+                use_movement=self.params.use_movement,
                 shuffle=True,
                 model_preprocess=self.preprocess_fn,
                 epochs=1,
@@ -432,6 +419,7 @@ class KerasModel:
                 cap_samples=True,
                 cap_at="wallaby",
                 type=self.type,
+                square_width=self.params.square_width,
             )
             test_accuracy = self.model.evaluate(test)
             test.stop_load()
@@ -461,41 +449,9 @@ class KerasModel:
         )
         return [checkpoint_acc, checkpoint_loss]
 
-    def preprocess(self, frame, data):
-        if self.use_thermal:
-            channel = TrackChannels.thermal
-        else:
-            channel = TrackChannels.filtered
-        data = data[channel]
-
-        # normalizes data, constrast stretch good or bad?
-        if self.augment:
-            percent = random.randint(0, 2)
-        else:
-            percent = 0
-        max = int(np.percentile(data, 100 - percent))
-        min = int(np.percentile(data, percent))
-        if max == min:
-            logging.error(
-                "frame max and min are the same clip %s track %s frame %s",
-                frame.clip_id,
-                frame.track_id,
-                frame.frame_num,
-            )
-            return None
-
-        data -= min
-        data = data / (max - min)
-        np.clip(data, a_min=0, a_max=None, out=data)
-
-        data = data[np.newaxis, :]
-        data = np.transpose(data, (1, 2, 0))
-        data = np.repeat(data, 3, axis=2)
-        return data
-
     def classify_frames(self, data, preprocess=True, regions=None):
         predictions = []
-        if self.params.get("use_thermal", False):
+        if self.params.use_thermal:
             channel = TrackChannels.thermal
         else:
             channel = TrackChannels.filtered
@@ -507,7 +463,7 @@ class KerasModel:
             data, _ = Preprocessor.apply(data, median, default_inset=0,)
             data = preprocess_lstm(
                 data,
-                (self.frame_size, self.frame_size, 3),
+                (self.params.frame_size, self.params.frame_size, 3),
                 channel,
                 augment=False,
                 preprocess_fn=self.preprocess_fn,
@@ -515,7 +471,7 @@ class KerasModel:
             output = self.model.predict(data[np.newaxis, :])
             predictions.append(output[0])
         elif self.use_movement:
-            frames_per_classify = self.square_width ** 2
+            frames_per_classify = self.params.square_width ** 2
             frames = len(data)
 
             n_squares = math.ceil(float(frames) / frames_per_classify)
@@ -554,7 +510,7 @@ class KerasModel:
                 frames = preprocess_movement(
                     square_data,
                     [(segment)],
-                    self.square_width,
+                    self.params.square_width,
                     region_data,
                     channel,
                     self.preprocess_fn,
@@ -568,14 +524,14 @@ class KerasModel:
         return predictions
 
     def classify_frame(self, frame, preprocess=True):
-        if self.params.get("use_thermal", False):
+        if self.params.use_thermal:
             channel = TrackChannels.thermal
         else:
             channel = TrackChannels.filtered
         if preprocess:
             frame = preprocess_frame(
                 frame,
-                (self.frame_size, self.frame_size, 3),
+                (self.params.frame_size, self.params.frame_size, 3),
                 channel,
                 augment=False,
                 preprocess_fn=self.preprocess_fn,
@@ -626,13 +582,12 @@ class KerasModel:
         self.datasets.train, self.datasets.validation, self.datasets.test = datasets
         self.labels = self.datasets.train.labels
 
-        # augmentation really helps with reducing over-fitting, but test set should be fixed so we don't apply it there.
-        self.datasets.train.enable_augmentation = self.params["augmentation"]
+        self.datasets.train.enable_augmentation = True
         self.datasets.validation.enable_augmentation = False
         self.datasets.test.enable_augmentation = False
         for dataset in datasets:
             dataset.set_read_only(True)
-            dataset.use_segments = self.params.get("use_segments", False)
+            dataset.use_segments = self.params.use_segments
 
             if ignore_labels:
                 for label in ignore_labels:
@@ -687,10 +642,6 @@ class KerasModel:
         self.validate.batch_size = hparams.get(HP_BATCH_SIZE, 32)
         self.train.loaded_epochs = 0
         self.validate.loaded_epochs = 0
-        # self.train.cur_epoch = 0
-        # self.validate.cur_epoch = 0
-
-        self.square_width = self.train.square_width
         self.build_model(
             dense_sizes=dense_size, retrain_from=retrain_layer, dropout=dropout,
         )
@@ -726,36 +677,38 @@ class KerasModel:
             self.datasets.train.labels,
             len(self.datasets.train.labels),
             batch_size=batch_size,
-            lstm=self.params.get("lstm", False),
-            buffer_size=self.params.get("buffer_size", 128),
-            use_thermal=self.params.get("use_thermal", False),
-            use_filtered=self.params.get("use_filtered", False),
+            lstm=self.params.lstm,
+            buffer_size=self.params.buffer_size,
+            use_thermal=self.params.use_thermal,
+            use_filtered=self.params.use_filtered,
             model_preprocess=self.preprocess_fn,
-            load_threads=self.params.get("train_load_threads", 1),
-            use_movement=self.params.get("use_movement", False),
+            load_threads=self.params.train_load_threads,
+            use_movement=self.params.use_movement,
             cap_at="wallaby",
             randomize_epoch=False,
             shuffle=True,
             keep_epoch=True,
             type=type,
+            square_width=self.params.square_width,
         )
         self.validate = DataGenerator(
             self.datasets.validation,
             self.datasets.train.labels,
             len(self.datasets.train.labels),
             batch_size=batch_size,
-            buffer_size=self.params.get("buffer_size", 128),
-            lstm=self.params.get("lstm", False),
-            use_thermal=self.params.get("use_thermal", False),
-            use_filtered=self.params.get("use_filtered", False),
+            buffer_size=self.params.buffer_size,
+            lstm=self.params.lstm,
+            use_thermal=self.params.use_thermal,
+            use_filtered=self.params.use_filtered,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
-            use_movement=self.params.get("use_movement", False),
+            use_movement=self.params.use_movement,
             cap_at="wallaby",
             randomize_epoch=False,
             shuffle=True,
             keep_epoch=True,
             type=type,
+            square_width=self.params.square_width,
         )
 
         dir = self.log_dir + "/hparam_tuning"
@@ -819,24 +772,15 @@ class KerasModel:
     @property
     def hyperparams_string(self):
         """ Returns list of hyperparameters as a string. """
+        print(self.params)
         return "\n".join(
             ["{}={}".format(param, value) for param, value in self.params.items()]
         )
 
     def add_lstm(self, cnn):
-        # with tf.variable_scope("state"):
-        # zero_state = tf.zeros(
-        #     shape=[self.params["batch_size"], self.params["lstm_units"], 2],
-        #     dtype=tf.float32,
-        # )
-        # self.state_in = tf.compat.v1.placeholder_with_default(
-        #     input=zero_state,
-        #     shape=[None, self.params["lstm_units"], 2],
-        #     name="state_in",
-        # )
-        # init_state = (self.state_in[:, :, 0], self.state_in[:, :, 1])
-
-        input_layer = tf.keras.Input(shape=(None, self.frame_size, self.frame_size, 3))
+        input_layer = tf.keras.Input(
+            shape=(None, self.params.frame_size, self.params.frame_size, 3)
+        )
         encoded_frames = tf.keras.layers.TimeDistributed(cnn)(input_layer)
         lstm_outputs = tf.keras.layers.LSTM(
             self.params["lstm_units"],
@@ -852,25 +796,6 @@ class KerasModel:
         )(hidden_layer)
         model = tf.keras.models.Model(input_layer, preds)
         return model
-
-    #
-    # def lstm(self, inputs):
-    #     lstm_cell = tf.keras.layers.LSTMCell(
-    #         self.params["lstm_units"], dropout=self.params["keep_prob"]
-    #     )
-    #     rnn = tf.keras.layers.RNN(
-    #         lstm_cell,
-    #         return_sequences=True,
-    #         return_state=True,
-    #         dtype=tf.float32,
-    #         unroll=False,
-    #     )
-    #     # whole_seq_output, final_memory_state, final_carry_state = rnn(inputs)
-    #     lstm_outputs, lstm_state_1, lstm_state_2 = rnn(inputs)
-    #
-    #     lstm_output = tf.identity(lstm_outputs[:, -1], "lstm_out")
-    #     lstm_state = tf.stack([lstm_state_1, lstm_state_2], axis=2)
-    #     return lstm_output, lstm_state
 
     def classify_track(self, track_id, data, keep_all=True, regions=None):
         track_prediction = TrackPrediction(track_id, 0, keep_all)
@@ -894,24 +819,25 @@ class KerasModel:
 
     def confusion(self, dataset, filename="confusion.png"):
         dataset.set_read_only(True)
-        dataset.use_segments = self.params.get("use_segments", False)
+        dataset.use_segments = self.params.use_segments
         test = DataGenerator(
             dataset,
             self.labels,
             len(self.labels),
-            batch_size=self.params.get("batch_size", 32),
-            lstm=self.params.get("lstm", False),
-            use_thermal=self.params.get("use_thermal", False),
-            use_filtered=self.params.get("use_filtered", False),
-            use_movement=self.params.get("use_movement", False),
+            batch_size=self.params.batch_size,
+            lstm=self.params.lstm,
+            use_thermal=self.params.use_thermal,
+            use_filtered=self.params.use_filtered,
+            use_movement=self.params.use_movement,
             shuffle=True,
             model_preprocess=self.preprocess_fn,
             epochs=1,
-            load_threads=self.params.get("train_load_threads", 1),
+            load_threads=self.params.train_load_threads,
             keep_epoch=True,
             type=self.type,
             cap_samples=True,
             cap_at="wallaby",
+            square_width=self.params.square_width,
         )
         test_pred_raw = self.model.predict(test)
         test.stop_load()
@@ -931,23 +857,23 @@ class KerasModel:
 
     def evaluate(self, dataset):
         dataset.set_read_only(True)
-        dataset.use_segments = self.params.get("use_segments", False)
-
+        dataset.use_segments = self.params.use_segments
         test = DataGenerator(
             dataset,
             self.labels,
             len(self.labels),
-            batch_size=self.params.get("batch_size", 32),
-            lstm=self.params.get("lstm", False),
-            use_thermal=self.params.get("use_thermal", False),
-            use_filtered=self.params.get("use_filtered", False),
-            use_movement=self.params.get("use_movement", False),
+            batch_size=self.params.batch_size,
+            lstm=self.params.lstm,
+            use_thermal=self.params.use_thermal,
+            use_filtered=self.params.use_filtered,
+            use_movement=self.params.use_movement,
             shuffle=False,
             model_preprocess=self.preprocess_fn,
             epochs=1,
-            load_threads=self.params.get("train_load_threads", 1),
+            load_threads=self.params.train_load_threads,
             cap_samples=False,
             type=self.type,
+            square_width=self.params.square_width,
         )
         test_accuracy = self.model.evaluate(test)
         test.stop_load()

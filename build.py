@@ -268,6 +268,7 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
     build_config = config.build
     validation_percent = 0.3
     train = Dataset(db, "train", config)
+    train.enable_augmentation = True
     validation = Dataset(db, "validation", config)
 
     train_data = []
