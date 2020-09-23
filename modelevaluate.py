@@ -354,15 +354,13 @@ dataset_file = dataset_db_path(config)
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
 
-ev.load_classifier()
-
 groups = []
 groups.append((["wallaby"], "wallaby"))
 groups.append((["insect", "false-positive"], "false-positive"))
 other_labels = []
 used_labels = groups[0][0].copy()
 used_labels.extend(groups[1][0].copy())
-for label in ev.classifier.datasets.train.labels:
+for label in dataset.labels:
     if label not in used_labels:
         other_labels.append(label)
 groups.append((other_labels, "not"))
