@@ -198,10 +198,7 @@ class TrackDatabase:
         # track_attrs["predictions"]=preds
         height, width = preds.shape
         pred_data = track.create_dataset(
-            "predictions",
-            (height, width),
-            chunks=(height, width),
-            dtype=preds.dtype,
+            "predictions", (height, width), chunks=(height, width), dtype=preds.dtype,
         )
         pred_data[:, :] = preds
 
@@ -408,30 +405,31 @@ class TrackDatabase:
         # other = self.get_frame(clip_id, track_number, start_frame)
         # print("get frame,", start_frame, time.time()-start)
         # start = time.time()
+        try:
+            with HDF5Manager(self.database) as f:
+                clips = f["clips"]
+                track_node = clips[str(clip_id)][str(track_number)]
 
-        with HDF5Manager(self.database) as f:
-            clips = f["clips"]
-            track_node = clips[str(clip_id)][str(track_number)]
-
-            if start_frame is None:
-                start_frame = 0
-            if end_frame is None:
-                end_frame = track_node.attrs["frames"]
-            result = []
-            if original:
-                track_node = track_node["original"]
-            else:
-                if "cropped" in track_node:
-                    track_node = track_node["cropped"]
-            for frame_number in range(start_frame, end_frame):
-                # we use [:,:,:] to force loading of all data.
-                if channel:
-                    result.append(track_node[str(frame_number)][channel])
-
+                if start_frame is None:
+                    start_frame = 0
+                if end_frame is None:
+                    end_frame = track_node.attrs["frames"]
+                result = []
+                if original:
+                    track_node = track_node["original"]
                 else:
-                    result.append(track_node[str(frame_number)][:])
-        # print("get track,", start_frame, end_frame, time.time()-start)
+                    if "cropped" in track_node:
+                        track_node = track_node["cropped"]
+                for frame_number in range(start_frame, end_frame):
+                    # we use [:,:,:] to force loading of all data.
+                    if channel:
+                        result.append(track_node[str(frame_number)][channel])
 
+                    else:
+                        result.append(track_node[str(frame_number)][:])
+        # print("get track,", start_frame, end_frame, time.time()-start)
+        except:
+            return None
         return result
 
     def remove_clip(self, clip_id):

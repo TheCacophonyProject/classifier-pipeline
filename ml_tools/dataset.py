@@ -248,7 +248,7 @@ class TrackHeader:
             remaining = segment_width - self.num_sample_frames
             sample_size = min(segment_width, self.num_sample_frames)
 
-            segment_count = max(0, (self.num_sample_frames - segment_width) // 4)
+            segment_count = max(0, (self.num_sample_frames - segment_width) // 9)
             segment_count += 1
             self.segments = []
             # take any segment_width frames, this could be done each epoch

@@ -412,6 +412,8 @@ def recalc_important(dataset_filename, db):
             pre = len(track.important_frames)
             track_data = db.get_track(track.clip_id, track.track_id, channel=1)
             track.important_frames = []
+            if track_data is None:
+                continue
             track.set_important_frames([], 16, False, filtered_data=track_data)
             print(
                 "recalculated",
