@@ -236,7 +236,7 @@ class TrackHeader:
         segment_min_mass=None,
         random=False,
     ):
-        if random and self.num_sample_frames < segment_width / 2.0:
+        if random and self.num_sample_frames < segment_width:
             # dont want to repeat too many frames
             return
         elif len(mass_history) < segment_width:

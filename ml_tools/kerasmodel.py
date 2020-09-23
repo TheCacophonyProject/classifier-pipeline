@@ -283,6 +283,9 @@ class KerasModel:
         self.model.save(
             os.path.join(self.checkpoint_folder, run_name), save_format="tf"
         )
+        self.save_metadata(run_name, history, test_results)
+
+    def save_metadata(self, run_name=MODEL_NAME, history=None, test_results=None):
         #  save metadata
         model_stats = {}
         model_stats["name"] = self.MODEL_NAME
@@ -302,31 +305,40 @@ class KerasModel:
 
         if self.params.get("use_movement", False):
             model_stats["square_width"] = self.train.square_width
+        if not os.path.exists(os.path.join(self.checkpoint_folder, run_name)):
+            os.mkdir(os.path.join(self.checkpoint_folder, run_name))
         json.dump(
             model_stats,
             open(os.path.join(self.checkpoint_folder, run_name, "metadata.txt"), "w",),
             indent=4,
         )
-        json.dump(
-            model_stats,
-            open(
-                os.path.join(
-                    self.checkpoint_folder, run_name, "val_loss", "metadata.txt"
+
+        if os.path.exists(
+            os.path.join(self.checkpoint_folder, run_name, "val_loss", "metadata.txt")
+        ):
+            json.dump(
+                model_stats,
+                open(
+                    os.path.join(
+                        self.checkpoint_folder, run_name, "val_loss", "metadata.txt"
+                    ),
+                    "w",
                 ),
-                "w",
-            ),
-            indent=4,
-        )
-        json.dump(
-            model_stats,
-            open(
-                os.path.join(
-                    self.checkpoint_folder, run_name, "val_acc", "metadata.txt"
+                indent=4,
+            )
+        if os.path.exists(
+            os.path.join(self.checkpoint_folder, run_name, "val_acc", "metadata.txt")
+        ):
+            json.dump(
+                model_stats,
+                open(
+                    os.path.join(
+                        self.checkpoint_folder, run_name, "val_acc", "metadata.txt"
+                    ),
+                    "w",
                 ),
-                "w",
-            ),
-            indent=4,
-        )
+                indent=4,
+            )
 
     def close(self):
         if self.validate:
@@ -384,6 +396,9 @@ class KerasModel:
             )
         )
         checkpoints = self.checkpoints(run_name)
+
+        self.save_metadata(run_name)
+
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
