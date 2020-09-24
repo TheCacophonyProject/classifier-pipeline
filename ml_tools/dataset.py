@@ -1368,7 +1368,7 @@ class Dataset:
             if cap_samples:
                 cap = min(label_cap, len(self.samples_for(label, remapped=True)))
             if label == "false-positive":
-                label_cap = min(label_cap, label_cap * 0.5)
+                label_cap = min(label_cap, int(label_cap * 0.5))
             new = self.get_sample(cap=cap, replace=replace, label=label, random=random)
             if new is not None and len(new) > 0:
                 samples.extend(new)
