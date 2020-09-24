@@ -235,21 +235,40 @@ class TrackHeader:
         segment_width,
         segment_min_mass=None,
         random=False,
+        require_movement=False,
     ):
 
+        seg_count = len(self.segments)
         self.segments = []
         if random and self.num_sample_frames < segment_width:
             # dont want to repeat too many frames
             return
         elif len(mass_history) < segment_width:
             return
+        if require_movement:
+            mid_x = [
+                tools.Rectangle.from_ltrb(*bound).mid_x for bound in self.track_bounds
+            ]
+            mid_y = [
+                tools.Rectangle.from_ltrb(*bound).mid_y for bound in self.track_bounds
+            ]
+            vel_x = [cur - prev for cur, prev in zip(mid_x[1:], mid_x[:-1])]
+            vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
+
+            movement = sum((vx ** 2 + vy ** 2) ** 0.5 for vx, vy in zip(vel_x, vel_y))
+            widths = [
+                tools.Rectangle.from_ltrb(*bound).width for bound in self.track_bounds
+            ]
+            if movement < np.median(widths) * 2.0:
+                logging.info("Not enough movment %s %s", self, self.label)
+                return
+
         segment_count = (len(mass_history) - segment_width) // segment_frame_spacing
         segment_count += 1
 
         if random:
             remaining = segment_width - self.num_sample_frames
             sample_size = min(segment_width, self.num_sample_frames)
-
             segment_count = max(0, (self.num_sample_frames - segment_width) // 9)
             segment_count += 1
             # take any segment_width frames, this could be done each epoch
@@ -287,7 +306,9 @@ class TrackHeader:
                     frame_indices=frames,
                 )
                 self.segments.append(segment)
+            # print("segment count", seg_count, len(self.segments))
 
+            return
         # scan through track looking for good segments to add to our datset
         for i in range(segment_count):
             segment_start = i * segment_frame_spacing
@@ -1997,10 +2018,13 @@ class Dataset:
         else:
             return len(self.frame_samples) > 0
 
-    def random_segments(self, balance_labels=True):
+    def random_segments(self, balance_labels=True, require_movement=False):
         self.segments = []
         self.segments_by_label = {}
-
+        logging.info(
+            "%s generating segments require_movement %s ", self.name, require_movement
+        )
+        empty_tracks = []
         for track in self.tracks:
             segment_frame_spacing = round(
                 self.segment_spacing * track.frames_per_second
@@ -2013,10 +2037,20 @@ class Dataset:
                 segment_width,
                 self.segment_min_mass,
                 random=True,
+                require_movement=require_movement,
             )
+            if len(track.segments) == 0:
+                empty_tracks.append(track)
+                continue
             self.segments.extend(track.segments)
             segs = self.segments_by_label.setdefault(track.label, [])
             segs.extend(track.segments)
+        for track in empty_tracks:
+            print("deleting")
+            self.tracks.remove(track)
+            del self.tracks_by_id[track.unique_id]
+            self.tracks_by_bin[track.bin_id].remove(track)
+
         self.rebuild_cdf(balance_labels=balance_labels)
 
 

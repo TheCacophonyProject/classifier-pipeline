@@ -30,7 +30,6 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
             labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )
     elif conf.train.model == "keras":
-        print(conf.train)
         model = KerasModel(train_config=conf.train, labels=conf.labels, type=type)
     else:
         model = ModelCRNN_LQ(
@@ -51,13 +50,13 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
             other_labels.append(label)
     groups.append((other_labels, "not"))
     model.regroup(
-        groups, random_segments=type == 9,
+        groups, random_segments=type >= 12,
     )
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)
     print()
     print(
-        "{:<20} {:<20} {:<20} {:<20} (segments/tracks/bins/weight)".format(
+        "{:<20} {:<20} {:<20} {:<20} (segments/frames/tracks/bins)".format(
             "label", "train", "validation", "test"
         )
     )

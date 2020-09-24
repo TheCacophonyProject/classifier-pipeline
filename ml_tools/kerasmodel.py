@@ -545,7 +545,7 @@ class KerasModel:
         for fld in self.datasets._fields:
             dataset = getattr(self.datasets, fld)
             if random_segments:
-                dataset.random_segments()
+                dataset.random_segments(require_movement=self.type == 14)
             dataset.regroup(groups, shuffle=shuffle)
         # set samples of each label to have a maximum cap, and exclude labels
 
