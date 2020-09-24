@@ -625,13 +625,6 @@ class Preprocessor:
         # -------------------------------------------
         # first we scale to the standard size
 
-        # adjusting the corners makes the algorithm robust to tracking differences.
-        # gp changed to 0,1 maybe should be a percent of the frame size
-        top_offset = random.randint(0, 1) if augment else default_inset
-        bottom_offset = random.randint(0, 1) if augment else default_inset
-        left_offset = random.randint(0, 1) if augment else default_inset
-        right_offset = random.randint(0, 1) if augment else default_inset
-
         data = np.zeros(
             (
                 len(frames),
@@ -645,7 +638,23 @@ class Preprocessor:
         for i, frame in enumerate(frames):
 
             channels, frame_height, frame_width = frame.shape
+            # adjusting the corners makes the algorithm robust to tracking differences.
+            # gp changed to 0,1 maybe should be a percent of the frame size
+            max_height_offset = int(np.clip(frame_height * 0.1, 1, 2))
+            max_width_offset = int(np.clip(frame_width * 0.1, 1, 2))
 
+            top_offset = (
+                random.randint(0, max_height_offset) if augment else default_inset
+            )
+            bottom_offset = (
+                random.randint(0, max_height_offset) if augment else default_inset
+            )
+            left_offset = (
+                random.randint(0, max_width_offset) if augment else default_inset
+            )
+            right_offset = (
+                random.randint(0, max_width_offset) if augment else default_inset
+            )
             if (
                 frame_height < Preprocessor.MIN_SIZE
                 or frame_width < Preprocessor.MIN_SIZE
@@ -1358,6 +1367,8 @@ class Dataset:
         for label in labels:
             if cap_samples:
                 cap = min(label_cap, len(self.samples_for(label, remapped=True)))
+            if label == "false-positive":
+                label_cap = min(label_cap, label_cap * 0.5)
             new = self.get_sample(cap=cap, replace=replace, label=label, random=random)
             if new is not None and len(new) > 0:
                 samples.extend(new)

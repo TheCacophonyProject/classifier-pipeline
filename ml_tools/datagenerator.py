@@ -673,17 +673,17 @@ def preprocess_movement(
         data[:, :, 2] = overlay
 
     # #
-    # savemovement(
-    #     data,
-    #     "samples/{}/{}/{}-{}-{}-{}".format(
-    #         dataset,
-    #         epoch,
-    #         sample.label,
-    #         sample.track.clip_id,
-    #         sample.track.track_id,
-    #         flipped,
-    #     ),
-    # )
+    savemovement(
+        data,
+        "samples/{}/{}/{}-{}-{}-{}".format(
+            dataset,
+            epoch,
+            sample.label,
+            sample.track.clip_id,
+            sample.track.track_id,
+            flipped,
+        ),
+    )
 
     if preprocess_fn:
         for i, frame in enumerate(data):
