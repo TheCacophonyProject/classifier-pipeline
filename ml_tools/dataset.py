@@ -2046,7 +2046,6 @@ class Dataset:
             segs = self.segments_by_label.setdefault(track.label, [])
             segs.extend(track.segments)
         for track in empty_tracks:
-            print("deleting")
             self.tracks.remove(track)
             del self.tracks_by_id[track.unique_id]
             self.tracks_by_bin[track.bin_id].remove(track)

@@ -47,7 +47,9 @@ class DataGenerator(keras.utils.Sequence):
         cap_at=None,
         type=0,
         square_width=5,
+        label_cap=None,
     ):
+        self.label_cap = label_cap
         self.type = type
         self.cap_at = cap_at
         self.cap_samples = cap_samples
@@ -208,6 +210,7 @@ class DataGenerator(keras.utils.Sequence):
                 replace=False,
                 random=self.randomize_epoch,
                 cap_at=self.cap_at,
+                label_cap=self.label_cap,
             )
             #
             if self.shuffle:
