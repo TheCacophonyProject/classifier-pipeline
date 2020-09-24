@@ -371,7 +371,6 @@ class KerasModel:
             # cap_at="wallaby",
             square_width=self.params.square_width,
         )
-
         if not self.model:
             self.build_model(
                 dense_sizes=self.params.dense_sizes,

@@ -269,7 +269,7 @@ class TrackHeader:
         if random:
             remaining = segment_width - self.num_sample_frames
             sample_size = min(segment_width, self.num_sample_frames)
-            segment_count = max(0, (self.num_sample_frames - segment_width) // 9)
+            segment_count = max(0, (self.num_sample_frames - segment_width) // 25)
             segment_count += 1
             # take any segment_width frames, this could be done each epoch
             for i in range(segment_count):
@@ -1368,7 +1368,7 @@ class Dataset:
             if cap_samples:
                 cap = min(label_cap, len(self.samples_for(label, remapped=True)))
             if label == "false-positive":
-                label_cap = min(label_cap, int(label_cap * 0.5))
+                cap = min(cap, int(label_cap * 0.5))
             new = self.get_sample(cap=cap, replace=replace, label=label, random=random)
             if new is not None and len(new) > 0:
                 samples.extend(new)
