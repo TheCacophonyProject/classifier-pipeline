@@ -668,8 +668,8 @@ def preprocess_movement(
     dots = dots / 255
     overlay, success = normalize(overlay)
     if augment:
-        extra_h = random.randint(0, 3) - 6
-        extra_v = random.randint(0, 3) - 6
+        extra_h = random.randint(0, 10) - 5
+        extra_v = random.randint(0, 10) - 5
         overlay = resize_cv(overlay, overlay.shape, extra_h=extra_h, extra_v=extra_v)
     if not success:
         return None
