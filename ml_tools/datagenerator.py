@@ -558,7 +558,7 @@ def movement(
         if (
             prev_overlay is None or center_distance > min_distance
         ) or not require_movement:
-            if filtered_is_valid(frame[TrackChannels.filtered], label):
+            if filtered_is_valid(frame, label):
                 if use_mask:
                     frame = frame[channel] * (frame[TrackChannels.mask] + 0.5)
                 else:

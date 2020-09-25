@@ -158,15 +158,14 @@ class TrackHeader:
 
     # trying to get only clear frames
     def set_important_frames(
-        self, labels, min_mass=None, use_predictions=False, filtered_data=None
+        self, labels, min_mass=None, use_predictions=False, frame_data=None
     ):
         # this needs more testing
         frames = []
         for i, mass in enumerate(self.frame_mass):
             if min_mass is None or mass >= min_mass:
-                if filtered_data is not None:
-                    filtered = filtered_data[i]
-                    if not filtered_is_valid(filtered, self.label):
+                if frame_data is not None:
+                    if not filtered_is_valid(frame_data[i], self.label):
                         logging.debug(
                             "set_important_frames %s frame %s has no zeros in filtered frame",
                             self.unique_id,
@@ -1116,13 +1115,11 @@ class Dataset:
         )
         self.tracks.append(track_header)
 
-        track_data = self.db.get_track(
-            clip_id, track_id, channel=TrackChannels.filtered
-        )
+        track_data = self.db.get_track(clip_id, track_id)
 
         # if self.important_frames:
         track_header.set_important_frames(
-            labels, self.min_frame_mass, self.use_predictions, filtered_data=track_data
+            labels, self.min_frame_mass, self.use_predictions
         )
         segment_frame_spacing = round(
             self.segment_spacing * track_header.frames_per_second
@@ -2096,9 +2093,15 @@ def dataset_db_path(config):
     return os.path.join(config.tracks_folder, "datasets.dat")
 
 
-def filtered_is_valid(filtered, label):
+def filtered_is_valid(frame, label):
+    filtered = frame[TrackChannels.filtered]
+    thermal = frame[TrackChannels.thermal]
+    thermal_deviation = np.amax(thermal) != np.amin(thermal)
+    filtered_deviation = np.amax(filtered) != np.amin(filtered)
+    if not thermal_deviation or not filtered_deviation:
+        return False
     if label == "false-positive":
-        return np.amax(filtered) != np.amin(filtered)
+        return True
 
     area = filtered.shape[0] * filtered.shape[1]
     percentile = int(100 - 100 * 16.0 / area)
