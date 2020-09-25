@@ -516,14 +516,17 @@ def movement(
     channel=TrackChannels.filtered,
     require_movement=False,
     use_mask=False,
+    augment=False,
 ):
     """Return 2 images describing the movement, one has dots representing
     the centre of mass, the other is a collage of all frames
     """
+    if len(frames) == 0:
+        return
     channel = TrackChannels.filtered
     i = 0
-    dots = np.zeros(dim)
-    overlay = np.zeros(dim)
+    overlay = np.zeros((126, 166))
+    dots = np.zeros((dim))
 
     prev = None
     prev_overlay = None
@@ -560,8 +563,34 @@ def movement(
                     frame = frame[channel] * (frame[TrackChannels.mask] + 0.5)
                 else:
                     frame = frame[channel]
+                frame_height, frame_width = frame.shape
+                max_height_offset = int(np.clip(frame_height * 0.1, 1, 2))
+                max_width_offset = int(np.clip(frame_width * 0.1, 1, 2))
+
+                top_offset = random.randint(0, max_height_offset) if augment else 0
+                bottom_offset = random.randint(0, max_height_offset) if augment else 0
+                left_offset = random.randint(0, max_width_offset) if augment else 0
+                right_offset = random.randint(0, max_width_offset) if augment else 0
+                region.x += left_offset
+                region.y += right_offset
+                region.width -= right_offset + left_offset
+                region.height -= top_offset + bottom_offset
+                crop_region = tools.Rectangle.from_ltrb(
+                    left_offset,
+                    top_offset,
+                    frame_width - right_offset,
+                    frame_height - bottom_offset,
+                )
+                frame = frame[
+                    crop_region.top : crop_region.bottom,
+                    crop_region.left : crop_region.right,
+                ]
+                frame = np.float32(frame)
+                if augment:
+                    contrast_adjust = tools.random_log(0.9, (1 / 0.9))
+                    frame *= contrast_adjust
                 subimage = region.subimage(overlay)
-                subimage[:, :] += np.float32(frame)
+                subimage[:, :] += frame
                 center_distance = 0
                 min_distance = pow(region.width / 2.0, 2)
                 prev_overlay = (x, y)
@@ -633,15 +662,22 @@ def preprocess_movement(
         channel=channel,
         require_movement=type >= 5,
         use_mask=type == 13,
+        augment=augment,
     )
+
     dots = dots / 255
-    overlay, success = normalize(overlay, min=0)
+    overlay, success = normalize(overlay)
+    if augment:
+        extra_h = random.randint(0, 3) - 6
+        extra_v = random.randint(0, 3) - 6
+        overlay = resize_cv(overlay, overlay.shape, extra_h=extra_h, extra_v=extra_v)
     if not success:
         return None
     if flipped:
         overlay = np.flip(overlay, axis=1)
         dots = np.flip(dots, axis=1)
 
+    height, width = overlay.shape
     data = np.empty((square.shape[0], square.shape[1], 3))
     if type == 4:
         data[:, :, 0] = square
@@ -666,11 +702,12 @@ def preprocess_movement(
     elif type >= 9:
         data[:, :, 0] = square
         data[:, :, 1] = np.zeros((dots.shape))
-        data[:, :, 2] = overlay
+        data[:, :, 2] = np.zeros((dots.shape))
+        data[:, :, 2][:height, :width] = overlay
     else:
         data[:, :, 0] = square
         data[:, :, 1] = dots
-        data[:, :, 2] = overlay
+        data[:, :, 2][:height, :width] = overlay
 
     # #
     # savemovement(
