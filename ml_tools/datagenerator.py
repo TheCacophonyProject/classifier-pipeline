@@ -14,6 +14,7 @@ import multiprocessing
 import time
 from ml_tools.dataset import Preprocessor, filtered_is_valid
 from ml_tools import tools
+from scipy import ndimage
 
 FRAME_SIZE = 48
 FRAMES_PER_SECOND = 9
@@ -275,10 +276,7 @@ class DataGenerator(keras.utils.Sequence):
             channel = TrackChannels.thermal
         else:
             channel = TrackChannels.filtered
-        num_segments = 1
-        segments = []
-        if self.type == 11:
-            num_segments = 2
+
         for sample in samples:
             if self.movement:
                 try:
@@ -299,40 +297,36 @@ class DataGenerator(keras.utils.Sequence):
                         sample.start_frame : sample.start_frame + len(segment_data)
                     ]
                 elif self.type >= 4:
-                    segments = []
-                    for i in range(num_segments):
-                        frames = np.random.choice(
-                            sample.track.important_frames,
-                            min(sample.frames, len(sample.track.important_frames)),
-                            replace=False,
+                    frames = np.random.choice(
+                        sample.track.important_frames,
+                        min(sample.frames, len(sample.track.important_frames)),
+                        replace=False,
+                    )
+                    if len(frames) < 5:
+                        logging.error(
+                            "Important frames filtered for %s %s / %s",
+                            sample,
+                            len(frames),
+                            len(sample.track.important_frames),
                         )
-                        if len(frames) < 5:
-                            logging.error(
-                                "Important frames filtered for %s %s / %s",
-                                sample,
-                                len(frames),
-                                len(sample.track.important_frames),
-                            )
-                            break
-                        segment_data = []
-                        ref = []
-
-                        frames = [frame.frame_num for frame in frames]
-                        # sort??? or rather than random just apply a 1 second step
-
-                        frames.sort()
-                        for frame_num in frames:
-                            segment_data.append(data[frame_num])
-                            ref.append(sample.track.frame_temp_median[frame_num])
-                        segments.append((segment_data, ref))
-                    if len(segments) == 0:
                         continue
+                    segment_data = []
+                    ref = []
+
+                    frames = [frame.frame_num for frame in frames]
+                    # sort??? or rather than random just apply a 1 second step
+                    frames = sample.frame_indices
+                    # frames.sort()
+                    for frame_num in frames:
+                        segment_data.append(data[frame_num])
+                        ref.append(sample.track.frame_temp_median[frame_num])
+                    segment = (segment_data, ref)
                 else:
                     segment_data = data
                     ref = sample.track.frame_temp_median[
                         sample.start_frame : sample.start_frame + len(data)
                     ]
-                    segments.append((segment_data, ref))
+                    segment = (segment_data, ref)
 
                 if self.type < 3:
                     regions = sample.track.track_bounds[
@@ -343,7 +337,7 @@ class DataGenerator(keras.utils.Sequence):
 
                 data = preprocess_movement(
                     data,
-                    segments,
+                    segment,
                     self.square_width,
                     regions,
                     channel,
@@ -437,7 +431,7 @@ def augement_frame(frame, dim):
     return image.numpy()
 
 
-def square_clip(data, square_width, type=None):
+def square_clip(data, square_width, type=None, augment=False):
     # lay each frame out side by side in rows
     frame_size = Preprocessor.FRAME_SIZE
     background = np.zeros((square_width * frame_size, square_width * frame_size))
@@ -508,7 +502,7 @@ def square_clip_flow(data_flow_h, data_flow_v, square_width, type=None):
     return background, success
 
 
-def movement(
+def dots_movement(
     frames,
     regions,
     label=None,
@@ -563,28 +557,8 @@ def movement(
                     frame = frame[channel] * (frame[TrackChannels.mask] + 0.5)
                 else:
                     frame = frame[channel]
-                frame_height, frame_width = frame.shape
-                max_height_offset = int(np.clip(frame_height * 0.1, 1, 2))
-                max_width_offset = int(np.clip(frame_width * 0.1, 1, 2))
-
-                top_offset = random.randint(0, max_height_offset) if augment else 0
-                bottom_offset = random.randint(0, max_height_offset) if augment else 0
-                left_offset = random.randint(0, max_width_offset) if augment else 0
-                right_offset = random.randint(0, max_width_offset) if augment else 0
-                region.x += left_offset
-                region.y += right_offset
-                region.width -= right_offset + left_offset
-                region.height -= top_offset + bottom_offset
-                crop_region = tools.Rectangle.from_ltrb(
-                    left_offset,
-                    top_offset,
-                    frame_width - right_offset,
-                    frame_height - bottom_offset,
-                )
-                frame = frame[
-                    crop_region.top : crop_region.bottom,
-                    crop_region.left : crop_region.right,
-                ]
+                if augment:
+                    frame, region = crop_region(frame, region)
                 frame = np.float32(frame)
                 if augment:
                     contrast_adjust = tools.random_log(0.9, (1 / 0.9))
@@ -609,9 +583,30 @@ def movement(
     return np.array(img), overlay
 
 
+def crop_region(frame, region):
+    # randomly crop frame, and return updated region
+    max_height_offset = int(np.clip(region.height * 0.1, 1, 2))
+    max_width_offset = int(np.clip(region.width * 0.1, 1, 2))
+    top_offset = random.randint(0, max_height_offset)
+    bottom_offset = random.randint(0, max_height_offset)
+    left_offset = random.randint(0, max_width_offset)
+    right_offset = random.randint(0, max_width_offset)
+
+    region.x += left_offset
+    region.y += top_offset
+    region.width -= left_offset + right_offset
+    region.height -= top_offset + bottom_offset
+    frame = frame[
+        top_offset : region.height + top_offset,
+        left_offset : region.width + left_offset,
+    ]
+
+    return frame, region
+
+
 def preprocess_movement(
     data,
-    segments,
+    segment,
     square_width,
     regions,
     channel,
@@ -625,36 +620,30 @@ def preprocess_movement(
     # doesn't seem to improve anything, infact makes worse
     # flip = False
     if type == 7:
-        segment = segments[0]
+
         flow_h = segment[:, TrackChannels.flow_h]
         flow_v = segment[:, TrackChannels.flow_v]
         square_flow, success = square_clip_flow(flow_h, flow_v, square_width, type)
     if type == 8:
-        segment = segments[0]
         square_therm, success = square_clip(
             segment[:, TrackChannels.thermal], square_width, type
         )
-    squares = []
     flipped = False
-    for segment in segments:
-        segment, flipped_data = Preprocessor.apply(
-            *segment, augment=augment, default_inset=0
-        )
-        flipped = flipped_data or flipped
+    segment, flipped_data = Preprocessor.apply(
+        *segment, augment=augment, default_inset=0
+    )
+    flipped = flipped_data or flipped
 
-        if type == 13:
-            segment = segment[:, channel] * (segment[:, TrackChannels.mask] + 0.5)
-        else:
-            segment = segment[:, channel]
+    if type == 13:
+        segment = segment[:, channel] * (segment[:, TrackChannels.mask] + 0.5)
+    else:
+        segment = segment[:, channel]
+    # as long as one frame is fine
+    square, success = square_clip(segment, square_width, type, augment=augment)
+    if not success:
+        return None
 
-        # as long as one frame is fine
-        square, success = square_clip(segment, square_width, type)
-        if not success:
-            return None
-        squares.append(square)
-
-    square = squares[0]
-    dots, overlay = movement(
+    dots, overlay = dots_movement(
         data,
         regions,
         label=sample.label if sample else None,
@@ -668,9 +657,18 @@ def preprocess_movement(
     dots = dots / 255
     overlay, success = normalize(overlay)
     if augment:
-        extra_h = random.randint(0, 10) - 5
-        extra_v = random.randint(0, 10) - 5
+        extra_h = random.randint(0, 24) - 12
+        extra_v = random.randint(0, 24) - 12
         overlay = resize_cv(overlay, overlay.shape, extra_h=extra_h, extra_v=extra_v)
+        # extra_v = 12
+        degrees = random.randint(0, 24) - 12
+
+        overlay = ndimage.rotate(
+            overlay, degrees, order=1, reshape=False, mode="nearest"
+        )
+        # overlay = tfa.image.rotate(
+        #     overlay, 90 * math.pi / 180, interpolation="BILINEAR"
+        # )
     if not success:
         return None
     if flipped:
@@ -697,7 +695,9 @@ def preprocess_movement(
         data[:, :, 2] = overlay
     elif type == 11:
         data[:, :, 0] = square
-        data[:, :, 1] = squares[1]
+        square_one, success = square_clip(segment[25:], square_width, type)
+
+        data[:, :, 1] = square_one
         data[:, :, 2] = overlay
     elif type >= 9:
         data[:, :, 0] = square
@@ -707,9 +707,10 @@ def preprocess_movement(
     else:
         data[:, :, 0] = square
         data[:, :, 1] = dots
+        data[:, :, 2] = np.zeros((dots.shape))
         data[:, :, 2][:height, :width] = overlay
 
-    # #
+    # # #
     # savemovement(
     #     data,
     #     "samples/{}/{}/{}-{}-{}-{}".format(

@@ -22,7 +22,7 @@ import json
 import cv2
 import dateutil
 import numpy as np
-import scipy.ndimage
+from scipy import ndimage
 
 # from load.clip import Clip
 from ml_tools import tools
@@ -610,7 +610,6 @@ class Preprocessor:
         augment=False,
         encode_frame_offsets_in_flow=False,
         default_inset=0,
-        keep_aspect=False,
     ):
         """
         Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
@@ -661,6 +660,14 @@ class Preprocessor:
                 return
 
             frame_bounds = tools.Rectangle(0, 0, frame_width, frame_height)
+            # rotate then crop
+            if augment:
+                degrees = random.randint(0, 24) - 12
+
+                for channel in range(channels):
+                    frame[channel] = ndimage.rotate(
+                        frame[channel], degrees, reshape=False, mode="nearest", order=1
+                    )
 
             # set up a cropping frame
             crop_region = tools.Rectangle.from_ltrb(
@@ -686,31 +693,7 @@ class Preprocessor:
                 crop_region.left : crop_region.right,
             ]
 
-            if keep_aspect:
-
-                height, width = cropped_frame[0].shape
-                min_dim = max(width, height)
-                scale = Preprocessor.FRAME_SIZE / min_dim
-                target_size = (round(height * scale), round(width * scale))
-                scaled_frames = data[i]
-                for channel, scaled_frame in enumerate(scaled_frames):
-                    cropped_data = cropped_frame[channel]
-                    w, h = cropped_data.shape
-                    if w > Preprocessor.FRAME_SIZE or h > Preprocessor.FRAME_SIZE:
-                        cropped_data = cv2.resize(
-                            cropped_data,
-                            dsize=target_size,
-                            interpolation=cv2.INTER_LINEAR
-                            if channel != TrackChannels.mask
-                            else cv2.INTER_NEAREST,
-                        )
-
-                    w, h = cropped_data.shape
-                    scaled_frame[:w, :h] = cropped_data
-                continue
-                # print("target is", target_size)
-            else:
-                target_size = (Preprocessor.FRAME_SIZE, Preprocessor.FRAME_SIZE)
+            target_size = (Preprocessor.FRAME_SIZE, Preprocessor.FRAME_SIZE)
             scaled_frame = [
                 cv2.resize(
                     cropped_frame[channel],
@@ -721,26 +704,6 @@ class Preprocessor:
                 )
                 for channel in range(channels)
             ]
-            height, width = scaled_frame[0].shape
-            max_dim = max(height, width)
-            if keep_aspect and max_dim > Preprocessor.FRAME_SIZE:
-
-                crop_start = 0
-                if augment:
-                    crop = max_dim - Preprocessor.FRAME_SIZE
-                    crop_start = random.randint(0, crop)
-                crop_start = 0
-                for i, channel in enumerate(scaled_frame):
-                    if height > width:
-                        scaled_frame[i] = channel[
-                            crop_start : crop_start + Preprocessor.FRAME_SIZE, :
-                        ]
-
-                    else:
-                        scaled_frame[i] = channel[
-                            :, crop_start : crop_start + Preprocessor.FRAME_SIZE
-                        ]
-                scaled_frame = np.asarray(scaled_frame)
 
             data[i] = scaled_frame
         # convert back into [F,C,H,W] array.
