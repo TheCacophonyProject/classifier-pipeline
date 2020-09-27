@@ -456,7 +456,7 @@ class KerasModel:
             channel = TrackChannels.thermal
         else:
             channel = TrackChannels.filtered
-        if self.lstm:
+        if self.params.lstm:
             median = []
             for f in data:
                 median.append(np.median(f[0]))
@@ -471,7 +471,7 @@ class KerasModel:
             )
             output = self.model.predict(data[np.newaxis, :])
             predictions.append(output[0])
-        elif self.use_movement:
+        elif self.params.use_movement:
             frames_per_classify = self.params.square_width ** 2
             frames = len(data)
 
@@ -800,10 +800,10 @@ class KerasModel:
 
     def classify_track(self, track_id, data, keep_all=True, regions=None):
         track_prediction = TrackPrediction(track_id, 0, keep_all)
-        if self.lstm:
+        if self.params.lstm:
             prediction = self.classify_frame(data)
             track_prediction.classified_frame(0, prediction, None)
-        elif self.use_movement:
+        elif self.params.use_movement:
             predictions = self.classify_frames(data, regions=regions)
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)

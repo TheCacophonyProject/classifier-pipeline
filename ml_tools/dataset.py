@@ -267,7 +267,6 @@ class TrackHeader:
 
         if random:
             remaining = segment_width - self.num_sample_frames
-            sample_size = min(segment_width, self.num_sample_frames)
             segment_count = max(0, (self.num_sample_frames - segment_width) // 25)
             segment_count += 1
             # take any segment_width frames, this could be done each epoch
@@ -716,7 +715,6 @@ class Preprocessor:
             assert len(data) == len(
                 reference_level
             ), "Reference level shape and data shape not match."
-            ref_avg = np.average(reference_level)
 
             # reference thermal levels to the reference level
             data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]

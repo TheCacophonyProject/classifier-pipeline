@@ -100,44 +100,44 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
     while True:
         i += 1
         track = queue.get()
-        try:
-            if track == "DONE":
-                break
-            else:
-                expected_tag = track.label
-                if not expected_tag:
-                    continue
-                expected_tag = dataset.mapped_label(expected_tag)
-                track_data = dataset.db.get_track(track.clip_id, track.track_id)
-                track_prediction = classifier.classify_track(
-                    track.track_id, track_data, regions=track.track_bounds
-                )
-                counts = [0, 0]
-                for pred in track_prediction.original:
-                    counts[np.argmax(pred)] += 1
-                mean = np.mean(track_prediction.original, axis=0)
-                max_lbl = np.argmax(mean)
-                predicted_lbl = classifier.labels[max_lbl]
-                vel_sum = [abs(vel[0]) + abs(vel[1]) for vel in track.frame_velocity]
+        # try:
+        if track == "DONE":
+            break
+        else:
+            expected_tag = track.label
+            if not expected_tag:
+                continue
+            expected_tag = dataset.mapped_label(expected_tag)
+            track_data = dataset.db.get_track(track.clip_id, track.track_id)
+            track_prediction = classifier.classify_track(
+                track.track_id, track_data, regions=track.track_bounds
+            )
+            counts = [0, 0]
+            for pred in track_prediction.original:
+                counts[np.argmax(pred)] += 1
+            mean = np.mean(track_prediction.original, axis=0)
+            max_lbl = np.argmax(mean)
+            predicted_lbl = classifier.labels[max_lbl]
+            vel_sum = [abs(vel[0]) + abs(vel[1]) for vel in track.frame_velocity]
 
-                sure = True
-                if expected_tag == "wallaby":
-                    total = counts[0] + counts[1]
-                    wallaby_tagged = counts[0] / total > 0.1
-                    max_perc = np.amax(mean)
+            sure = True
+            if expected_tag == "wallaby":
+                total = counts[0] + counts[1]
+                wallaby_tagged = counts[0] / total > 0.1
+                max_perc = np.amax(mean)
 
-                    sure = max_perc > 0.85 and not wallaby_tagged
-                    # require movement to be sure of not
-                    sure = sure and np.mean(vel_sum) > 0.6
+                sure = max_perc > 0.85 and not wallaby_tagged
+                # require movement to be sure of not
+                sure = sure and np.mean(vel_sum) > 0.6
 
-                pickled_track = pickle.dumps(SmallTrack(track))
-                results_queue.put(
-                    (pickled_track, predicted_lbl, np.amax(mean), sure, expected_tag)
-                )
-            if i % 50 == 0:
-                logging.info("%s jobs left", queue.qsize())
-        except Exception as e:
-            logging.error("Process_job error %s", e)
+            pickled_track = pickle.dumps(SmallTrack(track))
+            results_queue.put(
+                (pickled_track, predicted_lbl, np.amax(mean), sure, expected_tag)
+            )
+        if i % 50 == 0:
+            logging.info("%s jobs left", queue.qsize())
+        # except Exception as e:
+        # logging.error("Process_job error %s", e)
     return
 
 
@@ -289,11 +289,7 @@ class ModelEvalute:
         median = []
         for f in seg_data:
             median.append(np.median(f[0]))
-        data = Preprocessor.apply(
-            seg_data,
-            median,
-            default_inset=0,
-        )
+        data = Preprocessor.apply(seg_data, median, default_inset=0,)
 
         preprocess_movement(
             track_data, data, 5, track_meta["bounds_history"], 1, type=type
@@ -370,8 +366,7 @@ for label in dataset.labels:
 groups.append((other_labels, "not"))
 
 dataset.regroup(
-    groups,
-    shuffle=False,
+    groups, shuffle=False,
 )
 logging.info(
     "Dataset loaded %s, using labels %s, mapped labels %s",
