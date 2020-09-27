@@ -112,7 +112,7 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
             track_prediction = classifier.classify_track(
                 track.track_id, track_data, regions=track.track_bounds
             )
-            counts = [0, 0]
+            counts = [0] * len(dataset.labels)
             for pred in track_prediction.original:
                 counts[np.argmax(pred)] += 1
             mean = np.mean(track_prediction.original, axis=0)
@@ -122,7 +122,7 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
 
             sure = True
             if expected_tag == "wallaby":
-                total = counts[0] + counts[1]
+                total = np.sum(counts)
                 wallaby_tagged = counts[0] / total > 0.1
                 max_perc = np.amax(mean)
 
