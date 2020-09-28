@@ -315,8 +315,8 @@ class DataGenerator(keras.utils.Sequence):
 
                     frames = [frame.frame_num for frame in frames]
                     # sort??? or rather than random just apply a 1 second step
-                    frames = sample.frame_indices
-                    # frames.sort()
+                    # frames = sample.frame_indices
+                    frames.sort()
                     for frame_num in frames:
                         segment_data.append(data[frame_num])
                         ref.append(sample.track.frame_temp_median[frame_num])
