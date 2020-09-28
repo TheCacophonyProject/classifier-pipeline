@@ -176,7 +176,7 @@ class DataGenerator(keras.utils.Sequence):
                     epoch_stats.setdefault(label, 0)
                     epoch_stats[label] += count
         # always keep a copy of epoch data
-        if index == 0 or self.keep_epoch:
+        if index == 0 or self.keep_epoch and self.use_previous_epoch is None:
             self.epoch_data[self.cur_epoch][0][index] = X
             self.epoch_data[self.cur_epoch][1][index] = y
 
@@ -190,8 +190,23 @@ class DataGenerator(keras.utils.Sequence):
         if self.loaded_epochs >= self.epochs:
             return
         if self.randomize_epoch is False and reuse:
-            X = [item for batch in self.epoch_data[self.cur_epoch][0] for item in batch]
-            y = [item for batch in self.epoch_data[self.cur_epoch][1] for item in batch]
+            # [batch, segment, height, width, rgb]
+            # or [segment, height, width, rgb]
+            if self.use_previous_epoch is None:
+                # in batches
+                X = [
+                    item
+                    for batch in self.epoch_data[self.cur_epoch][0]
+                    for item in batch
+                ]
+                y = [
+                    item
+                    for batch in self.epoch_data[self.cur_epoch][1]
+                    for item in batch
+                ]
+            else:
+                X = self.epoch_data[self.use_previous_epoch][0]
+                y = self.epoch_data[self.use_previous_epoch][1]
             if self.shuffle:
                 X = np.asarray(X)
                 y = np.asarray(y)
