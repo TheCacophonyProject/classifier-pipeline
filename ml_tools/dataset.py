@@ -259,7 +259,7 @@ class TrackHeader:
                 tools.Rectangle.from_ltrb(*bound).width for bound in self.track_bounds
             ]
             if movement < np.median(widths) * 2.0:
-                logging.info("Not enough movment %s %s", self, self.label)
+                logging.debug("Not enough movment %s %s", self, self.label)
                 return
 
         segment_count = (len(mass_history) - segment_width) // segment_frame_spacing
