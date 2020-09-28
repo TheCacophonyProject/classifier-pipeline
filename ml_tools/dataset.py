@@ -904,17 +904,19 @@ class Dataset:
         labels = []
         if remapped and self.label_mapping:
             labels = [
-                key for key, mapped in self.label_mapping.items() if mapped == label
+                key
+                for key, mapped in self.label_mapping.items()
+                if mapped.lower() == label.lower()
             ]
             labels.sort()
         else:
             labels.append(label)
         samples = []
-        for label in labels:
+        for l in labels:
             if self.use_segments:
-                samples.extend(self.segments_by_label.get(label, []))
+                samples.extend(self.segments_by_label.get(l, []))
             else:
-                samples.extend(self.frames_by_label.get(label, []))
+                samples.extend(self.frames_by_label.get(l, []))
         return samples
 
     def get_counts(self, label):
@@ -1318,7 +1320,7 @@ class Dataset:
         samples = []
         if cap_samples and label_cap is None:
             if cap_at:
-                label_cap = len(self.samples_for(cap_at))
+                label_cap = len(self.samples_for(cap_at, remapped=True))
             else:
                 label_cap = self.get_label_caps(labels, remapped=True)
         cap = None
@@ -1990,7 +1992,7 @@ class Dataset:
     def random_segments(self, balance_labels=True, require_movement=False):
         self.segments = []
         self.segments_by_label = {}
-        logging.info(
+        logging.debug(
             "%s generating segments require_movement %s ", self.name, require_movement
         )
         empty_tracks = []
