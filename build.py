@@ -315,27 +315,20 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
 
 
 def add_camera_segments(
-    labels,
-    dataset,
-    cameras,
-    balance_bins=None,
+    labels, dataset, cameras, balance_bins=None,
 ):
     all_tracks = []
     for label in labels:
         for camera in cameras:
             tracks = camera.label_to_tracks.get(label, {}).values()
             all_tracks.extend(list(tracks))
-    if len(all_tracks) > 0:
-        all_tracks = np.random.choice(list(all_tracks), min(20, len(all_tracks)))
-        dataset.add_tracks(all_tracks, None)
+
+    dataset.add_tracks(all_tracks, None)
     dataset.balance_bins()
 
 
 def add_random_camera_frames(
-    dataset,
-    cameras,
-    label,
-    max_frames,
+    dataset, cameras, label, max_frames,
 ):
     """
     add random samples from the sample_set to every dataset in
@@ -391,10 +384,7 @@ def add_camera_frames(
             print("dont limit", label)
         cameras = data["cameras"]
         add_random_camera_frames(
-            dataset,
-            cameras,
-            label,
-            limit,
+            dataset, cameras, label, limit,
         )
 
 
