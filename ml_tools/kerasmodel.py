@@ -436,6 +436,17 @@ class KerasModel:
             save_weights_only=False,
             mode="max",
         )
+
+        val_precision = os.path.join(self.checkpoint_folder, run_name, "val_recall")
+
+        checkpoint_acc = tf.keras.callbacks.ModelCheckpoint(
+            val_precision,
+            monitor="val_recall",
+            verbose=1,
+            save_best_only=True,
+            save_weights_only=False,
+            mode="max",
+        )
         return [checkpoint_acc, checkpoint_loss]
 
     def classify_frames(self, data, preprocess=True, regions=None):
