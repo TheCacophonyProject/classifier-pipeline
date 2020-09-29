@@ -244,6 +244,7 @@ class ModelEvalute:
                 result["correct"] += 1
             else:
                 result["incorrect"] += 1
+                result["incorrect_ids"].append(track)
 
         # visit stats
         visit_stats = {}
@@ -279,6 +280,7 @@ class ModelEvalute:
         for k, v in overall_stats.items():
             correct_per = round(100 * float(v["correct"]) / v["total"])
             print("Stats for {} {}% correct".format(k, correct_per))
+            print(k, "misclassified", v["incorrect_ids"])
 
         # # break
 
