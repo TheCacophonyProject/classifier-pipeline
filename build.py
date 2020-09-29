@@ -213,7 +213,8 @@ def diverse_validation(cameras, labels, max_cameras):
                 # update validation counts
                 # by segments or frames or both?
                 # probably by # tracks
-                for label, count in camera.label_to_tracks.items():
+                for label, tracks in camera.label_to_tracks.items():
+                    count = len(tracks)
                     if label in lbl_counts:
                         lbl_counts[label] += count
                     else:
