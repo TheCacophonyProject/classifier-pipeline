@@ -1,9 +1,9 @@
-tensorflow~=2.1.0
+tensorflow==2.1.0
 matplotlib~=3.0
 pytz
 cptv==1.2.0
 opencv-python~=3.4
-numpy~=1.16
+numpy~=1.18.5
 scipy==1.4.1
 python-dateutil
 sklearn
