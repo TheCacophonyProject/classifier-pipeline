@@ -209,7 +209,9 @@ class KerasModel:
         self.model.summary()
 
         self.model.compile(
-            optimizer=self.optimizer(), loss=self.loss(), metrics=["accuracy"],
+            optimizer=self.optimizer(),
+            loss=self.loss(),
+            metrics=["accuracy", "auc", "recall", "precision"],
         )
 
     def loss(self):

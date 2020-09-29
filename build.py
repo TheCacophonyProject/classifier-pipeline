@@ -15,9 +15,9 @@ from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
 from ml_tools.dataset import Dataset, dataset_db_path, Camera
 
-LOW_DATA_LABELS = ["wallaby", "human", "dog", "mustelid"]
+LOW_DATA_LABELS = ["wallaby", "human", "dog"]
 MIN_FRAMES = 1000
-MIN_TRACKS = 50
+MIN_TRACKS = 100
 
 CAP_DATA = True
 MIN_VALIDATE_CAMERAS = 5
@@ -213,13 +213,13 @@ def diverse_validation(cameras, labels, max_cameras):
                 # update validation counts
                 # by segments or frames or both?
                 # probably by # tracks
-                for label, count in camera.label_frames.items():
+                for label, count in camera.label_to_tracks.items():
                     if label in lbl_counts:
                         lbl_counts[label] += count
                     else:
                         lbl_counts[label] = count
 
-                    if label in missing_labels and lbl_counts[label] > MIN_FRAMES:
+                    if label in missing_labels and lbl_counts[label] > MIN_TRACKS:
                         missing_labels.remove(label)
                 del cameras[i]
                 missing = len(missing_labels) / len(all_labels)

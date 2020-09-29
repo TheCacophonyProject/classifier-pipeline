@@ -439,6 +439,14 @@ class Camera:
 
         return track, f
 
+    def label_track_count(
+        self, label, max_segments_per_track=None,
+    ):
+        if label not in self.label_to_tracks:
+            return 0
+        tracks = self.label_to_tracks[label].values()
+        return len(tracks)
+
     def label_segment_count(
         self, label, max_segments_per_track=None,
     ):
