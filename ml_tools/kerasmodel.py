@@ -288,38 +288,24 @@ class KerasModel:
             model_stats["test_loss"] = test_results[0]
             model_stats["test_acc"] = test_results[1]
 
-        if not os.path.exists(os.path.join(self.checkpoint_folder, run_name)):
-            os.mkdir(os.path.join(self.checkpoint_folder, run_name))
+        run_dir = os.path.join(self.checkpoint_folder, run_name)
+        if not os.path.exists(run_dir):
+            os.mkdir(run_dir)
         json.dump(
-            model_stats,
-            open(os.path.join(self.checkpoint_folder, run_name, "metadata.txt"), "w",),
-            indent=4,
+            model_stats, open(os.path.join(run_dir, "metadata.txt"), "w",), indent=4,
         )
-
-        if os.path.exists(
-            os.path.join(self.checkpoint_folder, run_name, "val_loss", "metadata.txt")
-        ):
+        best_loss = os.path.join(run_dir, "val_loss")
+        if os.path.exists(best_loss):
             json.dump(
                 model_stats,
-                open(
-                    os.path.join(
-                        self.checkpoint_folder, run_name, "val_loss", "metadata.txt"
-                    ),
-                    "w",
-                ),
+                open(os.path.join(best_loss, "metadata.txt"), "w",),
                 indent=4,
             )
-        if os.path.exists(
-            os.path.join(self.checkpoint_folder, run_name, "val_acc", "metadata.txt")
-        ):
+        best_acc = os.path.join(run_dir, "val_acc")
+        if os.path.exists(best_acc):
             json.dump(
                 model_stats,
-                open(
-                    os.path.join(
-                        self.checkpoint_folder, run_name, "val_acc", "metadata.txt"
-                    ),
-                    "w",
-                ),
+                open(os.path.join(best_acc, "metadata.txt"), "w",),
                 indent=4,
             )
 
