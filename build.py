@@ -246,7 +246,7 @@ def split_wallaby_cameras(dataset, cameras):
     remove = []
     last_index = 0
     wallaby_count = 0
-    total = len(wallaby.tracks_by_label.get("wallaby", []))
+    total = len(dataset.tracks_by_label.get("wallaby", []))
     wallaby_validate_tracks = max(total * 0.2, MIN_TRACKS)
     for i, bin_id in enumerate(wallaby.label_to_bins["wallaby"]):
         bin = wallaby.bins[bin_id]

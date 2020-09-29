@@ -1080,7 +1080,7 @@ class Dataset:
         )
         self.tracks.append(track_header)
 
-        track_data = self.db.get_track(clip_id, track_id)
+        # track_data = self.db.get_track(clip_id, track_id)
 
         # if self.important_frames:
         track_header.set_important_frames(
