@@ -325,6 +325,17 @@ class DataGenerator(keras.utils.Sequence):
                             len(sample.track.important_frames),
                         )
                         continue
+
+                    # repeat some frames if need be
+                    if len(frames) < self.square_width ** 2:
+                        missing = self.square_width ** 2 - len(frames)
+                        frames.extend(
+                            np.random.choice(
+                                sample.track.important_frames,
+                                min(missing, len(sample.track.important_frames)),
+                                replace=False,
+                            )
+                        )
                     segment_data = []
                     ref = []
 
