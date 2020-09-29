@@ -235,6 +235,7 @@ class TrackHeader:
         segment_min_mass=None,
         random=False,
         require_movement=False,
+        multiplier=1,
     ):
 
         seg_count = len(self.segments)
@@ -267,8 +268,9 @@ class TrackHeader:
 
         if random:
             remaining = segment_width - self.num_sample_frames
-            segment_count = max(0, (self.num_sample_frames - segment_width) // 25)
+            segment_count = max(0, (self.num_sample_frames - segment_width) // 9)
             segment_count += 1
+            segment_count *= multiplier
             # take any segment_width frames, this could be done each epoch
             for i in range(segment_count):
                 frames = list(
@@ -2009,6 +2011,7 @@ class Dataset:
                 self.segment_min_mass,
                 random=True,
                 require_movement=require_movement,
+                multiplier=2 if self.enable_augmentation else 1,
             )
             if len(track.segments) == 0:
                 empty_tracks.append(track)
