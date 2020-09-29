@@ -112,7 +112,7 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
             track_prediction = classifier.classify_track(
                 track.track_id, track_data, regions=track.track_bounds
             )
-            counts = [0] * len(dataset.labels)
+            counts = [0] * len(classifier.labels)
             for pred in track_prediction.original:
                 counts[np.argmax(pred)] += 1
             mean = np.mean(track_prediction.original, axis=0)
