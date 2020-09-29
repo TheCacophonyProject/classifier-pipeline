@@ -15,8 +15,10 @@ from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
 from ml_tools.dataset import Dataset, dataset_db_path, Camera
 
-LOW_DATA_LABELS = ["wallaby", "human", "dog"]
+LOW_DATA_LABELS = ["wallaby", "human", "dog", "mustelid"]
 MIN_FRAMES = 1000
+MIN_TRACKS = 50
+
 CAP_DATA = True
 MIN_VALIDATE_CAMERAS = 5
 MIN_BINS = 4
@@ -210,6 +212,7 @@ def diverse_validation(cameras, labels, max_cameras):
 
                 # update validation counts
                 # by segments or frames or both?
+                # probably by # tracks
                 for label, count in camera.label_frames.items():
                     if label in lbl_counts:
                         lbl_counts[label] += count
@@ -243,18 +246,18 @@ def split_wallaby_cameras(dataset, cameras):
     remove = []
     last_index = 0
     wallaby_count = 0
-    total = wallaby.label_segment_count("wallaby")
-    wallaby_validate_segments = max(total * 0.2, MIN_FRAMES)
+    total = len(wallaby.tracks_by_label.get("wallaby", []))
+    wallaby_validate_tracks = max(total * 0.2, MIN_TRACKS)
     for i, bin_id in enumerate(wallaby.label_to_bins["wallaby"]):
         bin = wallaby.bins[bin_id]
         for track in bin:
-            wallaby_count += len(track.segments)
+            wallaby_count += 1
             track.camera = "Wallaby-2"
             wallaby_validate.add_track(track)
             wallaby.remove_track(track)
         remove.append(bin_id)
         last_index = i
-        if wallaby_count > wallaby_validate_segments:
+        if wallaby_count > wallaby_validate_tracks:
             break
     wallaby.label_to_bins["wallaby"] = wallaby.label_to_bins["wallaby"][
         last_index + 1 :
