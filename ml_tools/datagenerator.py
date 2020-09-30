@@ -147,7 +147,7 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
-        start = time.time()
+        logging.debug("%s requsting index %s", self.dataset.name, index)
         if self.keep_epoch and self.use_previous_epoch is not None:
             X = self.epoch_data[self.use_previous_epoch][0][
                 index * self.batch_size : (index + 1) * self.batch_size
@@ -176,20 +176,13 @@ class DataGenerator(keras.utils.Sequence):
                     epoch_stats.setdefault(label, 0)
                     epoch_stats[label] += count
         # always keep a copy of epoch data
-        if index == 0 or self.keep_epoch and self.use_previous_epoch is None:
+        if index == 0 or (self.keep_epoch and self.use_previous_epoch is None):
             self.epoch_data[self.cur_epoch][0][index] = X
             self.epoch_data[self.cur_epoch][1][index] = y
 
         # can start loading next epoch of training before validation
         # if (index + 1) == len(self):
         #     self.load_next_epoch(True)
-        logging.debug(
-            "%s requsting index %s took %s",
-            self.dataset.name,
-            index,
-            time.time() - start,
-        )
-
         return X, y
 
     def load_next_epoch(self, reuse=False):
@@ -289,12 +282,7 @@ class DataGenerator(keras.utils.Sequence):
         if self.lstm:
             X = np.empty((len(samples), samples[0].frames, *self.dim))
         else:
-            X = np.empty(
-                (
-                    len(samples),
-                    *self.dim,
-                )
-            )
+            X = np.empty((len(samples), *self.dim,))
 
         y = np.empty((len(samples)), dtype=int)
         # Generate data
@@ -399,22 +387,14 @@ class DataGenerator(keras.utils.Sequence):
                     continue
                 if self.lstm:
                     data = preprocess_lstm(
-                        data,
-                        self.dim,
-                        channel,
-                        self.augment,
-                        self.model_preprocess,
+                        data, self.dim, channel, self.augment, self.model_preprocess,
                     )
                 else:
                     data = preprocess_frame(
-                        data,
-                        self.dim,
-                        None,
-                        self.augment,
-                        self.model_preprocess,
+                        data, self.dim, None, self.augment, self.model_preprocess,
                     )
             if data is None:
-                logging.warn(
+                logging.debug(
                     "error pre processing frame (i.e.max and min are the same)sample %s",
                     sample,
                 )
@@ -439,9 +419,7 @@ def resize(image, dim):
 
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
-        image,
-        dsize=(dim[0] + extra_h, dim[1] + extra_v),
-        interpolation=interpolation,
+        image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
     )
 
 
@@ -595,13 +573,7 @@ def dots_movement(
 
         # writing overlay image
         if require_movement and prev_overlay:
-            center_distance = tools.eucl_distance(
-                prev_overlay,
-                (
-                    x,
-                    y,
-                ),
-            )
+            center_distance = tools.eucl_distance(prev_overlay, (x, y,),)
 
         if (
             prev_overlay is None or center_distance > min_distance
@@ -671,27 +643,8 @@ def preprocess_movement(
     augment=False,
     epoch=0,
 ):
-    # doesn't seem to improve anything, infact makes worse
-    # flip = False
-    if type == 7:
-
-        flow_h = segment[:, TrackChannels.flow_h]
-        flow_v = segment[:, TrackChannels.flow_v]
-        square_flow, success = square_clip_flow(flow_h, flow_v, square_width, type)
-    if type == 8:
-        square_therm, success = square_clip(
-            segment[:, TrackChannels.thermal], square_width, type
-        )
-    flipped = False
-    segment, flipped_data = Preprocessor.apply(
-        *segment, augment=augment, default_inset=0
-    )
-    flipped = flipped_data or flipped
-
-    if type == 13:
-        segment = segment[:, channel] * (segment[:, TrackChannels.mask] + 0.5)
-    else:
-        segment = segment[:, channel]
+    segment, flipped = Preprocessor.apply(*segment, augment=augment, default_inset=0)
+    segment = segment[:, channel]
     # as long as one frame is fine
     square, success = square_clip(segment, square_width, type, augment=augment)
     if not success:
@@ -703,8 +656,8 @@ def preprocess_movement(
         label=sample.label if sample else None,
         dim=square.shape,
         channel=channel,
-        require_movement=type >= 5,
-        use_mask=type == 13,
+        require_movement=True,
+        use_mask=False,
         augment=augment,
     )
 
@@ -735,22 +688,9 @@ def preprocess_movement(
         data[:, :, 0] = square
         data[:, :, 1] = square
         data[:, :, 2] = square
-    elif type == 1:
-        data[:, :, 0] = square
-        data[:, :, 1] = square
-        data[:, :, 2] = overlay
-    elif type == 7:
-        data[:, :, 0] = square
-        data[:, :, 1] = square_flow
-        data[:, :, 2] = overlay
-    elif type == 8:
-        data[:, :, 0] = square
-        data[:, :, 1] = square_therm
-        data[:, :, 2] = overlay
     elif type == 11:
         data[:, :, 0] = square
         square_one, success = square_clip(segment[25:], square_width, type)
-
         data[:, :, 1] = square_one
         data[:, :, 2] = overlay
     elif type >= 9:
@@ -785,11 +725,7 @@ def preprocess_movement(
 
 
 def preprocess_lstm(
-    data,
-    output_dim,
-    channel,
-    augment=False,
-    preprocess_fn=None,
+    data, output_dim, channel, augment=False, preprocess_fn=None,
 ):
 
     data = data[:, channel]
@@ -812,11 +748,7 @@ def preprocess_lstm(
 
 
 def preprocess_frame(
-    data,
-    output_dim,
-    channel,
-    augment=False,
-    preprocess_fn=None,
+    data, output_dim, channel, augment=False, preprocess_fn=None,
 ):
     if channel is not None:
         data = data[channel]
