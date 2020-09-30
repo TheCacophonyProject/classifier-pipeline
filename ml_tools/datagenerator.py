@@ -147,7 +147,7 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
-        logging.debug("%s requsting index %s", self.dataset.name, index)
+        start = time.time()
         if self.keep_epoch and self.use_previous_epoch is not None:
             X = self.epoch_data[self.use_previous_epoch][0][
                 index * self.batch_size : (index + 1) * self.batch_size
@@ -183,6 +183,13 @@ class DataGenerator(keras.utils.Sequence):
         # can start loading next epoch of training before validation
         # if (index + 1) == len(self):
         #     self.load_next_epoch(True)
+        logging.debug(
+            "%s requsting index %s took %s",
+            self.dataset.name,
+            index,
+            time.time() - start,
+        )
+
         return X, y
 
     def load_next_epoch(self, reuse=False):
@@ -282,7 +289,12 @@ class DataGenerator(keras.utils.Sequence):
         if self.lstm:
             X = np.empty((len(samples), samples[0].frames, *self.dim))
         else:
-            X = np.empty((len(samples), *self.dim,))
+            X = np.empty(
+                (
+                    len(samples),
+                    *self.dim,
+                )
+            )
 
         y = np.empty((len(samples)), dtype=int)
         # Generate data
@@ -387,11 +399,19 @@ class DataGenerator(keras.utils.Sequence):
                     continue
                 if self.lstm:
                     data = preprocess_lstm(
-                        data, self.dim, channel, self.augment, self.model_preprocess,
+                        data,
+                        self.dim,
+                        channel,
+                        self.augment,
+                        self.model_preprocess,
                     )
                 else:
                     data = preprocess_frame(
-                        data, self.dim, None, self.augment, self.model_preprocess,
+                        data,
+                        self.dim,
+                        None,
+                        self.augment,
+                        self.model_preprocess,
                     )
             if data is None:
                 logging.warn(
@@ -419,7 +439,9 @@ def resize(image, dim):
 
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
-        image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
+        image,
+        dsize=(dim[0] + extra_h, dim[1] + extra_v),
+        interpolation=interpolation,
     )
 
 
@@ -573,7 +595,13 @@ def dots_movement(
 
         # writing overlay image
         if require_movement and prev_overlay:
-            center_distance = tools.eucl_distance(prev_overlay, (x, y,),)
+            center_distance = tools.eucl_distance(
+                prev_overlay,
+                (
+                    x,
+                    y,
+                ),
+            )
 
         if (
             prev_overlay is None or center_distance > min_distance
@@ -757,7 +785,11 @@ def preprocess_movement(
 
 
 def preprocess_lstm(
-    data, output_dim, channel, augment=False, preprocess_fn=None,
+    data,
+    output_dim,
+    channel,
+    augment=False,
+    preprocess_fn=None,
 ):
 
     data = data[:, channel]
@@ -780,7 +812,11 @@ def preprocess_lstm(
 
 
 def preprocess_frame(
-    data, output_dim, channel, augment=False, preprocess_fn=None,
+    data,
+    output_dim,
+    channel,
+    augment=False,
+    preprocess_fn=None,
 ):
     if channel is not None:
         data = data[channel]
