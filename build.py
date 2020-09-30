@@ -438,6 +438,7 @@ def recalc_important(dataset_filename, db):
                 track.label,
                 dataset.name,
             )
+        dataset.random_segments(require_movement=True)
         dataset.rebuild_cdf()
     print("after recalculating")
     print_counts(datasets[0], *datasets)
