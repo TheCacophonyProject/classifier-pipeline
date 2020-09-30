@@ -198,7 +198,10 @@ class TrackDatabase:
         # track_attrs["predictions"]=preds
         height, width = preds.shape
         pred_data = track.create_dataset(
-            "predictions", (height, width), chunks=(height, width), dtype=preds.dtype,
+            "predictions",
+            (height, width),
+            chunks=(height, width),
+            dtype=preds.dtype,
         )
         pred_data[:, :] = preds
 
