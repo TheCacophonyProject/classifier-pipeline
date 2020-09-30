@@ -1342,7 +1342,6 @@ class Dataset:
             else:
                 label_cap = self.get_label_caps(labels, remapped=True)
         cap = None
-        label_cap = 100
         for label in labels:
             if cap_samples:
                 cap = min(label_cap, len(self.samples_for(label, remapped=True)))
