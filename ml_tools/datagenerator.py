@@ -228,30 +228,33 @@ class DataGenerator(keras.utils.Sequence):
                 cap_at=self.cap_at,
                 label_cap=self.label_cap,
             )
+
             #
             if self.shuffle:
                 np.random.shuffle(self.samples)
+        self.samples = [sample.id for sample in self.samples]
+
         if self.preload:
             # DEBUGGING GP
-            # tracks = set([sample.track for sample in self.samples])
-            # tracks_by_label = {}
-            # for sample in self.samples:
-            #     track = sample.track
-            #     label_tracks = tracks_by_label.setdefault(track.label, [])
-            #     label_tracks.append(track.unique_id)
-            # for key, value in tracks_by_label.items():
-            #     ids = list(value)
-            #     ids.sort()
-            #
-            #     logging.info(
-            #         "%s samples for %s %s %s",
-            #         self.dataset.name,
-            #         key,
-            #         self.loaded_epochs + 1,
-            #         len(ids),
-            #         # ids,
-            #     )
 
+            tracks_by_label = {}
+            for sample_id in self.samples:
+                sample = self.dataset.segments_by_id[sample_id]
+                track = sample.track
+                label_tracks = tracks_by_label.setdefault(track.label, [])
+                label_tracks.append(track.unique_id)
+            for key, value in tracks_by_label.items():
+                ids = list(value)
+                ids.sort()
+
+                logging.info(
+                    "%s samples for %s %s %s",
+                    self.dataset.name,
+                    key,
+                    self.loaded_epochs + 1,
+                    len(ids),
+                    # ids,
+                )
             for index in range(len(self)):
                 samples = self.samples[
                     index * self.batch_size : (index + 1) * self.batch_size
@@ -282,7 +285,12 @@ class DataGenerator(keras.utils.Sequence):
         if self.lstm:
             X = np.empty((len(samples), samples[0].frames, *self.dim))
         else:
-            X = np.empty((len(samples), *self.dim,))
+            X = np.empty(
+                (
+                    len(samples),
+                    *self.dim,
+                )
+            )
 
         y = np.empty((len(samples)), dtype=int)
         # Generate data
@@ -387,11 +395,19 @@ class DataGenerator(keras.utils.Sequence):
                     continue
                 if self.lstm:
                     data = preprocess_lstm(
-                        data, self.dim, channel, self.augment, self.model_preprocess,
+                        data,
+                        self.dim,
+                        channel,
+                        self.augment,
+                        self.model_preprocess,
                     )
                 else:
                     data = preprocess_frame(
-                        data, self.dim, None, self.augment, self.model_preprocess,
+                        data,
+                        self.dim,
+                        None,
+                        self.augment,
+                        self.model_preprocess,
                     )
             if data is None:
                 logging.debug(
@@ -419,7 +435,9 @@ def resize(image, dim):
 
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
-        image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
+        image,
+        dsize=(dim[0] + extra_h, dim[1] + extra_v),
+        interpolation=interpolation,
     )
 
 
@@ -573,7 +591,13 @@ def dots_movement(
 
         # writing overlay image
         if require_movement and prev_overlay:
-            center_distance = tools.eucl_distance(prev_overlay, (x, y,),)
+            center_distance = tools.eucl_distance(
+                prev_overlay,
+                (
+                    x,
+                    y,
+                ),
+            )
 
         if (
             prev_overlay is None or center_distance > min_distance
@@ -725,7 +749,11 @@ def preprocess_movement(
 
 
 def preprocess_lstm(
-    data, output_dim, channel, augment=False, preprocess_fn=None,
+    data,
+    output_dim,
+    channel,
+    augment=False,
+    preprocess_fn=None,
 ):
 
     data = data[:, channel]
@@ -748,7 +776,11 @@ def preprocess_lstm(
 
 
 def preprocess_frame(
-    data, output_dim, channel, augment=False, preprocess_fn=None,
+    data,
+    output_dim,
+    channel,
+    augment=False,
+    preprocess_fn=None,
 ):
     if channel is not None:
         data = data[channel]
@@ -772,18 +804,21 @@ def preprocess_frame(
 
 
 # continue to read examples until queue is full
-def preloader(q, load_queue, dataset):
+def preloader(q, load_queue, datagen):
     """ add a segment into buffer """
     logging.info(
         " -started async fetcher for %s augment=%s",
-        dataset.dataset.name,
-        dataset.augment,
+        datagen.dataset.name,
+        datagen.augment,
     )
     while True:
         if not q.full():
             samples = pickle.loads(load_queue.get())
-            dataset.loaded_epochs = samples[0]
-            q.put(dataset.loadbatch(samples[1]))
+            datagen.loaded_epochs = samples[0]
+            segments = []
+            for sample_id in samples[1]:
+                segments.append(datagen.dataset.segments_by_id[sample_id])
+            q.put(datagen.loadbatch(segments))
 
         else:
             time.sleep(0.1)

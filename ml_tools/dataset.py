@@ -528,6 +528,8 @@ class FrameSample:
 class SegmentHeader:
     """ Header for segment. """
 
+    _segment_id = 1
+
     def __init__(
         self,
         track: TrackHeader,
@@ -537,6 +539,8 @@ class SegmentHeader:
         avg_mass,
         frame_indices=None,
     ):
+        self.id = SegmentHeader._segment_id
+        SegmentHeader._segment_id += 1
         # reference to track this segment came from
         self.track = track
         # first frame of this segment referenced by start of track
@@ -834,6 +838,7 @@ class Dataset:
         # segments list
         self.segments = []
         self.segments_by_label = {}
+        self.segments_by_id = {}
 
         self.frame_cdf = []
         self.frame_label_cdf = {}
@@ -1179,6 +1184,8 @@ class Dataset:
         self.tracks_by_label[track_header.label].append(track_header)
         segs = self.segments_by_label.setdefault(track_header.label, [])
         segs.extend(track_header.segments)
+        for seg in segs:
+            self.segments_by_id[seg.id] = seg
         frames = self.frames_by_label.setdefault(track_header.label, [])
         samples = track_header.get_sample_frames()
         self.frame_samples.extend(samples)
@@ -1735,17 +1742,21 @@ class Dataset:
                 seg_weight *= lbl_p[segment.track.label]
             total += seg_weight
             self.segment_cdf.append(seg_weight)
-            label = segment.track.label
+
+        # guarantee it's in the order we will sample by
+        for label, segments in self.segments_by_label.items():
             cdf = self.segment_label_cdf.setdefault(label, [])
-            cdf.append(segment.weight)
+            for segment in segments:
+                cdf.append(segment.weight / float(len(segments)))
+
         if len(self.segment_cdf) > 0:
             self.segment_cdf = [x / total for x in self.segment_cdf]
-        for key, cdf in self.segment_label_cdf.items():
-            total = sum(cdf)
-            if total > 0:
-                self.segment_label_cdf[key] = [x / total for x in cdf]
-            else:
-                self.segment_label_cdf[key] = np.zeros((cdf.shape))
+        # for key, cdf in self.segment_label_cdf.items():
+        #     total = sum(cdf)
+        #     if total > 0:
+        #         self.segment_label_cdf[key] = [x / total for x in cdf]
+        #     else:
+        #         self.segment_label_cdf[key] = np.zeros((cdf.shape))
         # do this after so labels are balanced
         if self.label_mapping:
             mapped_cdf = {}
@@ -1890,6 +1901,9 @@ class Dataset:
 
         if self.use_segments:
             self.segments = samples
+            self.segments_by_id == {}
+            for seg in samples:
+                self.segments_by_id[seg.id] = seg
         else:
             self.frame_samples = samples
         if shuffle:
