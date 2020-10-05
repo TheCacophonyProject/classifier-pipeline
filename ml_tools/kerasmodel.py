@@ -584,8 +584,6 @@ class KerasModel:
     ):
         for fld in self.datasets._fields:
             dataset = getattr(self.datasets, fld)
-            if dataset.name == "test":
-                continue
             if random_segments:
                 dataset.random_segments(require_movement=self.type == 14)
             dataset.regroup(groups, shuffle=shuffle)

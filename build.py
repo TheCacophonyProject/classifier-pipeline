@@ -412,6 +412,28 @@ def test_dataset(db, config, date):
     return test
 
 
+def add_segment_id(dataset_filename, db, config):
+    datasets = pickle.load(open(dataset_filename, "rb"))
+    print_counts(datasets[0], *datasets)
+    new_datasets = []
+    id = 0
+    for dataset in datasets:
+
+        new_data = Dataset(db, dataset.name, config)
+        for track in dataset.tracks:
+            for seg in track.segments:
+                id += 1
+                seg.id = id
+        new_data.add_tracks(dataset.tracks)
+        # new_data.random_segments(require_movement=True)
+        new_data.rebuild_cdf()
+        new_datasets.append(new_data)
+    print("after recalculating")
+    print_counts(new_datasets[0], *new_datasets)
+
+    return new_datasets
+
+
 def recalc_important(dataset_filename, db):
     datasets = pickle.load(open(dataset_filename, "rb"))
     print_counts(datasets[0], *datasets)
@@ -454,7 +476,9 @@ def main():
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
     if args.rebuild_important:
         print("rebuild important")
-        datasets = recalc_important(dataset_db_path(config), db)
+        # datasets = recalc_important(dataset_db_path(config), db)
+        datasets = add_segment_id(dataset_db_path(config), db, config)
+
         pickle.dump(datasets, open("important.dat", "wb"))
         return
     dataset = Dataset(db, "dataset", config)
