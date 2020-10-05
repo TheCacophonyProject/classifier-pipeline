@@ -317,41 +317,39 @@ class DataGenerator(keras.utils.Sequence):
                         sample.start_frame : sample.start_frame + len(segment_data)
                     ]
                 elif self.type >= 4:
-                    frames = np.random.choice(
-                        sample.track.important_frames,
-                        min(sample.frames, len(sample.track.important_frames)),
-                        replace=False,
-                    )
-                    if len(frames) < 5:
+                    indices = np.arange(len(data))
+                    np.random.shuffle(indices)
+                    frame_data = []
+                    for frame_i in indices[: sample.frames]:
+                        frame_data.append(data[frame_i])
+
+                    if len(frame_data) < 5:
                         logging.error(
                             "Important frames filtered for %s %s / %s",
                             sample,
-                            len(frames),
+                            len(frame_data),
                             len(sample.track.important_frames),
                         )
                         continue
 
                     # repeat some frames if need be
-                    if len(frames) < self.square_width ** 2:
-                        missing = self.square_width ** 2 - len(frames)
-                        frames = list(frames)
-                        frames.extend(
-                            np.random.choice(
-                                sample.track.important_frames,
-                                min(missing, len(sample.track.important_frames)),
-                                replace=False,
-                            )
-                        )
-                    segment_data = []
+                    if len(frame_data) < self.square_width ** 2:
+                        missing = self.square_width ** 2 - len(frame_data)
+                        np.random.shuffle(indices)
+                        for frame_i in indices[:missing]:
+                            frame_data.append(data[frame_i])
                     ref = []
-
-                    frames = [frame.frame_num for frame in frames]
+                    segment_data = []
+                    regions = []
+                    frame_data = sorted(
+                        frame_data, key=lambda frame_data: frame_data[0]
+                    )
                     # sort??? or rather than random just apply a 1 second step
                     # frames = sample.frame_indices
-                    frames.sort()
-                    for frame_num in frames:
-                        segment_data.append(data[frame_num])
-                        ref.append(sample.track.frame_temp_median[frame_num])
+                    for frame in frame_data:
+                        segment_data.append(frame[1])
+                        ref.append(sample.track.frame_temp_median[frame[0]])
+
                     segment = (segment_data, ref)
                 else:
                     segment_data = data
@@ -365,8 +363,8 @@ class DataGenerator(keras.utils.Sequence):
                         sample.start_frame : sample.start_frame + sample.frames
                     ]
                 else:
-                    regions = sample.track.track_bounds
 
+                    regions = sample.track.track_bounds
                 data = preprocess_movement(
                     data,
                     segment,
@@ -574,11 +572,11 @@ def dots_movement(
     # draw movment lines and draw frame overlay
     center_distance = 0
     min_distance = 2
-    for i, frame in enumerate(frames):
-        if isinstance(regions[i], tools.Rectangle):
-            region = regions[i]
+    for frame in frames:
+        if isinstance(regions[frame[0]], tools.Rectangle):
+            region = regions[frame[0]]
         else:
-            region = tools.Rectangle.from_ltrb(*regions[i])
+            region = tools.Rectangle.from_ltrb(*regions[frame[0]])
         x = int(region.mid_x)
         y = int(region.mid_y)
 
@@ -596,7 +594,7 @@ def dots_movement(
                     y,
                 ),
             )
-
+        frame = frame[1]
         if (
             prev_overlay is None or center_distance > min_distance
         ) or not require_movement:
@@ -619,11 +617,11 @@ def dots_movement(
         prev = (x, y)
 
     # then draw dots so they go over the top
-    for i, frame in enumerate(frames):
-        if isinstance(regions[i], tools.Rectangle):
-            region = regions[i]
+    for frame in frames:
+        if isinstance(regions[frame[0]], tools.Rectangle):
+            region = regions[frame[0]]
         else:
-            region = tools.Rectangle.from_ltrb(*regions[i])
+            region = tools.Rectangle.from_ltrb(*regions[frame[0]])
         x = int(region.mid_x)
         y = int(region.mid_y)
         d.point((x, y), fill=dot_colour)
@@ -690,14 +688,11 @@ def preprocess_movement(
         extra_v = random.randint(0, 24) - 12
         overlay = resize_cv(overlay, overlay.shape, extra_h=extra_h, extra_v=extra_v)
         # extra_v = 12
-        degrees = random.randint(0, 24) - 12
-
-        overlay = ndimage.rotate(
-            overlay, degrees, order=1, reshape=False, mode="nearest"
-        )
-        # overlay = tfa.image.rotate(
-        #     overlay, 90 * math.pi / 180, interpolation="BILINEAR"
-        # )
+        if random.random() <= 0.75:
+            degrees = random.randint(0, 50) - 25
+            overlay = ndimage.rotate(
+                overlay, degrees, order=1, reshape=False, mode="nearest"
+            )
     if not success:
         return None
     if flipped:
@@ -727,17 +722,17 @@ def preprocess_movement(
         data[:, :, 2][:height, :width] = overlay
 
     # # #
-    # savemovement(
-    #     data,
-    #     "samples/{}/{}/{}-{}-{}-{}".format(
-    #         dataset,
-    #         epoch,
-    #         sample.label,
-    #         sample.track.clip_id,
-    #         sample.track.track_id,
-    #         flipped,
-    #     ),
-    # )
+    savemovement(
+        data,
+        "samples/{}/{}/{}-{}-{}-{}".format(
+            dataset,
+            epoch,
+            sample.label,
+            sample.track.clip_id,
+            sample.track.track_id,
+            flipped,
+        ),
+    )
 
     if preprocess_fn:
         for i, frame in enumerate(data):

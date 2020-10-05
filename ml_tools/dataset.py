@@ -682,8 +682,9 @@ class Preprocessor:
 
             frame_bounds = tools.Rectangle(0, 0, frame_width, frame_height)
             # rotate then crop
-            if augment:
-                degrees = random.randint(0, 24) - 12
+            if augment and random.random() <= 0.75:
+
+                degrees = random.randint(0, 50) - 25
 
                 for channel in range(channels):
                     frame[channel] = ndimage.rotate(
@@ -1238,16 +1239,26 @@ class Dataset:
         :param track: the track to fetch
         :return: segment data of shape [frames, channels, height, width]
         """
-        data = self.db.get_track(track.clip_id, track.track_id, original=original)
+        frames = [frame.frame_num for frame in track.important_frames]
+        frames.sort()
+        data = self.db.get_track(
+            track.clip_id, track.track_id, original=original, frames=frames
+        )
+        important_frame_data = []
+
         if preprocess:
+
             data = Preprocessor.apply(
                 data,
-                reference_level=track.frame_temp_median,
-                frame_velocity=track.frame_velocity,
+                reference_level=track.frame_temp_median[frames],
+                frame_velocity=track.frame_velocity[frames],
                 encode_frame_offsets_in_flow=self.encode_frame_offsets_in_flow,
                 default_inset=self.DEFAULT_INSET,
             )
-        return data
+        for i, frame_i in enumerate(frames):
+            important_frame_data.append((frame_i, data[i]))
+
+        return important_frame_data
 
     def fetch_frame(self, frame_sample, channels=None):
         data, label = self.db.get_frame(

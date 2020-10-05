@@ -395,6 +395,7 @@ class TrackDatabase:
         end_frame=None,
         original=False,
         channel=None,
+        frames=None,
     ):
         """
         Fetches a track data from database with optional slicing.
@@ -423,13 +424,21 @@ class TrackDatabase:
                 else:
                     if "cropped" in track_node:
                         track_node = track_node["cropped"]
-                for frame_number in range(start_frame, end_frame):
-                    # we use [:,:,:] to force loading of all data.
-                    if channel:
-                        result.append(track_node[str(frame_number)][channel])
 
-                    else:
-                        result.append(track_node[str(frame_number)][:])
+                if frames is not None:
+                    for frame_number in frames:
+                        if channel:
+                            result.append(track_node[str(frame_number)][channel])
+                        else:
+                            result.append(track_node[str(frame_number)][:])
+                else:
+                    for frame_number in range(start_frame, end_frame):
+                        # we use [:,:,:] to force loading of all data.
+                        if channel:
+                            result.append(track_node[str(frame_number)][channel])
+
+                        else:
+                            result.append(track_node[str(frame_number)][:])
         # print("get track,", start_frame, end_frame, time.time()-start)
         except:
             return None
