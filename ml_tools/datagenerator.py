@@ -228,15 +228,13 @@ class DataGenerator(keras.utils.Sequence):
                 cap_at=self.cap_at,
                 label_cap=self.label_cap,
             )
+            self.samples = [sample.id for sample in self.samples]
 
             #
             if self.shuffle:
                 np.random.shuffle(self.samples)
-        self.samples = [sample.id for sample in self.samples]
 
         if self.preload:
-            # DEBUGGING GP
-
             tracks_by_label = {}
             for sample_id in self.samples:
                 sample = self.dataset.segments_by_id[sample_id]
@@ -253,7 +251,6 @@ class DataGenerator(keras.utils.Sequence):
                     key,
                     self.loaded_epochs + 1,
                     len(ids),
-                    # ids,
                 )
             for index in range(len(self)):
                 samples = self.samples[

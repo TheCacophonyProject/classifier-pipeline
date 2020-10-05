@@ -1747,16 +1747,16 @@ class Dataset:
         for label, segments in self.segments_by_label.items():
             cdf = self.segment_label_cdf.setdefault(label, [])
             for segment in segments:
-                cdf.append(segment.weight / float(len(segments)))
+                cdf.append(segment.weight)
 
         if len(self.segment_cdf) > 0:
             self.segment_cdf = [x / total for x in self.segment_cdf]
-        # for key, cdf in self.segment_label_cdf.items():
-        #     total = sum(cdf)
-        #     if total > 0:
-        #         self.segment_label_cdf[key] = [x / total for x in cdf]
-        #     else:
-        #         self.segment_label_cdf[key] = np.zeros((cdf.shape))
+        for key, cdf in self.segment_label_cdf.items():
+            total = sum(cdf)
+            if total > 0:
+                self.segment_label_cdf[key] = [x / total for x in cdf]
+            else:
+                self.segment_label_cdf[key] = np.zeros((cdf.shape))
         # do this after so labels are balanced
         if self.label_mapping:
             mapped_cdf = {}
