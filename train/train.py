@@ -50,8 +50,7 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
             other_labels.append(label)
     groups.append((other_labels, "not"))
     model.regroup(
-        groups,
-        random_segments=False,
+        groups, random_segments=False,
     )
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)

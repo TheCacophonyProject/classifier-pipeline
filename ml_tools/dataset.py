@@ -284,9 +284,7 @@ class TrackHeader:
                 if remaining > 0:
                     frames.extend(
                         np.random.choice(
-                            self.important_frames,
-                            remaining,
-                            replace=False,
+                            self.important_frames, remaining, replace=False,
                         )
                     )
                 frames = [frame.frame_num for frame in frames]
@@ -442,9 +440,7 @@ class Camera:
         return track, f
 
     def label_track_count(
-        self,
-        label,
-        max_segments_per_track=None,
+        self, label, max_segments_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -452,9 +448,7 @@ class Camera:
         return len(tracks)
 
     def label_segment_count(
-        self,
-        label,
-        max_segments_per_track=None,
+        self, label, max_segments_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -469,9 +463,7 @@ class Camera:
         return frames
 
     def label_frame_count(
-        self,
-        label,
-        max_frames_per_track=None,
+        self, label, max_frames_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -684,7 +676,7 @@ class Preprocessor:
             # rotate then crop
             if augment and random.random() <= 0.75:
 
-                degrees = random.randint(0, 50) - 25
+                degrees = random.randint(0, 40) - 20
 
                 for channel in range(channels):
                     frame[channel] = ndimage.rotate(
@@ -1882,10 +1874,7 @@ class Dataset:
     #         logging.debug("Resample %s taking %s", len(new_segments), label)
 
     def regroup(
-        self,
-        groups,
-        balance_labels=True,
-        shuffle=True,
+        self, groups, balance_labels=True, shuffle=True,
     ):
         self.label_mapping = {}
         counts = []
@@ -1983,12 +1972,7 @@ class Dataset:
         self.rebuild_cdf(balance_labels=balance_labels)
 
     def rebalance(
-        self,
-        label_cap=None,
-        cap_percent=None,
-        labels=None,
-        update=False,
-        shuffle=True,
+        self, label_cap=None, cap_percent=None, labels=None, update=False, shuffle=True,
     ):
         new_samples = []
         tracks_by_id = {}

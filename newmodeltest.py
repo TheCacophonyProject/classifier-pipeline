@@ -532,10 +532,7 @@ class Test:
                 )
             )
             frame = db.get_track(
-                track_header.clip_id,
-                track_header.track_number,
-                frame_i,
-                frame_i + 1,
+                track_header.clip_id, track_header.track_number, frame_i, frame_i + 1,
             )[0]
             animal = frame[0] * frame[4]
             not_animal = frame[0] - animal

@@ -80,10 +80,7 @@ def save_all(dataset, worker_threads, folder):
     job_queue = Queue()
     processes = []
     for i in range(max(1, worker_threads)):
-        p = Process(
-            target=save_job,
-            args=(job_queue, dataset, folder, labels_dir),
-        )
+        p = Process(target=save_job, args=(job_queue, dataset, folder, labels_dir),)
         processes.append(p)
         p.start()
 
