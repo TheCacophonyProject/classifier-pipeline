@@ -432,7 +432,7 @@ def recalc_important(dataset_filename, db):
 
     for dataset in datasets:
         print(dataset.name, dataset.enable_augmentation)
-        for track in dataset.tracks[:100]:
+        for track in dataset.tracks:
             if track.label == "false-positive":
                 continue
 
