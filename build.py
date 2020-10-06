@@ -428,10 +428,11 @@ def add_segment_id(dataset_filename, db, config):
 def recalc_important(dataset_filename, db):
     datasets = pickle.load(open(dataset_filename, "rb"))
     print_counts(datasets[0], *datasets)
+    datasets[0].enable_augmentation = True
 
     for dataset in datasets:
-
-        for track in dataset.tracks:
+        print(dataset.name, dataset.enable_augmentation)
+        for track in dataset.tracks[:100]:
             if track.label == "false-positive":
                 continue
 
