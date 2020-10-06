@@ -2036,7 +2036,6 @@ class Dataset:
                 self.segment_spacing * track.frames_per_second
             )
             segment_width = int(round(self.segment_length * track.frames_per_second))
-            print("segment_width is", segment_width)
             track.calculate_segments(
                 track.frame_mass,
                 segment_frame_spacing,
