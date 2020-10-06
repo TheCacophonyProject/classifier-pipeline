@@ -16,7 +16,7 @@ import ml_tools.globals as globs
 from ml_tools.model import Model
 from ml_tools.kerasmodel import KerasModel
 
-from ml_tools.dataset import Preprocessor
+from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer
 from track.track import Track
 
@@ -72,44 +72,28 @@ class ClipClassifier(CPTVFileProcessor):
         :param track: the track to identify.
         :return: TrackPrediction object
         """
-
-        # uniform prior stats start with uniform distribution.  This is the safest bet, but means that
-        # it takes a while to make predictions.  When off the first prediction is used instead causing
-        # faster, but potentially more unstable predictions.
-        UNIFORM_PRIOR = False
-
-        num_labels = len(self.classifier.labels)
-        prediction_smooth = 0.1
-
-        smooth_prediction = None
-        smooth_novelty = None
-
-        prediction = 0.0
-        novelty = 0.0
-        try:
-            fp_index = self.classifier.labels.index("false-positive")
-        except ValueError:
-            fp_index = None
-
         # go through making classifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         state = None
-        track_prediction = TrackPrediction(track.get_id(), track.start_frame)
-        for i, region in enumerate(track.bounds_history):
-            frame = clip.frame_buffer.get_frame(region.frame_number)
+        if self.kerasmodel:
+            track_prediction = self.classifier.classify_track(clip, track)
+            self.predictions.prediction_per_track[track.get_id()] = track_prediction
+        else:
+            track_prediction = self.predictions.get_or_create_prediction(track)
 
-            track_data = track.crop_by_region(frame, region)
+            for i, region in enumerate(track.bounds_history):
+                frame = clip.frame_buffer.get_frame(region.frame_number)
 
-            # note: would be much better for the tracker to store the thermal references as it goes.
-            # frame = clip.frame_buffer.get_frame(frame_number)
-            thermal_reference = np.median(frame.thermal)
-            # track_data = track.crop_by_region_at_trackframe(frame, i)
-            if i % self.FRAME_SKIP == 0:
-                if self.kerasmodel:
-                    prediction = self.classifier.classify_frame(track_data)
-                else:
+                track_data = track.crop_by_region(frame, region)
+
+                # note: would be much better for the tracker to store the thermal references as it goes.
+                # frame = clip.frame_buffer.get_frame(frame_number)
+                thermal_reference = np.median(frame.thermal)
+                # track_data = track.crop_by_region_at_trackframe(frame, i)
+                if i % self.FRAME_SKIP == 0:
+
                     # we use a tighter cropping here so we disable the default 2 pixel inset
-                    frames = Preprocessor.apply(
+                    frames = preprocess_segment(
                         [track_data], [thermal_reference], default_inset=0
                     )
 
@@ -132,38 +116,24 @@ class ClipClassifier(CPTVFileProcessor):
                     # a little weight decay helps the model not lock into an initial impression.
                     # 0.98 represents a half life of around 3 seconds.
                     state *= 0.98
-                if fp_index is not None:
-                    prediction[fp_index] *= 0.8
-                # precondition on weight,  segments with small mass are weighted less as we can assume the error is
-                # higher here.
-                mass = region.mass
 
-                # we use the square-root here as the mass is in units squared.
-                # this effectively means we are giving weight based on the diameter
-                # of the object rather than the mass.
-                mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
+                    # precondition on weight,  segments with small mass are weighted less as we can assume the error is
+                    # higher here.
+                    mass = region.mass
 
-                # cropped frames don't do so well so restrict their score
-                cropped_weight = 0.7 if region.was_cropped else 1.0
+                    # we use the square-root here as the mass is in units squared.
+                    # this effectively means we are giving weight based on the diameter
+                    # of the object rather than the mass.
+                    mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
 
-                prediction *= mass_weight * cropped_weight
-
-            if smooth_prediction is None:
-                if UNIFORM_PRIOR:
-                    smooth_prediction = np.ones([num_labels]) * (1 / num_labels)
-                else:
-                    smooth_prediction = prediction
-                smooth_novelty = 0.5
-            else:
-                smooth_prediction = (
-                    1 - prediction_smooth
-                ) * smooth_prediction + prediction_smooth * prediction
-                smooth_novelty = (
-                    1 - prediction_smooth
-                ) * smooth_novelty + prediction_smooth * novelty
-            track_prediction.classified_frame(
-                region.frame_number, smooth_prediction, smooth_novelty
-            )
+                    # cropped frames don't do so well so restrict their score
+                    cropped_weight = 0.7 if region.was_cropped else 1.0
+                    track_prediction.classified_frame(
+                        region.frame_number,
+                        prediction,
+                        mass_scale=mass_weight * cropped_weight,
+                        novelty=novelty,
+                    )
         return track_prediction
 
     @property
@@ -268,7 +238,6 @@ class ClipClassifier(CPTVFileProcessor):
             logging.info(
                 " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
             )
-
         if self.tracker_config.verbose:
             ms_per_frame = (
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
@@ -315,6 +284,13 @@ class ClipClassifier(CPTVFileProcessor):
             track_info["average_novelty"] = round(prediction.average_novelty, 2)
             track_info["max_novelty"] = round(prediction.max_novelty, 2)
             track_info["all_class_confidences"] = {}
+
+            # numpy data wont serialize
+            prediction_data = []
+            for pred in prediction.predictions:
+                pred_list = [int(round(p * 100)) for p in pred]
+                prediction_data.append(pred_list)
+            track_info["predictions"] = prediction_data
             for i, value in enumerate(prediction.class_best_score):
                 label = self.classifier.labels[i]
                 track_info["all_class_confidences"][label] = round(float(value), 3)

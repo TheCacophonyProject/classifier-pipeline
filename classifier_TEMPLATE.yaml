@@ -1,10 +1,10 @@
-use_opt_flow: True
+use_opt_flow: False
 
 # Output debug information e.g. heat numbers on preview
 debug: False
 
 # root folder where the source and output folders belong
-base_data_folder: "<full path>" 
+base_data_folder: "<full path>"
 # Enables/Disables GPU accelerated classification
 use_gpu: false
 
@@ -28,20 +28,10 @@ reprocess: true
 # Note: This is should be a full path. It is not relative to the # base_data_folder.
 # previews_colour_map: "custom_colormap.dat"
 
-# Labels 
-labels : [
-    "hedgehog",
-    "false-positive",
-    "rodent",
-    "possum",
-    "cat",
-    "bird",
-    "mustelid",
-    "insect",
-    "human",
-    "leporidae",
-]
- 
+# Labels
+labels : ['bird', 'cat', 'false-positive', 'hedgehog', 'insect', 'leporidae', 'mustelid', 'possum', 'rodent', 'wallaby']
+
+
 # Number of worker threads to use.  0 disables worker pool and forces a single thread.
 worker_threads: 0
 
@@ -59,7 +49,7 @@ tracking:
     preview:
         # Temp_thresh is calculated based on the preview min, max and mean, and temp_thresh value
         dynamic_thresh: True
-        
+
         # When calculating the background ignore the last frames of the preview as the motion detection
         # will still be triggering during this time.
         ignore_frames: 2
@@ -136,7 +126,7 @@ tracking:
     filters:
         # regions with a movement less than this have their tracking scored based of x,y matching, instead of than mid points
         moving_vel_thresh: 4
-        
+
         # discard any tracks that overlap with other tracks more than this.   T than this length in seconds
         track_overlap_ratio: 0.5
 
@@ -163,7 +153,7 @@ load:
         0: ["bird", "false-positive", "hedgehog", "possum", "rodent", "mustelid", "cat", "kiwi", "dog", "leporidae", "human", "insect", "pest"]
         1: ["unidentified", "other"]
         2: ["part","bad track"]
-    
+
     # Use fast BLOSC compression (requires plugin), when saving tracks to database
     enable_compression: False
 
@@ -180,7 +170,7 @@ load:
     preview: "boxes"
 
     #cache buffer frame to disk reducing memory usage
-    cache_to_disk: True
+    cache_to_disk: False
 train:
     # model_resnet, model_lq, or model_hq
     model: "model_lq"
@@ -215,7 +205,7 @@ train:
         resnet_size: 50
     # Number of epochs to train for
     epochs: 30
-    
+
     # use a gru cell or a lstm cell
     use_gru: false
 
@@ -239,7 +229,7 @@ classify:
     meta_to_stdout : False
 
     # Path to pretrained Model use for classification (This should be the base filename without any extension)
-    model: "<full path>" 
+    model: "<full path>"
     # Create a MP4 preview after classification of recording.  Options are "none", "raw", "classified", "tracking"
     # See extract:preview for details on each option.
     preview: "boxes"
@@ -248,7 +238,7 @@ classify:
     classify_folder: "classify"
 
     #cache buffer frame to disk reducing memory usage
-    cache_to_disk: True
+    cache_to_disk: False
 evaluate:
     # Evalulates results against pre-tagged ground truth.
     show_extended_evaluation: False
@@ -258,7 +248,7 @@ evaluate:
 
     # false positive's and 'none' can be mapped to the same label as they represent the same idea.
     null_tags: ["false-positive", "none", "no-tag"]
-    
+
 build:
     # uses split from previous run
     use_previous_split: False

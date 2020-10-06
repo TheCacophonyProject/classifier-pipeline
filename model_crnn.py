@@ -544,7 +544,7 @@ class ModelCRNN_LQ(ConvModel):
                     "motion/{}".format(i),
                     layer,
                     self.layer_filters[i],
-                    self.kernel_size,
+                    self.kernel_size[i],
                     conv_stride=self.conv_stride[i],
                     pool_stride=self.pool_stride[i],
                 )

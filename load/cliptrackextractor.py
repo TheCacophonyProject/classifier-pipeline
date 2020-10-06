@@ -381,10 +381,10 @@ class ClipTrackExtractor:
         self, clip, labels, stats, thresh, filtered, prev_filtered, mass
     ):
         """
-        Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
-        rectangles.
-        :param filtered: The filtered frame
-=        :return: regions of interest, mask frame
+                Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
+                rectangles.
+                :param filtered: The filtered frame
+        =        :return: regions of interest, mask frame
         """
 
         if prev_filtered is not None:

@@ -177,10 +177,16 @@ class TestClassify:
         self.results = []
 
     def run_tests(self):
-        for test in self.test_config.recording_tests:
+        for test in self.test_config.recording_tests[:1]:
             logging.info("testing {} ".format(test.filename))
             clip, predictions = self.clip_classifier.classify_file(test.filename)
             rec_match = self.compare_output(clip, predictions, test)
+            if self.clip_classifier.previewer:
+                mpeg_filename = os.path.splitext(test.filename)[0] + ".mp4"
+                logging.info("Exporting preview to '{}'".format(mpeg_filename))
+                self.clip_classifier.previewer.export_clip_preview(
+                    mpeg_filename, clip, predictions
+                )
             self.results.append(rec_match)
 
     def write_results(self):
