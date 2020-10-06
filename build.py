@@ -451,7 +451,7 @@ def recalc_important(dataset_filename, db):
                 track.label,
                 dataset.name,
             )
-        dataset.random_segments(require_movement=True)
+        dataset.random_segments(require_movement=False)
         dataset.rebuild_cdf()
     print("after recalculating")
     print_counts(datasets[0], *datasets)
@@ -467,8 +467,8 @@ def main():
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
     if args.rebuild_important:
         print("rebuild important")
-        # datasets = recalc_important(dataset_db_path(config), db)
-        datasets = add_segment_id(dataset_db_path(config), db, config)
+        datasets = recalc_important(dataset_db_path(config), db)
+        # datasets = add_segment_id(dataset_db_path(config), db, config)
 
         pickle.dump(datasets, open("important.dat", "wb"))
         return
