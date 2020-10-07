@@ -224,23 +224,25 @@ class ClipTrackExtractor:
     def canny(self, clip, thermal):
         # thermal = thermal[:, :, np.newaxis]
         # thermal = np.repeat(thermal, 3, axis=2)
-        thermal, min, max = normalize(thermal)
-        thermal = np.uint8(thermal)
+        # thermal, min, max = normalize(thermal)
+        # thermal = np.uint8(thermal)
         # vis2 = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
-        thresh = 255 * (clip.temp_thresh - min) / (max - min)
+        # thresh = 255 * (clip.temp_thresh - min) / (max - min)
+        if self.config.dilation_pixels > 0:
+            thermal = cv2.dilate(thermal, self.dilate_kernel, iterations=1)
         ret, thresh1 = cv2.threshold(
-            thermal, thresh, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+            thermal, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
         )
         # thresh1 = cv2.morphologyEx(thresh1, cv2.MORPH_OPEN, self.dilate_kernel)
         edges = cv2.Canny(thresh1, 100, 200)
 
         labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(edges)
-        print("number of components", labels)
+        # print("number of components", labels)
         new_mask = small_mask.copy()
         sorted_labels = sorted(
             np.arange(labels)[1:], key=lambda label: stats[label, 4], reverse=True
         )
-        print(sorted_labels)
+        # print(sorted_labels)
         for i in sorted_labels:
             # stat = stats[label]
             points = np.where(small_mask == i)
@@ -253,7 +255,7 @@ class ClipTrackExtractor:
         filtered = thermal.copy()
         filtered[new_mask == 0] = 0
         # print(small_mask[24:29, 49:127])
-        return filtered, labels, small_mask, stats, thresh
+        return filtered, labels, small_mask, stats, 0
         # plt.subplot(141), plt.imshow(thermal, cmap="gray")
         # plt.title("Original Image"), plt.xticks([]), plt.yticks([])
         # plt.subplot(142), plt.imshow(edges, cmap="gray")
@@ -270,9 +272,9 @@ class ClipTrackExtractor:
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-        filtered, labels, mask, stats, thresh = self.canny(clip, thermal)
+        filtered = self._get_filtered_frame(clip, thermal)
+        _, labels, mask, stats, thresh = self.canny(clip, np.uint8(filtered))
         # mask = np.zeros(filtered.shape)
-        # filtered = self._get_filtered_frame(clip, thermal)
         # frame_height, frame_width = filtered.shape
         # mask = np.zeros(filtered.shape)
         # edge = self.config.edge_pixels
@@ -498,7 +500,6 @@ class ClipTrackExtractor:
                 region.pixel_variance < self.config.aoi_pixel_variance
                 and region.mass < self.config.aoi_min_mass
             ):
-                print("filtering because", region.mass, region.pixel_variance)
                 continue
             regions.append(region)
         return regions
