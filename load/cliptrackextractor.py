@@ -31,6 +31,8 @@ from track.region import Region
 from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
 
+from matplotlib import pyplot as plt
+
 
 class ClipTrackExtractor:
     PREVIEW = "preview"
@@ -219,31 +221,76 @@ class ClipTrackExtractor:
             filtered[filtered < 0] = 0
         return filtered
 
+    def canny(self, clip, thermal):
+        # thermal = thermal[:, :, np.newaxis]
+        # thermal = np.repeat(thermal, 3, axis=2)
+        thermal, min, max = normalize(thermal)
+        thermal = np.uint8(thermal)
+        # vis2 = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
+        thresh = 255 * (clip.temp_thresh - min) / (max - min)
+        ret, thresh1 = cv2.threshold(
+            thermal, thresh, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        # thresh1 = cv2.morphologyEx(thresh1, cv2.MORPH_OPEN, self.dilate_kernel)
+        edges = cv2.Canny(thresh1, 100, 200)
+
+        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(edges)
+        print("number of components", labels)
+        new_mask = small_mask.copy()
+        sorted_labels = sorted(
+            np.arange(labels)[1:], key=lambda label: stats[label, 4], reverse=True
+        )
+        print(sorted_labels)
+        for i in sorted_labels:
+            # stat = stats[label]
+            points = np.where(small_mask == i)
+            points = np.stack((points[1], points[0]), axis=1)
+            new_mask = cv2.fillPoly(new_mask, pts=[points], color=(int(i)))
+        # print("Mask", small_mask[points[0][0]])
+        # for row in small_mask:
+        #     print(row)
+        # raise "EX"
+        filtered = thermal.copy()
+        filtered[new_mask == 0] = 0
+        # print(small_mask[24:29, 49:127])
+        return filtered, labels, small_mask, stats, thresh
+        # plt.subplot(141), plt.imshow(thermal, cmap="gray")
+        # plt.title("Original Image"), plt.xticks([]), plt.yticks([])
+        # plt.subplot(142), plt.imshow(edges, cmap="gray")
+        # plt.title("Edge Image"), plt.xticks([]), plt.yticks([])
+        # plt.subplot(143), plt.imshow(thresh1, cmap="gray")
+        # plt.title("Otsu Image"), plt.xticks([]), plt.yticks([])
+        # plt.subplot(144), plt.imshow(small_mask, cmap="gray")
+        # plt.title("Connected canny Image"), plt.xticks([]), plt.yticks([])
+        # plt.show()
+
     def _process_frame(self, clip, thermal, ffc_affected=False):
         """
         Tracks objects through frame
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-        filtered = self._get_filtered_frame(clip, thermal)
-        frame_height, frame_width = filtered.shape
-        mask = np.zeros(filtered.shape)
-        edge = self.config.edge_pixels
-
-        # remove the edges of the frame as we know these pixels can be spurious value
-        edgeless_filtered = clip.crop_rectangle.subimage(filtered)
-        thresh, mass = tools.blur_and_return_as_mask(
-            edgeless_filtered, threshold=clip.threshold
-        )
-        thresh = np.uint8(thresh)
-        dilated = thresh
-
-        # Dilation groups interested pixels that are near to each other into one component(animal/track)
-        if self.config.dilation_pixels > 0:
-            dilated = cv2.dilate(dilated, self.dilate_kernel, iterations=1)
-
-        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(dilated)
-        mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
+        filtered, labels, mask, stats, thresh = self.canny(clip, thermal)
+        # mask = np.zeros(filtered.shape)
+        # filtered = self._get_filtered_frame(clip, thermal)
+        # frame_height, frame_width = filtered.shape
+        # mask = np.zeros(filtered.shape)
+        # edge = self.config.edge_pixels
+        #
+        # # remove the edges of the frame as we know these pixels can be spurious value
+        # edgeless_filtered = clip.crop_rectangle.subimage(filtered)
+        # thresh, mass = tools.blur_and_return_as_mask(
+        #     edgeless_filtered, threshold=clip.stats.mean_background_value
+        # )
+        # thresh = np.uint8(thresh)
+        # dilated = thresh
+        #
+        # # Dilation groups interested pixels that are near to each other into one component(animal/track)
+        # if self.config.dilation_pixels > 0:
+        #     dilated = cv2.dilate(dilated, self.dilate_kernel, iterations=1)
+        #
+        # labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(dilated)
+        # mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
 
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
@@ -259,7 +306,7 @@ class ClipTrackExtractor:
                     )
         else:
             regions = self._get_regions_of_interest(
-                clip, labels, stats, thresh, filtered, prev_filtered, mass
+                clip, labels, stats, thresh, filtered, prev_filtered
             )
             clip.region_history.append(regions)
             self._apply_region_matchings(
@@ -378,7 +425,7 @@ class ClipTrackExtractor:
                 )
 
     def _get_regions_of_interest(
-        self, clip, labels, stats, thresh, filtered, prev_filtered, mass
+        self, clip, labels, stats, thresh, filtered, prev_filtered
     ):
         """
                 Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
@@ -394,9 +441,11 @@ class ClipTrackExtractor:
 
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.frame_padding
-        edge = self.config.edge_pixels
+        edge = 0
+        # self.config.edge_pixels
         # find regions of interest
         regions = []
+
         for i in range(1, labels):
 
             region = Region(
@@ -404,14 +453,13 @@ class ClipTrackExtractor:
                 stats[i, 1],
                 stats[i, 2],
                 stats[i, 3],
-                stats[i, 4],
-                0,
-                i,
-                clip.frame_on,
+                mass=stats[i, 4],
+                id=i,
+                frame_number=clip.frame_on,
             )
             # want the real mass calculated from before the dilation
             # region.mass = np.sum(region.subimage(thresh))
-            region.mass = mass
+            # region.mass = mass
             # Add padding to region and change coordinates from edgeless image -> full image
             region.x += edge - padding
             region.y += edge - padding
@@ -450,6 +498,7 @@ class ClipTrackExtractor:
                 region.pixel_variance < self.config.aoi_pixel_variance
                 and region.mass < self.config.aoi_min_mass
             ):
+                print("filtering because", region.mass, region.pixel_variance)
                 continue
             regions.append(region)
         return regions
@@ -513,7 +562,9 @@ class ClipTrackExtractor:
 
         # discard tracks that do not move enough
         if stats.max_offset < self.config.track_min_offset:
-            self.print_if_verbose("Track filtered.  Didn't move")
+            self.print_if_verbose(
+                "Track filtered.  Didn't move {}".format(stats.max_offset)
+            )
             clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
 
             return True
@@ -551,3 +602,11 @@ class ClipTrackExtractor:
     def print_if_verbose(self, info_string):
         if self.config.verbose:
             logging.info(info_string)
+
+
+def normalize(a):
+    amax = np.amax(a)
+    amin = np.amin(a)
+    a = (a - amin) / (amax - amin)
+    a *= 255
+    return a, amin, amax
