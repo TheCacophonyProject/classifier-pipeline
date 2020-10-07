@@ -76,8 +76,18 @@ class ClipTrackExtractor:
                 reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
             )
             clip.set_video_stats(video_start_time)
-            # we need to load the entire video so we can analyse the background.
+            for frame in reader:
+                clip.calculate_preview_from_frame(frame.pix, False)
+            clip._set_from_background()
+        with open(clip.source_file, "rb") as f:
+            reader = CPTVReader(f)
 
+            for frame in reader:
+                self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
+        return True
+        # we need to load the entire video so we can analyse the background.
+        with open(clip.source_file, "rb") as f:
+            reader = CPTVReader(f)
             if clip.background_is_preview and clip.num_preview_frames > 0:
                 for frame in reader:
                     self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
@@ -212,8 +222,8 @@ class ClipTrackExtractor:
             avg_change = int(
                 round(np.average(thermal) - clip.stats.mean_background_value)
             )
-            filtered[filtered < clip.temp_thresh] = 0
-            np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
+            filtered[filtered < (clip.temp_thresh - avg_change)] = 0
+            # np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
 
         else:
             filtered = filtered - clip.background
@@ -221,22 +231,24 @@ class ClipTrackExtractor:
             filtered[filtered < 0] = 0
         return filtered
 
-    def canny(self, clip, thermal):
+    def canny(self, clip, thermal, thresh):
         # thermal = thermal[:, :, np.newaxis]
         # thermal = np.repeat(thermal, 3, axis=2)
         # thermal, min, max = normalize(thermal)
         # thermal = np.uint8(thermal)
         # vis2 = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
         # thresh = 255 * (clip.temp_thresh - min) / (max - min)
+        # thermal = cv2.GaussianBlur(thermal, (5, 5), 0)
+
         if self.config.dilation_pixels > 0:
             thermal = cv2.dilate(thermal, self.dilate_kernel, iterations=1)
-        ret, thresh1 = cv2.threshold(
-            thermal, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        )
-        # thresh1 = cv2.morphologyEx(thresh1, cv2.MORPH_OPEN, self.dilate_kernel)
-        edges = cv2.Canny(thresh1, 100, 200)
+        # ret, thresh1 = cv2.threshold(
+        #     thermal, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        # )
+        # # thresh1 = cv2.morphologyEx(thresh1, cv2.MORPH_OPEN, self.dilate_kernel)
+        # edges = cv2.Canny(thresh1, 100, 200)
 
-        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(edges)
+        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(thermal)
         # print("number of components", labels)
         new_mask = small_mask.copy()
         sorted_labels = sorted(
@@ -255,9 +267,10 @@ class ClipTrackExtractor:
         filtered = thermal.copy()
         filtered[new_mask == 0] = 0
         # print(small_mask[24:29, 49:127])
-        return filtered, labels, small_mask, stats, 0
-        # plt.subplot(141), plt.imshow(thermal, cmap="gray")
+        # plt.subplot(141), plt.imshow(small_mask, cmap="gray")
         # plt.title("Original Image"), plt.xticks([]), plt.yticks([])
+        # plt.show()
+        return filtered, labels, small_mask, stats, 0
         # plt.subplot(142), plt.imshow(edges, cmap="gray")
         # plt.title("Edge Image"), plt.xticks([]), plt.yticks([])
         # plt.subplot(143), plt.imshow(thresh1, cmap="gray")
@@ -273,7 +286,17 @@ class ClipTrackExtractor:
             If specified background subtraction algorithm will be used.
         """
         filtered = self._get_filtered_frame(clip, thermal)
-        _, labels, mask, stats, thresh = self.canny(clip, np.uint8(filtered))
+        # test_filtered = thermal.copy() - clip.temp_thresh
+        # np.clip(test_filtered, 0, None, out=test_filtered)
+        # test_filtered = normalize(thermal) * 255
+        # thresh = 0
+        # test_filtered = np.uint8(test_filtered[0])
+        filtered, mass = tools.blur_and_return_as_mask(
+            filtered, threshold=clip.stats.mean_background_value
+        )
+        filtered = normalize(filtered, clip.temp_thresh, np.amax(filtered))[0]
+        np.clip(filtered, 0, None, out=filtered)
+        _, labels, mask, stats, thresh = self.canny(clip, np.uint8(filtered), 0)
         # mask = np.zeros(filtered.shape)
         # frame_height, frame_width = filtered.shape
         # mask = np.zeros(filtered.shape)
@@ -605,9 +628,11 @@ class ClipTrackExtractor:
             logging.info(info_string)
 
 
-def normalize(a):
-    amax = np.amax(a)
-    amin = np.amin(a)
+def normalize(a, amin=None, amax=None):
+    if amax is None:
+        amax = np.amax(a)
+    if amin is None:
+        amin = np.amin(a)
     a = (a - amin) / (amax - amin)
     a *= 255
     return a, amin, amax

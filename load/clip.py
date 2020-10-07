@@ -23,11 +23,12 @@ import logging
 import numpy as np
 import os
 import pytz
-
+import cv2
 
 from ml_tools.tools import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
+from matplotlib import pyplot as plt
 
 
 class Clip:
@@ -80,21 +81,61 @@ class Clip:
     def _set_from_background(self):
         self.stats.mean_background_value = np.average(self.background)
         self.set_temp_thresh()
+        print(
+            "settign from background with previews",
+            len(self.preview_frames),
+            self.temp_thresh,
+        )
+
         self.background_calculated = True
+        plt.subplot(141), plt.imshow(self.background, cmap="gray")
+        plt.title("Background Image"), plt.xticks([]), plt.yticks([])
+        plt.show()
 
     def on_preview(self):
         return not self.background_calculated
 
+    def detect_objects(self, frame):
+        kernel = np.ones((5, 5), np.uint8)
+        thermal = frame.copy()
+        max = np.amax(thermal)
+        min = np.amin(thermal)
+        thermal = (thermal - min) / (max - min)
+        thermal = thermal * 255
+        thermal = np.uint8(thermal)
+        thermal = cv2.dilate(thermal, kernel, iterations=1)
+        ret, thresh1 = cv2.threshold(
+            thermal, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        # plt.subplot(141), plt.imshow(thresh1, cmap="gray")
+        # plt.title("Detect Image"), plt.xticks([]), plt.yticks([])
+        # # plt.show()
+        # print("average frame is", np.average(frame))
+        # # print(idx, len(frame[idx > 0]), len(idx))
+        # copy = frame.copy()
+        # copy[thresh1 > 0] = min
+        # # frame = frame * 0
+        # print("now average frame is", np.average(copy))
+        # copy = 255 * (copy - min) / (max - min)
+        # plt.subplot(141), plt.imshow(copy, cmap="gray")
+        # plt.title("Detect Image"), plt.xticks([]), plt.yticks([])
+        # plt.show()
+        # thresh1 = cv2.morphologyEx(thresh1, cv2.MORPH_OPEN, self.dilate_kernel)
+        # edges = cv2.Canny(thresh1, 100, 200)
+        return frame
+
     def calculate_preview_from_frame(self, frame, ffc_affected=False):
         self.preview_frames.append((frame, ffc_affected))
+        # back = self.detect_objects(frame)
+        back = frame
         if ffc_affected:
             return
         if self.background is None:
-            self.background = frame
+            self.background = back
         else:
-            self.background = np.minimum(self.background, frame)
-        if self.background_frames == (self.num_preview_frames - 1):
-            self._set_from_background()
+            self.background = np.minimum(self.background, back)
+        # if self.background_frames == (self.num_preview_frames - 1):
+        # self._set_from_background()
         self.background_frames += 1
 
     def background_from_frames(self, raw_frames):
@@ -132,7 +173,6 @@ class Clip:
 
     def set_temp_thresh(self):
         if self.config.dynamic_thresh:
-            print("dynamic")
             self.stats.temp_thresh = self.stats.mean_background_value
             self.temp_thresh = self.stats.temp_thresh
         else:
