@@ -76,14 +76,25 @@ class ClipTrackExtractor:
                 reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
             )
             clip.set_video_stats(video_start_time)
+            i = 0
+            frames = []
             for frame in reader:
-                clip.calculate_preview_from_frame(frame.pix, False)
+                frames.append(frame.pix)
+                if len(frames) == 9:
+                    clip.calculate_preview_from_frame(np.average(frames, axis=0), False)
+                    frames = []
+            if len(frames) > 0:
+                clip.calculate_preview_from_frame(np.average(frames, axis=0), False)
+                frames = []
             clip._set_from_background()
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
 
             for frame in reader:
                 self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
+        if not clip.from_metadata:
+            print("filtering")
+            self.apply_track_filtering(clip)
         return True
         # we need to load the entire video so we can analyse the background.
         with open(clip.source_file, "rb") as f:
@@ -103,9 +114,6 @@ class ClipTrackExtractor:
             else:
                 clip.background_is_preview = False
                 self.process_frames(clip, [frame for frame in reader])
-
-        if not clip.from_metadata:
-            self.apply_track_filtering(clip)
 
         if self.calc_stats:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
@@ -222,8 +230,14 @@ class ClipTrackExtractor:
             avg_change = int(
                 round(np.average(thermal) - clip.stats.mean_background_value)
             )
-            filtered[filtered < (clip.temp_thresh - avg_change)] = 0
-            # np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
+            # filtered[filtered < (clip.temp_thresh - avg_change)] = 0
+
+            np.clip(
+                filtered - clip.background - avg_change,
+                0,
+                None,
+                out=filtered,
+            )
 
         else:
             filtered = filtered - clip.background
@@ -241,25 +255,25 @@ class ClipTrackExtractor:
         # thermal = cv2.GaussianBlur(thermal, (5, 5), 0)
 
         if self.config.dilation_pixels > 0:
-            thermal = cv2.dilate(thermal, self.dilate_kernel, iterations=1)
+            thermal = cv2.dilate(thermal, self.dilate_kernel, iterations=2)
         # ret, thresh1 = cv2.threshold(
         #     thermal, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
         # )
-        # # thresh1 = cv2.morphologyEx(thresh1, cv2.MORPH_OPEN, self.dilate_kernel)
-        # edges = cv2.Canny(thresh1, 100, 200)
+        thresh1 = cv2.morphologyEx(thermal, cv2.MORPH_OPEN, self.dilate_kernel)
+        # edges = cv2.Canny(thermal, 100, 200)
 
-        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(thermal)
+        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(thresh1)
         # print("number of components", labels)
         new_mask = small_mask.copy()
         sorted_labels = sorted(
             np.arange(labels)[1:], key=lambda label: stats[label, 4], reverse=True
         )
         # print(sorted_labels)
-        for i in sorted_labels:
-            # stat = stats[label]
-            points = np.where(small_mask == i)
-            points = np.stack((points[1], points[0]), axis=1)
-            new_mask = cv2.fillPoly(new_mask, pts=[points], color=(int(i)))
+        # for i in sorted_labels:
+        #     # stat = stats[label]
+        #     points = np.where(small_mask == i)
+        #     points = np.stack((points[1], points[0]), axis=1)
+        #     new_mask = cv2.fillPoly(new_mask, pts=[points], color=(int(i)))
         # print("Mask", small_mask[points[0][0]])
         # for row in small_mask:
         #     print(row)
@@ -291,11 +305,15 @@ class ClipTrackExtractor:
         # test_filtered = normalize(thermal) * 255
         # thresh = 0
         # test_filtered = np.uint8(test_filtered[0])
+
         filtered, mass = tools.blur_and_return_as_mask(
-            filtered, threshold=clip.stats.mean_background_value
+            filtered, threshold=clip.threshold
         )
-        filtered = normalize(filtered, clip.temp_thresh, np.amax(filtered))[0]
-        np.clip(filtered, 0, None, out=filtered)
+        # plt.subplot(141), plt.imshow(filtered, cmap="gray")
+        # plt.title("Filtered Image"), plt.xticks([]), plt.yticks([])
+        # plt.show()
+        # filtered = normalize(filtered, clip.temp_thresh, np.amax(filtered))[0]
+        # np.clip(filtered, 0, None, out=filtered)
         _, labels, mask, stats, thresh = self.canny(clip, np.uint8(filtered), 0)
         # mask = np.zeros(filtered.shape)
         # frame_height, frame_width = filtered.shape
@@ -584,6 +602,7 @@ class ClipTrackExtractor:
             clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
             return True
 
+        print("trakc movement is", track, "-", stats.max_offset)
         # discard tracks that do not move enough
         if stats.max_offset < self.config.track_min_offset:
             self.print_if_verbose(
