@@ -20,7 +20,7 @@ import os
 import time
 import matplotlib.pyplot as plt
 import json
-from ml_tools.dataset import Preprocessor
+from ml_tools.dataset import Preprocessor, filtered_is_valid
 from classify.trackprediction import TrackPrediction
 from sklearn.metrics import confusion_matrix
 
@@ -460,6 +460,18 @@ class KerasModel:
             channel = TrackChannels.thermal
         else:
             channel = TrackChannels.filtered
+
+        filtered_data = []
+        valid_indices = []
+        for i, frame in enumerate(data):
+            if filtered_is_valid(frame, ""):
+                filtered_data.append((i, frame))
+                valid_indices.append(i)
+
+        frame_sample = valid_indices
+        frame_sample.extend(valid_indices)
+        frame_sample.extend(valid_indices)
+        np.random.shuffle(frame_sample)
         if self.params.lstm:
             median = []
             for f in data:
@@ -477,18 +489,15 @@ class KerasModel:
             predictions.append(output[0])
         elif self.params.use_movement:
             frames_per_classify = self.params.square_width ** 2
-            frames = len(data)
+            frames = len(filtered_data)
 
-            n_squares = math.ceil(float(frames) / frames_per_classify)
+            n_squares = 3 * math.ceil(float(frames) / frames_per_classify)
             median = np.zeros((frames_per_classify))
-            frame_sample = np.arange(frames)
-            np.random.shuffle(frame_sample)
+
             for i in range(n_squares):
                 if self.type >= 4:
+                    square_data = filtered_data
                     region_data = regions
-                    square_data = []
-                    for i, frame in enumerate(data):
-                        square_data.append((i, frame))
                     seg_frames = frame_sample[:frames_per_classify]
                     if len(seg_frames) == 0:
                         break
