@@ -233,10 +233,7 @@ class ClipTrackExtractor:
             # filtered[filtered < (clip.temp_thresh - avg_change)] = 0
 
             np.clip(
-                filtered - clip.background - avg_change,
-                0,
-                None,
-                out=filtered,
+                filtered - clip.background - avg_change, 0, None, out=filtered,
             )
 
         else:
@@ -252,14 +249,14 @@ class ClipTrackExtractor:
         # thermal = np.uint8(thermal)
         # vis2 = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
         # thresh = 255 * (clip.temp_thresh - min) / (max - min)
-        # thermal = cv2.GaussianBlur(thermal, (5, 5), 0)
+        thermal = cv2.GaussianBlur(thermal, (5, 5), 0)
 
         if self.config.dilation_pixels > 0:
-            thermal = cv2.dilate(thermal, self.dilate_kernel, iterations=2)
-        # ret, thresh1 = cv2.threshold(
-        #     thermal, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        # )
-        thresh1 = cv2.morphologyEx(thermal, cv2.MORPH_OPEN, self.dilate_kernel)
+            thermal = cv2.dilate(thermal, self.dilate_kernel, iterations=1)
+        ret, thresh1 = cv2.threshold(
+            thermal, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        # thresh1 = cv2.morphologyEx(thresh1, cv2.MORPH_OPEN, self.dilate_kernel)
         # edges = cv2.Canny(thermal, 100, 200)
 
         labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(thresh1)
@@ -278,13 +275,13 @@ class ClipTrackExtractor:
         # for row in small_mask:
         #     print(row)
         # raise "EX"
-        filtered = thermal.copy()
-        filtered[new_mask == 0] = 0
+        # filtered = thermal.copy()
+        # filtered[new_mask == 0] = 0
         # print(small_mask[24:29, 49:127])
         # plt.subplot(141), plt.imshow(small_mask, cmap="gray")
         # plt.title("Original Image"), plt.xticks([]), plt.yticks([])
         # plt.show()
-        return filtered, labels, small_mask, stats, 0
+        return thresh1, labels, small_mask, stats, 0
         # plt.subplot(142), plt.imshow(edges, cmap="gray")
         # plt.title("Edge Image"), plt.xticks([]), plt.yticks([])
         # plt.subplot(143), plt.imshow(thresh1, cmap="gray")
@@ -300,15 +297,15 @@ class ClipTrackExtractor:
             If specified background subtraction algorithm will be used.
         """
         filtered = self._get_filtered_frame(clip, thermal)
+
+        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
         # test_filtered = thermal.copy() - clip.temp_thresh
         # np.clip(test_filtered, 0, None, out=test_filtered)
         # test_filtered = normalize(thermal) * 255
         # thresh = 0
         # test_filtered = np.uint8(test_filtered[0])
 
-        filtered, mass = tools.blur_and_return_as_mask(
-            filtered, threshold=clip.threshold
-        )
+        # filtered, mass = tools.blur_and_return_as_mask(filtered, threshold=0)
         # plt.subplot(141), plt.imshow(filtered, cmap="gray")
         # plt.title("Filtered Image"), plt.xticks([]), plt.yticks([])
         # plt.show()

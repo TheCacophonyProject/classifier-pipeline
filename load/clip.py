@@ -88,9 +88,9 @@ class Clip:
         )
 
         self.background_calculated = True
-        plt.subplot(141), plt.imshow(self.background, cmap="gray")
-        plt.title("Background Image"), plt.xticks([]), plt.yticks([])
-        plt.show()
+        # plt.subplot(141), plt.imshow(self.background, cmap="gray")
+        # plt.title("Background Image"), plt.xticks([]), plt.yticks([])
+        # plt.show()
 
     def on_preview(self):
         return not self.background_calculated
