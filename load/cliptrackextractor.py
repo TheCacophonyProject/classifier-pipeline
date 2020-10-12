@@ -78,11 +78,40 @@ class ClipTrackExtractor:
             clip.set_video_stats(video_start_time)
             i = 0
             frames = []
+            all_frames = []
+            first_nine = None
+            lower_diff = None
+            higher_diff = None
             for frame in reader:
+
+                all_frames.append(frame.pix)
                 frames.append(frame.pix)
                 if len(frames) == 9:
                     clip.calculate_preview_from_frame(np.average(frames, axis=0), False)
+                    if first_nine is None:
+                        first_nine = np.average(frames, axis=0)
+                    else:
+                        diff = first_nine - frame.pix
+                        if lower_diff is not None:
+                            lower_diff = np.minimum(lower_diff, diff)
+                        else:
+                            lower_diff = diff
+
+                        diff = frame.pix - first_nine
+                        if higher_diff is not None:
+                            higher_diff = np.maximum(higher_diff, diff)
+                        else:
+                            higher_diff = diff
                     frames = []
+            background_movement = higher_diff - lower_diff
+            background_movement[background_movement < 20] = 0
+            plt.subplot(141), plt.imshow(lower_diff, cmap="gray")
+            plt.title("Higher diff"), plt.xticks([]), plt.yticks([])
+            plt.subplot(142), plt.imshow(higher_diff, cmap="gray")
+            plt.title("Detect Image"), plt.xticks([]), plt.yticks([])
+            plt.subplot(143), plt.imshow(background_movement, cmap="gray")
+            plt.title("Detect Image"), plt.xticks([]), plt.yticks([])
+            plt.show()
             if len(frames) > 0:
                 clip.calculate_preview_from_frame(np.average(frames, axis=0), False)
                 frames = []
@@ -225,7 +254,7 @@ class ClipTrackExtractor:
         filtered = np.float32(thermal.copy())
         if clip.background is None:
             filtered = filtered - np.median(filtered) - 40
-            filtered[filtered < 0] = 0
+            avg_changefiltered[filtered < 0] = 0
         elif clip.background_is_preview:
             avg_change = int(
                 round(np.average(thermal) - clip.stats.mean_background_value)
@@ -243,28 +272,22 @@ class ClipTrackExtractor:
         return filtered
 
     def canny(self, clip, thermal, thresh):
-        # thermal = thermal[:, :, np.newaxis]
-        # thermal = np.repeat(thermal, 3, axis=2)
-        # thermal, min, max = normalize(thermal)
-        # thermal = np.uint8(thermal)
-        # vis2 = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
-        # thresh = 255 * (clip.temp_thresh - min) / (max - min)
+
         thermal = cv2.GaussianBlur(thermal, (5, 5), 0)
+        thermal[thermal < 10] = 0
+        # if self.config.dilation_pixels > 0:
+        #     thermal = cv2.dilate(thermal, self.dilate_kernel, iterations=1)
 
-        if self.config.dilation_pixels > 0:
-            thermal = cv2.dilate(thermal, self.dilate_kernel, iterations=1)
-        ret, thresh1 = cv2.threshold(
-            thermal, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        )
-        # thresh1 = cv2.morphologyEx(thresh1, cv2.MORPH_OPEN, self.dilate_kernel)
-        # edges = cv2.Canny(thermal, 100, 200)
+        thermal = cv2.morphologyEx(thermal, cv2.MORPH_CLOSE, self.dilate_kernel)
+        # thermal = cv2.Canny(thermal, 100, 200)
 
-        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(thresh1)
-        # print("number of components", labels)
+        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(thermal)
         new_mask = small_mask.copy()
         sorted_labels = sorted(
             np.arange(labels)[1:], key=lambda label: stats[label, 4], reverse=True
         )
+        # small_mask = cv2.erode(np.uint8(small_mask), self.dilate_kernel, iterations=1)
+
         # print(sorted_labels)
         # for i in sorted_labels:
         #     # stat = stats[label]
@@ -281,14 +304,7 @@ class ClipTrackExtractor:
         # plt.subplot(141), plt.imshow(small_mask, cmap="gray")
         # plt.title("Original Image"), plt.xticks([]), plt.yticks([])
         # plt.show()
-        return thresh1, labels, small_mask, stats, 0
-        # plt.subplot(142), plt.imshow(edges, cmap="gray")
-        # plt.title("Edge Image"), plt.xticks([]), plt.yticks([])
-        # plt.subplot(143), plt.imshow(thresh1, cmap="gray")
-        # plt.title("Otsu Image"), plt.xticks([]), plt.yticks([])
-        # plt.subplot(144), plt.imshow(small_mask, cmap="gray")
-        # plt.title("Connected canny Image"), plt.xticks([]), plt.yticks([])
-        # plt.show()
+        return thermal, labels, small_mask, stats, 0
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
         """
@@ -299,19 +315,8 @@ class ClipTrackExtractor:
         filtered = self._get_filtered_frame(clip, thermal)
 
         filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
-        # test_filtered = thermal.copy() - clip.temp_thresh
-        # np.clip(test_filtered, 0, None, out=test_filtered)
-        # test_filtered = normalize(thermal) * 255
-        # thresh = 0
-        # test_filtered = np.uint8(test_filtered[0])
 
-        # filtered, mass = tools.blur_and_return_as_mask(filtered, threshold=0)
-        # plt.subplot(141), plt.imshow(filtered, cmap="gray")
-        # plt.title("Filtered Image"), plt.xticks([]), plt.yticks([])
-        # plt.show()
-        # filtered = normalize(filtered, clip.temp_thresh, np.amax(filtered))[0]
-        # np.clip(filtered, 0, None, out=filtered)
-        _, labels, mask, stats, thresh = self.canny(clip, np.uint8(filtered), 0)
+        _, labels, mask, stats, thresh = self.canny(clip, np.uint8(filtered).copy(), 0)
         # mask = np.zeros(filtered.shape)
         # frame_height, frame_width = filtered.shape
         # mask = np.zeros(filtered.shape)
