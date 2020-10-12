@@ -516,7 +516,7 @@ class KerasModel:
                         median[i] = np.median(f[0])
                 frames = preprocess_movement(
                     square_data,
-                    segment,
+                    (segment, median),
                     self.params.square_width,
                     region_data,
                     channel,
