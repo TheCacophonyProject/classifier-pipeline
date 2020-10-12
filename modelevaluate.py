@@ -365,8 +365,8 @@ used_labels = groups[0][0].copy()
 for label in dataset.labels:
     if label not in used_labels:
         other_labels.append(label)
-# groups.append((other_labels, "not"))
-dataset.random_segments(require_movement=True)
+groups.append((other_labels, "not"))
+dataset.random_segments(require_movement=False)
 dataset.regroup(groups, shuffle=False)
 logging.info(
     "Dataset loaded %s, using labels %s, mapped labels %s",
