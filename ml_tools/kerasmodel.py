@@ -486,7 +486,9 @@ class KerasModel:
             for i in range(n_squares):
                 if self.type >= 4:
                     region_data = regions
-                    square_data = data
+                    square_data = []
+                    for i, frame in enumerate(data):
+                        square_data.append((i, frame))
                     seg_frames = frame_sample[:frames_per_classify]
                     if len(seg_frames) == 0:
                         break
@@ -514,7 +516,7 @@ class KerasModel:
                         median[i] = np.median(f[0])
                 frames = preprocess_movement(
                     square_data,
-                    [(segment)],
+                    segment,
                     self.params.square_width,
                     region_data,
                     channel,
