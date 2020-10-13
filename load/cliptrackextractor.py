@@ -93,7 +93,7 @@ class ClipTrackExtractor:
                     else:
                         diff = first_nine - frame.pix
                         if lower_diff is not None:
-                            lower_diff = np.minimum(lower_diff, diff)
+                            lower_diff = np.maximum(lower_diff, diff)
                         else:
                             lower_diff = diff
 
@@ -105,12 +105,28 @@ class ClipTrackExtractor:
                     frames = []
             background_movement = higher_diff - lower_diff
             background_movement[background_movement < 20] = 0
+            np.clip(lower_diff, 0, None, out=lower_diff)
+            lower_diff = cv2.fastNlMeansDenoising(np.uint8(lower_diff), None)
+            # lower_diff, _, _ = normalize(lower_diff)
+            ret2, lower_diff = cv2.threshold(
+                lower_diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+            )
+            print(lower_diff[0])
+            connected = lower_diff.copy()
+            connected = cv2.GaussianBlur(np.uint8(connected), (5, 5), 0)
+            connected = cv2.dilate(connected, self.dilate_kernel, iterations=2)
+
+            connected = cv2.morphologyEx(connected, cv2.MORPH_CLOSE, self.dilate_kernel)
+            # connected = cv2.Canny(connected, 100, 200)
+
+            labels, connected, stats, _ = cv2.connectedComponentsWithStats(connected)
+
             plt.subplot(141), plt.imshow(lower_diff, cmap="gray")
-            plt.title("Higher diff"), plt.xticks([]), plt.yticks([])
-            plt.subplot(142), plt.imshow(higher_diff, cmap="gray")
+            plt.title("Loewr diff"), plt.xticks([]), plt.yticks([])
+            plt.subplot(142), plt.imshow(connected, cmap="gray")
             plt.title("Detect Image"), plt.xticks([]), plt.yticks([])
-            plt.subplot(143), plt.imshow(background_movement, cmap="gray")
-            plt.title("Detect Image"), plt.xticks([]), plt.yticks([])
+            plt.subplot(143), plt.imshow(first_nine, cmap="gray")
+            plt.title("First Image"), plt.xticks([]), plt.yticks([])
             plt.show()
             if len(frames) > 0:
                 clip.calculate_preview_from_frame(np.average(frames, axis=0), False)
@@ -274,7 +290,8 @@ class ClipTrackExtractor:
     def canny(self, clip, thermal, thresh):
 
         thermal = cv2.GaussianBlur(thermal, (5, 5), 0)
-        thermal[thermal < 10] = 0
+        _, thermal = cv2.threshold(thermal, 10, 255, cv2.THRESH_BINARY)
+        # thermal[thermal < 10] = 0
         # if self.config.dilation_pixels > 0:
         #     thermal = cv2.dilate(thermal, self.dilate_kernel, iterations=1)
 
