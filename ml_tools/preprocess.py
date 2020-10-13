@@ -1,8 +1,7 @@
 import cv2
-import random
-from pathlib import Path
-
 import numpy as np
+import random
+
 from ml_tools import tools
 from track.track import TrackChannels
 from ml_tools import imageprocessing
@@ -196,7 +195,6 @@ def preprocess_movement(
     )
 
     segment = segment[:, channel]
-
     # as long as one frame it's fine
     square, success = imageprocessing.square_clip(
         segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
