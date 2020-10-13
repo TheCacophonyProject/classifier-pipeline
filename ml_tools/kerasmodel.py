@@ -158,7 +158,7 @@ class KerasModel:
         self.pretrained_model = self.params.get("model", "resnetv2")
         self.preprocess_fn = self.get_preprocess_fn()
         self.frame_size = meta.get("frame_size", 48)
-        self.square_width = meta.get("square_width", 5)
+        self.square_width = meta.get("square_width", 1)
         self.use_movement = self.params.get("use_movement", False)
         self.use_dots = self.params.get("use_dots", False)
 
