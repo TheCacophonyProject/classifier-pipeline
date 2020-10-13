@@ -181,13 +181,13 @@ def preprocess_movement(
     channel,
     preprocess_fn=None,
     augment=False,
+    use_dots=True,
 ):
     segment = preprocess_segment(
         segment, augment=augment, filter_to_delta=False, default_inset=0
     )
 
     segment = segment[:, channel]
-
     # as long as one frame it's fine
     square, success = imageprocessing.square_clip(
         segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
@@ -195,20 +195,19 @@ def preprocess_movement(
     if not success:
         return None
     dots, overlay = imageprocessing.movement_images(
-        data,
-        regions,
-        dim=square.shape,
-        channel=channel,
-        require_movement=True,
+        data, regions, dim=square.shape, require_movement=True,
     )
-    dots = dots / 255
     overlay, success = imageprocessing.normalize(overlay, min=0)
     if not success:
         return None
 
     data = np.empty((square.shape[0], square.shape[1], 3))
     data[:, :, 0] = square
-    data[:, :, 1] = dots  # dots
+    if use_dots:
+        dots = dots / 255
+        data[:, :, 1] = dots  # dots
+    else:
+        data[:, :, 1] = np.zeros(dots.shape)
     data[:, :, 2] = overlay  # overlay
 
     if preprocess_fn:
