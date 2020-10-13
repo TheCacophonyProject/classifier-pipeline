@@ -102,7 +102,6 @@ def preprocess_segment(
 
         # reference thermal levels to the reference level
         data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
-        print("subtracting reference", reference_level)
     # map optical flow down to right level,
     # we pre-multiplied by 256 to fit into a 16bit int
     data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
@@ -141,6 +140,8 @@ def preprocess_segment(
             # when we flip the frame remember to flip the horizontal velocity as well
             data = np.flip(data, axis=3)
             data[:, 2] = -data[:, 2]
+    np.clip(data[:, 0, :, :], a_min=0, a_max=None, out=data[:, 0, :, :])
+
     return data
 
 
@@ -195,8 +196,9 @@ def preprocess_movement(
         filter_to_delta=False,
         default_inset=0,
     )
-    print("getting channel", channel)
+
     segment = segment[:, channel]
+
     # as long as one frame it's fine
     square, success = imageprocessing.square_clip(
         segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
@@ -223,7 +225,6 @@ def preprocess_movement(
     data[:, :, 2] = overlay  # overlay
     global index
     index += 1
-    print("saving", index)
     savemovement(data, f"test{index}")
     if preprocess_fn:
         for i, frame in enumerate(data):
