@@ -195,7 +195,10 @@ def preprocess_movement(
     if not success:
         return None
     dots, overlay = imageprocessing.movement_images(
-        data, regions, dim=square.shape, require_movement=True,
+        data,
+        regions,
+        dim=square.shape,
+        require_movement=True,
     )
     overlay, success = imageprocessing.normalize(overlay, min=0)
     if not success:

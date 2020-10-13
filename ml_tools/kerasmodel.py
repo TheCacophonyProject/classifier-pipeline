@@ -39,7 +39,9 @@ class KerasModel:
         if self.pretrained_model == "resnet":
             return (
                 tf.keras.applications.ResNet50(
-                    weights="imagenet", include_top=False, input_shape=input_shape,
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
@@ -60,35 +62,45 @@ class KerasModel:
         elif self.pretrained_model == "vgg16":
             return (
                 tf.keras.applications.VGG16(
-                    weights="imagenet", include_top=False, input_shape=input_shape,
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
                 ),
                 tf.keras.applications.vgg16.preprocess_input,
             )
         elif self.pretrained_model == "vgg19":
             return (
                 tf.keras.applications.VGG19(
-                    weights="imagenet", include_top=False, input_shape=input_shape,
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
                 ),
                 tf.keras.applications.vgg19.preprocess_input,
             )
         elif self.pretrained_model == "mobilenet":
             return (
                 tf.keras.applications.MobileNetV2(
-                    weights="imagenet", include_top=False, input_shape=input_shape,
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
                 ),
                 tf.keras.applications.mobilenet_v2.preprocess_input,
             )
         elif self.pretrained_model == "densenet121":
             return (
                 tf.keras.applications.DenseNet121(
-                    weights="imagenet", include_top=False, input_shape=input_shape,
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
                 ),
                 tf.keras.applications.densenet.preprocess_input,
             )
         elif self.pretrained_model == "inceptionresnetv2":
             return (
                 tf.keras.applications.InceptionResNetV2(
-                    weights="imagenet", include_top=False, input_shape=input_shape,
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
                 ),
                 tf.keras.applications.inception_resnet_v2.preprocess_input,
             )
@@ -113,7 +125,9 @@ class KerasModel:
         preds = tf.keras.layers.Dense(len(self.labels), activation="softmax")(x)
         self.model = tf.keras.models.Model(inputs, outputs=preds)
         self.model.compile(
-            optimizer=self.optimizer(), loss=self.loss(), metrics=["accuracy"],
+            optimizer=self.optimizer(),
+            loss=self.loss(),
+            metrics=["accuracy"],
         )
 
     def loss(self):
@@ -205,7 +219,10 @@ class KerasModel:
         return output[0]
 
     def classify_track(
-        self, clip, track, keep_all=True,
+        self,
+        clip,
+        track,
+        keep_all=True,
     ):
         try:
             fp_index = self.labels.index("false-positive")
