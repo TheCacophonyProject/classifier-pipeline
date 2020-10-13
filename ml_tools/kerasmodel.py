@@ -174,6 +174,7 @@ class KerasModel:
         self.frame_size = meta.get("frame_size", 48)
         self.square_width = meta.get("square_width", 1)
         self.use_movement = self.params.get("use_movement", False)
+        self.use_dots = self.params.get("use_dots", False)
 
     def get_preprocess_fn(self):
         if self.pretrained_model == "resnet":
@@ -301,6 +302,7 @@ class KerasModel:
                 regions,
                 channel,
                 self.preprocess_fn,
+                use_dots=self.params.get("use_dots", True),
             )
             if frames is None:
                 continue
