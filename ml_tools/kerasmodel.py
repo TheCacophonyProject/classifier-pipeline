@@ -288,14 +288,14 @@ class KerasModel:
         for i in range(num_classifies):
             seg_frames = frame_sample[:frames_per_classify]
             segment = []
-            median = []
+            medians = []
             # update remaining
             frame_sample = frame_sample[frames_per_classify:]
             seg_frames.sort()
             for frame_i in seg_frames:
                 f = data[frame_i]
                 segment.append(f)
-                median.append(np.median(f[0]))
+                medians.append(np.median(f[0]))
             frames = preprocess_movement(
                 data,
                 segment,
@@ -303,7 +303,7 @@ class KerasModel:
                 regions,
                 channel,
                 self.preprocess_fn,
-                reference_level=median,
+                reference_level=medians,
                 use_dots=self.params.get("use_dots", True),
             )
             if frames is None:
