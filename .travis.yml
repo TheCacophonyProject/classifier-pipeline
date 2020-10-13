@@ -3,13 +3,9 @@ language: python
 python:
 - '3.6'
 
-addons:
-  snaps:
-    - ffmpeg
 install:
 - sudo apt-get update
-# - sudo apt -y install ffmpeg
-- ffmpeg -version
+- sudo apt -y install ffmpeg
 - sudo apt-get -y install libgirepository1.0-dev
 - pip install -r requirements.txt
 
