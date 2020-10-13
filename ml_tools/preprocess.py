@@ -1,5 +1,7 @@
 import cv2
 import random
+from PIL import Image, ImageDraw, ImageFont, ImageColor
+from pathlib import Path
 
 import numpy as np
 from ml_tools import tools
@@ -90,7 +92,6 @@ def preprocess_segment(
 
     # convert back into [F,C,H,W] array.
     data = np.float32(scaled_frames)
-
     if reference_level:
         # -------------------------------------------
         # next adjust temperature and flow levels
@@ -101,7 +102,7 @@ def preprocess_segment(
 
         # reference thermal levels to the reference level
         data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
-
+        print("subtracting reference", reference_level)
     # map optical flow down to right level,
     # we pre-multiplied by 256 to fit into a 16bit int
     data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
@@ -173,6 +174,9 @@ def preprocess_frame(
     return data
 
 
+index = 0
+
+
 def preprocess_movement(
     data,
     segment,
@@ -182,11 +186,16 @@ def preprocess_movement(
     preprocess_fn=None,
     augment=False,
     use_dots=True,
+    reference_level=None,
 ):
     segment = preprocess_segment(
-        segment, augment=augment, filter_to_delta=False, default_inset=0
+        segment,
+        reference_level=reference_level,
+        augment=augment,
+        filter_to_delta=False,
+        default_inset=0,
     )
-
+    print("getting channel", channel)
     segment = segment[:, channel]
     # as long as one frame it's fine
     square, success = imageprocessing.square_clip(
@@ -212,9 +221,22 @@ def preprocess_movement(
     else:
         data[:, :, 1] = np.zeros(dots.shape)
     data[:, :, 2] = overlay  # overlay
-
+    global index
+    index += 1
+    print("saving", index)
+    savemovement(data, f"test{index}")
     if preprocess_fn:
         for i, frame in enumerate(data):
             frame = frame * 255
             data[i] = preprocess_fn(frame)
     return data
+
+
+def savemovement(data, filename):
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
+    r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
+    g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
+    b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
+    concat = np.concatenate((r, g, b), axis=1)  # horizontally
+    img = Image.fromarray(np.uint8(concat))
+    img.save(filename + "rgb.png")
