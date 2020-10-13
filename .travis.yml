@@ -19,7 +19,8 @@ script:
 - python3 build.py -c smoketest/test-config.yaml
 - python3 motiontest.py --thermal-config-file smoketest/config.toml -c smoketest/test-config.yaml smoketest/clips/hedgehog.cptv
 - sudo mkdir /var/spool/cptv
-- sudo python3 piclassify.py --cptv smoketest/clips/hedgehog.cptv  --thermal-config-file smoketest/config.toml -c smoketest/test-config.yaml
+- sudo chmod 776 /var/spool/cptv
+- python3 piclassify.py --cptv smoketest/clips/hedgehog.cptv  --thermal-config-file smoketest/config.toml -c smoketest/test-config.yaml
 # - python3 classify.py all -c smoketest/test-config.yaml need model
 
 
