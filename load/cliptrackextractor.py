@@ -103,6 +103,10 @@ class ClipTrackExtractor:
                         else:
                             higher_diff = diff
                     frames = []
+            if len(frames) > 0:
+                clip.calculate_preview_from_frame(np.average(frames, axis=0), False)
+                frames = []
+            clip._set_from_background()
             background_movement = higher_diff - lower_diff
             background_movement[background_movement < 20] = 0
             np.clip(lower_diff, 0, None, out=lower_diff)
@@ -111,7 +115,6 @@ class ClipTrackExtractor:
             ret2, lower_diff = cv2.threshold(
                 lower_diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
             )
-            print(lower_diff[0])
             connected = lower_diff.copy()
             connected = cv2.GaussianBlur(np.uint8(connected), (5, 5), 0)
             connected = cv2.dilate(connected, self.dilate_kernel, iterations=2)
@@ -120,18 +123,73 @@ class ClipTrackExtractor:
             # connected = cv2.Canny(connected, 100, 200)
 
             labels, connected, stats, _ = cv2.connectedComponentsWithStats(connected)
+            max_region = Region(0, 0, 160, 120)
+
+            for i in range(1, labels):
+
+                region = Region(
+                    stats[i, 0],
+                    stats[i, 1],
+                    stats[i, 2],
+                    stats[i, 3],
+                    mass=stats[i, 4],
+                    id=i,
+                    frame_number=clip.frame_on,
+                )
+                region.enlarge(2)
+                region.crop(max_region)
+                print(region)
+                subimage_b = region.subimage(clip.background)
+                norm_subimage, sub_min, sub_max = normalize(subimage_b)
+                norm_subimage = np.uint8(norm_subimage)
+                _, subimage = cv2.threshold(
+                    norm_subimage, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+                )
+                subimage = cv2.GaussianBlur(subimage, (5, 5), 0)
+                subimage = cv2.morphologyEx(
+                    subimage, cv2.MORPH_CLOSE, self.dilate_kernel
+                )
+                labels, subconnected, stats, _ = cv2.connectedComponentsWithStats(
+                    subimage
+                )
+                print("num labels", labels, stats[0])
+                if labels > 2 or stats[0][4] == 0:
+                    print("too many labels", labels)
+                    continue
+                plt.subplot(141), plt.imshow(subconnected, cmap="gray")
+                plt.title("Connected in background"), plt.xticks([]), plt.yticks([])
+                plt.subplot(142), plt.imshow(norm_subimage, cmap="gray")
+                plt.title("normed"), plt.xticks([]), plt.yticks([])
+                plt.subplot(143), plt.imshow(subimage, cmap="gray")
+                plt.title("processed"), plt.xticks([]), plt.yticks([])
+
+                # print(subconnected)
+                # surrounding_average = np.average(subimage_b[subconnected == 0])
+                # subimage_b[subconnected > 0] = 0
+                print(subconnected.dtype, norm_subimage.dtype)
+                subconnected[subconnected > 0] = 1
+                dst = cv2.inpaint(
+                    norm_subimage,
+                    np.uint8(subconnected),
+                    max(region.width, region.height) / 2.0,
+                    cv2.INPAINT_TELEA,
+                )
+                subimage_b[:] = dst[:] / 255 * (sub_max - sub_min) + sub_min
+                # print("set values to", surrounding_average)
+                plt.subplot(144), plt.imshow(dst, cmap="gray")
+                plt.title("origin"), plt.xticks([]), plt.yticks([])
+                plt.show()
+                # subimage_b -= 50
+                # connected = cv2.Canny(connected, 100, 200)
 
             plt.subplot(141), plt.imshow(lower_diff, cmap="gray")
-            plt.title("Loewr diff"), plt.xticks([]), plt.yticks([])
+            plt.title("lower diff"), plt.xticks([]), plt.yticks([])
             plt.subplot(142), plt.imshow(connected, cmap="gray")
             plt.title("Detect Image"), plt.xticks([]), plt.yticks([])
-            plt.subplot(143), plt.imshow(first_nine, cmap="gray")
-            plt.title("First Image"), plt.xticks([]), plt.yticks([])
+            plt.subplot(143), plt.imshow(clip.background, cmap="gray")
+            plt.title("Background Image"), plt.xticks([]), plt.yticks([])
             plt.show()
-            if len(frames) > 0:
-                clip.calculate_preview_from_frame(np.average(frames, axis=0), False)
-                frames = []
-            clip._set_from_background()
+
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
 
@@ -278,7 +336,10 @@ class ClipTrackExtractor:
             # filtered[filtered < (clip.temp_thresh - avg_change)] = 0
 
             np.clip(
-                filtered - clip.background - avg_change, 0, None, out=filtered,
+                filtered - clip.background - avg_change,
+                0,
+                None,
+                out=filtered,
             )
 
         else:
