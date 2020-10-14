@@ -31,6 +31,7 @@ from track.framebuffer import FrameBuffer
 from track.track import Track
 from matplotlib import pyplot as plt
 from track.region import Region
+from piclassifier.motiondetector import is_affected_by_ffc
 
 
 class Clip:
@@ -110,6 +111,9 @@ class Clip:
         lower_diff = None
         frames = []
         for frame in frame_reader:
+            ffc_affected = is_affected_by_ffc(frame)
+            if ffc_affected:
+                continue
             frames.append(frame.pix)
             if len(frames) == 9:
                 self.calculate_preview_from_frame(np.average(frames, axis=0), False)
@@ -171,7 +175,6 @@ class Clip:
                 sub_stats,
                 _,
             ) = cv2.connectedComponentsWithStats(processed)
-            print("mass", sub_stats[0][4], "area", region.area * 0.8)
             if (
                 sub_components > 2
                 or sub_stats[0][4] == 0

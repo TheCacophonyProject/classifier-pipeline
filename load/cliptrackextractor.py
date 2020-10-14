@@ -78,37 +78,18 @@ class ClipTrackExtractor:
             )
             clip.set_video_stats(video_start_time)
             clip.calculate_background(reader)
-            plt.subplot(143), plt.imshow(clip.background, cmap="gray")
-            plt.title("Background Image"), plt.xticks([]), plt.yticks([])
-            plt.show()
+            # plt.subplot(143), plt.imshow(clip.background, cmap="gray")
+            # plt.title("Background Image"), plt.xticks([]), plt.yticks([])
+            # plt.show()
 
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
-
             for frame in reader:
                 self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
+
         if not clip.from_metadata:
             print("filtering")
             self.apply_track_filtering(clip)
-        return True
-        # we need to load the entire video so we can analyse the background.
-        with open(clip.source_file, "rb") as f:
-            reader = CPTVReader(f)
-            if clip.background_is_preview and clip.num_preview_frames > 0:
-                for frame in reader:
-                    self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
-
-                if clip.on_preview():
-                    logging.warn("Clip is all preview frames")
-                    if clip.background is None:
-                        logging.warn("Clip only has ffc affected frames")
-                        return False
-
-                    clip._set_from_background()
-                    self._process_preview_frames(clip)
-            else:
-                clip.background_is_preview = False
-                self.process_frames(clip, [frame for frame in reader])
 
         if self.calc_stats:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
@@ -225,7 +206,7 @@ class ClipTrackExtractor:
             avg_change = int(
                 round(np.average(thermal) - clip.stats.mean_background_value)
             )
-            # filtered[filtered < (clip.temp_thresh - avg_change)] = 0
+            filtered[filtered < clip.temp_thresh] = 0
 
             np.clip(
                 filtered - clip.background - avg_change,
