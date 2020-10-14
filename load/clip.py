@@ -25,10 +25,12 @@ import os
 import pytz
 import cv2
 
+from ml_tools.imageprocessing import normalize
 from ml_tools.tools import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
 from matplotlib import pyplot as plt
+from track.region import Region
 
 
 class Clip:
@@ -37,6 +39,7 @@ class Clip:
     local_tz = pytz.timezone("Pacific/Auckland")
     VERSION = 7
     CLIP_ID = 1
+    MAX_BACKGROUND_ANIMAL_SIZE = 60
 
     def __init__(self, trackconfig, sourcefile, background=None, calc_stats=True):
         self._id = Clip.CLIP_ID
@@ -69,7 +72,7 @@ class Clip:
         self.calc_stats = calc_stats
         self.source_file = sourcefile
         self.stats = ClipStats()
-        self.threshold = trackconfig.delta_thresh
+        self.threshold = trackconfig.background_thresh
         self.stats.threshold = self.threshold
 
         self.temp_thresh = self.config.temp_thresh
@@ -95,34 +98,96 @@ class Clip:
     def on_preview(self):
         return not self.background_calculated
 
-    def detect_objects(self, frame):
-        kernel = np.ones((5, 5), np.uint8)
-        thermal = frame.copy()
-        max = np.amax(thermal)
-        min = np.amin(thermal)
-        thermal = (thermal - min) / (max - min)
-        thermal = thermal * 255
-        thermal = np.uint8(thermal)
-        thermal = cv2.dilate(thermal, kernel, iterations=1)
-        ret, thresh1 = cv2.threshold(
-            thermal, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    def calculate_background(self, frame_reader):
+        """
+        Calculate background by reading whole clip and grouping into sets of
+        9 frames. Take the average of these 9 frames and use the minimum
+        over the sets as the initial background
+        Also check for movement in the initial background, which will indicate
+        a animal is already in initial frame
+        """
+        initial_frames = None
+        lower_diff = None
+        frames = []
+        for frame in frame_reader:
+            frames.append(frame.pix)
+            if len(frames) == 9:
+                self.calculate_preview_from_frame(np.average(frames, axis=0), False)
+
+                if initial_frames is None:
+                    initial_frames = np.average(frames, axis=0)
+                else:
+                    diff = initial_frames - frame.pix
+                    if lower_diff is not None:
+                        lower_diff = np.maximum(lower_diff, diff)
+                    else:
+                        lower_diff = diff
+                frames = []
+        np.clip(lower_diff, 0, None, out=lower_diff)
+        if len(frames) > 0:
+            self.calculate_preview_from_frame(np.average(frames, axis=0), False)
+            frames = []
+        self.remove_background_animals(self.background, lower_diff)
+        self._set_from_background()
+
+    def remove_background_animals(self, background, lower_diff):
+        kernel = (5, 5)
+        lower_diff = cv2.fastNlMeansDenoising(np.uint8(lower_diff), None)
+        lower_diff[lower_diff < 10] = 0
+        _, lower_diff = cv2.threshold(
+            lower_diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
         )
-        # plt.subplot(141), plt.imshow(thresh1, cmap="gray")
-        # plt.title("Detect Image"), plt.xticks([]), plt.yticks([])
-        # # plt.show()
-        # print("average frame is", np.average(frame))
-        # # print(idx, len(frame[idx > 0]), len(idx))
-        # copy = frame.copy()
-        # copy[thresh1 > 0] = min
-        # # frame = frame * 0
-        # print("now average frame is", np.average(copy))
-        # copy = 255 * (copy - min) / (max - min)
-        # plt.subplot(141), plt.imshow(copy, cmap="gray")
-        # plt.title("Detect Image"), plt.xticks([]), plt.yticks([])
-        # plt.show()
-        # thresh1 = cv2.morphologyEx(thresh1, cv2.MORPH_OPEN, self.dilate_kernel)
-        # edges = cv2.Canny(thresh1, 100, 200)
-        return frame
+        lower_diff = cv2.GaussianBlur(lower_diff, kernel, 0)
+        lower_diff = cv2.dilate(lower_diff, kernel, iterations=2)
+        lower_diff = cv2.morphologyEx(lower_diff, cv2.MORPH_CLOSE, kernel)
+
+        components, lower_mask, stats, _ = cv2.connectedComponentsWithStats(lower_diff)
+        # these connect components represent regions that have movement throughout
+        # the video, now we check for within these regions on the background image
+
+        max_region = Region(0, 0, self.res_x, self.res_y)
+        for i in range(1, components):
+            region = Region(stats[i, 0], stats[i, 1], stats[i, 2], stats[i, 3])
+            if (
+                region.width > Clip.MAX_BACKGROUND_ANIMAL_SIZE
+                or region.height > Clip.MAX_BACKGROUND_ANIMAL_SIZE
+            ):
+                print("Background animal bigger than max, probably false positive")
+                continue
+            region.enlarge(2, max=max_region)
+
+            background_region = region.subimage(background)
+            norm_subimage, _ = normalize(background_region.copy(), new_max=255)
+
+            _, processed = cv2.threshold(
+                np.uint8(norm_subimage), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+            )
+            processed = cv2.GaussianBlur(processed, (5, 5), 0)
+            processed = cv2.morphologyEx(processed, cv2.MORPH_CLOSE, kernel)
+
+            (
+                sub_components,
+                sub_connected,
+                sub_stats,
+                _,
+            ) = cv2.connectedComponentsWithStats(processed)
+            print("mass", sub_stats[0][4], "area", region.area * 0.8)
+            if (
+                sub_components > 2
+                or sub_stats[0][4] == 0
+                or sub_stats[0][4] > region.area * 0.8
+            ):
+                print("Invalid compontns")
+                continue
+
+            sub_connected[sub_connected > 0] = 1
+            # blur out region in backgorund
+            background_region[:] = cv2.inpaint(
+                np.float32(background_region),
+                np.uint8(sub_connected),
+                max(region.width, region.height) / 2.0,
+                cv2.INPAINT_TELEA,
+            )
 
     def calculate_preview_from_frame(self, frame, ffc_affected=False):
         self.preview_frames.append((frame, ffc_affected))

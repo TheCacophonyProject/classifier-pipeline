@@ -30,6 +30,7 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
+from ml_tools.imageprocessing import normalize
 
 from matplotlib import pyplot as plt
 
@@ -76,116 +77,7 @@ class ClipTrackExtractor:
                 reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
             )
             clip.set_video_stats(video_start_time)
-            i = 0
-            frames = []
-            all_frames = []
-            first_nine = None
-            lower_diff = None
-            higher_diff = None
-            for frame in reader:
-
-                all_frames.append(frame.pix)
-                frames.append(frame.pix)
-                if len(frames) == 9:
-                    clip.calculate_preview_from_frame(np.average(frames, axis=0), False)
-                    if first_nine is None:
-                        first_nine = np.average(frames, axis=0)
-                    else:
-                        diff = first_nine - frame.pix
-                        if lower_diff is not None:
-                            lower_diff = np.maximum(lower_diff, diff)
-                        else:
-                            lower_diff = diff
-
-                        diff = frame.pix - first_nine
-                        if higher_diff is not None:
-                            higher_diff = np.maximum(higher_diff, diff)
-                        else:
-                            higher_diff = diff
-                    frames = []
-            if len(frames) > 0:
-                clip.calculate_preview_from_frame(np.average(frames, axis=0), False)
-                frames = []
-            clip._set_from_background()
-            background_movement = higher_diff - lower_diff
-            background_movement[background_movement < 20] = 0
-            np.clip(lower_diff, 0, None, out=lower_diff)
-            lower_diff = cv2.fastNlMeansDenoising(np.uint8(lower_diff), None)
-            # lower_diff, _, _ = normalize(lower_diff)
-            ret2, lower_diff = cv2.threshold(
-                lower_diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-            )
-            connected = lower_diff.copy()
-            connected = cv2.GaussianBlur(np.uint8(connected), (5, 5), 0)
-            connected = cv2.dilate(connected, self.dilate_kernel, iterations=2)
-
-            connected = cv2.morphologyEx(connected, cv2.MORPH_CLOSE, self.dilate_kernel)
-            # connected = cv2.Canny(connected, 100, 200)
-
-            labels, connected, stats, _ = cv2.connectedComponentsWithStats(connected)
-            max_region = Region(0, 0, 160, 120)
-
-            for i in range(1, labels):
-
-                region = Region(
-                    stats[i, 0],
-                    stats[i, 1],
-                    stats[i, 2],
-                    stats[i, 3],
-                    mass=stats[i, 4],
-                    id=i,
-                    frame_number=clip.frame_on,
-                )
-                region.enlarge(2)
-                region.crop(max_region)
-                print(region)
-                subimage_b = region.subimage(clip.background)
-                norm_subimage, sub_min, sub_max = normalize(subimage_b)
-                norm_subimage = np.uint8(norm_subimage)
-                _, subimage = cv2.threshold(
-                    norm_subimage, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-                )
-                subimage = cv2.GaussianBlur(subimage, (5, 5), 0)
-                subimage = cv2.morphologyEx(
-                    subimage, cv2.MORPH_CLOSE, self.dilate_kernel
-                )
-                labels, subconnected, stats, _ = cv2.connectedComponentsWithStats(
-                    subimage
-                )
-                print("num labels", labels, stats[0])
-                if labels > 2 or stats[0][4] == 0:
-                    print("too many labels", labels)
-                    continue
-                plt.subplot(141), plt.imshow(subconnected, cmap="gray")
-                plt.title("Connected in background"), plt.xticks([]), plt.yticks([])
-                plt.subplot(142), plt.imshow(norm_subimage, cmap="gray")
-                plt.title("normed"), plt.xticks([]), plt.yticks([])
-                plt.subplot(143), plt.imshow(subimage, cmap="gray")
-                plt.title("processed"), plt.xticks([]), plt.yticks([])
-
-                # print(subconnected)
-                # surrounding_average = np.average(subimage_b[subconnected == 0])
-                # subimage_b[subconnected > 0] = 0
-                print(subconnected.dtype, norm_subimage.dtype)
-                subconnected[subconnected > 0] = 1
-                dst = cv2.inpaint(
-                    norm_subimage,
-                    np.uint8(subconnected),
-                    max(region.width, region.height) / 2.0,
-                    cv2.INPAINT_TELEA,
-                )
-                subimage_b[:] = dst[:] / 255 * (sub_max - sub_min) + sub_min
-                # print("set values to", surrounding_average)
-                plt.subplot(144), plt.imshow(dst, cmap="gray")
-                plt.title("origin"), plt.xticks([]), plt.yticks([])
-                plt.show()
-                # subimage_b -= 50
-                # connected = cv2.Canny(connected, 100, 200)
-
-            plt.subplot(141), plt.imshow(lower_diff, cmap="gray")
-            plt.title("lower diff"), plt.xticks([]), plt.yticks([])
-            plt.subplot(142), plt.imshow(connected, cmap="gray")
-            plt.title("Detect Image"), plt.xticks([]), plt.yticks([])
+            clip.calculate_background(reader)
             plt.subplot(143), plt.imshow(clip.background, cmap="gray")
             plt.title("Background Image"), plt.xticks([]), plt.yticks([])
             plt.show()
@@ -348,41 +240,14 @@ class ClipTrackExtractor:
             filtered[filtered < 0] = 0
         return filtered
 
-    def canny(self, clip, thermal, thresh):
-
-        thermal = cv2.GaussianBlur(thermal, (5, 5), 0)
-        _, thermal = cv2.threshold(thermal, 10, 255, cv2.THRESH_BINARY)
-        # thermal[thermal < 10] = 0
-        # if self.config.dilation_pixels > 0:
-        #     thermal = cv2.dilate(thermal, self.dilate_kernel, iterations=1)
-
-        thermal = cv2.morphologyEx(thermal, cv2.MORPH_CLOSE, self.dilate_kernel)
-        # thermal = cv2.Canny(thermal, 100, 200)
-
-        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(thermal)
-        new_mask = small_mask.copy()
-        sorted_labels = sorted(
-            np.arange(labels)[1:], key=lambda label: stats[label, 4], reverse=True
-        )
-        # small_mask = cv2.erode(np.uint8(small_mask), self.dilate_kernel, iterations=1)
-
-        # print(sorted_labels)
-        # for i in sorted_labels:
-        #     # stat = stats[label]
-        #     points = np.where(small_mask == i)
-        #     points = np.stack((points[1], points[0]), axis=1)
-        #     new_mask = cv2.fillPoly(new_mask, pts=[points], color=(int(i)))
-        # print("Mask", small_mask[points[0][0]])
-        # for row in small_mask:
-        #     print(row)
-        # raise "EX"
-        # filtered = thermal.copy()
-        # filtered[new_mask == 0] = 0
-        # print(small_mask[24:29, 49:127])
-        # plt.subplot(141), plt.imshow(small_mask, cmap="gray")
-        # plt.title("Original Image"), plt.xticks([]), plt.yticks([])
-        # plt.show()
-        return thermal, labels, small_mask, stats, 0
+    def detect_objects(self, clip, filtered):
+        filtered = np.uint8(filtered)
+        filtered = cv2.fastNlMeansDenoising(filtered, None)
+        filtered = cv2.GaussianBlur(filtered, (5, 5), 0)
+        _, filtered = cv2.threshold(filtered, clip.threshold, 255, cv2.THRESH_BINARY)
+        filtered = cv2.morphologyEx(filtered, cv2.MORPH_CLOSE, self.dilate_kernel)
+        components, small_mask, stats, _ = cv2.connectedComponentsWithStats(filtered)
+        return components, small_mask, stats
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
         """
@@ -392,28 +257,7 @@ class ClipTrackExtractor:
         """
         filtered = self._get_filtered_frame(clip, thermal)
 
-        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
-
-        _, labels, mask, stats, thresh = self.canny(clip, np.uint8(filtered).copy(), 0)
-        # mask = np.zeros(filtered.shape)
-        # frame_height, frame_width = filtered.shape
-        # mask = np.zeros(filtered.shape)
-        # edge = self.config.edge_pixels
-        #
-        # # remove the edges of the frame as we know these pixels can be spurious value
-        # edgeless_filtered = clip.crop_rectangle.subimage(filtered)
-        # thresh, mass = tools.blur_and_return_as_mask(
-        #     edgeless_filtered, threshold=clip.stats.mean_background_value
-        # )
-        # thresh = np.uint8(thresh)
-        # dilated = thresh
-        #
-        # # Dilation groups interested pixels that are near to each other into one component(animal/track)
-        # if self.config.dilation_pixels > 0:
-        #     dilated = cv2.dilate(dilated, self.dilate_kernel, iterations=1)
-        #
-        # labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(dilated)
-        # mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
+        _, mask, component_details = self.detect_objects(clip, filtered.copy())
 
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
@@ -429,7 +273,7 @@ class ClipTrackExtractor:
                     )
         else:
             regions = self._get_regions_of_interest(
-                clip, labels, stats, thresh, filtered, prev_filtered
+                clip, component_details, filtered, prev_filtered
             )
             clip.region_history.append(regions)
             self._apply_region_matchings(
@@ -548,7 +392,7 @@ class ClipTrackExtractor:
                 )
 
     def _get_regions_of_interest(
-        self, clip, labels, stats, thresh, filtered, prev_filtered
+        self, clip, component_details, filtered, prev_filtered
     ):
         """
                 Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
@@ -569,14 +413,14 @@ class ClipTrackExtractor:
         # find regions of interest
         regions = []
 
-        for i in range(1, labels):
+        for i in range(1, len(component_details)):
 
             region = Region(
-                stats[i, 0],
-                stats[i, 1],
-                stats[i, 2],
-                stats[i, 3],
-                mass=stats[i, 4],
+                component_details[i, 0],
+                component_details[i, 1],
+                component_details[i, 2],
+                component_details[i, 3],
+                mass=component_details[i, 4],
                 id=i,
                 frame_number=clip.frame_on,
             )
@@ -725,13 +569,3 @@ class ClipTrackExtractor:
     def print_if_verbose(self, info_string):
         if self.config.verbose:
             logging.info(info_string)
-
-
-def normalize(a, amin=None, amax=None):
-    if amax is None:
-        amax = np.amax(a)
-    if amin is None:
-        amin = np.amin(a)
-    a = (a - amin) / (amax - amin)
-    a *= 255
-    return a, amin, amax

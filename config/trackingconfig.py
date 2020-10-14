@@ -31,6 +31,7 @@ class TrackingConfig(DefaultConfig):
     temp_thresh = attr.ib()
     dynamic_thresh = attr.ib()
     delta_thresh = attr.ib()
+    background_thresh = attr.ib()
     ignore_frames = attr.ib()
     threshold_percentile = attr.ib()
     static_background_threshold = attr.ib()
@@ -77,6 +78,7 @@ class TrackingConfig(DefaultConfig):
             dynamic_thresh=tracking["preview"]["dynamic_thresh"],
             temp_thresh=tracking["preview"]["temp_thresh"],
             delta_thresh=tracking["preview"]["delta_thresh"],
+            background_thresh=tracking["preview"]["background_thresh"],
             ignore_frames=tracking["preview"]["ignore_frames"],
             threshold_percentile=tracking["stats"]["threshold_percentile"],
             min_threshold=tracking["stats"]["min_threshold"],
@@ -116,7 +118,12 @@ class TrackingConfig(DefaultConfig):
     def get_defaults(cls):
         return cls(
             background_calc=ClipTrackExtractor.PREVIEW,
-            preview={"ignore_frames": 2, "temp_thresh": 2900, "delta_thresh": 20},
+            preview={
+                "ignore_frames": 2,
+                "temp_thresh": 2900,
+                "delta_thresh": 20,
+                "background_thresh": 10,
+            },
             stats={
                 "threshold_percentile": 99.9,
                 "min_threshold": 30,
@@ -165,6 +172,7 @@ class TrackingConfig(DefaultConfig):
             enable_track_output=True,
             dynamic_thresh=True,
             moving_vel_thresh=4,
+            background_thresh=10,
         )
 
     def validate(self):

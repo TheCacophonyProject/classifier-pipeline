@@ -112,12 +112,14 @@ class Rectangle:
             self.top : self.top + self.height, self.left : self.left + self.width
         ]
 
-    def enlarge(self, border):
+    def enlarge(self, border, max=None):
         """ Crops this rectangle so that it fits within given bounds"""
         self.left -= border
         self.right += border
         self.top -= border
         self.bottom += border
+        if max:
+            self.crop(max)
 
     @property
     def area(self):
