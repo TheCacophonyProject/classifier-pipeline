@@ -166,7 +166,6 @@ class TestClassify:
         keras_model = False
         if ext == ".pb":
             keras_model = True
-            print("is keras model")
         self.clip_classifier = ClipClassifier(
             self.classifier_config,
             self.classifier_config.classify_tracking,
@@ -194,7 +193,7 @@ class TestClassify:
             for res in self.results:
                 res.write_results(f)
             f.write("Config\n")
-            json.dump(self.classifier_config, f, indent=2, default=convert_to_dict)
+            # yaml.dump(self.classifier_config, f, indent=2)
 
     def print_summary(self):
         print("===== SUMMARY =====")

@@ -85,16 +85,7 @@ class Clip:
     def _set_from_background(self):
         self.stats.mean_background_value = np.average(self.background)
         self.set_temp_thresh()
-        print(
-            "settign from background with previews",
-            len(self.preview_frames),
-            self.temp_thresh,
-        )
-
         self.background_calculated = True
-        # plt.subplot(141), plt.imshow(self.background, cmap="gray")
-        # plt.title("Background Image"), plt.xticks([]), plt.yticks([])
-        # plt.show()
 
     def on_preview(self):
         return not self.background_calculated
@@ -136,6 +127,7 @@ class Clip:
 
     def remove_background_animals(self, background, lower_diff):
         kernel = (5, 5)
+        print("max of lower diff is", np.amax(lower_diff))
         lower_diff = cv2.fastNlMeansDenoising(np.uint8(lower_diff), None)
         lower_diff[lower_diff < 10] = 0
         _, lower_diff = cv2.threshold(
@@ -177,10 +169,10 @@ class Clip:
             ) = cv2.connectedComponentsWithStats(processed)
             if (
                 sub_components > 2
-                or sub_stats[0][4] == 0
-                or sub_stats[0][4] > region.area * 0.8
+                or sub_stats[1][4] == 0
+                or sub_stats[1][4] > region.area * 0.8
             ):
-                print("Invalid compontns")
+                print("Invalid components")
                 continue
 
             sub_connected[sub_connected > 0] = 1
@@ -191,6 +183,9 @@ class Clip:
                 max(region.width, region.height) / 2.0,
                 cv2.INPAINT_TELEA,
             )
+            plt.subplot(143), plt.imshow(sub_connected, cmap="gray")
+            plt.title("Background Image"), plt.xticks([]), plt.yticks([])
+            plt.show()
 
     def calculate_preview_from_frame(self, frame, ffc_affected=False):
         self.preview_frames.append((frame, ffc_affected))

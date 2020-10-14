@@ -78,9 +78,9 @@ class ClipTrackExtractor:
             )
             clip.set_video_stats(video_start_time)
             clip.calculate_background(reader)
-            # plt.subplot(143), plt.imshow(clip.background, cmap="gray")
-            # plt.title("Background Image"), plt.xticks([]), plt.yticks([])
-            # plt.show()
+            plt.subplot(143), plt.imshow(clip.background, cmap="gray")
+            plt.title("Background Image"), plt.xticks([]), plt.yticks([])
+            plt.show()
 
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
@@ -206,13 +206,10 @@ class ClipTrackExtractor:
             avg_change = int(
                 round(np.average(thermal) - clip.stats.mean_background_value)
             )
-            filtered[filtered < clip.temp_thresh] = 0
+            # filtered[filtered < clip.temp_thresh] = 0
 
             np.clip(
-                filtered - clip.background - avg_change,
-                0,
-                None,
-                out=filtered,
+                filtered - clip.background - avg_change, 0, None, out=filtered,
             )
 
         else:
