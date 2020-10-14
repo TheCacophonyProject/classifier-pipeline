@@ -40,7 +40,7 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
     model.import_dataset(datasets_filename)
 
     groups = []
-    groups.append((["wallaby"], "wallaby"))
+    groups.append((["bird"], "bird"))
     groups.append((["insect", "false-positive"], "false-positive"))
     other_labels = []
     used_labels = groups[0][0].copy()
