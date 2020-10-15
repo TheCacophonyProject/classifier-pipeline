@@ -138,7 +138,7 @@ class Clip:
         kernel = (5, 5)
         origin = lower_diff.copy()
         components, lower_mask, stats = detect_objects(
-            lower_diff, otsus=False, thershold=20
+            lower_diff, otsus=False, threshold=20
         )
 
         # these connect components represent regions that have movement throughout
