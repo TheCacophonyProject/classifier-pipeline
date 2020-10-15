@@ -119,7 +119,7 @@ def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     )
 
 
-def detect_objects(self, image, otsus=True, threhold=0, kernel=(5, 5)):
+def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5)):
     image = np.uint8(image)
     # filtered = cv2.fastNlMeansDenoising(filtered, None)
     image = cv2.GaussianBlur(image, kernel, 0)

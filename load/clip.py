@@ -169,7 +169,7 @@ class Clip:
             background_region = region.subimage(background)
             norm_subimage = background_region.copy()
             norm_subimage, _ = normalize(norm_subimage, new_max=255)
-            (sub_components, sub_connected, sub_stats, _,) = detect_objects(
+            sub_components, sub_connected, sub_stats = detect_objects(
                 norm_subimage, otsus=True
             )
             # blur out region in backgorund
@@ -187,8 +187,6 @@ class Clip:
             plt.title("Background Image"), plt.xticks([]), plt.yticks([])
             plt.subplot(143), plt.imshow(sub_connected, cmap="gray")
             plt.title("Sub Connected Image"), plt.xticks([]), plt.yticks([])
-            plt.subplot(144), plt.imshow(processed, cmap="gray")
-            plt.title("processed Image"), plt.xticks([]), plt.yticks([])
             plt.show()
             if (
                 sub_components > 2

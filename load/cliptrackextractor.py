@@ -225,7 +225,7 @@ class ClipTrackExtractor:
             If specified background subtraction algorithm will be used.
         """
         filtered = self._get_filtered_frame(clip, thermal)
-        _, mask, component_details = self.detect_objects(
+        _, mask, component_details = detect_objects(
             filtered.copy(), otsus=False, threshold=clip.threshold
         )
 
