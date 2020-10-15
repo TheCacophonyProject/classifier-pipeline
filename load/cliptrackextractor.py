@@ -30,7 +30,7 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import normalize
+from ml_tools.imageprocessing import normalize, detect_objects
 
 from matplotlib import pyplot as plt
 
@@ -218,15 +218,6 @@ class ClipTrackExtractor:
             filtered[filtered < 0] = 0
         return filtered
 
-    def detect_objects(self, clip, filtered):
-        filtered = np.uint8(filtered)
-        filtered = cv2.fastNlMeansDenoising(filtered, None)
-        filtered = cv2.GaussianBlur(filtered, (5, 5), 0)
-        _, filtered = cv2.threshold(filtered, clip.threshold, 255, cv2.THRESH_BINARY)
-        filtered = cv2.morphologyEx(filtered, cv2.MORPH_CLOSE, self.dilate_kernel)
-        components, small_mask, stats, _ = cv2.connectedComponentsWithStats(filtered)
-        return components, small_mask, stats
-
     def _process_frame(self, clip, thermal, ffc_affected=False):
         """
         Tracks objects through frame
@@ -234,8 +225,9 @@ class ClipTrackExtractor:
             If specified background subtraction algorithm will be used.
         """
         filtered = self._get_filtered_frame(clip, thermal)
-
-        _, mask, component_details = self.detect_objects(clip, filtered.copy())
+        _, mask, component_details = self.detect_objects(
+            filtered.copy(), otsus=False, threshold=clip.threshold
+        )
 
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
@@ -270,16 +262,6 @@ class ClipTrackExtractor:
             new_tracks = set()
         self._filter_inactive_tracks(clip, new_tracks, matched_tracks)
 
-    def get_max_size_change(self, track, region):
-        exiting = region.is_along_border and not track.last_bound.is_along_border
-        entering = not exiting and track.last_bound.is_along_border
-
-        min_change = 50
-        if entering or exiting:
-            min_change = 100
-        max_size_change = np.clip(track.last_mass, min_change, 500)
-        return max_size_change
-
     def _match_existing_tracks(self, clip, regions):
 
         scores = []
@@ -291,9 +273,9 @@ class ClipTrackExtractor:
                     region, self.config.moving_vel_thresh
                 )
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
-                max_distance = np.clip(7 * track.last_mass, 900, 9025)
-                max_size_change = self.get_max_size_change(track, region)
+                max_distance = track.get_max_distance_change()
 
+                max_size_change = track.get_max_size_change(region)
                 if score > max_distance:
                     self.print_if_verbose(
                         "track {} distance score {} bigger than max score {}".format(
@@ -308,7 +290,6 @@ class ClipTrackExtractor:
                             track.get_id(), size_change, max_size_change
                         )
                     )
-                    continue
                 scores.append((score, track, region))
 
         # makes tracking consistent by ordering by score then by frame since target then track id
@@ -322,7 +303,6 @@ class ClipTrackExtractor:
         for (score, track, region) in scores:
             if track in matched_tracks or region in used_regions:
                 continue
-
             track.add_region(region)
             matched_tracks.add(track)
             used_regions.add(region)
@@ -545,5 +525,6 @@ class ClipTrackExtractor:
         return False
 
     def print_if_verbose(self, info_string):
+
         if self.config.verbose:
             logging.info(info_string)

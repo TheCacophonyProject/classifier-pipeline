@@ -25,7 +25,7 @@ import os
 import pytz
 import cv2
 
-from ml_tools.imageprocessing import normalize
+from ml_tools.imageprocessing import normalize, detect_objects
 from ml_tools.tools import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
@@ -122,24 +122,34 @@ class Clip:
         if len(frames) > 0:
             self.calculate_preview_from_frame(np.average(frames, axis=0), False)
             frames = []
-        self.remove_background_animals(self.background, lower_diff)
+        plt.subplot(141), plt.imshow(initial_frames, cmap="gray")
+        plt.title("initial_frames Image"), plt.xticks([]), plt.yticks([])
+        plt.subplot(143), plt.imshow(lower_diff, cmap="gray")
+        plt.title("lower Image"), plt.xticks([]), plt.yticks([])
+        plt.show()
+        initial_frames = self.remove_background_animals(initial_frames, lower_diff)
+        plt.subplot(143), plt.imshow(initial_frames, cmap="gray")
+        plt.title("post initial_frames Image"), plt.xticks([]), plt.yticks([])
+        plt.show()
+        self.calculate_preview_from_frame(initial_frames, False)
         self._set_from_background()
 
     def remove_background_animals(self, background, lower_diff):
         kernel = (5, 5)
-        print("max of lower diff is", np.amax(lower_diff))
-        lower_diff = cv2.fastNlMeansDenoising(np.uint8(lower_diff), None)
-        lower_diff[lower_diff < 10] = 0
-        _, lower_diff = cv2.threshold(
-            lower_diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        origin = lower_diff.copy()
+        components, lower_mask, stats = detect_objects(
+            lower_diff, otsus=False, thershold=20
         )
-        lower_diff = cv2.GaussianBlur(lower_diff, kernel, 0)
-        lower_diff = cv2.dilate(lower_diff, kernel, iterations=2)
-        lower_diff = cv2.morphologyEx(lower_diff, cv2.MORPH_CLOSE, kernel)
 
-        components, lower_mask, stats, _ = cv2.connectedComponentsWithStats(lower_diff)
         # these connect components represent regions that have movement throughout
         # the video, now we check for within these regions on the background image
+        plt.subplot(141), plt.imshow(lower_diff, cmap="gray")
+        plt.title("lower diff Image"), plt.xticks([]), plt.yticks([])
+        plt.subplot(142), plt.imshow(lower_mask, cmap="gray")
+        plt.title("lower mask Image"), plt.xticks([]), plt.yticks([])
+        plt.subplot(143), plt.imshow(background, cmap="gray")
+        plt.title("Backgorund"), plt.xticks([]), plt.yticks([])
+        plt.show()
 
         max_region = Region(0, 0, self.res_x, self.res_y)
         for i in range(1, components):
@@ -148,55 +158,69 @@ class Clip:
                 region.width > Clip.MAX_BACKGROUND_ANIMAL_SIZE
                 or region.height > Clip.MAX_BACKGROUND_ANIMAL_SIZE
             ):
-                print("Background animal bigger than max, probably false positive")
+                logging.info(
+                    "Background animal bigger than max, probably false positive %s %s",
+                    region,
+                    stats[i, 4],
+                )
                 continue
             region.enlarge(2, max=max_region)
-
+            lower_diff_2 = region.subimage(lower_mask) * 255
             background_region = region.subimage(background)
-            norm_subimage, _ = normalize(background_region.copy(), new_max=255)
-
-            _, processed = cv2.threshold(
-                np.uint8(norm_subimage), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+            norm_subimage = background_region.copy()
+            norm_subimage, _ = normalize(norm_subimage, new_max=255)
+            (sub_components, sub_connected, sub_stats, _,) = detect_objects(
+                norm_subimage, otsus=True
             )
-            processed = cv2.GaussianBlur(processed, (5, 5), 0)
-            processed = cv2.morphologyEx(processed, cv2.MORPH_CLOSE, kernel)
+            # blur out region in backgorund
+            print(
+                "background mass",
+                sub_stats[1, 4],
+                "lower mass",
+                stats[i][4],
+                region.area,
+            )
 
-            (
-                sub_components,
-                sub_connected,
-                sub_stats,
-                _,
-            ) = cv2.connectedComponentsWithStats(processed)
+            plt.subplot(141), plt.imshow(lower_diff_2, cmap="gray")
+            plt.title("Cause"), plt.xticks([]), plt.yticks([])
+            plt.subplot(142), plt.imshow(background_region, cmap="gray")
+            plt.title("Background Image"), plt.xticks([]), plt.yticks([])
+            plt.subplot(143), plt.imshow(sub_connected, cmap="gray")
+            plt.title("Sub Connected Image"), plt.xticks([]), plt.yticks([])
+            plt.subplot(144), plt.imshow(processed, cmap="gray")
+            plt.title("processed Image"), plt.xticks([]), plt.yticks([])
+            plt.show()
             if (
                 sub_components > 2
                 or sub_stats[1][4] == 0
-                or sub_stats[1][4] > region.area * 0.8
+                or sub_stats[1][4] > region.area * 0.9
             ):
-                print("Invalid components")
+                logging.info(
+                    "Invalid components %s, %s %s",
+                    sub_stats[1][4],
+                    sub_components,
+                    region.area,
+                )
                 continue
 
             sub_connected[sub_connected > 0] = 1
-            # blur out region in backgorund
+
             background_region[:] = cv2.inpaint(
                 np.float32(background_region),
                 np.uint8(sub_connected),
                 max(region.width, region.height) / 2.0,
                 cv2.INPAINT_TELEA,
             )
-            plt.subplot(143), plt.imshow(sub_connected, cmap="gray")
-            plt.title("Background Image"), plt.xticks([]), plt.yticks([])
-            plt.show()
+        return background
 
     def calculate_preview_from_frame(self, frame, ffc_affected=False):
         self.preview_frames.append((frame, ffc_affected))
-        # back = self.detect_objects(frame)
-        back = frame
         if ffc_affected:
             return
         if self.background is None:
-            self.background = back
+            self.background = frame
         else:
-            self.background = np.minimum(self.background, back)
+            self.background = np.minimum(self.background, frame)
         # if self.background_frames == (self.num_preview_frames - 1):
         # self._set_from_background()
         self.background_frames += 1

@@ -8,11 +8,7 @@ from track.track import TrackChannels
 
 
 def movement_images(
-    frames,
-    regions,
-    dim,
-    channel=TrackChannels.filtered,
-    require_movement=False,
+    frames, regions, dim, channel=TrackChannels.filtered, require_movement=False,
 ):
     """Return 2 images describing the movement, one has dots representing
     the centre of mass, the other is a collage of all frames
@@ -46,13 +42,7 @@ def movement_images(
 
         # writing overlay image
         if require_movement and prev_overlay:
-            center_distance = eucl_distance(
-                prev_overlay,
-                (
-                    x,
-                    y,
-                ),
-            )
+            center_distance = eucl_distance(prev_overlay, (x, y,),)
 
         if (
             prev_overlay is None or center_distance > min_distance
@@ -125,7 +115,18 @@ def save_image_channels(data, filename):
 
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
-        image,
-        dsize=(dim[0] + extra_h, dim[1] + extra_v),
-        interpolation=interpolation,
+        image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
     )
+
+
+def detect_objects(self, image, otsus=True, threhold=0, kernel=(5, 5)):
+    image = np.uint8(image)
+    # filtered = cv2.fastNlMeansDenoising(filtered, None)
+    image = cv2.GaussianBlur(image, kernel, 0)
+    flags = cv2.THRESH_BINARY
+    if otsus:
+        flags += cv2.THRESH_OTSU
+    _, image = cv2.threshold(image, threshold, 255, flags)
+    image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
+    return components, small_mask, stats

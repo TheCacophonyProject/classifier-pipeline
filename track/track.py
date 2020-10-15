@@ -22,7 +22,7 @@ from collections import namedtuple
 
 from ml_tools.tools import Rectangle, get_clipped_flow
 from track.region import Region
-
+from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance
 
 
@@ -66,9 +66,9 @@ class Track:
         # number frames since we lost target.
         self.frames_since_target_seen = 0
         # our current estimated horizontal velocity
-        self.vel_x = 0
+        self.vel_x = []
         # our current estimated vertical velocity
-        self.vel_y = 0
+        self.vel_y = []
         # the tag for this track
         self.tag = "unknown"
         self.prev_frame_num = None
@@ -79,6 +79,10 @@ class Track:
 
         self.from_metadata = False
         self.track_tags = None
+        self.kalman_tracker = Kalman()
+        self.previous_prediction = (0, 0)
+        for _ in range(100):
+            self.kalman_tracker.predict()
 
     @classmethod
     def from_region(cls, clip, region):
@@ -140,13 +144,30 @@ class Track:
         self.prev_frame_num = region.frame_number
         self.update_velocity()
         self.frames_since_target_seen = 0
+        self.kalman_tracker.correct(region)
+
+        # print(
+        #     "got region",
+        #     region.mid_x,
+        #     region.mid_y,
+        #     "prediction",
+        #     self.previous_prediction,
+        # )
+        prediction = self.kalman_tracker.predict()
+        self.previous_prediction = (prediction[0][0], prediction[1][0])
 
     def update_velocity(self):
         if len(self.bounds_history) >= 2:
-            self.vel_x = self.bounds_history[-1].mid_x - self.bounds_history[-2].mid_x
-            self.vel_y = self.bounds_history[-1].mid_y - self.bounds_history[-2].mid_y
+            self.vel_x.append(
+                self.bounds_history[-1].mid_x - self.bounds_history[-2].mid_x
+            )
+            self.vel_y.append(
+                self.bounds_history[-1].mid_y - self.bounds_history[-2].mid_y
+            )
         else:
-            self.vel_x = self.vel_y = 0
+            self.vel_x.append(0)
+            self.vel_y.append(0)
+            # = self.vel_y = 0
 
     def add_frame_for_existing_region(self, frame, mass_delta_threshold, prev_filtered):
         region = self.bounds_history[self.current_frame_num]
@@ -166,17 +187,27 @@ class Track:
         self.prev_frame_num = frame.frame_number
         self.current_frame_num += 1
         self.frames_since_target_seen = 0
+        self.kalman_tracker.correct(region)
 
     def add_blank_frame(self, buffer_frame=None):
         """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
-        region = self.last_bound.copy()
+        region = Region(
+            int(self.previous_prediction[0] - self.last_bound.width / 2.0),
+            int(self.previous_prediction[1] - self.last_bound.height / 2.0),
+            self.last_bound.width,
+            self.last_bound.height,
+        )
+        # region = self.last_bound.copy()
         region.mass = 0
         region.pixel_variance = 0
-        region.frame_number += 1
+        region.frame_number += self.last_bound.frame_number + 1
         self.bounds_history.append(region)
         self.prev_frame_num = region.frame_number
-        self.vel_x = self.vel_y = 0
+        self.vel_x.append(0)
+        self.vel_y.append(0)
         self.frames_since_target_seen += 1
+        prediction = self.kalman_tracker.predict()
+        self.previous_prediction = (prediction[0][0], prediction[1][0])
 
     def get_stats(self):
         """
@@ -198,10 +229,12 @@ class Track:
         mid_y = [bound.mid_y for bound in self.bounds_history]
         delta_x = [mid_x[0] - x for x in mid_x]
         delta_y = [mid_y[0] - y for y in mid_y]
-        vel_x = [cur - prev for cur, prev in zip(mid_x[1:], mid_x[:-1])]
-        vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
+        # self.vel_x = [cur - prev for cur, prev in zip(mid_x[1:], mid_x[:-1])]
+        # self.vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
 
-        movement = sum((vx ** 2 + vy ** 2) ** 0.5 for vx, vy in zip(vel_x, vel_y))
+        movement = sum(
+            (vx ** 2 + vy ** 2) ** 0.5 for vx, vy in zip(self.vel_x, self.vel_y)
+        )
         max_offset = max((dx ** 2 + dy ** 2) ** 0.5 for dx, dy in zip(delta_x, delta_y))
 
         # the standard deviation is calculated by averaging the per frame variances.
@@ -287,16 +320,16 @@ class Track:
         Calculates a score between this track and a region of interest.  Regions that are close the the expected
         location for this track are given high scores, as are regions of a similar size.
         """
-
-        if abs(self.vel_x) + abs(self.vel_y) >= moving_vel_thresh:
-            expected_x = int(self.last_bound.mid_x + self.vel_x)
-            expected_y = int(self.last_bound.mid_y + self.vel_y)
+        vel_x, vel_y = self.velocity
+        if abs(vel_x) + abs(vel_y) >= moving_vel_thresh:
+            expected_x = int(self.last_bound.mid_x + vel_x)
+            expected_y = int(self.last_bound.mid_y + vel_y)
             distance = eucl_distance(
                 (expected_x, expected_y), (region.mid_x, region.mid_y)
             )
         else:
-            expected_x = int(self.last_bound.x + self.vel_x)
-            expected_y = int(self.last_bound.y + self.vel_y)
+            expected_x = int(self.last_bound.x + vel_x)
+            expected_y = int(self.last_bound.y + vel_y)
             distance = eucl_distance((expected_x, expected_y), (region.x, region.y))
             distance += eucl_distance(
                 (
@@ -314,6 +347,21 @@ class Track:
         ) * 100
 
         return distance, size_difference
+
+    def get_max_size_change(self, region):
+        exiting = region.is_along_border and not self.last_bound.is_along_border
+        entering = not exiting and self.last_bound.is_along_border
+
+        min_change = 50
+        if entering or exiting:
+            min_change = 100
+        max_size_change = np.clip(self.last_mass, min_change, 500)
+        return max_size_change
+
+    def get_max_distance_change(self):
+        max_distance = np.clip(7 * self.last_mass, 900, 9025)
+
+        return max_distance
 
     def get_overlap_ratio(self, other_track, threshold=0.05):
         """
@@ -391,11 +439,15 @@ class Track:
         return self.bounds_history[-1].mass
 
     @property
+    def velocity(self, count=4):
+        return self.vel_x[-1], self.vel_y[-1]
+
+    @property
     def last_bound(self) -> Region:
         return self.bounds_history[-1]
 
     def __repr__(self):
-        return "Track: frames# {}".format(self.get_id(), len(self))
+        return "Track: {} frames# {}".format(self.get_id(), len(self))
 
     def __len__(self):
         return len(self.bounds_history)

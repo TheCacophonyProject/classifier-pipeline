@@ -260,7 +260,13 @@ class Previewer:
                     if tracks_text and len(tracks_text) > index:
                         text = tracks_text[index]
                     self.add_debug_text(
-                        draw, track, region, screen_bounds, text=text, v_offset=v_offset
+                        draw,
+                        track,
+                        region,
+                        screen_bounds,
+                        text=text,
+                        v_offset=v_offset,
+                        frame_offset=frame_offset,
                     )
 
     def add_footer(self, draw, width, height, text, ffc_affected):
@@ -269,12 +275,17 @@ class Previewer:
         center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
         draw.text((center[0], center[1]), footer_text, font=self.font)
 
-    def add_debug_text(self, draw, track, region, screen_bounds, text=None, v_offset=0):
+    def add_debug_text(
+        self, draw, track, region, screen_bounds, text=None, v_offset=0, frame_offset=0
+    ):
         if text is None:
             text = "id {}".format(track.get_id())
             if region.pixel_variance:
-                text += "mass {} var {}".format(
-                    region.mass, round(region.pixel_variance, 2)
+                text += "mass {} vel {} vel ({},{})".format(
+                    region.mass,
+                    round(region.pixel_variance, 2),
+                    track.vel_x[frame_offset] if frame_offset < len(track.vel_x) else 0,
+                    track.vel_y[frame_offset] if frame_offset < len(track.vel_y) else 0,
                 )
         footer_size = self.font.getsize(text)
         footer_center = ((region.width * self.frame_scale) - footer_size[0]) / 2
