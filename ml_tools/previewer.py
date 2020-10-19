@@ -281,7 +281,7 @@ class Previewer:
         if text is None:
             text = "id {}".format(track.get_id())
             if region.pixel_variance:
-                text += "mass {} vel {} vel ({},{})".format(
+                text += "mass {} var {} vel ({},{})".format(
                     region.mass,
                     round(region.pixel_variance, 2),
                     track.vel_x[frame_offset] if frame_offset < len(track.vel_x) else 0,

@@ -181,7 +181,6 @@ class Track:
             frame_diff = frame.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
-
         self.update_velocity()
 
         self.prev_frame_num = frame.frame_number
@@ -231,16 +230,29 @@ class Track:
         delta_y = [mid_y[0] - y for y in mid_y]
         # self.vel_x = [cur - prev for cur, prev in zip(mid_x[1:], mid_x[:-1])]
         # self.vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
+        movement = 0
+        for i, (vx, vy) in enumerate(zip(self.vel_x, self.vel_y)):
+            if i == 0:
+                continue
+            if self.bounds_history[i].has_moved(self.bounds_history[i - 1]):
+                distance = (vx ** 2 + vy ** 2) ** 0.5
+                print(i, "has moved", vx, vy, distance)
+                movement += distance
 
-        movement = sum(
-            (vx ** 2 + vy ** 2) ** 0.5 for vx, vy in zip(self.vel_x, self.vel_y)
-        )
         max_offset = max((dx ** 2 + dy ** 2) ** 0.5 for dx, dy in zip(delta_x, delta_y))
 
         # the standard deviation is calculated by averaging the per frame variances.
         # this ends up being slightly different as I'm using /n rather than /(n-1) but that
         # shouldn't make a big difference as n = width*height*frames which is large.
         delta_std = float(np.mean(variance_history)) ** 0.5
+        print(
+            self,
+            "variance",
+            np.amax(variance_history),
+            np.amin(variance_history),
+            np.mean(variance_history),
+            delta_std,
+        )
 
         movement_points = (movement ** 0.5) + max_offset
         delta_points = delta_std * 25.0
@@ -311,9 +323,13 @@ class Track:
         if end < start:
             self.start_frame = 0
             self.bounds_history = []
+            self.vel_x = []
+            self.vel_y = []
         else:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
+            self.vel_x = self.vel_x[start : end + 1]
+            self.vel_x = self.vel_x[start : end + 1]
 
     def get_track_region_score(self, region: Region, moving_vel_thresh):
         """

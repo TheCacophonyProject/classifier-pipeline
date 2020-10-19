@@ -57,6 +57,14 @@ class Region(Rectangle):
             region_bounds[0], region_bounds[1], width, height, frame_number=frame_number
         )
 
+    def has_moved(self, region):
+        return (
+            self.x != region.x
+            and self.y != region.y
+            and self.right != region.right
+            and self.bottom != region.bottom
+        )
+
     def calculate_mass(self, filtered, threshold):
         """
         calculates mass on this frame for this region

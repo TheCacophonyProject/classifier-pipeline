@@ -101,9 +101,12 @@ class Clip:
         initial_frames = None
         lower_diff = None
         frames = []
+        i = 0
         for frame in frame_reader:
+            i += 1
             ffc_affected = is_affected_by_ffc(frame)
             if ffc_affected:
+                print("FFC", i)
                 continue
             frames.append(frame.pix)
             if len(frames) == 9:
@@ -122,25 +125,39 @@ class Clip:
         if len(frames) > 0:
             self.calculate_preview_from_frame(np.average(frames, axis=0), False)
             frames = []
+        print(
+            "lower dif",
+            np.average(lower_diff),
+            np.amin(lower_diff),
+            np.amax(lower_diff),
+            np.percentile(lower_diff, 10),
+        )
+
+        filtered = lower_diff.copy()
+        filtered[filtered < 20] = 0
         plt.subplot(141), plt.imshow(initial_frames, cmap="gray")
         plt.title("initial_frames Image"), plt.xticks([]), plt.yticks([])
+        plt.subplot(142), plt.imshow(filtered, cmap="gray")
+        plt.title("filtered Image"), plt.xticks([]), plt.yticks([])
         plt.subplot(143), plt.imshow(lower_diff, cmap="gray")
         plt.title("lower Image"), plt.xticks([]), plt.yticks([])
-        plt.show()
+        # plt.show()
         initial_frames = self.remove_background_animals(initial_frames, lower_diff)
         plt.subplot(143), plt.imshow(initial_frames, cmap="gray")
         plt.title("post initial_frames Image"), plt.xticks([]), plt.yticks([])
-        plt.show()
+        # plt.show()
         self.calculate_preview_from_frame(initial_frames, False)
         self._set_from_background()
+        self.preview_frames = []
 
     def remove_background_animals(self, background, lower_diff):
-        kernel = (5, 5)
-        origin = lower_diff.copy()
-        components, lower_mask, stats = detect_objects(
-            lower_diff, otsus=False, threshold=20
-        )
+        filtered = lower_diff.copy()
+        filtered[filtered < 20] = 0
+        filtered[filtered > 255] = 255
+        filtered = np.uint8(filtered)
+        filtered = cv2.fastNlMeansDenoising(filtered, None)
 
+        components, lower_mask, stats = detect_objects(filtered, otsus=True)
         # these connect components represent regions that have movement throughout
         # the video, now we check for within these regions on the background image
         plt.subplot(141), plt.imshow(lower_diff, cmap="gray")
@@ -149,21 +166,21 @@ class Clip:
         plt.title("lower mask Image"), plt.xticks([]), plt.yticks([])
         plt.subplot(143), plt.imshow(background, cmap="gray")
         plt.title("Backgorund"), plt.xticks([]), plt.yticks([])
-        plt.show()
+        # plt.show()
 
         max_region = Region(0, 0, self.res_x, self.res_y)
         for i in range(1, components):
             region = Region(stats[i, 0], stats[i, 1], stats[i, 2], stats[i, 3])
-            if (
-                region.width > Clip.MAX_BACKGROUND_ANIMAL_SIZE
-                or region.height > Clip.MAX_BACKGROUND_ANIMAL_SIZE
-            ):
-                logging.info(
-                    "Background animal bigger than max, probably false positive %s %s",
-                    region,
-                    stats[i, 4],
-                )
-                continue
+            # if (
+            #     region.width > Clip.MAX_BACKGROUND_ANIMAL_SIZE
+            #     or region.height > Clip.MAX_BACKGROUND_ANIMAL_SIZE
+            # ):
+            #     logging.info(
+            #         "Background animal bigger than max, probably false positive %s %s",
+            #         region,
+            #         stats[i, 4],
+            #     )
+            #     continue
             region.enlarge(2, max=max_region)
             lower_diff_2 = region.subimage(lower_mask) * 255
             background_region = region.subimage(background)
@@ -181,20 +198,18 @@ class Clip:
                 region.area,
             )
 
-            plt.subplot(141), plt.imshow(lower_diff_2, cmap="gray")
-            plt.title("Cause"), plt.xticks([]), plt.yticks([])
-            plt.subplot(142), plt.imshow(background_region, cmap="gray")
-            plt.title("Background Image"), plt.xticks([]), plt.yticks([])
-            plt.subplot(143), plt.imshow(sub_connected, cmap="gray")
-            plt.title("Sub Connected Image"), plt.xticks([]), plt.yticks([])
-            plt.show()
-            if (
-                sub_components > 2
-                or sub_stats[1][4] == 0
-                or sub_stats[1][4] > region.area * 0.9
-            ):
+            # plt.subplot(141), plt.imshow(lower_diff_2, cmap="gray")
+            # plt.title("Cause"), plt.xticks([]), plt.yticks([])
+            # plt.subplot(142), plt.imshow(background_region, cmap="gray")
+            # plt.title("Background Image"), plt.xticks([]), plt.yticks([])
+            # plt.subplot(143), plt.imshow(sub_connected, cmap="gray")
+            # plt.title("Sub Connected Image"), plt.xticks([]), plt.yticks([])
+            # plt.show()
+
+            if sub_stats[1][4] == 0 or sub_stats[1][4] == region.area:
+
                 logging.info(
-                    "Invalid components %s, %s %s",
+                    "Invalid components mass: %s, components: %s region area %s",
                     sub_stats[1][4],
                     sub_components,
                     region.area,

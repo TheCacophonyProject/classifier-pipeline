@@ -293,7 +293,8 @@ class KerasModel:
             for frame_i in seg_frames:
                 f = data[frame_i]
                 segment.append(f)
-
+            if segment is None:
+                continue
             frames = preprocess_movement(
                 data,
                 segment,

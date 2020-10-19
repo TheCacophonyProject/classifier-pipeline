@@ -122,7 +122,7 @@ class TrackingConfig(DefaultConfig):
                 "ignore_frames": 2,
                 "temp_thresh": 2900,
                 "delta_thresh": 20,
-                "background_thresh": 10,
+                "background_thresh": 20,
             },
             stats={
                 "threshold_percentile": 99.9,

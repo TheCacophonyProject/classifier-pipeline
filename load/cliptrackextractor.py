@@ -80,7 +80,7 @@ class ClipTrackExtractor:
             clip.calculate_background(reader)
             plt.subplot(143), plt.imshow(clip.background, cmap="gray")
             plt.title("Background Image"), plt.xticks([]), plt.yticks([])
-            plt.show()
+            # plt.show()
 
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
@@ -88,7 +88,6 @@ class ClipTrackExtractor:
                 self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
 
         if not clip.from_metadata:
-            print("filtering")
             self.apply_track_filtering(clip)
 
         if self.calc_stats:
@@ -201,16 +200,22 @@ class ClipTrackExtractor:
         filtered = np.float32(thermal.copy())
         if clip.background is None:
             filtered = filtered - np.median(filtered) - 40
-            avg_changefiltered[filtered < 0] = 0
+            filtered[filtered < 0] = 0
         elif clip.background_is_preview:
             avg_change = int(
                 round(np.average(thermal) - clip.stats.mean_background_value)
             )
-            # filtered[filtered < clip.temp_thresh] = 0
+            np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
 
-            np.clip(
-                filtered - clip.background - avg_change, 0, None, out=filtered,
-            )
+            # filtered = filtered - clip.background
+            # # filtered = filtered - np.median(filtered)
+            # np.clip(
+            #     filtered,
+            #     0,
+            #     None,
+            #     out=filtered,
+            # )
+            # filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
 
         else:
             filtered = filtered - clip.background
@@ -499,7 +504,10 @@ class ClipTrackExtractor:
             self.print_if_verbose("Track filtered.  Too static")
             clip.filtered_tracks.append(("Track filtered.  Too static", track))
             return True
-
+        if stats.delta_std > 100:
+            self.print_if_verbose("Track filtered.  Too Dynamic")
+            clip.filtered_tracks.append(("Track filtered.  Too Dynamic", track))
+            return True
         # discard tracks that do not have enough enough average mass.
         if stats.average_mass < self.config.track_min_mass:
             self.print_if_verbose(
