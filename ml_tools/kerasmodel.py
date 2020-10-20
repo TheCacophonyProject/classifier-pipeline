@@ -341,8 +341,8 @@ class KerasModel:
             load_threads=self.params.train_load_threads,
             use_movement=self.params.use_movement,
             type=self.type,
-            cap_at="wallaby",
-            # label_cap=1000,
+            # cap_at="wallaby",
+            label_cap=1000,
             square_width=self.params.square_width,
         )
         self.validate = DataGenerator(
@@ -360,8 +360,8 @@ class KerasModel:
             load_threads=1,
             use_movement=self.params.use_movement,
             type=self.type,
-            # label_cap=200,
-            cap_at="wallaby",
+            label_cap=200,
+            # cap_at="wallaby",
             square_width=self.params.square_width,
         )
         if not self.model:
@@ -411,7 +411,8 @@ class KerasModel:
                 epochs=1,
                 load_threads=4,
                 cap_samples=True,
-                cap_at="wallaby",
+                # cap_at="wallaby",
+                label_cap=10,
                 type=self.type,
                 square_width=self.params.square_width,
             )

@@ -49,9 +49,13 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
         if label not in used_labels:
             other_labels.append(label)
     groups.append((other_labels, "not"))
-    model.regroup(
-        groups, random_segments=False,
-    )
+
+    model.datasets.train.rebuild_cdf()
+    model.datasets.validation.rebuild_cdf()
+    model.datasets.test.rebuild_cdf()
+    # model.regroup(
+    #     groups, random_segments=False,
+    # )
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)
     print()
@@ -69,17 +73,20 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
                 "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
             )
         )
-    print("Mapped labels")
-    for label in model.datasets.train.label_mapping.keys():
-        print(
-            "{} {:<20} {:<20} {:<20} {:<20}".format(
-                label,
-                model.datasets.train.mapped_label(label),
-                "{}/{}/{}/{:.1f}".format(*model.datasets.train.get_counts(label)),
-                "{}/{}/{}/{:.1f}".format(*model.datasets.validation.get_counts(label)),
-                "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
+    if model.datasets.train.label_mapping:
+        print("Mapped labels")
+        for label in model.datasets.train.label_mapping.keys():
+            print(
+                "{} {:<20} {:<20} {:<20} {:<20}".format(
+                    label,
+                    model.datasets.train.mapped_label(label),
+                    "{}/{}/{}/{:.1f}".format(*model.datasets.train.get_counts(label)),
+                    "{}/{}/{}/{:.1f}".format(
+                        *model.datasets.validation.get_counts(label)
+                    ),
+                    "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
+                )
             )
-        )
     print()
     if weights:
         model.load_weights(weights, meta=False)
