@@ -1911,6 +1911,11 @@ class Dataset:
             np.random.shuffle(self.frame_samples)
         self.rebuild_cdf(balance_labels=balance_labels)
 
+    def add_segment_id_map(self):
+        self.segments_by_id == {}
+        for seg in self.segments:
+            self.segments_by_id[seg.id] = seg
+
     def binarize(
         self,
         set_one,

@@ -50,6 +50,9 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
             other_labels.append(label)
     groups.append((other_labels, "not"))
 
+    model.datasets.train.add_segment_id_map()
+    model.datasets.validation.add_segment_id_map()
+    model.datasets.test.add_segment_id_map()
     model.datasets.train.rebuild_cdf()
     model.datasets.validation.rebuild_cdf()
     model.datasets.test.rebuild_cdf()
