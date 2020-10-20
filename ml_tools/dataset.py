@@ -1729,7 +1729,7 @@ class Dataset:
             "leporidae": 5,
             "mustelid": 5,
             "false-positive": 1,
-            "wallaby": 10,
+            "wallaby": 5,
         }
         self.rebuild_segment_cdf(balance_labels=balance_labels, lbl_p=p)
         self.rebuild_frame_cdf(balance_labels=balance_labels, lbl_p=p)

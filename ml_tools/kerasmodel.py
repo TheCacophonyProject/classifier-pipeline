@@ -853,7 +853,7 @@ class KerasModel:
             keep_epoch=True,
             type=self.type,
             cap_samples=True,
-            cap_at="wallaby",
+            cap_at="bird",
             square_width=self.params.square_width,
         )
         test_pred_raw = self.model.predict(test)
@@ -889,7 +889,7 @@ class KerasModel:
             epochs=1,
             load_threads=self.params.train_load_threads,
             cap_samples=True,
-            cap_at="Wallaby",
+            cap_at="bird",
             type=self.type,
             square_width=self.params.square_width,
         )
