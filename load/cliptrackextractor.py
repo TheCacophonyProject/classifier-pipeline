@@ -215,7 +215,7 @@ class ClipTrackExtractor:
             #     None,
             #     out=filtered,
             # )
-            # filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
+            filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
 
         else:
             filtered = filtered - clip.background
