@@ -274,17 +274,17 @@ class ClipTrackExtractor:
         unmatched_regions = set(regions)
         for track in clip.active_tracks:
             for region in regions:
-                score, size_change = track.get_track_region_score(
-                    region, self.config.moving_vel_thresh
-                )
+                distance, size_change = track.get_region_score(region)
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
+                # print(
+                #     f"distance is {track.last_bound} to {region} score {score}",
+                # )
                 max_distance = track.get_max_distance_change()
-
                 max_size_change = track.get_max_size_change(region)
-                if score > max_distance:
+                if distance > max_distance:
                     self.print_if_verbose(
                         "track {} distance score {} bigger than max score {}".format(
-                            track.get_id(), score, max_distance
+                            track.get_id(), distance, max_distance
                         )
                     )
 
@@ -295,7 +295,7 @@ class ClipTrackExtractor:
                             track.get_id(), size_change, max_size_change
                         )
                     )
-                scores.append((score, track, region))
+                scores.append((distance, track, region))
 
         # makes tracking consistent by ordering by score then by frame since target then track id
         scores.sort(
@@ -346,6 +346,7 @@ class ClipTrackExtractor:
                 track.frames_since_target_seen + 1
                 < self.config.remove_track_after_frames
             ):
+                print(track, "inactive")
                 track.add_blank_frame(clip.frame_buffer)
                 clip.active_tracks.add(track)
                 self.print_if_verbose(
@@ -387,6 +388,7 @@ class ClipTrackExtractor:
                 id=i,
                 frame_number=clip.frame_on,
             )
+            print(clip.frame_on, "region mass is", region.mass)
             # want the real mass calculated from before the dilation
             # region.mass = np.sum(region.subimage(thresh))
             # region.mass = mass
@@ -461,6 +463,7 @@ class ClipTrackExtractor:
         for stats, track in track_stats:
             # discard any tracks that overlap too often with other tracks.  This normally means we are tracking the
             # tail of an animal.
+            print("track movement is", track, "-", stats)
             if not self.filter_track(clip, track, stats):
                 good_tracks.append(track)
 
@@ -489,22 +492,28 @@ class ClipTrackExtractor:
             clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
             return True
 
-        print("trakc movement is", track, "-", stats.max_offset)
         # discard tracks that do not move enough
         if stats.max_offset < self.config.track_min_offset:
             self.print_if_verbose(
                 "Track filtered.  Didn't move {}".format(stats.max_offset)
             )
             clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
-
             return True
 
+        if stats.blank_percent > 30:
+            self.print_if_verbose("Track filtered.  Too Many Blanks")
+            clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
+            return True
+        if stats.region_jitter > 12:
+            self.print_if_verbose("Track filtered.  Too Jittery")
+            clip.filtered_tracks.append(("Track filtered.  Too Jittery", track))
+            return True
         # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
         if stats.delta_std < self.config.track_min_delta:
             self.print_if_verbose("Track filtered.  Too static")
             clip.filtered_tracks.append(("Track filtered.  Too static", track))
             return True
-        if stats.delta_std > 100:
+        if stats.delta_std > 150:
             self.print_if_verbose("Track filtered.  Too Dynamic")
             clip.filtered_tracks.append(("Track filtered.  Too Dynamic", track))
             return True

@@ -40,7 +40,7 @@ class Clip:
     local_tz = pytz.timezone("Pacific/Auckland")
     VERSION = 7
     CLIP_ID = 1
-    MAX_BACKGROUND_ANIMAL_SIZE = 60
+    MAX_BACKGROUND_ANIMAL_SIZE = 100
 
     def __init__(self, trackconfig, sourcefile, background=None, calc_stats=True):
         self._id = Clip.CLIP_ID
@@ -160,28 +160,26 @@ class Clip:
         components, lower_mask, stats = detect_objects(filtered, otsus=True)
         # these connect components represent regions that have movement throughout
         # the video, now we check for within these regions on the background image
-        plt.subplot(141), plt.imshow(lower_diff, cmap="gray")
-        plt.title("lower diff Image"), plt.xticks([]), plt.yticks([])
-        plt.subplot(142), plt.imshow(lower_mask, cmap="gray")
-        plt.title("lower mask Image"), plt.xticks([]), plt.yticks([])
-        plt.subplot(143), plt.imshow(background, cmap="gray")
-        plt.title("Backgorund"), plt.xticks([]), plt.yticks([])
+        # plt.subplot(141), plt.imshow(lower_diff, cmap="gray")
+        # plt.title("lower diff Image"), plt.xticks([]), plt.yticks([])
+        # plt.subplot(142), plt.imshow(lower_mask, cmap="gray")
+        # plt.title("lower mask Image"), plt.xticks([]), plt.yticks([])
+        # plt.subplot(143), plt.imshow(background, cmap="gray")
+        # plt.title("Backgorund"), plt.xticks([]), plt.yticks([])
         # plt.show()
 
         max_region = Region(0, 0, self.res_x, self.res_y)
         for i in range(1, components):
             region = Region(stats[i, 0], stats[i, 1], stats[i, 2], stats[i, 3])
-            # if (
-            #     region.width > Clip.MAX_BACKGROUND_ANIMAL_SIZE
-            #     or region.height > Clip.MAX_BACKGROUND_ANIMAL_SIZE
-            # ):
-            #     logging.info(
-            #         "Background animal bigger than max, probably false positive %s %s",
-            #         region,
-            #         stats[i, 4],
-            #     )
-            #     continue
+
             region.enlarge(2, max=max_region)
+            if region.width >= self.res_x or region.height >= self.res_y:
+                logging.info(
+                    "Background animal bigger than max, probably false positive %s %s",
+                    region,
+                    stats[i, 4],
+                )
+                continue
             lower_diff_2 = region.subimage(lower_mask) * 255
             background_region = region.subimage(background)
             norm_subimage = background_region.copy()
@@ -189,15 +187,17 @@ class Clip:
             sub_components, sub_connected, sub_stats = detect_objects(
                 norm_subimage, otsus=True
             )
-            # blur out region in backgorund
+            overlap_pixels = np.sum(sub_connected[lower_diff_2 > 0])
+            overlap_pixels = overlap_pixels / float(stats[i, 4])
             print(
                 "background mass",
                 sub_stats[1, 4],
                 "lower mass",
                 stats[i][4],
                 region.area,
+                overlap_pixels,
             )
-
+            i
             # plt.subplot(141), plt.imshow(lower_diff_2, cmap="gray")
             # plt.title("Cause"), plt.xticks([]), plt.yticks([])
             # plt.subplot(142), plt.imshow(background_region, cmap="gray")
@@ -206,13 +206,18 @@ class Clip:
             # plt.title("Sub Connected Image"), plt.xticks([]), plt.yticks([])
             # plt.show()
 
-            if sub_stats[1][4] == 0 or sub_stats[1][4] == region.area:
+            if (
+                overlap_pixels < 0.80
+                or sub_stats[1][4] == 0
+                or sub_stats[1][4] == region.area
+            ):
 
                 logging.info(
-                    "Invalid components mass: %s, components: %s region area %s",
+                    "Invalid components mass: %s, components: %s region area %s overlap %s",
                     sub_stats[1][4],
                     sub_components,
                     region.area,
+                    overlap_pixels,
                 )
                 continue
 
@@ -221,7 +226,7 @@ class Clip:
             background_region[:] = cv2.inpaint(
                 np.float32(background_region),
                 np.uint8(sub_connected),
-                max(region.width, region.height) / 2.0,
+                3,
                 cv2.INPAINT_TELEA,
             )
         return background
