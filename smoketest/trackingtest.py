@@ -40,41 +40,9 @@ def match_track(gen_track, expected_tracks):
         # makes it more comparable to start error
         distance /= 4.0
         new_score = distance + start_diff
-        # print(
-        #     "trying to match",
-        #     gen_track.bounds_history[0],
-        #     "to",
-        #     track.start_pos,
-        #     "score",
-        #     new_score,
-        #     "distance",
-        #     distance,
-        #     "start_diff",
-        #     start_diff,
-        #     "track start",
-        #     track.start,
-        #     "gen start",
-        #     gen_track.start_s,
-        # )
         if new_score > MAX_ERROR:
             continue
         if score is None or new_score < score:
-            # print(
-            #     "Matched match",
-            #     gen_track.bounds_history[0],
-            #     "to",
-            #     track.start_pos,
-            #     "score",
-            #     new_score,
-            #     "distance",
-            #     distance,
-            #     "start_diff",
-            #     start_diff,
-            #     "track start",
-            #     track.start,
-            #     "gen start",
-            #     gen_track.start_s,
-            # )
             match = track
             score = new_score
     return match
