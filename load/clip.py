@@ -132,7 +132,6 @@ class Clip:
 
     def set_temp_thresh(self):
         if self.config.dynamic_thresh:
-            print("dynamic")
             self.stats.temp_thresh = self.stats.mean_background_value
             self.temp_thresh = self.stats.temp_thresh
         else:
