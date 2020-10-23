@@ -103,7 +103,8 @@ def get_best_tag(track, min_confidence=0.6):
 
     # sort by original model so it has first pick if confidence is the same
     track_tags = sorted(
-        track_tags, key=lambda x: 0 if model_name(x) == "Original" else 1,
+        track_tags,
+        key=lambda x: 0 if model_name(x) == "Original" else 1,
     )
 
     track_tags = sorted(track_tags, key=lambda x: -1 * x["confidence"])

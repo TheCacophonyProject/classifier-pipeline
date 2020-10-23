@@ -239,7 +239,8 @@ class TestClassify:
                 if not os.path.exists(test.filename):
                     rec_meta = api.query_rec(test.rec_id)
                     if api.save_file(
-                        test.filename, api._download_signed(rec_meta["downloadRawJWT"]),
+                        test.filename,
+                        api._download_signed(rec_meta["downloadRawJWT"]),
                     ):
                         logging.info("Saved %s", test.filename)
         self.results = []

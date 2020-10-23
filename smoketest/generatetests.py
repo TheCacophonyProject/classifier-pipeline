@@ -25,7 +25,9 @@ def parse_args():
         help="File to save generated tests to",
     )
     parser.add_argument(
-        "ids", nargs="+", help="List of recording ids to download",
+        "ids",
+        nargs="+",
+        help="List of recording ids to download",
     )
 
     return parser.parse_args()
