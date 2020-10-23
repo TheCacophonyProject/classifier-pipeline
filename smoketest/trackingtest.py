@@ -10,6 +10,7 @@ from ml_tools import tools
 from config.config import Config
 from classify.clipclassifier import ClipClassifier
 from .testconfig import TestConfig
+from .api import API
 
 MATCH_ERROR = 1
 
@@ -17,9 +18,9 @@ MATCH_ERROR = 1
 def match_track(gen_track, expected_tracks):
     score = None
     match = None
-    MAX_ERROR = 3
+    MAX_ERROR = 8
     for track in expected_tracks:
-        start_diff = track.start - gen_track.start_s
+        start_diff = abs(track.start - gen_track.start_s)
 
         gen_start = gen_track.bounds_history[0]
         distance = tools.eucl_distance(
@@ -39,9 +40,41 @@ def match_track(gen_track, expected_tracks):
         # makes it more comparable to start error
         distance /= 4.0
         new_score = distance + start_diff
+        # print(
+        #     "trying to match",
+        #     gen_track.bounds_history[0],
+        #     "to",
+        #     track.start_pos,
+        #     "score",
+        #     new_score,
+        #     "distance",
+        #     distance,
+        #     "start_diff",
+        #     start_diff,
+        #     "track start",
+        #     track.start,
+        #     "gen start",
+        #     gen_track.start_s,
+        # )
         if new_score > MAX_ERROR:
             continue
         if score is None or new_score < score:
+            # print(
+            #     "Matched match",
+            #     gen_track.bounds_history[0],
+            #     "to",
+            #     track.start_pos,
+            #     "score",
+            #     new_score,
+            #     "distance",
+            #     distance,
+            #     "start_diff",
+            #     start_diff,
+            #     "track start",
+            #     track.start,
+            #     "gen start",
+            #     gen_track.start_s,
+            # )
             match = track
             score = new_score
     return match
@@ -213,6 +246,7 @@ class Match:
 
 class TestClassify:
     def __init__(self, args):
+        self.test_config = TestConfig.load_from_file(args.tests)
 
         self.classifier_config = Config.load_from_file(args.classify_config)
         model_file = self.classifier_config.classify.model
@@ -229,17 +263,31 @@ class TestClassify:
             model_file,
             keras_model,
         )
-        self.test_config = TestConfig.load_from_file(args.tests)
+        # try download missing tests
+        if args.user and args.password:
+            api = API(args.user, args.password, args.server)
+
+            for test in self.test_config.recording_tests:
+                if not os.path.exists(test.filename):
+                    rec_meta = api.query_rec(test.rec_id)
+                    if api.save_file(
+                        test.filename, api._download_signed(rec_meta["downloadRawJWT"]),
+                    ):
+                        logging.info("Saved %s", test.filename)
         self.results = []
 
-    def run_tests(self):
+    def run_tests(self, args):
         for test in self.test_config.recording_tests:
-            logging.info("testing {} ".format(test.filename))
+            if not os.path.exists(test.filename):
+                logging.info("not found %s ", test.filename)
+                continue
+            logging.info("testing %s ", test.filename)
+
             clip, predictions = self.clip_classifier.classify_file(test.filename)
             rec_match = self.compare_output(clip, predictions, test)
             if self.clip_classifier.previewer:
                 mpeg_filename = os.path.splitext(test.filename)[0] + ".mp4"
-                logging.info("Exporting preview to '{}'".format(mpeg_filename))
+                logging.info("Exporting preview to '%s'", mpeg_filename)
                 self.clip_classifier.previewer.export_clip_preview(
                     mpeg_filename, clip, predictions
                 )
@@ -262,11 +310,11 @@ class TestClassify:
             if total_summary is None:
                 total_summary = summary
             else:
-                for key, value in summary["classify"]:
+                for key, value in summary["classify"].items():
                     total_summary["classify"][key] += value
 
-                for key, value in summary["tracking"]:
-                    total_summary["classify"][key] += value
+                for key, value in summary["tracking"].items():
+                    total_summary["tracking"][key] += value
         print(total_summary)
         classified_correct = total_summary.get("classify", {}).get("correct", 0)
         tracked_well = total_summary.get("tracking", {}).get("better", 0)
@@ -280,7 +328,7 @@ class TestClassify:
             )
         )
         print(
-            "Tracking Results {}% {}/{}".format(tracked_per, tracked_per, total_tracks)
+            "Tracking Results {}% {}/{}".format(tracked_per, tracked_well, total_tracks)
         )
 
     def compare_output(self, clip, predictions, expected):
@@ -310,6 +358,15 @@ def parse_args():
         "--model-file",
         help="Path to model file to use, will override config model",
     )
+
+    parser.add_argument("--user", help="API server username")
+    parser.add_argument("--password", help="API server password")
+    parser.add_argument(
+        "-s",
+        "--server",
+        default="https://api.cacophony.org.nz",
+        help="CPTV file server URL",
+    )
     args = parser.parse_args()
     return args
 
@@ -324,7 +381,7 @@ def main():
     init_logging()
     args = parse_args()
     test = TestClassify(args)
-    test.run_tests()
+    test.run_tests(args)
     test.write_results()
     test.print_summary()
 

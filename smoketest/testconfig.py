@@ -14,7 +14,6 @@ class TestConfig(yaml.YAMLObject):
     def load_from_file(cls, filename):
         with open(filename) as stream:
             tests = yaml.load(stream, Loader=yaml.Loader)
-
         for test in tests.recording_tests:
             for track in test.tracks:
                 track.start_pos = Rectangle.from_ltrb(*track.start_pos[1])
