@@ -46,21 +46,30 @@ tracking:
     # Preview uses the preview time in the video (if it exists in the meta for cptv file)
     # Stats uses a statistical analysis of the whole video to get background levels
     background_calc: preview
+    preview_ignore_frames: 2
 
     # these parameters are associated with the preview background method
-    preview:
-        # Temp_thresh is calculated based on the preview min, max and mean, and temp_thresh value
+    motion:
+        #if set to True Temp_thresh is calculated based on the minimum background temperature
+        #of the preview, or whole clip depending on cptv type
         dynamic_thresh: True
 
-        # When calculating the background ignore the last frames of the preview as the motion detection
-        # will still be triggering during this time.
-        ignore_frames: 2
+        camera_thresholds:
+          - camera_model: "lepton3"
+            # Default temperature threshold require for tracking
+            temp_thresh: 2900
+            # Minimum raw temperature difference between background and track
+            delta_thresh: 20
+            # Min/Max temperature threshold value to use if dynamic threshold is true
+            max_temp_thresh: 2900
+            min_temp_thresh: null
+            default: True
 
-        # Minimum raw (temperature) value to be tracked
-        temp_thresh: 2900
-
-        # Minimum raw temperature difference between background and track
-        delta_thresh: 20
+          - camera_model: "lepton3.5"
+            temp_thresh: 28000
+            delta_thresh: 100 # 1 degrees
+            max_temp_thresh: null
+            min_temp_thresh: null
 
     # these parameters are associated with the stats background method
     stats:
