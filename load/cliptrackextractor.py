@@ -154,7 +154,7 @@ class ClipTrackExtractor:
             )
         )
 
-        # GP dont think this matter with dynamic thresh
+        # GP dont think this matters with dynamic thresh
         # cap the threshold to something reasonable
         threshold = max(self.config.min_threshold, threshold)
         threshold = min(self.config.max_threshold, threshold)
