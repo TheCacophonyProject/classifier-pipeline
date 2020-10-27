@@ -67,7 +67,7 @@ tracking:
 
           - camera_model: "lepton3.5"
             temp_thresh: 28000
-            delta_thresh: 250 # 2.5 degrees
+            delta_thresh: 100 # 1 degrees
             max_temp_thresh: null
             min_temp_thresh: null
 
