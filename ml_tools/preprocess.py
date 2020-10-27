@@ -1,7 +1,7 @@
 import cv2
+import numpy as np
 import random
 
-import numpy as np
 from ml_tools import tools
 from track.track import TrackChannels
 from ml_tools import imageprocessing
@@ -140,6 +140,8 @@ def preprocess_segment(
             # when we flip the frame remember to flip the horizontal velocity as well
             data = np.flip(data, axis=3)
             data[:, 2] = -data[:, 2]
+    np.clip(data[:, 0, :, :], a_min=0, a_max=None, out=data[:, 0, :, :])
+
     return data
 
 
@@ -181,13 +183,18 @@ def preprocess_movement(
     channel,
     preprocess_fn=None,
     augment=False,
+    use_dots=True,
+    reference_level=None,
 ):
     segment = preprocess_segment(
-        segment, augment=augment, filter_to_delta=False, default_inset=0
+        segment,
+        reference_level=reference_level,
+        augment=augment,
+        filter_to_delta=False,
+        default_inset=0,
     )
 
     segment = segment[:, channel]
-
     # as long as one frame it's fine
     square, success = imageprocessing.square_clip(
         segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
@@ -198,19 +205,20 @@ def preprocess_movement(
         data,
         regions,
         dim=square.shape,
-        channel=channel,
         require_movement=True,
     )
-    dots = dots / 255
     overlay, success = imageprocessing.normalize(overlay, min=0)
     if not success:
         return None
 
     data = np.empty((square.shape[0], square.shape[1], 3))
     data[:, :, 0] = square
-    data[:, :, 1] = dots  # dots
+    if use_dots:
+        dots = dots / 255
+        data[:, :, 1] = dots  # dots
+    else:
+        data[:, :, 1] = np.zeros(dots.shape)
     data[:, :, 2] = overlay  # overlay
-
     if preprocess_fn:
         for i, frame in enumerate(data):
             frame = frame * 255

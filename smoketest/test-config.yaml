@@ -51,7 +51,7 @@ tracking:
     preview:
         # Temp_thresh is calculated based on the preview min, max and mean, and temp_thresh value
         dynamic_thresh: True
-        
+
         # When calculating the background ignore the last frames of the preview as the motion detection
         # will still be triggering during this time.
         ignore_frames: 2
@@ -128,7 +128,7 @@ tracking:
     filters:
         # regions with a movement less than this have their tracking scored based of x,y matching, instead of than mid points
         moving_vel_thresh: 4
-        
+
         # discard any tracks that overlap with other tracks more than this.   T than this length in seconds
         track_overlap_ratio: 0.5
 
@@ -155,7 +155,7 @@ load:
         0: ["bird", "false-positive", "hedgehog", "possum", "rodent", "mustelid", "cat", "kiwi", "dog", "leporidae", "human", "insect", "pest"]
         1: ["unidentified", "other"]
         2: ["part","bad track"]
-    
+
     # Use fast BLOSC compression (requires plugin), when saving tracks to database
     enable_compression: False
 
@@ -169,7 +169,7 @@ load:
     # boxes - show track boxes but no text
     # classified - show tracks and classification values
     # tracking -  four frame video view, including thermal, filtered, mask and flow layers
-    preview: "boxes"
+    preview: "none"
 
     #cache buffer frame to disk reducing memory usage
     cache_to_disk: True
@@ -220,7 +220,7 @@ classify:
 
     # Create a MP4 preview after classification of recording.  Options are "none", "raw", "classified", "tracking"
     # See extract:preview for details on each option.
-    preview: "boxes"
+    preview: "none"
 
     # folder is where classifier output and mp4s will be created.  It is specified relative to the base_data_folder
     classify_folder: "smoketest/clips"
@@ -236,8 +236,8 @@ evaluate:
 
     # false positive's and 'none' can be mapped to the same label as they represent the same idea.
     null_tags: ["false-positive", "none", "no-tag"]
-    
-    # Labels 
+
+    # Labels
     labels : ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
 build:
     #file containing clips to be banned relative to running path

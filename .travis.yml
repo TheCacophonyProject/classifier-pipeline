@@ -1,10 +1,10 @@
-dist: xenial
+dist: bionic
 language: python
 python:
 - '3.6'
 
 install:
-- sudo apt-get update 
+- sudo apt-get update
 - sudo apt -y install ffmpeg
 - sudo apt-get -y install libgirepository1.0-dev
 - pip install -r requirements.txt
@@ -20,13 +20,15 @@ script:
 - python3 build.py -c smoketest/test-config.yaml
 - python3 motiontest.py --thermal-config-file smoketest/config.toml -c smoketest/test-config.yaml smoketest/clips/hedgehog.cptv
 - sudo mkdir /var/spool/cptv
-- sudo /home/travis/virtualenv/python3.6.7/bin/python3 piclassify.py --cptv smoketest/clips/hedgehog.cptv  --thermal-config-file smoketest/config.toml -c smoketest/test-config.yaml
+- sudo chmod -R 777 /var/spool/cptv
+- python3 piclassify.py --cptv smoketest/clips/hedgehog.cptv  --thermal-config-file smoketest/config.toml -c smoketest/test-config.yaml
 - |
   python -c "import gdown
   gdown.download(\"https://drive.google.com/u/1/uc?id=1F55gbIjmil1hOV4kuW2rSZFA3RB69qez\", \"model_hq.tar\", quiet=False)"
 - mkdir model
-- tar -C model -xvf model_hq.tar 
+- tar -C model -xvf model_hq.tar
 - python3 classify.py all -c smoketest/test-config.yaml -m model/training-best.sav
+
 
 
 before_deploy:

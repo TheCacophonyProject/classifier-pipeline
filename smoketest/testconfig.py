@@ -1,18 +1,24 @@
 import attr
 import yaml
+from ml_tools.tools import Rectangle
 
 
 @attr.s
 class TestConfig(yaml.YAMLObject):
     yaml_tag = "!TestConfig"
-
+    clip_dir = attr.ib()
     recording_tests = attr.ib()
     server = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename):
         with open(filename) as stream:
-            return yaml.load(stream, Loader=yaml.Loader)
+            tests = yaml.load(stream, Loader=yaml.Loader)
+        for test in tests.recording_tests:
+            for track in test.tracks:
+                track.start_pos = Rectangle.from_ltrb(*track.start_pos[1])
+                track.end_pos = Rectangle.from_ltrb(*track.end_pos[1])
+        return tests
 
 
 @attr.s
@@ -38,6 +44,7 @@ class TestRecording(yaml.YAMLObject):
         tracks = []
 
         for track in track_meta["tracks"]:
+            print("loading track", track)
             tag = get_best_tag(track)
             if tag is None:
                 tag = {}
@@ -81,7 +88,8 @@ class TestTrack(yaml.YAMLObject):
     def calc_error(self):
         score = self.opt_start - self.start
         score += self.opt_end - self.end
-        return round(score, 1)
+        score = round(score, 1)
+        return score
 
 
 def get_best_tag(track, min_confidence=0.6):
@@ -95,7 +103,8 @@ def get_best_tag(track, min_confidence=0.6):
 
     # sort by original model so it has first pick if confidence is the same
     track_tags = sorted(
-        track_tags, key=lambda x: 0 if model_name(x) == "Original" else 1,
+        track_tags,
+        key=lambda x: 0 if model_name(x) == "Original" else 1,
     )
 
     track_tags = sorted(track_tags, key=lambda x: -1 * x["confidence"])

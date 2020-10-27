@@ -8,11 +8,12 @@ from track.track import TrackChannels
 
 
 def movement_images(
-    frames, regions, dim, channel=TrackChannels.filtered, require_movement=False,
+    frames, regions, dim, require_movement=False,
 ):
     """Return 2 images describing the movement, one has dots representing
     the centre of mass, the other is a collage of all frames
     """
+    channel = TrackChannels.filtered
 
     i = 0
     dots = np.zeros(dim)
