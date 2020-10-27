@@ -6,7 +6,7 @@ from ml_tools.tools import Rectangle
 @attr.s
 class TestConfig(yaml.YAMLObject):
     yaml_tag = "!TestConfig"
-
+    clip_dir = attr.ib()
     recording_tests = attr.ib()
     server = attr.ib()
 

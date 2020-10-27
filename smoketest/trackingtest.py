@@ -234,28 +234,36 @@ class TestClassify:
         # try download missing tests
         if args.user and args.password:
             api = API(args.user, args.password, args.server)
-
+            out_dir = Path(self.test_config.clip_dir)
+            if not out_dir.exists():
+                out_dir.mkdir()
             for test in self.test_config.recording_tests:
-                if not os.path.exists(test.filename):
+                filepath = out_dir / test.filename
+                if not filepath.exists():
                     rec_meta = api.query_rec(test.rec_id)
                     if api.save_file(
-                        test.filename,
+                        out_dir / test.filename,
                         api._download_signed(rec_meta["downloadRawJWT"]),
                     ):
-                        logging.info("Saved %s", test.filename)
+                        logging.info("Saved %s", filepath)
         self.results = []
 
     def run_tests(self, args):
+        out_dir = Path(self.test_config.clip_dir)
+
         for test in self.test_config.recording_tests:
-            if not os.path.exists(test.filename):
-                logging.info("not found %s ", test.filename)
+            filepath = out_dir / test.filename
+            if not filepath.exists():
+                logging.info(
+                    " %s not found, add cmd args user and password to download this file from the cacophony server",
+                    filepath,
+                )
                 continue
             logging.info("testing %s ", test.filename)
-
-            clip, predictions = self.clip_classifier.classify_file(test.filename)
+            clip, predictions = self.clip_classifier.classify_file(filepath)
             rec_match = self.compare_output(clip, predictions, test)
             if self.clip_classifier.previewer:
-                mpeg_filename = os.path.splitext(test.filename)[0] + ".mp4"
+                mpeg_filename = filepath.with_suffix(".mp4")
                 logging.info("Exporting preview to '%s'", mpeg_filename)
                 self.clip_classifier.previewer.export_clip_preview(
                     mpeg_filename, clip, predictions
@@ -284,7 +292,8 @@ class TestClassify:
 
                 for key, value in summary["tracking"].items():
                     total_summary["tracking"][key] += value
-        print(total_summary)
+        if total_summary is None:
+            return
         classified_correct = total_summary.get("classify", {}).get("correct", 0)
         tracked_well = total_summary.get("tracking", {}).get("better", 0)
         tracked_well += total_summary.get("tracking", {}).get("same", 0)

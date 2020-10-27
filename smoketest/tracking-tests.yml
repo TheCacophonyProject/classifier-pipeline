@@ -1,9 +1,10 @@
 !TestConfig
+clip_dir: smoketest/test-clips
 recording_tests:
 - !TestRecording
   device: Wallaby
   device_id: 956
-  filename: smoketest/test-clips//551732.cptv
+  filename: 551732.cptv
   group: ORC
   group_id: 160
   rec_id: 551732
@@ -71,7 +72,7 @@ recording_tests:
 - !TestRecording
   device: Wallaby
   device_id: 956
-  filename: smoketest/test-clips//666638.cptv
+  filename: 666638.cptv
   group: ORC
   group_id: 160
   rec_id: 666638
@@ -140,7 +141,7 @@ recording_tests:
 - !TestRecording
   device: ruru19w44a
   device_id: 810
-  filename: smoketest/test-clips//533132.cptv
+  filename: 533132.cptv
   group: BSF1034CoveRd
   group_id: 137
   rec_id: 533132
@@ -169,7 +170,7 @@ recording_tests:
 - !TestRecording
   device: A_S4_C3
   device_id: 1269
-  filename: smoketest/test-clips/684073.cptv
+  filename: 684073.cptv
   group: LS_2020_09
   group_id: 191
   rec_id: 684073
@@ -222,7 +223,7 @@ recording_tests:
 - !TestRecording
   device: A_S4_C3
   device_id: 1269
-  filename: smoketest/test-clips/684073.cptv
+  filename: 684073.cptv
   group: LS_2020_09
   group_id: 191
   rec_id: 684073
@@ -245,7 +246,7 @@ recording_tests:
 - !TestRecording
   device: Wallaby
   device_id: 956
-  filename: smoketest/test-clips/566285.cptv
+  filename: 566285.cptv
   group: ORC
   group_id: 160
   rec_id: 566285
@@ -283,7 +284,7 @@ recording_tests:
 - !TestRecording
   device: Hubble 1
   device_id: 757
-  filename: smoketest/test-clips/504300.cptv
+  filename: 504300.cptv
   group: akaroa01
   group_id: 18
   rec_id: 504300
@@ -307,7 +308,7 @@ recording_tests:
 - !TestRecording
   device: ruru19w44a
   device_id: 810
-  filename: smoketest/test-clips/504279.cptv
+  filename: 504279.cptv
   group: BSF1034CoveRd
   group_id: 137
   rec_id: 504279
@@ -345,7 +346,7 @@ recording_tests:
 - !TestRecording
   device: Hubble 1
   device_id: 757
-  filename: smoketest/test-clips/504244.cptv
+  filename: 504244.cptv
   group: akaroa01
   group_id: 18
   rec_id: 504244
@@ -353,7 +354,7 @@ recording_tests:
 - !TestRecording
   device: davidblake03
   device_id: 1261
-  filename: smoketest/test-clips/705159.cptv
+  filename: 705159.cptv
   group: davidblake
   group_id: 26
   rec_id: 705159
@@ -361,7 +362,7 @@ recording_tests:
 - !TestRecording
   device: ruru19w44a
   device_id: 810
-  filename: smoketest/test-clips/544034.cptv
+  filename: 544034.cptv
   group: BSF1034CoveRd
   group_id: 137
   rec_id: 544034
@@ -384,7 +385,7 @@ recording_tests:
 - !TestRecording
   device: TrapCam03
   device_id: 1193
-  filename: smoketest/test-clips/704591.cptv
+  filename: 704591.cptv
   group: livingsprings
   group_id: 22
   rec_id: 704591
@@ -407,7 +408,7 @@ recording_tests:
 - !TestRecording
   device: Hubble 5
   device_id: 762
-  filename: smoketest/test-clips/506821.cptv
+  filename: 506821.cptv
   group: akaroa01
   group_id: 18
   rec_id: 506821

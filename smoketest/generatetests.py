@@ -39,21 +39,22 @@ def main():
     api = API(args.user, args.password, args.server)
     out_dir = Path(args.out_folder)
     tests = []
+    test_data = TestConfig(tests, args.server, args.out_folder)
     for rec_id in args.ids:
         rec_meta = api.query_rec(rec_id)
         tracks = api.get_tracks(rec_id)
-        fullpath = out_dir / rec_id
+        filename = rec_id.with_suffix(".cptv")
+        fullpath = out_dir / filename
         tests.append(
-            TestRecording.load_from_meta(rec_meta["recording"], tracks, fullpath)
+            TestRecording.load_from_meta(rec_meta["recording"], tracks, filename)
         )
         if api.save_file(
-            fullpath.with_suffix(".cptv"),
+            fullpath,
             api._download_signed(rec_meta["downloadRawJWT"]),
         ):
             print("Saved {} - {}.cptv".format(rec_id, fullpath))
         else:
             print("error saving {}".format(rec_id))
-    test_data = TestConfig(tests, args.server)
     if os.path.exists(args.test_file):
         os.remove(args.test_file)
     with open(args.test_file, "w") as f:
