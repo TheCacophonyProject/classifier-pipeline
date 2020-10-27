@@ -11,12 +11,12 @@ def movement_images(
     frames,
     regions,
     dim,
-    channel=TrackChannels.filtered,
     require_movement=False,
 ):
     """Return 2 images describing the movement, one has dots representing
     the centre of mass, the other is a collage of all frames
     """
+    channel = TrackChannels.filtered
 
     i = 0
     dots = np.zeros(dim)
@@ -123,7 +123,7 @@ def save_image_channels(data, filename):
     img.save(filename + ".png")
 
 
-def reisze_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
+def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
         image,
         dsize=(dim[0] + extra_h, dim[1] + extra_v),
