@@ -388,7 +388,6 @@ class ClipTrackExtractor:
                 id=i,
                 frame_number=clip.frame_on,
             )
-            print(clip.frame_on, "region mass is", region.mass)
             # want the real mass calculated from before the dilation
             # region.mass = np.sum(region.subimage(thresh))
             # region.mass = mass
