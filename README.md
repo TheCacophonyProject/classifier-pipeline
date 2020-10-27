@@ -130,7 +130,10 @@ e.g.
 `python smoktest\generatetests.py test_clips Derek password123 12554 122232`
 
 ## Running Tests
+
 - Once tests have been generated you can test your current tracking and model against thermal
 - This will print out the results and also save a file called smoketest-results.txt
-
-`python trackingtest.py -t smoketest/tracking-tests.yml`
+- A default set of tracking tests is located in 'smoketest/tracking-tests.yml'
+in order to run the clips they will need to be downloaded this can be done automatically
+by adding a valid cacophny api user and password to trackingtest.py
+`python trackingtest.py -t smoketest/tracking-tests.yml --user <User> --password <password>`
