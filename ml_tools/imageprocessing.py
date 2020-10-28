@@ -8,7 +8,10 @@ from track.track import TrackChannels
 
 
 def movement_images(
-    frames, regions, dim, require_movement=False,
+    frames,
+    regions,
+    dim,
+    require_movement=False,
 ):
     """Return 2 images describing the movement, one has dots representing
     the centre of mass, the other is a collage of all frames
@@ -43,7 +46,13 @@ def movement_images(
 
         # writing overlay image
         if require_movement and prev_overlay:
-            center_distance = eucl_distance(prev_overlay, (x, y,),)
+            center_distance = eucl_distance(
+                prev_overlay,
+                (
+                    x,
+                    y,
+                ),
+            )
 
         if (
             prev_overlay is None or center_distance > min_distance
@@ -116,7 +125,9 @@ def save_image_channels(data, filename):
 
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
-        image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
+        image,
+        dsize=(dim[0] + extra_h, dim[1] + extra_v),
+        interpolation=interpolation,
     )
 
 

@@ -330,8 +330,12 @@ class ClipTrackExtractor:
             new_tracks.add(track)
             clip._add_active_track(track)
             self.print_if_verbose(
-                "Creating a new track {} with region {} mass{} area {}".format(
-                    track.get_id(), region, track.last_bound.mass, track.last_bound.area
+                "Creating a new track {} with region {} mass{} area {} frame {}".format(
+                    track.get_id(),
+                    region,
+                    track.last_bound.mass,
+                    track.last_bound.area,
+                    region.frame_number,
                 )
             )
         return new_tracks
@@ -388,14 +392,11 @@ class ClipTrackExtractor:
                 id=i,
                 frame_number=clip.frame_on,
             )
+
             # want the real mass calculated from before the dilation
             # region.mass = np.sum(region.subimage(thresh))
             # region.mass = mass
             # Add padding to region and change coordinates from edgeless image -> full image
-            region.x += edge - padding
-            region.y += edge - padding
-            region.width += padding * 2
-            region.height += padding * 2
 
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
@@ -419,6 +420,7 @@ class ClipTrackExtractor:
                         self.config.cropped_regions_strategy
                     )
                 )
+            region.enlarge(padding, max=clip.crop_rectangle)
 
             if delta_frame is not None:
                 region_difference = region.subimage(delta_frame)
