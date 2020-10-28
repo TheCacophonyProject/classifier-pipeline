@@ -52,8 +52,8 @@ def preprocess_segment(
     scaled_frames = []
 
     for i, frame in enumerate(frames):
-        channels, frame_height, frame_width = frame.shape
-
+        channels = frame.shape[0]
+        frame_height, frame_width = frame[0].shape
         if frame_height < MIN_SIZE or frame_width < MIN_SIZE:
             continue
 
@@ -200,10 +200,7 @@ def preprocess_movement(
     if not success:
         return None
     dots, overlay = imageprocessing.movement_images(
-        data,
-        regions,
-        dim=square.shape,
-        require_movement=True,
+        data, regions, dim=square.shape, require_movement=True,
     )
     overlay, success = imageprocessing.normalize(overlay, min=0)
     if not success:

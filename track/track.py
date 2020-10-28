@@ -16,7 +16,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
-
+import math
 import numpy as np
 from collections import namedtuple
 
@@ -47,7 +47,7 @@ class Track:
     BASE_MASS_CHANGE = 10
     MAX_DISTANCE = 2000
 
-    def __init__(self, clip_id, id=None):
+    def __init__(self, clip_id, id=None, fps=9):
         """
         Creates a new Track.
         :param id: id number for track, if not specified is provided by an auto-incrementer
@@ -64,6 +64,7 @@ class Track:
         self.end_frame = None
         self.start_s = None
         self.end_s = None
+        self.fps = fps
         self.current_frame_num = None
         self.frame_list = []
         # our bounds over time
@@ -93,7 +94,7 @@ class Track:
 
     @classmethod
     def from_region(cls, clip, region):
-        track = cls(clip.get_id())
+        track = cls(clip.get_id(), fps=clip.frames_per_second)
         track.start_frame = region.frame_number
         track.start_s = region.frame_number / float(clip.frames_per_second)
         track.add_region(region)
@@ -116,6 +117,7 @@ class Track:
         data = track_meta["data"]
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
+        self.fps = frames_per_second
         self.track_tags = track_meta.get("TrackTags")
         tag = Track.get_best_human_tag(track_meta, tag_precedence, min_confidence)
         if tag:
@@ -232,19 +234,23 @@ class Track:
         # self.vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
         movement = 0
         max_offset = 0
+
         frames_moved = 0
+        first_point = self.bounds_history[0].mid
         for i, (vx, vy) in enumerate(zip(self.vel_x, self.vel_y)):
             if i == 0:
                 continue
-            if self.bounds_history[i].has_moved(self.bounds_history[i - 1]):
+            region = self.bounds_history[i]
+            if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
                 distance = (vx ** 2 + vy ** 2) ** 0.5
                 movement += distance
-                max_offset = max(max_offset, distance)
+                offset = eucl_distance(first_point, region.mid)
+                max_offset = max(max_offset, offset)
                 frames_moved += 1
         # the standard deviation is calculated by averaging the per frame variances.
         # this ends up being slightly different as I'm using /n rather than /(n-1) but that
         # shouldn't make a big difference as n = width*height*frames which is large.
-
+        max_offset = math.sqrt(max_offset)
         delta_std = float(np.mean(variance_history)) ** 0.5
         osillates_up = 0
         osillates_down = 0
@@ -364,6 +370,7 @@ class Track:
             self.bounds_history = self.bounds_history[start : end + 1]
             self.vel_x = self.vel_x[start : end + 1]
             self.vel_x = self.vel_x[start : end + 1]
+        self.start_s = self.start_frame / float(self.fps)
 
     def get_region_score(self, region: Region):
         """
@@ -378,10 +385,7 @@ class Track:
         expected_y = int(self.last_bound.y)
         distance += eucl_distance((expected_x, expected_y), (region.x, region.y))
         distance += eucl_distance(
-            (
-                expected_x + self.last_bound.width,
-                expected_y + self.last_bound.height,
-            ),
+            (expected_x + self.last_bound.width, expected_y + self.last_bound.height,),
             (region.x + region.width, region.y + region.height),
         )
         distance /= 3.0
@@ -393,31 +397,6 @@ class Track:
         )
 
         return distance, size_difference
-
-    def get_max_size_change(self, region):
-        exiting = region.is_along_border and not self.last_bound.is_along_border
-        entering = not exiting and self.last_bound.is_along_border
-        region_percent = 1.5
-        if entering or exiting:
-            region_percent = 2
-        if len(self) < 5:
-            # may increase at first
-            region_percent = 2
-
-        return region_percent
-
-    def get_max_distance_change(self):
-        x, y = self.velocity
-        velocity_distance = (2 * x) ** 2 + (2 * y) ** 2
-        pred_vel = self.predicted_velocity
-        pred_distance = pred_vel[0] ** 2 + pred_vel[1] ** 2
-
-        max_distance = np.clip(
-            Track.BASE_DISTANCE_CHANGE + max(velocity_distance, pred_distance),
-            0,
-            Track.MAX_DISTANCE,
-        )
-        return max_distance
 
     def get_overlap_ratio(self, other_track, threshold=0.05):
         """

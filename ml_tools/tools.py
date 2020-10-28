@@ -48,6 +48,10 @@ class Rectangle:
         return Rectangle(self.x, self.y, self.width, self.height)
 
     @property
+    def mid(self):
+        return (self.mid_x, self.mid_y)
+
+    @property
     def mid_x(self):
         return self.x + self.width / 2
 

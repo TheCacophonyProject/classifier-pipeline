@@ -60,11 +60,8 @@ class Region(Rectangle):
         )
 
     def has_moved(self, region):
-        return (
-            self.x != region.x
-            and self.y != region.y
-            and self.right != region.right
-            and self.bottom != region.bottom
+        return (self.x != region.x and self.right != region.right) or (
+            self.y != region.y and self.bottom != region.bottom
         )
 
     def calculate_mass(self, filtered, threshold):

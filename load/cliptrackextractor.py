@@ -276,14 +276,12 @@ class ClipTrackExtractor:
             for region in regions:
                 distance, size_change = track.get_region_score(region)
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
-                # print(
-                #     f"distance is {track.last_bound} to {region} score {score}",
-                # )
+
                 max_distance = get_max_distance_change(track)
                 max_size_change = get_max_size_change(track, region)
                 if distance > max_distance:
                     self.print_if_verbose(
-                        "track {} distance score {} bigger than max score {}".format(
+                        "track {} distance score {} bigger than max distance {}".format(
                             track.get_id(), distance, max_distance
                         )
                     )
@@ -346,10 +344,12 @@ class ClipTrackExtractor:
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
         for track in unactive_tracks:
-            if (
-                track.frames_since_target_seen + 1
-                < self.config.remove_track_after_frames
-            ):
+            # need sufficient frames to allow insertion of excess blanks
+            remove_after = min(
+                2 * (len(track) - track.blank_frames),
+                self.config.remove_track_after_frames,
+            )
+            if track.frames_since_target_seen + 1 < remove_after:
                 track.add_blank_frame(clip.frame_buffer)
                 clip.active_tracks.add(track)
                 self.print_if_verbose(
@@ -552,10 +552,10 @@ def get_max_size_change(track, region):
     exiting = region.is_along_border and not track.last_bound.is_along_border
     entering = not exiting and track.last_bound.is_along_border
     region_percent = 1.5
-    if entering or exiting:
-        region_percent = 2
     if len(track) < 5:
         # may increase at first
+        region_percent = 2
+    if entering or exiting:
         region_percent = 2
 
     return region_percent
