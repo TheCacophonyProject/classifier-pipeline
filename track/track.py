@@ -199,10 +199,10 @@ class Track:
             )
         else:
             region = self.last_bound.copy()
+        region.blank = True
         region.mass = 0
         region.pixel_variance = 0
         region.frame_number = self.last_bound.frame_number + 1
-        print(self, "adding a blank frame", region.frame_number)
         self.bounds_history.append(region)
         self.prev_frame_num = region.frame_number
         self.update_velocity()
@@ -227,22 +227,20 @@ class Track:
             for bound in self.bounds_history
             if bound.pixel_variance
         ]
-        mid_x = [bound.mid_x for bound in self.bounds_history]
-        mid_y = [bound.mid_y for bound in self.bounds_history]
-        delta_x = [mid_x[0] - x for x in mid_x]
-        delta_y = [mid_y[0] - y for y in mid_y]
+
         # self.vel_x = [cur - prev for cur, prev in zip(mid_x[1:], mid_x[:-1])]
         # self.vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
         movement = 0
+        max_offset = 0
+        frames_moved = 0
         for i, (vx, vy) in enumerate(zip(self.vel_x, self.vel_y)):
             if i == 0:
                 continue
             if self.bounds_history[i].has_moved(self.bounds_history[i - 1]):
                 distance = (vx ** 2 + vy ** 2) ** 0.5
                 movement += distance
-
-        max_offset = max((dx ** 2 + dy ** 2) ** 0.5 for dx, dy in zip(delta_x, delta_y))
-
+                max_offset = max(max_offset, distance)
+                frames_moved += 1
         # the standard deviation is calculated by averaging the per frame variances.
         # this ends up being slightly different as I'm using /n rather than /(n-1) but that
         # shouldn't make a big difference as n = width*height*frames which is large.
@@ -253,14 +251,16 @@ class Track:
 
         for i, bound in enumerate(self.bounds_history[1:]):
             prev_bound = self.bounds_history[i]
+            if prev_bound.is_along_border or bound.is_along_border:
+                continue
             height_diff = bound.height - prev_bound.height
             width_diff = prev_bound.width - bound.width
-            if abs(height_diff) > prev_bound.height * 0.2:
+            if abs(height_diff) > prev_bound.height * 0.25:
                 if height_diff > 0:
                     osillates_up += 1
                 else:
                     osillates_down += 1
-            elif abs(width_diff) > prev_bound.height * 0.2:
+            elif abs(width_diff) > prev_bound.height * 0.25:
                 if width_diff > 0:
                     osillates_up += 1
                 else:
@@ -274,6 +274,8 @@ class Track:
             osillates_up,
             "down",
             osillates_down,
+            "moved",
+            frames_moved,
         )
         movement_points = (movement ** 0.5) + max_offset
         delta_points = delta_std * 25.0
@@ -292,6 +294,7 @@ class Track:
             jitter_up=osillates_up,
             jitter_down=osillates_down,
             blank_percent=int(round(100.0 * self.blank_frames / self.frames)),
+            frames_moved=frames_moved,
         )
 
         return stats
@@ -385,26 +388,23 @@ class Track:
 
         # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
         # area is padded with 50 pixels so small regions don't change too much
-        size_difference = (
-            abs(region.area - self.last_bound.area) / (self.last_bound.area + 50)
-        ) * 100
+        size_difference = abs(region.area - self.last_bound.area) / (
+            self.last_bound.area + 50
+        )
 
         return distance, size_difference
 
     def get_max_size_change(self, region):
         exiting = region.is_along_border and not self.last_bound.is_along_border
         entering = not exiting and self.last_bound.is_along_border
-
-        min_change = 50
+        region_percent = 1.5
         if entering or exiting:
-            min_change = 100
-        mass_percent = 1.5
+            region_percent = 2
         if len(self) < 5:
             # may increase at first
-            mass_percent = 2
+            region_percent = 2
 
-        max_size_change = np.clip(self.last_mass * mass_percent, min_change, None)
-        return max_size_change
+        return region_percent
 
     def get_max_distance_change(self):
         x, y = self.velocity
@@ -417,15 +417,6 @@ class Track:
             0,
             Track.MAX_DISTANCE,
         )
-        # print(
-        #     "predicted velocity",
-        #     pred_vel,
-        #     pred_distance,
-        #     "vel distnace",
-        #     velocity_distance,
-        #     "max distnace",
-        #     max_distance,
-        # )
         return max_distance
 
     def get_overlap_ratio(self, other_track, threshold=0.05):
@@ -567,7 +558,7 @@ class Track:
 
 TrackMovementStatistics = namedtuple(
     "TrackMovementStatistics",
-    "movement max_offset score average_mass median_mass delta_std region_jitter jitter_up jitter_down blank_percent",
+    "movement max_offset score average_mass median_mass delta_std region_jitter jitter_up jitter_down blank_percent frames_moved",
 )
 TrackMovementStatistics.__new__.__defaults__ = (0,) * len(
     TrackMovementStatistics._fields

@@ -35,6 +35,7 @@ class Region(Rectangle):
         id=0,
         frame_number=0,
         was_cropped=False,
+        blank=False,
     ):
         super().__init__(topleft_x, topleft_y, width, height)
         # number of active pixels in region
@@ -48,6 +49,7 @@ class Region(Rectangle):
         # if this region was cropped or not
         self.was_cropped = was_cropped
         self.is_along_border = False
+        self.blank = blank
 
     @classmethod
     def region_from_array(cls, region_bounds, frame_number=0):

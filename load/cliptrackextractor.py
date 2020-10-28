@@ -279,8 +279,8 @@ class ClipTrackExtractor:
                 # print(
                 #     f"distance is {track.last_bound} to {region} score {score}",
                 # )
-                max_distance = track.get_max_distance_change()
-                max_size_change = track.get_max_size_change(region)
+                max_distance = get_max_distance_change(track)
+                max_size_change = get_max_size_change(track, region)
                 if distance > max_distance:
                     self.print_if_verbose(
                         "track {} distance score {} bigger than max score {}".format(
@@ -350,7 +350,6 @@ class ClipTrackExtractor:
                 track.frames_since_target_seen + 1
                 < self.config.remove_track_after_frames
             ):
-                print(track, "inactive")
                 track.add_blank_frame(clip.frame_buffer)
                 clip.active_tracks.add(track)
                 self.print_if_verbose(
@@ -494,7 +493,8 @@ class ClipTrackExtractor:
             return True
 
         # discard tracks that do not move enough
-        if stats.max_offset < self.config.track_min_offset:
+
+        if stats.max_offset < self.config.track_min_offset or stats.frames_moved < 2:
             self.print_if_verbose(
                 "Track filtered.  Didn't move {}".format(stats.max_offset)
             )
@@ -505,7 +505,7 @@ class ClipTrackExtractor:
             self.print_if_verbose("Track filtered.  Too Many Blanks")
             clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
             return True
-        if stats.region_jitter > 12:
+        if stats.region_jitter > 15:
             self.print_if_verbose("Track filtered.  Too Jittery")
             clip.filtered_tracks.append(("Track filtered.  Too Jittery", track))
             return True
@@ -546,3 +546,30 @@ class ClipTrackExtractor:
 
         if self.config.verbose:
             logging.info(info_string)
+
+
+def get_max_size_change(track, region):
+    exiting = region.is_along_border and not track.last_bound.is_along_border
+    entering = not exiting and track.last_bound.is_along_border
+    region_percent = 1.5
+    if entering or exiting:
+        region_percent = 2
+    if len(track) < 5:
+        # may increase at first
+        region_percent = 2
+
+    return region_percent
+
+
+def get_max_distance_change(track):
+    x, y = track.velocity
+    velocity_distance = (2 * x) ** 2 + (2 * y) ** 2
+    pred_vel = track.predicted_velocity
+    pred_distance = pred_vel[0] ** 2 + pred_vel[1] ** 2
+
+    max_distance = np.clip(
+        Track.BASE_DISTANCE_CHANGE + max(velocity_distance, pred_distance),
+        0,
+        Track.MAX_DISTANCE,
+    )
+    return max_distance
