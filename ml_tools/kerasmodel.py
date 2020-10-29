@@ -885,7 +885,7 @@ class KerasModel:
             use_thermal=self.params.use_thermal,
             use_filtered=self.params.use_filtered,
             use_movement=self.params.use_movement,
-            shuffle=False,
+            shuffle=True,
             model_preprocess=self.preprocess_fn,
             epochs=1,
             load_threads=self.params.train_load_threads,
