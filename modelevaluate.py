@@ -358,7 +358,7 @@ dataset = datasets[args.dataset]
 
 groups = []
 groups.append((["bird"], "bird"))
-groups.append((["insect", "false-positive"], "false-positive"))
+# groups.append((["insect", "false-positive"], "false-positive"))
 other_labels = []
 used_labels = groups[0][0].copy()
 # used_labels.extend(groups[1][0].copy())

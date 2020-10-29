@@ -41,7 +41,7 @@ def train_model(run_name, conf, hyper_params, grid_search=False, weights=None, t
 
     groups = []
     groups.append((["bird"], "bird"))
-    groups.append((["insect", "false-positive"], "false-positive"))
+    # groups.append((["insect", "false-positive"], "false-positive"))
     other_labels = []
     used_labels = groups[0][0].copy()
     used_labels.extend(groups[1][0].copy())
