@@ -401,6 +401,7 @@ class DataGenerator(keras.utils.Sequence):
 
             X[data_i] = data
             y[data_i] = self.labels.index(label)
+            print("labels index", label, self.labels.index(label))
             data_i += 1
         # remove data that was null
         X = X[:data_i]

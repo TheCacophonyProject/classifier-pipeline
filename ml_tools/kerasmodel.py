@@ -328,7 +328,7 @@ class KerasModel:
 
         self.train = DataGenerator(
             self.datasets.train,
-            self.datasets.train.labels,
+            self.labels,
             len(self.datasets.train.labels),
             batch_size=self.params.batch_size,
             lstm=self.params.lstm,
@@ -347,7 +347,7 @@ class KerasModel:
         )
         self.validate = DataGenerator(
             self.datasets.validation,
-            self.datasets.train.labels,
+            self.labels,
             len(self.datasets.train.labels),
             batch_size=self.params.batch_size,
             lstm=self.params.lstm,
@@ -584,7 +584,8 @@ class KerasModel:
     def set_labels(self):
         # preserve label order if needed, this should be used when retraining
         # on a model already trained with our data
-        self.labels = self.datasets.train.labels
+        self.labels = self.datasets.train.labels.copy()
+        print("training with", self.labels)
 
     def import_dataset(self, dataset_filename, ignore_labels=None):
         """
