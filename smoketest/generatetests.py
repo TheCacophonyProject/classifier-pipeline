@@ -25,7 +25,9 @@ def parse_args():
         help="File to save generated tests to",
     )
     parser.add_argument(
-        "ids", nargs="+", help="List of recording ids to download",
+        "ids",
+        nargs="+",
+        help="List of recording ids to download",
     )
 
     return parser.parse_args()
@@ -46,7 +48,10 @@ def main():
         tests.append(
             TestRecording.load_from_meta(rec_meta["recording"], tracks, filename)
         )
-        if api.save_file(fullpath, api._download_signed(rec_meta["downloadRawJWT"]),):
+        if api.save_file(
+            fullpath,
+            api._download_signed(rec_meta["downloadRawJWT"]),
+        ):
             print("Saved {} - {}.cptv".format(rec_id, fullpath))
         else:
             print("error saving {}".format(rec_id))

@@ -59,7 +59,10 @@ class TrackingConfig(DefaultConfig):
     enable_track_output = attr.ib()
     min_tag_confidence = attr.ib()
     moving_vel_thresh = attr.ib()
-
+    min_moving_frames = attr.ib()
+    max_blank_percent = attr.ib()
+    max_jitter = attr.ib()
+    track_max_delta = attr.ib()
     # used to provide defaults
     preview = attr.ib()
     stats = attr.ib()
@@ -108,6 +111,10 @@ class TrackingConfig(DefaultConfig):
             verbose=tracking["verbose"],
             enable_track_output=tracking["enable_track_output"],
             min_tag_confidence=tracking["min_tag_confidence"],
+            min_moving_frames=tracking["min_moving_frames"],
+            max_blank_percent=tracking["max_blank_percent"],
+            max_jitter=tracking["max_jitter"],
+            track_max_delta=tracking["track_max_delta"],
             preview=None,
             stats=None,
             filters=None,
@@ -135,7 +142,7 @@ class TrackingConfig(DefaultConfig):
             edge_pixels=1,
             frame_padding=4,
             dilation_pixels=2,
-            remove_track_after_frames=9,
+            remove_track_after_frames=18,
             track_smoothing=False,
             high_quality_optical_flow=False,
             flow_threshold=40,
@@ -173,6 +180,10 @@ class TrackingConfig(DefaultConfig):
             dynamic_thresh=True,
             moving_vel_thresh=4,
             background_thresh=10,
+            min_moving_frames=2,
+            max_blank_percent=30,
+            max_jitter=15,
+            track_max_delta=150,
         )
 
     def validate(self):

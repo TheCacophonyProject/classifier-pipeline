@@ -25,18 +25,20 @@ from cptv import CPTVReader
 import cv2
 
 from .clip import Clip
-import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import normalize, detect_objects
+from ml_tools.imageprocessing import detect_objects
 
 from matplotlib import pyplot as plt
 
 
 class ClipTrackExtractor:
     PREVIEW = "preview"
+    BASE_DISTANCE_CHANGE = 450
+    BASE_MASS_CHANGE = 10
+    MAX_DISTANCE = 2000
 
     def __init__(
         self, config, use_opt_flow, cache_to_disk, keep_frames=True, calc_stats=True
@@ -78,9 +80,6 @@ class ClipTrackExtractor:
             )
             clip.set_video_stats(video_start_time)
             clip.calculate_background(reader)
-            plt.subplot(143), plt.imshow(clip.background, cmap="gray")
-            plt.title("Background Image"), plt.xticks([]), plt.yticks([])
-            # plt.show()
 
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
@@ -99,23 +98,9 @@ class ClipTrackExtractor:
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.frame_on))
         clip.ffc_affected = ffc_affected
-        if clip.on_preview():
-            clip.calculate_preview_from_frame(frame, ffc_affected)
-            if clip.background_calculated:
-                clip.frame_on += 1
-                self._process_preview_frames(clip)
-                return
-        else:
-            self._process_frame(clip, frame, ffc_affected)
+
+        self._process_frame(clip, frame, ffc_affected)
         clip.frame_on += 1
-
-    def _process_preview_frames(self, clip):
-        clip.frame_on -= len(clip.preview_frames)
-        for _, back_frame in enumerate(clip.preview_frames):
-            self._process_frame(clip, back_frame[0], back_frame[1])
-            clip.frame_on += 1
-
-        clip.preview_frames = None
 
     def _whole_clip_stats(self, clip, frames):
         filtered = np.float32(
@@ -154,33 +139,6 @@ class ClipTrackExtractor:
             ):
                 clip.background = None
 
-    def process_frames(self, clip, raw_frames):
-        # for now just always calculate as we are using the stats...
-        # background np.float64[][] filtered calculated here and stats
-        non_ffc_frames = [
-            frame.pix for frame in raw_frames if not is_affected_by_ffc(frame)
-        ]
-        if len(non_ffc_frames) == 0:
-            logging.warn("Clip only has ffc affected frames")
-            return False
-        clip.background_from_whole_clip(non_ffc_frames)
-        # not sure if we want to include ffc frames here or not
-        self._whole_clip_stats(clip, non_ffc_frames)
-        if clip.background_is_preview:
-
-            if clip.preview_frames > 0:
-                clip.background_from_frames(raw_frames)
-            else:
-                logging.info(
-                    "No preview secs defined for CPTV file - using statistical background measurement"
-                )
-
-        # process each frame
-        for frame in raw_frames:
-            ffc_affected = is_affected_by_ffc(frame)
-            self._process_frame(clip, frame.pix, ffc_affected)
-            clip.frame_on += 1
-
     def apply_track_filtering(self, clip):
         self.filter_tracks(clip)
         # apply smoothing if required
@@ -206,15 +164,6 @@ class ClipTrackExtractor:
                 round(np.average(thermal) - clip.stats.mean_background_value)
             )
             np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
-
-            # filtered = filtered - clip.background
-            # # filtered = filtered - np.median(filtered)
-            # np.clip(
-            #     filtered,
-            #     0,
-            #     None,
-            #     out=filtered,
-            # )
             filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
 
         else:
@@ -375,27 +324,19 @@ class ClipTrackExtractor:
 
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.frame_padding
-        edge = 0
-        # self.config.edge_pixels
         # find regions of interest
         regions = []
-
-        for i in range(1, len(component_details)):
+        for i, component in enumerate(component_details[1:]):
 
             region = Region(
-                component_details[i, 0],
-                component_details[i, 1],
-                component_details[i, 2],
-                component_details[i, 3],
-                mass=component_details[i, 4],
+                component[0],
+                component[1],
+                component[2],
+                component[3],
+                mass=component[4],
                 id=i,
                 frame_number=clip.frame_on,
             )
-
-            # want the real mass calculated from before the dilation
-            # region.mass = np.sum(region.subimage(thresh))
-            # region.mass = mass
-            # Add padding to region and change coordinates from edgeless image -> full image
 
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
@@ -463,7 +404,6 @@ class ClipTrackExtractor:
         for stats, track in track_stats:
             # discard any tracks that overlap too often with other tracks.  This normally means we are tracking the
             # tail of an animal.
-            print("track movement is", track, "-", stats)
             if not self.filter_track(clip, track, stats):
                 good_tracks.append(track)
 
@@ -487,25 +427,28 @@ class ClipTrackExtractor:
     def filter_track(self, clip, track, stats):
         # discard any tracks that are less min_duration
         # these are probably glitches anyway, or don't contain enough information.
-        if len(track) < self.config.min_duration_secs * 9:
+        if len(track) < self.config.min_duration_secs * clip.frames_per_second:
             self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
             clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
             return True
 
         # discard tracks that do not move enough
 
-        if stats.max_offset < self.config.track_min_offset or stats.frames_moved < 2:
+        if (
+            stats.max_offset < self.config.track_min_offset
+            or stats.frames_moved < self.config.min_moving_frames
+        ):
             self.print_if_verbose(
                 "Track filtered.  Didn't move {}".format(stats.max_offset)
             )
             clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
             return True
 
-        if stats.blank_percent > 30:
+        if stats.blank_percent > self.config.max_blank_percent:
             self.print_if_verbose("Track filtered.  Too Many Blanks")
             clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
             return True
-        if stats.region_jitter > 15:
+        if stats.region_jitter > self.config.max_jitter:
             self.print_if_verbose("Track filtered.  Too Jittery")
             clip.filtered_tracks.append(("Track filtered.  Too Jittery", track))
             return True
@@ -514,7 +457,7 @@ class ClipTrackExtractor:
             self.print_if_verbose("Track filtered.  Too static")
             clip.filtered_tracks.append(("Track filtered.  Too static", track))
             return True
-        if stats.delta_std > 150:
+        if stats.delta_std > self.config.track_max_delta:
             self.print_if_verbose("Track filtered.  Too Dynamic")
             clip.filtered_tracks.append(("Track filtered.  Too Dynamic", track))
             return True
@@ -568,8 +511,8 @@ def get_max_distance_change(track):
     pred_distance = pred_vel[0] ** 2 + pred_vel[1] ** 2
 
     max_distance = np.clip(
-        Track.BASE_DISTANCE_CHANGE + max(velocity_distance, pred_distance),
+        ClipTrackExtractor.BASE_DISTANCE_CHANGE + max(velocity_distance, pred_distance),
         0,
-        Track.MAX_DISTANCE,
+        ClipTrackExtractor.MAX_DISTANCE,
     )
     return max_distance

@@ -101,12 +101,9 @@ class Clip:
         initial_frames = None
         lower_diff = None
         frames = []
-        i = 0
         for frame in frame_reader:
-            i += 1
             ffc_affected = is_affected_by_ffc(frame)
             if ffc_affected:
-                print("FFC", i)
                 continue
             frames.append(frame.pix)
             if len(frames) == 9:
@@ -125,59 +122,31 @@ class Clip:
         if len(frames) > 0:
             self.calculate_preview_from_frame(np.average(frames, axis=0), False)
             frames = []
-        print(
-            "lower dif",
-            np.average(lower_diff),
-            np.amin(lower_diff),
-            np.amax(lower_diff),
-            np.percentile(lower_diff, 10),
-        )
 
-        filtered = lower_diff.copy()
-        filtered[filtered < 20] = 0
-        plt.subplot(141), plt.imshow(initial_frames, cmap="gray")
-        plt.title("initial_frames Image"), plt.xticks([]), plt.yticks([])
-        plt.subplot(142), plt.imshow(filtered, cmap="gray")
-        plt.title("filtered Image"), plt.xticks([]), plt.yticks([])
-        plt.subplot(143), plt.imshow(lower_diff, cmap="gray")
-        plt.title("lower Image"), plt.xticks([]), plt.yticks([])
-        # plt.show()
         initial_frames = self.remove_background_animals(initial_frames, lower_diff)
-        plt.subplot(143), plt.imshow(initial_frames, cmap="gray")
-        plt.title("post initial_frames Image"), plt.xticks([]), plt.yticks([])
-        # plt.show()
+
         self.calculate_preview_from_frame(initial_frames, False)
         self._set_from_background()
         self.preview_frames = []
 
     def remove_background_animals(self, background, lower_diff):
-        filtered = lower_diff.copy()
-        filtered[filtered < 20] = 0
-        filtered[filtered > 255] = 255
-        filtered = np.uint8(filtered)
-        filtered = cv2.fastNlMeansDenoising(filtered, None)
+        # remove some noise
+        lower_diff[lower_diff < 20] = 0
+        lower_diff[lower_diff > 255] = 255
+        lower_diff = np.uint8(lower_diff)
+        lower_diff = cv2.fastNlMeansDenoising(lower_diff, None)
 
-        components, lower_mask, stats = detect_objects(filtered, otsus=True)
-        # these connect components represent regions that have movement throughout
-        # the video, now we check for within these regions on the background image
-        # plt.subplot(141), plt.imshow(lower_diff, cmap="gray")
-        # plt.title("lower diff Image"), plt.xticks([]), plt.yticks([])
-        # plt.subplot(142), plt.imshow(lower_mask, cmap="gray")
-        # plt.title("lower mask Image"), plt.xticks([]), plt.yticks([])
-        # plt.subplot(143), plt.imshow(background, cmap="gray")
-        # plt.title("Backgorund"), plt.xticks([]), plt.yticks([])
-        # plt.show()
+        components, lower_mask, stats = detect_objects(lower_diff, otsus=True)
 
         max_region = Region(0, 0, self.res_x, self.res_y)
-        for i in range(1, components):
-            region = Region(stats[i, 0], stats[i, 1], stats[i, 2], stats[i, 3])
-
+        for component in stats[1:]:
+            region = Region(component[0], component[1], component[2], component[3])
             region.enlarge(2, max=max_region)
             if region.width >= self.res_x or region.height >= self.res_y:
                 logging.info(
                     "Background animal bigger than max, probably false positive %s %s",
                     region,
-                    stats[i, 4],
+                    component[4],
                 )
                 continue
             lower_diff_2 = region.subimage(lower_mask) * 255
@@ -188,30 +157,15 @@ class Clip:
                 norm_subimage, otsus=True
             )
             overlap_pixels = np.sum(sub_connected[lower_diff_2 > 0])
-            overlap_pixels = overlap_pixels / float(stats[i, 4])
-            print(
-                "background mass",
-                sub_stats[1, 4],
-                "lower mass",
-                stats[i][4],
-                region.area,
-                overlap_pixels,
-            )
-            i
-            # plt.subplot(141), plt.imshow(lower_diff_2, cmap="gray")
-            # plt.title("Cause"), plt.xticks([]), plt.yticks([])
-            # plt.subplot(142), plt.imshow(background_region, cmap="gray")
-            # plt.title("Background Image"), plt.xticks([]), plt.yticks([])
-            # plt.subplot(143), plt.imshow(sub_connected, cmap="gray")
-            # plt.title("Sub Connected Image"), plt.xticks([]), plt.yticks([])
-            # plt.show()
+            overlap_pixels = overlap_pixels / float(component[4])
 
+            # filter out components which are too big, or dont match original causes
+            # for filtering
             if (
                 overlap_pixels < 0.80
                 or sub_stats[1][4] == 0
                 or sub_stats[1][4] == region.area
             ):
-
                 logging.info(
                     "Invalid components mass: %s, components: %s region area %s overlap %s",
                     sub_stats[1][4],
@@ -222,7 +176,8 @@ class Clip:
                 continue
 
             sub_connected[sub_connected > 0] = 1
-
+            # remove this component from the background by painting with
+            # colours of neighbouring pixels
             background_region[:] = cv2.inpaint(
                 np.float32(background_region),
                 np.uint8(sub_connected),
@@ -239,35 +194,7 @@ class Clip:
             self.background = frame
         else:
             self.background = np.minimum(self.background, frame)
-        # if self.background_frames == (self.num_preview_frames - 1):
-        # self._set_from_background()
         self.background_frames += 1
-
-    def background_from_frames(self, raw_frames):
-        number_frames = self.num_preview_frames
-        if not number_frames < len(raw_frames):
-            logging.error("Video consists entirely of preview")
-            number_frames = len(raw_frames)
-        frames = [np.float32(frame.pix) for frame in raw_frames[0:number_frames]]
-        self.background = np.min(frames, axis=0)
-        self.background = np.int32(np.rint(self.background))
-
-        self._set_from_background()
-
-    def background_from_whole_clip(self, frames):
-        """
-        Runs through all provided frames and estimates the background, consuming all the source frames.
-        :param frames_list: a list of numpy array frames
-        :return: background
-        """
-
-        # note: unfortunately this must be done before any other processing, which breaks the streaming architecture
-        # for this reason we must return all the frames so they can be reused
-
-        # [][] array
-
-        self.background = np.percentile(frames, q=10, axis=0)
-        self._set_from_background()
 
     def _add_active_track(self, track):
         self.active_tracks.add(track)
@@ -327,10 +254,7 @@ class Clip:
         return tracks
 
     def start_and_end_in_secs(self, track):
-        if not track.start_s:
-            logging.info("track start frame setting from {}".format(track.start_frame))
-
-        if not track.end_s:
+        if track.end_s is None:
             track.end_s = (track.end_frame + 1) / self.frames_per_second
 
         return (track.start_s, track.end_s)

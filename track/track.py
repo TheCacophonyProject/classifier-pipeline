@@ -43,9 +43,6 @@ class Track:
     _track_id = 1
     # number of frames required before using kalman estimation
     MIN_KALMAN_FRAMES = 18
-    BASE_DISTANCE_CHANGE = 450
-    BASE_MASS_CHANGE = 10
-    MAX_DISTANCE = 2000
 
     def __init__(self, clip_id, id=None, fps=9):
         """
@@ -230,8 +227,6 @@ class Track:
             if bound.pixel_variance
         ]
 
-        # self.vel_x = [cur - prev for cur, prev in zip(mid_x[1:], mid_x[:-1])]
-        # self.vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
         movement = 0
         max_offset = 0
 
@@ -247,13 +242,14 @@ class Track:
                 offset = eucl_distance(first_point, region.mid)
                 max_offset = max(max_offset, offset)
                 frames_moved += 1
+
         # the standard deviation is calculated by averaging the per frame variances.
         # this ends up being slightly different as I'm using /n rather than /(n-1) but that
         # shouldn't make a big difference as n = width*height*frames which is large.
         max_offset = math.sqrt(max_offset)
         delta_std = float(np.mean(variance_history)) ** 0.5
-        osillates_up = 0
-        osillates_down = 0
+        jitter_bigger = 0
+        jitter_smaller = 0
 
         for i, bound in enumerate(self.bounds_history[1:]):
             prev_bound = self.bounds_history[i]
@@ -263,26 +259,15 @@ class Track:
             width_diff = prev_bound.width - bound.width
             if abs(height_diff) > prev_bound.height * 0.25:
                 if height_diff > 0:
-                    osillates_up += 1
+                    jitter_bigger += 1
                 else:
-                    osillates_down += 1
+                    jitter_smaller += 1
             elif abs(width_diff) > prev_bound.height * 0.25:
                 if width_diff > 0:
-                    osillates_up += 1
+                    jitter_bigger += 1
                 else:
-                    osillates_down += 1
-        print(
-            self,
-            "width oscillations",
-            "percent osillations",
-            int(round(100 * (osillates_up + osillates_down) / float(self.frames))),
-            "up",
-            osillates_up,
-            "down",
-            osillates_down,
-            "moved",
-            frames_moved,
-        )
+                    jitter_smaller += 1
+
         movement_points = (movement ** 0.5) + max_offset
         delta_points = delta_std * 25.0
         score = min(movement_points, 100) + min(delta_points, 100)
@@ -295,10 +280,10 @@ class Track:
             delta_std=float(delta_std),
             score=float(score),
             region_jitter=int(
-                round(100 * (osillates_up + osillates_down) / float(self.frames))
+                round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))
             ),
-            jitter_up=osillates_up,
-            jitter_down=osillates_down,
+            jitter_bigger=jitter_bigger,
+            jitter_smaller=jitter_smaller,
             blank_percent=int(round(100.0 * self.blank_frames / self.frames)),
             frames_moved=frames_moved,
         )
@@ -385,7 +370,10 @@ class Track:
         expected_y = int(self.last_bound.y)
         distance += eucl_distance((expected_x, expected_y), (region.x, region.y))
         distance += eucl_distance(
-            (expected_x + self.last_bound.width, expected_y + self.last_bound.height,),
+            (
+                expected_x + self.last_bound.width,
+                expected_y + self.last_bound.height,
+            ),
             (region.x + region.width, region.y + region.height),
         )
         distance /= 3.0
@@ -537,7 +525,7 @@ class Track:
 
 TrackMovementStatistics = namedtuple(
     "TrackMovementStatistics",
-    "movement max_offset score average_mass median_mass delta_std region_jitter jitter_up jitter_down blank_percent frames_moved",
+    "movement max_offset score average_mass median_mass delta_std region_jitter jitter_smaller jitter_bigger blank_percent frames_moved",
 )
 TrackMovementStatistics.__new__.__defaults__ = (0,) * len(
     TrackMovementStatistics._fields
