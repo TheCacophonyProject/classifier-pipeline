@@ -410,8 +410,7 @@ class KerasModel:
                 epochs=1,
                 load_threads=4,
                 cap_samples=True,
-                # cap_at="wallaby",
-                label_cap=10,
+                cap_at="bird",
                 type=self.type,
                 square_width=self.params.square_width,
             )
