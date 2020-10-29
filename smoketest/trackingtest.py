@@ -57,19 +57,20 @@ class RecordingMatch:
         self.number_tracks = 0
         self.id = id_
 
-    def match(self, expected, tracks, predictions):
-        self.number_tracks += len(expected.tracks)
-        expected_tracks = sorted(expected.tracks, key=lambda x: x.start)
-        expected_tracks = [track for track in expected_tracks if track.expected]
+    def match(self, test, tracks, predictions):
+        self.number_tracks += len(test.tracks)
 
         gen_tracks = sorted(tracks, key=lambda x: x.get_id())
         gen_tracks = sorted(gen_tracks, key=lambda x: x.start_s)
+
+        matched_tests = []
         for i, track in enumerate(gen_tracks):
             prediction = predictions.prediction_for(track.get_id())
-            expected_track = match_track(track, expected_tracks)
-            if expected_track is not None:
+            test_track = match_track(track, test.tracks)
+            if test_track is not None:
+                matched_tests.append(test_track)
                 match = Match(
-                    expected_track, track, prediction.predicted_tag(predictions.labels)
+                    test_track, track, prediction.predicted_tag(predictions.labels)
                 )
                 self.matches.append(match)
             else:
@@ -83,8 +84,21 @@ class RecordingMatch:
                         track.end_s,
                     )
                 )
-        if len(gen_tracks) < len(expected_tracks):
-            self.unmatched_tests = expected_tracks[len(self.matches) :]
+
+                self.unmatched_tests = []
+
+        for test_track in test.tracks:
+            found = False
+            for matched in matched_tests:
+                if (
+                    matched.start == test_track.start
+                    and matched.start_pos == test_track.start_pos
+                ):
+                    found = True
+                    break
+
+            if found is False:
+                self.unmatched_tests.append(test_track)
 
     def print_summary(self):
         matched = [match for match in self.matches if match.tag_match()]
@@ -108,6 +122,8 @@ class RecordingMatch:
                 "better": len(better),
                 "same": len(same),
                 "worse": len(worse),
+                "unmatched_tracks": len(self.unmatched_tracks),
+                "unmatched_tests": len(self.unmatched_tests),
             },
         }
         return summary
@@ -149,24 +165,24 @@ class RecordingMatch:
 
 
 class Match:
-    def __init__(self, expected, track, tag):
-        expected_length = expected.opt_end - expected.opt_start
+    def __init__(self, test_track, track, tag):
+        expected_length = test_track.opt_end - test_track.opt_start
         self.length_diff = round(expected_length - (track.end_s - track.start_s), 2)
-        self.start_diff_s = round(expected.start - track.start_s, 2)
-        self.end_diff_s = round(expected.end - track.end_s, 2)
-        self.opt_start_diff_s = round(expected.opt_start - track.start_s, 2)
-        self.opt_end_diff_s = round(expected.opt_end - track.end_s, 2)
+        self.start_diff_s = round(test_track.start - track.start_s, 2)
+        self.end_diff_s = round(test_track.end - track.end_s, 2)
+        self.opt_start_diff_s = round(test_track.opt_start - track.start_s, 2)
+        self.opt_end_diff_s = round(test_track.opt_end - track.end_s, 2)
         self.error = round(abs(self.opt_start_diff_s) + abs(self.opt_end_diff_s), 1)
 
-        if self.error <= expected.calc_error():
+        if self.error <= test_track.calc_error():
             self.status = 1
         elif self.error < MATCH_ERROR:
             self.status = 0
         else:
             self.status = -1
-        self.expected_tag = expected.tag
+        self.expected_tag = test_track.tag
         self.got_animal = tag
-        self.expected = expected
+        self.test_track = test_track
         self.track = track
 
     def tracking_status(self):
@@ -189,12 +205,12 @@ class Match:
         f.write(
             "{} - Opt[{}s] Start-End {} - {}, Expected[{}s] {} - {}\n".format(
                 self.expected_tag,
-                round(self.expected.opt_end - self.expected.opt_start, 1),
-                self.expected.opt_start,
-                self.expected.opt_end,
-                round(self.expected.end - self.expected.start, 1),
-                self.expected.start,
-                self.expected.end,
+                self.test_track.opt_length(),
+                self.test_track.opt_start,
+                self.test_track.opt_end,
+                self.test_track.length(),
+                self.test_track.start,
+                self.test_track.end,
             )
         )
         f.write("Got:\n")
@@ -297,6 +313,9 @@ class TestClassify:
         classified_correct = total_summary.get("classify", {}).get("correct", 0)
         tracked_well = total_summary.get("tracking", {}).get("better", 0)
         tracked_well += total_summary.get("tracking", {}).get("same", 0)
+        unmatched_tracks = total_summary.get("tracking", {}).get("unmatched_tracks", 0)
+        unmatched_tests = total_summary.get("tracking", {}).get("unmatched_tests", 0)
+
         classified_per = round(100.0 * classified_correct / total_tracks)
         tracked_per = round(100.0 * tracked_well / total_tracks)
         print("===== OVERAL =====")
@@ -306,7 +325,13 @@ class TestClassify:
             )
         )
         print(
-            "Tracking Results {}% {}/{}".format(tracked_per, tracked_well, total_tracks)
+            "Tracking Results Better/Same {}% {}/{} With {} unmatched tracks (false-positives) and {} missed tracks".format(
+                tracked_per,
+                tracked_well,
+                total_tracks,
+                unmatched_tracks,
+                unmatched_tests,
+            )
         )
 
     def compare_output(self, clip, predictions, expected):

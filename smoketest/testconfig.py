@@ -44,7 +44,6 @@ class TestRecording(yaml.YAMLObject):
         tracks = []
 
         for track in track_meta["tracks"]:
-            print("loading track", track)
             tag = get_best_tag(track)
             if tag is None:
                 tag = {}
@@ -56,7 +55,7 @@ class TestRecording(yaml.YAMLObject):
 @attr.s
 class TestTrack(yaml.YAMLObject):
     yaml_tag = "!TestTrack"
-
+    id = attr.ib()
     track_id = attr.ib()
     tag = attr.ib()
     start = attr.ib()
@@ -90,6 +89,12 @@ class TestTrack(yaml.YAMLObject):
         score += self.opt_end - self.end
         score = round(score, 1)
         return score
+
+    def opt_length(self):
+        return round(self.opt_end - self.opt_start, 1)
+
+    def length(self):
+        return round(self.end - self.start, 1)
 
 
 def get_best_tag(track, min_confidence=0.6):
