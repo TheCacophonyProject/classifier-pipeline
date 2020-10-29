@@ -359,12 +359,12 @@ dataset = datasets[args.dataset]
 groups = []
 groups.append((["bird"], "bird"))
 # gfgroups.append((["insect", "false-positive"], "false-positive"))
-other_labels = []
-used_labels = groups[0][0].copy()
-# used_labels.extend(groups[1][0].copy())
-for label in dataset.labels:
-    if label not in used_labels:
-        other_labels.append(label)
+# other_labels = []
+# used_labels = groups[0][0].copy()
+# # used_labels.extend(groups[1][0].copy())
+# for label in dataset.labels:
+#     if label not in used_labels:
+#         other_labels.append(label)
 groups.append((["rodent"], "rodent"))
 dataset.regroup(groups, shuffle=False)
 logging.info(
