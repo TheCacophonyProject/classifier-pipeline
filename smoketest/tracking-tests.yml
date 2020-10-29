@@ -86,16 +86,16 @@ recording_tests:
       - 37
       - 30
       - 46
-    expected: false
+    expected: true
     opt_end: 14.44
     opt_start: 4
     start: 4
     start_pos:
     - 4.11
     - - 1
-      - 32
+      - 57
       - 7
-      - 42
+      - 68
     tag: bird
   - !TestTrack
     confidence: 0.8
@@ -166,7 +166,6 @@ recording_tests:
       - 23
       - 71
     tag: bird
-
 - !TestRecording
   device: A_S4_C3
   device_id: 1269
@@ -175,36 +174,6 @@ recording_tests:
   group_id: 191
   rec_id: 684073
   tracks:
-  - !TestTrack
-    confidence: 0.8
-    end: 13.89
-    end_pos:
-    - 13.78
-    - [21, 81, 34, 95]
-    expected: true
-    opt_end: 13.89
-    opt_start: 0
-    start: 0
-    start_pos:
-    - 0
-    - [17, 77, 32, 90]
-    tag: part
-    track_id: 298162
-  - !TestTrack
-    confidence: 0.85
-    end: 23.89
-    end_pos:
-    - 23.78
-    - [23, 89, 32, 98]
-    expected: true
-    opt_end: 23.89
-    opt_start: 0
-    start: 0
-    start_pos:
-    - 0
-    - [72, 80, 83, 91]
-    tag: possum
-    track_id: 298161
   - !TestTrack
     confidence: 0.85
     end: 107.22
@@ -213,36 +182,13 @@ recording_tests:
     - [12, 110, 28, 119]
     expected: true
     opt_end: 107.22
-    opt_start: 3.33
-    start: 3.33
+    opt_start: 0.0
+    start: 0.0
     start_pos:
-    - 3.33
-    - [2, 51, 19, 75]
-    tag: possum
-    track_id: 298160
-- !TestRecording
-  device: A_S4_C3
-  device_id: 1269
-  filename: 684073.cptv
-  group: LS_2020_09
-  group_id: 191
-  rec_id: 684073
-  tracks:
-  - !TestTrack
-    confidence: 0.85
-    end: 107.2
-    end_pos:
-    - 23.78
-    - [10, 107, 40, 119]
-    expected: true
-    opt_end: 92
-    opt_start: 0
-    start: 0
-    start_pos:
-    - 0
+    - 0.0
     - [5, 52, 82, 98]
     tag: possum
-    track_id: 298161
+    track_id: 298160
 - !TestRecording
   device: Wallaby
   device_id: 956
