@@ -134,7 +134,7 @@ class TrackPrediction:
             smooth_prediction = (
                 1 - prediction_smooth
             ) * prev_prediction + prediction_smooth * adjusted_prediction
-            if novelty:
+            if prev_novelty:
                 smooth_novelty = (
                     1 - prediction_smooth
                 ) * prev_novelty + prediction_smooth * novelty

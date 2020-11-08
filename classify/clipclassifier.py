@@ -256,6 +256,10 @@ class ClipClassifier(CPTVFileProcessor):
         # record results in text file.
         save_file = {}
         save_file["source"] = filename
+        if clip.camera_model:
+            save_file["camera_model"] = clip.camera_model
+        save_file["temp_thresh"] = clip.temp_thresh
+        save_file["threshold"] = clip.threshold
         start, end = clip.start_and_end_time_absolute()
         save_file["start_time"] = start.isoformat()
         save_file["end_time"] = end.isoformat()
@@ -281,8 +285,8 @@ class ClipClassifier(CPTVFileProcessor):
             track_info["label"] = prediction.predicted_tag(self.classifier.labels)
             track_info["confidence"] = round(prediction.max_score, 2)
             track_info["clarity"] = round(prediction.clarity, 3)
-            track_info["average_novelty"] = round(prediction.average_novelty, 2)
-            track_info["max_novelty"] = round(prediction.max_novelty, 2)
+            track_info["average_novelty"] = float(round(prediction.average_novelty, 2))
+            track_info["max_novelty"] = float(round(prediction.max_novelty, 2))
             track_info["all_class_confidences"] = {}
 
             # numpy data wont serialize
