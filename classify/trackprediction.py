@@ -42,74 +42,6 @@ class Predictions:
     def prediction_description(self, track_id):
         return self.prediction_per_track.get(track_id).description(self.labels)
 
-    def set_important_frames(self):
-        for track_id, track_prediction in self.prediction_per_track.items():
-            print(
-                "set important frames for track starting at", track_prediction.track_id,
-            )
-            label_i = None
-            fp_i = None
-            # if self.label in self.labels:
-            #     label_i = list(labels).index(self.label)
-            if "false-positive" in self.labels:
-                fp_i = list(self.labels).index("false-positive")
-            clear_frames = []
-            best_preds = []
-            incorrect_best = []
-            # print("track", track_id)
-
-            for i, pred in enumerate(track_prediction.predictions):
-                best = np.argsort(pred)
-                if fp_i and best[-1] == fp_i:
-                    continue
-
-                clarity = pred[best[-1]] - pred[best[-2]]
-                if clarity > MIN_CLARITY:
-                    clear_frames.append((i, clarity))
-                print(i, np.int16(np.around(100 * np.array(pred))))
-
-                # if label_i:
-                pred_percent = pred[best[-1]]
-                if pred_percent >= MIN_PERCENT:
-                    print(pred_percent, "saving", i)
-
-                    best_preds.append((i, pred_percent))
-                    # print(i, pred_percent, self.labels[best[-1]])
-                # if not self.correct_prediction:
-                #     if pred[best[-1]] > MIN_PERCENT:
-                #         incorrect_best.append((i, pred[best[-1]]))
-
-            clear_frames = sorted(
-                clear_frames, reverse=True, key=lambda frame: frame[1]
-            )
-            # print("clearest frames", clear_frames)
-            best_preds = sorted(best_preds, reverse=True, key=lambda frame: frame[1])
-            # print("highest pred", best_preds)
-
-            sorted(incorrect_best, reverse=True, key=lambda frame: frame[1])
-            pred_frames = set()
-            track_prediction.best_predictions = [f[0] for f in best_preds]
-            track_prediction.clearest_frames = [f[0] for f in clear_frames]
-            track_prediction.clearest_frames.sort()
-            track_prediction.best_predictions.sort()
-            print("track", track_id, track_prediction.best_predictions)
-            # print(
-            #     "predictions not clear",
-            #     set(track_prediction.best_predictions)
-            #     - set(track_prediction.clearest_frames),
-            # )
-            #
-            # print(
-            #     "clear not predictions",
-            #     set(track_prediction.clearest_frames)
-            #     - set(track_prediction.best_predictions),
-            # )
-            # pred_frames.update(f[0] for f in clear_frames)
-            pred_frames.update(f[0] for f in best_preds)
-            track_prediction.important_frames = list(pred_frames)
-            # print(pred_frames)
-            print(pred_frames)
-
 
 class TrackPrediction:
     """
@@ -128,12 +60,9 @@ class TrackPrediction:
         self.smoothed_novelties = []
         self.uniform_prior = False
         self.class_best_score = None
-<<<<<<< HEAD
         self.start_frame = start_frame
-=======
-        self.track_prediction = None
 
->>>>>>> origin/master
+        self.track_prediction = None
         self.last_frame_classified = start_frame
         self.num_frames_classified = 0
         self.keep_all = keep_all
@@ -156,42 +85,26 @@ class TrackPrediction:
         self.max_novelty = float(max(self.smoothed_novelties))
         self.novelty_sum = sum(self.smoothed_novelties)
 
-<<<<<<< HEAD
-    def classified_frame(self, frame_number, prediction, novelty=0, smooth=True):
+    def classified_frame(
+        self, frame_number, prediction, mass_scale=1, novelty=None, smooth=True
+    ):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
-        self.original.append(prediction)
-        if smooth:
-            prediction, novelty = self.smooth_prediction(prediction, novelty)
-        if novelty:
-            self.max_novelty = max(self.max_novelty, novelty)
-            self.novelty_sum += novelty
 
-=======
-    def classified_frame(self, frame_number, prediction, mass_scale=1, novelty=None):
-        self.last_frame_classified = frame_number
-        self.num_frames_classified += 1
         if novelty:
             self.max_novelty = float(max(self.max_novelty, novelty))
             self.novelty_sum += novelty
-        smoothed_prediction, smoothed_novelty = self.smooth_prediction(
-            prediction, mass_scale=mass_scale, novelty=novelty
-        )
->>>>>>> origin/master
-        if self.keep_all:
-            # if len(self.predictions) == 1:
-            # print(self.predictions[0])
-            # print(len(self.predictions), "adding prediction", prediction)
-            self.predictions.append(prediction)
-<<<<<<< HEAD
-            # print(self.predictions[0])
-            self.novelties.append(novelty)
-            # if len(self.predictions) == 2:
-            #     raise "ERROR"
-=======
+        if smooth:
+            smoothed_prediction, smoothed_novelty = self.smooth_prediction(
+                prediction, mass_scale=mass_scale, novelty=novelty
+            )
+
             self.smoothed_predictions.append(smoothed_prediction)
             self.smoothed_novelties.append(smoothed_novelty)
->>>>>>> origin/master
+
+        if self.keep_all:
+            self.predictions.append(prediction)
+            self.novelties.append(novelty)
         else:
             self.predictions = [prediction]
             self.smoothed_predictions = [smoothed_prediction]
@@ -282,30 +195,7 @@ class TrackPrediction:
         return self.description(labels)
 
     def get_classified_footer(self, labels, frame_number=None):
-<<<<<<< HEAD
-        # self.track_prediction = TrackPrediction(self.predictions, self.novelties)
-        important = False
-        if frame_number in self.important_frames:
-            # print("important_frame", frame_number)
-            important = True
-        if frame_number is None or frame_number >= len(self.novelties):
-            return "({:.1f} {}){} {}".format(
-                self.max_score * 100,
-                labels[self.best_label_index],
-                int(round(self.clarity, 2) * 100),
-                important,
-            )
-        if self.predictions:
-            return "({:.1f} {}) {} {}".format(
-                self.score_at_time(frame_number) * 100,
-                labels[self.label_at_time(frame_number)],
-                int(round(self.clarity_at(frame_number), 2) * 100),
-                important,
-            )
-        else:
-=======
         if len(self.smoothed_predictions) == 0:
->>>>>>> origin/master
             return "no classification"
         if frame_number is None or frame_number >= len(self.smoothed_predictions):
             score = self.max_score * 10
@@ -423,12 +313,7 @@ class TrackPrediction:
 
         if n is None:
             return None
-<<<<<<< HEAD
-
-        return int(np.argsort(self.predictions[frame_number])[-n])
-=======
         return int(np.argsort(self.smoothed_predictions[frame_number])[-n])
->>>>>>> origin/master
 
     def score_at_time(self, frame_number, n=1):
         """ class label of nth best guess at a point in time."""
