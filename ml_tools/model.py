@@ -2,7 +2,8 @@ import os
 import io
 
 import tensorflow as tf
-from tensorboard.plugins import projector
+
+# from tensorboard.plugins import projector
 import numpy as np
 import matplotlib.pyplot as plt
 import os.path
@@ -171,7 +172,7 @@ class Model:
         assert set(self.datasets.train.labels).issubset(
             set(self.datasets.validation.labels)
         )
-        assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
+        # assert set(self.datasets.train.labels).issubset(set(self.datasets.test.labels))
 
     @property
     def batch_size(self):

@@ -61,7 +61,7 @@ def process_job(loader, queue, model_file):
 
 
 def prediction_job(queue, db, model_file):
-    classifier = NewModel()
+    classifier = KerasModel()
     classifier.load_model(model_file)
     logging.info("Loaded model")
     while True:

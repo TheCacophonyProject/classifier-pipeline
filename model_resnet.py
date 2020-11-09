@@ -127,7 +127,7 @@ class ResnetModel(ConvModel):
         self.first_pool_size = train_config.resnet_params.first_pool_size
         self.first_pool_stride = train_config.resnet_params.first_pool_stride
         if train_config.resnet_params.block_sizes:
-            self.block_sizes = train_config
+            self.block_sizes = train_config.resnet_params.block_sizes
         else:
             self.block_sizes = _get_block_sizes(self.resnet_size)
         self.block_strides = train_config.resnet_params.block_strides

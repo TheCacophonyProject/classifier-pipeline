@@ -16,7 +16,7 @@ import ml_tools.globals as globs
 from ml_tools.model import Model
 from ml_tools.kerasmodel import KerasModel
 
-from ml_tools.dataset import Preprocessor
+from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer
 from track.track import Track
 
@@ -77,14 +77,7 @@ class ClipClassifier(CPTVFileProcessor):
         # note: we should probably be doing this every 9 frames or so.
         state = None
         if self.kerasmodel:
-            data = []
-            for region in track.bounds_history:
-                frame = clip.frame_buffer.get_frame(region.frame_number)
-                frame = frame.crop_by_region(region)
-                data.append(frame.as_array())
-            track_prediction = self.classifier.classify_track(
-                clip, data, regions=track.bounds_history
-            )
+            track_prediction = self.classifier.classify_track(clip, track)
             self.predictions.prediction_per_track[track.get_id()] = track_prediction
         else:
             track_prediction = self.predictions.get_or_create_prediction(track)
@@ -101,7 +94,7 @@ class ClipClassifier(CPTVFileProcessor):
                 if i % self.FRAME_SKIP == 0:
 
                     # we use a tighter cropping here so we disable the default 2 pixel inset
-                    frames = Preprocessor.apply(
+                    frames = preprocess_segment(
                         [track_data], [thermal_reference], default_inset=0
                     )
 
@@ -261,6 +254,10 @@ class ClipClassifier(CPTVFileProcessor):
         # record results in text file.
         save_file = {}
         save_file["source"] = filename
+        if clip.camera_model:
+            save_file["camera_model"] = clip.camera_model
+        save_file["temp_thresh"] = clip.temp_thresh
+        save_file["threshold"] = clip.threshold
         start, end = clip.start_and_end_time_absolute()
         save_file["start_time"] = start.isoformat()
         save_file["end_time"] = end.isoformat()
@@ -286,8 +283,8 @@ class ClipClassifier(CPTVFileProcessor):
             track_info["label"] = self.classifier.labels[prediction.best_label_index]
             track_info["confidence"] = round(prediction.score(), 2)
             track_info["clarity"] = round(prediction.clarity, 3)
-            track_info["average_novelty"] = round(prediction.average_novelty, 2)
-            track_info["max_novelty"] = round(prediction.max_novelty, 2)
+            track_info["average_novelty"] = float(round(prediction.average_novelty, 2))
+            track_info["max_novelty"] = float(round(prediction.max_novelty, 2))
             track_info["all_class_confidences"] = {}
 
             # numpy data wont serialize

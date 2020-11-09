@@ -2,19 +2,9 @@ import attr
 import logging
 import numpy as np
 
-CPTV_FILE_WIDTH = 160
-CPTV_FILE_HEIGHT = 120
-FRAMES_PER_SECOND = 9
-
-MASS_DIFF_PERCENT = 0.20
-MAX_VELOCITY = 2
-MAX_CROP_PERCENT = 0.3
-MIN_CLARITY = 0.8
-MIN_PERCENT = 0.85
-
-RES_X = 160
-RES_Y = 120
-EDGE_PIXELS = 1
+# uniform prior stats start with uniform distribution.  This is the safest bet, but means that
+# it takes a while to make predictions.  When off the first prediction is used instead causing
+# faster, but potentially more unstable predictions.
 UNIFORM_PRIOR = False
 
 
@@ -22,10 +12,15 @@ class Predictions:
     def __init__(self, labels):
         self.labels = labels
         self.prediction_per_track = {}
+        try:
+            self.fp_index = self.labels.index("false-positive")
+        except ValueError:
+            self.fp_index = None
 
     def get_or_create_prediction(self, track, keep_all=True):
         prediction = self.prediction_per_track.setdefault(
-            track.get_id(), TrackPrediction(track.get_id(), track.start_frame, keep_all)
+            track.get_id(),
+            TrackPrediction(track.get_id(), track.start_frame, self.fp_index, keep_all),
         )
         return prediction
 
@@ -123,15 +118,22 @@ class TrackPrediction:
     track.
     """
 
-    def __init__(self, track_id, start_frame, keep_all=True):
+    def __init__(self, track_id, start_frame, fp_index, keep_all=True):
         self.track_prediction = None
         self.state = None
         self.track_id = track_id
         self.predictions = []
-        self.novelties = []
+        self.fp_index = fp_index
+        self.smoothed_predictions = []
+        self.smoothed_novelties = []
         self.uniform_prior = False
         self.class_best_score = None
+<<<<<<< HEAD
         self.start_frame = start_frame
+=======
+        self.track_prediction = None
+
+>>>>>>> origin/master
         self.last_frame_classified = start_frame
         self.num_frames_classified = 0
         self.keep_all = keep_all
@@ -142,15 +144,19 @@ class TrackPrediction:
         self.best_predictions = []
         self.original = []
 
-    def classified_clip(self, predictions, novelties, last_frame):
+    def classified_clip(
+        self, predictions, smoothed_predictions, smoothed_novelties, last_frame
+    ):
         self.last_frame_classified = last_frame
         self.num_frames_classified = len(predictions)
+        self.smoothed_predictions = smoothed_predictions
         self.predictions = predictions
-        self.novelties = novelties
-        self.class_best_score = np.max(self.predictions, axis=0)
-        self.max_novelty = max(self.novelties)
-        self.novelty_sum = sum(self.novelties)
+        self.smoothed_novelties = smoothed_novelties
+        self.class_best_score = np.max(self.smoothed_predictions, axis=0)
+        self.max_novelty = float(max(self.smoothed_novelties))
+        self.novelty_sum = sum(self.smoothed_novelties)
 
+<<<<<<< HEAD
     def classified_frame(self, frame_number, prediction, novelty=0, smooth=True):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
@@ -161,23 +167,77 @@ class TrackPrediction:
             self.max_novelty = max(self.max_novelty, novelty)
             self.novelty_sum += novelty
 
+=======
+    def classified_frame(self, frame_number, prediction, mass_scale=1, novelty=None):
+        self.last_frame_classified = frame_number
+        self.num_frames_classified += 1
+        if novelty:
+            self.max_novelty = float(max(self.max_novelty, novelty))
+            self.novelty_sum += novelty
+        smoothed_prediction, smoothed_novelty = self.smooth_prediction(
+            prediction, mass_scale=mass_scale, novelty=novelty
+        )
+>>>>>>> origin/master
         if self.keep_all:
             # if len(self.predictions) == 1:
             # print(self.predictions[0])
             # print(len(self.predictions), "adding prediction", prediction)
             self.predictions.append(prediction)
+<<<<<<< HEAD
             # print(self.predictions[0])
             self.novelties.append(novelty)
             # if len(self.predictions) == 2:
             #     raise "ERROR"
+=======
+            self.smoothed_predictions.append(smoothed_prediction)
+            self.smoothed_novelties.append(smoothed_novelty)
+>>>>>>> origin/master
         else:
             self.predictions = [prediction]
-            self.novelties = [novelty]
+            self.smoothed_predictions = [smoothed_prediction]
+            self.smoothed_novelties = [smoothed_novelty]
 
         if self.class_best_score is None:
-            self.class_best_score = prediction
+            self.class_best_score = smoothed_prediction
         else:
-            self.class_best_score = np.maximum(self.class_best_score, prediction)
+            self.class_best_score = np.maximum(
+                self.class_best_score, smoothed_prediction
+            )
+
+    def smooth_prediction(self, prediction, mass_scale=1, novelty=None):
+        prediction_smooth = 0.1
+        prev_novelty = None
+        prev_prediction = None
+        smooth_novelty = None
+        # this creates new array
+        if mass_scale:
+            adjusted_prediction = prediction * mass_scale
+        else:
+            adjusted_prediction = np.copy(prediction)
+        if self.fp_index is not None:
+            adjusted_prediction[self.fp_index] *= 0.8
+        if len(self.smoothed_predictions):
+            prev_prediction = self.smoothed_predictions[-1]
+        if len(self.smoothed_novelties):
+            prev_novelty = self.smoothed_novelties[-1]
+
+        num_labels = len(prediction)
+        if prev_prediction is None:
+            if UNIFORM_PRIOR:
+                smooth_prediction = np.ones([num_labels]) * (1 / num_labels)
+            else:
+                smooth_prediction = adjusted_prediction
+            if novelty:
+                smooth_novelty = 0.5
+        else:
+            smooth_prediction = (
+                1 - prediction_smooth
+            ) * prev_prediction + prediction_smooth * adjusted_prediction
+            if prev_novelty:
+                smooth_novelty = (
+                    1 - prediction_smooth
+                ) * prev_novelty + prediction_smooth * novelty
+        return smooth_prediction, smooth_novelty
 
     def smooth_prediction(self, prediction, novelty):
         prediction_smooth = 0.1
@@ -222,6 +282,7 @@ class TrackPrediction:
         return self.description(labels)
 
     def get_classified_footer(self, labels, frame_number=None):
+<<<<<<< HEAD
         # self.track_prediction = TrackPrediction(self.predictions, self.novelties)
         important = False
         if frame_number in self.important_frames:
@@ -242,10 +303,26 @@ class TrackPrediction:
                 important,
             )
         else:
+=======
+        if len(self.smoothed_predictions) == 0:
+>>>>>>> origin/master
             return "no classification"
+        if frame_number is None or frame_number >= len(self.smoothed_predictions):
+            score = self.max_score * 10
+            label = labels[self.best_label_index]
+            novelty = self.max_novelty
+        else:
+            score = self.score_at_time(frame_number) * 10
+            label = labels[self.label_at_time(frame_number)]
+            novelty = self.novelty_at(frame_number)
+
+        footer = "({:.1f} {})".format(score, label)
+        if novelty:
+            footer = "{}\nnovelty={:.2f}".format(footer, novelty)
+        return footer
 
     def get_result(self, labels):
-        if self.predictions:
+        if self.smoothed_predictions:
             return TrackResult(
                 labels[self.best_label_index],
                 self.average_novelty,
@@ -290,9 +367,9 @@ class TrackPrediction:
         if n is None:
             return self.max_novelty
 
-        if self.novelties is None:
+        if self.smoothed_novelties is None:
             return None
-        return self.novelties[n]
+        return self.smoothed_novelties[n]
 
     @property
     def best_label_index(self):
@@ -310,7 +387,7 @@ class TrackPrediction:
     @property
     def average_novelty(self):
         """ average novelty for this track """
-        return self.novelty_sum / self.num_frames_classified
+        return float(self.novelty_sum / self.num_frames_classified)
 
     def clarity_at(self, frame):
         pred = self.predictions[frame]
@@ -346,14 +423,18 @@ class TrackPrediction:
 
         if n is None:
             return None
+<<<<<<< HEAD
 
         return int(np.argsort(self.predictions[frame_number])[-n])
+=======
+        return int(np.argsort(self.smoothed_predictions[frame_number])[-n])
+>>>>>>> origin/master
 
     def score_at_time(self, frame_number, n=1):
         """ class label of nth best guess at a point in time."""
         if n is None:
             return None
-        return float(sorted(self.predictions[frame_number])[-n])
+        return float(sorted(self.smoothed_predictions[frame_number])[-n])
 
     def print_prediction(self, labels):
         logging.info(
@@ -383,7 +464,7 @@ class TrackPrediction:
     def guesses(self, labels):
         guesses = [
             "{} ({:.1f})".format(labels[self.label_index(i)], self.score(i) * 10)
-            for i in range(1, 4)
+            for i in range(1, min(len(labels), 4))
             if self.score(i) > 0.5
         ]
         return guesses

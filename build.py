@@ -53,8 +53,154 @@ def show_segments_breakdown(dataset):
 def show_important_frames_breakdown(dataset):
     print("important frames breakdown:")
     for label in dataset.labels:
+<<<<<<< HEAD
         frame_count = len(dataset.frames_by_label[label])
         print("  {:<20} {} frames".format(label, frame_count))
+=======
+        if label not in prefill_bins:
+            continue
+        normal_bins, heavy_bins = dataset.split_heavy_bins(
+            prefill_bins[label], max_bin_segments, max_validation_track_duration
+        )
+
+        for sample in normal_bins:
+            tracks = dataset.tracks_by_bin[sample]
+            for ds in fill_datasets:
+                ds.add_tracks(tracks)
+        used_bins[label].extend(normal_bins)
+
+
+def split_dataset(db, dataset, build_config, prefill_dataset=None):
+    """
+    Randomly selects tracks to be used as the train, validation, and test sets
+    :param prefill_bins: if given will use these bins for the test set
+    :return: tuple containing train, validation, and test datasets.
+
+    This method assigns tracks into 'label-camera-day' bins and splits the bins across datasets.
+    """
+
+    # pick out groups to use for the various sets
+    bins_by_label = {}
+    used_bins = {}
+
+    for label in dataset.labels:
+        bins_by_label[label] = []
+        used_bins[label] = []
+
+    counts = []
+    for bin_id, tracks in dataset.tracks_by_bin.items():
+        label = tracks[0].label
+        bins_by_label[tracks[0].label].append(bin_id)
+        counts.append(sum(len(track.segments) for track in tracks))
+
+    train = Dataset(db, "train")
+    # 10 cameras
+    # 5 tests
+    # 5 train
+    # then change the names
+    validation = Dataset(db, "validation")
+    test = Dataset(db, "test")
+
+    bin_segment_mean = np.mean(counts)
+    bin_segment_std = np.std(counts)
+    max_bin_segments = bin_segment_mean + bin_segment_std * build_config.cap_bin_weight
+
+    print_bin_segment_stats(bin_segment_mean, bin_segment_std, max_bin_segments)
+
+    max_track_duration = build_config.max_validation_set_track_duration
+    if prefill_dataset is not None:
+        prefill_bins(
+            dataset,
+            [validation, test],
+            prefill_dataset,
+            used_bins,
+            max_bin_segments,
+            max_track_duration,
+        )
+
+    required_samples = build_config.test_set_count
+    required_bins = max(MIN_BINS, build_config.test_set_bins)
+
+    # assign bins to test and validation sets
+    # if we previously added bins from another dataset we are simply filling in the gaps here.
+    for label in dataset.labels:
+        available_bins = set(bins_by_label[label]) - set(used_bins[label])
+
+        normal_bins, heavy_bins = dataset.split_heavy_bins(
+            available_bins, max_bin_segments, max_track_duration
+        )
+
+        print_bin_stats(label, normal_bins, heavy_bins, used_bins)
+
+        add_random_samples(
+            dataset,
+            [validation, test],
+            normal_bins,
+            used_bins[label],
+            label,
+            required_samples,
+            required_bins,
+        )
+
+        normal_bins.extend(heavy_bins)
+        for bin_id in normal_bins:
+            train.add_tracks(dataset.tracks_by_bin[bin_id])
+
+    # if we have lots of segments on a single day, reduce the weight
+    # so we don't overtrain on this specific example.
+    train.balance_bins(max_bin_segments)
+    validation.balance_bins(max_bin_segments)
+    # balance out the classes
+    train.balance_weights()
+    validation.balance_weights()
+
+    test.balance_resample(required_samples=build_config.test_set_count)
+
+    print_segments(dataset, train, validation, test)
+
+    return train, validation, test
+
+
+def add_random_samples(
+    dataset,
+    fill_datasets,
+    sample_set,
+    used_bins,
+    label,
+    required_samples,
+    required_bins,
+):
+    """
+    add random samples from the sample_set to every dataset in
+    fill_datasets until the bin requirements are met
+    Updates the bins in sample_set and used_bins
+    """
+    while sample_set and needs_more_bins(
+        fill_datasets[0], label, used_bins, required_samples, required_bins
+    ):
+
+        bin_id = random.sample(sample_set, 1)[0]
+        tracks = dataset.tracks_by_bin[bin_id]
+        for ds in fill_datasets:
+            ds.add_tracks(tracks)
+
+        sample_set.remove(bin_id)
+        used_bins.append(bin_id)
+
+
+def needs_more_bins(dataset, label, used_bins, required_samples, required_bins):
+    if required_bins is None and required_samples is None:
+        return True
+
+    needs_samples = (
+        required_samples is None
+        or dataset.get_label_segments_count(label) < required_samples
+    )
+    needs_bins = required_bins is None or len(used_bins) < required_bins
+    if required_bins is None or required_samples is None:
+        return needs_samples and needs_bins
+    return needs_samples or needs_bins
+>>>>>>> origin/master
 
 
 def print_bin_segment_stats(bin_segment_mean, bin_segment_std, max_bin_segments):

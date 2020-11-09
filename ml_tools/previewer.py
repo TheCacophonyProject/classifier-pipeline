@@ -29,7 +29,7 @@ from ml_tools import tools
 import ml_tools.globals as globs
 from ml_tools.mpeg_creator import MPEGCreator
 from track.region import Region
-from .dataset import TrackChannels
+from track.track import TrackChannels
 
 
 class Previewer:

@@ -1,4 +1,4 @@
-use_opt_flow: True
+use_opt_flow: False
 
 # Output debug information e.g. heat numbers on preview
 debug: False
@@ -28,20 +28,9 @@ reprocess: true
 # Note: This is should be a full path. It is not relative to the # base_data_folder.
 # previews_colour_map: "custom_colormap.dat"
 
-# Labels preserve this order, this means we can retrain from existing model
-# add new labels to the end
-labels : [
-    "hedgehog",
-    "rodent",
-    "possum",
-    "cat",
-    "bird",
-    "mustelid",
-    "insect",
-    "human",
-    "leporidae",
-    "false-positive",
-]
+# Labels
+labels : ['bird', 'cat', 'false-positive', 'hedgehog', 'insect', 'leporidae', 'mustelid', 'possum', 'rodent', 'wallaby']
+
 
 # Number of worker threads to use.  0 disables worker pool and forces a single thread.
 worker_threads: 0
@@ -56,20 +45,31 @@ tracking:
     # Stats uses a statistical analysis of the whole video to get background levels
     background_calc: preview
 
-    # these parameters are associated with the preview background method
-    preview:
-        # Temp_thresh is calculated based on the preview min, max and mean, and temp_thresh value
+    # When calculating the background ignore the last frames of the preview as the motion detection
+    # will still be triggering during this time.
+    preview_ignore_frames: 2
+
+    motion:
+        #if set to True Temp_thresh is calculated based on the minimum background temperature
+        #of the preview, or whole clip depending on cptv type
         dynamic_thresh: True
 
-        # When calculating the background ignore the last frames of the preview as the motion detection
-        # will still be triggering during this time.
-        ignore_frames: 2
+        camera_thresholds:
+          - camera_model: "lepton3"
+            # Default temperature threshold require for tracking
+            temp_thresh: 2900
+            # Minimum raw temperature difference between background and track
+            delta_thresh: 20
+            # Min/Max temperature threshold value to use if dynamic threshold is true
+            max_temp_thresh: 2900
+            min_temp_thresh: null
+            default: True
 
-        # Minimum raw (temperature) value to be tracked
-        temp_thresh: 2900
-
-        # Minimum raw temperature difference between background and track
-        delta_thresh: 20
+          - camera_model: "lepton3.5"
+            temp_thresh: 28000
+            delta_thresh: 100 # 1 degrees
+            max_temp_thresh: null
+            min_temp_thresh: null
 
     # these parameters are associated with the stats background method
     stats:
@@ -181,7 +181,7 @@ load:
     preview: "boxes"
 
     #cache buffer frame to disk reducing memory usage
-    cache_to_disk: True
+    cache_to_disk: False
 train:
     # model_resnet, model_lq, or model_hq
     model: "model_lq"
@@ -249,7 +249,7 @@ classify:
     classify_folder: "classify"
 
     #cache buffer frame to disk reducing memory usage
-    cache_to_disk: True
+    cache_to_disk: False
 evaluate:
     # Evalulates results against pre-tagged ground truth.
     show_extended_evaluation: False
