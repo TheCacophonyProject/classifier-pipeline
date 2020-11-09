@@ -188,7 +188,7 @@ class Previewer:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 frame = track.crop_by_region(frame, region)
                 img = tools.convert_heat_to_img(
-                    frame[TrackChannels.filtered],
+                    frame[TrackChannels.thermal],
                     self.colourmap,
                     np.amin(frame),
                     np.amax(frame),
@@ -413,25 +413,20 @@ class Previewer:
                 )
 
     @staticmethod
-    def create_four_tracking_image(frame, min_temp, background):
+    def create_four_tracking_image(frame, min_temp):
 
         thermal = frame.thermal
         filtered = frame.filtered + min_temp
         mask = frame.mask * 10000
-        flow_magnitude = (
-            np.clip(np.float32(frame.thermal) - background, a_min=0, a_max=None)
-            + min_temp
-        )
-        # print(flow_magnitude[0])
-        #
-        # flow_h, flow_v = frame.get_flow_split(clip_flow=True)
-        # if flow_h is None and flow_v is None:
-        #     flow_magnitude = filtered
-        # else:
-        #     flow_magnitude = (
-        #         np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
-        #         + min_temp
-        #     )
+
+        flow_h, flow_v = frame.get_flow_split(clip_flow=True)
+        if flow_h is None and flow_v is None:
+            flow_magnitude = filtered
+        else:
+            flow_magnitude = (
+                np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
+                + min_temp
+            )
 
         return np.hstack(
             (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))

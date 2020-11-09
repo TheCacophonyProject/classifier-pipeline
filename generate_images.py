@@ -16,14 +16,11 @@ from ml_tools.trackdatabase import TrackDatabase
 
 
 def save_job(queue, dataset, folder, labels_dir):
-    # classifier = NewModel()
-    # classifier.load_model(model_file)
-    # logging.info("Loaded model")
+
     i = 0
     while True:
         i += 1
         track = queue.get()
-        # try:
         if track == "DONE":
             break
         else:
@@ -34,7 +31,6 @@ def save_job(queue, dataset, folder, labels_dir):
 
 def normalize(data, new_max=1):
     max = np.amax(data)
-    # can get bogus values if border is crap
     min = np.amin(data[data > 0])
     data -= min
     data = data / (max - min) * new_max

@@ -22,7 +22,7 @@ class Preprocessor:
     MIN_SIZE = 4
 
     @staticmethod
-    def apply(
+    def preprocess_segment(
         frames,
         reference_level=None,
         frame_velocity=None,
@@ -126,8 +126,6 @@ class Preprocessor:
             ]
 
             data[i] = scaled_frame
-        # convert back into [F,C,H,W] array.
-        # data = np.float32(scaled_frames)
 
         # -------------------------------------------
         # next adjust temperature and flow levels
@@ -151,10 +149,6 @@ class Preprocessor:
                 for y in range(-2, 2 + 1):
                     data[:, 2 : 3 + 1, H // 2 + y, W // 2 + x] = frame_velocity[:, :]
 
-        # set filtered track to delta frames
-        reference = np.clip(data[:, 0], 20, 999)
-        # data[0, 1] = 0
-        # data[1:, 1] = reference[1:] - reference[:-1]
         flipped = False
         # -------------------------------------------
         # finally apply and additional augmentation
@@ -226,11 +220,7 @@ def preprocess_movement(
     reference_level=None,
 ):
     segment = preprocess_segment(
-        segment,
-        reference_level=reference_level,
-        augment=augment,
-        filter_to_delta=False,
-        default_inset=0,
+        segment, reference_level=reference_level, augment=augment, default_inset=0,
     )
 
     segment = segment[:, channel]

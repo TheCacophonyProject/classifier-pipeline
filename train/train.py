@@ -9,7 +9,7 @@ from ml_tools.framedataset import dataset_db_path
 from ml_tools.kerasmodel import KerasModel
 
 
-def train_model(run_name, conf, hyper_params):
+def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     """Trains a model with the given hyper parameters."""
     run_name = os.path.join("train", run_name)
 
@@ -38,21 +38,6 @@ def train_model(run_name, conf, hyper_params):
     #
 
     model.import_dataset(datasets_filename)
-
-    groups = []
-    groups.append((["bird"], "bird"))
-    # groups.append((["insect", "false-positive"], "false-positive"))
-    # other_labels = []
-    # used_labels = groups[0][0].copy()
-    # used_labels.extend(groups[1][0].copy())
-    # for label in model.datasets.train.labels:
-    #     if label not in used_labels:
-    #         other_labels.append(label)
-    # groups.append((other_labels, "not"))
-    groups.append((["rodent"], "rodent"))
-    model.regroup(
-        groups, random_segments=False,
-    )
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)
     print()
@@ -105,12 +90,7 @@ def train_model(run_name, conf, hyper_params):
     )
 
     model.train_model(epochs=conf.train.epochs, run_name=run_name + "_" + "TEST")
-    # datetime.datetime.now().strftime("%Y%m%d-%H%M%S"),
-    # model.save()
+    model.save()
     model.close()
-
-    # this shouldn't be nessesary, but unfortunately my model.close isn't cleaning up everything.
-    # I think it's because i'm adding everything to the default graph?
-    # tf.reset_default_graph()
 
     return model

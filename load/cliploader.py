@@ -16,35 +16,27 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
-from multiprocessing import Process, Queue
 
-import matplotlib.pyplot as plt
-
-from datetime import datetime
 import os
 import logging
-import multiprocessing
 import time
-from ml_tools.dataset import dataset_db_path
-from ml_tools.kerasmodel import KerasModel
 import numpy as np
-from ml_tools import tools
-from ml_tools.dataset import TrackChannels
-from ml_tools import trackdatabase
-from ml_tools.dataset import Preprocessor
-from ml_tools.trackdatabase import TrackDatabase
 
-from ml_tools.previewer import Previewer
+from multiprocessing import Process, Queue
+
+from classify.trackprediction import TrackPrediction
 from .clip import Clip
 from .cliptrackextractor import ClipTrackExtractor
+
+from ml_tools import tools
+from ml_tools.kerasmodel import KerasModel
+from ml_tools.dataset import TrackChannels
+from ml_tools.trackdatabase import TrackDatabase
+from ml_tools.previewer import Previewer
 from track.track import Track
-from classify.trackprediction import TrackPrediction
 
 
 def process_job(loader, queue, model_file):
-    # classifier = NewModel()
-    # classifier.load_model(model_file)
-    # logging.info("Loaded model")
     i = 0
     while True:
         i += 1
@@ -73,9 +65,6 @@ def prediction_job(queue, db, model_file):
                 db.add_predictions(str(clip), classifier)
             except Exception as e:
                 logging.error("Process_job error %s", e)
-
-
-# job[0].add_prediction(job[1])
 
 
 class ClipLoader:
@@ -114,8 +103,6 @@ class ClipLoader:
             self.config.load.cache_to_disk,
         )
         self.classifier = None
-        # self.load_classifier(self.config.classify.model)
-        # self.database.set_labels(self.classifier.labels)
 
     def missing_predictions(self):
         print("missing predictions")
@@ -123,12 +110,6 @@ class ClipLoader:
         for clip in clips:
             if not self.database.has_prediction(clip):
                 print(clip, "missing prediction")
-
-    def remove_predictions(self):
-        print("removing all predictions")
-        clips = self.database.get_all_clip_ids()
-        for clip in clips:
-            self.database.remove_prediction(clip)
 
     def add_predictions(self):
         job_queue = Queue()
@@ -161,7 +142,6 @@ class ClipLoader:
         if root is None:
             root = self.config.source_folder
 
-        jobs = []
         job_count = 0
         for folder_path, _, files in os.walk(root):
             for name in files:
@@ -177,19 +157,6 @@ class ClipLoader:
 
     def _get_dest_folder(self, filename):
         return os.path.join(self.config.tracks_folder, get_distributed_folder(filename))
-
-    def load_classifier(self, model_file):
-        """
-        Returns a classifier object, which is created on demand.
-        This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
-        """
-        t0 = datetime.now()
-        logging.info("classifier loading")
-
-        self.classifier = NewModel(train_config=self.config.train)
-
-        self.classifier.load_model(model_file)
-        logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
     def _export_tracks(self, full_path, clip, classifier):
         """
@@ -216,7 +183,6 @@ class ClipLoader:
                 cropped = track.crop_by_region(
                     frame, region, filter_mask_by_region=False
                 )
-                thermal = frame.thermal
 
                 # zero out the filtered channel
                 if not self.config.load.include_filtered_channel:
