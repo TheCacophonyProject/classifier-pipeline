@@ -14,7 +14,6 @@ class HyperParams(dict):
         self["dropout"] = self.dropout
         self["learning_rate"] = self.learning_rate
         self["learning_rate_decay"] = self.learning_rate_decay
-        self["lstm"] = self.lstm
         self["use_movement"] = self.use_movement
         self["model"] = self.model
         self["use_segments"] = self.use_segments

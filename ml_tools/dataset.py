@@ -7,8 +7,6 @@ Dataset used for training a tensorflow model from track data.
 Tracks are broken into segments.  Filtered, and then passed to the trainer using a weighted random sample.
 
 """
-from PIL import Image, ImageDraw, ImageFont, ImageColor
-import itertools as it
 import logging
 import math
 import multiprocessing
@@ -17,16 +15,13 @@ import queue
 import random
 import threading
 import time
-from bisect import bisect
 import json
-import cv2
 import dateutil
 import numpy as np
-from scipy import ndimage
 
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
-from track.region import Region
+from ml_tools.preprocess import preprocess_segment
 
 CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
@@ -156,9 +151,7 @@ class TrackHeader:
         return len(self.important_frames)
 
     # trying to get only clear frames
-    def set_important_frames(
-        self, labels, min_mass=None, use_predictions=False, frame_data=None
-    ):
+    def set_important_frames(self, labels, min_mass=None, frame_data=None):
         # this needs more testing
         frames = []
         for i, mass in enumerate(self.frame_mass):
@@ -173,28 +166,6 @@ class TrackHeader:
                         continue
                 frames.append(i)
         np.random.shuffle(frames)
-
-        if self.predictions is not None and use_predictions:
-            fp_i = None
-            # if self.label in labels:
-            #     label_i = list(labels).index(self.label)
-            if "false-positive" in labels:
-                fp_i = list(labels).index("false-positive")
-            best_preds = []
-            for i in frames:
-                pred = self.predictions[i]
-
-                best = np.argsort(pred)[-1]
-
-                if self.label != "false-positive" and fp_i and best == fp_i:
-                    continue
-
-                pred_percent = pred[best]
-                if pred_percent >= MIN_PERCENT:
-                    best_preds.append((i, pred_percent))
-
-            pred_frames = list(f[0] for f in best_preds)
-            frames = pred_frames
         for frame in frames:
             f = FrameSample(self.clip_id, self.track_id, frame, self.label)
             self.important_frames.append(f)
@@ -232,19 +203,18 @@ class TrackHeader:
         segment_frame_spacing,
         segment_width,
         segment_min_mass=None,
-        random=False,
+        use_important=True,
         require_movement=False,
         multiplier=1,
     ):
 
-        seg_count = len(self.segments)
         self.segments = []
         if random and self.num_sample_frames < segment_width:
             # dont want to repeat too many frames
             return
         elif len(mass_history) < segment_width:
             return
-        if require_movement:
+        if use_important:
             mid_x = [
                 tools.Rectangle.from_ltrb(*bound).mid_x for bound in self.track_bounds
             ]
@@ -362,7 +332,6 @@ class TrackHeader:
     def from_meta(clip_id, clip_meta, track_meta, predictions=None):
         """ Creates a track header from given metadata. """
         correct_prediction = track_meta.get("correct_prediction", None)
-
         start_time = dateutil.parser.parse(track_meta["start_time"])
         end_time = dateutil.parser.parse(track_meta["end_time"])
         duration = (end_time - start_time).total_seconds()
@@ -372,7 +341,6 @@ class TrackHeader:
         frames_per_second = clip_meta.get("frames_per_second", FRAMES_PER_SECOND)
         # get the reference levels from clip_meta and load them into the track.
         track_start_frame = track_meta["start_frame"]
-        track_end_frame = track_meta["end_frame"]
         frame_temp_median = np.float32(
             clip_meta["frame_temp_median"][
                 track_start_frame : num_frames + track_start_frame
@@ -631,7 +599,9 @@ class Dataset:
         config=None,
         use_segments=True,
         use_predictions=False,
+        consecutive_segments=False,
     ):
+        self.consecutive_segments = consecutive_segments
         self.camera_bins = {}
         self.use_segments = use_segments
         # database holding track data
@@ -723,6 +693,12 @@ class Dataset:
         if self.use_segments:
             return self.segments
         return self.frame_samples
+
+    def set_samples(self, samples):
+        if self.use_segments:
+            self.segments = samples
+        else:
+            self.frame_samples = samples
 
     def set_samples_for(self, label, samples):
         if self.use_segments:
@@ -863,7 +839,7 @@ class Dataset:
         )
         if shuffle:
             np.random.shuffle(track_ids)
-        for clip_id, track_id in track_ids:
+        for clip_id, track_id in track_ids[:100]:
             if self.load_track(clip_id, track_id, labels):
                 counter += 1
         return [counter, len(track_ids)]
@@ -893,8 +869,6 @@ class Dataset:
         self.tracks.append(track_header)
         self.add_track_to_mappings(track_header)
         self.segments.extend(track_header.segments)
-        # samples = track_header.get_sample_frames()
-        # self.frame_samples.extend(samples)
         return True
 
     def load_track(self, clip_id, track_id, labels):
@@ -922,22 +896,21 @@ class Dataset:
         )
         self.tracks.append(track_header)
 
-        # track_data = self.db.get_track(clip_id, track_id)
-
-        # if self.important_frames:
+        frames = self.db.get_track(clip_id, track_id)
         track_header.set_important_frames(
-            labels, self.min_frame_mass, self.use_predictions
+            labels, self.min_frame_mass, frame_data=frames
         )
         segment_frame_spacing = round(
             self.segment_spacing * track_header.frames_per_second
         )
         segment_width = round(self.segment_length * track_header.frames_per_second)
-        if len(track_header.important_frames) > segment_width / 3.0:
+        if track_header.num_sample_frames > segment_width / 3.0:
             track_header.calculate_segments(
                 track_meta["mass_history"],
                 segment_frame_spacing,
                 segment_width,
                 self.segment_min_mass,
+                use_important=self.consecutive_segments,
             )
 
         self.filtered_stats["segment_mass"] += track_header.filtered_stats[
@@ -1053,52 +1026,52 @@ class Dataset:
         y = np.int32([self.labels.index(segment.label) for segment in self.segments])
         return X, y
 
-    def fetch_track(self, track: TrackHeader, original=False, preprocess=True):
+    def fetch_track(
+        self,
+        track: TrackHeader,
+        original=False,
+        preprocess=True,
+        important_frames=False,
+    ):
         """
         Fetches data for an entire track
         :param track: the track to fetch
         :return: segment data of shape [frames, channels, height, width]
         """
-<<<<<<< HEAD
-        frames = [frame.frame_num for frame in track.important_frames]
-        frames.sort()
-        data = self.db.get_track(
-            track.clip_id, track.track_id, original=original, frames=frames
-=======
-        data = self.db.get_track(track.clip_id, track.track_number, 0, track.frames)
-        data = preprocess_segment(
-            data,
-            reference_level=track.frame_temp_median,
-            frame_velocity=track.frame_velocity,
-            encode_frame_offsets_in_flow=self.encode_frame_offsets_in_flow,
-            default_inset=self.DEFAULT_INSET,
->>>>>>> origin/master
+        frame_numbers = None
+        if important_frames:
+            frame_numbers = [frame.frame_num for frame in track.important_frames]
+            frame_numbers.sort()
+        frames = self.db.get_track(
+            track.clip_id,
+            track.track_id,
+            original=original,
+            frame_numbers=frame_numbers,
         )
-        important_frame_data = []
 
         if preprocess:
 
-            data = Preprocessor.apply(
-                data,
-                reference_level=track.frame_temp_median[frames],
-                frame_velocity=track.frame_velocity[frames],
-                encode_frame_offsets_in_flow=self.encode_frame_offsets_in_flow,
+            frames = preprocess_segment(
+                frames,
+                reference_level=track.frame_temp_median[frame_numbers]
+                if frame_numbers
+                else track.frame_temp_median,
+                frame_velocity=track.frame_velocity[frame_numbers]
+                if frame_numbers
+                else track.frame_velocity,
                 default_inset=self.DEFAULT_INSET,
             )
-        for i, frame_i in enumerate(frames):
-            important_frame_data.append((frame_i, data[i]))
-
-        return important_frame_data
+        return frames
 
     def fetch_frame(self, frame_sample, channels=None):
-        data, label = self.db.get_frame(
+        frame, label = self.db.get_frame(
             frame_sample.clip_id,
             frame_sample.track_id,
             frame_sample.frame_num,
             channels=channels,
         )
         label = self.mapped_label(label)
-        return data, label
+        return frame, label
 
     def fetch_sample(self, sample, augment=False, channels=None):
         if isinstance(sample, SegmentHeader):
@@ -1155,7 +1128,7 @@ class Dataset:
                 "invalid segment length %d, expected %d", len(data), len(segment_width)
             )
         if preprocess:
-            data = Preprocessor.apply(
+            data = preprocess_segment(
                 data,
                 segment.track.frame_temp_median[first_frame:last_frame],
                 segment.track.frame_velocity[first_frame:last_frame],
@@ -1166,18 +1139,9 @@ class Dataset:
         else:
             return data
 
-<<<<<<< HEAD
-    def set_samples(self, cap_at=None, label_cap=None):
+    def reduce_samples(self, cap_at=None, label_cap=None):
         samples = self.epoch_samples(
             cap_at=cap_at, cap_samples=True, label_cap=label_cap
-=======
-        data = preprocess_segment(
-            data,
-            segment.track.frame_temp_median[first_frame:last_frame],
-            segment.track.frame_velocity[first_frame:last_frame],
-            augment=augment,
-            default_inset=self.DEFAULT_INSET,
->>>>>>> origin/master
         )
         self.segments_by_label = {}
         for seg in samples:
@@ -1606,7 +1570,7 @@ class Dataset:
             if total > 0:
                 self.segment_label_cdf[key] = [x / total for x in cdf]
             else:
-                self.segment_label_cdf[key] = np.zeros((cdf.shape))
+                self.segment_label_cdf[key] = []
         # do this after so labels are balanced
         if self.label_mapping:
             mapped_cdf = {}
@@ -1691,41 +1655,17 @@ class Dataset:
                 else:
                     thread.exit()
 
-    #
-    # def resample(self, keep_all, ratio=1.1):
-    #     if self.original_segments is None:
-    #         self.original_segments = self.segments
-    #
-    #     self.segments = [
-    #         sample for sample in self.original_segments if sample.label == keep_all
-    #     ]
-    #
-    #     total_size = len(self.segments) * 1.1
-    #     # labels to samples isn't updated when binarized, but cna be used for finding data labels
-    #     other_labels = [
-    #         sample.label
-    #         for sample in self.original_segments
-    #         if sample.label != keep_all
-    #     ]
-    #     other_labels = set(other_labels)
-    #     amount_per = int(total_size / len(other_labels))
-    #     other_labels = list(other_labels)
-    #     np.random.shuffle(other_labels)
-    #     for label in other_labels:
-    #         segments = [
-    #             sample for sample in self.original_segments if sample.label == label
-    #         ]
-    #         take = min(len(segments), amount_per)
-    #         new_segments = np.random.choice(segments, take, replace=False)
-    #         self.segments.extend(new_segments)
-    #         logging.debug("Resample %s taking %s", len(new_segments), label)
-
     def regroup(
         self, groups, balance_labels=True, shuffle=True,
     ):
+        """
+            regroups the dataset so multiple animals can be under a single label
+        """
         self.label_mapping = {}
         counts = []
         new_labels = []
+        tracks_by_bin = {}
+        samples = []
         for g in groups:
             new_labels.append(g[1])
             count = 0
@@ -1733,102 +1673,34 @@ class Dataset:
                 samples = len(self.samples_for(label))
                 count += samples
                 self.label_mapping[label] = g[1]
+                samples.extend(self.samples_for(label))
+                for sample in samples:
+                    track = self.tracks_by_id[sample.unique_track_id]
+                    tracks_by_bin[track.bin_id] = track
             counts.append(count)
 
         self.labels = new_labels
-        tracks_by_bin = {}
-        samples = []
-        for g in groups:
-            tracks_by_id, new_samples = self.rebalance(labels=g[0], shuffle=shuffle)
-            tracks_by_bin.update(tracks_by_id)
-            samples.extend(new_samples)
-
-        # tracks_by_id2, new_samples2 = self.rebalance(labels=set_two, shuffle=shuffle)
         self.tracks_by_bin = tracks_by_bin
-
+        self.set_samples(samples)
         if self.use_segments:
-            self.segments = samples
             self.segments_by_id == {}
             for seg in samples:
                 self.segments_by_id[seg.id] = seg
-        else:
-            self.frame_samples = samples
-        if shuffle:
-            np.random.shuffle(self.segments)
-            np.random.shuffle(self.frame_samples)
-        self.rebuild_cdf(balance_labels=balance_labels)
 
-    def add_segment_id_map(self):
-        self.segments_by_id == {}
-        for seg in self.segments:
-            self.segments_by_id[seg.id] = seg
-
-    def binarize(
-        self,
-        set_one,
-        lbl_one,
-        set_two=None,
-        lbl_two="other",
-        balance_labels=True,
-        shuffle=True,
-    ):
-        set_one_count = 0
-        self.label_mapping = {}
-        for label in set_one:
-            samples = len(self.samples_for(label))
-            set_one_count += samples
-            self.label_mapping[label] = lbl_one
-
-        if set_two is None:
-            set_two = set(self.labels) - set(set_one)
-        if remove_labels:
-            for label in remove_labels:
-                set_two.discard(label)
-        self.labels = [lbl_one, lbl_two]
-        if keep_fp:
-            set_two.discard("false-positive")
-            self.label_mapping["false-positive"] = "false-positive"
-            self.labels.append("false-positive")
-
-        set_two_count = 0
-        for label in set_two:
-            samples = len(self.samples_for(label))
-            set_two_count += samples
-            self.label_mapping[label] = lbl_two
-        percent = 1
-        percent2 = 1
-
-        tracks_by_id, new_samples = self.rebalance(
-            cap_percent=percent, labels=set_one, shuffle=shuffle
-        )
-        tracks_by_id2, new_samples2 = self.rebalance(
-            cap_percent=percent2, labels=set_two, shuffle=shuffle
-        )
-        self.tracks_by_bin = tracks_by_id
-        samples = new_samples
-        self.tracks_by_bin.update(tracks_by_id2)
-        samples.extend(new_samples2)
-        if keep_fp:
-            tracks_by_id3, new_samples3 = self.rebalance(
-                label_cap=int(set_one_count * 0.5), labels=["false-positive"]
-            )
-            self.tracks_by_bin.update(tracks_by_id3)
-            samples.extend(new_samples3)
-        if self.use_segments:
-            self.segments = new_samples
-        else:
-            self.frame_samples = new_samples
-        if shuffle:
-            np.random.shuffle(self.segments)
+            if shuffle:
+                np.random.shuffle(self.segments)
+        elif shuffle:
             np.random.shuffle(self.frame_samples)
         self.rebuild_cdf(balance_labels=balance_labels)
 
     def rebalance(
         self, label_cap=None, cap_percent=None, labels=None, update=False, shuffle=True,
     ):
+        """
+            Can be used to rebalance a set of labels by a percentage or maximum number
+        """
         new_samples = []
         tracks_by_id = {}
-        tracks = []
         if labels is None:
             labels = self.labels.copy()
 
@@ -1865,7 +1737,7 @@ class Dataset:
         if update:
             self.tracks_by_bin = tracks_by_id
             if self.use_segments:
-                self.segments = new_segments
+                self.segments = new_samples
             else:
                 self.frame_samples = new_samples
         return tracks_by_id, new_samples
@@ -1893,7 +1765,6 @@ class Dataset:
                 segment_frame_spacing,
                 segment_width,
                 self.segment_min_mass,
-                random=True,
                 require_movement=require_movement,
                 multiplier=1.5 if self.enable_augmentation else 1,
             )
@@ -1944,8 +1815,8 @@ def dataset_db_path(config):
 
 
 def filtered_is_valid(frame, label):
-    filtered = frame[TrackChannels.filtered]
-    thermal = frame[TrackChannels.thermal]
+    filtered = frame.filtered
+    thermal = frame.thermal
     thermal_deviation = np.amax(thermal) != np.amin(thermal)
     filtered_deviation = np.amax(filtered) != np.amin(filtered)
     if not thermal_deviation or not filtered_deviation:

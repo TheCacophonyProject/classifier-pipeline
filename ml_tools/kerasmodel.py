@@ -8,10 +8,9 @@ import logging
 from tensorboard.plugins.hparams import api as hp
 
 from collections import namedtuple
-from ml_tools.datagenerator import (
-    DataGenerator,
+from ml_tools.datagenerator import DataGenerator
+from ml_tools.preprocess import (
     preprocess_frame,
-    preprocess_lstm,
     preprocess_movement,
 )
 import numpy as np
@@ -19,7 +18,7 @@ import os
 import time
 import matplotlib.pyplot as plt
 import json
-from ml_tools.dataset import Preprocessor, filtered_is_valid
+from ml_tools.dataset import filtered_is_valid
 from classify.trackprediction import TrackPrediction
 from sklearn.metrics import confusion_matrix
 
@@ -47,8 +46,7 @@ class KerasModel:
     MODEL_DESCRIPTION = "Using pre trained keras application models"
     VERSION = "0.3.0"
 
-    def __init__(self, train_config=None, labels=None, type=0):
-        self.type = type
+    def __init__(self, train_config=None, labels=None):
         self.model = None
         self.datasets = None
         # dictionary containing current hyper parameters
@@ -287,7 +285,6 @@ class KerasModel:
         model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
         model_stats["version"] = self.VERSION
-        model_stats["type"] = self.type
         if history:
             model_stats["history"] = history.history
         if test_results:
@@ -330,7 +327,6 @@ class KerasModel:
             self.labels,
             len(self.datasets.train.labels),
             batch_size=self.params.batch_size,
-            lstm=self.params.lstm,
             buffer_size=self.params.buffer_size,
             use_thermal=self.params.use_thermal,
             use_filtered=self.params.use_filtered,
@@ -339,7 +335,6 @@ class KerasModel:
             epochs=epochs,
             load_threads=self.params.train_load_threads,
             use_movement=self.params.use_movement,
-            type=self.type,
             cap_at="bird",
             # label_cap=1000,
             square_width=self.params.square_width,
@@ -349,7 +344,6 @@ class KerasModel:
             self.labels,
             len(self.datasets.train.labels),
             batch_size=self.params.batch_size,
-            lstm=self.params.lstm,
             buffer_size=self.params.buffer_size,
             use_thermal=self.params.use_thermal,
             use_filtered=self.params.use_filtered,
@@ -358,7 +352,6 @@ class KerasModel:
             epochs=epochs,
             load_threads=1,
             use_movement=self.params.use_movement,
-            type=self.type,
             cap_at="bird",
             square_width=self.params.square_width,
         )
@@ -400,7 +393,6 @@ class KerasModel:
                 self.datasets.train.labels,
                 len(self.datasets.train.labels),
                 batch_size=self.params.batch_size,
-                lstm=self.params.lstm,
                 use_thermal=self.params.use_thermal,
                 use_filtered=self.params.use_filtered,
                 use_movement=self.params.use_movement,
@@ -410,7 +402,6 @@ class KerasModel:
                 load_threads=4,
                 cap_samples=True,
                 cap_at="bird",
-                type=self.type,
                 square_width=self.params.square_width,
             )
             test_accuracy = self.model.evaluate(test)
@@ -470,71 +461,42 @@ class KerasModel:
         frame_sample.extend(valid_indices)
         frame_sample.extend(valid_indices)
         np.random.shuffle(frame_sample)
-        if self.params.lstm:
-            median = []
-            for f in data:
-                median.append(np.median(f[0]))
+        frames_per_classify = self.params.square_width ** 2
+        frames = len(filtered_data)
 
-            data, _ = Preprocessor.apply(data, median, default_inset=0,)
-            data = preprocess_lstm(
-                data,
-                (self.params.frame_size, self.params.frame_size, 3),
+        n_squares = 3 * math.ceil(float(frames) / frames_per_classify)
+        median = np.zeros((frames_per_classify))
+
+        for i in range(n_squares):
+            square_data = filtered_data
+            region_data = regions
+            seg_frames = frame_sample[:frames_per_classify]
+            if len(seg_frames) == 0:
+                break
+            # print("using", seg_frames)
+            segment = []
+            median = np.zeros((len(seg_frames)))
+            # update remaining
+            frame_sample = frame_sample[frames_per_classify:]
+            seg_frames.sort()
+            for i, frame_i in enumerate(seg_frames):
+                f = data[frame_i]
+                segment.append(f)
+                median[i] = np.median(f[0])
+
+            frames = preprocess_movement(
+                square_data,
+                (segment, median),
+                self.params.square_width,
+                region_data,
                 channel,
-                augment=False,
-                preprocess_fn=self.preprocess_fn,
+                self.preprocess_fn,
             )
-            output = self.model.predict(data[np.newaxis, :])
+            if frames is None:
+                print("frames are none")
+                continue
+            output = self.model.predict(frames[np.newaxis, :])
             predictions.append(output[0])
-        elif self.params.use_movement:
-            frames_per_classify = self.params.square_width ** 2
-            frames = len(filtered_data)
-
-            n_squares = 3 * math.ceil(float(frames) / frames_per_classify)
-            median = np.zeros((frames_per_classify))
-
-            for i in range(n_squares):
-                if self.type >= 4:
-                    square_data = filtered_data
-                    region_data = regions
-                    seg_frames = frame_sample[:frames_per_classify]
-                    if len(seg_frames) == 0:
-                        break
-                    # print("using", seg_frames)
-                    segment = []
-                    median = np.zeros((len(seg_frames)))
-                    # update remaining
-                    frame_sample = frame_sample[frames_per_classify:]
-                    seg_frames.sort()
-                    for i, frame_i in enumerate(seg_frames):
-                        f = data[frame_i]
-                        segment.append(f)
-                        median[i] = np.median(f[0])
-                else:
-                    start = i * frames_per_classify
-                    end = start + frames_per_classify
-                    if end > len(data):
-                        end = len(data)
-                        start = len(data) - frames_per_classify
-
-                    square_data = data[start:end]
-                    region_data = regions[start:end]
-                    segment = square_data
-                    for i, f in enumerate(segment):
-                        median[i] = np.median(f[0])
-                frames = preprocess_movement(
-                    square_data,
-                    (segment, median),
-                    self.params.square_width,
-                    region_data,
-                    channel,
-                    self.preprocess_fn,
-                    type=self.type,
-                )
-                if frames is None:
-                    print("frames are none")
-                    continue
-                output = self.model.predict(frames[np.newaxis, :])
-                predictions.append(output[0])
         return predictions
 
     def classify_frame(self, frame, preprocess=True):
@@ -559,7 +521,7 @@ class KerasModel:
         for fld in self.datasets._fields:
             dataset = getattr(self.datasets, fld)
             if random_segments:
-                dataset.random_segments(require_movement=self.type == 14)
+                dataset.random_segments()
             dataset.regroup(groups, shuffle=shuffle)
         # set samples of each label to have a maximum cap, and exclude labels
 
@@ -682,8 +644,8 @@ class KerasModel:
         return history
 
     def test_hparams(self):
-        self.datasets.train.set_samples(cap_at="wallaby", label_cap=1000)
-        self.datasets.validation.set_samples(cap_at="wallaby", label_cap=200)
+        self.datasets.train.reduce_samples(cap_at="wallaby", label_cap=1000)
+        self.datasets.validation.reduce_samples(cap_at="wallaby", label_cap=200)
         epochs = 6
         type = 12
         batch_size = 32
@@ -692,7 +654,6 @@ class KerasModel:
             self.datasets.train.labels,
             len(self.datasets.train.labels),
             batch_size=batch_size,
-            lstm=self.params.lstm,
             buffer_size=self.params.buffer_size,
             use_thermal=self.params.use_thermal,
             use_filtered=self.params.use_filtered,
@@ -703,7 +664,6 @@ class KerasModel:
             randomize_epoch=False,
             shuffle=True,
             keep_epoch=True,
-            type=type,
             square_width=self.params.square_width,
         )
         self.validate = DataGenerator(
@@ -712,7 +672,6 @@ class KerasModel:
             len(self.datasets.train.labels),
             batch_size=batch_size,
             buffer_size=self.params.buffer_size,
-            lstm=self.params.lstm,
             use_thermal=self.params.use_thermal,
             use_filtered=self.params.use_filtered,
             model_preprocess=self.preprocess_fn,
@@ -722,7 +681,6 @@ class KerasModel:
             randomize_epoch=False,
             shuffle=True,
             keep_epoch=True,
-            type=type,
             square_width=self.params.square_width,
         )
 
@@ -840,7 +798,6 @@ class KerasModel:
             self.labels,
             len(self.labels),
             batch_size=self.params.batch_size,
-            lstm=self.params.lstm,
             use_thermal=self.params.use_thermal,
             use_filtered=self.params.use_filtered,
             use_movement=self.params.use_movement,
@@ -849,7 +806,6 @@ class KerasModel:
             epochs=1,
             load_threads=self.params.train_load_threads,
             keep_epoch=True,
-            type=self.type,
             cap_samples=True,
             cap_at="bird",
             square_width=self.params.square_width,
@@ -878,7 +834,6 @@ class KerasModel:
             self.labels,
             len(self.labels),
             batch_size=self.params.batch_size,
-            lstm=self.params.lstm,
             use_thermal=self.params.use_thermal,
             use_filtered=self.params.use_filtered,
             use_movement=self.params.use_movement,
@@ -888,7 +843,6 @@ class KerasModel:
             load_threads=self.params.train_load_threads,
             cap_samples=True,
             cap_at="bird",
-            type=self.type,
             square_width=self.params.square_width,
         )
         test_accuracy = self.model.evaluate(test)

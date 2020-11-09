@@ -30,7 +30,7 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
             labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )
     elif conf.train.model == "keras":
-        model = KerasModel(train_config=conf.train, labels=conf.labels, type=type)
+        model = KerasModel(train_config=conf.train, labels=conf.labels)
     else:
         model = ModelCRNN_LQ(
             labels=len(labels), train_config=conf.train, training=True, **hyper_params

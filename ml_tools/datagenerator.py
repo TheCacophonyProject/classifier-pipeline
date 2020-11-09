@@ -12,9 +12,9 @@ import matplotlib.pyplot as plt
 from ml_tools.dataset import TrackChannels
 import multiprocessing
 import time
-from ml_tools.dataset import Preprocessor, filtered_is_valid
+from ml_tools.dataset import filtered_is_valid
 from ml_tools import tools
-from scipy import ndimage
+from ml_tools.preprocess import preprocess_movement, preprocess_frame
 
 FRAME_SIZE = 48
 FRAMES_PER_SECOND = 9
@@ -33,7 +33,6 @@ class DataGenerator(keras.utils.Sequence):
         dim=(FRAME_SIZE, FRAME_SIZE, 3),
         n_channels=5,
         shuffle=True,
-        lstm=False,
         use_thermal=False,
         use_filtered=False,
         buffer_size=128,
@@ -46,12 +45,12 @@ class DataGenerator(keras.utils.Sequence):
         randomize_epoch=True,
         cap_samples=True,
         cap_at=None,
-        type=0,
         square_width=5,
         label_cap=None,
+        use_dots=False,
     ):
+        self.use_dots = use_dots
         self.label_cap = label_cap
-        self.type = type
         self.cap_at = cap_at
         self.cap_samples = cap_samples
         self.randomize_epoch = randomize_epoch
@@ -63,9 +62,8 @@ class DataGenerator(keras.utils.Sequence):
         self.model_preprocess = model_preprocess
         self.use_thermal = use_thermal
         self.use_filtered = use_filtered
-        self.lstm = lstm
 
-        if not self.use_thermal and not self.use_filtered and not self.lstm:
+        if not self.use_thermal and not self.use_filtered:
             self.use_thermal = True
         self.movement = use_movement
         self.square_width = square_width
@@ -102,11 +100,10 @@ class DataGenerator(keras.utils.Sequence):
             for thread in self.preloader_threads:
                 thread.start()
         logging.info(
-            "datagen for %s shuffle %s cap %s type %s",
+            "datagen for %s shuffle %s cap %s",
             self.dataset.name,
             self.shuffle,
             self.cap_samples,
-            self.type,
         )
 
     def stop_load(self):
@@ -279,10 +276,7 @@ class DataGenerator(keras.utils.Sequence):
     def _data(self, samples, to_categorical=True):
         "Generates data containing batch_size samples"
         # Initialization
-        if self.lstm:
-            X = np.empty((len(samples), samples[0].frames, *self.dim))
-        else:
-            X = np.empty((len(samples), *self.dim,))
+        X = np.empty((len(samples), *self.dim,))
 
         y = np.empty((len(samples)), dtype=int)
         # Generate data
@@ -293,85 +287,58 @@ class DataGenerator(keras.utils.Sequence):
             channel = TrackChannels.filtered
 
         for sample in samples:
+            label = self.dataset.mapped_label(sample.label)
+            if label not in self.labels:
+                continue
             if self.movement:
                 try:
-                    if self.type >= 3:
-                        data = self.dataset.fetch_track(sample.track, preprocess=False)
-
-                    else:
-                        data = self.dataset.fetch_segment(sample, preprocess=False)
+                    frames = self.dataset.fetch_track(sample.track, preprocess=False)
                 except Exception as inst:
                     logging.error("Error fetching sample %s %s", sample, inst)
                     continue
-                label = self.dataset.mapped_label(sample.label)
-                if self.type == 3:
-                    segment_data = data[
-                        sample.start_frame : sample.start_frame + sample.frames
-                    ]
-                    ref = sample.track.frame_temp_median[
-                        sample.start_frame : sample.start_frame + len(segment_data)
-                    ]
-                elif self.type >= 4:
-                    indices = np.arange(len(data))
-                    np.random.shuffle(indices)
-                    frame_data = []
-                    for frame_i in indices[: sample.frames]:
-                        frame_data.append(data[frame_i])
 
-                    if len(frame_data) < 5:
-                        logging.error(
-                            "Important frames filtered for %s %s / %s",
-                            sample,
-                            len(frame_data),
-                            len(sample.track.important_frames),
-                        )
-                        continue
+                indices = np.arange(len(frames))
+                np.random.shuffle(indices)
+                frame_data = []
+                for frame_i in indices[: sample.frames]:
+                    frame_data.append(frames[frame_i].copy())
 
-                    # repeat some frames if need be
-                    if len(frame_data) < self.square_width ** 2:
-                        missing = self.square_width ** 2 - len(frame_data)
-                        np.random.shuffle(indices)
-                        for frame_i in indices[:missing]:
-                            frame_data.append(data[frame_i])
-                    ref = []
-                    segment_data = []
-                    regions = []
-                    frame_data = sorted(
-                        frame_data, key=lambda frame_data: frame_data[0]
+                if len(frame_data) < 5:
+                    logging.error(
+                        "Important frames filtered for %s %s / %s",
+                        sample,
+                        len(frame_data),
+                        len(sample.track.important_frames),
                     )
-                    # sort??? or rather than random just apply a 1 second step
-                    # frames = sample.frame_indices
-                    for frame in frame_data:
-                        segment_data.append(frame[1])
-                        ref.append(sample.track.frame_temp_median[frame[0]])
+                    continue
 
-                    segment = (segment_data, ref)
-                else:
-                    segment_data = data
-                    ref = sample.track.frame_temp_median[
-                        sample.start_frame : sample.start_frame + len(data)
-                    ]
-                    segment = (segment_data, ref)
+                # repeat some frames if need be
+                if len(frame_data) < self.square_width ** 2:
+                    missing = self.square_width ** 2 - len(frame_data)
+                    np.random.shuffle(indices)
+                    for frame_i in indices[:missing]:
+                        frame_data.append(frames[frame_i].copy())
+                ref = []
+                regions = []
+                for r in sample.track.track_bounds:
+                    regions.append(tools.Rectangle.from_ltrb(*r))
+                frame_data = sorted(
+                    frame_data, key=lambda frame_data: frame_data.frame_number
+                )
 
-                if self.type < 3:
-                    regions = sample.track.track_bounds[
-                        sample.start_frame : sample.start_frame + sample.frames
-                    ]
-                else:
+                for frame in frame_data:
+                    ref.append(sample.track.frame_temp_median[frame.frame_number])
 
-                    regions = sample.track.track_bounds
                 data = preprocess_movement(
-                    data,
-                    segment,
+                    frames,
+                    frame_data,
                     self.square_width,
                     regions,
                     channel,
-                    self.model_preprocess,
-                    sample,
-                    self.dataset.name,
-                    self.type,
+                    preprocess_fn=self.model_preprocess,
                     augment=self.augment,
-                    epoch=self.loaded_epochs,
+                    use_dots=self.use_dots,
+                    reference_level=ref,
                 )
             else:
                 try:
@@ -384,14 +351,10 @@ class DataGenerator(keras.utils.Sequence):
                 except Exception as inst:
                     logging.error("Error fetching samples %s %s", sample, inst)
                     continue
-                if self.lstm:
-                    data = preprocess_lstm(
-                        data, self.dim, channel, self.augment, self.model_preprocess,
-                    )
-                else:
-                    data = preprocess_frame(
-                        data, self.dim, None, self.augment, self.model_preprocess,
-                    )
+
+                data = preprocess_frame(
+                    data, self.dim, None, self.augment, self.model_preprocess,
+                )
             if data is None:
                 logging.debug(
                     "error pre processing frame (i.e.max and min are the same)sample %s",
@@ -437,176 +400,158 @@ def augement_frame(frame, dim):
     )
 
     image = convert(frame)
-    # image = tf.image.resize(
-    #     image, [FRAME_SIZE + random.randint(0, 4), FRAME_SIZE + random.randint(0, 4)],
-    # )  # Add 6 pixels of padding
-    image = tf.image.random_crop(
-        image, size=[dim[0], dim[1], 3]
-    )  # Random crop back to 48x 48
-    # if random.random() > 0.50:
-    #     image = tf.image.rot90(image)
+    image = tf.image.random_crop(image, size=[dim[0], dim[1], 3])
     if random.random() > 0.50:
         image = tf.image.flip_left_right(image)
 
-        # maybes thisd should only be sometimes, as otherwise our validation set
-    # if random.random() > 0.20:
-    image = tf.image.random_contrast(image, 0.8, 1.2)
-    # image = tf.image.random_brightness(image, max_delta=0.05)  # Random brightness
+    if random.random() > 0.20:
+        image = tf.image.random_contrast(image, 0.8, 1.2)
     image = tf.minimum(image, 1.0)
     image = tf.maximum(image, 0.0)
     return image.numpy()
 
 
-def square_clip(data, square_width, type=None, augment=False):
-    # lay each frame out side by side in rows
-    frame_size = Preprocessor.FRAME_SIZE
-    background = np.zeros((square_width * frame_size, square_width * frame_size))
-
-    i = 0
-    success = False
-    for x in range(square_width):
-        for y in range(square_width):
-            if i >= len(data):
-                # if type >= 4:
-                #     frame_i = random.randint(0, len(data) - 1)
-                #     frame = data[frame_i]
-                # else:
-                frame = data[-1]
-            else:
-                frame = data[i]
-            frame, norm_success = normalize(frame)
-
-            if not norm_success:
-                continue
-            success = True
-            background[
-                x * frame_size : (x + 1) * frame_size,
-                y * frame_size : (y + 1) * frame_size,
-            ] = np.float32(frame)
-            i += 1
-
-    return background, success
-
-
-def square_clip_flow(data_flow_h, data_flow_v, square_width, type=None):
-    # lay each frame out side by side in rows
-    frame_size = Preprocessor.FRAME_SIZE
-    background = np.zeros((square_width * frame_size, square_width * frame_size))
-
-    i = 0
-    success = False
-    for x in range(square_width):
-        for y in range(square_width):
-            if i >= len(data_flow_h):
-                if type >= 4:
-                    frame_i = random.randint(0, len(data_flow_h) - 1)
-                    flow_h = data_flow_h[frame_i]
-                    flow_v = data_flow_v[frame_i]
-
-                else:
-                    flow_v = data_flow_v[-1]
-                    flow_h = data_flow_h[-1]
-
-            else:
-                flow_v = data_flow_v[i]
-                flow_h = data_flow_h[i]
-
-            flow_magnitude = (
-                np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
-            )
-            frame, norm_success = normalize(flow_magnitude)
-
-            if not norm_success:
-                continue
-            success = True
-            background[
-                x * frame_size : (x + 1) * frame_size,
-                y * frame_size : (y + 1) * frame_size,
-            ] = np.float32(frame)
-            i += 1
-
-    return background, success
-
-
-def dots_movement(
-    frames,
-    regions,
-    label=None,
-    dim=None,
-    channel=TrackChannels.filtered,
-    require_movement=False,
-    use_mask=False,
-    augment=False,
-):
-    """Return 2 images describing the movement, one has dots representing
-    the centre of mass, the other is a collage of all frames
-    """
-    if len(frames) == 0:
-        return
-    channel = TrackChannels.filtered
-    i = 0
-    overlay = np.zeros((126, 166))
-    dots = np.zeros((dim))
-
-    prev = None
-    prev_overlay = None
-    line_colour = 60
-    dot_colour = 120
-    img = Image.fromarray(np.uint8(dots))  # ignore alpha
-
-    d = ImageDraw.Draw(img)
-    # draw movment lines and draw frame overlay
-    center_distance = 0
-    min_distance = 2
-    for frame in frames:
-        if isinstance(regions[frame[0]], tools.Rectangle):
-            region = regions[frame[0]]
-        else:
-            region = tools.Rectangle.from_ltrb(*regions[frame[0]])
-        x = int(region.mid_x)
-        y = int(region.mid_y)
-
-        # writing dot image
-        if prev is not None:
-            d.line(prev + (x, y), fill=line_colour, width=1)
-        prev = (x, y)
-
-        # writing overlay image
-        if require_movement and prev_overlay:
-            center_distance = tools.eucl_distance(prev_overlay, (x, y,),)
-        frame = frame[1]
-        if (
-            prev_overlay is None or center_distance > min_distance
-        ) or not require_movement:
-            if filtered_is_valid(frame, label):
-                if use_mask:
-                    frame = frame[channel] * (frame[TrackChannels.mask] + 0.5)
-                else:
-                    frame = frame[channel]
-                if augment:
-                    frame, region = crop_region(frame, region)
-                frame = np.float32(frame)
-                if augment:
-                    contrast_adjust = tools.random_log(0.9, (1 / 0.9))
-                    frame *= contrast_adjust
-                subimage = region.subimage(overlay)
-                subimage[:, :] += frame
-                center_distance = 0
-                min_distance = pow(region.width / 2.0, 2)
-                prev_overlay = (x, y)
-        prev = (x, y)
-
-    # then draw dots so they go over the top
-    for frame in frames:
-        if isinstance(regions[frame[0]], tools.Rectangle):
-            region = regions[frame[0]]
-        else:
-            region = tools.Rectangle.from_ltrb(*regions[frame[0]])
-        x = int(region.mid_x)
-        y = int(region.mid_y)
-        d.point((x, y), fill=dot_colour)
-
-    return np.array(img), overlay
+#
+# def square_clip(data, square_width, augment=False):
+#     # lay each frame out side by side in rows
+#     frame_size = Preprocessor.FRAME_SIZE
+#     background = np.zeros((square_width * frame_size, square_width * frame_size))
+#
+#     i = 0
+#     success = False
+#     for x in range(square_width):
+#         for y in range(square_width):
+#             if i >= len(data):
+#                 frame = data[-1]
+#             else:
+#                 frame = data[i]
+#             frame, norm_success = normalize(frame)
+#
+#             if not norm_success:
+#                 continue
+#             success = True
+#             background[
+#                 x * frame_size : (x + 1) * frame_size,
+#                 y * frame_size : (y + 1) * frame_size,
+#             ] = np.float32(frame)
+#             i += 1
+#
+#     return background, success
+#
+#
+# def square_clip_flow(data_flow_h, data_flow_v, square_width):
+#     # lay each frame out side by side in rows
+#     frame_size = Preprocessor.FRAME_SIZE
+#     background = np.zeros((square_width * frame_size, square_width * frame_size))
+#
+#     i = 0
+#     success = False
+#     for x in range(square_width):
+#         for y in range(square_width):
+#             if i >= len(data_flow_h):
+#                 frame_i = random.randint(0, len(data_flow_h) - 1)
+#                 flow_h = data_flow_h[frame_i]
+#                 flow_v = data_flow_v[frame_i]
+#             else:
+#                 flow_v = data_flow_v[i]
+#                 flow_h = data_flow_h[i]
+#
+#             flow_magnitude = (
+#                 np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
+#             )
+#             frame, norm_success = normalize(flow_magnitude)
+#
+#             if not norm_success:
+#                 continue
+#             success = True
+#             background[
+#                 x * frame_size : (x + 1) * frame_size,
+#                 y * frame_size : (y + 1) * frame_size,
+#             ] = np.float32(frame)
+#             i += 1
+#
+#     return background, success
+#
+#
+# def dots_movement(
+#     frames,
+#     regions,
+#     label=None,
+#     dim=None,
+#     channel=TrackChannels.filtered,
+#     require_movement=False,
+#     use_mask=False,
+#     augment=False,
+# ):
+#     """Return 2 images describing the movement, one has dots representing
+#     the centre of mass, the other is a collage of all frames
+#     """
+#     if len(frames) == 0:
+#         return
+#     channel = TrackChannels.filtered
+#     i = 0
+#     overlay = np.zeros((126, 166))
+#     dots = np.zeros((dim))
+#
+#     prev = None
+#     prev_overlay = None
+#     line_colour = 60
+#     dot_colour = 120
+#     img = Image.fromarray(np.uint8(dots))  # ignore alpha
+#
+#     d = ImageDraw.Draw(img)
+#     # draw movment lines and draw frame overlay
+#     center_distance = 0
+#     min_distance = 2
+#     for frame in frames:
+#         if isinstance(regions[frame[0]], tools.Rectangle):
+#             region = regions[frame[0]]
+#         else:
+#             region = tools.Rectangle.from_ltrb(*regions[frame[0]])
+#         x = int(region.mid_x)
+#         y = int(region.mid_y)
+#
+#         # writing dot image
+#         if prev is not None:
+#             d.line(prev + (x, y), fill=line_colour, width=1)
+#         prev = (x, y)
+#
+#         # writing overlay image
+#         if require_movement and prev_overlay:
+#             center_distance = tools.eucl_distance(prev_overlay, (x, y,),)
+#         frame = frame[1]
+#         if (
+#             prev_overlay is None or center_distance > min_distance
+#         ) or not require_movement:
+#             if filtered_is_valid(frame, label):
+#                 if use_mask:
+#                     frame = frame[channel] * (frame[TrackChannels.mask] + 0.5)
+#                 else:
+#                     frame = frame[channel]
+#                 if augment:
+#                     frame, region = crop_region(frame, region)
+#                 frame = np.float32(frame)
+#                 if augment:
+#                     contrast_adjust = tools.random_log(0.9, (1 / 0.9))
+#                     frame *= contrast_adjust
+#                 subimage = region.subimage(overlay)
+#                 subimage[:, :] += frame
+#                 center_distance = 0
+#                 min_distance = pow(region.width / 2.0, 2)
+#                 prev_overlay = (x, y)
+#         prev = (x, y)
+#
+#     # then draw dots so they go over the top
+#     for frame in frames:
+#         if isinstance(regions[frame[0]], tools.Rectangle):
+#             region = regions[frame[0]]
+#         else:
+#             region = tools.Rectangle.from_ltrb(*regions[frame[0]])
+#         x = int(region.mid_x)
+#         y = int(region.mid_y)
+#         d.point((x, y), fill=dot_colour)
+#
+#     return np.array(img), overlay
 
 
 def crop_region(frame, region):
@@ -630,142 +575,105 @@ def crop_region(frame, region):
     return frame, region
 
 
-def preprocess_movement(
-    data,
-    segment,
-    square_width,
-    regions,
-    channel,
-    preprocess_fn=None,
-    sample=None,
-    dataset=None,
-    type=0,
-    augment=False,
-    epoch=0,
-):
-    segment, flipped = Preprocessor.apply(*segment, augment=augment, default_inset=0)
-    segment = segment[:, channel]
-    # as long as one frame is fine
-    square, success = square_clip(segment, square_width, type, augment=augment)
-    if not success:
-        return None
+#
+# def preprocess_movement(
+#     data,
+#     segment,
+#     square_width,
+#     regions,
+#     channel,
+#     preprocess_fn=None,
+#     sample=None,
+#     dataset=None,
+#     augment=False,
+#     epoch=0,
+# ):
+#     segment, flipped = Preprocessor.apply(*segment, augment=augment, default_inset=0)
+#     segment = [frame.get_channel(channel) for frame in segment]
+#
+#     # as long as one frame is fine
+#     square, success = square_clip(segment, square_width, channel, augment=augment)
+#     if not success:
+#         return None
+#
+#     dots, overlay = dots_movement(
+#         data,
+#         regions,
+#         label=sample.label if sample else None,
+#         dim=square.shape,
+#         channel=channel,
+#         require_movement=True,
+#         use_mask=False,
+#         augment=augment,
+#     )
+#
+#     dots = dots / 255
+#     overlay, success = normalize(overlay)
+#     if augment:
+#         extra_h = random.randint(0, 24) - 12
+#         extra_v = random.randint(0, 24) - 12
+#         overlay = resize_cv(overlay, overlay.shape, extra_h=extra_h, extra_v=extra_v)
+#         if random.random() <= 0.75:
+#             degrees = random.randint(0, 40) - 20
+#             overlay = ndimage.rotate(
+#                 overlay, degrees, order=1, reshape=False, mode="nearest"
+#             )
+#     if not success:
+#         return None
+#     if flipped:
+#         overlay = np.flip(overlay, axis=1)
+#         dots = np.flip(dots, axis=1)
+#
+#     height, width = overlay.shape
+#     data = np.empty((square.shape[0], square.shape[1], 3))
+#
+#     data[:, :, 0] = square
+#     data[:, :, 1] = np.zeros((dots.shape))
+#     data[:, :, 2] = np.zeros((dots.shape))
+#     data[:, :, 2][:height, :width] = overlay
+#
+#     # # #
+#     # savemovement(
+#     #     data,
+#     #     "samples/{}/{}/{}-{}-{}-{}".format(
+#     #         dataset,
+#     #         epoch,
+#     #         sample.label,
+#     #         sample.track.clip_id,
+#     #         sample.track.track_id,
+#     #         flipped,
+#     #     ),
+#     # )
+#
+#     if preprocess_fn:
+#         for i, frame in enumerate(data):
+#             frame = frame * 255
+#             data[i] = preprocess_fn(frame)
+#     return data
 
-    dots, overlay = dots_movement(
-        data,
-        regions,
-        label=sample.label if sample else None,
-        dim=square.shape,
-        channel=channel,
-        require_movement=True,
-        use_mask=False,
-        augment=augment,
-    )
-
-    dots = dots / 255
-    overlay, success = normalize(overlay)
-    if augment:
-        extra_h = random.randint(0, 24) - 12
-        extra_v = random.randint(0, 24) - 12
-        overlay = resize_cv(overlay, overlay.shape, extra_h=extra_h, extra_v=extra_v)
-        # extra_v = 12
-        if random.random() <= 0.75:
-            degrees = random.randint(0, 40) - 20
-            overlay = ndimage.rotate(
-                overlay, degrees, order=1, reshape=False, mode="nearest"
-            )
-    if not success:
-        return None
-    if flipped:
-        overlay = np.flip(overlay, axis=1)
-        dots = np.flip(dots, axis=1)
-
-    height, width = overlay.shape
-    data = np.empty((square.shape[0], square.shape[1], 3))
-    if type == 4:
-        data[:, :, 0] = square
-        data[:, :, 1] = square
-        data[:, :, 2] = square
-    elif type == 11:
-        data[:, :, 0] = square
-        square_one, success = square_clip(segment[25:], square_width, type)
-        data[:, :, 1] = square_one
-        data[:, :, 2] = overlay
-    elif type >= 9:
-        data[:, :, 0] = square
-        data[:, :, 1] = np.zeros((dots.shape))
-        data[:, :, 2] = np.zeros((dots.shape))
-        data[:, :, 2][:height, :width] = overlay
-    else:
-        data[:, :, 0] = square
-        data[:, :, 1] = dots
-        data[:, :, 2] = np.zeros((dots.shape))
-        data[:, :, 2][:height, :width] = overlay
-
-    # # #
-    # savemovement(
-    #     data,
-    #     "samples/{}/{}/{}-{}-{}-{}".format(
-    #         dataset,
-    #         epoch,
-    #         sample.label,
-    #         sample.track.clip_id,
-    #         sample.track.track_id,
-    #         flipped,
-    #     ),
-    # )
-
-    if preprocess_fn:
-        for i, frame in enumerate(data):
-            frame = frame * 255
-            data[i] = preprocess_fn(frame)
-    return data
-
-
-def preprocess_lstm(
-    data, output_dim, channel, augment=False, preprocess_fn=None,
-):
-
-    data = data[:, channel]
-    # normalizes data, constrast stretch good or bad?
-    # if augment:
-    #     percent = random.randint(0, 2)
-    # else:
-    data, success = normalize(data)
-    np.clip(data, a_min=0, a_max=None, out=data)
-    data = data[..., np.newaxis]
-
-    # data = np.transpose(data, (2, 3, 0))
-    data = np.repeat(data, output_dim[2], axis=3)
-    # pre proce expects values in range 0-255
-    if preprocess_fn:
-        for i, frame in enumerate(data):
-            frame = frame * 255
-            data[i] = preprocess_fn(frame)
-    return data
-
-
-def preprocess_frame(
-    data, output_dim, channel, augment=False, preprocess_fn=None,
-):
-    if channel is not None:
-        data = data[channel]
-    data, success = normalize(data)
-    np.clip(data, a_min=0, a_max=None, out=data)
-    data = data[..., np.newaxis]
-    data = np.repeat(data, 3, axis=2)
-
-    if augment:
-        data = augement_frame(data, output_dim)
-        data = np.clip(data, a_min=0, a_max=None, out=data)
-    else:
-        data = resize_cv(data, output_dim)
-        data = convert(data)
-
-    # pre proce expects values in range 0-255
-    if preprocess_fn:
-        data = data * 255
-        data = preprocess_fn(data)
-    return data
+#
+# def preprocess_frame(
+#     data, output_dim, channel, augment=False, preprocess_fn=None,
+# ):
+#     if channel is not None:
+#         data = data[channel]
+#     data, success = normalize(data)
+#     np.clip(data, a_min=0, a_max=None, out=data)
+#     data = data[..., np.newaxis]
+#     data = np.repeat(data, 3, axis=2)
+#
+#     if augment:
+#         data = augement_frame(data, output_dim)
+#         data = np.clip(data, a_min=0, a_max=None, out=data)
+#     else:
+#         data = resize_cv(data, output_dim)
+#         data = convert(data)
+#
+#     # pre proce expects values in range 0-255
+#     if preprocess_fn:
+#         data = data * 255
+#         data = preprocess_fn(data)
+#     return data
 
 
 # continue to read examples until queue is full
