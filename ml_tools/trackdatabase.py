@@ -17,13 +17,13 @@ from dateutil.parser import parse as parse_date
 from .frame import Frame
 
 special_datasets = ["background_frame", "predictions"]
-read_only = False
 
 
 class HDF5Manager:
     """ Class to handle locking of HDF5 files. """
 
     LOCK_FILE = "/var/lock/classifier-hdf5.lock"
+    READ_ONLY = False
 
     def __init__(self, db, mode="r"):
         self.mode = mode
@@ -35,7 +35,9 @@ class HDF5Manager:
     def __enter__(self):
         # note: we might not have to lock when in read only mode?
         # this could improve performance
-        if not read_only:
+        if HDF5Manager.READ_ONLY and self.mode != "r":
+            raise ValueError("Only read can be done in readonly mode")
+        if not HDF5Manager.READ_ONLY:
             self.lock.acquire()
         self.f = h5py.File(self.db, self.mode)
         return self.f
@@ -44,7 +46,7 @@ class HDF5Manager:
         try:
             self.f.close()
         finally:
-            if not read_only:
+            if not HDF5Manager.READ_ONLY:
                 self.lock.release()
 
 
@@ -56,16 +58,15 @@ class TrackDatabase:
         """
 
         self.database = database_filename
-
         if not os.path.exists(database_filename):
             logging.info("Creating new database %s", database_filename)
             f = h5py.File(database_filename, "w")
             f.create_group("clips")
             f.close()
+        HDF5Manager.READ_ONLY = read_only
 
-    def set_read_only(self, r_only):
-        global read_only
-        read_only = r_only
+    def set_read_only(self, read_only):
+        HDF5Manager.READ_ONLY = read_only
 
     def get_labels(self):
         with HDF5Manager(self.database) as f:

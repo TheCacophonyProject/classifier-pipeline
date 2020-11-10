@@ -1,7 +1,6 @@
 import itertools
 import io
 import math
-from ml_tools.dataset import TrackChannels
 import tensorflow as tf
 import pickle
 import logging
@@ -18,7 +17,7 @@ import os
 import time
 import matplotlib.pyplot as plt
 import json
-from ml_tools.dataset import filtered_is_valid
+from ml_tools.imageprocessing import filtered_is_valid
 from classify.trackprediction import TrackPrediction
 from sklearn.metrics import confusion_matrix
 
@@ -506,10 +505,6 @@ class KerasModel:
         datasets = pickle.load(open(dataset_filename, "rb"))
         self.datasets.train, self.datasets.validation, self.datasets.test = datasets
         self.labels = self.datasets.train.labels
-
-        self.datasets.train.enable_augmentation = True
-        self.datasets.validation.enable_augmentation = False
-        self.datasets.test.enable_augmentation = False
         for dataset in datasets:
             dataset.set_read_only(True)
             dataset.use_segments = self.params.use_segments

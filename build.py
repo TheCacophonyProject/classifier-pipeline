@@ -12,14 +12,14 @@ from dateutil.parser import parse as parse_date
 from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
-from ml_tools.dataset import Dataset, dataset_db_path, Camera
+from ml_tools.dataset import Dataset, dataset_db_path
+from ml_tools.datasetstructures import Camera
 
 LOW_DATA_LABELS = ["wallaby", "human", "dog"]
-MIN_TRACKS = 2
+MIN_TRACKS = 100
 
 CAP_DATA = True
 MIN_VALIDATE_CAMERAS = 5
-MIN_BINS = 4
 
 
 def show_tracks_breakdown(dataset):

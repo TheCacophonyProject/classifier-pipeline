@@ -15,17 +15,12 @@ import queue
 import random
 import threading
 import time
-import json
 import dateutil
 import numpy as np
 
-from ml_tools import tools
+from ml_tools.datasetstructures import TrackHeader, SegmentHeader, Camera
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.preprocess import preprocess_segment
-
-CPTV_FILE_WIDTH = 160
-CPTV_FILE_HEIGHT = 120
-FRAMES_PER_SECOND = 9
 
 
 class TrackChannels:
@@ -36,550 +31,6 @@ class TrackChannels:
     flow_h = 2
     flow_v = 3
     mask = 4
-
-
-class TrackHeader:
-    """ Header for track. """
-
-    def __init__(
-        self,
-        clip_id,
-        track_id,
-        label,
-        start_time,
-        num_frames,
-        duration,
-        camera,
-        location,
-        score,
-        track_bounds,
-        frame_temp_median,
-        frames_per_second,
-        predictions,
-        correct_prediction,
-        frame_mass,
-        start_frame,
-    ):
-        self.predictions = predictions
-        self.correct_prediction = correct_prediction
-        self.filtered_stats = {"segment_mass": 0}
-        # reference to clip this segment came from
-        self.clip_id = clip_id
-        # reference to track this segment came from
-        self.track_id = track_id
-        # list of segments that belong to this track
-        self.segments = []
-        # label for this track
-        self.label = label
-        # date and time of the start of the track
-        self.start_time = start_time
-        self.start_frame = start_frame
-        # duration in seconds
-        self.duration = duration
-        # camera this track came from
-        self.camera = camera
-
-        self.location = location
-        # score of track
-        self.score = score
-        # thermal reference point for each frame.
-        self.frame_temp_median = frame_temp_median
-        # tracking frame movements for each frame, array of tuples (x-vel, y-vel)
-        self.frame_velocity = None
-        # original tracking bounds
-        self.track_bounds = track_bounds
-        # what fraction of pixels are from out of bounds
-        self.frame_crop = []
-        self.num_frames = num_frames
-        self.frames_per_second = frames_per_second
-        self.calculate_velocity()
-        self.calculate_frame_crop()
-        self.important_frames = []
-        self.important_predicted = 0
-        self.frame_mass = frame_mass
-        self.median_mass = np.median(frame_mass)
-        self.mean_mass = np.mean(frame_mass)
-
-    def toJSON(self):
-        meta_dict = {}
-        meta_dict["clip_id"] = int(self.clip_id)
-        meta_dict["track_id"] = int(self.track_id)
-        meta_dict["camera"] = self.camera
-        meta_dict["num_frames"] = int(self.num_frames)
-        positions = []
-        for region in self.track_bounds:
-            positions.append(region.tolist())
-
-        meta_dict["frames_per_second"] = int(self.frames_per_second)
-        meta_dict["track_bounds"] = positions
-        meta_dict["start_frame"] = int(self.start_frame)
-        if self.location is not None:
-            meta_dict["location_hash"] = "{}{}".format(
-                hash(self.location[0]), hash(self.location[1])
-            )
-        meta_dict["label"] = self.label
-
-        return json.dumps(meta_dict, indent=3)
-
-    def add_sample(self, sample, use_segments):
-        if use_segments:
-            self.segments.append(sample)
-        else:
-            self.important_frames.append(sample)
-
-    def get_sample_frames(self):
-        return self.important_frames
-
-    def remove_sample_frame(self, f):
-        self.important_frams.remove(f)
-
-    def get_sample_frame(self, i=0, remove=False):
-        if len(self.important_frames) == 0:
-            return None
-        f = self.important_frames[i]
-
-        if remove:
-            del self.important_frames[i]
-        return f
-
-    @property
-    def frame_weight(self):
-        return 1 / self.num_sample_frames
-
-    @property
-    def num_sample_frames(self):
-        return len(self.important_frames)
-
-    # trying to get only clear frames
-    def set_important_frames(self, labels, min_mass=None, frame_data=None):
-        # this needs more testing
-        frames = []
-        for i, mass in enumerate(self.frame_mass):
-            if min_mass is None or mass >= min_mass:
-                if frame_data is not None:
-                    if not filtered_is_valid(frame_data[i], self.label):
-                        logging.debug(
-                            "set_important_frames %s frame %s has no zeros in filtered frame",
-                            self.unique_id,
-                            i,
-                        )
-                        continue
-                frames.append(i)
-        np.random.shuffle(frames)
-        for frame in frames:
-            f = FrameSample(self.clip_id, self.track_id, frame, self.label)
-            self.important_frames.append(f)
-
-    def calculate_frame_crop(self):
-        # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
-        # bounded rect and check it against frame size.
-        self.frame_crop = []
-        for rect in self.track_bounds:
-            rect = tools.Rectangle.from_ltrb(*rect)
-            rx, ry = rect.mid_x, rect.mid_y
-            size = max(rect.width, rect.height)
-            adjusted_rect = tools.Rectangle(rx - size / 2, ry - size / 2, size, size)
-            self.frame_crop.append(
-                get_cropped_fraction(adjusted_rect, CPTV_FILE_WIDTH, CPTV_FILE_HEIGHT)
-            )
-
-    def calculate_velocity(self):
-        frame_center = [
-            ((left + right) / 2, (top + bottom) / 2)
-            for left, top, right, bottom in self.track_bounds
-        ]
-        self.frame_velocity = []
-        prev = None
-        for x, y in frame_center:
-            if prev is None:
-                self.frame_velocity.append((0.0, 0.0))
-            else:
-                self.frame_velocity.append((x - prev[0], y - prev[1]))
-            prev = (x, y)
-
-    def calculate_segments(
-        self,
-        mass_history,
-        segment_frame_spacing,
-        segment_width,
-        segment_min_mass=None,
-        use_important=True,
-        require_movement=False,
-        multiplier=1,
-    ):
-
-        self.segments = []
-        if random and self.num_sample_frames < segment_width:
-            # dont want to repeat too many frames
-            return
-        elif len(mass_history) < segment_width:
-            return
-        if use_important:
-            mid_x = [
-                tools.Rectangle.from_ltrb(*bound).mid_x for bound in self.track_bounds
-            ]
-            mid_y = [
-                tools.Rectangle.from_ltrb(*bound).mid_y for bound in self.track_bounds
-            ]
-            vel_x = [cur - prev for cur, prev in zip(mid_x[1:], mid_x[:-1])]
-            vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
-
-            movement = sum((vx ** 2 + vy ** 2) ** 0.5 for vx, vy in zip(vel_x, vel_y))
-            widths = [
-                tools.Rectangle.from_ltrb(*bound).width for bound in self.track_bounds
-            ]
-            if movement < np.median(widths) * 2.0:
-                logging.debug("Not enough movment %s %s", self, self.label)
-                return
-
-        segment_count = (len(mass_history) - segment_width) // segment_frame_spacing
-        segment_count += 1
-
-        if random:
-            remaining = segment_width - self.num_sample_frames
-            segment_count = max(0, (self.num_sample_frames - segment_width) // 9)
-            segment_count += 1
-            segment_count = int(multiplier * segment_count)
-            # take any segment_width frames, this could be done each epoch
-            for i in range(segment_count):
-                frames = list(
-                    np.random.choice(
-                        self.important_frames,
-                        min(segment_width, len(self.important_frames)),
-                        replace=False,
-                    )
-                )
-                # sample another batch
-                if remaining > 0:
-                    frames.extend(
-                        np.random.choice(
-                            self.important_frames,
-                            remaining,
-                            replace=False,
-                        )
-                    )
-                frames = [frame.frame_num for frame in frames]
-                frames.sort()
-                mass_slice = mass_history[frames]
-                segment_avg_mass = np.mean(mass_slice)
-                if segment_avg_mass < 50:
-                    segment_weight_factor = 0.75
-                elif segment_avg_mass < 100:
-                    segment_weight_factor = 1
-                else:
-                    segment_weight_factor = 1.2
-                segment = SegmentHeader(
-                    track=self,
-                    start_frame=0,
-                    frames=segment_width,
-                    weight=segment_weight_factor,
-                    avg_mass=segment_avg_mass,
-                    frame_indices=frames,
-                )
-                self.segments.append(segment)
-            # print("segment count", seg_count, len(self.segments))
-
-            return
-        # scan through track looking for good segments to add to our datset
-        for i in range(segment_count):
-            segment_start = i * segment_frame_spacing
-
-            mass_slice = mass_history[segment_start : segment_start + segment_width]
-            segment_avg_mass = np.mean(mass_slice)
-            segment_frames = len(mass_slice)
-
-            if segment_frames != segment_width:
-                continue
-            if segment_min_mass and segment_avg_mass < segment_min_mass:
-                self.filtered_stats["segment_mass"] += 1
-                continue
-            # try to sample the better segments more often
-            if segment_avg_mass < 50:
-                segment_weight_factor = 0.75
-            elif segment_avg_mass < 100:
-                segment_weight_factor = 1
-            else:
-                segment_weight_factor = 1.2
-
-            segment = SegmentHeader(
-                track=self,
-                start_frame=segment_start,
-                frames=segment_width,
-                weight=segment_weight_factor,
-                avg_mass=segment_avg_mass,
-            )
-
-            self.segments.append(segment)
-
-    @property
-    def camera_id(self):
-        """ Unique name of this track. """
-        return "{}-{}".format(self.camera, self.location)
-
-    @property
-    def bin_id(self):
-        """ Unique name of this track. """
-        return "{}-{}".format(self.clip_id, self.track_id)
-
-    @property
-    def weight(self):
-        """ Returns total weight for all segments in this track"""
-        return sum(segment.weight for segment in self.segments)
-
-    @property
-    def unique_id(self):
-        return "{}-{}".format(self.clip_id, self.track_id)
-
-    @staticmethod
-    def from_meta(clip_id, clip_meta, track_meta, predictions=None):
-        """ Creates a track header from given metadata. """
-        correct_prediction = track_meta.get("correct_prediction", None)
-        start_time = dateutil.parser.parse(track_meta["start_time"])
-        end_time = dateutil.parser.parse(track_meta["end_time"])
-        duration = (end_time - start_time).total_seconds()
-        location = clip_meta.get("location")
-        num_frames = track_meta["frames"]
-        camera = clip_meta["device"]
-        frames_per_second = clip_meta.get("frames_per_second", FRAMES_PER_SECOND)
-        # get the reference levels from clip_meta and load them into the track.
-        track_start_frame = track_meta["start_frame"]
-        frame_temp_median = np.float32(
-            clip_meta["frame_temp_median"][
-                track_start_frame : num_frames + track_start_frame
-            ]
-        )
-
-        bounds_history = track_meta["bounds_history"]
-
-        header = TrackHeader(
-            clip_id=int(clip_id),
-            track_id=int(track_meta["id"]),
-            label=track_meta["tag"],
-            start_time=start_time,
-            num_frames=num_frames,
-            duration=duration,
-            camera=camera,
-            location=location,
-            score=float(track_meta["score"]),
-            track_bounds=np.asarray(bounds_history),
-            frame_temp_median=frame_temp_median,
-            frames_per_second=frames_per_second,
-            predictions=predictions,
-            correct_prediction=correct_prediction,
-            frame_mass=track_meta["mass_history"],
-            start_frame=track_start_frame,
-        )
-        return header
-
-    def __repr__(self):
-        return self.unique_id
-
-
-class Camera:
-    def __init__(self, camera):
-        self.label_to_bins = {}
-        self.label_to_tracks = {}
-
-        self.bins = {}
-        self.camera = camera
-        self.bin_segment_sum = {}
-        self.segment_sum = 0
-        self.segments = 0
-        self.label_frames = {}
-        # used to sample bins
-        self.bin_i = -1
-
-    def label_tracks(self, label):
-        return len(self.label_to_bins[label])
-
-    def sample_frame(self, label):
-        bins = self.label_to_bins[label]
-        if len(bins) == 0:
-            return None, None
-        self.bin_i += 1
-        self.bin_i = self.bin_i % len(bins)
-
-        bin_id = bins[self.bin_i]
-        track = self.bins[bin_id][0]
-        f = track.get_sample_frame()
-        if len(track.important_frames) == 0 or f is None:
-            del bins[self.bin_i]
-            del self.bins[bin_id]
-
-        return track, f
-
-    def label_track_count(
-        self,
-        label,
-        max_segments_per_track=None,
-    ):
-        if label not in self.label_to_tracks:
-            return 0
-        tracks = self.label_to_tracks[label].values()
-        return len(tracks)
-
-    def label_segment_count(
-        self,
-        label,
-        max_segments_per_track=None,
-    ):
-        if label not in self.label_to_tracks:
-            return 0
-        tracks = self.label_to_tracks[label].values()
-        frames = 0
-        for track in tracks:
-            if max_segments_per_track:
-                frames += max(len(track.segments), max_segments_per_track)
-            else:
-                frames += len(track.segments)
-
-        return frames
-
-    def label_frame_count(
-        self,
-        label,
-        max_frames_per_track=None,
-    ):
-        if label not in self.label_to_tracks:
-            return 0
-        tracks = self.label_to_tracks[label].values()
-        frames = 0
-        for track in tracks:
-            if max_frames_per_track:
-                frames += max(len(track.important_frames), max_frames_per_track)
-            else:
-                frames += len(track.important_frames)
-
-        return frames
-
-    def remove_track(self, track):
-        self.segments -= 1
-        self.segment_sum -= len(track.segments)
-        del self.label_to_tracks["wallaby"][track.unique_id]
-
-    def add_track(self, track_header):
-        tracks = self.label_to_tracks.setdefault(track_header.label, {})
-        tracks[track_header.unique_id] = track_header
-        if track_header.bin_id not in self.bins:
-            self.bins[track_header.bin_id] = []
-            self.bin_segment_sum[track_header.bin_id] = 0
-
-        if track_header.label not in self.label_to_bins:
-            self.label_to_bins[track_header.label] = []
-            self.label_frames[track_header.label] = 0
-
-        if track_header.bin_id not in self.label_to_bins[track_header.label]:
-            self.label_to_bins[track_header.label].append(track_header.bin_id)
-
-        self.bins[track_header.bin_id].append(track_header)
-        self.label_frames[track_header.label] += len(track_header.important_frames)
-
-        segment_length = len(track_header.segments)
-        self.bin_segment_sum[track_header.bin_id] += segment_length
-        self.segment_sum += segment_length
-        self.segments += 1
-
-
-class FrameSample:
-    def __init__(self, clip_id, track_id, frame_num, label):
-        self.clip_id = clip_id
-        self.track_id = track_id
-        self.frame_num = frame_num
-        self.label = label
-
-    @property
-    def unique_track_id(self):
-        return "{}-{}".format(self.clip_id, self.track_id)
-
-
-class SegmentHeader:
-    """ Header for segment. """
-
-    _segment_id = 1
-
-    def __init__(
-        self,
-        track: TrackHeader,
-        start_frame,
-        frames,
-        weight,
-        avg_mass,
-        frame_indices=None,
-    ):
-        self.id = SegmentHeader._segment_id
-        SegmentHeader._segment_id += 1
-        # reference to track this segment came from
-        self.track = track
-        # first frame of this segment referenced by start of track
-        self.start_frame = start_frame
-        # length of segment in frames
-        self.frames = frames
-        # relative weight of the segment (higher is sampled more often)
-        self.weight = weight
-        # average mass of the segment
-        self.avg_mass = avg_mass
-        self.frame_indices = frame_indices
-
-    @property
-    def unique_track_id(self):
-        # reference to clip this segment came from
-        return self.track.unique_id
-
-    @property
-    def clip_id(self):
-        # reference to clip this segment came from
-        return self.track.clip_id
-
-    @property
-    def label(self):
-        # label for this segment
-        return self.track.label
-
-    @property
-    def name(self):
-        """ Unique name of this segment. """
-        return self.clip_id + "-" + str(self.track_id) + "-" + str(self.start_frame)
-
-    @property
-    def frame_velocity(self):
-        # tracking frame velocity for each frame.
-        return self.track.frame_velocity[
-            self.start_frame : self.start_frame + self.frames
-        ]
-
-    @property
-    def track_bounds(self):
-        # original location of this tracks bounds.
-        return self.track.track_bounds[
-            self.start_frame : self.start_frame + self.frames
-        ]
-
-    @property
-    def frame_crop(self):
-        # how much each frame has been cropped.
-        return self.track.frame_crop[self.start_frame : self.start_frame + self.frames]
-
-    @property
-    def frame_temp_median(self):
-        # thermal reference temperature for each frame (i.e. which temp is 0)
-        return self.track.frame_temp_median[
-            self.start_frame : self.start_frame + self.frames
-        ]
-
-    @property
-    def end_frame(self):
-        """ end frame of segment"""
-        return self.start_frame + self.frames
-
-    @property
-    def track_bin(self):
-        """ Unique name of this segments track. """
-        return self.track.bin_id
-
-    def __str__(self):
-        return "{0} label {1} offset:{2} weight:{3:.1f}".format(
-            self.unique_track_id, self.label, self.start_frame, self.weight
-        )
 
 
 class Dataset:
@@ -786,55 +237,6 @@ class Dataset:
     def set_read_only(self, read_only):
         self.db.set_read_only(read_only)
 
-    def next_batch(self, n, disable_async=False, force_no_augmentation=False):
-        """
-        Returns a batch of n segments (X, y) from dataset.
-        Applies augmentation and preprocessing automatically.
-        :param n: number of segments
-        :param disable_async: forces fetching of segment in this thread / process rather than collecting from
-            an aync reader queue (if one exists)
-        :param force_no_augmentation: forces augmentation off, may disable asyc loading.
-        :return: X of shape [n, channels, height, width], y (labels) of shape [n]
-        """
-
-        # if async is enabled use it.
-        if (
-            not disable_async
-            and self.preloader_queue is not None
-            and not force_no_augmentation
-        ):
-            # get samples from queue
-            batch_X = []
-            batch_y = []
-            for _ in range(n):
-                X, y = self.preloader_queue.get()
-                batch_X.append(X[0])
-                batch_y.append(y[0])
-
-            return np.asarray(batch_X), np.asarray(batch_y)
-
-        segments = self.sample_segments(n)
-
-        batch_X = []
-        batch_y = []
-
-        for segment in segments:
-            data = self.fetch_segment(
-                segment, augment=self.enable_augmentation and not force_no_augmentation
-            )
-            batch_X.append(data)
-            batch_y.append(self.labels.index(segment.label))
-
-            if np.isnan(data).any():
-                logging.warning("NaN found in data from source: %r", segment.clip_id)
-
-        # Half float should be fine here.  When using process based async loading we have to pickle the batch between
-        # processes, so having it half the size helps a lot.  Also it reduces the memory required for the read buffers
-        batch_X = np.float16(batch_X)
-        batch_y = np.int32(batch_y)
-
-        return batch_X, batch_y
-
     def load_tracks(self, shuffle=False, before_date=None, after_date=None):
         """
         Loads track headers from track database with optional filter
@@ -1024,15 +426,6 @@ class Dataset:
         self.rebuild_cdf()
 
         return num_filtered
-
-    def fetch_all(self):
-        """
-        Fetches all segments
-        :return: X of shape [n,f,channels,height,width], y of shape [n]
-        """
-        X = np.float32([self.fetch_segment(segment) for segment in self.segments])
-        y = np.int32([self.labels.index(segment.label) for segment in self.segments])
-        return X, y
 
     def fetch_track(
         self,
@@ -1765,7 +1158,7 @@ class Dataset:
         else:
             return len(self.frame_samples) > 0
 
-    def random_segments(self, balance_labels=True, require_movement=False):
+    def random_segments(self, balance_labels=True, require_movement=False, scale=1.0):
         self.segments = []
         self.segments_by_label = {}
         logging.debug(
@@ -1783,7 +1176,7 @@ class Dataset:
                 segment_width,
                 self.segment_min_mass,
                 require_movement=require_movement,
-                multiplier=1.5 if self.enable_augmentation else 1,
+                scale=scale,
             )
             if len(track.segments) == 0:
                 empty_tracks.append(track)
@@ -1797,6 +1190,71 @@ class Dataset:
             self.tracks_by_bin[track.bin_id].remove(track)
 
         self.rebuild_cdf(balance_labels=balance_labels)
+
+    # HISTORICAL
+    def next_batch(self, n, disable_async=False, force_no_augmentation=False):
+        """
+        Returns a batch of n segments (X, y) from dataset.
+        Applies augmentation and preprocessing automatically.
+        :param n: number of segments
+        :param disable_async: forces fetching of segment in this thread / process rather than collecting from
+            an aync reader queue (if one exists)
+        :param force_no_augmentation: forces augmentation off, may disable asyc loading.
+        :return: X of shape [n, channels, height, width], y (labels) of shape [n]
+        """
+
+        # if async is enabled use it.
+        if (
+            not disable_async
+            and self.preloader_queue is not None
+            and not force_no_augmentation
+        ):
+            # get samples from queue
+            batch_X = []
+            batch_y = []
+            for _ in range(n):
+                X, y = self.preloader_queue.get()
+                batch_X.append(X[0])
+                batch_y.append(y[0])
+
+            return np.asarray(batch_X), np.asarray(batch_y)
+
+        segments = self.sample_segments(n)
+
+        batch_X = []
+        batch_y = []
+
+        for segment in segments:
+            data = self.fetch_segment(
+                segment, augment=self.enable_augmentation and not force_no_augmentation
+            )
+            batch_X.append(data)
+            batch_y.append(self.labels.index(segment.label))
+
+            if np.isnan(data).any():
+                logging.warning("NaN found in data from source: %r", segment.clip_id)
+
+        # Half float should be fine here.  When using process based async loading we have to pickle the batch between
+        # processes, so having it half the size helps a lot.  Also it reduces the memory required for the read buffers
+        batch_X = np.float16(batch_X)
+        batch_y = np.int32(batch_y)
+
+        return batch_X, batch_y
+
+
+def dataset_db_path(config):
+    return os.path.join(config.tracks_folder, "datasets.dat")
+
+
+# HISTORICAL
+def fetch_all(self):
+    """
+    Fetches all segments
+    :return: X of shape [n,f,channels,height,width], y of shape [n]
+    """
+    X = np.float32([self.fetch_segment(segment) for segment in self.segments])
+    y = np.int32([self.labels.index(segment.label) for segment in self.segments])
+    return X, y
 
 
 # continue to read examples until queue is full
@@ -1819,52 +1277,3 @@ def preloader(q, dataset):
                 loads = 0
         else:
             time.sleep(0.1)
-
-
-def get_cropped_fraction(region: tools.Rectangle, width, height):
-    """ Returns the fraction regions mass outside the rect ((0,0), (width, height)"""
-    bounds = tools.Rectangle(0, 0, width - 1, height - 1)
-    return 1 - (bounds.overlap_area(region) / region.area)
-
-
-def dataset_db_path(config):
-    return os.path.join(config.tracks_folder, "datasets.dat")
-
-
-def filtered_is_valid(frame, label):
-    filtered = frame.filtered
-    thermal = frame.thermal
-    thermal_deviation = np.amax(thermal) != np.amin(thermal)
-    filtered_deviation = np.amax(filtered) != np.amin(filtered)
-    if not thermal_deviation or not filtered_deviation:
-        return False
-    if label == "false-positive":
-        return True
-
-    area = filtered.shape[0] * filtered.shape[1]
-    percentile = int(100 - 100 * 16.0 / area)
-    threshold = np.percentile(filtered, percentile)
-    threshold = max(0, threshold - 40)
-
-    rows = math.floor(0.1 * filtered.shape[0])
-    columns = math.floor(0.1 * filtered.shape[1])
-    rows = np.clip(rows, 1, 2)
-    columns = np.clip(columns, 1, 2)
-
-    top_left = 1 if np.amax(filtered[0:rows][:, 0:columns]) > threshold else 0
-    top_right = 1 if np.amax(filtered[0:rows][:, -columns - 1 : -1]) > threshold else 0
-    bottom_left = (
-        1 if np.amax(filtered[-rows - 1 : -1][:, 0:columns]) > threshold else 0
-    )
-    bottom_right = (
-        1 if np.amax(filtered[-rows - 1 : -1][:, -columns - 1 : -1]) > threshold else 0
-    )
-    # try and filter out bogus frames where data is on 3 or more corners
-    if (top_right + bottom_left + top_left + bottom_right) >= 3:
-        return False
-
-    num_less = len(filtered[filtered <= threshold])
-
-    if num_less <= area * 0.05 or np.amax(filtered) == np.amin(filtered):
-        return False
-    return True
