@@ -325,34 +325,31 @@ class KerasModel:
         self.train = DataGenerator(
             self.datasets.train,
             self.labels,
-            len(self.datasets.train.labels),
-            batch_size=self.params.batch_size,
+            self.params.output_dim,
             buffer_size=self.params.buffer_size,
-            use_thermal=self.params.use_thermal,
-            use_filtered=self.params.use_filtered,
+            epochs=epochs,
+            batch_size=self.params.batch_size,
+            channel=self.params.channel,
             shuffle=self.params.shuffle,
             model_preprocess=self.preprocess_fn,
-            epochs=epochs,
             load_threads=self.params.train_load_threads,
             use_movement=self.params.use_movement,
             # cap_at="bird",
-            # label_cap=1000,
             square_width=self.params.square_width,
         )
         self.validate = DataGenerator(
             self.datasets.validation,
             self.labels,
-            len(self.datasets.train.labels),
+            self.params.output_dim,
             batch_size=self.params.batch_size,
             buffer_size=self.params.buffer_size,
-            use_thermal=self.params.use_thermal,
-            use_filtered=self.params.use_filtered,
+            channel=self.params.channel,
             shuffle=self.params.shuffle,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             load_threads=1,
             use_movement=self.params.use_movement,
-            # cap_at="bird",
+            cap_at="bird",
             square_width=self.params.square_width,
         )
         if not self.model:
@@ -361,12 +358,6 @@ class KerasModel:
                 retrain_from=self.params.retrain_layer,
                 dropout=self.params.dropout,
             )
-        file_writer_cm = tf.summary.create_file_writer(self.log_dir + "/cm")
-        cm_callback = tf.keras.callbacks.LambdaCallback(
-            on_epoch_end=lambda epoch, logs: log_confusion_matrix(
-                epoch, logs, self.model, self.validate, file_writer_cm
-            )
-        )
         checkpoints = self.checkpoints(run_name)
 
         self.save_metadata(run_name)
@@ -380,8 +371,7 @@ class KerasModel:
                 tf.keras.callbacks.TensorBoard(
                     self.log_dir, write_graph=True, write_images=True
                 ),
-                *checkpoints
-                # cm_callback,
+                *checkpoints,
             ],  # log metrics
         )
         self.validate.stop_load()
@@ -391,16 +381,14 @@ class KerasModel:
             test = DataGenerator(
                 self.datasets.test,
                 self.datasets.train.labels,
-                len(self.datasets.train.labels),
+                self.params.output_dim,
                 batch_size=self.params.batch_size,
-                use_thermal=self.params.use_thermal,
-                use_filtered=self.params.use_filtered,
+                channel=self.params.channel,
                 use_movement=self.params.use_movement,
                 shuffle=True,
                 model_preprocess=self.preprocess_fn,
                 epochs=1,
-                load_threads=4,
-                cap_samples=True,
+                load_threads=self.params.train_load_threads,
                 cap_at="bird",
                 square_width=self.params.square_width,
             )
@@ -442,78 +430,6 @@ class KerasModel:
             mode="max",
         )
         return [checkpoint_acc, checkpoint_loss, checkpoint_recall]
-
-    def classify_frames(self, data, preprocess=True, regions=None):
-        predictions = []
-        if self.params.use_thermal:
-            channel = TrackChannels.thermal
-        else:
-            channel = TrackChannels.filtered
-
-        filtered_data = []
-        valid_indices = []
-        for i, frame in enumerate(data):
-            if filtered_is_valid(frame, ""):
-                filtered_data.append((i, frame))
-                valid_indices.append(i)
-
-        frame_sample = valid_indices
-        frame_sample.extend(valid_indices)
-        frame_sample.extend(valid_indices)
-        np.random.shuffle(frame_sample)
-        frames_per_classify = self.params.square_width ** 2
-        frames = len(filtered_data)
-
-        n_squares = 3 * math.ceil(float(frames) / frames_per_classify)
-        median = np.zeros((frames_per_classify))
-
-        for i in range(n_squares):
-            square_data = filtered_data
-            region_data = regions
-            seg_frames = frame_sample[:frames_per_classify]
-            if len(seg_frames) == 0:
-                break
-            # print("using", seg_frames)
-            segment = []
-            median = np.zeros((len(seg_frames)))
-            # update remaining
-            frame_sample = frame_sample[frames_per_classify:]
-            seg_frames.sort()
-            for i, frame_i in enumerate(seg_frames):
-                f = data[frame_i]
-                segment.append(f)
-                median[i] = np.median(f[0])
-
-            frames = preprocess_movement(
-                square_data,
-                (segment, median),
-                self.params.square_width,
-                region_data,
-                channel,
-                self.preprocess_fn,
-            )
-            if frames is None:
-                print("frames are none")
-                continue
-            output = self.model.predict(frames[np.newaxis, :])
-            predictions.append(output[0])
-        return predictions
-
-    def classify_frame(self, frame, preprocess=True):
-        if self.params.use_thermal:
-            channel = TrackChannels.thermal
-        else:
-            channel = TrackChannels.filtered
-        if preprocess:
-            frame = preprocess_frame(
-                frame,
-                (self.params.frame_size, self.params.frame_size, 3),
-                channel,
-                augment=False,
-                preprocess_fn=self.preprocess_fn,
-            )
-        output = self.model.predict(frame[np.newaxis, :])
-        return output[0]
 
     def regroup(
         self, groups, shuffle=True, random_segments=False,
@@ -652,15 +568,14 @@ class KerasModel:
         self.train = DataGenerator(
             self.datasets.train,
             self.datasets.train.labels,
-            len(self.datasets.train.labels),
+            self.params.output_dim,
             batch_size=batch_size,
             buffer_size=self.params.buffer_size,
-            use_thermal=self.params.use_thermal,
+            channel=self.params.channel,
             use_filtered=self.params.use_filtered,
             model_preprocess=self.preprocess_fn,
             load_threads=self.params.train_load_threads,
             use_movement=self.params.use_movement,
-            cap_at="wallaby",
             randomize_epoch=False,
             shuffle=True,
             keep_epoch=True,
@@ -669,15 +584,14 @@ class KerasModel:
         self.validate = DataGenerator(
             self.datasets.validation,
             self.datasets.train.labels,
-            len(self.datasets.train.labels),
+            self.params.output_dim,
             batch_size=batch_size,
             buffer_size=self.params.buffer_size,
-            use_thermal=self.params.use_thermal,
+            channel=self.params.channel,
             use_filtered=self.params.use_filtered,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             use_movement=self.params.use_movement,
-            cap_at="wallaby",
             randomize_epoch=False,
             shuffle=True,
             keep_epoch=True,
@@ -751,9 +665,7 @@ class KerasModel:
         )
 
     def add_lstm(self, cnn):
-        input_layer = tf.keras.Input(
-            shape=(None, self.params.frame_size, self.params.frame_size, 3)
-        )
+        input_layer = tf.keras.Input(shape=(None, *self.params.output_dim))
         encoded_frames = tf.keras.layers.TimeDistributed(cnn)(input_layer)
         lstm_outputs = tf.keras.layers.LSTM(
             self.params["lstm_units"],
@@ -772,14 +684,10 @@ class KerasModel:
 
     def classify_track(self, track_id, data, keep_all=True, regions=None):
         track_prediction = TrackPrediction(track_id, 0, keep_all)
-        if self.params.lstm:
-            prediction = self.classify_frame(data)
-            track_prediction.classified_frame(0, prediction, None)
-        elif self.params.use_movement:
+        if self.params.use_movement:
             predictions = self.classify_frames(data, regions=regions)
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
-
         else:
             skip = 9
             for i, frame in enumerate(data):
@@ -790,15 +698,80 @@ class KerasModel:
 
         return track_prediction
 
+    def classify_frames(self, data, preprocess=True, regions=None):
+        predictions = []
+
+        filtered_data = []
+        valid_indices = []
+        for i, frame in enumerate(data):
+            if filtered_is_valid(frame, ""):
+                filtered_data.append((i, frame))
+                valid_indices.append(i)
+
+        frame_sample = valid_indices
+        frame_sample.extend(valid_indices)
+        frame_sample.extend(valid_indices)
+        np.random.shuffle(frame_sample)
+        frames_per_classify = self.params.square_width ** 2
+        frames = len(filtered_data)
+
+        n_squares = 3 * math.ceil(float(frames) / frames_per_classify)
+        median = np.zeros((frames_per_classify))
+
+        for i in range(n_squares):
+            square_data = filtered_data
+            region_data = regions
+            seg_frames = frame_sample[:frames_per_classify]
+            if len(seg_frames) == 0:
+                break
+            # print("using", seg_frames)
+            segment = []
+            median = np.zeros((len(seg_frames)))
+            # update remaining
+            frame_sample = frame_sample[frames_per_classify:]
+            seg_frames.sort()
+            for i, frame_i in enumerate(seg_frames):
+                f = data[frame_i]
+                segment.append(f)
+                median[i] = np.median(f[0])
+
+            frames = preprocess_movement(
+                square_data,
+                (segment, median),
+                self.params.square_width,
+                region_data,
+                self.params.channel,
+                self.preprocess_fn,
+            )
+            if frames is None:
+                print("frames are none")
+                continue
+            output = self.model.predict(frames[np.newaxis, :])
+            predictions.append(output[0])
+        return predictions
+
+    def classify_frame(self, frame, preprocess=True):
+
+        if preprocess:
+            frame = preprocess_frame(
+                frame,
+                self.params.output_dim,
+                self.params.channel,
+                augment=False,
+                preprocess_fn=self.preprocess_fn,
+            )
+        output = self.model.predict(frame[np.newaxis, :])
+        return output[0]
+
     def confusion(self, dataset, filename="confusion.png"):
         dataset.set_read_only(True)
         dataset.use_segments = self.params.use_segments
         test = DataGenerator(
             dataset,
             self.labels,
-            len(self.labels),
+            self.params.output_dim,
             batch_size=self.params.batch_size,
-            use_thermal=self.params.use_thermal,
+            channel=self.params.channel,
             use_filtered=self.params.use_filtered,
             use_movement=self.params.use_movement,
             shuffle=True,
@@ -829,13 +802,13 @@ class KerasModel:
     def evaluate(self, dataset):
         dataset.set_read_only(True)
         dataset.use_segments = self.params.use_segments
+
         test = DataGenerator(
             dataset,
             self.labels,
-            len(self.labels),
+            self.params.output_dim,
             batch_size=self.params.batch_size,
-            use_thermal=self.params.use_thermal,
-            use_filtered=self.params.use_filtered,
+            channel=self.params.channel,
             use_movement=self.params.use_movement,
             shuffle=True,
             model_preprocess=self.preprocess_fn,

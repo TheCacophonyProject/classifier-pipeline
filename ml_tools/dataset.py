@@ -1158,7 +1158,7 @@ class Dataset:
         labels = self.labels.copy()
         samples = []
 
-        if cap_samples and label_cap is None:
+        if (cap_at or cap_samples) and label_cap is None:
             if cap_at:
                 label_cap = len(self.samples_for(cap_at, remapped=True))
             else:
@@ -1166,7 +1166,7 @@ class Dataset:
 
         cap = None
         for label in labels:
-            if cap_samples:
+            if label_cap:
                 cap = min(label_cap, len(self.samples_for(label, remapped=True)))
             if label == "false-positive":
                 cap = min(cap, int(label_cap * 0.5))

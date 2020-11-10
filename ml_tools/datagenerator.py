@@ -1,18 +1,12 @@
-from PIL import Image, ImageDraw, ImageFont, ImageColor
+from PIL import Image
 from pathlib import Path
 import pickle
 import math
-import random
 import logging
 import tensorflow.keras as keras
-import tensorflow as tf
-import cv2
 import numpy as np
-import matplotlib.pyplot as plt
-from ml_tools.dataset import TrackChannels
 import multiprocessing
 import time
-from ml_tools.dataset import filtered_is_valid
 from ml_tools import tools
 from ml_tools.preprocess import preprocess_movement, preprocess_frame
 
@@ -20,73 +14,46 @@ FRAME_SIZE = 48
 FRAMES_PER_SECOND = 9
 
 
+class GeneartorParams:
+    def __init__(self, output_dim, params):
+        self.augment = params.get("augment", False)
+        self.use_dots = params.get("use_dots", False)
+        self.use_movement = params.get("use_movement")
+        self.model_preprocess = params.get("model_preprocess")
+        self.channel = params.get("channel")
+        self.square_width = params.get("square_width", 5)
+        self.output_dim = output_dim
+
+
 class DataGenerator(keras.utils.Sequence):
     "Generates data for Keras"
 
     def __init__(
-        self,
-        dataset,
-        labels,
-        num_classes,
-        batch_size,
-        model_preprocess=None,
-        dim=(FRAME_SIZE, FRAME_SIZE, 3),
-        n_channels=5,
-        shuffle=True,
-        use_thermal=False,
-        use_filtered=False,
-        buffer_size=128,
-        epochs=10,
-        load_threads=1,
-        preload=True,
-        use_movement=False,
-        balance_labels=True,
-        keep_epoch=False,
-        randomize_epoch=True,
-        cap_samples=True,
-        cap_at=None,
-        square_width=5,
-        label_cap=None,
-        use_dots=False,
+        self, dataset, labels, output_dim, **params,
     ):
-        self.use_dots = use_dots
-        self.label_cap = label_cap
-        self.cap_at = cap_at
-        self.cap_samples = cap_samples
-        self.randomize_epoch = randomize_epoch
+        self.params = GeneartorParams(output_dim, params)
         self.use_previous_epoch = None
-        self.keep_epoch = keep_epoch
-        self.balance_labels = balance_labels
-
         self.labels = labels
-        self.model_preprocess = model_preprocess
-        self.use_thermal = use_thermal
-        self.use_filtered = use_filtered
-
-        if not self.use_thermal and not self.use_filtered:
-            self.use_thermal = True
-        self.movement = use_movement
-        self.square_width = square_width
-        if use_movement:
-            dim = (dim[0] * self.square_width, dim[1] * self.square_width, dim[2])
-        self.dim = dim
-        self.augment = dataset.enable_augmentation
-        self.batch_size = batch_size
         self.dataset = dataset
+        self.preload = params.get("preload", True)
+        self.epochs = params.get("epochs", 10)
         self.samples = None
-        self.shuffle = shuffle
-        self.n_classes = len(self.labels)
-        self.n_channels = n_channels
+        self.keep_epoch = params.get("keep_epoch")
+        self.randomize_epoch = params.get("randomize_epoch")
+        self.cap_at = params.get("cap_at")
+        self.cap_samples = params.get("cap_samples", True)
+        self.label_cap = params.get("label_cap")
+        self.shuffle = params.get("shuffle", True)
+        self.batch_size = params.get("batch_size", 16)
+
         self.cur_epoch = 0
         self.loaded_epochs = 0
-        self.epochs = epochs
         self.epoch_data = []
         self.epoch_stats = []
-        self.preload = preload
         if self.preload:
             self.load_queue = multiprocessing.Queue()
         if self.preload:
-            self.preloader_queue = multiprocessing.Queue(buffer_size)
+            self.preloader_queue = multiprocessing.Queue(params.get("buffer_size", 128))
 
         # load epoch
         self.load_next_epoch()
@@ -96,9 +63,16 @@ class DataGenerator(keras.utils.Sequence):
         if self.preload:
             self.preloader_threads = [
                 multiprocessing.Process(
-                    target=preloader, args=(self.preloader_queue, self.load_queue, self)
+                    target=preloader,
+                    args=(
+                        self.preloader_queue,
+                        self.load_queue,
+                        self.labels,
+                        self.dataset,
+                        self.params,
+                    ),
                 )
-                for _ in range(load_threads)
+                for _ in range(params.get("load_threads", 2))
             ]
             for thread in self.preloader_threads:
                 thread.start()
@@ -128,15 +102,6 @@ class DataGenerator(keras.utils.Sequence):
         "Denotes the number of batches per epoch"
 
         return int(math.ceil(len(self.samples) / self.batch_size))
-
-    def loadbatch(self, samples):
-        start = time.time()
-        # samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
-        X, y = self._data(samples)
-
-        logging.debug("%s  Time to get data %s", self.dataset.name, time.time() - start)
-
-        return X, y
 
     def __getitem__(self, index):
         "Generate one batch of data"
@@ -248,121 +213,127 @@ class DataGenerator(keras.utils.Sequence):
         logging.info("epoch ended for %s %s", self.dataset.name, last_stats)
         self.cur_epoch += 1
 
-    def _data(self, samples, to_categorical=True):
-        "Generates data containing batch_size samples"
-        # Initialization
-        X = np.empty((len(samples), *self.dim,))
 
-        y = np.empty((len(samples)), dtype=int)
-        data_i = 0
-        if self.use_thermal:
-            channel = TrackChannels.thermal
-        else:
-            channel = TrackChannels.filtered
+def loadbatch(labels, dataset, samples, params):
+    start = time.time()
+    # samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
+    X, y = _data(labels, dataset, samples, params)
 
-        for sample in samples:
-            label = self.dataset.mapped_label(sample.label)
-            if label not in self.labels:
+    logging.debug("%s  Time to get data %s", dataset.name, time.time() - start)
+
+    return X, y
+
+
+def _data(labels, dataset, samples, params, to_categorical=True):
+    "Generates data containing batch_size samples"
+    # Initialization
+    X = np.empty((len(samples), *params.output_dim,))
+
+    y = np.empty((len(samples)), dtype=int)
+    data_i = 0
+
+    for sample in samples:
+        label = dataset.mapped_label(sample.label)
+        if label not in labels:
+            continue
+        if params.use_movement:
+            try:
+                frames = dataset.fetch_track(sample.track, preprocess=False)
+            except Exception as inst:
+                logging.error("Error fetching sample %s %s", sample, inst)
                 continue
-            if self.movement:
-                try:
-                    frames = self.dataset.fetch_track(sample.track, preprocess=False)
-                except Exception as inst:
-                    logging.error("Error fetching sample %s %s", sample, inst)
-                    continue
 
-                indices = np.arange(len(frames))
-                np.random.shuffle(indices)
-                frame_data = []
-                for frame_i in indices[: sample.frames]:
-                    frame_data.append(frames[frame_i].copy())
+            indices = np.arange(len(frames))
+            np.random.shuffle(indices)
+            frame_data = []
+            for frame_i in indices[: sample.frames]:
+                frame_data.append(frames[frame_i].copy())
 
-                if len(frame_data) < 5:
-                    logging.error(
-                        "Important frames filtered for %s %s / %s",
-                        sample,
-                        len(frame_data),
-                        len(sample.track.important_frames),
-                    )
-                    continue
-
-                # repeat some frames if need be
-                if len(frame_data) < self.square_width ** 2:
-                    missing = self.square_width ** 2 - len(frame_data)
-                    np.random.shuffle(indices)
-                    for frame_i in indices[:missing]:
-                        frame_data.append(frames[frame_i].copy())
-                ref = []
-                regions = []
-                for r in sample.track.track_bounds:
-                    regions.append(tools.Rectangle.from_ltrb(*r))
-                frame_data = sorted(
-                    frame_data, key=lambda frame_data: frame_data.frame_number
-                )
-
-                for frame in frame_data:
-                    ref.append(sample.track.frame_temp_median[frame.frame_number])
-
-                data = preprocess_movement(
-                    frames,
-                    frame_data,
-                    self.square_width,
-                    regions,
-                    channel,
-                    preprocess_fn=self.model_preprocess,
-                    augment=self.augment,
-                    use_dots=self.use_dots,
-                    reference_level=ref,
-                )
-            else:
-                try:
-                    data, label = self.dataset.fetch_sample(
-                        sample, augment=self.augment, channels=channel
-                    )
-
-                    if label not in self.labels:
-                        continue
-                except Exception as inst:
-                    logging.error("Error fetching samples %s %s", sample, inst)
-                    continue
-
-                data = preprocess_frame(
-                    data, self.dim, None, self.augment, self.model_preprocess,
-                )
-            if data is None:
-                logging.debug(
-                    "error pre processing frame (i.e.max and min are the same)sample %s",
+            if len(frame_data) < 5:
+                logging.error(
+                    "Important frames filtered for %s %s / %s",
                     sample,
+                    len(frame_data),
+                    len(sample.track.important_frames),
                 )
                 continue
 
-            X[data_i] = data
-            y[data_i] = self.labels.index(label)
-            data_i += 1
-        # remove data that was null
-        X = X[:data_i]
-        y = y[:data_i]
-        if to_categorical:
-            y = keras.utils.to_categorical(y, num_classes=self.n_classes)
-        return np.array(X), y
+            # repeat some frames if need be
+            if len(frame_data) < params.square_width ** 2:
+                missing = params.square_width ** 2 - len(frame_data)
+                np.random.shuffle(indices)
+                for frame_i in indices[:missing]:
+                    frame_data.append(frames[frame_i].copy())
+            ref = []
+            regions = []
+            for r in sample.track.track_bounds:
+                regions.append(tools.Rectangle.from_ltrb(*r))
+            frame_data = sorted(
+                frame_data, key=lambda frame_data: frame_data.frame_number
+            )
+
+            for frame in frame_data:
+                ref.append(sample.track.frame_temp_median[frame.frame_number])
+
+            data = preprocess_movement(
+                frames,
+                frame_data,
+                params.square_width,
+                regions,
+                params.channel,
+                preprocess_fn=params.model_preprocess,
+                augment=params.augment,
+                use_dots=params.use_dots,
+                reference_level=ref,
+            )
+        else:
+            try:
+                data, label = dataset.fetch_sample(
+                    sample, augment=params.augment, channels=params.channel
+                )
+
+                if label not in labels:
+                    continue
+            except Exception as inst:
+                logging.error("Error fetching samples %s %s", sample, inst)
+                continue
+
+            data = preprocess_frame(
+                data, params.output_dim, None, params.augment, params.model_preprocess
+            )
+        if data is None:
+            logging.debug(
+                "error pre processing frame (i.e.max and min are the same)sample %s",
+                sample,
+            )
+            continue
+
+        X[data_i] = data
+        y[data_i] = labels.index(label)
+        data_i += 1
+    # remove data that was null
+    X = X[:data_i]
+    y = y[:data_i]
+    if to_categorical:
+        y = keras.utils.to_categorical(y, num_classes=len(labels))
+    return np.array(X), y
 
 
 # continue to read examples until queue is full
-def preloader(q, load_queue, datagen):
+def preloader(q, load_queue, labels, dataset, params):
     """ add a segment into buffer """
     logging.info(
-        " -started async fetcher for %s augment=%s",
-        datagen.dataset.name,
-        datagen.augment,
+        " -started async fetcher for %s augment=%s", dataset.name, params.augment,
     )
     while True:
         if not q.full():
             samples = pickle.loads(load_queue.get())
-            datagen.loaded_epochs = samples[0]
+            # datagen.loaded_epochs = samples[0]
             segments = []
             for sample_id in samples[1]:
-                segments.append(datagen.dataset.segments_by_id[sample_id])
-            q.put(datagen.loadbatch(segments))
+                segments.append(dataset.segments_by_id[sample_id])
+
+            q.put(loadbatch(labels, dataset, segments, params))
 
         else:
             time.sleep(0.1)

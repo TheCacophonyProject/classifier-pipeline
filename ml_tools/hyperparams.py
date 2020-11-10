@@ -1,8 +1,15 @@
+from ml_tools.dataset import TrackChannels
+
+
 class HyperParams(dict):
     """ Defines hyper paramaters for model """
 
     def __init__(self, *args):
         super(HyperParams, self).__init__(*args)
+
+        filtered = self.get("use_filtered")
+        if filtered:
+            self["channel"] = TrackChannels.filtered
 
         self.insert_defaults()
 
@@ -20,15 +27,30 @@ class HyperParams(dict):
         self["square_width"] = self.square_width
         self["buffer_size"] = self.buffer_size
         self["frame_size"] = self.frame_size
-        self["use_thermal"] = self.use_thermal
-        self["use_filtered"] = self.use_filtered
+
         self["shuffle"] = self.shuffle
         self["train_load_threads"] = self.train_load_threads
+        self["channel"] = self.channel
+
+    @property
+    def output_dim(self):
+        output_dim = (self.frame_size, self.frame_size)
+        if self.use_movement:
+            output_dim = (
+                output_dim[0] * self.square_width,
+                output_dim[1] * self.square_width,
+                3,
+            )
+        return output_dim
 
     # Model hyper paramters
     @property
     def model(self):
         return self.get("model", "resnetv2")
+
+    @property
+    def channel(self):
+        return self.get("channel", TrackChannels.thermal)
 
     @property
     def dense_sizes(self):
@@ -86,14 +108,6 @@ class HyperParams(dict):
     @property
     def frame_size(self):
         return self.get("frame_size", 48)
-
-    @property
-    def use_thermal(self):
-        return self.get("use_thermal", False)
-
-    @property
-    def use_filtered(self):
-        return self.get("use_filtered", True)
 
     @property
     def shuffle(self):
