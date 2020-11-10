@@ -104,13 +104,6 @@ class ClipLoader:
         )
         self.classifier = None
 
-    def missing_predictions(self):
-        print("missing predictions")
-        clips = self.database.get_all_clip_ids()
-        for clip in clips:
-            if not self.database.has_prediction(clip):
-                print(clip, "missing prediction")
-
     def add_predictions(self):
         job_queue = Queue()
         processes = []
@@ -237,7 +230,7 @@ class ClipLoader:
         confidence = track_tag.get("confidence", 0)
         return tag and tag not in excluded_tags and confidence >= min_confidence
 
-    def process_file(self, filename, classifier=None, add_frame=True):
+    def process_file(self, filename, classifier=None):
         start = time.time()
         base_filename = os.path.splitext(os.path.basename(filename))[0]
 

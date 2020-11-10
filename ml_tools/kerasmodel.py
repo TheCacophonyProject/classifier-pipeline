@@ -459,32 +459,10 @@ class KerasModel:
         )
         return [checkpoint_acc, checkpoint_loss, checkpoint_recall]
 
-    def regroup(
-        self,
-        groups,
-        shuffle=True,
-        random_segments=False,
-    ):
+    def regroup(self, groups, shuffle=True):
         for fld in self.datasets._fields:
             dataset = getattr(self.datasets, fld)
-            if random_segments:
-                dataset.random_segments()
             dataset.regroup(groups, shuffle=shuffle)
-        # set samples of each label to have a maximum cap, and exclude labels
-
-        self.set_labels()
-
-    def rebalance(self, train_cap=1000, validate_cap=500, exclude=[], update=True):
-        # set samples of each label to have a maximum cap, and exclude labels
-        self.datasets.train.rebalance(
-            label_cap=train_cap, exclude=exclude, update=update
-        )
-        self.datasets.validation.rebalance(
-            label_cap=validate_cap, exclude=exclude, update=update
-        )
-        self.datasets.test.rebalance(
-            label_cap=validate_cap, exclude=exclude, update=update
-        )
         self.set_labels()
 
     def set_labels(self):
@@ -526,28 +504,6 @@ class KerasModel:
         )
         logging.info("Labels: {}".format(self.labels))
 
-    #  was some problem with batch norm in old tensorflows
-    # when training accuracy would be high, but when evaluating on same data
-    # it would be low, this tests that, all printed accuracies should be close
-    def learning_phase_test(self, dataset):
-        self.save()
-        dataset.shuffle = False
-        _, accuracy = self.model.evaluate(dataset)
-        print("dynamic", accuracy)
-        tf.keras.backend.set_learning_phase(0)
-        self.load_model(
-            os.path.join(self.checkpoint_folder, "resnet50/"),
-        )
-        _, accuracy = self.model.evaluate(dataset)
-        print("learning0", accuracy)
-
-        tf.keras.backend.set_learning_phase(1)
-        self.load_model(
-            os.path.join(self.checkpoint_folder, "resnet50/"),
-        )
-        _, accuracy = self.model.evaluate(dataset)
-        print("learning1", accuracy)
-
     # GRID SEARCH
     def train_test_model(self, hparams, log_dir, epochs=6):
         # if not self.model:
@@ -558,7 +514,6 @@ class KerasModel:
             dropout = None
         if retrain_layer == -1:
             retrain_layer = None
-        type = hparams[HP_TYPE]
 
         for i, size in enumerate(dense_size):
             dense_size[i] = int(size)
@@ -779,7 +734,6 @@ class KerasModel:
                 self.preprocess_fn,
             )
             if frames is None:
-                print("frames are none")
                 continue
             output = self.model.predict(frames[np.newaxis, :])
             predictions.append(output[0])

@@ -234,9 +234,6 @@ class Dataset:
             )
         return segments, frames, tracks, bins, weight
 
-    def set_read_only(self, read_only):
-        self.db.set_read_only(read_only)
-
     def load_tracks(self, shuffle=False, before_date=None, after_date=None):
         """
         Loads track headers from track database with optional filter
@@ -249,7 +246,7 @@ class Dataset:
         )
         if shuffle:
             np.random.shuffle(track_ids)
-        for clip_id, track_id in track_ids[:100]:
+        for clip_id, track_id in track_ids:
             if self.load_track(clip_id, track_id, labels):
                 counter += 1
         return [counter, len(track_ids)]
@@ -639,90 +636,6 @@ class Dataset:
             segment.weight *= scale_factor.get(segment.label, 1.0)
         self.rebuild_cdf()
 
-    def balance_labels_and_remove(
-        self,
-        labels=None,
-        exclude_labels=None,
-        high_tracks_first=False,
-        use_segments=True,
-    ):
-        if labels is None:
-            labels = self.labels
-        if exclude_labels:
-            for label in exclude_labels:
-                if label in labels:
-                    labels.remove(label)
-
-        total = 0
-        for label in labels:
-            if use_segments:
-                total += len(self.segments_by_label.get(label, []))
-            else:
-                total += len(self.frames_by_label.get(label, []))
-
-        # this could be done smarter
-        label_percent = 1 / len(self.labels)
-        label_cap = label_percent * total
-        for label in labels:
-            label_tracks = self.tracks_by_label.get(label, []).copy()
-            if use_segments:
-                label_samples = len(self.segments_by_label.get(label, []))
-            else:
-                label_samples = len(self.frames_by_label.get(label, []))
-                # label_segments = sum([len(track.segments) for track in label_tracks])
-            samples_to_remove = label_samples - label_cap
-            samples_removed = 0
-            if high_tracks_first:
-                tracks_by_segments = {}
-                for track in label_tracks:
-                    if use_segments:
-                        samples = len(track.segments)
-                    else:
-                        samples = len(track.get_sample_frames())
-                    seg_tracks = tracks_by_segments.setdefault(samples, [])
-                    seg_tracks.append(track)
-                seg_counts = list(tracks_by_segments.keys())
-                seg_counts.sort(reverse=True)
-
-            while samples_removed < samples_to_remove:
-                if high_tracks_first:
-                    seg_count = seg_counts[0]
-                    high_tracks = tracks_by_segments[seg_count]
-                    track = random.choice(high_tracks)
-                    high_tracks.remove(track)
-                    seg_tracks = tracks_by_segments.setdefault(seg_count - 1, [])
-                    seg_tracks.append(track)
-                    insert_at = 1
-                    if len(high_tracks) == 0:
-                        insert_at = 0
-                        del seg_counts[0]
-                    if len(seg_tracks) == 1:
-                        seg_counts.insert(insert_at, seg_count - 1)
-                else:
-                    track = np.random.choice(label_tracks)
-
-                if use_segments:
-                    if len(track.segments) == 0:
-                        label_tracks.remove(track)
-                        continue
-                    seg = random.choice(track.segments)
-                    track.segments.remove(seg)
-                    self.segments.remove(seg)
-                    self.segments_by_label[label].remove(seg)
-                    if len(track.segments) == 0:
-                        label_tracks.remove(track)
-                else:
-                    if len(track.get_sample_frames()) == 0:
-                        label_tracks.remove(track)
-                        continue
-                    frame = random.choice(track.get_sample_frames())
-                    track.important_frames.remove(frame)
-                    self.frame_samples.remove(frame)
-                    self.frames_by_label[label].remove(frame)
-                    if len(track.get_sample_frames()) == 0:
-                        label_tracks.remove(track)
-                samples_removed += 1
-
     def balance_bins(self, max_bin_weight=None):
         """
         Adjusts weights so that bins with a number number of segments aren't sampled so frequently.
@@ -882,6 +795,15 @@ class Dataset:
             return self.label_mapping.get(label, label)
         return label
 
+    def rebuild_cdf(self, balance_labels=False, lbl_p=None):
+        """Calculates the CDF used for fast random sampling for frames and
+        segments, if balance labels is set each label has an equal chance of
+        being chosen
+        """
+
+        self.rebuild_segment_cdf(balance_labels=balance_labels, lbl_p=lbl_p)
+        self.rebuild_frame_cdf(balance_labels=balance_labels, lbl_p=lbl_p)
+
     def rebuild_frame_cdf(self, balance_labels=False, lbl_p=None):
         self.frame_cdf = []
         total = 0
@@ -926,26 +848,6 @@ class Dataset:
                 total = sum(cdf)
                 mapped_cdf[key] = [x / total for x in cdf]
             self.frame_label_cdf = mapped_cdf
-
-    def rebuild_cdf(self, balance_labels=False):
-        """Calculates the CDF used for fast random sampling for frames and
-        segments, if balance labels is set each label has an equal chance of
-        being chosen
-        """
-        p = {
-            "bird": 20,
-            "possum": 20,
-            "rodent": 20,
-            "hedgehog": 20,
-            "cat": 5,
-            "insect": 1,
-            "leporidae": 5,
-            "mustelid": 5,
-            "false-positive": 1,
-            "wallaby": 5,
-        }
-        self.rebuild_segment_cdf(balance_labels=balance_labels, lbl_p=p)
-        self.rebuild_frame_cdf(balance_labels=balance_labels, lbl_p=p)
 
     def rebuild_segment_cdf(self, balance_labels=False, lbl_p=None):
         """ Calculates the CDF used for fast random sampling """

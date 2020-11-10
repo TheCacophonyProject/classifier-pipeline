@@ -33,6 +33,20 @@ class TrainConfig(DefaultConfig):
     resnet_params = attr.ib()
     use_gru = attr.ib()
     model = attr.ib()
+    label_probablities = attr.ib()
+
+    LABEL_PROBABILITIES = {
+        "bird": 20,
+        "possum": 20,
+        "rodent": 20,
+        "hedgehog": 20,
+        "cat": 5,
+        "insect": 1,
+        "leporidae": 5,
+        "mustelid": 5,
+        "false-positive": 1,
+        "wallaby": 5,
+    }
 
     @classmethod
     def load(cls, raw, base_data_folder):
@@ -46,6 +60,7 @@ class TrainConfig(DefaultConfig):
             epochs=raw["epochs"],
             use_gru=raw["use_gru"],
             model=raw["model"],
+            label_probabilities=raw["label_probablities"],
         )
 
     @classmethod
@@ -56,7 +71,8 @@ class TrainConfig(DefaultConfig):
             train_dir="train",
             epochs=30,
             use_gru=True,
-            model="Resnet",
+            model="keras",
+            label_probablities=TrainConfig.LABEL_PROBABILITIES,
         )
 
     def validate(self):

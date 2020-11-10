@@ -68,9 +68,6 @@ class TrackPrediction:
         self.keep_all = keep_all
         self.max_novelty = 0
         self.novelty_sum = 0
-        self.important_frames = []
-        self.clearest_frames = []
-        self.best_predictions = []
         self.original = []
 
     def classified_clip(
@@ -150,30 +147,6 @@ class TrackPrediction:
                 smooth_novelty = (
                     1 - prediction_smooth
                 ) * prev_novelty + prediction_smooth * novelty
-        return smooth_prediction, smooth_novelty
-
-    def smooth_prediction(self, prediction, novelty):
-        prediction_smooth = 0.1
-        smooth_novelty = None
-        prev_prediction = None
-        if len(self.predictions):
-            prev_prediction = self.predictions[-1]
-        num_labels = len(prediction)
-        if prev_prediction is None:
-            if UNIFORM_PRIOR:
-                smooth_prediction = np.ones([num_labels]) * (1 / num_labels)
-            else:
-                smooth_prediction = prediction
-            if novelty:
-                smooth_novelty = 0.5
-        else:
-            smooth_prediction = (
-                1 - prediction_smooth
-            ) * prev_prediction + prediction_smooth * prediction
-            if novelty:
-                smooth_novelty = (
-                    1 - prediction_smooth
-                ) * smooth_novelty + prediction_smooth * novelty
         return smooth_prediction, smooth_novelty
 
     def get_priority(self, frame_number):
