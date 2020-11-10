@@ -48,7 +48,9 @@ def load_config():
     parser.add_argument("-w", "--weights", help="Fine tune using these weights")
 
     parser.add_argument(
-        "name", default="unnammed", help="Name of training job",
+        "name",
+        default="unnammed",
+        help="Name of training job",
     )
     args = parser.parse_args()
     return Config.load_from_file(args.config_file), args

@@ -1,5 +1,3 @@
-from PIL import Image
-from pathlib import Path
 import pickle
 import math
 import logging
@@ -29,7 +27,11 @@ class DataGenerator(keras.utils.Sequence):
     "Generates data for Keras"
 
     def __init__(
-        self, dataset, labels, output_dim, **params,
+        self,
+        dataset,
+        labels,
+        output_dim,
+        **params,
     ):
         self.params = GeneartorParams(output_dim, params)
         self.use_previous_epoch = None
@@ -146,8 +148,8 @@ class DataGenerator(keras.utils.Sequence):
 
     def resuse_previous_epoch(self):
         """
-            This is used in hyper training to speeed it up just load one epoch into memory
-            and shuffle each time
+        This is used in hyper training to speeed it up just load one epoch into memory
+        and shuffle each time
         """
         if self.use_previous_epoch is None:
             # [batch, segment, height, width, rgb]
@@ -227,7 +229,12 @@ def loadbatch(labels, dataset, samples, params):
 def _data(labels, dataset, samples, params, to_categorical=True):
     "Generates data containing batch_size samples"
     # Initialization
-    X = np.empty((len(samples), *params.output_dim,))
+    X = np.empty(
+        (
+            len(samples),
+            *params.output_dim,
+        )
+    )
 
     y = np.empty((len(samples)), dtype=int)
     data_i = 0
@@ -274,7 +281,6 @@ def _data(labels, dataset, samples, params, to_categorical=True):
 
             for frame in frame_data:
                 ref.append(sample.track.frame_temp_median[frame.frame_number])
-
             data = preprocess_movement(
                 frames,
                 frame_data,
@@ -285,6 +291,7 @@ def _data(labels, dataset, samples, params, to_categorical=True):
                 augment=params.augment,
                 use_dots=params.use_dots,
                 reference_level=ref,
+                sample=sample,
             )
         else:
             try:
@@ -323,7 +330,9 @@ def _data(labels, dataset, samples, params, to_categorical=True):
 def preloader(q, load_queue, labels, dataset, params):
     """ add a segment into buffer """
     logging.info(
-        " -started async fetcher for %s augment=%s", dataset.name, params.augment,
+        " -started async fetcher for %s augment=%s",
+        dataset.name,
+        params.augment,
     )
     while True:
         if not q.full():
@@ -337,13 +346,3 @@ def preloader(q, load_queue, labels, dataset, params):
 
         else:
             time.sleep(0.1)
-
-
-def savemovement(data, filename):
-    Path(filename).parent.mkdir(parents=True, exist_ok=True)
-    r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
-    g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
-    b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
-    concat = np.concatenate((r, g, b), axis=1)  # horizontally
-    img = Image.fromarray(np.uint8(concat))
-    img.save(filename + "rgb.png")

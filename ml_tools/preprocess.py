@@ -38,7 +38,11 @@ def augement_frame(frame, dim):
 
 
 def preprocess_segment(
-    frames, reference_level=None, frame_velocity=None, augment=False, default_inset=0,
+    frames,
+    reference_level=None,
+    frame_velocity=None,
+    augment=False,
+    default_inset=0,
 ):
     """
     Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
@@ -169,9 +173,13 @@ def preprocess_movement(
     augment=False,
     use_dots=True,
     reference_level=None,
+    sample=None,
 ):
     segment, flipped = preprocess_segment(
-        segment, reference_level=reference_level, augment=augment, default_inset=0,
+        segment,
+        reference_level=reference_level,
+        augment=augment,
+        default_inset=0,
     )
     segment = [frame.get_channel(channel) for frame in segment]
     # as long as one frame it's fine
@@ -181,7 +189,10 @@ def preprocess_movement(
     if not success:
         return None
     dots, overlay = imageprocessing.movement_images(
-        data, regions, dim=square.shape, require_movement=True,
+        data,
+        regions,
+        dim=square.shape,
+        require_movement=True,
     )
     overlay, success = imageprocessing.normalize(overlay, min=0)
     if not success:
@@ -199,6 +210,10 @@ def preprocess_movement(
     else:
         data[:, :, 1] = np.zeros(dots.shape)
     data[:, :, 2] = overlay  # overlay
+    # for debugging
+    # tools.saveclassify_image(
+    #     data, f"samples/{sample.track.label}-{sample.track.track_id}-{flipped}"
+    # )
     if preprocess_fn:
         for i, frame in enumerate(data):
             frame = frame * 255

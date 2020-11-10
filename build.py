@@ -155,11 +155,11 @@ def print_data(dataset):
 
 def diverse_validation(cameras, labels, max_cameras):
     """
-     idea is to try get a bit of all labels in validation set
-     take 1 of the top 4 diverse CameraSegments
-     then pick a missing label and try to find a camera
-     until we either have reached max cameras, or there aren't any labels with less
-     than MIN_TRACKS tracks
+    idea is to try get a bit of all labels in validation set
+    take 1 of the top 4 diverse CameraSegments
+    then pick a missing label and try to find a camera
+    until we either have reached max cameras, or there aren't any labels with less
+    than MIN_TRACKS tracks
     """
     val_cameras = []
 
@@ -274,7 +274,10 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
 
 
 def add_camera_tracks(
-    labels, dataset, cameras, balance_bins=None,
+    labels,
+    dataset,
+    cameras,
+    balance_bins=None,
 ):
     all_tracks = []
     for label in labels:
