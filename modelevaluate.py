@@ -10,8 +10,6 @@ from datetime import datetime, timedelta
 import numpy as np
 
 from multiprocessing import Process, Queue
-from ml_tools.datagenerator import preprocess_movement
-from ml_tools.dataset import Preprocessor
 from ml_tools.framedataset import dataset_db_path
 from ml_tools.kerasmodel import KerasModel
 
@@ -100,7 +98,6 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
     while True:
         i += 1
         track = queue.get()
-        # try:
         if track == "DONE":
             break
         else:
@@ -136,8 +133,6 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
             )
         if i % 50 == 0:
             logging.info("%s jobs left", queue.qsize())
-        # except Exception as e:
-        # logging.error("Process_job error %s", e)
     return
 
 
@@ -250,7 +245,6 @@ class ModelEvalute:
         visit_stats = {}
         for cam in cam_results.values():
             cam.calc_visits()
-            print("Camera", cam.camera)
             for visit in cam.visits:
                 v_stat = visit_stats.setdefault(
                     visit.expected, {"correct": 0, "incorrect": 0}
@@ -281,25 +275,6 @@ class ModelEvalute:
             correct_per = round(100 * float(v["correct"]) / v["total"])
             print("Stats for {} {}% correct".format(k, correct_per))
             print(k, "misclassified", v["incorrect_ids"])
-
-        # # break
-
-    def save_track(self, clip_id, track_id, db, type=5):
-        track_data = db.get_track(clip_id, track_id)
-        track_meta = db.get_track_meta(clip_id, track_id)
-        seg_data = track_data[0:25]
-        median = []
-        for f in seg_data:
-            median.append(np.median(f[0]))
-        data = Preprocessor.apply(
-            seg_data,
-            median,
-            default_inset=0,
-        )
-
-        preprocess_movement(
-            track_data, data, 5, track_meta["bounds_history"], 1, type=type
-        )
 
 
 def load_args():
@@ -355,22 +330,9 @@ if args.date:
 
 
 dataset_file = dataset_db_path(config)
-
-
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
 
-groups = []
-groups.append((["bird"], "bird"))
-# gfgroups.append((["insect", "false-positive"], "false-positive"))
-# other_labels = []
-# used_labels = groups[0][0].copy()
-# # used_labels.extend(groups[1][0].copy())
-# for label in dataset.labels:
-#     if label not in used_labels:
-#         other_labels.append(label)
-groups.append((["rodent"], "rodent"))
-dataset.regroup(groups, shuffle=False)
 logging.info(
     "Dataset loaded %s, using labels %s, mapped labels %s",
     dataset.name,
