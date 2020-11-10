@@ -1,15 +1,40 @@
 import numpy as np
 import random
-
 from ml_tools import tools
 from track.track import TrackChannels
 from ml_tools import imageprocessing
-from scipy import ndimage
+
+import tensorflow as tf
 
 # size to scale each frame to when loaded.
 FRAME_SIZE = 48
 
 MIN_SIZE = 4
+
+
+def convert(image):
+    image = tf.image.convert_image_dtype(image, tf.float32)
+    return image
+
+
+def augement_frame(frame, dim):
+    frame = imageprocessing.resize_cv(
+        frame,
+        dim,
+        extra_h=random.randint(0, int(FRAME_SIZE * 0.05)),
+        extra_v=random.randint(0, int(FRAME_SIZE * 0.05)),
+    )
+
+    image = convert(frame)
+    image = tf.image.random_crop(image, size=[dim[0], dim[1], 3])
+    if random.random() > 0.50:
+        image = tf.image.flip_left_right(image)
+
+    if random.random() > 0.20:
+        image = tf.image.random_contrast(image, 0.8, 1.2)
+    image = tf.minimum(image, 1.0)
+    image = tf.maximum(image, 0.0)
+    return image.numpy()
 
 
 def preprocess_segment(
@@ -29,6 +54,8 @@ def preprocess_segment(
     data = []
     flip = False
     if augment:
+        contrast_adjust = None
+        level_adjust = None
         if random.random() <= 0.75:
             # we will adjust contrast and levels, but only within these bounds.
             # that is a bright input may have brightness reduced, but not increased.
@@ -90,9 +117,11 @@ def preprocess_segment(
         # we pre-multiplied by 256 to fit into a 16bit int
         # data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
         if augment:
-            frame.thermal *= contrast_adjust
-            frame.thermal += level_adjust
-            frame.filtered *= contrast_adjust
+            if level_adjust is not None:
+                frame.thermal += level_adjust
+            if contrast_adjust is not None:
+                frame.thermal *= contrast_adjust
+                frame.filtered *= contrast_adjust
             if flip:
                 frame.flip()
         data.append(frame)

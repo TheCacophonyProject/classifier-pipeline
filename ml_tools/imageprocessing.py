@@ -5,6 +5,17 @@ from PIL import Image, ImageDraw
 
 from ml_tools.tools import eucl_distance
 from track.track import TrackChannels
+from scipy import ndimage
+
+
+def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
+    return cv2.resize(
+        image, dsize=(dim[0] + extra_h, dim[1] + extra_v), interpolation=interpolation,
+    )
+
+
+def rotate(image, degrees, mode="nearest", order=1):
+    return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
 
 
 def movement_images(

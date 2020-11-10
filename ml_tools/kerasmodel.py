@@ -335,7 +335,7 @@ class KerasModel:
             epochs=epochs,
             load_threads=self.params.train_load_threads,
             use_movement=self.params.use_movement,
-            cap_at="bird",
+            # cap_at="bird",
             # label_cap=1000,
             square_width=self.params.square_width,
         )
@@ -352,7 +352,7 @@ class KerasModel:
             epochs=epochs,
             load_threads=1,
             use_movement=self.params.use_movement,
-            cap_at="bird",
+            # cap_at="bird",
             square_width=self.params.square_width,
         )
         if not self.model:

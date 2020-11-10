@@ -1157,11 +1157,13 @@ class Dataset:
             return []
         labels = self.labels.copy()
         samples = []
+
         if cap_samples and label_cap is None:
             if cap_at:
                 label_cap = len(self.samples_for(cap_at, remapped=True))
             else:
                 label_cap = self.get_label_caps(labels, remapped=True)
+
         cap = None
         for label in labels:
             if cap_samples:
@@ -1172,7 +1174,6 @@ class Dataset:
             if new is not None and len(new) > 0:
                 samples.extend(new)
         labels = [sample.label for sample in samples]
-        # print(self.name, "sample is", labels)
         return samples
 
     def cdf(self):
