@@ -48,7 +48,6 @@ class TrackingConfig(DefaultConfig):
     track_overlap_ratio = attr.ib()
     min_duration_secs = attr.ib()
     track_min_offset = attr.ib()
-    track_min_delta = attr.ib()
     track_min_mass = attr.ib()
     aoi_min_mass = attr.ib()
     aoi_pixel_variance = attr.ib()
@@ -60,7 +59,6 @@ class TrackingConfig(DefaultConfig):
     min_moving_frames = attr.ib()
     max_blank_percent = attr.ib()
     max_jitter = attr.ib()
-    track_max_delta = attr.ib()
     # used to provide defaults
     stats = attr.ib()
     filters = attr.ib()
@@ -95,7 +93,6 @@ class TrackingConfig(DefaultConfig):
             track_overlap_ratio=tracking["filters"]["track_overlap_ratio"],
             min_duration_secs=tracking["filters"]["min_duration_secs"],
             track_min_offset=tracking["filters"]["track_min_offset"],
-            track_min_delta=tracking["filters"]["track_min_delta"],
             track_min_mass=tracking["filters"]["track_min_mass"],
             cropped_regions_strategy=tracking["areas_of_interest"][
                 "cropped_regions_strategy"
@@ -108,8 +105,6 @@ class TrackingConfig(DefaultConfig):
             min_moving_frames=tracking["min_moving_frames"],
             max_blank_percent=tracking["max_blank_percent"],
             max_jitter=tracking["max_jitter"],
-            track_max_delta=tracking["track_max_delta"],
-            preview=None,
             stats=None,
             filters=None,
             areas_of_interest=None,
@@ -141,7 +136,6 @@ class TrackingConfig(DefaultConfig):
                 "track_overlap_ratio": 0.5,
                 "min_duration_secs": 3.0,
                 "track_min_offset": 4.0,
-                "track_min_delta": 1.0,
                 "track_min_mass": 2.0,
             },
             areas_of_interest={
@@ -155,7 +149,6 @@ class TrackingConfig(DefaultConfig):
             aoi_pixel_variance=None,
             cropped_regions_strategy=None,
             track_min_offset=None,
-            track_min_delta=None,
             track_min_mass=None,
             threshold_percentile=None,
             min_threshold=None,
@@ -165,11 +158,9 @@ class TrackingConfig(DefaultConfig):
             min_tag_confidence=0.8,
             enable_track_output=True,
             moving_vel_thresh=4,
-            background_thresh=10,
             min_moving_frames=2,
             max_blank_percent=30,
             max_jitter=15,
-            track_max_delta=150,
         )
 
     def validate(self):

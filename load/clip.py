@@ -75,6 +75,9 @@ class Clip:
         self.stats = ClipStats()
         self.camera_model = None
         self.threshold_config = None
+        self.track_min_delta = None
+        self.track_max_delta = None
+        self.background_thresh = None
         # sets defaults
         self.set_model(None)
         if background is not None:
@@ -89,9 +92,11 @@ class Clip:
             self.set_motion_thresholds(threshold)
 
     def set_motion_thresholds(self, threshold):
-        self.threshold = threshold.delta_thresh
+        self.background_thresh = threshold.background_thresh
         self.temp_thresh = threshold.temp_thresh
-        self.stats.threshold = self.threshold
+        self.stats.threshold = self.background_thresh
+        self.track_min_delta = threshold.track_min_delta
+        self.track_max_delta = threshold.track_max_delta
 
     def _set_from_background(self):
         self.stats.mean_background_value = np.average(self.background)

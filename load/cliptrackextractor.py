@@ -117,44 +117,6 @@ class ClipTrackExtractor:
         self._process_frame(clip, frame, ffc_affected)
         clip.frame_on += 1
 
-    def _whole_clip_stats(self, clip, frames):
-        filtered = np.float32(
-            [self._get_filtered_frame(clip, frame) for frame in frames]
-        )
-
-        delta = np.asarray(frames[1:], dtype=np.float32) - np.asarray(
-            frames[:-1], dtype=np.float32
-        )
-        average_delta = float(np.nanmean(np.abs(delta)))
-
-        # take half the max filtered value as a threshold
-        threshold = float(
-            np.percentile(
-                np.reshape(filtered, [-1]), q=self.config.threshold_percentile
-            )
-        )
-
-        # GP dont think this matters with dynamic thresh
-        # cap the threshold to something reasonable
-        threshold = max(self.config.min_threshold, threshold)
-        threshold = min(self.config.max_threshold, threshold)
-
-        clip.threshold = threshold
-        if self.calc_stats:
-            clip.stats.threshold = threshold
-            clip.stats.temp_thresh = self.config.motion.temp_thresh
-            clip.stats.average_delta = float(average_delta)
-            clip.stats.filtered_deviation = float(np.mean(np.abs(filtered)))
-            clip.stats.is_static_background = (
-                clip.stats.filtered_deviation < clip.config.static_background_threshold
-            )
-
-            if (
-                not clip.stats.is_static_background
-                or clip.disable_background_subtraction
-            ):
-                clip.background = None
-
     def apply_track_filtering(self, clip):
         self.filter_tracks(clip)
         # apply smoothing if required
@@ -196,7 +158,7 @@ class ClipTrackExtractor:
         """
         filtered = self._get_filtered_frame(clip, thermal)
         _, mask, component_details = detect_objects(
-            filtered.copy(), otsus=False, threshold=clip.threshold
+            filtered.copy(), otsus=False, threshold=clip.background_thresh
         )
 
         prev_filtered = clip.frame_buffer.get_last_filtered()
@@ -208,7 +170,7 @@ class ClipTrackExtractor:
 
                     track.add_frame_for_existing_region(
                         clip.frame_buffer.get_last_frame(),
-                        clip.threshold,
+                        clip.background_thresh,
                         prev_filtered,
                     )
         else:
@@ -469,11 +431,11 @@ class ClipTrackExtractor:
             clip.filtered_tracks.append(("Track filtered.  Too Jittery", track))
             return True
         # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
-        if stats.delta_std < self.config.track_min_delta:
+        if stats.delta_std < clip.track_min_delta:
             self.print_if_verbose("Track filtered.  Too static")
             clip.filtered_tracks.append(("Track filtered.  Too static", track))
             return True
-        if stats.delta_std > self.config.track_max_delta:
+        if stats.delta_std > clip.track_max_delta:
             self.print_if_verbose("Track filtered.  Too Dynamic")
             clip.filtered_tracks.append(("Track filtered.  Too Dynamic", track))
             return True
