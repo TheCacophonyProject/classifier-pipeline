@@ -41,6 +41,7 @@ class Clip:
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
         Track._track_id = 1
+        self.tags = None
         self.disable_background_subtraction = False
         self.frame_on = 0
         self.ffc_affected = False
@@ -168,6 +169,8 @@ class Clip:
     def load_metadata(self, metadata, include_filtered_channel, tag_precedence):
         self._id = metadata["id"]
         device_meta = metadata.get("Device")
+        self.tags = metadata.get("Tags")
+
         if device_meta:
             self.device = device_meta.get("devicename")
         else:

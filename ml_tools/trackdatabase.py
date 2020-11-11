@@ -206,7 +206,6 @@ class TrackDatabase:
                 # group_attrs.update(clip.stats)
                 group_attrs["filename"] = clip.source_file
                 group_attrs["start_time"] = clip.video_start_time.isoformat()
-                group_attrs["threshold"] = clip.threshold
 
                 if clip.res_x and clip.res_y:
                     group_attrs["res_x"] = clip.res_x
@@ -222,7 +221,6 @@ class TrackDatabase:
                 group_attrs["filtered_deviation"] = clip.stats.filtered_deviation
                 group_attrs["filtered_sum"] = clip.stats.filtered_sum
                 group_attrs["temp_thresh"] = clip.stats.temp_thresh
-                group_attrs["threshold"] = clip.stats.threshold
 
                 if not clip.background_is_preview:
                     group_attrs["average_delta"] = clip.stats.average_delta
@@ -237,6 +235,14 @@ class TrackDatabase:
                 group_attrs["frames_per_second"] = clip.frames_per_second
                 if clip.location and clip.location.get("coordinates") is not None:
                     group_attrs["location"] = clip.location["coordinates"]
+                if clip.tags:
+                    clip_tags = []
+                    for track in clip.tags:
+                        if track["what"]:
+                            clip_tags.append(track["what"])
+                        elif track["detail"]:
+                            clip_tags.append(track["detail"])
+                    group_attrs["tags"] = clip_tags
             f.flush()
             group.attrs["finished"] = True
 
