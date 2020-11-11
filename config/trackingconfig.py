@@ -21,6 +21,7 @@ import attr
 
 from config import config
 from .defaultconfig import DefaultConfig
+from .motionconfig import MotionConfig
 from load.cliptrackextractor import ClipTrackExtractor
 
 
@@ -28,10 +29,7 @@ from load.cliptrackextractor import ClipTrackExtractor
 class TrackingConfig(DefaultConfig):
 
     background_calc = attr.ib()
-    temp_thresh = attr.ib()
-    dynamic_thresh = attr.ib()
-    delta_thresh = attr.ib()
-    background_thresh = attr.ib()
+    motion_config = attr.ib()
     ignore_frames = attr.ib()
     threshold_percentile = attr.ib()
     static_background_threshold = attr.ib()
@@ -64,7 +62,6 @@ class TrackingConfig(DefaultConfig):
     max_jitter = attr.ib()
     track_max_delta = attr.ib()
     # used to provide defaults
-    preview = attr.ib()
     stats = attr.ib()
     filters = attr.ib()
     areas_of_interest = attr.ib()
@@ -78,11 +75,8 @@ class TrackingConfig(DefaultConfig):
                 tracking["background_calc"],
                 [ClipTrackExtractor.PREVIEW, "stats"],
             ),
-            dynamic_thresh=tracking["preview"]["dynamic_thresh"],
-            temp_thresh=tracking["preview"]["temp_thresh"],
-            delta_thresh=tracking["preview"]["delta_thresh"],
-            background_thresh=tracking["preview"]["background_thresh"],
-            ignore_frames=tracking["preview"]["ignore_frames"],
+            motion_config=MotionConfig.load(tracking.get("motion")),
+            ignore_frames=tracking["preview_ignore_frames"],
             threshold_percentile=tracking["stats"]["threshold_percentile"],
             min_threshold=tracking["stats"]["min_threshold"],
             max_threshold=tracking["stats"]["max_threshold"],
@@ -125,17 +119,13 @@ class TrackingConfig(DefaultConfig):
     def get_defaults(cls):
         return cls(
             background_calc=ClipTrackExtractor.PREVIEW,
-            preview={
-                "ignore_frames": 2,
-                "temp_thresh": 2900,
-                "delta_thresh": 20,
-                "background_thresh": 20,
-            },
+            motion_config=MotionConfig.get_defaults(),
             stats={
                 "threshold_percentile": 99.9,
                 "min_threshold": 30,
                 "max_threshold": 50,
             },
+            ignore_frames=2,
             max_mean_temperature_threshold=10000,
             max_temperature_range_threshold=10000,
             static_background_threshold=4.0,
@@ -167,9 +157,6 @@ class TrackingConfig(DefaultConfig):
             track_min_offset=None,
             track_min_delta=None,
             track_min_mass=None,
-            ignore_frames=None,
-            temp_thresh=None,
-            delta_thresh=None,
             threshold_percentile=None,
             min_threshold=None,
             max_threshold=None,
@@ -177,7 +164,6 @@ class TrackingConfig(DefaultConfig):
             min_duration_secs=None,
             min_tag_confidence=0.8,
             enable_track_output=True,
-            dynamic_thresh=True,
             moving_vel_thresh=4,
             background_thresh=10,
             min_moving_frames=2,

@@ -73,14 +73,25 @@ class Clip:
         self.calc_stats = calc_stats
         self.source_file = sourcefile
         self.stats = ClipStats()
-        self.threshold = trackconfig.background_thresh
-        self.stats.threshold = self.threshold
-
-        self.temp_thresh = self.config.temp_thresh
-
+        self.camera_model = None
+        self.threshold_config = None
+        # sets defaults
+        self.set_model(None)
         if background is not None:
             self.background = background
             self._set_from_background()
+
+    def set_model(self, camera_model):
+        self.camera_model = camera_model
+        threshold = self.config.motion_config.threshold_for_model(camera_model)
+        if threshold:
+            self.threshold_config = threshold
+            self.set_motion_thresholds(threshold)
+
+    def set_motion_thresholds(self, threshold):
+        self.threshold = threshold.delta_thresh
+        self.temp_thresh = threshold.temp_thresh
+        self.stats.threshold = self.threshold
 
     def _set_from_background(self):
         self.stats.mean_background_value = np.average(self.background)
@@ -204,11 +215,18 @@ class Clip:
         return str(self._id)
 
     def set_temp_thresh(self):
-        if self.config.dynamic_thresh:
-            self.stats.temp_thresh = self.stats.mean_background_value
-            self.temp_thresh = self.stats.temp_thresh
+        if self.config.motion_config.dynamic_thresh:
+            min_temp = self.threshold_config.min_temp_thresh
+            max_temp = self.threshold_config.max_temp_thresh
+            if max_temp:
+                self.temp_thresh = min(max_temp, self.stats.mean_background_value)
+            else:
+                self.temp_thresh = self.stats.mean_background_value
+            if min_temp:
+                self.temp_thresh = max(min_temp, self.temp_thresh)
+            self.stats.temp_thresh = self.temp_thresh
         else:
-            self.temp_thresh = self.config.temp_thresh
+            self.temp_thresh = self.config.motion_config.temp_thresh
 
     def set_video_stats(self, video_start_time):
         """

@@ -20,6 +20,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import logging
 import numpy as np
+import yaml
 
 from cptv import CPTVReader
 import cv2
@@ -74,17 +75,51 @@ class ClipTrackExtractor:
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             clip.set_res(reader.x_resolution, reader.y_resolution)
+
+            camera_model = None
+            if reader.model:
+                camera_model = reader.model.decode()
+            clip.set_model(camera_model)
+
+            # if we have the triggered motion threshold should use that
+            # maybe even override dynamic threshold with this value
+            if reader.motion_config:
+                motion_config = yaml.safe_load(reader.motion_config)
+                temp_thresh = motion_config.get("triggeredthresh")
+                if temp_thresh:
+                    clip.temp_thresh = temp_thresh
+
             video_start_time = reader.timestamp.astimezone(Clip.local_tz)
             clip.num_preview_frames = (
                 reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
             )
             clip.set_video_stats(video_start_time)
+<<<<<<< HEAD
             clip.calculate_background(reader)
 
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             for frame in reader:
                 self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
+=======
+
+            if clip.background_is_preview and clip.num_preview_frames > 0:
+                for frame in reader:
+                    self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
+
+                if clip.on_preview():
+                    logging.warn("Clip is all preview frames")
+                    if clip.background is None:
+                        logging.warn("Clip only has ffc affected frames")
+                        return False
+
+                    clip._set_from_background()
+                    self._process_preview_frames(clip)
+            else:
+                # we need to load the entire video so we can analyse the background.
+                clip.background_is_preview = False
+                self.process_frames(clip, [frame for frame in reader])
+>>>>>>> origin/master
 
         if not clip.from_metadata:
             self.apply_track_filtering(clip)
@@ -119,6 +154,7 @@ class ClipTrackExtractor:
             )
         )
 
+        # GP dont think this matters with dynamic thresh
         # cap the threshold to something reasonable
         threshold = max(self.config.min_threshold, threshold)
         threshold = min(self.config.max_threshold, threshold)
@@ -126,7 +162,7 @@ class ClipTrackExtractor:
         clip.threshold = threshold
         if self.calc_stats:
             clip.stats.threshold = threshold
-            clip.stats.temp_thresh = self.config.temp_thresh
+            clip.stats.temp_thresh = self.config.motion.temp_thresh
             clip.stats.average_delta = float(average_delta)
             clip.stats.filtered_deviation = float(np.mean(np.abs(filtered)))
             clip.stats.is_static_background = (
