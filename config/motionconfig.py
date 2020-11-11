@@ -77,7 +77,7 @@ class ThresholdConfig:
         return cls(
             camera_model=threshold["camera_model"],
             temp_thresh=threshold["temp_thresh"],
-            background_thresh=threshold["background_thresh"],
+            background_thresh=threshold.get("background_thresh", 20),
             default=threshold.get("default", False),
             min_temp_thresh=threshold.get("min_temp_thresh"),
             max_temp_thresh=threshold.get("max_temp_thresh"),
