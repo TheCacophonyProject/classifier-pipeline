@@ -117,7 +117,8 @@ class Rectangle:
         ]
 
     def enlarge(self, border, max=None):
-        """ Crops this rectangle so that it fits within given bounds"""
+        """Enlarges this by border amount in each dimension such that it fits
+        within the boundaries of max"""
         self.left -= border
         self.right += border
         self.top -= border

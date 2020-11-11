@@ -29,7 +29,6 @@ from ml_tools.imageprocessing import normalize, detect_objects
 from ml_tools.tools import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
-from matplotlib import pyplot as plt
 from track.region import Region
 from piclassifier.motiondetector import is_affected_by_ffc
 
@@ -40,7 +39,7 @@ class Clip:
     local_tz = pytz.timezone("Pacific/Auckland")
     VERSION = 7
     CLIP_ID = 1
-    MAX_BACKGROUND_ANIMAL_SIZE = 100
+    MIN_OVERLAP = 0.80
 
     def __init__(self, trackconfig, sourcefile, background=None, calc_stats=True):
         self._id = Clip.CLIP_ID
@@ -51,7 +50,6 @@ class Clip:
         self.ffc_affected = False
         self.crop_rectangle = None
         self.num_preview_frames = 0
-        self.preview_frames = []
         self.region_history = []
         self.active_tracks = set()
         self.tracks = []
@@ -123,10 +121,11 @@ class Clip:
                 continue
             frames.append(frame.pix)
             if len(frames) == 9:
-                self.calculate_preview_from_frame(np.average(frames, axis=0), False)
+                frame_average = np.average(frames, axis=0)
+                self.calculate_preview_from_frame(frame_average, False)
 
                 if initial_frames is None:
-                    initial_frames = np.average(frames, axis=0)
+                    initial_frames = frame_average
                 else:
                     diff = initial_frames - frame.pix
                     if lower_diff is not None:
@@ -134,6 +133,7 @@ class Clip:
                     else:
                         lower_diff = diff
                 frames = []
+
         np.clip(lower_diff, 0, None, out=lower_diff)
         if len(frames) > 0:
             self.calculate_preview_from_frame(np.average(frames, axis=0), False)
@@ -143,19 +143,18 @@ class Clip:
 
         self.calculate_preview_from_frame(initial_frames, False)
         self._set_from_background()
-        self.preview_frames = []
 
     def remove_background_animals(self, background, lower_diff):
         # remove some noise
-        lower_diff[lower_diff < 20] = 0
+        lower_diff[lower_diff < self.background_thresh] = 0
         lower_diff[lower_diff > 255] = 255
         lower_diff = np.uint8(lower_diff)
         lower_diff = cv2.fastNlMeansDenoising(lower_diff, None)
 
-        components, lower_mask, stats = detect_objects(lower_diff, otsus=True)
+        _, lower_mask, lower_objects = detect_objects(lower_diff, otsus=True)
 
         max_region = Region(0, 0, self.res_x, self.res_y)
-        for component in stats[1:]:
+        for component in lower_objects[1:]:
             region = Region(component[0], component[1], component[2], component[3])
             region.enlarge(2, max=max_region)
             if region.width >= self.res_x or region.height >= self.res_y:
@@ -165,20 +164,21 @@ class Clip:
                     component[4],
                 )
                 continue
-            lower_diff_2 = region.subimage(lower_mask) * 255
             background_region = region.subimage(background)
-            norm_subimage = background_region.copy()
-            norm_subimage, _ = normalize(norm_subimage, new_max=255)
+            norm_back = background_region.copy()
+            norm_back, _ = normalize(norm_back, new_max=255)
             sub_components, sub_connected, sub_stats = detect_objects(
-                norm_subimage, otsus=True
+                norm_back, otsus=True
             )
+
+            lower_diff_2 = region.subimage(lower_mask) * 255
             overlap_pixels = np.sum(sub_connected[lower_diff_2 > 0])
             overlap_pixels = overlap_pixels / float(component[4])
 
             # filter out components which are too big, or dont match original causes
             # for filtering
             if (
-                overlap_pixels < 0.80
+                overlap_pixels < Clip.MIN_OVERLAP
                 or sub_stats[1][4] == 0
                 or sub_stats[1][4] == region.area
             ):
@@ -203,7 +203,6 @@ class Clip:
         return background
 
     def calculate_preview_from_frame(self, frame, ffc_affected=False):
-        self.preview_frames.append((frame, ffc_affected))
         if ffc_affected:
             return
         if self.background is None:

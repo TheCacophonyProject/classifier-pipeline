@@ -70,9 +70,7 @@ class Track:
         self.frames_since_target_seen = 0
         self.blank_frames = 0
 
-        # our current estimated horizontal velocity
         self.vel_x = []
-        # our current estimated vertical velocity
         self.vel_y = []
         # the tag for this track
         self.tag = "unknown"
@@ -85,7 +83,7 @@ class Track:
         self.from_metadata = False
         self.track_tags = None
         self.kalman_tracker = Kalman()
-        self.previous_prediction = (0, 0)
+        self.predicted_mid = (0, 0)
         for _ in range(100):
             self.kalman_tracker.predict()
 
@@ -153,7 +151,7 @@ class Track:
         self.kalman_tracker.correct(region)
         prediction = self.kalman_tracker.predict()
 
-        self.previous_prediction = (prediction[0][0], prediction[1][0])
+        self.predicted_mid = (prediction[0][0], prediction[1][0])
 
     def update_velocity(self):
         if len(self.bounds_history) >= 2:
@@ -166,7 +164,6 @@ class Track:
         else:
             self.vel_x.append(0)
             self.vel_y.append(0)
-            # = self.vel_y = 0
 
     def add_frame_for_existing_region(self, frame, mass_delta_threshold, prev_filtered):
         region = self.bounds_history[self.current_frame_num]
@@ -191,8 +188,8 @@ class Track:
         """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
         if self.frames > Track.MIN_KALMAN_FRAMES:
             region = Region(
-                int(self.previous_prediction[0] - self.last_bound.width / 2.0),
-                int(self.previous_prediction[1] - self.last_bound.height / 2.0),
+                int(self.predicted_mid[0] - self.last_bound.width / 2.0),
+                int(self.predicted_mid[1] - self.last_bound.height / 2.0),
                 self.last_bound.width,
                 self.last_bound.height,
             )
@@ -208,7 +205,7 @@ class Track:
         self.blank_frames += 1
         self.frames_since_target_seen += 1
         prediction = self.kalman_tracker.predict()
-        self.previous_prediction = (prediction[0][0], prediction[1][0])
+        self.predicted_mid = (prediction[0][0], prediction[1][0])
 
     def get_stats(self):
         """
@@ -362,21 +359,7 @@ class Track:
         Calculates a score between this track and a region of interest.  Regions that are close the the expected
         location for this track are given high scores, as are regions of a similar size.
         """
-        vel_x, vel_y = self.predicted_velocity
-        expected_x = int(self.last_bound.mid_x)
-        expected_y = int(self.last_bound.mid_y)
-        distance = eucl_distance((expected_x, expected_y), (region.mid_x, region.mid_y))
-        expected_x = int(self.last_bound.x)
-        expected_y = int(self.last_bound.y)
-        distance += eucl_distance((expected_x, expected_y), (region.x, region.y))
-        distance += eucl_distance(
-            (
-                expected_x + self.last_bound.width,
-                expected_y + self.last_bound.height,
-            ),
-            (region.x + region.width, region.y + region.height),
-        )
-        distance /= 3.0
+        distance = self.last_bound.average_distance(region)
 
         # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
         # area is padded with 50 pixels so small regions don't change too much
@@ -453,6 +436,18 @@ class Track:
     def set_end_s(self, fps):
         self.end_s = (self.end_frame + 1) / fps
 
+    def predicted_velocity(self):
+        prev = self.last_bound
+        if prev is None or self.nonblank_frames <= Track.MIN_KALMAN_FRAMES:
+            return (0, 0)
+        pred_vel_x = self.predicted_mid[0] - prev.mid_x
+        pred_vel_y = self.predicted_mid[1] - prev.mid_y
+        return (pred_vel_x, pred_vel_y)
+
+    @property
+    def nonblank_frames(self):
+        return self.end_frame + 1 - self.start_frame - self.blank_frames
+
     @property
     def frames(self):
         return self.end_frame + 1 - self.start_frame
@@ -460,15 +455,6 @@ class Track:
     @property
     def last_mass(self):
         return self.bounds_history[-1].mass
-
-    @property
-    def predicted_velocity(self):
-        prev = self.last_bound
-        if prev is None or self.frames <= Track.MIN_KALMAN_FRAMES:
-            return (0, 0)
-        pred_vel_x = self.previous_prediction[0] - prev.mid_x
-        pred_vel_y = self.previous_prediction[1] - prev.mid_y
-        return (pred_vel_x, pred_vel_y)
 
     @property
     def velocity(self):

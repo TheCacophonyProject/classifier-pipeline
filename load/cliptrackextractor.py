@@ -36,10 +36,10 @@ from matplotlib import pyplot as plt
 
 
 class ClipTrackExtractor:
-    PREVIEW = "preview"
     BASE_DISTANCE_CHANGE = 450
     BASE_MASS_CHANGE = 10
     MAX_DISTANCE = 2000
+    PREVIEW = "preview"
 
     def __init__(
         self, config, use_opt_flow, cache_to_disk, keep_frames=True, calc_stats=True
@@ -134,20 +134,10 @@ class ClipTrackExtractor:
 
         # has to be a signed int so we dont get overflow
         filtered = np.float32(thermal.copy())
-        if clip.background is None:
-            filtered = filtered - np.median(filtered) - 40
-            filtered[filtered < 0] = 0
-        elif clip.background_is_preview:
-            avg_change = int(
-                round(np.average(thermal) - clip.stats.mean_background_value)
-            )
-            np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
-            filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
+        avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
+        np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
+        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
 
-        else:
-            filtered = filtered - clip.background
-            filtered = filtered - np.median(filtered)
-            filtered[filtered < 0] = 0
         return filtered
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
@@ -167,7 +157,6 @@ class ClipTrackExtractor:
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.frame_on in track.frame_list:
-
                     track.add_frame_for_existing_region(
                         clip.frame_buffer.get_last_frame(),
                         clip.background_thresh,
@@ -485,7 +474,7 @@ def get_max_size_change(track, region):
 def get_max_distance_change(track):
     x, y = track.velocity
     velocity_distance = (2 * x) ** 2 + (2 * y) ** 2
-    pred_vel = track.predicted_velocity
+    pred_vel = track.predicted_velocity()
     pred_distance = pred_vel[0] ** 2 + pred_vel[1] ** 2
 
     max_distance = np.clip(
