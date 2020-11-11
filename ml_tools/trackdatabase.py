@@ -138,42 +138,42 @@ class TrackDatabase:
             clip = f["clips"][str(clip_id)]
             for track_prediction in clip_predictions:
                 track_node = clip[str(track_prediction.track_id)]
-                self._add_prediction_data(clip_id, track_node, track_prediction, model)
+                preds = np.int16(
+                    np.around(100 * np.array(track_prediction.predictions))
+                )
+
+                self.add_prediction_data(
+                    clip_id,
+                    track_node,
+                    preds,
+                    model.labels[track_prediction.best_label_index],
+                    track_prediction.max_score,
+                    model.labels,
+                )
 
             clip.attrs["has_prediction"] = True
 
-    def _add_prediction_data(self, clip_id, track, track_prediction, model):
+    def add_prediction_data(
+        self, clip_id, track, predictions, predicted_tag, score, labels=None
+    ):
+        """
+        Add prediction data as a dataset to the track
+        data should be  an array of int16 array
+        """
         track_attrs = track.attrs
-        track_tag = track_attrs.get("tag", "")
-        if track_tag not in model.labels:
-            if track_tag != "":
-                logging.info("Tag not in model labels %s", track_tag)
-            return
-        # label_index = model.labels.index(track_tag)
-        track_attrs["correct_prediction"] = (
-            track_attrs["tag"] == model.labels[track_prediction.best_label_index]
-        )
-        track_attrs["predicted"] = model.labels[track_prediction.best_label_index]
-        track_attrs["predicted_confidence"] = int(
-            round(100 * track_prediction.max_score)
-        )
+        track_attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
+        track_attrs["predicted"] = predicted_tag
+        track_attrs["predicted_confidence"] = int(round(100 * score))
 
-        # value, best = track_prediction.best_frame(label=label_index)
-        # track_attrs["best_frame"] = [round(100 * value, 0), best[0][0]]
-        # best = np.array(track_prediction.best_gap())
-        # best[1] = round(100 * best[1])
-        # track_attrs["best_gap"] = np.int16(best)
-        preds = np.int16(np.around(100 * np.array(track_prediction.predictions)))
-
-        # track_attrs["predictions"]=preds
-        height, width = preds.shape
         pred_data = track.create_dataset(
             "predictions",
-            (height, width),
-            chunks=(height, width),
-            dtype=preds.dtype,
+            predictions.shape,
+            chunks=predictions.shape,
+            dtype=predictions.dtype,
         )
-        pred_data[:, :] = preds
+        pred_data[:, :] = predictions
+        if labels is not None:
+            track_attrs["prediction_classes"] = labels
 
     def create_clip(self, clip, overwrite=True):
         """
@@ -424,7 +424,7 @@ class TrackDatabase:
         start_time=None,
         end_time=None,
         prediction=None,
-        model=None,
+        prediction_classes=None,
     ):
         """
         Adds track to database.
@@ -493,8 +493,27 @@ class TrackDatabase:
                 node_attrs["frames"] = frames
                 node_attrs["start_frame"] = track.start_frame
                 node_attrs["end_frame"] = track.end_frame
-                if prediction:
-                    self._add_prediction_data(clip_id, track_node, prediction, model)
+                if track.predictions is not None:
+
+                    self.add_prediction_data(
+                        track_node,
+                        track.predictions,
+                        max[0],
+                        max[1],
+                        track.prediction_classes,
+                    )
+                    has_prediction = True
+
+                elif prediction and prediction_classes:
+                    preds = np.int16(np.around(100 * np.array(prediction.predictions)))
+                    self.add_prediction_data(
+                        clip_id,
+                        track_node,
+                        preds,
+                        prediction_classes[prediction.best_label_index],
+                        prediction.max_score,
+                        track.prediction_classes,
+                    )
                     has_prediction = True
                 if track.confidence:
                     node_attrs["confidence"] = track.confidence

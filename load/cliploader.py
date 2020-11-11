@@ -101,6 +101,7 @@ class ClipLoader:
             self.config.use_opt_flow
             or config.load.preview == Previewer.PREVIEW_TRACKING,
             self.config.load.cache_to_disk,
+            high_quality_optical_flow=self.config.load.high_quality_optical_flow,
         )
         self.classifier = None
 
@@ -161,6 +162,9 @@ class ClipLoader:
         # Note: we do this even if there are no tracks so there there will be a blank clip entry as a record
         # that we have processed it.
         self.database.create_clip(clip)
+        prediction_classes = None
+        if classifier:
+            prediction_classes = classifier.model
         for track in clip.tracks:
             if classifier:
                 track_prediction = TrackPrediction(
@@ -193,7 +197,7 @@ class ClipLoader:
                 start_time=start_time,
                 end_time=end_time,
                 prediction=track_prediction,
-                model=classifier,
+                prediction_classes=prediction_classes,
             )
 
     def _filter_clip_tracks(self, clip_metadata):
@@ -219,6 +223,16 @@ class ClipLoader:
         excluded_tags = self.config.excluded_tags
         track_data = track_meta.get("data")
         if not track_data:
+            return False
+
+        track_tags = track_meta.get("TrackTags", [])
+        excluded_tags = [
+            tag
+            for tag in track_tags
+            if not tag.get("automatic", False) and tag in excluded_tags
+        ]
+
+        if len(excluded_tags) > 0:
             return False
 
         track_tag = Track.get_best_human_tag(
