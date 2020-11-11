@@ -94,32 +94,12 @@ class ClipTrackExtractor:
                 reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
             )
             clip.set_video_stats(video_start_time)
-<<<<<<< HEAD
             clip.calculate_background(reader)
 
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             for frame in reader:
                 self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
-=======
-
-            if clip.background_is_preview and clip.num_preview_frames > 0:
-                for frame in reader:
-                    self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
-
-                if clip.on_preview():
-                    logging.warn("Clip is all preview frames")
-                    if clip.background is None:
-                        logging.warn("Clip only has ffc affected frames")
-                        return False
-
-                    clip._set_from_background()
-                    self._process_preview_frames(clip)
-            else:
-                # we need to load the entire video so we can analyse the background.
-                clip.background_is_preview = False
-                self.process_frames(clip, [frame for frame in reader])
->>>>>>> origin/master
 
         if not clip.from_metadata:
             self.apply_track_filtering(clip)
