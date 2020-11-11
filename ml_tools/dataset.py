@@ -959,7 +959,9 @@ class Dataset:
                     thread.exit()
 
     def regroup(
-        self, groups, shuffle=True,
+        self,
+        groups,
+        shuffle=True,
     ):
         """
         regroups the dataset so multiple animals can be under a single label
@@ -997,7 +999,12 @@ class Dataset:
         self.rebuild_cdf()
 
     def rebalance(
-        self, label_cap=None, cap_percent=None, labels=None, update=False, shuffle=True,
+        self,
+        label_cap=None,
+        cap_percent=None,
+        labels=None,
+        update=False,
+        shuffle=True,
     ):
         """
         Can be used to rebalance a set of labels by a percentage or maximum number
