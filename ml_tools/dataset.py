@@ -795,16 +795,16 @@ class Dataset:
             return self.label_mapping.get(label, label)
         return label
 
-    def rebuild_cdf(self, balance_labels=False, lbl_p=None):
+    def rebuild_cdf(self, lbl_p=None):
         """Calculates the CDF used for fast random sampling for frames and
         segments, if balance labels is set each label has an equal chance of
         being chosen
         """
 
-        self.rebuild_segment_cdf(balance_labels=balance_labels, lbl_p=lbl_p)
-        self.rebuild_frame_cdf(balance_labels=balance_labels, lbl_p=lbl_p)
+        self.rebuild_segment_cdf(lbl_p=lbl_p)
+        self.rebuild_frame_cdf(lbl_p=lbl_p)
 
-    def rebuild_frame_cdf(self, balance_labels=False, lbl_p=None):
+    def rebuild_frame_cdf(self, lbl_p=None):
         self.frame_cdf = []
         total = 0
         self.frame_label_cdf = {}
@@ -837,10 +837,9 @@ class Dataset:
                     continue
                 label_cdf = self.frame_label_cdf[label]
                 new_label = self.label_mapping[label]
-                if balance_labels:
-                    if lbl_p and label in lbl_p:
-                        label_cdf = np.float64(label_cdf)
-                        label_cdf *= lbl_p[label]
+                if lbl_p and label in lbl_p:
+                    label_cdf = np.float64(label_cdf)
+                    label_cdf *= lbl_p[label]
                 cdf = mapped_cdf.setdefault(new_label, [])
                 cdf.extend(label_cdf)
 
@@ -849,7 +848,7 @@ class Dataset:
                 mapped_cdf[key] = [x / total for x in cdf]
             self.frame_label_cdf = mapped_cdf
 
-    def rebuild_segment_cdf(self, balance_labels=False, lbl_p=None):
+    def rebuild_segment_cdf(self, lbl_p=None):
         """ Calculates the CDF used for fast random sampling """
         self.segment_cdf = []
         total = 0
@@ -885,10 +884,10 @@ class Dataset:
                     continue
                 label_cdf = self.segment_label_cdf[label]
                 new_label = self.label_mapping[label]
-                if balance_labels:
-                    if lbl_p and label in lbl_p:
-                        label_cdf = np.float64(label_cdf)
-                        label_cdf *= lbl_p[label]
+
+                if lbl_p and label in lbl_p:
+                    label_cdf = np.float64(label_cdf)
+                    label_cdf *= lbl_p[label]
                 cdf = mapped_cdf.setdefault(new_label, [])
                 cdf.extend(label_cdf)
 
@@ -960,10 +959,7 @@ class Dataset:
                     thread.exit()
 
     def regroup(
-        self,
-        groups,
-        balance_labels=True,
-        shuffle=True,
+        self, groups, shuffle=True,
     ):
         """
         regroups the dataset so multiple animals can be under a single label
@@ -998,15 +994,10 @@ class Dataset:
                 np.random.shuffle(self.segments)
         elif shuffle:
             np.random.shuffle(self.frame_samples)
-        self.rebuild_cdf(balance_labels=balance_labels)
+        self.rebuild_cdf()
 
     def rebalance(
-        self,
-        label_cap=None,
-        cap_percent=None,
-        labels=None,
-        update=False,
-        shuffle=True,
+        self, label_cap=None, cap_percent=None, labels=None, update=False, shuffle=True,
     ):
         """
         Can be used to rebalance a set of labels by a percentage or maximum number
@@ -1060,7 +1051,7 @@ class Dataset:
         else:
             return len(self.frame_samples) > 0
 
-    def random_segments(self, balance_labels=True, require_movement=False, scale=1.0):
+    def random_segments(self, require_movement=False, scale=1.0):
         self.segments = []
         self.segments_by_label = {}
         logging.debug(
@@ -1091,7 +1082,7 @@ class Dataset:
             del self.tracks_by_id[track.unique_id]
             self.tracks_by_bin[track.bin_id].remove(track)
 
-        self.rebuild_cdf(balance_labels=balance_labels)
+        self.rebuild_cdf()
 
     # HISTORICAL
     def next_batch(self, n, disable_async=False, force_no_augmentation=False):

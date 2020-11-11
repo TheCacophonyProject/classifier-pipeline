@@ -24,10 +24,7 @@ from sklearn.metrics import confusion_matrix
 from ml_tools.hyperparams import HyperParams
 
 #
-HP_DENSE_SIZES = hp.HParam(
-    "dense_sizes",
-    hp.Discrete(["1024 512"]),
-)
+HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 512"]),)
 HP_TYPE = hp.HParam("type", hp.Discrete([14]))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([16, 32]))
@@ -69,9 +66,7 @@ class KerasModel:
         if pretrained_model == "resnet":
             return (
                 tf.keras.applications.ResNet50(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
@@ -92,54 +87,42 @@ class KerasModel:
         elif pretrained_model == "vgg16":
             return (
                 tf.keras.applications.VGG16(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.vgg16.preprocess_input,
             )
         elif pretrained_model == "vgg19":
             return (
                 tf.keras.applications.VGG19(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.vgg19.preprocess_input,
             )
         elif pretrained_model == "mobilenet":
             return (
                 tf.keras.applications.MobileNetV2(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.mobilenet_v2.preprocess_input,
             )
         elif pretrained_model == "densenet121":
             return (
                 tf.keras.applications.DenseNet121(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.densenet.preprocess_input,
             )
         elif pretrained_model == "inceptionresnetv2":
             return (
                 tf.keras.applications.InceptionResNetV2(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.inception_resnet_v2.preprocess_input,
             )
         elif pretrained_model == "inceptionv3":
             return (
                 tf.keras.applications.InceptionV3(
-                    weights="imagenet",
-                    include_top=False,
-                    input_shape=input_shape,
+                    weights="imagenet", include_top=False, input_shape=input_shape,
                 ),
                 tf.keras.applications.inception_v3.preprocess_input,
             )
@@ -311,31 +294,20 @@ class KerasModel:
         if not os.path.exists(run_dir):
             os.mkdir(run_dir)
         json.dump(
-            model_stats,
-            open(
-                os.path.join(run_dir, "metadata.txt"),
-                "w",
-            ),
-            indent=4,
+            model_stats, open(os.path.join(run_dir, "metadata.txt"), "w",), indent=4,
         )
         best_loss = os.path.join(run_dir, "val_loss")
         if os.path.exists(best_loss):
             json.dump(
                 model_stats,
-                open(
-                    os.path.join(best_loss, "metadata.txt"),
-                    "w",
-                ),
+                open(os.path.join(best_loss, "metadata.txt"), "w",),
                 indent=4,
             )
         best_acc = os.path.join(run_dir, "val_acc")
         if os.path.exists(best_acc):
             json.dump(
                 model_stats,
-                open(
-                    os.path.join(best_acc, "metadata.txt"),
-                    "w",
-                ),
+                open(os.path.join(best_acc, "metadata.txt"), "w",),
                 indent=4,
             )
 
@@ -471,7 +443,7 @@ class KerasModel:
         self.labels = self.datasets.train.labels.copy()
         print("training with", self.labels)
 
-    def import_dataset(self, dataset_filename, ignore_labels=None):
+    def import_dataset(self, dataset_filename, ignore_labels=None, lbl_p=None):
         """
         Import dataset.
         :param dataset_filename: path and filename of the dataset
@@ -486,7 +458,7 @@ class KerasModel:
         for dataset in datasets:
             dataset.set_read_only(True)
             dataset.use_segments = self.params.use_segments
-
+            dataset.rebuild_cdf(lbl_p)
             if ignore_labels:
                 for label in ignore_labels:
                     dataset.remove_label(label)
@@ -522,9 +494,7 @@ class KerasModel:
         self.train.loaded_epochs = 0
         self.validate.loaded_epochs = 0
         self.build_model(
-            dense_sizes=dense_size,
-            retrain_from=retrain_layer,
-            dropout=dropout,
+            dense_sizes=dense_size, retrain_from=retrain_layer, dropout=dropout,
         )
 
         opt = None
@@ -536,9 +506,7 @@ class KerasModel:
         else:
             opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, epsilon=epsilon)
         self.model.compile(
-            optimizer=opt,
-            loss=self.loss(),
-            metrics=["accuracy"],
+            optimizer=opt, loss=self.loss(), metrics=["accuracy"],
         )
         history = self.model.fit(
             self.train, epochs=epochs, shuffle=False, validation_data=self.validate

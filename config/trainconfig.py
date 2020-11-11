@@ -33,7 +33,7 @@ class TrainConfig(DefaultConfig):
     resnet_params = attr.ib()
     use_gru = attr.ib()
     model = attr.ib()
-    label_probablities = attr.ib()
+    label_probabilities = attr.ib()
 
     LABEL_PROBABILITIES = {
         "bird": 20,
@@ -60,7 +60,7 @@ class TrainConfig(DefaultConfig):
             epochs=raw["epochs"],
             use_gru=raw["use_gru"],
             model=raw["model"],
-            label_probabilities=raw["label_probablities"],
+            label_probabilities=raw["label_probabilities"],
         )
 
     @classmethod
@@ -72,7 +72,7 @@ class TrainConfig(DefaultConfig):
             epochs=30,
             use_gru=True,
             model="keras",
-            label_probablities=TrainConfig.LABEL_PROBABILITIES,
+            label_probabilities=TrainConfig.LABEL_PROBABILITIES,
         )
 
     def validate(self):

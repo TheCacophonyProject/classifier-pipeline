@@ -1,11 +1,9 @@
-import datetime
 import os
 import pickle
 
-import tensorflow as tf
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ, Model_CNN
 from model_resnet import ResnetModel
-from ml_tools.framedataset import dataset_db_path
+from ml_tools.dataset import dataset_db_path
 from ml_tools.kerasmodel import KerasModel
 
 
@@ -37,7 +35,7 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
         )
     #
 
-    model.import_dataset(datasets_filename)
+    model.import_dataset(datasets_filename, lbl_p=conf.train.label_probabilities)
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)
     print()
