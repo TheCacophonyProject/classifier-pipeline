@@ -32,6 +32,14 @@ def preprocess_segment(
     :param filter_to_delta: If true change filterted channel to be the delta of thermal frames.
     """
 
+    if reference_level:
+        # -------------------------------------------
+        # next adjust temperature and flow levels
+        # get reference level for thermal channel
+        assert len(frames) == len(
+            reference_level
+        ), "Reference level shape and data shape not match."
+
     # -------------------------------------------
     # first we scale to the standard size
 
@@ -43,11 +51,11 @@ def preprocess_segment(
 
     scaled_frames = []
 
-    for frame in frames:
-        channels, frame_height, frame_width = frame.shape
-
+    for i, frame in enumerate(frames):
+        channels = frame.shape[0]
+        frame_height, frame_width = frame[0].shape
         if frame_height < MIN_SIZE or frame_width < MIN_SIZE:
-            return
+            continue
 
         frame_bounds = tools.Rectangle(0, 0, frame_width, frame_height)
 
@@ -85,22 +93,12 @@ def preprocess_segment(
             )
             for channel in range(channels)
         ]
-
+        if reference_level:
+            scaled_frame[0] -= np.float32(reference_level[i])
         scaled_frames.append(scaled_frame)
 
     # convert back into [F,C,H,W] array.
     data = np.float32(scaled_frames)
-
-    if reference_level:
-        # -------------------------------------------
-        # next adjust temperature and flow levels
-        # get reference level for thermal channel
-        assert len(data) == len(
-            reference_level
-        ), "Reference level shape and data shape not match."
-
-        # reference thermal levels to the reference level
-        data[:, 0, :, :] -= np.float32(reference_level)[:, np.newaxis, np.newaxis]
 
     # map optical flow down to right level,
     # we pre-multiplied by 256 to fit into a 16bit int

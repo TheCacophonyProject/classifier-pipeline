@@ -284,6 +284,9 @@ class TestClassify:
                 self.clip_classifier.previewer.export_clip_preview(
                     mpeg_filename, clip, predictions
                 )
+                self.clip_classifier.save_metadata(
+                    "", os.path.splitext(test.filename)[0] + ".txt", clip, predictions
+                )
             self.results.append(rec_match)
 
     def write_results(self):
@@ -291,7 +294,7 @@ class TestClassify:
             for res in self.results:
                 res.write_results(f)
             f.write("Config\n")
-            json.dump(self.classifier_config, f, indent=2, default=convert_to_dict)
+            # yaml.dump(self.classifier_config, f, indent=2)
 
     def print_summary(self):
         print("===== SUMMARY =====")

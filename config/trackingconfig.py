@@ -48,7 +48,6 @@ class TrackingConfig(DefaultConfig):
     track_overlap_ratio = attr.ib()
     min_duration_secs = attr.ib()
     track_min_offset = attr.ib()
-    track_min_delta = attr.ib()
     track_min_mass = attr.ib()
     aoi_min_mass = attr.ib()
     aoi_pixel_variance = attr.ib()
@@ -57,7 +56,9 @@ class TrackingConfig(DefaultConfig):
     enable_track_output = attr.ib()
     min_tag_confidence = attr.ib()
     moving_vel_thresh = attr.ib()
-
+    min_moving_frames = attr.ib()
+    max_blank_percent = attr.ib()
+    max_jitter = attr.ib()
     # used to provide defaults
     stats = attr.ib()
     filters = attr.ib()
@@ -92,7 +93,6 @@ class TrackingConfig(DefaultConfig):
             track_overlap_ratio=tracking["filters"]["track_overlap_ratio"],
             min_duration_secs=tracking["filters"]["min_duration_secs"],
             track_min_offset=tracking["filters"]["track_min_offset"],
-            track_min_delta=tracking["filters"]["track_min_delta"],
             track_min_mass=tracking["filters"]["track_min_mass"],
             cropped_regions_strategy=tracking["areas_of_interest"][
                 "cropped_regions_strategy"
@@ -102,6 +102,9 @@ class TrackingConfig(DefaultConfig):
             verbose=tracking["verbose"],
             enable_track_output=tracking["enable_track_output"],
             min_tag_confidence=tracking["min_tag_confidence"],
+            min_moving_frames=tracking["min_moving_frames"],
+            max_blank_percent=tracking["max_blank_percent"],
+            max_jitter=tracking["max_jitter"],
             stats=None,
             filters=None,
             areas_of_interest=None,
@@ -124,7 +127,7 @@ class TrackingConfig(DefaultConfig):
             edge_pixels=1,
             frame_padding=4,
             dilation_pixels=2,
-            remove_track_after_frames=9,
+            remove_track_after_frames=18,
             track_smoothing=False,
             high_quality_optical_flow=False,
             flow_threshold=40,
@@ -133,7 +136,6 @@ class TrackingConfig(DefaultConfig):
                 "track_overlap_ratio": 0.5,
                 "min_duration_secs": 3.0,
                 "track_min_offset": 4.0,
-                "track_min_delta": 1.0,
                 "track_min_mass": 2.0,
             },
             areas_of_interest={
@@ -147,7 +149,6 @@ class TrackingConfig(DefaultConfig):
             aoi_pixel_variance=None,
             cropped_regions_strategy=None,
             track_min_offset=None,
-            track_min_delta=None,
             track_min_mass=None,
             threshold_percentile=None,
             min_threshold=None,
@@ -157,6 +158,9 @@ class TrackingConfig(DefaultConfig):
             min_tag_confidence=0.8,
             enable_track_output=True,
             moving_vel_thresh=4,
+            min_moving_frames=2,
+            max_blank_percent=30,
+            max_jitter=15,
         )
 
     def validate(self):

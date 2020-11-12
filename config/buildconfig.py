@@ -19,7 +19,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import attr
 import dateutil.parser
-
+import os
 from .defaultconfig import DefaultConfig
 
 
@@ -93,7 +93,7 @@ class BuildConfig(DefaultConfig):
 
 
 def load_banned_clips_file(filename):
-    if not filename:
+    if not filename or not os.path.exists(filename):
         return None
     files = []
     with open(filename) as stream:

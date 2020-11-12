@@ -23,11 +23,14 @@ import logging
 import numpy as np
 import os
 import pytz
+import cv2
 
-
+from ml_tools.imageprocessing import normalize, detect_objects
 from ml_tools.tools import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
+from track.region import Region
+from piclassifier.motiondetector import is_affected_by_ffc
 
 
 class Clip:
@@ -36,6 +39,7 @@ class Clip:
     local_tz = pytz.timezone("Pacific/Auckland")
     VERSION = 7
     CLIP_ID = 1
+    MIN_OVERLAP = 0.80
 
     def __init__(self, trackconfig, sourcefile, background=None, calc_stats=True):
         self._id = Clip.CLIP_ID
@@ -46,7 +50,6 @@ class Clip:
         self.ffc_affected = False
         self.crop_rectangle = None
         self.num_preview_frames = 0
-        self.preview_frames = []
         self.region_history = []
         self.active_tracks = set()
         self.tracks = []
@@ -70,6 +73,9 @@ class Clip:
         self.stats = ClipStats()
         self.camera_model = None
         self.threshold_config = None
+        self.track_min_delta = None
+        self.track_max_delta = None
+        self.background_thresh = None
         # sets defaults
         self.set_model(None)
         if background is not None:
@@ -84,9 +90,11 @@ class Clip:
             self.set_motion_thresholds(threshold)
 
     def set_motion_thresholds(self, threshold):
-        self.threshold = threshold.delta_thresh
+        self.background_thresh = threshold.background_thresh
         self.temp_thresh = threshold.temp_thresh
-        self.stats.threshold = self.threshold
+        self.stats.threshold = self.background_thresh
+        self.track_min_delta = threshold.track_min_delta
+        self.track_max_delta = threshold.track_max_delta
 
     def _set_from_background(self):
         self.stats.mean_background_value = np.average(self.background)
@@ -96,43 +104,112 @@ class Clip:
     def on_preview(self):
         return not self.background_calculated
 
+    def calculate_background(self, frame_reader):
+        """
+        Calculate background by reading whole clip and grouping into sets of
+        9 frames. Take the average of these 9 frames and use the minimum
+        over the sets as the initial background
+        Also check for movement in the initial background, which will indicate
+        a animal is already in initial frame
+        """
+        initial_frames = None
+        lower_diff = None
+        frames = []
+        for frame in frame_reader:
+            ffc_affected = is_affected_by_ffc(frame)
+            if ffc_affected:
+                continue
+            frames.append(frame.pix)
+            if len(frames) == 9:
+                frame_average = np.average(frames, axis=0)
+                self.calculate_preview_from_frame(frame_average, False)
+
+                if initial_frames is None:
+                    initial_frames = frame_average
+                else:
+                    diff = initial_frames - frame.pix
+                    if lower_diff is not None:
+                        lower_diff = np.maximum(lower_diff, diff)
+                    else:
+                        lower_diff = diff
+                frames = []
+
+        np.clip(lower_diff, 0, None, out=lower_diff)
+        if len(frames) > 0:
+            self.calculate_preview_from_frame(np.average(frames, axis=0), False)
+            frames = []
+
+        initial_frames = self.remove_background_animals(initial_frames, lower_diff)
+
+        self.calculate_preview_from_frame(initial_frames, False)
+        self._set_from_background()
+
+    def remove_background_animals(self, background, lower_diff):
+        # remove some noise
+        lower_diff[lower_diff < self.background_thresh] = 0
+        lower_diff[lower_diff > 255] = 255
+        lower_diff = np.uint8(lower_diff)
+        lower_diff = cv2.fastNlMeansDenoising(lower_diff, None)
+
+        _, lower_mask, lower_objects = detect_objects(lower_diff, otsus=True)
+
+        max_region = Region(0, 0, self.res_x, self.res_y)
+        for component in lower_objects[1:]:
+            region = Region(component[0], component[1], component[2], component[3])
+            region.enlarge(2, max=max_region)
+            if region.width >= self.res_x or region.height >= self.res_y:
+                logging.info(
+                    "Background animal bigger than max, probably false positive %s %s",
+                    region,
+                    component[4],
+                )
+                continue
+            background_region = region.subimage(background)
+            norm_back = background_region.copy()
+            norm_back, _ = normalize(norm_back, new_max=255)
+            sub_components, sub_connected, sub_stats = detect_objects(
+                norm_back, otsus=True
+            )
+
+            lower_diff_2 = region.subimage(lower_mask) * 255
+            overlap_pixels = np.sum(sub_connected[lower_diff_2 > 0])
+            overlap_pixels = overlap_pixels / float(component[4])
+
+            # filter out components which are too big, or dont match original causes
+            # for filtering
+            if (
+                overlap_pixels < Clip.MIN_OVERLAP
+                or sub_stats[1][4] == 0
+                or sub_stats[1][4] == region.area
+            ):
+                logging.info(
+                    "Invalid components mass: %s, components: %s region area %s overlap %s",
+                    sub_stats[1][4],
+                    sub_components,
+                    region.area,
+                    overlap_pixels,
+                )
+                continue
+
+            sub_connected[sub_connected > 0] = 1
+            # remove this component from the background by painting with
+            # colours of neighbouring pixels
+            background_region[:] = cv2.inpaint(
+                np.float32(background_region),
+                np.uint8(sub_connected),
+                3,
+                cv2.INPAINT_TELEA,
+            )
+        return background
+
     def calculate_preview_from_frame(self, frame, ffc_affected=False):
-        self.preview_frames.append((frame, ffc_affected))
         if ffc_affected:
             return
         if self.background is None:
             self.background = frame
         else:
             self.background = np.minimum(self.background, frame)
-        if self.background_frames == (self.num_preview_frames - 1):
-            self._set_from_background()
         self.background_frames += 1
-
-    def background_from_frames(self, raw_frames):
-        number_frames = self.num_preview_frames
-        if not number_frames < len(raw_frames):
-            logging.error("Video consists entirely of preview")
-            number_frames = len(raw_frames)
-        frames = [np.float32(frame.pix) for frame in raw_frames[0:number_frames]]
-        self.background = np.min(frames, axis=0)
-        self.background = np.int32(np.rint(self.background))
-
-        self._set_from_background()
-
-    def background_from_whole_clip(self, frames):
-        """
-        Runs through all provided frames and estimates the background, consuming all the source frames.
-        :param frames_list: a list of numpy array frames
-        :return: background
-        """
-
-        # note: unfortunately this must be done before any other processing, which breaks the streaming architecture
-        # for this reason we must return all the frames so they can be reused
-
-        # [][] array
-
-        self.background = np.percentile(frames, q=10, axis=0)
-        self._set_from_background()
 
     def _add_active_track(self, track):
         self.active_tracks.add(track)
@@ -199,10 +276,7 @@ class Clip:
         return tracks
 
     def start_and_end_in_secs(self, track):
-        if not track.start_s:
-            logging.info("track start frame setting from {}".format(track.start_frame))
-
-        if not track.end_s:
+        if track.end_s is None:
             track.end_s = (track.end_frame + 1) / self.frames_per_second
 
         return (track.start_s, track.end_s)

@@ -1,6 +1,5 @@
 import attr
 import inspect
-from config import config
 from .defaultconfig import DefaultConfig
 
 
@@ -26,7 +25,7 @@ class MotionConfig(DefaultConfig):
             camera_thresholds={
                 "max_temp_thresh": 2900,
                 "temp_thresh": 2900,
-                "delta_thresh": 20,
+                "background_thresh": 20,
                 "defualt": True,
                 "camera_model": "lepton3",
             },
@@ -66,18 +65,22 @@ class ThresholdConfig:
 
     camera_model = attr.ib()
     temp_thresh = attr.ib()
-    delta_thresh = attr.ib()
+    background_thresh = attr.ib()
     default = attr.ib()
     min_temp_thresh = attr.ib()
     max_temp_thresh = attr.ib()
+    track_min_delta = attr.ib()
+    track_max_delta = attr.ib()
 
     @classmethod
     def load(cls, threshold):
         return cls(
             camera_model=threshold["camera_model"],
             temp_thresh=threshold["temp_thresh"],
-            delta_thresh=threshold["delta_thresh"],
+            background_thresh=threshold.get("background_thresh", 20),
             default=threshold.get("default", False),
             min_temp_thresh=threshold.get("min_temp_thresh"),
             max_temp_thresh=threshold.get("max_temp_thresh"),
+            track_min_delta=threshold.get("track_min_delta", 1),
+            track_max_delta=threshold.get("track_max_delta", 150),
         )
