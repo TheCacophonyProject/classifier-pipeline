@@ -86,6 +86,12 @@ class Track:
         self.predicted_mid = (0, 0)
         for _ in range(100):
             self.kalman_tracker.predict()
+        self.predictions = None
+        self.predicted_class = None
+        self.predicted_confidence = None
+
+        self.all_class_confidences = None
+        self.prediction_classes = None
 
     @classmethod
     def from_region(cls, clip, region):
@@ -113,7 +119,15 @@ class Track:
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
         self.fps = frames_per_second
+        self.predicted_class = data.get("tag")
+        self.all_class_confidences = data.get("all_class_confidences", None)
+        self.predictions = data.get("predictions")
+        if self.predictions:
+            self.predictions = np.int16(self.predictions)
+            self.predicted_confidence = np.amax(self.predictions)
         self.track_tags = track_meta.get("TrackTags")
+        self.prediction_classes = data.get("classes")
+
         tag = Track.get_best_human_tag(track_meta, tag_precedence, min_confidence)
         if tag:
             self.tag = tag["what"]

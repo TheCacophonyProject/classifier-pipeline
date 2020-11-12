@@ -20,8 +20,8 @@ import cv2
 import timezonefinder
 from matplotlib.colors import LinearSegmentedColormap
 import subprocess
-from PIL import ImageFont
-from PIL import ImageDraw
+from PIL import Image, ImageFont, ImageDraw
+from pathlib import Path
 
 EPISON = 1e-5
 
@@ -811,3 +811,13 @@ def get_timezone_str(lat, lng):
     if timezone_str is None:
         timezone_str = "Pacific/Auckland"
     return timezone_str
+
+
+def saveclassify_image(data, filename):
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
+    r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
+    g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
+    b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
+    concat = np.concatenate((r, g, b), axis=1)  # horizontally
+    img = Image.fromarray(np.uint8(concat))
+    img.save(filename + ".png")

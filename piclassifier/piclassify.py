@@ -33,6 +33,7 @@ class NeuralInterpreter:
     def __init__(self, model_name):
         from openvino.inference_engine import IENetwork, IECore
 
+        # device = "CPU"
         device = "MYRIAD"
         model_xml = model_name + ".xml"
         model_bin = os.path.splitext(model_xml)[0] + ".bin"

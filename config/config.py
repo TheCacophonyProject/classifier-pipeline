@@ -10,7 +10,7 @@ from .trainconfig import TrainConfig
 from .classifyconfig import ClassifyConfig
 from .buildconfig import BuildConfig
 from .evaluateconfig import EvaluateConfig
-from .defaultconfig import DefaultConfig
+from .defaultconfig import DefaultConfig, deep_copy_map_if_key_not_exist
 
 CONFIG_FILENAME = "classifier.yaml"
 CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
@@ -138,13 +138,3 @@ def parse_options_param(name, value, options):
             )
         )
     return value.lower()
-
-
-def deep_copy_map_if_key_not_exist(from_map, to_map):
-    for key in from_map:
-        if isinstance(from_map[key], dict):
-            if key not in to_map:
-                to_map[key] = {}
-            deep_copy_map_if_key_not_exist(from_map[key], to_map[key])
-        elif key not in to_map:
-            to_map[key] = from_map[key]

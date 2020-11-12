@@ -48,6 +48,7 @@ class ClipClassifier(CPTVFileProcessor):
             self.config.use_opt_flow
             or config.classify.preview == Previewer.PREVIEW_TRACKING,
             self.config.classify.cache_to_disk,
+            high_quality_optical_flow=self.config.tracking.high_quality_optical_flow,
         )
 
     def preprocess(self, frame, thermal_reference):

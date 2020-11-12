@@ -130,7 +130,9 @@ class Previewer:
                 )
                 draw = ImageDraw.Draw(image)
             elif self.preview_type == self.PREVIEW_TRACKING:
-                image = self.create_four_tracking_image(frame, clip.stats.min_temp)
+                image = self.create_four_tracking_image(
+                    frame, clip.stats.min_temp, clip.background
+                )
                 image = self.convert_and_resize(
                     image,
                     clip.stats.min_temp,
@@ -186,7 +188,10 @@ class Previewer:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 frame = track.crop_by_region(frame, region)
                 img = tools.convert_heat_to_img(
-                    frame[TrackChannels.thermal], self.colourmap, 0, 350
+                    frame[TrackChannels.thermal],
+                    self.colourmap,
+                    np.amin(frame),
+                    np.amax(frame),
                 )
                 img = img.resize((frame_width, frame_height), Image.NEAREST)
                 video_frames.append(np.asarray(img))
@@ -213,6 +218,8 @@ class Previewer:
         return image
 
     def create_track_descriptions(self, clip, predictions):
+        if predictions is None:
+            return
         # look for any tracks that occur on this frame
         for track in clip.tracks:
             guesses = predictions.guesses_for(track.get_id())
@@ -422,6 +429,7 @@ class Previewer:
         thermal = frame.thermal
         filtered = frame.filtered + min_temp
         mask = frame.mask * 10000
+
         flow_h, flow_v = frame.get_flow_split(clip_flow=True)
         if flow_h is None and flow_v is None:
             flow_magnitude = filtered

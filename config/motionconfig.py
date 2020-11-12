@@ -1,6 +1,7 @@
 import attr
 import inspect
-from .defaultconfig import DefaultConfig
+from config import config
+from .defaultconfig import DefaultConfig, deep_copy_map_if_key_not_exist
 
 
 @attr.s
@@ -22,13 +23,7 @@ class MotionConfig(DefaultConfig):
     @classmethod
     def get_defaults(cls):
         return cls(
-            camera_thresholds={
-                "max_temp_thresh": 2900,
-                "temp_thresh": 2900,
-                "background_thresh": 20,
-                "defualt": True,
-                "camera_model": "lepton3",
-            },
+            camera_thresholds=[ThresholdConfig.get_defaults()],
             dynamic_thresh=True,
         )
 
@@ -61,7 +56,7 @@ class MotionConfig(DefaultConfig):
 
 
 @attr.s
-class ThresholdConfig:
+class ThresholdConfig(DefaultConfig):
 
     camera_model = attr.ib()
     temp_thresh = attr.ib()
@@ -74,13 +69,30 @@ class ThresholdConfig:
 
     @classmethod
     def load(cls, threshold):
+        defaults = cls.get_defaults()
+        deep_copy_map_if_key_not_exist(defaults.as_dict(), threshold)
         return cls(
             camera_model=threshold["camera_model"],
             temp_thresh=threshold["temp_thresh"],
-            background_thresh=threshold.get("background_thresh", 20),
-            default=threshold.get("default", False),
-            min_temp_thresh=threshold.get("min_temp_thresh"),
-            max_temp_thresh=threshold.get("max_temp_thresh"),
-            track_min_delta=threshold.get("track_min_delta", 1),
-            track_max_delta=threshold.get("track_max_delta", 150),
+            delta_thresh=threshold["delta_thresh"],
+            default=threshold["default"],
+            min_temp_thresh=threshold["min_temp_thresh"],
+            max_temp_thresh=threshold["max_temp_thresh"],
         )
+
+    def as_dict(self):
+        return attr.asdict(self)
+
+    @classmethod
+    def get_defaults(cls):
+        return cls(
+            camera_model="lepton3",
+            temp_thresh=2900,
+            delta_thresh=20,
+            default=False,
+            min_temp_thresh=None,
+            max_temp_thresh=None,
+        )
+
+    def validate(self):
+        return True

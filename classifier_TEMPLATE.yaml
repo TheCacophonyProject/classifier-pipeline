@@ -18,7 +18,7 @@ tracks_folder: "tracks"
 
 # which folders (tags) to ignore when selecting cptv files from source_folder
 excluded_tags: ['untagged', 'dog', ''unidentified', 'hard', 'multi', 'moving',
-                'bird-kiwi', 'for_grant', 'missclassified', 'other']
+                'bird-kiwi', 'for_grant', 'missclassified', 'other', 'part','poor tracking']
 
 # Reprocess files which have already been processed.
 reprocess: true
@@ -180,7 +180,7 @@ load:
     # classified - show tracks and classification values
     # tracking -  four frame video view, including thermal, filtered, mask and flow layers
     preview: "boxes"
-
+    high_quality_optical_flow: True
     #cache buffer frame to disk reducing memory usage
     cache_to_disk: False
 train:
