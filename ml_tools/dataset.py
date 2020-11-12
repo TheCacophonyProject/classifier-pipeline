@@ -317,7 +317,7 @@ class Dataset:
                 segment_frame_spacing,
                 segment_width,
                 self.segment_min_mass,
-                use_important=self.consecutive_segments,
+                use_important=not self.consecutive_segments,
             )
 
         self.filtered_stats["segment_mass"] += track_header.filtered_stats[
