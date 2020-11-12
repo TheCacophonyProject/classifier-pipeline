@@ -1,6 +1,5 @@
 import attr
 import inspect
-from config import config
 from .defaultconfig import DefaultConfig, deep_copy_map_if_key_not_exist
 
 
@@ -74,10 +73,12 @@ class ThresholdConfig(DefaultConfig):
         return cls(
             camera_model=threshold["camera_model"],
             temp_thresh=threshold["temp_thresh"],
-            delta_thresh=threshold["delta_thresh"],
+            background_thresh=threshold["background_thresh"],
             default=threshold["default"],
             min_temp_thresh=threshold["min_temp_thresh"],
             max_temp_thresh=threshold["max_temp_thresh"],
+            track_min_delta=threshold["track_min_delta"],
+            track_max_delta=threshold["track_max_delta"],
         )
 
     def as_dict(self):
@@ -88,10 +89,12 @@ class ThresholdConfig(DefaultConfig):
         return cls(
             camera_model="lepton3",
             temp_thresh=2900,
-            delta_thresh=20,
+            background_thresh=20,
             default=False,
             min_temp_thresh=None,
             max_temp_thresh=None,
+            track_min_delta=1.0,
+            track_max_delta=150,
         )
 
     def validate(self):
