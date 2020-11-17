@@ -367,6 +367,7 @@ class Track:
             self.vel_x = self.vel_x[start : end + 1]
             self.vel_x = self.vel_x[start : end + 1]
         self.start_s = self.start_frame / float(self.fps)
+        self.set_end_s()
 
     def get_region_score(self, region: Region):
         """
@@ -447,7 +448,9 @@ class Track:
             return np.int16(np.stack((thermal, filtered, empty, empty, mask), axis=0))
         return frame
 
-    def set_end_s(self, fps):
+    def set_end_s(self, fps=None):
+        if fps is None:
+            fps = self.fps
         self.end_s = (self.end_frame + 1) / fps
 
     def predicted_velocity(self):

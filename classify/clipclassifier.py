@@ -148,7 +148,7 @@ class ClipClassifier(CPTVFileProcessor):
             logging.info("classifier loading")
             if self.kerasmodel:
                 model = KerasModel(self.config.train)
-                model.load_weights(self.model_file)
+                model.load_weights(self.model_file, training=False)
                 globs._classifier = model
             else:
                 globs._classifier = Model(

@@ -128,11 +128,10 @@ class Previewer:
                 image = self.convert_and_resize(
                     frame.thermal, clip.stats.min_temp, clip.stats.max_temp
                 )
+                print("frame thermal is", frame.thermal.shape)
                 draw = ImageDraw.Draw(image)
             elif self.preview_type == self.PREVIEW_TRACKING:
-                image = self.create_four_tracking_image(
-                    frame, clip.stats.min_temp, clip.background
-                )
+                image = self.create_four_tracking_image(frame, clip.stats.min_temp)
                 image = self.convert_and_resize(
                     image,
                     clip.stats.min_temp,

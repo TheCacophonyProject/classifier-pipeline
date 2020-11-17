@@ -55,6 +55,7 @@ class TrackPrediction:
         self.state = None
         self.track_id = track_id
         self.predictions = []
+        self.novelties = []
         self.fp_index = fp_index
         self.smoothed_predictions = []
         self.smoothed_novelties = []
@@ -68,7 +69,6 @@ class TrackPrediction:
         self.keep_all = keep_all
         self.max_novelty = 0
         self.novelty_sum = 0
-        self.original = []
 
     def classified_clip(
         self, predictions, smoothed_predictions, smoothed_novelties, last_frame
@@ -104,6 +104,7 @@ class TrackPrediction:
             self.novelties.append(novelty)
         else:
             self.predictions = [prediction]
+            self.novelties = [novelty]
             self.smoothed_predictions = [smoothed_prediction]
             self.smoothed_novelties = [smoothed_novelty]
 

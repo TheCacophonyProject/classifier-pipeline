@@ -53,7 +53,7 @@ def preprocess_segment(
     :param default_inset: the default number of pixels to inset when no augmentation is applied.
     """
 
-    if reference_level:
+    if reference_level is not None:
         # -------------------------------------------
         # next adjust temperature and flow levels
         # get reference level for thermal channel

@@ -171,7 +171,7 @@ load:
 
     # Includes the filtered channel in tracks database.  This is typically not used.  If compression is enabled the
     # filesize can be reduced by not including it.
-    include_filtered_channel: False
+    include_filtered_channel: True
 
     # Create a MP4 preview of the recording.  Options are "none", "raw", "boxes", "classified", "tracking"
     # none - won't create a preview video

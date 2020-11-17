@@ -106,7 +106,7 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
                 continue
             expected_tag = dataset.mapped_label(expected_tag)
             track_data = dataset.db.get_track(track.clip_id, track.track_id)
-            track_prediction = classifier.classify_track(
+            track_prediction = classifier.classify_track_data(
                 track.track_id, track_data, regions=track.track_bounds
             )
             counts = [0] * len(classifier.labels)

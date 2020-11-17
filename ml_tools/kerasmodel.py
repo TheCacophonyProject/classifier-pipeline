@@ -256,12 +256,15 @@ class KerasModel:
             optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
         return optimizer
 
-    def load_weights(self, model_path, meta=True):
+    def load_weights(self, model_path, meta=True, training=False):
         logging.info("loading weights %s", model_path)
         dir = os.path.dirname(model_path)
 
         if meta:
             self.load_meta(dir)
+        if not training:
+            self.params["retrain_layer"] = None
+            self.params["retrain_from"] = None
         if not self.model:
             self.build_model(
                 dense_sizes=self.params.dense_sizes,
@@ -270,11 +273,14 @@ class KerasModel:
             )
         self.model.load_weights(dir + "/variables/variables")
 
-    def load_model(self, model_path):
+    def load_model(self, model_path, training=False):
         logging.info("Loading %s", model_path)
         self.model = tf.keras.models.load_model(model_path)
         dir = os.path.dirname(model_path)
         self.load_meta(dir)
+        if not training:
+            self.params["retrain_layer"] = None
+            self.params["retrain_from"] = None
         self.model.summary()
 
     def load_meta(self, dir):
@@ -672,7 +678,17 @@ class KerasModel:
         model = tf.keras.models.Model(input_layer, preds)
         return model
 
-    def classify_track(self, track_id, data, keep_all=True, regions=None):
+    def classify_track(self, clip, track, keep_all=True):
+        track_data = []
+        for i, region in enumerate(track.bounds_history):
+            frame = clip.frame_buffer.get_frame(region.frame_number)
+            cropped_frame = frame.crop_by_region(region)
+            track_data.append(cropped_frame)
+        return self.classify_track_data(
+            track.get_id(), track_data, regions=track.bounds_history
+        )
+
+    def classify_track_data(self, track_id, data, keep_all=True, regions=None):
         track_prediction = TrackPrediction(track_id, 0, keep_all)
         if self.params.use_movement:
             predictions = self.classify_frames(data, regions=regions)
@@ -693,13 +709,13 @@ class KerasModel:
 
         filtered_data = []
         valid_indices = []
+        valid_regions = []
         for i, frame in enumerate(data):
             if filtered_is_valid(frame, ""):
-                filtered_data.append((i, frame))
+                filtered_data.append(frame)
                 valid_indices.append(i)
-
+                valid_regions.append(regions[i])
         frame_sample = valid_indices
-        frame_sample.extend(valid_indices)
         frame_sample.extend(valid_indices)
         np.random.shuffle(frame_sample)
         frames_per_classify = self.params.square_width ** 2
@@ -710,7 +726,6 @@ class KerasModel:
 
         for i in range(n_squares):
             square_data = filtered_data
-            region_data = regions
             seg_frames = frame_sample[:frames_per_classify]
             if len(seg_frames) == 0:
                 break
@@ -722,16 +737,17 @@ class KerasModel:
             seg_frames.sort()
             for i, frame_i in enumerate(seg_frames):
                 f = data[frame_i]
-                segment.append(f)
-                median[i] = np.median(f[0])
+                segment.append(f.copy())
+                median[i] = np.median(f.thermal)
 
             frames = preprocess_movement(
                 square_data,
-                (segment, median),
+                segment,
                 self.params.square_width,
-                region_data,
+                valid_regions,
                 self.params.channel,
                 self.preprocess_fn,
+                reference_level=median,
             )
             if frames is None:
                 continue
