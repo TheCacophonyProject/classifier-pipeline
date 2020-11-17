@@ -683,6 +683,18 @@ class KerasModel:
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
             cropped_frame = frame.crop_by_region(region)
+            print(
+                "Frame",
+                frame.frame_number,
+                "cropping by",
+                region,
+                "original",
+                frame.thermal.shape,
+                "corpped",
+                cropped_frame.thermal.shape,
+                "filtered",
+                cropped_frame.filtered.shape,
+            )
             track_data.append(cropped_frame)
         return self.classify_track_data(
             track.get_id(), track_data, regions=track.bounds_history

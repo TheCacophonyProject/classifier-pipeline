@@ -30,7 +30,7 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import detect_objects
+from ml_tools.imageprocessing import normalize, detect_objects
 
 from matplotlib import pyplot as plt
 
@@ -142,6 +142,7 @@ class ClipTrackExtractor:
         filtered = np.float32(thermal.copy())
         avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
+        filtered, _ = normalize(filtered, new_max=255)
         filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
 
         return filtered

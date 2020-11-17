@@ -166,6 +166,7 @@ class Track:
         prediction = self.kalman_tracker.predict()
 
         self.predicted_mid = (prediction[0][0], prediction[1][0])
+        print(self.get_id(), "add region", region)
 
     def update_velocity(self):
         if len(self.bounds_history) >= 2:
@@ -197,6 +198,7 @@ class Track:
         self.current_frame_num += 1
         self.frames_since_target_seen = 0
         self.kalman_tracker.correct(region)
+        print(self.get_id(), "add region", region)
 
     def add_blank_frame(self, buffer_frame=None):
         """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
@@ -220,6 +222,7 @@ class Track:
         self.frames_since_target_seen += 1
         prediction = self.kalman_tracker.predict()
         self.predicted_mid = (prediction[0][0], prediction[1][0])
+        print(self.get_id(), "add region", region)
 
     def get_stats(self):
         """

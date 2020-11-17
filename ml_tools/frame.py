@@ -53,12 +53,8 @@ class Frame:
                 [
                     self.thermal,
                     self.filtered,
-                    self.flow[:, :, 0]
-                    if self.flow is not None
-                    else np.zeros((self.thermal.shape)),
-                    self.flow[:, :, 1]
-                    if self.flow is not None
-                    else np.zeros((self.thermal.shape)),
+                    self.flow[:, :, 0] if self.flow is not None else None,
+                    self.flow[:, :, 1] if self.flow is not None else None,
                     self.mask,
                 ]
             )
@@ -85,8 +81,9 @@ class Frame:
             prev_frame.scaled_thermal = None
 
     def clip_flow(self):
-        self.flow = get_clipped_flow(self.flow)
-        self.flow_clipped = True
+        if self.flow:
+            self.flow = get_clipped_flow(self.flow)
+            self.flow_clipped = True
 
     def get_flow_split(self, clip_flow=False):
         if self.flow is not None:
@@ -127,19 +124,22 @@ class Frame:
     def resize(self, dim):
         self.thermal = resize_cv(self.thermal, dim)
         self.mask = resize_cv(self.mask, dim, interpolation=cv2.INTER_NEAREST)
-        self.flow = resize_cv(self.flow, dim)
+        if self.flow:
+            self.flow = resize_cv(self.flow, dim)
         self.filtered = resize_cv(self.filtered, dim)
 
     def rotate(self, degrees):
         self.thermal = rotate(self.thermal, degrees)
         self.mask = rotate(self.mask, degrees)
-        self.flow = rotate(self.flow, degrees)
+        if self.flow:
+            self.flow = rotate(self.flow, degrees)
         self.filtered = rotate(self.filtered, degrees)
 
     def float_arrays(self):
         self.thermal = np.float32(self.thermal)
         self.mask = np.float32(self.mask)
-        self.flow = np.float32(self.flow)
+        if self.flow:
+            self.flow = np.float32(self.flow)
         self.filtered = np.float32(self.filtered)
 
     def copy(self):
@@ -156,15 +156,20 @@ class Frame:
     def flip(self):
         self.thermal = np.flip(self.thermal, axis=1)
         self.mask = np.flip(self.mask, axis=1)
-        self.flow = np.flip(self.flow, axis=1)
+        if self.flow:
+            self.flow = np.flip(self.flow, axis=1)
         self.filtered = np.flip(self.filtered, axis=1)
 
     @property
     def flow_h(self):
+        if self.flow is None:
+            return None
         return self.flow[:, :, 0]
 
     @property
     def flow_v(self):
+        if self.flow is None:
+            return None
         return self.flow[:, :, 1]
 
     @property

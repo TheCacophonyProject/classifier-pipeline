@@ -149,9 +149,15 @@ class Clip:
         # remove some noise
         lower_diff[lower_diff < self.background_thresh] = 0
         lower_diff[lower_diff > 255] = 255
+        background_pixels = len(lower_diff[lower_diff > 0])
+
         lower_diff = np.uint8(lower_diff)
         lower_diff = cv2.fastNlMeansDenoising(lower_diff, None)
-
+        print(
+            "background pixels are",
+            background_pixels,
+            float(background_pixels) / lower_diff.size,
+        )
         _, lower_mask, lower_objects = detect_objects(lower_diff, otsus=True)
 
         max_region = Region(0, 0, self.res_x, self.res_y)

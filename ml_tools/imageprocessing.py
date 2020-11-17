@@ -159,6 +159,14 @@ def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5)):
 def filtered_is_valid(frame, label):
     filtered = frame.filtered
     thermal = frame.thermal
+    print(
+        "filtered_is_valid",
+        frame.frame_number,
+        "thermal",
+        thermal.shape,
+        "filtered",
+        filtered.shape,
+    )
     if len(filtered) == 0 or len(thermal) == 0:
         return False
     thermal_deviation = np.amax(thermal) != np.amin(thermal)
