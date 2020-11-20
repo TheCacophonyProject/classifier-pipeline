@@ -172,7 +172,7 @@ class ClipTrackExtractor:
         filtered, thresh = self._get_filtered_frame(clip, thermal)
 
         _, mask, component_details = detect_objects(
-            filtered.copy(), otsus=False, threshold=thresh, dilate=True
+            filtered.copy(), otsus=False, threshold=thresh, iterations=2
         )
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)

@@ -145,7 +145,9 @@ def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     )
 
 
-def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5), dilate=False):
+def detect_objects(
+    image, otsus=True, threshold=0, kernel=(5, 5), dilate=False, iterations=1
+):
     image = np.uint8(image)
     image = cv2.GaussianBlur(image, kernel, 0)
     flags = cv2.THRESH_BINARY
@@ -155,7 +157,7 @@ def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5), dilate=False):
     if dilate:
         image = cv2.dilate(image, kernel, iterations=1)
 
-    image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
+    image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel, iterations=iterations)
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
     return components, small_mask, stats
 

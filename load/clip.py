@@ -124,22 +124,28 @@ class Clip:
             if len(frames) == 9:
                 frame_average = np.average(frames, axis=0)
                 self.calculate_preview_from_frame(frame_average, False)
-
                 if initial_frames is None:
                     initial_frames = frame_average
                 else:
-                    diff = initial_frames - frame.pix
+                    diff = initial_frames - frame_average
                     if lower_diff is not None:
                         lower_diff = np.maximum(lower_diff, diff)
                     else:
                         lower_diff = diff
                 frames = []
 
-        np.clip(lower_diff, 0, None, out=lower_diff)
         if len(frames) > 0:
             self.calculate_preview_from_frame(np.average(frames, axis=0), False)
+            if initial_frames is None:
+                initial_frames = frame_average
+            else:
+                diff = initial_frames - frame_average
+                if lower_diff is not None:
+                    lower_diff = np.maximum(lower_diff, diff)
+                else:
+                    lower_diff = diff
             frames = []
-
+        np.clip(lower_diff, 0, None, out=lower_diff)
         initial_frames = self.remove_background_animals(initial_frames, lower_diff)
 
         self.calculate_preview_from_frame(initial_frames, False)
@@ -148,7 +154,7 @@ class Clip:
     def remove_background_animals(self, background, lower_diff):
         # remove some noise
         lower_diff[lower_diff < self.background_thresh] = 0
-        lower_diff[lower_diff > 255] = 255
+        lower_diff, _ = normalize(lower_diff, new_max=255)
         background_pixels = len(lower_diff[lower_diff > 0])
 
         lower_diff = np.uint8(lower_diff)
