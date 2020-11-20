@@ -22,7 +22,8 @@ class MotionConfig(DefaultConfig):
     @classmethod
     def get_defaults(cls):
         return cls(
-            camera_thresholds=[ThresholdConfig.get_defaults()], dynamic_thresh=True,
+            camera_thresholds=[ThresholdConfig.get_defaults()],
+            dynamic_thresh=True,
         )
 
     def load_camera_thresholds(raw):
