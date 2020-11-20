@@ -218,7 +218,7 @@ def get_processor(config, thermal_config, headers):
 
     return MotionDetector(
         thermal_config,
-        config.tracking.motion_config.dynamic_thresh,
+        config.tracking.motion.dynamic_thresh,
         CPTVRecorder(thermal_config, headers),
         headers,
     )

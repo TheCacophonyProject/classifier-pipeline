@@ -110,7 +110,7 @@ tracking:
     dilation_pixels: 2
 
     # wait this many frames for animal to "reappear" after it is last detected.
-    remove_track_after_frames: 9
+    remove_track_after_frames: 18
 
     # when enabled smooths tracks so that track dimensions do not change too quickly.
     track_smoothing: False
@@ -291,7 +291,7 @@ build:
 
     # clips after this date will be ignored.
     # note: this is based on the UTC date.
-    clip_end_date: "2019-12-31"
+    clip_end_date: null
 
     # minimum average mass for test segment
     test_min_mass: 30

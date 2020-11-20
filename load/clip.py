@@ -85,7 +85,7 @@ class Clip:
 
     def set_model(self, camera_model):
         self.camera_model = camera_model
-        threshold = self.config.motion_config.threshold_for_model(camera_model)
+        threshold = self.config.motion.threshold_for_model(camera_model)
         if threshold:
             self.threshold_config = threshold
             self.set_motion_thresholds(threshold)
@@ -226,7 +226,7 @@ class Clip:
         return str(self._id)
 
     def set_temp_thresh(self):
-        if self.config.motion_config.dynamic_thresh:
+        if self.config.motion.dynamic_thresh:
             min_temp = self.threshold_config.min_temp_thresh
             max_temp = self.threshold_config.max_temp_thresh
             if max_temp:
@@ -237,7 +237,7 @@ class Clip:
                 self.temp_thresh = max(min_temp, self.temp_thresh)
             self.stats.temp_thresh = self.temp_thresh
         else:
-            self.temp_thresh = self.config.motion_config.temp_thresh
+            self.temp_thresh = self.config.motion.temp_thresh
 
     def set_video_stats(self, video_start_time):
         """

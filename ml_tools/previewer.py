@@ -30,6 +30,7 @@ import ml_tools.globals as globs
 from ml_tools.mpeg_creator import MPEGCreator
 from track.region import Region
 from track.track import TrackChannels
+from ml_tools.imageprocessing import normalize
 
 
 class Previewer:
@@ -128,17 +129,12 @@ class Previewer:
                 image = self.convert_and_resize(
                     frame.thermal, clip.stats.min_temp, clip.stats.max_temp
                 )
-                print("frame thermal is", frame.thermal.shape)
                 draw = ImageDraw.Draw(image)
             elif self.preview_type == self.PREVIEW_TRACKING:
-                image = self.create_four_tracking_image(frame, clip.stats.min_temp)
-                image = self.convert_and_resize(
-                    image,
-                    clip.stats.min_temp,
-                    clip.stats.max_temp,
-                    3.0,
-                    mode=Image.NEAREST,
+                image = self.create_four_tracking_image(
+                    frame, clip.stats.min_temp, clip.stats.max_temp, self.colourmap
                 )
+
                 draw = ImageDraw.Draw(image)
                 self.add_tracks(draw, clip.tracks, frame_number, predictions)
 
@@ -423,24 +419,35 @@ class Previewer:
                 )
 
     @staticmethod
-    def create_four_tracking_image(frame, min_temp):
+    def create_four_tracking_image(frame, min_temp, max_temp, colourmap):
 
         thermal = frame.thermal
         filtered = frame.filtered + min_temp
-        mask = frame.mask * 10000
+        filtered = tools.convert_heat_to_img(filtered, colourmap, min_temp, max_temp)
+        thermal = tools.convert_heat_to_img(thermal, colourmap, min_temp, max_temp)
+        mask, _ = normalize(frame.mask, new_max=255)
+        mask = np.uint8(mask)
 
+        mask = mask[..., np.newaxis]
+        mask = np.repeat(mask, 3, axis=2)
+
+        mask = Image.fromarray(mask)
         flow_h, flow_v = frame.get_flow_split(clip_flow=True)
         if flow_h is None and flow_v is None:
-            flow_magnitude = filtered
+            flow_magnitude = None
         else:
             flow_magnitude = (
                 np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
                 + min_temp
             )
+            flow_magnitude = tools.convert_heat_to_img(
+                flow_magnitude, colourmap, min_temp, max_temp
+            )
 
-        return np.hstack(
+        image = np.hstack(
             (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
         )
+        return Image.fromarray(image)
 
     @staticmethod
     def stats_footer(stats):

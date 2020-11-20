@@ -29,8 +29,8 @@ from load.cliptrackextractor import ClipTrackExtractor
 class TrackingConfig(DefaultConfig):
 
     background_calc = attr.ib()
-    motion_config = attr.ib()
-    ignore_frames = attr.ib()
+    motion = attr.ib()
+    preview_ignore_frames = attr.ib()
     threshold_percentile = attr.ib()
     static_background_threshold = attr.ib()
     max_mean_temperature_threshold = attr.ib()
@@ -66,15 +66,14 @@ class TrackingConfig(DefaultConfig):
 
     @classmethod
     def load(cls, tracking):
-
         return cls(
             background_calc=config.parse_options_param(
                 "background_calc",
                 tracking["background_calc"],
                 [ClipTrackExtractor.PREVIEW, "stats"],
             ),
-            motion_config=MotionConfig.load(tracking.get("motion")),
-            ignore_frames=tracking["preview_ignore_frames"],
+            motion=MotionConfig.load(tracking.get("motion")),
+            preview_ignore_frames=tracking["preview_ignore_frames"],
             threshold_percentile=tracking["stats"]["threshold_percentile"],
             min_threshold=tracking["stats"]["min_threshold"],
             max_threshold=tracking["stats"]["max_threshold"],
@@ -114,13 +113,13 @@ class TrackingConfig(DefaultConfig):
     def get_defaults(cls):
         return cls(
             background_calc=ClipTrackExtractor.PREVIEW,
-            motion_config=MotionConfig.get_defaults(),
+            motion=MotionConfig.get_defaults(),
             stats={
                 "threshold_percentile": 99.9,
                 "min_threshold": 30,
                 "max_threshold": 50,
             },
-            ignore_frames=2,
+            preview_ignore_frames=2,
             max_mean_temperature_threshold=10000,
             max_temperature_range_threshold=10000,
             static_background_threshold=4.0,

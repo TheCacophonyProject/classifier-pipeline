@@ -90,14 +90,15 @@ class ClipTrackExtractor:
             # if we have the triggered motion threshold should use that
             # maybe even override dynamic threshold with this value
             if reader.motion_config:
-                motion_config = yaml.safe_load(reader.motion_config)
-                temp_thresh = motion_config.get("triggeredthresh")
+                motion = yaml.safe_load(reader.motion_config)
+                temp_thresh = motion.get("triggeredthresh")
                 if temp_thresh:
                     clip.temp_thresh = temp_thresh
 
             video_start_time = reader.timestamp.astimezone(Clip.local_tz)
             clip.num_preview_frames = (
-                reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
+                reader.preview_secs * clip.frames_per_second
+                - self.config.preview_ignore_frames
             )
             clip.set_video_stats(video_start_time)
             clip.calculate_background(reader)
@@ -142,10 +143,25 @@ class ClipTrackExtractor:
         filtered = np.float32(thermal.copy())
         avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
-        filtered, _ = normalize(filtered, new_max=255)
+        max = np.amax(filtered)
+        min = np.amin(filtered)
+        filtered, _ = normalize(filtered, min=min, max=max, new_max=255)
         filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
-
-        return filtered
+        # if clip.frame_on > 90:
+        #     plt.imshow(filtered)
+        #     plt.show()
+        #     plt.imshow(clip.background)
+        #     plt.show()
+        # print(
+        #     "clip threshold is",
+        #     clip.background_thresh,
+        #     "after norm this hsould be",
+        #     min,
+        #     max,
+        #     clip.background_thresh * 255 / (max - min),
+        # )
+        # print("filtered values", np.amax(filtered), avg_change, np.amax(thermal))
+        return filtered, clip.background_thresh * 255 / (max - min)
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
         """
@@ -153,11 +169,11 @@ class ClipTrackExtractor:
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-        filtered = self._get_filtered_frame(clip, thermal)
-        _, mask, component_details = detect_objects(
-            filtered.copy(), otsus=False, threshold=clip.background_thresh
-        )
+        filtered, thresh = self._get_filtered_frame(clip, thermal)
 
+        _, mask, component_details = detect_objects(
+            filtered.copy(), otsus=False, threshold=thresh, dilate=True
+        )
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
 
@@ -188,6 +204,7 @@ class ClipTrackExtractor:
             new_tracks = self._create_new_tracks(clip, unmatched_regions)
         else:
             new_tracks = set()
+
         self._filter_inactive_tracks(clip, new_tracks, matched_tracks)
 
     def _match_existing_tracks(self, clip, regions):
@@ -316,6 +333,7 @@ class ClipTrackExtractor:
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)
             region.set_is_along_border(clip.crop_rectangle)
+
             if self.config.cropped_regions_strategy == "cautious":
                 crop_width_fraction = (
                     old_region.width - region.width
@@ -357,7 +375,6 @@ class ClipTrackExtractor:
 
         track_stats = [(track.get_stats(), track) for track in clip.tracks]
         track_stats.sort(reverse=True, key=lambda record: record[0].score)
-
         if self.config.verbose:
             for stats, track in track_stats:
                 start_s, end_s = clip.start_and_end_in_secs(track)
@@ -397,6 +414,11 @@ class ClipTrackExtractor:
                 [("Too many tracks", track) for track in clip.tracks[self.max_tracks :]]
             )
             clip.tracks = clip.tracks[: self.max_tracks]
+
+        for key in clip.filtered_tracks:
+            self.print_if_verbose(
+                "filtered track {} because {}".format(key[1].get_id(), key[0])
+            )
 
     def filter_track(self, clip, track, stats):
         # discard any tracks that are less min_duration

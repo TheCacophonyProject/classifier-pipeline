@@ -6,6 +6,7 @@ import math
 from ml_tools.tools import eucl_distance
 from track.track import TrackChannels
 from scipy import ndimage
+from matplotlib import pyplot as plt
 
 
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
@@ -144,13 +145,16 @@ def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     )
 
 
-def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5)):
+def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5), dilate=False):
     image = np.uint8(image)
     image = cv2.GaussianBlur(image, kernel, 0)
     flags = cv2.THRESH_BINARY
     if otsus:
         flags += cv2.THRESH_OTSU
     _, image = cv2.threshold(image, threshold, 255, flags)
+    if dilate:
+        image = cv2.dilate(image, kernel, iterations=1)
+
     image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
     return components, small_mask, stats
@@ -159,14 +163,6 @@ def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5)):
 def filtered_is_valid(frame, label):
     filtered = frame.filtered
     thermal = frame.thermal
-    print(
-        "filtered_is_valid",
-        frame.frame_number,
-        "thermal",
-        thermal.shape,
-        "filtered",
-        filtered.shape,
-    )
     if len(filtered) == 0 or len(thermal) == 0:
         return False
     thermal_deviation = np.amax(thermal) != np.amin(thermal)

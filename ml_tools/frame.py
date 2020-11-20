@@ -81,7 +81,7 @@ class Frame:
             prev_frame.scaled_thermal = None
 
     def clip_flow(self):
-        if self.flow:
+        if self.flow is not None:
             self.flow = get_clipped_flow(self.flow)
             self.flow_clipped = True
 
@@ -124,21 +124,21 @@ class Frame:
     def resize(self, dim):
         self.thermal = resize_cv(self.thermal, dim)
         self.mask = resize_cv(self.mask, dim, interpolation=cv2.INTER_NEAREST)
-        if self.flow:
+        if self.flow is not None:
             self.flow = resize_cv(self.flow, dim)
         self.filtered = resize_cv(self.filtered, dim)
 
     def rotate(self, degrees):
         self.thermal = rotate(self.thermal, degrees)
         self.mask = rotate(self.mask, degrees)
-        if self.flow:
+        if self.flow is not None:
             self.flow = rotate(self.flow, degrees)
         self.filtered = rotate(self.filtered, degrees)
 
     def float_arrays(self):
         self.thermal = np.float32(self.thermal)
         self.mask = np.float32(self.mask)
-        if self.flow:
+        if self.flow is not None:
             self.flow = np.float32(self.flow)
         self.filtered = np.float32(self.filtered)
 
@@ -156,7 +156,7 @@ class Frame:
     def flip(self):
         self.thermal = np.flip(self.thermal, axis=1)
         self.mask = np.flip(self.mask, axis=1)
-        if self.flow:
+        if self.flow is not None:
             self.flow = np.flip(self.flow, axis=1)
         self.filtered = np.flip(self.filtered, axis=1)
 
