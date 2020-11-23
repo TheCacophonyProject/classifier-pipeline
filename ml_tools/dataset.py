@@ -302,8 +302,7 @@ class Dataset:
             clip_id, clip_meta, track_meta, predictions
         )
         self.tracks.append(track_header)
-        frames = None
-        # frames = self.db.get_track(clip_id, track_id)
+        frames = self.db.get_track(clip_id, track_id)
         track_header.set_important_frames(
             labels, self.min_frame_mass, frame_data=frames
         )
