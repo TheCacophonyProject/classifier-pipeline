@@ -312,7 +312,9 @@ class TrackHeader:
     def from_meta(clip_id, clip_meta, track_meta, predictions=None):
         """ Creates a track header from given metadata. """
         correct_prediction = track_meta.get("correct_prediction", None)
-        start_time = dateutil.parser.parse(track_meta["start_time"])
+        start_time = None
+        if "start_time" in track_meta:
+            start_time = dateutil.parser.parse(track_meta["start_time"])
         end_time = dateutil.parser.parse(track_meta["end_time"])
         duration = (end_time - start_time).total_seconds()
         location = clip_meta.get("location")
