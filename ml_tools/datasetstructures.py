@@ -231,9 +231,7 @@ class TrackHeader:
                 if remaining > 0:
                     frames.extend(
                         np.random.choice(
-                            self.important_frames,
-                            remaining,
-                            replace=False,
+                            self.important_frames, remaining, replace=False,
                         )
                     )
                 frames = [frame.frame_num for frame in frames]
@@ -315,8 +313,11 @@ class TrackHeader:
         start_time = None
         if "start_time" in track_meta:
             start_time = dateutil.parser.parse(track_meta["start_time"])
-        end_time = dateutil.parser.parse(track_meta["end_time"])
-        duration = (end_time - start_time).total_seconds()
+        end_time = None
+        if "end_time" in track_meta:
+            end_time = dateutil.parser.parse(track_meta["end_time"])
+        if end_time is not None and start_time is not None:
+            duration = (end_time - start_time).total_seconds()
         location = clip_meta.get("location")
         num_frames = track_meta["frames"]
         camera = clip_meta["device"]
@@ -391,9 +392,7 @@ class Camera:
         return track, f
 
     def label_track_count(
-        self,
-        label,
-        max_segments_per_track=None,
+        self, label, max_segments_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -401,9 +400,7 @@ class Camera:
         return len(tracks)
 
     def label_segment_count(
-        self,
-        label,
-        max_segments_per_track=None,
+        self, label, max_segments_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -418,9 +415,7 @@ class Camera:
         return frames
 
     def label_frame_count(
-        self,
-        label,
-        max_frames_per_track=None,
+        self, label, max_frames_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
