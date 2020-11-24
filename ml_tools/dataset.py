@@ -139,6 +139,7 @@ class Dataset:
             "date": 0,
             "tags": 0,
             "segment_mass": 0,
+            "no_data": 0,
         }
 
     def set_read_only(self, read_only):
