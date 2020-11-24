@@ -352,10 +352,7 @@ class Dataset:
 
         # always let the false-positives through as we need them even though they would normally
         # be filtered out.
-        if (
-            "bounds_history" not in track_meta["bounds_history"]
-            or len(track_meta["bounds_history"]) == 0
-        ):
+        if "bounds_history" not in track_meta or len(track_meta["bounds_history"]) == 0:
             self.filtered_stats["no_data"] += 1
             return True
 
