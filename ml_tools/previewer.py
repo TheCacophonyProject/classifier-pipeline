@@ -419,7 +419,7 @@ class Previewer:
                 )
 
     @staticmethod
-    def create_four_tracking_image(frame, min_temp, max_temp, colourmap):
+    def create_four_tracking_image(frame, min_temp, max_temp, colourmap, size=4):
 
         thermal = frame.thermal
         filtered = frame.filtered + min_temp
@@ -447,7 +447,15 @@ class Previewer:
         image = np.hstack(
             (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
         )
-        return Image.fromarray(image)
+        image = Image.fromarray(image)
+        image = image.resize(
+            (
+                int(image.width * size),
+                int(image.height * size),
+            ),
+            Image.BILINEAR,
+        )
+        return image
 
     @staticmethod
     def stats_footer(stats):
