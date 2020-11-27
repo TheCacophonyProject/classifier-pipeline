@@ -124,6 +124,7 @@ class Previewer:
             clip.stats.min_temp = np.amin(thermals)
             clip.stats.max_temp = np.amax(thermals)
         mpeg = MPEGCreator(filename)
+        self.frame_scale = 4.0
         for frame_number, frame in enumerate(clip.frame_buffer):
             if self.preview_type == self.PREVIEW_RAW:
                 image = self.convert_and_resize(
@@ -132,15 +133,16 @@ class Previewer:
                 draw = ImageDraw.Draw(image)
             elif self.preview_type == self.PREVIEW_TRACKING:
                 image = self.create_four_tracking_image(
-                    frame, clip.stats.min_temp, clip.stats.max_temp, self.colourmap
+                    frame,
+                    clip.stats.min_temp,
+                    clip.stats.max_temp,
                 )
-
                 draw = ImageDraw.Draw(image)
                 self.add_tracks(draw, clip.tracks, frame_number, predictions)
 
             elif self.preview_type == self.PREVIEW_BOXES:
                 image = self.convert_and_resize(
-                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp, 4.0
+                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp
                 )
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
@@ -150,7 +152,7 @@ class Previewer:
 
             elif self.preview_type == self.PREVIEW_CLASSIFIED:
                 image = self.convert_and_resize(
-                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp, 4.0
+                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp
                 )
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
@@ -194,19 +196,17 @@ class Previewer:
             logging.info("creating preview %s", filename_format.format(id + 1))
             tools.write_mpeg(filename_format.format(id + 1), video_frames)
 
-    def convert_and_resize(self, frame, h_min, h_max, size=None, mode=Image.BILINEAR):
+    def convert_and_resize(self, frame, h_min, h_max, mode=Image.BILINEAR):
         """ Converts the image to colour using colour map and resize """
         thermal = frame[:120, :160].copy()
         image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
-        if size:
-            self.frame_scale = size
-            image = image.resize(
-                (
-                    int(image.width * self.frame_scale),
-                    int(image.height * self.frame_scale),
-                ),
-                mode,
-            )
+        image = image.resize(
+            (
+                int(image.width * self.frame_scale),
+                int(image.height * self.frame_scale),
+            ),
+            mode,
+        )
 
         if self.debug:
             tools.add_heat_number(image, thermal, self.frame_scale)
@@ -418,13 +418,16 @@ class Previewer:
                     draw, track, region, screen_bounds, text=text, v_offset=v_offset
                 )
 
-    @staticmethod
-    def create_four_tracking_image(frame, min_temp, max_temp, colourmap, size=4):
+    def create_four_tracking_image(self, frame, min_temp, max_temp):
 
         thermal = frame.thermal
         filtered = frame.filtered + min_temp
-        filtered = tools.convert_heat_to_img(filtered, colourmap, min_temp, max_temp)
-        thermal = tools.convert_heat_to_img(thermal, colourmap, min_temp, max_temp)
+        filtered = tools.convert_heat_to_img(
+            filtered, self.colourmap, min_temp, max_temp
+        )
+        thermal = tools.convert_heat_to_img(thermal, self.colourmap, min_temp, max_temp)
+        if self.debug:
+            tools.add_heat_number(thermal, frame.thermal, 1)
         mask, _ = normalize(frame.mask, new_max=255)
         mask = np.uint8(mask)
 
@@ -441,17 +444,18 @@ class Previewer:
                 + min_temp
             )
             flow_magnitude = tools.convert_heat_to_img(
-                flow_magnitude, colourmap, min_temp, max_temp
+                flow_magnitude, self.colourmap, min_temp, max_temp
             )
 
         image = np.hstack(
             (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
         )
         image = Image.fromarray(image)
+
         image = image.resize(
             (
-                int(image.width * size),
-                int(image.height * size),
+                int(image.width * self.frame_scale),
+                int(image.height * self.frame_scale),
             ),
             Image.BILINEAR,
         )
