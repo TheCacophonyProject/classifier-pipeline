@@ -963,7 +963,9 @@ class Dataset:
                     thread.exit()
 
     def regroup(
-        self, groups, shuffle=True,
+        self,
+        groups,
+        shuffle=True,
     ):
         """
         regroups the dataset so multiple animals can be under a single label
@@ -977,11 +979,11 @@ class Dataset:
             new_labels.append(g[1])
             count = 0
             for label in g[0]:
-                samples = len(self.samples_for(label))
-                count += samples
+                lbl_samples = self.samples_for(label)
+                count += len(lbl_samples)
                 self.label_mapping[label] = g[1]
-                samples.extend(self.samples_for(label))
-                for sample in samples:
+                samples.extend(lbl_samples)
+                for sample in lbl_samples:
                     track = self.tracks_by_id[sample.unique_track_id]
                     tracks_by_bin[track.bin_id] = track
             counts.append(count)
@@ -1001,7 +1003,12 @@ class Dataset:
         self.rebuild_cdf()
 
     def rebalance(
-        self, label_cap=None, cap_percent=None, labels=None, update=False, shuffle=True,
+        self,
+        label_cap=None,
+        cap_percent=None,
+        labels=None,
+        update=False,
+        shuffle=True,
     ):
         """
         Can be used to rebalance a set of labels by a percentage or maximum number
