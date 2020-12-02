@@ -777,7 +777,6 @@ class KerasModel:
             self.params.output_dim,
             batch_size=self.params.batch_size,
             channel=self.params.channel,
-            use_filtered=self.params.use_filtered,
             use_movement=self.params.use_movement,
             shuffle=True,
             model_preprocess=self.preprocess_fn,
