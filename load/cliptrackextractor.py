@@ -136,32 +136,18 @@ class ClipTrackExtractor:
         Calculates filtered frame from thermal
         :param thermal: the thermal frame
         :param background: (optional) used for background subtraction
-        :return: the filtered frame
+        :return: the filtered frame, threshold to use for object detection
         """
 
         # has to be a signed int so we dont get overflow
         filtered = np.float32(thermal.copy())
         avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
-        max = np.amax(filtered)
-        min = np.amin(filtered)
-        filtered, _ = normalize(filtered, min=min, max=max, new_max=255)
+        f_max = np.amax(filtered)
+        f_min = np.amin(filtered)
+        filtered, _ = normalize(filtered, min=f_min, max=f_max, new_max=255)
         filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
-        # if clip.frame_on > 90:
-        #     plt.imshow(filtered)
-        #     plt.show()
-        #     plt.imshow(clip.background)
-        #     plt.show()
-        # print(
-        #     "clip threshold is",
-        #     clip.background_thresh,
-        #     "after norm this hsould be",
-        #     min,
-        #     max,
-        #     clip.background_thresh * 255 / (max - min),
-        # )
-        # print("filtered values", np.amax(filtered), avg_change, np.amax(thermal))
-        return filtered, clip.background_thresh * 255 / (max - min)
+        return filtered, clip.background_thresh * 255 / (f_max - f_min)
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
         """
