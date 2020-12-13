@@ -232,7 +232,7 @@ classify:
     preview: "none"
 
     # folder is where classifier output and mp4s will be created.  It is specified relative to the base_data_folder
-    classify_folder: "smoketest/clips"
+    classify_folder: "tests/clips"
 
     #cache buffer frame to disk reducing memory usage
     cache_to_disk: True

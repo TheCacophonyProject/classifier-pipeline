@@ -1,5 +1,5 @@
 !TestConfig
-clip_dir: smoketest/test-clips
+clip_dir: tests/test-clips
 recording_tests:
 - !TestRecording
   device: Wallaby

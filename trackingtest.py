@@ -1,3 +1,3 @@
-from smoketest.trackingtest import main
+from tests.trackingtest import main
 
 main()
