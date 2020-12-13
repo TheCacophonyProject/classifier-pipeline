@@ -106,7 +106,7 @@ class RecordingMatch:
         same = [match for match in self.matches if match.status == 0]
         better = [match for match in self.matches if match.status == 1]
         worse = [match for match in self.matches if match.status == -1]
-        print("*******Classifying******")
+        print("*******{} Results ******".format(self.id))
         print(
             "matches {}\tmismatches {}\tunmatched {}".format(
                 len(matched), len(unmatched), len(self.unmatched_tracks)
@@ -286,8 +286,8 @@ class TestClassify:
                 )
             self.results.append(rec_match)
 
-    def write_results(self):
-        with open("smoketest-results.txt", "w") as f:
+    def write_results(self, filename):
+        with open(filename, "w") as f:
             for res in self.results:
                 res.write_results(f)
             f.write("Config\n")
@@ -352,8 +352,15 @@ def parse_args():
     parser.add_argument(
         "-t",
         "--tests",
-        default="smoketest/tracking-tests.yml",
+        default="tests/tracking-tests.yml",
         help="YML file containing tests",
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        default="tests/tracking-results.txt",
+        help="Text file descriibing the results",
     )
 
     parser.add_argument(
@@ -385,7 +392,7 @@ def main():
     args = parse_args()
     test = TestClassify(args)
     test.run_tests(args)
-    test.write_results()
+    test.write_results(args.output)
     test.print_summary()
 
 

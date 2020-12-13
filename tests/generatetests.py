@@ -1,3 +1,11 @@
+"""
+Author: Giampaolo Ferraro
+A script which downloads cptv files and metadata and creates tracking tests
+automatically from the provided track information. Note if the tracking is not
+perfect in the download cptv files the generated tests will need to be manually
+altered
+"""
+
 import os
 import yaml
 import argparse
