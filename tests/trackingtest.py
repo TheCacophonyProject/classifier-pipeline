@@ -317,7 +317,7 @@ class TestClassify:
     def run_tests(self, args):
         out_dir = Path(self.test_config.clip_dir)
 
-        for test in self.test_config.recording_tests[:2]:
+        for test in self.test_config.recording_tests:
             filepath = out_dir / test.filename
             if not filepath.exists():
                 logging.info(
