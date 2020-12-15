@@ -5,14 +5,22 @@ import json
 import logging
 import math
 import sys
+from enum import Enum
 from pathlib import Path
+from cacophonyapi.user import UserAPI
+
 from ml_tools import tools
 from config.config import Config
 from classify.clipclassifier import ClipClassifier
 from .testconfig import TestConfig
-from .api import API
 
 MATCH_ERROR = 1
+
+
+class TrackingStatus(Enum):
+    IMPROVED = 1
+    SAME = 0
+    WORSE = -1
 
 
 def match_track(gen_track, expected_tracks):
@@ -103,9 +111,13 @@ class RecordingMatch:
     def print_summary(self):
         matched = [match for match in self.matches if match.tag_match()]
         unmatched = [match for match in self.matches if not match.tag_match()]
-        same = [match for match in self.matches if match.status == 0]
-        better = [match for match in self.matches if match.status == 1]
-        worse = [match for match in self.matches if match.status == -1]
+        same = [match for match in self.matches if match.status == TrackingStatus.SAME]
+        better = [
+            match for match in self.matches if match.status == TrackingStatus.IMPROVED
+        ]
+        worse = [
+            match for match in self.matches if match.status == TrackingStatus.WORSE
+        ]
         print("*******{} Results ******".format(self.id))
         print(
             "matches {}\tmismatches {}\tunmatched {}".format(
@@ -175,20 +187,20 @@ class Match:
         self.error = round(abs(self.opt_start_diff_s) + abs(self.opt_end_diff_s), 1)
 
         if self.error <= test_track.calc_error():
-            self.status = 1
+            self.status = TrackingStatus.IMPROVED
         elif self.error < MATCH_ERROR:
-            self.status = 0
+            self.status = TrackingStatus.SAME
         else:
-            self.status = -1
+            self.status = TrackingStatus.WORSE
         self.expected_tag = test_track.tag
         self.got_animal = tag
         self.test_track = test_track
         self.track = track
 
     def tracking_status(self):
-        if self.status == 1:
+        if self.status == TrackingStatus.IMPROVED:
             return "Better Tracking"
-        elif self.status == 0:
+        elif self.status == TrackingStatus.SAME:
             return "Same Tracking"
         return "Worse Tracking"
 
@@ -249,20 +261,27 @@ class TestClassify:
         )
         # try download missing tests
         if args.user and args.password:
-            api = API(args.user, args.password, args.server)
+            api = UserAPI(args.server, args.user, args.password)
             out_dir = Path(self.test_config.clip_dir)
             if not out_dir.exists():
                 out_dir.mkdir()
             for test in self.test_config.recording_tests:
                 filepath = out_dir / test.filename
                 if not filepath.exists():
-                    rec_meta = api.query_rec(test.rec_id)
-                    if api.save_file(
-                        out_dir / test.filename,
-                        api._download_signed(rec_meta["downloadRawJWT"]),
+                    if iter_to_file(
+                        out_dir / test.filename, api.download_recording(test.rec_id)
                     ):
                         logging.info("Saved %s", filepath)
         self.results = []
+
+    def iter_to_file(filename, source, overwrite=True):
+        if not overwrite and Path(filename).is_file():
+            print("{} already exists".format(filename))
+            return False
+        with open(filename, "wb") as f:
+            for chunk in source:
+                f.write(chunk)
+        return True
 
     def run_tests(self, args):
         out_dir = Path(self.test_config.clip_dir)
