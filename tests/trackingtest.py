@@ -1,3 +1,4 @@
+import attr
 import absl.logging
 import argparse
 import os
@@ -15,6 +16,57 @@ from classify.clipclassifier import ClipClassifier
 from .testconfig import TestConfig
 
 MATCH_ERROR = 1
+
+
+@attr.s
+class Summary:
+    better_tracking = attr.ib(default=0)
+    same_tracking = attr.ib(default=0)
+    worse_tracking = attr.ib(default=0)
+    classify_incorrect = attr.ib(default=0)
+    classified_correct = attr.ib(default=0)
+    total_tracks = attr.ib(default=0)
+    unmatched_tests = attr.ib(default=0)
+    unmatched_tracks = attr.ib(default=0)
+
+    def update(self, other):
+        self.better_tracking += other.better_tracking
+        self.same_tracking += other.same_tracking
+        self.worse_tracking += other.worse_tracking
+        self.classify_incorrect += other.classify_incorrect
+        self.classified_correct += other.classified_correct
+        self.total_tracks += other.total_tracks
+        self.unmatched_tests += other.unmatched_tests
+        self.unmatched_tracks += other.unmatched_tracks
+
+    @property
+    def classified_percentage(self):
+        return round(100.0 * self.classified_correct / self.total_tracks)
+
+    @property
+    def tracked_well_percentage(self):
+        return round(
+            100.0 * (self.same_tracking + self.better_tracking) / self.total_tracks
+        )
+
+    def print_summary(self):
+        print("===== OVERAL =====")
+        print(
+            "Classify Results {}% {}/{}".format(
+                self.classified_percentage,
+                self.classified_correct,
+                self.total_tracks,
+            )
+        )
+        print(
+            "Tracking Results Better/Same {}% {}/{} With {} unmatched tracks (false-positives) and {} missed tracks".format(
+                self.tracked_well_percentage,
+                self.same_tracking + self.better_tracking,
+                self.total_tracks,
+                self.unmatched_tracks,
+                self.unmatched_tests,
+            )
+        )
 
 
 class TrackingStatus(Enum):
@@ -62,29 +114,30 @@ class RecordingMatch:
         self.unmatched_tracks = []
         self.unmatched_tests = []
         self.filename = filename
-        self.number_tracks = 0
         self.id = id_
+        self.summary = Summary()
 
     def match(self, test, tracks, predictions):
-        self.number_tracks += len(test.tracks)
-
+        self.summary.total_tracks += len(tracks)
         gen_tracks = sorted(tracks, key=lambda x: x.get_id())
         gen_tracks = sorted(gen_tracks, key=lambda x: x.start_s)
 
-        matched_tests = []
+        self.unmatched_tests = set(test.tracks)
+
         for i, track in enumerate(gen_tracks):
             prediction = predictions.prediction_for(track.get_id())
-            test_track = match_track(track, test.tracks)
+            test_track = match_track(track, self.unmatched_tests)
             if test_track is not None:
-                matched_tests.append(test_track)
+                self.unmatched_tests.remove(test_track)
                 match = Match(
                     test_track, track, prediction.predicted_tag(predictions.labels)
                 )
-                self.matches.append(match)
+                self.new_match(match)
             else:
                 self.unmatched_tracks.append(
                     (prediction.predicted_tag(predictions.labels), track)
                 )
+                self.summary.unmatched_tracks += 1
                 print(
                     "Unmatched track tag {} start {} end {}".format(
                         prediction.predicted_tag(predictions.labels),
@@ -92,53 +145,40 @@ class RecordingMatch:
                         track.end_s,
                     )
                 )
+        self.summary.unmatched_tests = len(self.unmatched_tests)
 
-                self.unmatched_tests = []
-
-        for test_track in test.tracks:
-            found = False
-            for matched in matched_tests:
-                if (
-                    matched.start == test_track.start
-                    and matched.start_pos == test_track.start_pos
-                ):
-                    found = True
-                    break
-
-            if found is False:
-                self.unmatched_tests.append(test_track)
+    def new_match(self, match):
+        if match.status == TrackingStatus.IMPROVED:
+            self.summary.better_tracking += 1
+        elif match.status == TrackingStatus.SAME:
+            self.summary.same_tracking += 1
+        else:
+            self.summary.worse_tracking += 1
+        if match.tag_match():
+            self.summary.classified_correct += 1
+        else:
+            self.summary.classify_incorrect += 1
+        self.matches.append(match)
 
     def print_summary(self):
-        matched = [match for match in self.matches if match.tag_match()]
-        unmatched = [match for match in self.matches if not match.tag_match()]
-        same = [match for match in self.matches if match.status == TrackingStatus.SAME]
-        better = [
-            match for match in self.matches if match.status == TrackingStatus.IMPROVED
-        ]
-        worse = [
-            match for match in self.matches if match.status == TrackingStatus.WORSE
-        ]
         print("*******{} Results ******".format(self.id))
         print(
             "matches {}\tmismatches {}\tunmatched {}".format(
-                len(matched), len(unmatched), len(self.unmatched_tracks)
+                self.summary.classified_correct,
+                self.summary.classify_incorrect,
+                self.summary.unmatched_tracks,
             )
         )
         print("*******Tracking******")
-        print("same {} better {}\t worse {}".format(len(same), len(better), len(worse)))
-        if len(self.unmatched_tests) > 0:
-            print("unmatched tests {}\t ".format(len(self.unmatched_tests)))
-        summary = {
-            "classify": {"correct": len(matched), "incorrect": len(unmatched)},
-            "tracking": {
-                "better": len(better),
-                "same": len(same),
-                "worse": len(worse),
-                "unmatched_tracks": len(self.unmatched_tracks),
-                "unmatched_tests": len(self.unmatched_tests),
-            },
-        }
-        return summary
+        print(
+            "same {} better {}\t worse {}".format(
+                self.summary.same_tracking,
+                self.summary.better_tracking,
+                self.summary.worse_tracking,
+            )
+        )
+        if self.summary.unmatched_tests > 0:
+            print("unmatched tests {}\t ".format(self.summary.unmatched_tests))
 
     def write_results(self, f):
         f.write("{}{}{}\n".format("-" * 10, "Recording", "-" * 90))
@@ -146,7 +186,7 @@ class RecordingMatch:
         for match in self.matches:
             match.write_results(f)
 
-        if len(self.unmatched_tracks) > 0:
+        if self.summary.unmatched_tracks > 0:
             f.write("Unmatched Tracks\n")
         for (what, track) in self.unmatched_tracks:
             f.write(
@@ -159,7 +199,7 @@ class RecordingMatch:
             )
         f.write("\n")
 
-        if len(self.unmatched_tests) > 0:
+        if self.summary.unmatched_tests > 0:
             f.write("Unmatched Tests\n")
         for expected in self.unmatched_tests:
             f.write(
@@ -274,19 +314,10 @@ class TestClassify:
                         logging.info("Saved %s", filepath)
         self.results = []
 
-    def iter_to_file(filename, source, overwrite=True):
-        if not overwrite and Path(filename).is_file():
-            print("{} already exists".format(filename))
-            return False
-        with open(filename, "wb") as f:
-            for chunk in source:
-                f.write(chunk)
-        return True
-
     def run_tests(self, args):
         out_dir = Path(self.test_config.clip_dir)
 
-        for test in self.test_config.recording_tests:
+        for test in self.test_config.recording_tests[:2]:
             filepath = out_dir / test.filename
             if not filepath.exists():
                 logging.info(
@@ -314,44 +345,12 @@ class TestClassify:
 
     def print_summary(self):
         print("===== SUMMARY =====")
-        total_summary = None
-        total_tracks = 0
+        total_summary = Summary()
         for result in self.results:
-            total_tracks += result.number_tracks
-            summary = result.print_summary()
-            if total_summary is None:
-                total_summary = summary
-            else:
-                for key, value in summary["classify"].items():
-                    total_summary["classify"][key] += value
+            result.print_summary()
+            total_summary.update(result.summary)
 
-                for key, value in summary["tracking"].items():
-                    total_summary["tracking"][key] += value
-        if total_summary is None:
-            return
-        classified_correct = total_summary.get("classify", {}).get("correct", 0)
-        tracked_well = total_summary.get("tracking", {}).get("better", 0)
-        tracked_well += total_summary.get("tracking", {}).get("same", 0)
-        unmatched_tracks = total_summary.get("tracking", {}).get("unmatched_tracks", 0)
-        unmatched_tests = total_summary.get("tracking", {}).get("unmatched_tests", 0)
-
-        classified_per = round(100.0 * classified_correct / total_tracks)
-        tracked_per = round(100.0 * tracked_well / total_tracks)
-        print("===== OVERAL =====")
-        print(
-            "Classify Results {}% {}/{}".format(
-                classified_per, classified_correct, total_tracks
-            )
-        )
-        print(
-            "Tracking Results Better/Same {}% {}/{} With {} unmatched tracks (false-positives) and {} missed tracks".format(
-                tracked_per,
-                tracked_well,
-                total_tracks,
-                unmatched_tracks,
-                unmatched_tests,
-            )
-        )
+        total_summary.print_summary()
 
     def compare_output(self, clip, predictions, expected):
         rec_match = RecordingMatch(clip.source_file, expected.rec_id)
@@ -421,3 +420,13 @@ if __name__ == "__main__":
 
 def convert_to_dict(obj):
     return obj.__dict__
+
+
+def iter_to_file(filename, source, overwrite=True):
+    if not overwrite and Path(filename).is_file():
+        print("{} already exists".format(filename))
+        return False
+    with open(filename, "wb") as f:
+        for chunk in source:
+            f.write(chunk)
+    return True

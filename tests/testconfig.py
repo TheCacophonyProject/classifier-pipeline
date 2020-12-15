@@ -52,7 +52,7 @@ class TestRecording(yaml.YAMLObject):
         return cls(rec_id, filename, device_id, device, group_id, group, tracks)
 
 
-@attr.s
+@attr.s(eq=False)
 class TestTrack(yaml.YAMLObject):
     yaml_tag = "!TestTrack"
     id = attr.ib()
