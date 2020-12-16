@@ -12,6 +12,7 @@ from cacophonyapi.user import UserAPI
 
 from ml_tools import tools
 from config.config import Config
+
 from classify.clipclassifier import ClipClassifier
 from .testconfig import TestConfig
 
@@ -41,10 +42,14 @@ class Summary:
 
     @property
     def classified_percentage(self):
+        if self.total_tracks == 0:
+            return 0
         return round(100.0 * self.classified_correct / self.total_tracks)
 
     @property
     def tracked_well_percentage(self):
+        if self.total_tracks == 0:
+            return 0
         return round(
             100.0 * (self.same_tracking + self.better_tracking) / self.total_tracks
         )
@@ -336,12 +341,13 @@ class TestClassify:
                 )
             self.results.append(rec_match)
 
-    def write_results(self, filename):
+    def write_results(self, filename, config_file):
         with open(filename, "w") as f:
             for res in self.results:
                 res.write_results(f)
             f.write("Config\n")
-            json.dump(self.classifier_config, f, indent=2, default=convert_to_dict)
+            with open(config_file, "r") as config:
+                f.write(config.read())
 
     def print_summary(self):
         print("===== SUMMARY =====")
@@ -410,16 +416,12 @@ def main():
     args = parse_args()
     test = TestClassify(args)
     test.run_tests(args)
-    test.write_results(args.output)
+    test.write_results(args.output, args.classify_config)
     test.print_summary()
 
 
 if __name__ == "__main__":
     main()
-
-
-def convert_to_dict(obj):
-    return obj.__dict__
 
 
 def iter_to_file(filename, source, overwrite=True):
