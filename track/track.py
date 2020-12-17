@@ -83,9 +83,7 @@ class Track:
         self.from_metadata = False
         self.track_tags = None
         self.kalman_tracker = Kalman()
-        self.predicted_mid = (0, 0)
-        for _ in range(100):
-            self.kalman_tracker.predict()
+        self.predicted_mid = None
 
     @classmethod
     def from_region(cls, clip, region):

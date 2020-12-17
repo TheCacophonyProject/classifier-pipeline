@@ -189,7 +189,7 @@ class ClipTrackExtractor:
         unmatched_regions = set(regions)
         for track in clip.active_tracks:
             for region in regions:
-                distance, size_change = track.get_region_score(region)
+                distance, size_change = get_region_score(track.last_bound, region)
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
 
                 max_distance = get_max_distance_change(track)
@@ -482,3 +482,17 @@ def get_max_distance_change(track):
         ClipTrackExtractor.MAX_DISTANCE,
     )
     return max_distance
+
+
+def get_region_score(last_bound: Region, region: Region):
+    """
+    Calculates a score between 2 regions based of distance and area.
+    The higher the score the more similar the Regions are
+    """
+    distance = last_bound.average_distance(region)
+
+    # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
+    # area is padded with 50 pixels so small regions don't change too much
+    size_difference = abs(region.area - last_bound.area) / (last_bound.area + 50)
+
+    return distance, size_difference
