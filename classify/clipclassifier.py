@@ -217,14 +217,12 @@ class ClipClassifier(CPTVFileProcessor):
         self.save_metadata(filename, meta_filename, clip, predictions)
 
     def classify_file(self, filename):
+        if not os.path.exists(filename):
+            raise Exception("File {} not found.".format(filename))
+        logging.info("Processing file '{}'".format(filename))
 
         # prediction record for each track
         predictions = Predictions(self.classifier.labels)
-
-        if not os.path.exists(filename):
-            raise Exception("File {} not found.".format(filename))
-
-        logging.info("Processing file '{}'".format(filename))
 
         start = time.time()
         clip = Clip(self.tracker_config, filename)
