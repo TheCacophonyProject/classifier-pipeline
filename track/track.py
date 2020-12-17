@@ -265,7 +265,16 @@ class Track:
 
         movement_points = (movement ** 0.5) + max_offset
         delta_points = delta_std * 25.0
-        score = min(movement_points, 100) + min(delta_points, 100)
+        jitter_percent = int(
+            round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))
+        )
+        blank_percent = int(round(100.0 * self.blank_frames / self.frames))
+        score = (
+            min(movement_points, 100)
+            + min(delta_points, 100)
+            + (100 - jitter_percent)
+            + (100 - blank_percent)
+        )
 
         stats = TrackMovementStatistics(
             movement=float(movement),
@@ -274,12 +283,10 @@ class Track:
             median_mass=float(np.median(mass_history)),
             delta_std=float(delta_std),
             score=float(score),
-            region_jitter=int(
-                round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))
-            ),
+            region_jitter=jitter_percent,
             jitter_bigger=jitter_bigger,
             jitter_smaller=jitter_smaller,
-            blank_percent=int(round(100.0 * self.blank_frames / self.frames)),
+            blank_percent=blank_percent,
             frames_moved=frames_moved,
         )
 
@@ -338,7 +345,6 @@ class Track:
                 self.frames_since_target_seen -= 1
                 self.blank_frames -= 1
             end -= 1
-
         if end < start:
             self.start_frame = 0
             self.bounds_history = []
@@ -349,23 +355,8 @@ class Track:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
             self.vel_x = self.vel_x[start : end + 1]
-            self.vel_x = self.vel_x[start : end + 1]
+            self.vel_y = self.vel_y[start : end + 1]
         self.start_s = self.start_frame / float(self.fps)
-
-    def get_region_score(self, region: Region):
-        """
-        Calculates a score between this track and a region of interest.  Regions that are close the the expected
-        location for this track are given high scores, as are regions of a similar size.
-        """
-        distance = self.last_bound.average_distance(region)
-
-        # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
-        # area is padded with 50 pixels so small regions don't change too much
-        size_difference = abs(region.area - self.last_bound.area) / (
-            self.last_bound.area + 50
-        )
-
-        return distance, size_difference
 
     def get_overlap_ratio(self, other_track, threshold=0.05):
         """
