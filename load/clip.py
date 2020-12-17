@@ -80,7 +80,7 @@ class Clip:
         self.set_model(None)
         if background is not None:
             self.background = background
-            self._set_from_background()
+            self._background_calculated()
 
     def set_model(self, camera_model):
         self.camera_model = camera_model
@@ -104,54 +104,85 @@ class Clip:
     def on_preview(self):
         return not self.background_calculated
 
+    def update_background(self, frame):
+        """ updates the clip background """
+        if self.background is None:
+            self.background = frame
+        else:
+            self.background = np.minimum(self.background, frame)
+        self.background_frames += 1
+
+    def calculate_initial_diff(self, frame, initial_frames, initial_diff):
+        """Compare this frame with the initial frames (to detect movement) and update the initial_diff
+        frame (such that it is the maximum difference). This is essentially creating a frame which has
+        all the warms moving parts from the initial frame
+        """
+        if initial_frames is None:
+            return initial_diff
+        else:
+            diff = initial_frames - frame
+            if initial_diff is not None:
+                initial_diff = np.maximum(initial_diff, diff)
+            else:
+                initial_diff = diff
+        return initial_diff
+
     def calculate_background(self, frame_reader):
         """
         Calculate background by reading whole clip and grouping into sets of
         9 frames. Take the average of these 9 frames and use the minimum
         over the sets as the initial background
-        Also check for movement in the initial background, which will indicate
-        a animal is already in initial frame
+        Also check for animals in the background by checking for connected components in
+        the intital_diff frame - this is the maximum change between first average frame and all other average frames in the clip
         """
         initial_frames = None
-        lower_diff = None
+        initial_diff = None
         frames = []
         for frame in frame_reader:
             ffc_affected = is_affected_by_ffc(frame)
             if ffc_affected:
                 continue
+
             frames.append(frame.pix)
             if len(frames) == 9:
                 frame_average = np.average(frames, axis=0)
-                self.calculate_preview_from_frame(frame_average, False)
-
+                self.update_background(frame_average)
+                initial_diff = self.calculate_initial_diff(
+                    frame_average, initial_frames, initial_diff
+                )
                 if initial_frames is None:
                     initial_frames = frame_average
-                else:
-                    diff = initial_frames - frame.pix
-                    if lower_diff is not None:
-                        lower_diff = np.maximum(lower_diff, diff)
-                    else:
-                        lower_diff = diff
                 frames = []
 
-        np.clip(lower_diff, 0, None, out=lower_diff)
         if len(frames) > 0:
-            self.calculate_preview_from_frame(np.average(frames, axis=0), False)
-            frames = []
+            frame_average = np.average(frames, axis=0)
+            self.update_background(frame_average)
+            initial_diff = self.calculate_initial_diff(
+                frame_average, initial_frames, initial_diff
+            )
+            if initial_frames is None:
+                initial_frames = frame_average
+        frames = []
 
-        initial_frames = self.remove_background_animals(initial_frames, lower_diff)
+        np.clip(initial_diff, 0, None, out=initial_diff)
+        initial_frames = self.remove_background_animals(initial_frames, initial_diff)
 
-        self.calculate_preview_from_frame(initial_frames, False)
+        self.update_background(initial_frames)
         self._set_from_background()
 
-    def remove_background_animals(self, background, lower_diff):
+    def remove_background_animals(self, initial_frame, initial_diff):
+        """
+        Try and remove animals that are already in the initial frames, by
+        checking for connected components in the intital_diff frame
+        (this is the maximum change between first frame and all other frames in the clip)
+        """
         # remove some noise
-        lower_diff[lower_diff < self.background_thresh] = 0
-        lower_diff[lower_diff > 255] = 255
-        lower_diff = np.uint8(lower_diff)
-        lower_diff = cv2.fastNlMeansDenoising(lower_diff, None)
+        initial_diff[initial_diff < self.background_thresh] = 0
+        initial_diff[initial_diff > 255] = 255
+        initial_diff = np.uint8(initial_diff)
+        initial_diff = cv2.fastNlMeansDenoising(initial_diff, None)
 
-        _, lower_mask, lower_objects = detect_objects(lower_diff, otsus=True)
+        _, lower_mask, lower_objects = detect_objects(initial_diff, otsus=True)
 
         max_region = Region(0, 0, self.res_x, self.res_y)
         for component in lower_objects[1:]:
@@ -164,15 +195,15 @@ class Clip:
                     component[4],
                 )
                 continue
-            background_region = region.subimage(background)
+            background_region = region.subimage(initial_frame)
             norm_back = background_region.copy()
             norm_back, _ = normalize(norm_back, new_max=255)
             sub_components, sub_connected, sub_stats = detect_objects(
                 norm_back, otsus=True
             )
 
-            lower_diff_2 = region.subimage(lower_mask) * 255
-            overlap_pixels = np.sum(sub_connected[lower_diff_2 > 0])
+            overlap_image = region.subimage(lower_mask) * 255
+            overlap_pixels = np.sum(sub_connected[overlap_image > 0])
             overlap_pixels = overlap_pixels / float(component[4])
 
             # filter out components which are too big, or dont match original causes
@@ -200,16 +231,7 @@ class Clip:
                 3,
                 cv2.INPAINT_TELEA,
             )
-        return background
-
-    def calculate_preview_from_frame(self, frame, ffc_affected=False):
-        if ffc_affected:
-            return
-        if self.background is None:
-            self.background = frame
-        else:
-            self.background = np.minimum(self.background, frame)
-        self.background_frames += 1
+        return initial_frame
 
     def _add_active_track(self, track):
         self.active_tracks.add(track)
