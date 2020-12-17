@@ -39,7 +39,9 @@ class Clip:
     local_tz = pytz.timezone("Pacific/Auckland")
     VERSION = 7
     CLIP_ID = 1
-    MIN_OVERLAP = 0.80
+    # used when calculating background, mininimum percentage the difference object
+    # and background object must overlap i.e. they are a valid object
+    MIN_ORIGIN_OVERLAP = 0.80
 
     def __init__(self, trackconfig, sourcefile, background=None, calc_stats=True):
         self._id = Clip.CLIP_ID
@@ -96,7 +98,7 @@ class Clip:
         self.track_min_delta = threshold.track_min_delta
         self.track_max_delta = threshold.track_max_delta
 
-    def _set_from_background(self):
+    def _background_calculated(self):
         self.stats.mean_background_value = np.average(self.background)
         self.set_temp_thresh()
         self.background_calculated = True
@@ -168,7 +170,7 @@ class Clip:
         initial_frames = self.remove_background_animals(initial_frames, initial_diff)
 
         self.update_background(initial_frames)
-        self._set_from_background()
+        self._background_calculated()
 
     def remove_background_animals(self, initial_frame, initial_diff):
         """
@@ -209,7 +211,7 @@ class Clip:
             # filter out components which are too big, or dont match original causes
             # for filtering
             if (
-                overlap_pixels < Clip.MIN_OVERLAP
+                overlap_pixels < Clip.MIN_ORIGIN_OVERLAP
                 or sub_stats[1][4] == 0
                 or sub_stats[1][4] == region.area
             ):

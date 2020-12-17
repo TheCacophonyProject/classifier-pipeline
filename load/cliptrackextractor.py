@@ -132,7 +132,6 @@ class ClipTrackExtractor:
         :return: the filtered frame
         """
 
-        # has to be a signed int so we dont get overflow
         filtered = np.float32(thermal.copy())
         avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
