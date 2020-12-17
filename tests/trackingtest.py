@@ -26,7 +26,7 @@ class Summary:
     worse_tracking = attr.ib(default=0)
     classify_incorrect = attr.ib(default=0)
     classified_correct = attr.ib(default=0)
-    total_tracks = attr.ib(default=0)
+    total_tests = attr.ib(default=0)
     unmatched_tests = attr.ib(default=0)
     unmatched_tracks = attr.ib(default=0)
 
@@ -36,22 +36,22 @@ class Summary:
         self.worse_tracking += other.worse_tracking
         self.classify_incorrect += other.classify_incorrect
         self.classified_correct += other.classified_correct
-        self.total_tracks += other.total_tracks
+        self.total_tests += other.total_tests
         self.unmatched_tests += other.unmatched_tests
         self.unmatched_tracks += other.unmatched_tracks
 
     @property
     def classified_percentage(self):
-        if self.total_tracks == 0:
+        if self.total_tests == 0:
             return 0
-        return round(100.0 * self.classified_correct / self.total_tracks)
+        return round(100.0 * self.classified_correct / self.total_tests)
 
     @property
     def tracked_well_percentage(self):
-        if self.total_tracks == 0:
+        if self.total_tests == 0:
             return 0
         return round(
-            100.0 * (self.same_tracking + self.better_tracking) / self.total_tracks
+            100.0 * (self.same_tracking + self.better_tracking) / self.total_tests
         )
 
     def print_summary(self):
@@ -60,14 +60,14 @@ class Summary:
             "Classify Results {}% {}/{}".format(
                 self.classified_percentage,
                 self.classified_correct,
-                self.total_tracks,
+                self.total_tests,
             )
         )
         print(
             "Tracking Results Better/Same {}% {}/{} With {} unmatched tracks (false-positives) and {} missed tracks".format(
                 self.tracked_well_percentage,
                 self.same_tracking + self.better_tracking,
-                self.total_tracks,
+                self.total_tests,
                 self.unmatched_tracks,
                 self.unmatched_tests,
             )
@@ -123,7 +123,7 @@ class RecordingMatch:
         self.summary = Summary()
 
     def match(self, test, tracks, predictions):
-        self.summary.total_tracks += len(tracks)
+        self.summary.total_tests += len(test.tracks)
         gen_tracks = sorted(tracks, key=lambda x: x.get_id())
         gen_tracks = sorted(gen_tracks, key=lambda x: x.start_s)
 
