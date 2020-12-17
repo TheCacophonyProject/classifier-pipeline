@@ -28,7 +28,6 @@ Uses a pre-trained model to identifying and classifying any animals in a CPTV fi
 ### evaluate.py
 Evaluates the performance of a classify.py run and generates reports.
 
-
 # Setup
 
 1. Create a virtual environment and install the necessary prerequisites </br>
@@ -112,3 +111,29 @@ Multi frame models use:
 7. View logs
 
 	`journalctl -u cacophony-processing.thermal@xx.service -f`
+
+# Testing Classification and Tracking
+
+## Generating Tests
+
+- Tests can be generated from existing videos files on browse. The tests will contain
+the tracks and tagged results as shown in browse by default.
+- Test metadata will be saved to a yml file(tracking-tests.yml by default). This
+may require manual editing to setup the tests if the original browse video did not track / classify
+well
+- Test CPTV files will be saved under out_dir and labelled as recordingid.cptv
+
+`python tests\generatetests.py out_dir Username Password <list of recording ids separated by a space>`
+
+e.g.
+
+`python tests\generatetests.py test_clips Derek password123 12554 122232`
+
+## Running Tests
+
+- Once tests have been generated you can test your current tracking and model against thermal
+- This will print out the results and also save a file called tracking-results.txt
+- A default set of tracking tests is located in 'tests/tracking-tests.yml'
+in order to run the clips they will need to be downloaded this can be done automatically
+by adding a valid cacophny api user and password to trackingtest.py
+`python trackingtest.py -t tests/tracking-tests.yml --user <User> --password <password>`

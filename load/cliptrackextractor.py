@@ -474,6 +474,7 @@ class ClipTrackExtractor:
 
         for track in clip.tracks:
             track.trim()
+            track.set_end_s(clip.frames_per_second)
 
         track_stats = [(track.get_stats(), track) for track in clip.tracks]
         track_stats.sort(reverse=True, key=lambda record: record[0].score)

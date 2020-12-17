@@ -36,7 +36,7 @@ class Predictions:
             return prediction.guesses(self.labels)
         return []
 
-    def print_prediction(self, track_id):
+    def print_predictions(self, track_id):
         self.prediction_for(track_id).print_prediction(self.labels)
 
     def prediction_description(self, track_id):
@@ -226,6 +226,12 @@ class TrackPrediction:
             return None
         return self.smoothed_novelties[n]
 
+    def predicted_tag(self, labels):
+        index = self.best_label_index
+        if index is None:
+            return None
+        return labels[index]
+
     @property
     def best_label_index(self):
         if self.class_best_score is None:
@@ -283,7 +289,9 @@ class TrackPrediction:
 
     def print_prediction(self, labels):
         logging.info(
-            "Track {} is {}".format(self.track_id, self.get_classified_footer(labels))
+            "Track {} prediction {}".format(
+                self.track_id, self.get_classified_footer(labels)
+            )
         )
 
     def guesses(self, labels):

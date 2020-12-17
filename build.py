@@ -8,7 +8,7 @@ import os
 import pickle
 import random
 import numpy as np
-
+import logging
 from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
@@ -304,8 +304,10 @@ def split_dataset_by_cameras(db, dataset, build_config):
             test_data.append(camera)
             test_i = i
             break
-    assert len(test_data) > 0, "No test camera found with all labels"
-    del cameras[test_i]
+    if len(test_data) > 0:
+        del cameras[test_i]
+    else:
+        logging.warning("No test camera found with all labels")
 
     train_data = cameras[:train_cameras]
 
