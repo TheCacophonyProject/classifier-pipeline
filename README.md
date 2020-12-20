@@ -137,3 +137,9 @@ e.g.
 in order to run the clips they will need to be downloaded this can be done automatically
 by adding a valid cacophny api user and password to trackingtest.py
 `python trackingtest.py -t tests/tracking-tests.yml --user <User> --password <password>`
+
+
+## Tracking results
+
+Results for tests/tracking-tests.yml on tracking algorithms are located here
+https://drive.google.com/drive/u/1/folders/1uGU9FhKaypadUVcIvItBZuZebZa_Z7MG
