@@ -100,7 +100,7 @@ class TrackDatabase:
                 # group_attrs.update(clip.stats)
                 group_attrs["filename"] = clip.source_file
                 group_attrs["start_time"] = clip.video_start_time.isoformat()
-                group_attrs["threshold"] = clip.threshold
+                group_attrs["background_thresh"] = clip.background_thresh
 
                 group_attrs["mean_background_value"] = clip.stats.mean_background_value
                 group_attrs["threshold"] = clip.stats.threshold

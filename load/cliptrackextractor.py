@@ -26,14 +26,17 @@ from cptv import CPTVReader
 import cv2
 
 from .clip import Clip
-import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
+from ml_tools.imageprocessing import detect_objects
 
 
 class ClipTrackExtractor:
+    BASE_DISTANCE_CHANGE = 450
+    BASE_MASS_CHANGE = 10
+    MAX_DISTANCE = 2000
     PREVIEW = "preview"
 
     def __init__(
@@ -89,23 +92,12 @@ class ClipTrackExtractor:
                 reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
             )
             clip.set_video_stats(video_start_time)
+            clip.calculate_background(reader)
 
-            if clip.background_is_preview and clip.num_preview_frames > 0:
-                for frame in reader:
-                    self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
-
-                if clip.on_preview():
-                    logging.warn("Clip is all preview frames")
-                    if clip.background is None:
-                        logging.warn("Clip only has ffc affected frames")
-                        return False
-
-                    clip._set_from_background()
-                    self._process_preview_frames(clip)
-            else:
-                # we need to load the entire video so we can analyse the background.
-                clip.background_is_preview = False
-                self.process_frames(clip, [frame for frame in reader])
+        with open(clip.source_file, "rb") as f:
+            reader = CPTVReader(f)
+            for frame in reader:
+                self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
 
         if not clip.from_metadata:
             self.apply_track_filtering(clip)
@@ -119,88 +111,9 @@ class ClipTrackExtractor:
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.frame_on))
         clip.ffc_affected = ffc_affected
-        if clip.on_preview():
-            clip.calculate_preview_from_frame(frame, ffc_affected)
-            if clip.background_calculated:
-                clip.frame_on += 1
-                self._process_preview_frames(clip)
-                return
-        else:
-            self._process_frame(clip, frame, ffc_affected)
+
+        self._process_frame(clip, frame, ffc_affected)
         clip.frame_on += 1
-
-    def _process_preview_frames(self, clip):
-        clip.frame_on -= len(clip.preview_frames)
-        for _, back_frame in enumerate(clip.preview_frames):
-            self._process_frame(clip, back_frame[0], back_frame[1])
-            clip.frame_on += 1
-
-        clip.preview_frames = None
-
-    def _whole_clip_stats(self, clip, frames):
-        filtered = np.float32(
-            [self._get_filtered_frame(clip, frame) for frame in frames]
-        )
-
-        delta = np.asarray(frames[1:], dtype=np.float32) - np.asarray(
-            frames[:-1], dtype=np.float32
-        )
-        average_delta = float(np.nanmean(np.abs(delta)))
-
-        # take half the max filtered value as a threshold
-        threshold = float(
-            np.percentile(
-                np.reshape(filtered, [-1]), q=self.config.threshold_percentile
-            )
-        )
-
-        # GP dont think this matters with dynamic thresh
-        # cap the threshold to something reasonable
-        threshold = max(self.config.min_threshold, threshold)
-        threshold = min(self.config.max_threshold, threshold)
-
-        clip.threshold = threshold
-        if self.calc_stats:
-            clip.stats.threshold = threshold
-            clip.stats.temp_thresh = self.config.motion.temp_thresh
-            clip.stats.average_delta = float(average_delta)
-            clip.stats.filtered_deviation = float(np.mean(np.abs(filtered)))
-            clip.stats.is_static_background = (
-                clip.stats.filtered_deviation < clip.config.static_background_threshold
-            )
-
-            if (
-                not clip.stats.is_static_background
-                or clip.disable_background_subtraction
-            ):
-                clip.background = None
-
-    def process_frames(self, clip, raw_frames):
-        # for now just always calculate as we are using the stats...
-        # background np.float64[][] filtered calculated here and stats
-        non_ffc_frames = [
-            frame.pix for frame in raw_frames if not is_affected_by_ffc(frame)
-        ]
-        if len(non_ffc_frames) == 0:
-            logging.warn("Clip only has ffc affected frames")
-            return False
-        clip.background_from_whole_clip(non_ffc_frames)
-        # not sure if we want to include ffc frames here or not
-        self._whole_clip_stats(clip, non_ffc_frames)
-        if clip.background_is_preview:
-
-            if clip.preview_frames > 0:
-                clip.background_from_frames(raw_frames)
-            else:
-                logging.info(
-                    "No preview secs defined for CPTV file - using statistical background measurement"
-                )
-
-        # process each frame
-        for frame in raw_frames:
-            ffc_affected = is_affected_by_ffc(frame)
-            self._process_frame(clip, frame.pix, ffc_affected)
-            clip.frame_on += 1
 
     def apply_track_filtering(self, clip):
         self.filter_tracks(clip)
@@ -217,22 +130,11 @@ class ClipTrackExtractor:
         :return: the filtered frame
         """
 
-        # has to be a signed int so we dont get overflow
         filtered = np.float32(thermal.copy())
-        if clip.background is None:
-            filtered = filtered - np.median(filtered) - 40
-            filtered[filtered < 0] = 0
-        elif clip.background_is_preview:
-            avg_change = int(
-                round(np.average(thermal) - clip.stats.mean_background_value)
-            )
-            filtered[filtered < clip.temp_thresh] = 0
-            np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
+        avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
+        np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
+        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
 
-        else:
-            filtered = filtered - clip.background
-            filtered = filtered - np.median(filtered)
-            filtered[filtered < 0] = 0
         return filtered
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
@@ -242,24 +144,9 @@ class ClipTrackExtractor:
             If specified background subtraction algorithm will be used.
         """
         filtered = self._get_filtered_frame(clip, thermal)
-        frame_height, frame_width = filtered.shape
-        mask = np.zeros(filtered.shape)
-        edge = self.config.edge_pixels
-
-        # remove the edges of the frame as we know these pixels can be spurious value
-        edgeless_filtered = clip.crop_rectangle.subimage(filtered)
-        thresh, mass = tools.blur_and_return_as_mask(
-            edgeless_filtered, threshold=clip.threshold
+        _, mask, component_details = detect_objects(
+            filtered.copy(), otsus=False, threshold=clip.background_thresh
         )
-        thresh = np.uint8(thresh)
-        dilated = thresh
-
-        # Dilation groups interested pixels that are near to each other into one component(animal/track)
-        if self.config.dilation_pixels > 0:
-            dilated = cv2.dilate(dilated, self.dilate_kernel, iterations=1)
-
-        labels, small_mask, stats, _ = cv2.connectedComponentsWithStats(dilated)
-        mask[edge : frame_height - edge, edge : frame_width - edge] = small_mask
 
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
@@ -267,15 +154,14 @@ class ClipTrackExtractor:
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.frame_on in track.frame_list:
-
                     track.add_frame_for_existing_region(
                         clip.frame_buffer.get_last_frame(),
-                        clip.threshold,
+                        clip.background_thresh,
                         prev_filtered,
                     )
         else:
             regions = self._get_regions_of_interest(
-                clip, labels, stats, thresh, filtered, prev_filtered, mass
+                clip, component_details, filtered, prev_filtered
             )
             clip.region_history.append(regions)
             self._apply_region_matchings(
@@ -294,16 +180,6 @@ class ClipTrackExtractor:
             new_tracks = set()
         self._filter_inactive_tracks(clip, new_tracks, matched_tracks)
 
-    def get_max_size_change(self, track, region):
-        exiting = region.is_along_border and not track.last_bound.is_along_border
-        entering = not exiting and track.last_bound.is_along_border
-
-        min_change = 50
-        if entering or exiting:
-            min_change = 100
-        max_size_change = np.clip(track.last_mass, min_change, 500)
-        return max_size_change
-
     def _match_existing_tracks(self, clip, regions):
 
         scores = []
@@ -311,17 +187,15 @@ class ClipTrackExtractor:
         unmatched_regions = set(regions)
         for track in clip.active_tracks:
             for region in regions:
-                score, size_change = track.get_track_region_score(
-                    region, self.config.moving_vel_thresh
-                )
+                distance, size_change = get_region_score(track.last_bound, region)
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
-                max_distance = np.clip(7 * track.last_mass, 900, 9025)
-                max_size_change = self.get_max_size_change(track, region)
 
-                if score > max_distance:
+                max_distance = get_max_distance_change(track)
+                max_size_change = get_max_size_change(track, region)
+                if distance > max_distance:
                     self.print_if_verbose(
-                        "track {} distance score {} bigger than max score {}".format(
-                            track.get_id(), score, max_distance
+                        "track {} distance score {} bigger than max distance {}".format(
+                            track.get_id(), distance, max_distance
                         )
                     )
 
@@ -332,8 +206,7 @@ class ClipTrackExtractor:
                             track.get_id(), size_change, max_size_change
                         )
                     )
-                    continue
-                scores.append((score, track, region))
+                scores.append((distance, track, region))
 
         # makes tracking consistent by ordering by score then by frame since target then track id
         scores.sort(
@@ -346,7 +219,6 @@ class ClipTrackExtractor:
         for (score, track, region) in scores:
             if track in matched_tracks or region in used_regions:
                 continue
-
             track.add_region(region)
             matched_tracks.add(track)
             used_regions.add(region)
@@ -369,8 +241,12 @@ class ClipTrackExtractor:
             new_tracks.add(track)
             clip._add_active_track(track)
             self.print_if_verbose(
-                "Creating a new track {} with region {} mass{} area {}".format(
-                    track.get_id(), region, track.last_bound.mass, track.last_bound.area
+                "Creating a new track {} with region {} mass{} area {} frame {}".format(
+                    track.get_id(),
+                    region,
+                    track.last_bound.mass,
+                    track.last_bound.area,
+                    region.frame_number,
                 )
             )
         return new_tracks
@@ -381,10 +257,12 @@ class ClipTrackExtractor:
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks
         for track in unactive_tracks:
-            if (
-                track.frames_since_target_seen + 1
-                < self.config.remove_track_after_frames
-            ):
+            # need sufficient frames to allow insertion of excess blanks
+            remove_after = min(
+                2 * (len(track) - track.blank_frames),
+                self.config.remove_track_after_frames,
+            )
+            if track.frames_since_target_seen + 1 < remove_after:
                 track.add_blank_frame(clip.frame_buffer)
                 clip.active_tracks.add(track)
                 self.print_if_verbose(
@@ -394,7 +272,7 @@ class ClipTrackExtractor:
                 )
 
     def _get_regions_of_interest(
-        self, clip, labels, stats, thresh, filtered, prev_filtered, mass
+        self, clip, component_details, filtered, prev_filtered
     ):
         """
                 Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
@@ -410,29 +288,19 @@ class ClipTrackExtractor:
 
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.frame_padding
-        edge = self.config.edge_pixels
         # find regions of interest
         regions = []
-        for i in range(1, labels):
+        for i, component in enumerate(component_details[1:]):
 
             region = Region(
-                stats[i, 0],
-                stats[i, 1],
-                stats[i, 2],
-                stats[i, 3],
-                stats[i, 4],
-                0,
-                i,
-                clip.frame_on,
+                component[0],
+                component[1],
+                component[2],
+                component[3],
+                mass=component[4],
+                id=i,
+                frame_number=clip.frame_on,
             )
-            # want the real mass calculated from before the dilation
-            # region.mass = np.sum(region.subimage(thresh))
-            region.mass = mass
-            # Add padding to region and change coordinates from edgeless image -> full image
-            region.x += edge - padding
-            region.y += edge - padding
-            region.width += padding * 2
-            region.height += padding * 2
 
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
@@ -456,6 +324,7 @@ class ClipTrackExtractor:
                         self.config.cropped_regions_strategy
                     )
                 )
+            region.enlarge(padding, max=clip.crop_rectangle)
 
             if delta_frame is not None:
                 region_difference = region.subimage(delta_frame)
@@ -522,24 +391,40 @@ class ClipTrackExtractor:
     def filter_track(self, clip, track, stats):
         # discard any tracks that are less min_duration
         # these are probably glitches anyway, or don't contain enough information.
-        if len(track) < self.config.min_duration_secs * 9:
+        if len(track) < self.config.min_duration_secs * clip.frames_per_second:
             self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
             clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
             return True
 
         # discard tracks that do not move enough
-        if stats.max_offset < self.config.track_min_offset:
-            self.print_if_verbose("Track filtered.  Didn't move")
-            clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
 
+        if (
+            stats.max_offset < self.config.track_min_offset
+            or stats.frames_moved < self.config.min_moving_frames
+        ):
+            self.print_if_verbose(
+                "Track filtered.  Didn't move {}".format(stats.max_offset)
+            )
+            clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
             return True
 
+        if stats.blank_percent > self.config.max_blank_percent:
+            self.print_if_verbose("Track filtered.  Too Many Blanks")
+            clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
+            return True
+        if stats.region_jitter > self.config.max_jitter:
+            self.print_if_verbose("Track filtered.  Too Jittery")
+            clip.filtered_tracks.append(("Track filtered.  Too Jittery", track))
+            return True
         # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
-        if stats.delta_std < self.config.track_min_delta:
+        if stats.delta_std < clip.track_min_delta:
             self.print_if_verbose("Track filtered.  Too static")
             clip.filtered_tracks.append(("Track filtered.  Too static", track))
             return True
-
+        if stats.delta_std > clip.track_max_delta:
+            self.print_if_verbose("Track filtered.  Too Dynamic")
+            clip.filtered_tracks.append(("Track filtered.  Too Dynamic", track))
+            return True
         # discard tracks that do not have enough enough average mass.
         if stats.average_mass < self.config.track_min_mass:
             self.print_if_verbose(
@@ -565,5 +450,47 @@ class ClipTrackExtractor:
         return False
 
     def print_if_verbose(self, info_string):
+
         if self.config.verbose:
             logging.info(info_string)
+
+
+def get_max_size_change(track, region):
+    exiting = region.is_along_border and not track.last_bound.is_along_border
+    entering = not exiting and track.last_bound.is_along_border
+    region_percent = 1.5
+    if len(track) < 5:
+        # may increase at first
+        region_percent = 2
+    if entering or exiting:
+        region_percent = 2
+
+    return region_percent
+
+
+def get_max_distance_change(track):
+    x, y = track.velocity
+    velocity_distance = (2 * x) ** 2 + (2 * y) ** 2
+    pred_vel = track.predicted_velocity()
+    pred_distance = pred_vel[0] ** 2 + pred_vel[1] ** 2
+
+    max_distance = np.clip(
+        ClipTrackExtractor.BASE_DISTANCE_CHANGE + max(velocity_distance, pred_distance),
+        0,
+        ClipTrackExtractor.MAX_DISTANCE,
+    )
+    return max_distance
+
+
+def get_region_score(last_bound: Region, region: Region):
+    """
+    Calculates a score between 2 regions based of distance and area.
+    The higher the score the more similar the Regions are
+    """
+    distance = last_bound.average_distance(region)
+
+    # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
+    # area is padded with 50 pixels so small regions don't change too much
+    size_difference = abs(region.area - last_bound.area) / (last_bound.area + 50)
+
+    return distance, size_difference

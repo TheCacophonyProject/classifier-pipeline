@@ -35,6 +35,7 @@ class Region(Rectangle):
         id=0,
         frame_number=0,
         was_cropped=False,
+        blank=False,
     ):
         super().__init__(topleft_x, topleft_y, width, height)
         # number of active pixels in region
@@ -48,6 +49,7 @@ class Region(Rectangle):
         # if this region was cropped or not
         self.was_cropped = was_cropped
         self.is_along_border = False
+        self.blank = blank
 
     @classmethod
     def region_from_array(cls, region_bounds, frame_number=0):
@@ -55,6 +57,14 @@ class Region(Rectangle):
         height = region_bounds[3] - region_bounds[1]
         return cls(
             region_bounds[0], region_bounds[1], width, height, frame_number=frame_number
+        )
+
+    def has_moved(self, region):
+        """Determines if the region has shifted horizontally or veritcally
+        Not just increased in width/height
+        """
+        return (self.x != region.x and self.right != region.right) or (
+            self.y != region.y and self.bottom != region.bottom
         )
 
     def calculate_mass(self, filtered, threshold):
@@ -101,3 +111,25 @@ class Region(Rectangle):
             self.frame_number,
             self.was_cropped,
         )
+
+    def average_distance(self, other):
+        """Calculates the distance between 2 regions by using the distance between
+        (top, left), mid points and (bottom,right) of each region
+        """
+        expected_x = int(other.mid_x)
+        expected_y = int(other.mid_y)
+        distance = tools.eucl_distance(
+            (expected_x, expected_y), (self.mid_x, self.mid_y)
+        )
+        expected_x = int(other.x)
+        expected_y = int(other.y)
+        distance += tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
+        distance += tools.eucl_distance(
+            (
+                other.right,
+                other.bottom,
+            ),
+            (self.right, self.bottom),
+        )
+        distance /= 3.0
+        return distance

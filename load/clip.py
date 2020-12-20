@@ -23,19 +23,25 @@ import logging
 import numpy as np
 import os
 import pytz
+import cv2
 
-
+from ml_tools.imageprocessing import normalize, detect_objects
 from ml_tools.tools import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
+from track.region import Region
+from piclassifier.motiondetector import is_affected_by_ffc
 
 
 class Clip:
     PREVIEW = "preview"
     FRAMES_PER_SECOND = 9
     local_tz = pytz.timezone("Pacific/Auckland")
-    VERSION = 7
+    VERSION = 8
     CLIP_ID = 1
+    # used when calculating background, mininimum percentage the difference object
+    # and background object must overlap i.e. they are a valid object
+    MIN_ORIGIN_OVERLAP = 0.80
 
     def __init__(self, trackconfig, sourcefile, background=None, calc_stats=True):
         self._id = Clip.CLIP_ID
@@ -46,7 +52,6 @@ class Clip:
         self.ffc_affected = False
         self.crop_rectangle = None
         self.num_preview_frames = 0
-        self.preview_frames = []
         self.region_history = []
         self.active_tracks = set()
         self.tracks = []
@@ -70,11 +75,14 @@ class Clip:
         self.stats = ClipStats()
         self.camera_model = None
         self.threshold_config = None
+        self.track_min_delta = None
+        self.track_max_delta = None
+        self.background_thresh = None
         # sets defaults
         self.set_model(None)
         if background is not None:
             self.background = background
-            self._set_from_background()
+            self._background_calculated()
 
     def set_model(self, camera_model):
         self.camera_model = camera_model
@@ -84,11 +92,13 @@ class Clip:
             self.set_motion_thresholds(threshold)
 
     def set_motion_thresholds(self, threshold):
-        self.threshold = threshold.delta_thresh
+        self.background_thresh = threshold.background_thresh
         self.temp_thresh = threshold.temp_thresh
-        self.stats.threshold = self.threshold
+        self.stats.threshold = self.background_thresh
+        self.track_min_delta = threshold.track_min_delta
+        self.track_max_delta = threshold.track_max_delta
 
-    def _set_from_background(self):
+    def _background_calculated(self):
         self.stats.mean_background_value = np.average(self.background)
         self.set_temp_thresh()
         self.background_calculated = True
@@ -96,43 +106,134 @@ class Clip:
     def on_preview(self):
         return not self.background_calculated
 
-    def calculate_preview_from_frame(self, frame, ffc_affected=False):
-        self.preview_frames.append((frame, ffc_affected))
-        if ffc_affected:
-            return
+    def update_background(self, frame):
+        """ updates the clip background """
         if self.background is None:
             self.background = frame
         else:
             self.background = np.minimum(self.background, frame)
-        if self.background_frames == (self.num_preview_frames - 1):
-            self._set_from_background()
         self.background_frames += 1
 
-    def background_from_frames(self, raw_frames):
-        number_frames = self.num_preview_frames
-        if not number_frames < len(raw_frames):
-            logging.error("Video consists entirely of preview")
-            number_frames = len(raw_frames)
-        frames = [np.float32(frame.pix) for frame in raw_frames[0:number_frames]]
-        self.background = np.min(frames, axis=0)
-        self.background = np.int32(np.rint(self.background))
-
-        self._set_from_background()
-
-    def background_from_whole_clip(self, frames):
+    def calculate_initial_diff(self, frame, initial_frames, initial_diff):
+        """Compare this frame with the initial frames (to detect movement) and update the initial_diff
+        frame (such that it is the maximum difference). This is essentially creating a frame which has
+        all the warms moving parts from the initial frame
         """
-        Runs through all provided frames and estimates the background, consuming all the source frames.
-        :param frames_list: a list of numpy array frames
-        :return: background
+        if initial_frames is None:
+            return initial_diff
+        else:
+            diff = initial_frames - frame
+            if initial_diff is not None:
+                initial_diff = np.maximum(initial_diff, diff)
+            else:
+                initial_diff = diff
+        return initial_diff
+
+    def calculate_background(self, frame_reader):
         """
+        Calculate background by reading whole clip and grouping into sets of
+        9 frames. Take the average of these 9 frames and use the minimum
+        over the sets as the initial background
+        Also check for animals in the background by checking for connected components in
+        the intital_diff frame - this is the maximum change between first average frame and all other average frames in the clip
+        """
+        initial_frames = None
+        initial_diff = None
+        frames = []
+        for frame in frame_reader:
+            ffc_affected = is_affected_by_ffc(frame)
+            if ffc_affected:
+                continue
 
-        # note: unfortunately this must be done before any other processing, which breaks the streaming architecture
-        # for this reason we must return all the frames so they can be reused
+            frames.append(frame.pix)
+            if len(frames) == 9:
+                frame_average = np.average(frames, axis=0)
+                self.update_background(frame_average)
+                initial_diff = self.calculate_initial_diff(
+                    frame_average, initial_frames, initial_diff
+                )
+                if initial_frames is None:
+                    initial_frames = frame_average
+                frames = []
 
-        # [][] array
+        if len(frames) > 0:
+            frame_average = np.average(frames, axis=0)
+            self.update_background(frame_average)
+            initial_diff = self.calculate_initial_diff(
+                frame_average, initial_frames, initial_diff
+            )
+            if initial_frames is None:
+                initial_frames = frame_average
+        frames = []
 
-        self.background = np.percentile(frames, q=10, axis=0)
-        self._set_from_background()
+        np.clip(initial_diff, 0, None, out=initial_diff)
+        initial_frames = self.remove_background_animals(initial_frames, initial_diff)
+
+        self.update_background(initial_frames)
+        self._background_calculated()
+
+    def remove_background_animals(self, initial_frame, initial_diff):
+        """
+        Try and remove animals that are already in the initial frames, by
+        checking for connected components in the intital_diff frame
+        (this is the maximum change between first frame and all other frames in the clip)
+        """
+        # remove some noise
+        initial_diff[initial_diff < self.background_thresh] = 0
+        initial_diff[initial_diff > 255] = 255
+        initial_diff = np.uint8(initial_diff)
+        initial_diff = cv2.fastNlMeansDenoising(initial_diff, None)
+
+        _, lower_mask, lower_objects = detect_objects(initial_diff, otsus=True)
+
+        max_region = Region(0, 0, self.res_x, self.res_y)
+        for component in lower_objects[1:]:
+            region = Region(component[0], component[1], component[2], component[3])
+            region.enlarge(2, max=max_region)
+            if region.width >= self.res_x or region.height >= self.res_y:
+                logging.info(
+                    "Background animal bigger than max, probably false positive %s %s",
+                    region,
+                    component[4],
+                )
+                continue
+            background_region = region.subimage(initial_frame)
+            norm_back = background_region.copy()
+            norm_back, _ = normalize(norm_back, new_max=255)
+            sub_components, sub_connected, sub_stats = detect_objects(
+                norm_back, otsus=True
+            )
+
+            overlap_image = region.subimage(lower_mask) * 255
+            overlap_pixels = np.sum(sub_connected[overlap_image > 0])
+            overlap_pixels = overlap_pixels / float(component[4])
+
+            # filter out components which are too big, or dont match original causes
+            # for filtering
+            if (
+                overlap_pixels < Clip.MIN_ORIGIN_OVERLAP
+                or sub_stats[1][4] == 0
+                or sub_stats[1][4] == region.area
+            ):
+                logging.info(
+                    "Invalid components mass: %s, components: %s region area %s overlap %s",
+                    sub_stats[1][4],
+                    sub_components,
+                    region.area,
+                    overlap_pixels,
+                )
+                continue
+
+            sub_connected[sub_connected > 0] = 1
+            # remove this component from the background by painting with
+            # colours of neighbouring pixels
+            background_region[:] = cv2.inpaint(
+                np.float32(background_region),
+                np.uint8(sub_connected),
+                3,
+                cv2.INPAINT_TELEA,
+            )
+        return initial_frame
 
     def _add_active_track(self, track):
         self.active_tracks.add(track)
@@ -199,10 +300,7 @@ class Clip:
         return tracks
 
     def start_and_end_in_secs(self, track):
-        if not track.start_s:
-            logging.info("track start frame setting from {}".format(track.start_frame))
-
-        if not track.end_s:
+        if track.end_s is None:
             track.end_s = (track.end_frame + 1) / self.frames_per_second
 
         return (track.start_s, track.end_s)

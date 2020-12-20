@@ -48,6 +48,10 @@ class Rectangle:
         return Rectangle(self.x, self.y, self.width, self.height)
 
     @property
+    def mid(self):
+        return (self.mid_x, self.mid_y)
+
+    @property
     def mid_x(self):
         return self.x + self.width / 2
 
@@ -111,6 +115,16 @@ class Rectangle:
         return image[
             self.top : self.top + self.height, self.left : self.left + self.width
         ]
+
+    def enlarge(self, border, max=None):
+        """Enlarges this by border amount in each dimension such that it fits
+        within the boundaries of max"""
+        self.left -= border
+        self.right += border
+        self.top -= border
+        self.bottom += border
+        if max:
+            self.crop(max)
 
     @property
     def area(self):
