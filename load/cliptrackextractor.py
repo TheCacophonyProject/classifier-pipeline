@@ -32,8 +32,6 @@ from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
 from ml_tools.imageprocessing import detect_objects
 
-from matplotlib import pyplot as plt
-
 
 class ClipTrackExtractor:
     BASE_DISTANCE_CHANGE = 450

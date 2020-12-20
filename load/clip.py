@@ -37,7 +37,7 @@ class Clip:
     PREVIEW = "preview"
     FRAMES_PER_SECOND = 9
     local_tz = pytz.timezone("Pacific/Auckland")
-    VERSION = 7
+    VERSION = 8
     CLIP_ID = 1
     # used when calculating background, mininimum percentage the difference object
     # and background object must overlap i.e. they are a valid object
