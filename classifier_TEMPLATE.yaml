@@ -17,8 +17,19 @@ source_folder: "cptv"
 tracks_folder: "tracks"
 
 # which folders (tags) to ignore when selecting cptv files from source_folder
-excluded_tags: ['untagged', 'dog', ''unidentified', 'hard', 'multi', 'moving',
-                'bird-kiwi', 'for_grant', 'missclassified', 'other', 'part','poor tracking']
+excluded_tags:
+  [
+    "untagged",
+    "unidentified",
+    "hard",
+    "multi",
+    "moving",
+    "mouse",
+    "bird-kiwi",
+    "for_grant",
+    "missclassified",
+    "other",
+  ]
 
 # Reprocess files which have already been processed.
 reprocess: true
@@ -29,11 +40,14 @@ reprocess: true
 # previews_colour_map: "custom_colormap.dat"
 
 # Labels
-labels : ['bird', 'cat', 'false-positive', 'hedgehog', 'insect', 'leporidae', 'mustelid', 'possum', 'rodent', 'wallaby']
+labels : ['human','bird', 'cat', 'false-positive', 'hedgehog', 'insect', 'leporidae', 'mustelid', 'possum', 'rodent', 'wallaby']
 
 
 # Number of worker threads to use.  0 disables worker pool and forces a single thread.
 worker_threads: 0
+# x and y resolution of thermal camera
+res_x: 160
+res_y: 120
 
 tracking:
     #
@@ -146,13 +160,16 @@ tracking:
         track_overlap_ratio: 0.5
 
         # discard any tracks shorter than this length in seconds
-        min_duration_secs: 3.0
+        min_duration_secs: 1.0
 
         # dicard any tracks that do not move enough, (move less than this)
         track_min_offset: 4.0
 
-        # discard tracks that do not have enough enough average mass.
-        track_min_mass: 2.0
+      # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
+      track_min_delta: 1.0
+
+      # discard tracks that do not have enough enough average mass.
+      track_min_mass: 2.0
 
     # Add verbose logging about tracks generated
     verbose: False
@@ -169,54 +186,41 @@ load:
     # Use fast BLOSC compression (requires plugin), when saving tracks to database
     enable_compression: False
 
-    # Includes the filtered channel in tracks database.  This is typically not used.  If compression is enabled the
-    # filesize can be reduced by not including it.
-    include_filtered_channel: True
+  # Includes the filtered channel in tracks database.  This is typically not used.  If compression is enabled the
+  # filesize can be reduced by not including it.
+  include_filtered_channel: True
 
-    # Create a MP4 preview of the recording.  Options are "none", "raw", "boxes", "classified", "tracking"
-    # none - won't create a preview video
-    # raw - just the video (no classification or tracks)
-    # boxes - show track boxes but no text
-    # classified - show tracks and classification values
-    # tracking -  four frame video view, including thermal, filtered, mask and flow layers
-    preview: "boxes"
-    high_quality_optical_flow: True
+  # Create a MP4 preview of the recording.  Options are "none", "raw", "boxes", "classified", "tracking"
+  # none - won't create a preview video
+  # raw - just the video (no classification or tracks)
+  # boxes - show track boxes but no text
+  # classified - show tracks and classification values
+  # tracking -  four frame video view, including thermal, filtered, mask and flow layers
+  preview: "none"
+  high_quality_optical_flow: True
+
     #cache buffer frame to disk reducing memory usage
     cache_to_disk: False
 train:
-    # model_resnet, model_lq, or model_hq
-    model: "model_lq"
-    hyper_params:
-        # training
-        batch_size: 16
-        learning_rate: 0.0001
-        learning_rate_decay: 1.0
-        l2_reg: 0
-        label_smoothing: 0.1
-        keep_prob: 0.2
-
-        # model
-        batch_norm: true
-        lstm_units: 512
-        gru_units: 512
-        enable_flow: true
-        # augmentation
-        augmentation: true
-        thermal_threshold: 10
-        scale_frequency: 0.5
-
-        #  resnet
-    resnet_params:
-        num_filters: 32
-        kernel_size: 3
-        conv_stride: 2
-        # block sizes can be left null and will be calculated based of resnet_size
-        block_sizes : [3, 4, 6, 3]
-        block_strides: [1, 2, 2, 2]
-        bottleneck: false
-        resnet_size: 50
+  # model_resnet, model_lq, or model_hq
+  model: "keras"
+  hyper_params:
+    # inception rv3 do last 2 blocks > mixed_8_concatenate
+    #retrain_layer: 249
+    # inception resnet v2 do last 2 blocks > block_8_8_mixed_concatenate
+    # layer 742 block8_8_mixed last 2 blocks
+    # retrain_layer: 742
+    # layer 758 block8_9_mixed  last 1 blocks
+    #retrain_layer: 758
+    model: "inceptionresnetv2"
+    buffer_size: 4
+    dropout: 0.1
+    train_load_threads: 1
+    # training
+    learning_rate: 0.001
+    shuffle: True
     # Number of epochs to train for
-    epochs: 30
+    epochs: 10
 
     # use a gru cell or a lstm cell
     use_gru: false
@@ -291,10 +295,10 @@ build:
 
     # clips after this date will be ignored.
     # note: this is based on the UTC date.
-    clip_end_date: null
+    clip_end_date: None
 
     # minimum average mass for test segment
-    test_min_mass: 30
+    test_min_mass: 20
 
     train_min_mass: 20
 
@@ -314,6 +318,3 @@ build:
 
     # number of seconds segments are spaced apart
     segment_spacing: 1
-
-    # when building a dataset we want to use many different tracks if aren't building a big dataset
-    max_segments_per_track: 2

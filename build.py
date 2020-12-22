@@ -7,8 +7,12 @@ import argparse
 import os
 import pickle
 import numpy as np
+<<<<<<< HEAD
 from dateutil.parser import parse as parse_date
 
+=======
+import logging
+>>>>>>> origin/master
 from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
@@ -199,6 +203,7 @@ def diverse_validation(cameras, labels, max_cameras):
                 break
         if not found:
             break
+<<<<<<< HEAD
         if len(missing_labels) == 0:
             break
         # always add to min label
@@ -237,6 +242,27 @@ def split_wallaby_cameras(dataset, cameras):
     for bin in remove:
         del wallaby.bins[bin]
     return wallaby, wallaby_validate
+=======
+    if len(test_data) > 0:
+        del cameras[test_i]
+    else:
+        logging.warning("No test camera found with all labels")
+
+    train_data = cameras[:train_cameras]
+
+    required_samples = build_config.test_set_count
+    required_bins = build_config.test_set_bins
+
+    add_camera_data(
+        dataset.labels,
+        train,
+        train_data,
+        None,
+        None,
+        build_config.cap_bin_weight,
+        build_config.max_segments_per_track,
+    )
+>>>>>>> origin/master
 
 
 def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):

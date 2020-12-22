@@ -123,17 +123,23 @@ may require manual editing to setup the tests if the original browse video did n
 well
 - Test CPTV files will be saved under out_dir and labelled as recordingid.cptv
 
-`python smoktest\generatetests.py out_dir Username Password <list of recording ids separated by a space>`
+`python tests\generatetests.py out_dir Username Password <list of recording ids separated by a space>`
 
 e.g.
 
-`python smoktest\generatetests.py test_clips Derek password123 12554 122232`
+`python tests\generatetests.py test_clips Derek password123 12554 122232`
 
 ## Running Tests
 
 - Once tests have been generated you can test your current tracking and model against thermal
-- This will print out the results and also save a file called smoketest-results.txt
-- A default set of tracking tests is located in 'smoketest/tracking-tests.yml'
+- This will print out the results and also save a file called tracking-results.txt
+- A default set of tracking tests is located in 'tests/tracking-tests.yml'
 in order to run the clips they will need to be downloaded this can be done automatically
 by adding a valid cacophny api user and password to trackingtest.py
-`python trackingtest.py -t smoketest/tracking-tests.yml --user <User> --password <password>`
+`python trackingtest.py -t tests/tracking-tests.yml --user <User> --password <password>`
+
+
+## Tracking results
+
+Results for tests/tracking-tests.yml on tracking algorithms are located here
+https://drive.google.com/drive/u/1/folders/1uGU9FhKaypadUVcIvItBZuZebZa_Z7MG

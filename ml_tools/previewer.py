@@ -286,8 +286,8 @@ class Previewer:
                 text += "mass {} var {} vel ({},{})".format(
                     region.mass,
                     round(region.pixel_variance, 2),
-                    track.vel_x[frame_offset] if frame_offset < len(track.vel_x) else 0,
-                    track.vel_y[frame_offset] if frame_offset < len(track.vel_y) else 0,
+                    track.vel_x[frame_offset],
+                    track.vel_y[frame_offset],
                 )
         footer_size = self.font.getsize(text)
         footer_center = ((region.width * self.frame_scale) - footer_size[0]) / 2

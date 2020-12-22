@@ -30,9 +30,7 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import normalize, detect_objects
-
-from matplotlib import pyplot as plt
+from ml_tools.imageprocessing import detect_objects
 
 
 class ClipTrackExtractor:
@@ -139,7 +137,6 @@ class ClipTrackExtractor:
         :return: the filtered frame, threshold to use for object detection
         """
 
-        # has to be a signed int so we dont get overflow
         filtered = np.float32(thermal.copy())
         avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
@@ -200,7 +197,7 @@ class ClipTrackExtractor:
         unmatched_regions = set(regions)
         for track in clip.active_tracks:
             for region in regions:
-                distance, size_change = track.get_region_score(region)
+                distance, size_change = get_region_score(track.last_bound, region)
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
 
                 max_distance = get_max_distance_change(track)
@@ -498,3 +495,17 @@ def get_max_distance_change(track):
         ClipTrackExtractor.MAX_DISTANCE,
     )
     return max_distance
+
+
+def get_region_score(last_bound: Region, region: Region):
+    """
+    Calculates a score between 2 regions based of distance and area.
+    The higher the score the more similar the Regions are
+    """
+    distance = last_bound.average_distance(region)
+
+    # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
+    # area is padded with 50 pixels so small regions don't change too much
+    size_difference = abs(region.area - last_bound.area) / (last_bound.area + 50)
+
+    return distance, size_difference
