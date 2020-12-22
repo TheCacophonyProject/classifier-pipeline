@@ -30,7 +30,7 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import detect_objects
+from ml_tools.imageprocessing import detect_objects, normalize
 
 
 class ClipTrackExtractor:
@@ -155,7 +155,7 @@ class ClipTrackExtractor:
         filtered, thresh = self._get_filtered_frame(clip, thermal)
 
         _, mask, component_details = detect_objects(
-            filtered.copy(), otsus=False, threshold=thresh, iterations=2
+            filtered.copy(), otsus=False, threshold=thresh
         )
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
