@@ -499,7 +499,7 @@ class TrackDatabase:
                         clip_id,
                         track_node,
                         track.predictions,
-                        track.predicted_tag,
+                        track.predicted_class,
                         track.predicted_confidence,
                         labels=track.prediction_classes,
                     )
