@@ -161,8 +161,9 @@ class TrackDatabase:
         data should be  an array of int16 array
         """
         track_attrs = track.attrs
-        track_attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
-        track_attrs["predicted"] = predicted_tag
+        if predicted_tag is not None:
+            track_attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
+            track_attrs["predicted"] = predicted_tag
         track_attrs["predicted_confidence"] = int(round(100 * score))
 
         pred_data = track.create_dataset(
