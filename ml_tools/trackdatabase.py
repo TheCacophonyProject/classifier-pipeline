@@ -495,13 +495,13 @@ class TrackDatabase:
                 node_attrs["start_frame"] = track.start_frame
                 node_attrs["end_frame"] = track.end_frame
                 if track.predictions is not None:
-
                     self.add_prediction_data(
+                        clip_id,
                         track_node,
                         track.predictions,
-                        max[0],
-                        max[1],
-                        track.prediction_classes,
+                        track.predicted_tag,
+                        track.predicted_confidence,
+                        labels=track.prediction_classes,
                     )
                     has_prediction = True
 
@@ -513,7 +513,7 @@ class TrackDatabase:
                         preds,
                         prediction_classes[prediction.best_label_index],
                         prediction.max_score,
-                        track.prediction_classes,
+                        labels=track.prediction_classes,
                     )
                     has_prediction = True
                 if track.confidence:
