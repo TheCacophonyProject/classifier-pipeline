@@ -83,19 +83,14 @@ class Track:
         self.from_metadata = False
         self.track_tags = None
         self.kalman_tracker = Kalman()
-<<<<<<< HEAD
-        self.predicted_mid = (0, 0)
-        for _ in range(100):
-            self.kalman_tracker.predict()
         self.predictions = None
         self.predicted_class = None
         self.predicted_confidence = None
 
         self.all_class_confidences = None
         self.prediction_classes = None
-=======
+
         self.predicted_mid = None
->>>>>>> origin/master
 
     @classmethod
     def from_region(cls, clip, region):
@@ -123,15 +118,14 @@ class Track:
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
         self.fps = frames_per_second
-<<<<<<< HEAD
+
         self.predicted_class = data.get("tag")
         self.all_class_confidences = data.get("all_class_confidences", None)
         self.predictions = data.get("predictions")
         if self.predictions:
             self.predictions = np.int16(self.predictions)
             self.predicted_confidence = np.amax(self.predictions)
-=======
->>>>>>> origin/master
+
         self.track_tags = track_meta.get("TrackTags")
         self.prediction_classes = data.get("classes")
 
@@ -306,19 +300,10 @@ class Track:
             median_mass=float(np.median(mass_history)),
             delta_std=float(delta_std),
             score=float(score),
-<<<<<<< HEAD
-            region_jitter=int(
-                round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))
-            ),
-            jitter_bigger=jitter_bigger,
-            jitter_smaller=jitter_smaller,
-            blank_percent=int(round(100.0 * self.blank_frames / self.frames)),
-=======
             region_jitter=jitter_percent,
             jitter_bigger=jitter_bigger,
             jitter_smaller=jitter_smaller,
             blank_percent=blank_percent,
->>>>>>> origin/master
             frames_moved=frames_moved,
         )
 
@@ -387,29 +372,8 @@ class Track:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
             self.vel_x = self.vel_x[start : end + 1]
-<<<<<<< HEAD
-            self.vel_x = self.vel_x[start : end + 1]
-        self.start_s = self.start_frame / float(self.fps)
-        self.set_end_s()
-
-    def get_region_score(self, region: Region):
-        """
-        Calculates a score between this track and a region of interest.  Regions that are close the the expected
-        location for this track are given high scores, as are regions of a similar size.
-        """
-        distance = self.last_bound.average_distance(region)
-
-        # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
-        # area is padded with 50 pixels so small regions don't change too much
-        size_difference = abs(region.area - self.last_bound.area) / (
-            self.last_bound.area + 50
-        )
-
-        return distance, size_difference
-=======
             self.vel_y = self.vel_y[start : end + 1]
         self.start_s = self.start_frame / float(self.fps)
->>>>>>> origin/master
 
     def get_overlap_ratio(self, other_track, threshold=0.05):
         """
@@ -475,13 +439,7 @@ class Track:
             return np.int16(np.stack((thermal, filtered, empty, empty, mask), axis=0))
         return frame
 
-<<<<<<< HEAD
-    def set_end_s(self, fps=None):
-        if fps is None:
-            fps = self.fps
-=======
     def set_end_s(self, fps):
->>>>>>> origin/master
         self.end_s = (self.end_frame + 1) / fps
 
     def predicted_velocity(self):
