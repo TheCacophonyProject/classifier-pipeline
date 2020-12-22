@@ -4,7 +4,7 @@ import numpy as np
 from track.track import TrackChannels
 from ml_tools.tools import get_clipped_flow
 from scipy import ndimage
-from ml_tools.imageprocessing import resize_cv, rotate
+from ml_tools.imageprocessing import resize_cv, rotate, normalize
 
 
 @attr.s(slots=True)
@@ -68,8 +68,13 @@ class Frame:
         """
         height, width = self.thermal.shape
         flow = np.zeros([height, width, 2], dtype=np.float32)
-        threshold = np.median(self.thermal) + flow_threshold
-        scaled_thermal = np.uint8(np.clip(self.thermal - threshold, 0, 255))
+        scaled_thermal = self.thermal.copy()
+        scaled_thermal[self.mask == 0] = 0
+        scaled_thermal, _ = normalize(scaled_thermal, new_max=255)
+        scaled_thermal = np.float32(scaled_thermal)
+
+        # threshold = np.median(self.thermal) + flow_threshold
+        # scaled_thermal = np.uint8(np.clip(self.thermal - threshold, 0, 255))
         if prev_frame is not None:
             # for some reason openCV spins up lots of threads for this which really slows things down, so we
             # cap the threads to 2

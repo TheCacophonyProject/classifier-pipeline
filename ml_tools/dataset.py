@@ -119,7 +119,7 @@ class Dataset:
         self.y = None
 
         if config:
-            self.min_frame_mass = 3
+            self.min_frame_mass = config.build.train_min_mass
             self.segment_length = config.build.segment_length
             # number of seconds segments are spaced apart
             self.segment_spacing = config.build.segment_spacing

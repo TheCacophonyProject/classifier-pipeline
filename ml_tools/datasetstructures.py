@@ -75,6 +75,8 @@ class TrackHeader:
         self.important_frames = []
         self.important_predicted = 0
         self.frame_mass = frame_mass
+        self.lower_mass = np.percentile(frame_mass, q=25)
+        self.upper_mass = np.percentile(frame_mass, q=75)
         self.median_mass = np.median(frame_mass)
         self.mean_mass = np.mean(frame_mass)
 
@@ -133,7 +135,12 @@ class TrackHeader:
         # this needs more testing
         frames = []
         for i, mass in enumerate(self.frame_mass):
-            if min_mass is None or mass >= min_mass:
+            if (
+                min_mass is None
+                or mass >= min_mass
+                and mass >= self.lower_mass
+                and mass <= self.upper_mass
+            ):  # trying it out
                 if frame_data is not None:
                     if not filtered_is_valid(frame_data[i], self.label):
                         logging.debug(
@@ -231,7 +238,9 @@ class TrackHeader:
                 if remaining > 0:
                     frames.extend(
                         np.random.choice(
-                            self.important_frames, remaining, replace=False,
+                            self.important_frames,
+                            remaining,
+                            replace=False,
                         )
                     )
                 frames = [frame.frame_num for frame in frames]
@@ -387,7 +396,9 @@ class Camera:
         return track, f
 
     def label_track_count(
-        self, label, max_segments_per_track=None,
+        self,
+        label,
+        max_segments_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -395,7 +406,9 @@ class Camera:
         return len(tracks)
 
     def label_segment_count(
-        self, label, max_segments_per_track=None,
+        self,
+        label,
+        max_segments_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
@@ -410,7 +423,9 @@ class Camera:
         return frames
 
     def label_frame_count(
-        self, label, max_frames_per_track=None,
+        self,
+        label,
+        max_frames_per_track=None,
     ):
         if label not in self.label_to_tracks:
             return 0
