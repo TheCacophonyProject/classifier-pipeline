@@ -204,7 +204,8 @@ class Clip:
             sub_components, sub_connected, sub_stats = detect_objects(
                 norm_back, otsus=True
             )
-
+            if len(sub_stats) <= 1:
+                continue
             overlap_image = region.subimage(lower_mask) * 255
             overlap_pixels = np.sum(sub_connected[overlap_image > 0])
             overlap_pixels = overlap_pixels / float(component[4])
