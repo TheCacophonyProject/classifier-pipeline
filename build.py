@@ -15,6 +15,7 @@ from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
 from ml_tools.dataset import Dataset, dataset_db_path
 from ml_tools.datasetstructures import Camera
+import pytz
 
 LOW_DATA_LABELS = ["wallaby", "human", "dog"]
 MIN_TRACKS = 100
@@ -366,7 +367,7 @@ def main():
     print("Splitting data set into train / validation")
     datasets = split_dataset_by_cameras(db, dataset, config, args)
     if args.date is None:
-        args.date = datetime.datetime.now() - datetime.timedelta(days=7)
+        args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=7)
     test = test_dataset(db, config, args.date)
     datasets = (*datasets, test)
     print_counts(dataset, *datasets)
