@@ -107,7 +107,7 @@ class HyperParams(dict):
 
     @property
     def frame_size(self):
-        return self.get("frame_size", 48)
+        return self.get("frame_size", 32)
 
     @property
     def shuffle(self):

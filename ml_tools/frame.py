@@ -138,7 +138,9 @@ class Frame:
         )
         self.filtered = resize_and_pad(self.filtered, resize_dim, dim, pad=0)
         if self.flow is not None:
-            self.flow = resize_and_pad(self.flow, resize_dim, dim, pad=0)
+            flow_h = resize_and_pad(self.flow[:, :, 0], resize_dim, dim, pad=0)
+            flow_v = resize_and_pad(self.flow[:, :, 1], resize_dim, dim, pad=0)
+            self.flow = np.stack((flow_h, flow_v), axis=2)
 
     def resize(self, dim):
         self.thermal = resize_cv(self.thermal, dim)

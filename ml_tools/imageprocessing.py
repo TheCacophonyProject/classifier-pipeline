@@ -20,13 +20,12 @@ def resize_and_pad(
 ):
     if pad is None:
         pad = np.min(frame)
-    resized = np.full(new_dim, pad)
-    offset = (np.array(new_dim) - np.array(resize_dim)) / 2.0
+    resized = np.full(new_dim, pad, dtype=frame.dtype)
+    offset = np.int16((np.array(new_dim) - np.array(resize_dim)) / 2.0)
     frame_resized = resize_cv(frame, resize_dim)
     resized[
-        :,
-        offset[0] : offset[0] + aspect_dim[0],
-        offset[1] : offset[1] + aspect_dim[1],
+        offset[1] : offset[1] + frame_resized.shape[0],
+        offset[0] : offset[0] + frame_resized.shape[1],
     ] = frame_resized
     return resized
 

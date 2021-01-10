@@ -7,7 +7,7 @@ from ml_tools import imageprocessing
 import tensorflow as tf
 
 # size to scale each frame to when loaded.
-FRAME_SIZE = 48
+FRAME_SIZE = 32
 
 MIN_SIZE = 4
 
@@ -74,8 +74,8 @@ def preprocess_segment(
             LEVEL_OFFSET = 4
 
             # apply level and contrast shift
-            level_adjust = random.normalvariate(0, LEVEL_OFFSET)
-            contrast_adjust = tools.random_log(0.9, (1 / 0.9))
+            level_adjust = float(random.normalvariate(0, LEVEL_OFFSET))
+            contrast_adjust = float(tools.random_log(0.9, (1 / 0.9)))
         if random.random() <= 0.50:
             flip = True
     for i, frame in enumerate(frames):
@@ -219,9 +219,9 @@ def preprocess_movement(
         data[:, :, 1] = np.zeros(dots.shape)
     data[:, :, 2] = overlay  # overlay
     # for debugging
-    # tools.saveclassify_image(
-    #     data, f"samples/{sample.track.label}-{sample.track.track_id}-{flipped}"
-    # )
+    tools.saveclassify_image(
+        data, f"samples/{sample.track.label}-{sample.track.track_id}-{flipped}"
+    )
     if preprocess_fn:
         for i, frame in enumerate(data):
             frame = frame * 255

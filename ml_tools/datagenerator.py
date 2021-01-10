@@ -8,7 +8,6 @@ import time
 from ml_tools import tools
 from ml_tools.preprocess import preprocess_movement, preprocess_frame
 
-FRAME_SIZE = 48
 FRAMES_PER_SECOND = 9
 
 
