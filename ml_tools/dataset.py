@@ -307,10 +307,10 @@ class Dataset:
         track_header.set_important_frames(
             labels, self.min_frame_mass, frame_data=frames
         )
-        segment_frame_spacing = round(
-            self.segment_spacing * track_header.frames_per_second
+        segment_frame_spacing = int(
+            round(self.segment_spacing * track_header.frames_per_second)
         )
-        segment_width = round(self.segment_length * track_header.frames_per_second)
+        segment_width = int(round(self.segment_length * track_header.frames_per_second))
         if track_header.num_sample_frames > segment_width / 3.0:
             track_header.calculate_segments(
                 track_meta["mass_history"],
@@ -1070,8 +1070,8 @@ class Dataset:
         )
         empty_tracks = []
         for track in self.tracks:
-            segment_frame_spacing = round(
-                self.segment_spacing * track.frames_per_second
+            segment_frame_spacing = int(
+                round(self.segment_spacing * track.frames_per_second)
             )
             segment_width = int(round(self.segment_length * track.frames_per_second))
             track.calculate_segments(

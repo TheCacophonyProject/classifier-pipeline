@@ -9,6 +9,28 @@ from scipy import ndimage
 from matplotlib import pyplot as plt
 
 
+def resize_and_pad(
+    frame,
+    resize_dim,
+    new_dim,
+    pad=None,
+    interpolation=cv2.INTER_LINEAR,
+    extra_h=0,
+    extra_v=0,
+):
+    if pad is None:
+        pad = np.min(frame)
+    resized = np.full(new_dim, pad)
+    offset = (np.array(new_dim) - np.array(resize_dim)) / 2.0
+    frame_resized = resize_cv(frame, resize_dim)
+    resized[
+        :,
+        offset[0] : offset[0] + aspect_dim[0],
+        offset[1] : offset[1] + aspect_dim[1],
+    ] = frame_resized
+    return resized
+
+
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
         image,

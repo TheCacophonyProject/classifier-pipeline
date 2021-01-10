@@ -4,7 +4,7 @@ import numpy as np
 from track.track import TrackChannels
 from ml_tools.tools import get_clipped_flow
 from scipy import ndimage
-from ml_tools.imageprocessing import resize_cv, rotate, normalize
+from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
 
 
 @attr.s(slots=True)
@@ -125,6 +125,20 @@ class Frame:
             )
             frame.flow = flow
         return frame
+
+    def resize_with_aspect(self, dim):
+        scale_percent = (dim / np.array(self.thermal.shape)).min()
+        width = int(self.thermal.shape[1] * scale_percent)
+        height = int(self.thermal.shape[0] * scale_percent)
+        resize_dim = (width, height)
+
+        self.thermal = resize_and_pad(self.thermal, resize_dim, dim)
+        self.mask = resize_and_pad(
+            self.mask, resize_dim, dim, pad=0, interpolation=cv2.INTER_NEAREST
+        )
+        self.filtered = resize_and_pad(self.filtered, resize_dim, dim, pad=0)
+        if self.flow is not None:
+            self.flow = resize_and_pad(self.flow, resize_dim, dim, pad=0)
 
     def resize(self, dim):
         self.thermal = resize_cv(self.thermal, dim)
