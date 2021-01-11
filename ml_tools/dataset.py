@@ -243,11 +243,6 @@ class Dataset:
         for clip_id, track_id in track_ids:
             if self.load_track(clip_id, track_id, labels):
                 counter += 1
-        groups = []
-        groups.append((["bird"], "bird"))
-        groups.append((["rodent"], "rodent"))
-        self.regroup(groups)
-
         return [counter, len(track_ids)]
 
     def add_tracks(self, tracks, max_segments_per_track=None):

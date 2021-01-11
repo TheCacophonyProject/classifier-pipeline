@@ -18,6 +18,7 @@ from ml_tools.datasetstructures import Camera
 import pytz
 
 LOW_DATA_LABELS = ["wallaby", "human", "dog"]
+# minimum number of tracks for each label in validation dataset
 MIN_TRACKS = 100
 MIN_VALIDATE_CAMERAS = 5
 
@@ -139,12 +140,8 @@ def diverse_validation(cameras, labels, max_cameras):
     missing_labels = all_labels.copy()
     # randomize camera order so we dont always pick the same cameras
     np.random.shuffle(cameras)
-
-    missing = len(missing_labels) / len(all_labels)
-
-    # always try find min label first
-    label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
-    while len(val_cameras) <= max_cameras and missing != 0:
+    label = np.random.choice(missing_labels, 1)[0]
+    while len(val_cameras) <= max_cameras and len(missing_labels) > 0:
         found = False
         for i, camera in enumerate(cameras):
             if label in camera.label_to_bins:
@@ -157,17 +154,16 @@ def diverse_validation(cameras, labels, max_cameras):
                         lbl_counts[label] = count
 
                     if label in missing_labels and lbl_counts[label] > MIN_TRACKS:
+                        print("removing", label)
                         missing_labels.remove(label)
                 del cameras[i]
-                missing = len(missing_labels) / len(all_labels)
                 found = True
                 break
         if not found:
-            break
-        if len(missing_labels) == 0:
-            break
+            print("removing not found", label)
+            missing_labels.remove(label)
         # always add to min label
-        label = min(lbl_counts.keys(), key=(lambda k: lbl_counts[k]))
+        label = min(missing_labels, key=(lambda k: lbl_counts[k]))
 
     return val_cameras, cameras
 
@@ -178,7 +174,6 @@ def split_wallaby_cameras(dataset, cameras):
         return None, None
     wallaby = dataset.cameras_by_id["Wallaby-None"]
     cameras.remove(wallaby)
-    print("wallaby bin", len(wallaby.bins))
     wallaby_validate = Camera("Wallaby-2")
     remove = []
     last_index = 0
@@ -210,30 +205,30 @@ def split_dataset_by_cameras(db, dataset, config, args):
     train.enable_augmentation = True
     validation = Dataset(db, "validation", config)
 
-    train_data = []
+    train_cameras = []
     cameras = list(dataset.cameras_by_id.values())
     camera_count = len(cameras)
-    validation_cameras = max(
+    num_validate_cameras = max(
         MIN_VALIDATE_CAMERAS, round(camera_count * validation_percent)
     )
 
     wallaby, wallaby_validate = split_wallaby_cameras(dataset, cameras)
     if wallaby:
-        train_data.append(wallaby)
+        train_cameras.append(wallaby)
     # has all the rabbits so put in training
     rabbits = dataset.cameras_by_id.get("ruru19w44a-[-36.03915 174.51675]")
     if rabbits:
         cameras.remove(rabbits)
-        train_data.append(rabbits)
-    validate_data, cameras = diverse_validation(
-        cameras, dataset.labels, validation_cameras
+        train_cameras.append(rabbits)
+    validate_cameras, cameras = diverse_validation(
+        cameras, dataset.labels, num_validate_cameras
     )
     if wallaby_validate:
-        validate_data.append(wallaby_validate)
-    train_data.extend(cameras)
+        validate_cameras.append(wallaby_validate)
+    train_cameras.extend(cameras)
 
-    add_camera_tracks(dataset.labels, train, train_data)
-    add_camera_tracks(dataset.labels, validation, validate_data)
+    add_camera_tracks(dataset.labels, train, train_cameras)
+    add_camera_tracks(dataset.labels, validation, validate_cameras)
 
     return train, validation
 
