@@ -8,10 +8,13 @@ from dateutil.parser import parse
 from config.config import Config
 from datetime import datetime, timedelta
 import numpy as np
-
+import cv2
 from multiprocessing import Process, Queue
-from ml_tools.framedataset import dataset_db_path
+from ml_tools.dataset import dataset_db_path
 from ml_tools.kerasmodel import KerasModel
+from ml_tools.imageprocessing import normalize, detect_objects
+import matplotlib
+import matplotlib.pyplot as plt
 
 VISIT_INTERVAL = 10 * 60
 
@@ -317,6 +320,41 @@ def init_logging(timestamps=False):
     )
 
 
+def check_noise(dataset, clip_id, track_id):
+    meta = dataset.db.get_track_meta(str(clip_id), str(track_id))
+    lower_mass = np.percentile(meta["mass_history"], q=25)
+    upper_mass = np.percentile(meta["mass_history"], q=75)
+    for i, mass in enumerate(meta["mass_history"]):
+        if mass >= lower_mass and mass <= upper_mass:
+            print("valid", i, mass)
+    track_data = dataset.db.get_track(clip_id, track_id)
+
+    i = 185
+    for frame in track_data[185:]:
+        print("frame", i, meta["mass_history"][i])
+        i += 1
+        frame.thermal, _ = normalize(frame.thermal, new_max=255)
+        frame.thermal = np.uint8(frame.thermal)
+        print(np.std(frame.thermal))
+        plt.show()
+        f = plt.figure()
+        f.add_subplot(1, 4, 1)
+
+        plt.imshow(frame.thermal)
+        thermal = cv2.GaussianBlur(frame.thermal.copy(), (5, 5), 0)
+        f.add_subplot(1, 4, 2)
+        plt.imshow(thermal)
+        diff = frame.thermal - thermal
+        f.add_subplot(1, 4, 3)
+        plt.imshow(diff)
+
+        cmp, mask, stats = detect_objects(frame.thermal, threshold=200)
+        f.add_subplot(1, 4, 4)
+        plt.imshow(mask)
+
+        plt.show()
+
+
 args = load_args()
 init_logging()
 config = Config.load_from_file(args.config_file)
@@ -332,7 +370,6 @@ if args.date:
 dataset_file = dataset_db_path(config)
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
-
 logging.info(
     "Dataset loaded %s, using labels %s, mapped labels %s",
     dataset.name,
@@ -343,6 +380,9 @@ logging.info("%s %s / %s / %s", "label", "segments", "frames", "tracks")
 for label in dataset.labels:
     segments, frames, tracks, _, _ = dataset.get_counts(label)
     logging.info("%s %s / %s / %s", label, segments, frames, tracks)
+
+check_noise(dataset, 195961, 17050)
+raise "ex"
 
 if args.confusion is not None:
     ev.save_confusion(dataset, args.confusion)

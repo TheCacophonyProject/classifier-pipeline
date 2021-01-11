@@ -220,7 +220,8 @@ def preprocess_movement(
     data[:, :, 2] = overlay  # overlay
     # for debugging
     tools.saveclassify_image(
-        data, f"samples/{sample.track.label}-{sample.track.track_id}-{flipped}"
+        data,
+        f"samples/{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
     )
     if preprocess_fn:
         for i, frame in enumerate(data):
