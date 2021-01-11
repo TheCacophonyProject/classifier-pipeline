@@ -95,30 +95,13 @@ def load_config(config_file):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--rebuild-important", action="count", help="Rebuild important frames"
-    )
-
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-d", "--date", help="Use clips after this")
-    parser.add_argument("--dont-cap", action="count", help="Dont cap numbers")
     parser.add_argument(
         "--consecutive-segments",
         action="count",
         default=False,
         help="Use consecutive frames for segments",
-    )
-    parser.add_argument(
-        "--bb",
-        "--balance-bins",
-        action="count",
-        help="Balance bins so each track has even percentage of being picked",
-    )
-    parser.add_argument(
-        "--bl",
-        "--balance-labels",
-        action="count",
-        help="Balance labels so that they have are distributed as defined in config",
     )
 
     args = parser.parse_args()
@@ -221,7 +204,7 @@ def split_wallaby_cameras(dataset, cameras):
     return wallaby, wallaby_validate
 
 
-def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
+def split_dataset_by_cameras(db, dataset, config, args):
     validation_percent = 0.3
     train = Dataset(db, "train", config)
     train.enable_augmentation = True
@@ -249,8 +232,8 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
         validate_data.append(wallaby_validate)
     train_data.extend(cameras)
 
-    add_camera_tracks(dataset.labels, train, train_data, balance_bins)
-    add_camera_tracks(dataset.labels, validation, validate_data, balance_bins)
+    add_camera_tracks(dataset.labels, train, train_data)
+    add_camera_tracks(dataset.labels, validation, validate_data)
 
     return train, validation
 
@@ -259,15 +242,12 @@ def add_camera_tracks(
     labels,
     dataset,
     cameras,
-    balance_bins=None,
 ):
-    all_tracks = []
     for label in labels:
         for camera in cameras:
             tracks = camera.label_to_tracks.get(label, {}).values()
-            all_tracks.extend(list(tracks))
+            dataset.add_tracks(tracks, None)
 
-    dataset.add_tracks(all_tracks, None)
     dataset.balance_bins()
 
 

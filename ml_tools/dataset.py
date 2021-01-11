@@ -246,7 +246,7 @@ class Dataset:
         )
         if shuffle:
             np.random.shuffle(track_ids)
-        for clip_id, track_id in track_ids[:200]:
+        for clip_id, track_id in track_ids:
             if self.load_track(clip_id, track_id, labels):
                 counter += 1
         return [counter, len(track_ids)]
