@@ -80,11 +80,8 @@ class Dataset:
 
         # writes the frame motion into the center of the optical flow channels
         self.encode_frame_offsets_in_flow = False
-
-        # cumulative distribution function for segments.  Allows for super fast weighted random sampling.
         self.segment_cdf = []
         self.segment_label_cdf = {}
-        # segments list
         self.segments = []
         self.segments_by_label = {}
         self.segments_by_id = {}
@@ -99,8 +96,6 @@ class Dataset:
         # list of label names
         self.labels = []
 
-        # minimum mass of a segment frame for it to be included
-
         # dictionary used to apply label remapping during track load
         self.label_mapping = None
 
@@ -112,7 +107,6 @@ class Dataset:
         self.preloader_queue = None
         self.preloader_threads = None
         self.preloader_stop_flag = False
-        self.label_caps = {}
         # a copy of our entire dataset, if loaded.
         self.X = None
         self.y = None
@@ -249,6 +243,11 @@ class Dataset:
         for clip_id, track_id in track_ids:
             if self.load_track(clip_id, track_id, labels):
                 counter += 1
+        groups = []
+        groups.append((["bird"], "bird"))
+        groups.append((["rodent"], "rodent"))
+        self.regroup(groups)
+
         return [counter, len(track_ids)]
 
     def add_tracks(self, tracks, max_segments_per_track=None):
@@ -732,6 +731,86 @@ class Dataset:
         for track in self.tracks_by_label.get(label, []):
             result.extend(track.segments)
         return result
+
+    def regroup(
+        self,
+        groups,
+        shuffle=True,
+    ):
+        """
+        regroups the dataset so multiple animals can be under a single label
+        """
+        self.label_mapping = {}
+        counts = []
+        new_labels = []
+        tracks_by_bin = {}
+        samples = []
+        for g in groups:
+            new_labels.append(g[1])
+            count = 0
+            for label in g[0]:
+                lbl_samples = self.samples_for(label)
+                count += len(lbl_samples)
+                self.label_mapping[label] = g[1]
+                samples.extend(lbl_samples)
+                for sample in lbl_samples:
+                    track = self.tracks_by_id[sample.unique_track_id]
+                    tracks_by_bin[track.bin_id] = track
+            counts.append(count)
+
+        self.labels = new_labels
+        self.tracks_by_bin = tracks_by_bin
+        self.set_samples(samples)
+        if self.use_segments:
+            self.segments_by_id == {}
+            for seg in samples:
+                self.segments_by_id[seg.id] = seg
+
+            if shuffle:
+                np.random.shuffle(self.segments)
+        elif shuffle:
+            np.random.shuffle(self.frame_samples)
+        self.rebuild_cdf()
+
+    def samples_for(self, label, remapped=False):
+        labels = []
+        if remapped and self.label_mapping:
+            labels = [
+                key
+                for key, mapped in self.label_mapping.items()
+                if mapped.lower() == label.lower()
+            ]
+            labels.sort()
+        else:
+            labels.append(label)
+        samples = []
+        for l in labels:
+            if self.use_segments:
+                samples.extend(self.segments_by_label.get(l, []))
+            else:
+                samples.extend(self.frames_by_label.get(l, []))
+        return samples
+
+    def samples(self):
+        if self.use_segments:
+            return self.segments
+        return self.frame_samples
+
+    def set_samples(self, samples):
+        if self.use_segments:
+            self.segments = samples
+        else:
+            self.frame_samples = samples
+
+    def set_samples_for(self, label, samples):
+        if self.use_segments:
+            self.segments_by_label[label] = samples
+        else:
+            self.frames_by_label[label] = samples
+
+    @property
+    def sample_count(self):
+        return len(self.samples())
 
     def start_async_load(self, buffer_size=128):
         """
