@@ -336,8 +336,6 @@ class TrackDatabase:
         opts=None,
         start_time=None,
         end_time=None,
-        prediction=None,
-        prediction_classes=None,
     ):
         """
         Adds track to database.
@@ -410,18 +408,6 @@ class TrackDatabase:
                         track.predictions,
                         track.predicted_class,
                         track.predicted_confidence,
-                        labels=track.prediction_classes,
-                    )
-                    has_prediction = True
-
-                elif prediction and prediction_classes:
-                    preds = np.int16(np.around(100 * np.array(prediction.predictions)))
-                    self.add_prediction_data(
-                        clip_id,
-                        track_node,
-                        preds,
-                        prediction_classes[prediction.best_label_index],
-                        prediction.max_score,
                         labels=track.prediction_classes,
                     )
                     has_prediction = True

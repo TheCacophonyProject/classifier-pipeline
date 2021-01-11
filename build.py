@@ -154,13 +154,11 @@ def diverse_validation(cameras, labels, max_cameras):
                         lbl_counts[label] = count
 
                     if label in missing_labels and lbl_counts[label] > MIN_TRACKS:
-                        print("removing", label)
                         missing_labels.remove(label)
                 del cameras[i]
                 found = True
                 break
         if not found:
-            print("removing not found", label)
             missing_labels.remove(label)
         # always add to min label
         label = min(missing_labels, key=(lambda k: lbl_counts[k]))

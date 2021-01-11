@@ -58,7 +58,6 @@ class Dataset:
         name="Dataset",
         config=None,
         use_segments=True,
-        use_predictions=False,
         consecutive_segments=False,
     ):
         self.consecutive_segments = consecutive_segments
