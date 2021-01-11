@@ -262,7 +262,6 @@ class TrackHeader:
                     frame_indices=frames,
                 )
                 self.segments.append(segment)
-            # print("segment count", seg_count, len(self.segments))
 
             return
         # scan through track looking for good segments to add to our datset
