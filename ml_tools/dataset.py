@@ -65,7 +65,6 @@ class Dataset:
         self.use_segments = use_segments
         # database holding track data
         self.db = track_db
-
         # name of this dataset
         self.name = name
 
