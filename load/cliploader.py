@@ -22,28 +22,75 @@ import os
 import logging
 import multiprocessing
 import time
+from multiprocessing import Process, Queue
 
 from ml_tools import tools
-from ml_tools.trackdatabase import TrackDatabase
-
+from ml_tools.kerasmodel import KerasModel
 from ml_tools.previewer import Previewer
+from ml_tools.trackdatabase import TrackDatabase
 from .clip import Clip
 from .cliptrackextractor import ClipTrackExtractor
 from track.track import Track, TrackChannels
 
 
-def process_job(job):
-    job[0].process_file(job[1])
+def process_job(loader, queue, model_file=None):
+    i = 0
+    if model_file is not None:
+        classifier = KerasModel()
+        classifier.load_model(model_file)
+    while True:
+        i += 1
+        clip = queue.get()
+        try:
+            if clip == "DONE":
+                break
+            else:
+                loader.process_file(str(clip), classifier=classifier)
+            if i % 50 == 0:
+                logging.info("%s jobs left", queue.qsize())
+        except Exception as e:
+            logging.error("Process_job error %s", e)
+            raise e
+
+
+def prediction_job(queue, db, model_file):
+    classifier = KerasModel()
+    classifier.load_model(model_file)
+    logging.info("Loaded model")
+    while True:
+        clip = queue.get()
+        if clip == "DONE":
+            break
+        else:
+            try:
+                add_prediction(db, clip, classifier)
+            except Exception as e:
+                logging.error("Process_job error %s", e)
+                raise e
+
+
+def add_predictions(db, clip, classifier):
+    tracks = db.get_clip_tracks(str(clip))
+    for track in tracks:
+        track_data = db.get_track(str(clip), track["id"])
+        track_prediction = classifier.classify_raw(
+            track["id"],
+            track["start_frame"],
+            track_data,
+            track["bounds_history"],
+        )
+        db.add_prediction(clip_id, track_node, track_prediction)
 
 
 class ClipLoader:
-    def __init__(self, config, reprocess=False):
+    def __init__(self, config, reprocess=False, calculate_predictions=False):
 
         self.config = config
         os.makedirs(self.config.tracks_folder, mode=0o775, exist_ok=True)
         self.database = TrackDatabase(
             os.path.join(self.config.tracks_folder, "dataset.hdf5")
         )
+        self.calculate_predictions = calculate_predictions
         self.reprocess = reprocess
         self.compression = (
             tools.gzip_compression if self.config.load.enable_compression else None
@@ -57,41 +104,58 @@ class ClipLoader:
             self.config.use_opt_flow
             or config.load.preview == Previewer.PREVIEW_TRACKING,
             self.config.load.cache_to_disk,
+            high_quality_optical_flow=self.config.load.high_quality_optical_flow,
         )
 
-    def process_all(self, root=None, checkpoint=None):
+    def add_predictions(self):
+        # run the model on all clips that dont have predictions
+        job_queue = Queue()
+        processes = []
+        for i in range(max(1, self.workers_threads)):
+            p = Process(
+                target=prediction_job,
+                args=(job_queue, self.database, self.config.classify.model),
+            )
+            processes.append(p)
+            p.start()
+        clips = self.database.get_all_clip_ids()
+        for clip in clips:
+            if not self.database.has_prediction(clip):
+                job_queue.put(clip)
+        for i in range(len(processes)):
+            job_queue.put("DONE")
+        for process in processes:
+            process.join()
+
+    def process_all(self, root):
+        job_queue = Queue()
+        processes = []
+        for i in range(max(1, self.workers_threads)):
+            p = Process(
+                target=process_job,
+                args=(
+                    self,
+                    job_queue,
+                    self.config.classify.model if self.calculate_predictions else None,
+                ),
+            )
+            processes.append(p)
+            p.start()
         if root is None:
             root = self.config.source_folder
 
-        jobs = []
+        job_count = 0
         for folder_path, _, files in os.walk(root):
             for name in files:
                 if os.path.splitext(name)[1] == ".cptv":
                     full_path = os.path.join(folder_path, name)
-                    jobs.append((self, full_path))
-
-        jobs.sort(key=lambda x: x[1])
-
-        self._process_jobs(jobs)
-
-    def _process_jobs(self, jobs):
-        if self.workers_threads == 0:
-            for job in jobs:
-                process_job(job)
-        else:
-            pool = multiprocessing.Pool(self.workers_threads)
-            try:
-                pool.map(process_job, jobs, chunksize=1)
-                pool.close()
-                pool.join()
-            except KeyboardInterrupt:
-                logging.info("KeyboardInterrupt, terminating.")
-                pool.terminate()
-                exit()
-            except Exception:
-                logging.exception("Error processing files")
-            else:
-                pool.close()
+                    job_queue.put(full_path)
+                    job_count += 1
+        logging.info("Processing %d", job_count)
+        for i in range(len(processes)):
+            job_queue.put("DONE")
+        for process in processes:
+            process.join()
 
     def _get_dest_folder(self, filename):
         return os.path.join(self.config.tracks_folder, get_distributed_folder(filename))
@@ -105,20 +169,35 @@ class ClipLoader:
         # Note: we do this even if there are no tracks so there there will be a blank clip entry as a record
         # that we have processed it.
         self.database.create_clip(clip)
-
+        prediction_classes = None
+        if classifier:
+            prediction_classes = classifier.model
         for track in clip.tracks:
+            if classifier:
+                track_prediction = TrackPrediction(
+                    track.get_id(), track.start_frame, True
+                )
+            else:
+                track_prediction = None
             start_time, end_time = clip.start_and_end_time_absolute(
                 track.start_s, track.end_s
             )
             track_data = []
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
-                frame = track.crop_by_region(frame, region, filter_mask_by_region=False)
+                cropped = track.crop_by_region(
+                    frame, region, filter_mask_by_region=False
+                )
+
                 # zero out the filtered channel
                 if not self.config.load.include_filtered_channel:
-                    frame[TrackChannels.filtered] = 0
-                track_data.append(frame)
-
+                    cropped[TrackChannels.filtered] = 0
+                track_data.append((frame.thermal, cropped))
+                if classifier:
+                    prediction = classifier.classify_frame(np.copy(frame))
+                    track_prediction.classified_frame(region.frame_number, prediction)
+            if classifier:
+                track.add_prediction_info(classifier.labels, track_prediction)
             self.database.add_track(
                 clip.get_id(),
                 track,
@@ -153,6 +232,16 @@ class ClipLoader:
         if not track_data:
             return False
 
+        track_tags = track_meta.get("TrackTags", [])
+        excluded_tags = [
+            tag
+            for tag in track_tags
+            if not tag.get("automatic", False) and tag in excluded_tags
+        ]
+
+        if len(excluded_tags) > 0:
+            return False
+
         track_tag = Track.get_best_human_tag(
             track_meta, self.config.load.tag_precedence, min_confidence
         )
@@ -162,7 +251,7 @@ class ClipLoader:
         confidence = track_tag.get("confidence", 0)
         return tag and tag not in excluded_tags and confidence >= min_confidence
 
-    def process_file(self, filename):
+    def process_file(self, filename, classifier=None):
         start = time.time()
         base_filename = os.path.splitext(os.path.basename(filename))[0]
 
@@ -184,6 +273,9 @@ class ClipLoader:
         metadata = tools.load_clip_metadata(metadata_filename)
 
         if not self.reprocess and self.database.has_clip(str(metadata["id"])):
+            if not self.database.has_prediction(str(metadata["id"])) and classifier:
+                print("Adding predictions to %s", filename)
+                add_predictions(self.database, str(metadata["id"]), classifier)
             logging.warning("Already loaded %s", filename)
             return
 
@@ -206,7 +298,7 @@ class ClipLoader:
         # , self.config.load.cache_to_disk, self.config.use_opt_flow
 
         if self.track_config.enable_track_output:
-            self._export_tracks(filename, clip)
+            self._export_tracks(filename, clip, classifier)
 
         # write a preview
         if self.previewer:

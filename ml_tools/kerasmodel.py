@@ -26,7 +26,8 @@ class KerasModel:
             # training
             "batch_size": 16,
         }
-        self.params.update(train_config.hyper_params)
+        if train_config:
+            self.params.update(train_config.hyper_params)
         self.preprocess_fn = None
         self.labels = None
         self.frame_size = None
@@ -229,7 +230,7 @@ class KerasModel:
         except ValueError:
             fp_index = None
         track_prediction = TrackPrediction(
-            track.get_id(), track.start_frame, fp_index, keep_all
+            track.get_id(), track.start_frame, fp_index, keep_all, self.labels
         )
 
         if self.use_movement:
@@ -261,6 +262,44 @@ class KerasModel:
                     i, prediction, mass_weight * cropped_weight
                 )
 
+        return track_prediction
+
+    def classify_raw(
+        self,
+        data,
+        regions,
+        start_frame,
+        track_id,
+        keep_all=True,
+    ):
+
+        try:
+            fp_index = self.labels.index("false-positive")
+        except ValueError:
+            fp_index = None
+        track_prediction = TrackPrediction(
+            track.get_id(), track.start_frame, fp_index, keep_all, self.labels
+        )
+
+        if self.use_movement:
+            predictions = self.classify_using_movement(data, regions=regions)
+            for i, prediction in enumerate(predictions):
+                track_prediction.classified_frame(i, prediction, None)
+        else:
+            for i, track_data in data:
+                region = regions[i]
+                prediction = self.classify_frame(track_data)
+                mass = region.mass
+                # we use the square-root here as the mass is in units squared.
+                # this effectively means we are giving weight based on the diameter
+                # of the object rather than the mass.
+                mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
+
+                # cropped frames don't do so well so restrict their score
+                cropped_weight = 0.7 if region.was_cropped else 1.0
+                track_prediction.classified_frame(
+                    i, prediction, mass_weight * cropped_weight
+                )
         return track_prediction
 
     def classify_using_movement(self, data, regions):

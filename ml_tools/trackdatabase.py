@@ -255,6 +255,21 @@ class TrackDatabase:
             result["tracks"] = len(dataset)
         return result
 
+    def get_clip_tracks(self, clip_id):
+        """
+        Gets metadata for given clip
+        :param clip_id:
+        :return:
+        """
+        tracks = []
+        with HDF5Manager(self.database) as f:
+            dataset = f["clips"][str(clip_id)]
+            for track_id in dataset:
+                if track_id in special_datasets:
+                    continue
+                tracks.append(hdf5_attributes_dictionary(dataset[track_id]))
+        return tracks
+
     def get_tag(self, clip_id, track_number):
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
@@ -327,6 +342,51 @@ class TrackDatabase:
                 return True
             else:
                 return False
+
+    def add_prediction(self, clip_id, track_id, track_prediction):
+        with HDF5Manager(self.database, "a") as f:
+            clip = f["clips"][(str(clip_id))]
+            track_node = clip[str(track_id)]
+
+            predicted_label = track_prediction.predicted_tag()
+            self.all_class_confidences = track_prediction.class_confidences()
+            predictions = np.int16(
+                np.around(100 * np.array(track_prediction.predictions))
+            )
+            predicted_confidence = int(round(100 * track_prediction.max_score))
+
+            self.add_prediction_data(
+                track_node,
+                predictions,
+                predicted_label,
+                predicted_confidence,
+                labels=track_prediction.labels,
+            )
+            clip.attrs["has_prediction"] = True
+
+    def add_prediction_data(
+        self, track, predictions, predicted_tag, score, labels=None
+    ):
+        """
+        Add prediction data as a dataset to the track
+        data should be  an array of int16 array
+        """
+        track_attrs = track.attrs
+        if predicted_tag is not None:
+            track_attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
+            track_attrs["predicted"] = predicted_tag
+        track_attrs["predicted_confidence"] = int(round(100 * score))
+
+        pred_data = track.create_dataset(
+            "predictions",
+            predictions.shape,
+            chunks=predictions.shape,
+            dtype=predictions.dtype,
+        )
+        pred_data[:, :] = predictions
+        if labels is not None:
+            track_attrs["prediction_classes"] = labels
+        track_attrs["has_prediction"] = True
 
     def add_track(
         self,

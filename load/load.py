@@ -41,6 +41,14 @@ def parse_params():
         help="Re process clips that already exist in the database",
     )
     parser.add_argument(
+        "--add-missing-predictions", action="count", help="Add predictions"
+    )
+    parser.add_argument(
+        "--calculate-predictions",
+        action="count",
+        help="Run model on loaded files to get prediction data",
+    )
+    parser.add_argument(
         "-i",
         "--show-build-information",
         action="count",
@@ -66,10 +74,13 @@ def parse_params():
 
 def load_clips(config, args):
 
-    loader = ClipLoader(config, args.reprocess)
+    loader = ClipLoader(config, args.reprocess, args.calculate_predictions)
     target = args.target
     if target is None:
         target = config.source_folder
+    if args.add_missing_predictions:
+        loader.add_predictions()
+        return
     if os.path.splitext(target)[1] == ".cptv":
         loader.process_file(target)
     else:
