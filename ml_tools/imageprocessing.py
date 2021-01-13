@@ -4,8 +4,13 @@ import numpy as np
 import math
 from PIL import Image, ImageDraw
 
+from scipy import ndimage
 from ml_tools.tools import eucl_distance
 from track.track import TrackChannels
+
+
+def rotate(image, degrees, mode="nearest", order=1):
+    return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
 
 
 def movement_images(
@@ -58,7 +63,7 @@ def movement_images(
         if (
             prev_overlay is None or center_distance > min_distance
         ) or not require_movement:
-            frame = frame[channel]
+            frame = frame.get_channel(channel)
             subimage = region.subimage(overlay)
             subimage[:, :] += np.float32(frame)
             center_distance = 0

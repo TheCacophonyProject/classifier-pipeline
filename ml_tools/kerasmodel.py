@@ -230,7 +230,7 @@ class KerasModel:
         except ValueError:
             fp_index = None
         track_prediction = TrackPrediction(
-            track.get_id(), track.start_frame, fp_index, keep_all, self.labels
+            track.get_id(), track.start_frame, fp_index, self.labels, keep_all=keep_all
         )
 
         if self.use_movement:
@@ -238,7 +238,7 @@ class KerasModel:
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 frame = frame.crop_by_region(region)
-                data.append(frame.as_array())
+                data.append(frame)
             predictions = self.classify_using_movement(
                 data, regions=track.bounds_history
             )
@@ -246,7 +246,6 @@ class KerasModel:
                 track_prediction.classified_frame(i, prediction, None)
         else:
             for i, region in enumerate(track.bounds_history):
-
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 track_data = track.crop_by_region(frame, region)
                 prediction = self.classify_frame(track_data)
@@ -264,12 +263,12 @@ class KerasModel:
 
         return track_prediction
 
-    def classify_raw(
+    def classify_cropped_data(
         self,
+        track_id,
+        start_frame,
         data,
         regions,
-        start_frame,
-        track_id,
         keep_all=True,
     ):
 
@@ -278,7 +277,7 @@ class KerasModel:
         except ValueError:
             fp_index = None
         track_prediction = TrackPrediction(
-            track.get_id(), track.start_frame, fp_index, keep_all, self.labels
+            track_id, start_frame, fp_index, self.labels, keep_all=keep_all
         )
 
         if self.use_movement:
@@ -333,8 +332,8 @@ class KerasModel:
             seg_frames.sort()
             for frame_i in seg_frames:
                 f = data[frame_i]
-                segment.append(f)
-                medians.append(np.median(f[0]))
+                segment.append(f.copy())
+                medians.append(np.median(f.thermal[0]))
             frames = preprocess_movement(
                 data,
                 segment,

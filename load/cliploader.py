@@ -31,10 +31,14 @@ from ml_tools.trackdatabase import TrackDatabase
 from .clip import Clip
 from .cliptrackextractor import ClipTrackExtractor
 from track.track import Track, TrackChannels
+from classify.trackprediction import TrackPrediction
+
+import numpy as np
 
 
 def process_job(loader, queue, model_file=None):
     i = 0
+    classifier = None
     if model_file is not None:
         classifier = KerasModel()
         classifier.load_model(model_file)
@@ -70,16 +74,16 @@ def prediction_job(queue, db, model_file):
 
 
 def add_predictions(db, clip, classifier):
-    tracks = db.get_clip_tracks(str(clip))
+    tracks = db.get_clip_tracks(clip)
     for track in tracks:
-        track_data = db.get_track(str(clip), track["id"])
-        track_prediction = classifier.classify_raw(
-            track["id"],
-            track["start_frame"],
-            track_data,
-            track["bounds_history"],
+        track_data = db.get_track(clip, track["id"])
+        regions = []
+        for rect in track["bounds_history"]:
+            regions.append(tools.Rectangle.from_ltrb(*rect))
+        track_prediction = classifier.classify_cropped_data(
+            track["id"], track["start_frame"], track_data, regions
         )
-        db.add_prediction(clip_id, track_node, track_prediction)
+        db.add_prediction(clip, track["id"], track_prediction)
 
 
 class ClipLoader:
@@ -160,7 +164,7 @@ class ClipLoader:
     def _get_dest_folder(self, filename):
         return os.path.join(self.config.tracks_folder, get_distributed_folder(filename))
 
-    def _export_tracks(self, full_path, clip):
+    def _export_tracks(self, full_path, clip, classifier=None):
         """
         Writes tracks to a track database.
         :param database: database to write track to.
@@ -173,12 +177,6 @@ class ClipLoader:
         if classifier:
             prediction_classes = classifier.model
         for track in clip.tracks:
-            if classifier:
-                track_prediction = TrackPrediction(
-                    track.get_id(), track.start_frame, True
-                )
-            else:
-                track_prediction = None
             start_time, end_time = clip.start_and_end_time_absolute(
                 track.start_s, track.end_s
             )
@@ -193,10 +191,8 @@ class ClipLoader:
                 if not self.config.load.include_filtered_channel:
                     cropped[TrackChannels.filtered] = 0
                 track_data.append((frame.thermal, cropped))
-                if classifier:
-                    prediction = classifier.classify_frame(np.copy(frame))
-                    track_prediction.classified_frame(region.frame_number, prediction)
             if classifier:
+                track_prediction = classifier.classify_track(clip, track)
                 track.add_prediction_info(classifier.labels, track_prediction)
             self.database.add_track(
                 clip.get_id(),
@@ -271,10 +267,9 @@ class ClipLoader:
             return
 
         metadata = tools.load_clip_metadata(metadata_filename)
-
         if not self.reprocess and self.database.has_clip(str(metadata["id"])):
             if not self.database.has_prediction(str(metadata["id"])) and classifier:
-                print("Adding predictions to %s", filename)
+                logging.info("Adding predictions to %s", filename)
                 add_predictions(self.database, str(metadata["id"]), classifier)
             logging.warning("Already loaded %s", filename)
             return

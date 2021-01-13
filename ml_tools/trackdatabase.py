@@ -71,7 +71,6 @@ class TrackDatabase:
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             has_record = clip_id in clips and "finished" in clips[clip_id].attrs
-
         return has_record
 
     def has_prediction(self, clip_id):
@@ -103,7 +102,6 @@ class TrackDatabase:
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
             if overwrite and clip_id in clips:
-
                 del clips[clip_id]
             group = clips.create_group(clip_id)
 
@@ -160,6 +158,8 @@ class TrackDatabase:
                         elif track["detail"]:
                             clip_tags.append(track["detail"])
                     group_attrs["tags"] = clip_tags
+                group_attrs["ffc_frames"] = clip.ffc_frames
+
             f.flush()
             group.attrs["finished"] = True
 
@@ -348,7 +348,7 @@ class TrackDatabase:
             clip = f["clips"][(str(clip_id))]
             track_node = clip[str(track_id)]
 
-            predicted_label = track_prediction.predicted_tag()
+            predicted_tag = track_prediction.predicted_tag()
             self.all_class_confidences = track_prediction.class_confidences()
             predictions = np.int16(
                 np.around(100 * np.array(track_prediction.predictions))
@@ -358,7 +358,7 @@ class TrackDatabase:
             self.add_prediction_data(
                 track_node,
                 predictions,
-                predicted_label,
+                predicted_tag,
                 predicted_confidence,
                 labels=track_prediction.labels,
             )
@@ -375,7 +375,7 @@ class TrackDatabase:
         if predicted_tag is not None:
             track_attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
             track_attrs["predicted"] = predicted_tag
-        track_attrs["predicted_confidence"] = int(round(100 * score))
+        track_attrs["predicted_confidence"] = score
 
         pred_data = track.create_dataset(
             "predictions",
@@ -463,10 +463,9 @@ class TrackDatabase:
                 node_attrs["end_frame"] = track.end_frame
                 if track.predictions is not None:
                     self.add_prediction_data(
-                        clip_id,
                         track_node,
                         track.predictions,
-                        track.predicted_class,
+                        track.predicted_tag,
                         track.predicted_confidence,
                         labels=track.prediction_classes,
                     )

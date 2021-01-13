@@ -86,7 +86,7 @@ class Track:
         self.predicted_mid = None
 
         self.predictions = None
-        self.predicted_label = None
+        self.predicted_tag = None
         self.predicted_confidence = None
 
         self.all_class_confidences = None
@@ -104,8 +104,8 @@ class Track:
         return self._id
 
     def add_prediction_info(self, labels, track_prediction):
-        self.predicted_label = track_prediction.predicted_tag(labels)
-        self.all_class_confidences = track_prediction.class_confidences(labels)
+        self.predicted_tag = track_prediction.predicted_tag()
+        self.all_class_confidences = track_prediction.class_confidences()
         self.predictions = np.int16(
             np.around(100 * np.array(track_prediction.predictions))
         )
@@ -127,7 +127,7 @@ class Track:
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
         self.fps = frames_per_second
-        self.predicted_label = data.get("tag")
+        self.predicted_tag = data.get("tag")
         self.all_class_confidences = data.get("all_class_confidences", None)
         self.predictions = data.get("predictions")
         if self.predictions:

@@ -21,7 +21,11 @@ class Predictions:
         prediction = self.prediction_per_track.setdefault(
             track.get_id(),
             TrackPrediction(
-                track.get_id(), track.start_frame, self.fp_index, keep_all, self.labels
+                track.get_id(),
+                track.start_frame,
+                self.fp_index,
+                self.labels,
+                keep_all=keep_all,
             ),
         )
         return prediction
