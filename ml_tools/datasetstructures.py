@@ -35,6 +35,7 @@ class TrackHeader:
         start_frame,
         res_x=CPTV_FILE_WIDTH,
         res_y=CPTV_FILE_HEIGHT,
+        ffc_frames=None,
     ):
         self.res_x = res_x
         self.res_y = res_y
@@ -79,6 +80,7 @@ class TrackHeader:
         self.upper_mass = np.percentile(frame_mass, q=75)
         self.median_mass = np.median(frame_mass)
         self.mean_mass = np.mean(frame_mass)
+        self.ffc_frames = ffc_frames
 
     def toJSON(self):
         meta_dict = {}
@@ -135,6 +137,8 @@ class TrackHeader:
         # this needs more testing
         frames = []
         for i, mass in enumerate(self.frame_mass):
+            if self.ffc_frames is not None and i in self.ffc_frames:
+                continue
             if (
                 min_mass is None
                 or mass >= min_mass
@@ -335,7 +339,7 @@ class TrackHeader:
         )
 
         bounds_history = track_meta["bounds_history"]
-
+        ffc_frames = clip_meta.get("ffc_frames", [])
         header = TrackHeader(
             clip_id=int(clip_id),
             track_id=int(track_meta["id"]),
@@ -355,6 +359,7 @@ class TrackHeader:
             start_frame=track_start_frame,
             res_x=clip_meta.get("res_x", CPTV_FILE_WIDTH),
             res_y=clip_meta.get("res_y", CPTV_FILE_HEIGHT),
+            ffc_frames=ffc_frames,
         )
         return header
 
