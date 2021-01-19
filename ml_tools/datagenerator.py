@@ -40,7 +40,7 @@ class DataGenerator(keras.utils.Sequence):
         self.epochs = params.get("epochs", 10)
         self.samples = None
         self.keep_epoch = params.get("keep_epoch")
-        self.randomize_epoch = params.get("randomize_epoch")
+        self.randomize_epoch = params.get("randomize_epoch", True)
         self.cap_at = params.get("cap_at")
         self.cap_samples = params.get("cap_samples", True)
         self.label_cap = params.get("label_cap")
@@ -207,10 +207,10 @@ class DataGenerator(keras.utils.Sequence):
             # zero last epoch
             self.epoch_data[-1] = None
 
+        last_stats = self.epoch_stats[-1]
         self.epoch_stats.append({})
         self.epoch_data.append(([None] * batches, [None] * batches))
 
-        last_stats = self.epoch_stats[-1]
         logging.info("epoch ended for %s %s", self.dataset.name, last_stats)
         self.cur_epoch += 1
 
