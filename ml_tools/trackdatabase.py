@@ -16,7 +16,7 @@ from classify.trackprediction import TrackPrediction
 from dateutil.parser import parse as parse_date
 from .frame import Frame
 
-special_datasets = ["background_frame", "predictions"]
+special_datasets = ["background_frame", "predictions", "overlay"]
 
 
 class HDF5Manager:
@@ -97,6 +97,27 @@ class TrackDatabase:
             # if has_record:
             return clip.attrs.get("has_prediction", False)
         return False
+
+    def add_overlay(self, clip_id, track_id, overlay):
+        with HDF5Manager(self.database, "a") as f:
+            clip = f["clips"][str(clip_id)]
+            track = clip[str(track_id)]
+            chunks = overlay.shape
+
+            dims = overlay.shape
+            if "overlay" not in track:
+                overlay_node = track.create_dataset(
+                    "overlay", dims, chunks=chunks, dtype=np.float32
+                )
+            else:
+                overlay_node = track["overlay"]
+            overlay_node[:, :] = overlay
+
+    def get_overlay(self, clip_id, track_id):
+        with HDF5Manager(self.database, "a") as f:
+            clip = f["clips"][str(clip_id)]
+            track = clip[str(track_id)]
+            return track["overlay"][:]
 
     def add_predictions(self, clip_id, model):
         logging.info("Add_prediction waiting")

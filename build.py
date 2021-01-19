@@ -337,11 +337,23 @@ def recalc_important(dataset_filename, db):
     return datasets
 
 
+def add_overlay(dataset_filename, db):
+    datasets = pickle.load(open(dataset_filename, "rb"))
+    print_counts(datasets[0], *datasets)
+    datasets[0].enable_augmentation = True
+
+    for dataset in datasets:
+        dataset.add_overlay()
+
+
 def main():
     init_logging()
     args = parse_args()
     config = load_config(args.config_file)
+    datasets_filename = dataset_db_path(config)
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
+    add_overlay(datasets_filename, db)
+    return
     dataset = Dataset(
         db, "dataset", config, consecutive_segments=args.consecutive_segments
     )
