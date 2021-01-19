@@ -217,9 +217,6 @@ class TrackHeader:
                 logging.debug("Not enough movment %s %s", self, self.label)
                 return
 
-        segment_count = (len(mass_history) - segment_width) // segment_frame_spacing
-        segment_count += 1
-
         if use_important:
             remaining = segment_width - self.num_sample_frames
             segment_count = max(0, (self.num_sample_frames - segment_width) // 9)
@@ -264,8 +261,12 @@ class TrackHeader:
                 self.segments.append(segment)
 
             return
+
+        segment_count = (len(mass_history) - segment_width) // segment_frame_spacing
+        segment_count += 1
         # scan through track looking for good segments to add to our datset
         for i in range(segment_count):
+
             segment_start = i * segment_frame_spacing
 
             mass_slice = mass_history[segment_start : segment_start + segment_width]
