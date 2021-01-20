@@ -31,6 +31,34 @@ class Frame:
         return None
 
     @classmethod
+    def from_channel(
+        cls, frame, channel, frame_number, flow_clipped=False, ffc_affected=False
+    ):
+        flow = None
+        if TrackChannels.thermal == channel:
+            thermal = frame
+        else:
+            thermal = None
+        if TrackChannels.filtered == channel:
+            filtered = frame
+        else:
+            filtered = None
+
+        if TrackChannels.mask == channel:
+            mask = frame
+        else:
+            mask = None
+        return cls(
+            thermal,
+            filtered,
+            mask,
+            frame_number,
+            flow=flow,
+            flow_clipped=flow_clipped,
+            ffc_affected=ffc_affected,
+        )
+
+    @classmethod
     def from_array(
         cls, frame_arr, frame_number, flow_clipped=False, ffc_affected=False
     ):
@@ -100,12 +128,30 @@ class Frame:
                 return self.flow_h, self.flow_v
         return None, None
 
+    def brightness_adjust(self, adjust):
+        if self.thermal is not None:
+            self.thermal *= adjust
+        if self.filtered is not None:
+            self.filtered *= adjust
+
+    def contrast_adjust(self, adjust):
+        if self.thermal is not None:
+            self.thermal *= adjust
+        if self.filtered is not None:
+            self.filtered *= adjust
+
     def crop_by_region(self, region, out=None):
         # make a new frame cropped by region
-        thermal = region.subimage(self.thermal)
-        filtered = region.subimage(self.filtered)
-        mask = region.subimage(self.mask)
+        thermal = None
+        filtered = None
+        mask = None
         flow = None
+        if self.thermal is not None:
+            thermal = region.subimage(self.thermal)
+        if self.filtered is not None:
+            filtered = region.subimage(self.filtered)
+        if self.mask is not None:
+            mask = region.subimage(self.mask)
         if self.flow is not None:
             flow = region.subimage(self.flow)
         if out:
@@ -131,12 +177,14 @@ class Frame:
         width = int(self.thermal.shape[1] * scale_percent)
         height = int(self.thermal.shape[0] * scale_percent)
         resize_dim = (width, height)
-
-        self.thermal = resize_and_pad(self.thermal, resize_dim, dim)
-        self.mask = resize_and_pad(
-            self.mask, resize_dim, dim, pad=0, interpolation=cv2.INTER_NEAREST
-        )
-        self.filtered = resize_and_pad(self.filtered, resize_dim, dim, pad=0)
+        if self.thermal is not None:
+            self.thermal = resize_and_pad(self.thermal, resize_dim, dim)
+        if self.mask is not None:
+            self.mask = resize_and_pad(
+                self.mask, resize_dim, dim, pad=0, interpolation=cv2.INTER_NEAREST
+            )
+        if self.filtered is not None:
+            self.filtered = resize_and_pad(self.filtered, resize_dim, dim, pad=0)
         if self.flow is not None:
             flow_h = resize_and_pad(self.flow[:, :, 0], resize_dim, dim, pad=0)
             flow_v = resize_and_pad(self.flow[:, :, 1], resize_dim, dim, pad=0)
@@ -150,18 +198,24 @@ class Frame:
         self.filtered = resize_cv(self.filtered, dim)
 
     def rotate(self, degrees):
-        self.thermal = rotate(self.thermal, degrees)
-        self.mask = rotate(self.mask, degrees)
+        if self.thermal is not None:
+            self.thermal = rotate(self.thermal, degrees)
+        if self.mask is not None:
+            self.mask = rotate(self.mask, degrees)
         if self.flow is not None:
             self.flow = rotate(self.flow, degrees)
-        self.filtered = rotate(self.filtered, degrees)
+        if self.filtered is not None:
+            self.filtered = rotate(self.filtered, degrees)
 
     def float_arrays(self):
-        self.thermal = np.float32(self.thermal)
-        self.mask = np.float32(self.mask)
+        if self.thermal is not None:
+            self.thermal = np.float32(self.thermal)
+        if self.mask is not None:
+            self.mask = np.float32(self.mask)
         if self.flow is not None:
             self.flow = np.float32(self.flow)
-        self.filtered = np.float32(self.filtered)
+        if self.filtered is not None:
+            self.filtered = np.float32(self.filtered)
 
     def copy(self):
         return Frame(
@@ -175,11 +229,14 @@ class Frame:
         )
 
     def flip(self):
-        self.thermal = np.flip(self.thermal, axis=1)
-        self.mask = np.flip(self.mask, axis=1)
+        if self.thermal is not None:
+            self.thermal = np.flip(self.thermal, axis=1)
+        if self.mask is not None:
+            self.mask = np.flip(self.mask, axis=1)
         if self.flow is not None:
             self.flow = np.flip(self.flow, axis=1)
-        self.filtered = np.flip(self.filtered, axis=1)
+        if self.filtered is not None:
+            self.filtered = np.flip(self.filtered, axis=1)
 
     @property
     def flow_h(self):

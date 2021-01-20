@@ -130,10 +130,10 @@ def preprocess_segment(
         # data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
         if augment:
             if level_adjust is not None:
-                frame.thermal += level_adjust
+                frame.brightness_adjust(level_adjust)
             if contrast_adjust is not None:
-                frame.thermal *= contrast_adjust
-                frame.filtered *= contrast_adjust
+                frame.contrast_adjust(contrast_adjust)
+
             if flip:
                 frame.flip()
         data.append(frame)
@@ -182,6 +182,7 @@ def preprocess_movement(
     use_dots=True,
     reference_level=None,
     sample=None,
+    overlay=None,
 ):
     segment, flipped = preprocess_segment(
         segment,
@@ -196,19 +197,24 @@ def preprocess_movement(
     )
     if not success:
         return None
-    dots, overlay = imageprocessing.movement_images(
-        data,
-        regions,
-        dim=square.shape,
-        require_movement=True,
-    )
+    if overlay is None:
+        dots, overlay = imageprocessing.movement_images(
+            data,
+            regions,
+            dim=square.shape,
+            require_movement=True,
+        )
+    else:
+        overlay_full_size = np.zeros((square.shape[0], square.shape[1]))
+        overlay_full_size[: overlay.shape[0], : overlay.shape[1]] = overlay
+        overlay = overlay_full_size
     overlay, success = imageprocessing.normalize(overlay, min=0)
     if not success:
         return None
 
     if flipped:
         overlay = np.flip(overlay, axis=1)
-        dots = np.flip(dots, axis=1)
+        # dots = np.flip(dots, axis=1)
 
     data = np.empty((square.shape[0], square.shape[1], 3))
     data[:, :, 0] = square
@@ -216,7 +222,7 @@ def preprocess_movement(
         dots = dots / 255
         data[:, :, 1] = dots  # dots
     else:
-        data[:, :, 1] = np.zeros(dots.shape)
+        data[:, :, 1] = np.zeros(overlay.shape)
     data[:, :, 2] = overlay  # overlay
     # for debugging
     tools.saveclassify_image(

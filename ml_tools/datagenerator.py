@@ -244,16 +244,15 @@ def _data(labels, dataset, samples, params, to_categorical=True):
             continue
         if params.use_movement:
             try:
-                frames = dataset.fetch_track(sample.track, preprocess=False)
+                frame_data = dataset.fetch_random_sample(sample, params.channel)
+                overlay = dataset.db.get_overlay(
+                    sample.track.clip_id, sample.track.track_id
+                )
+
             except Exception as inst:
                 logging.error("Error fetching sample %s %s", sample, inst)
+                raise inst
                 continue
-
-            indices = np.arange(len(frames))
-            np.random.shuffle(indices)
-            frame_data = []
-            for frame_i in indices[: sample.frames]:
-                frame_data.append(frames[frame_i].copy())
 
             if len(frame_data) < 5:
                 logging.error(
@@ -267,13 +266,11 @@ def _data(labels, dataset, samples, params, to_categorical=True):
             # repeat some frames if need be
             if len(frame_data) < params.square_width ** 2:
                 missing = params.square_width ** 2 - len(frame_data)
+                indices = np.arange(len(frame_data))
                 np.random.shuffle(indices)
                 for frame_i in indices[:missing]:
-                    frame_data.append(frames[frame_i].copy())
+                    frame_data.append(frame_data[frame_i].copy())
             ref = []
-            regions = []
-            for r in sample.track.track_bounds:
-                regions.append(tools.Rectangle.from_ltrb(*r))
             frame_data = sorted(
                 frame_data, key=lambda frame_data: frame_data.frame_number
             )
@@ -281,16 +278,17 @@ def _data(labels, dataset, samples, params, to_categorical=True):
             for frame in frame_data:
                 ref.append(sample.track.frame_temp_median[frame.frame_number])
             data = preprocess_movement(
-                frames,
+                None,
                 frame_data,
                 params.square_width,
-                regions,
+                None,
                 params.channel,
                 preprocess_fn=params.model_preprocess,
                 augment=params.augment,
                 use_dots=params.use_dots,
                 reference_level=ref,
                 sample=sample,
+                overlay=overlay,
             )
         else:
             try:

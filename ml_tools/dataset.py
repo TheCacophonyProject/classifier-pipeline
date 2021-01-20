@@ -467,6 +467,20 @@ class Dataset:
             )
         return frames
 
+    def fetch_random_sample(self, sample, channel):
+        important_frames = sample.track.important_frames
+        np.random.shuffle(important_frames)
+        important_frames = important_frames[: sample.frames]
+        important_frames = [frame.frame_num for frame in important_frames]
+        important_frames.sort()
+        frames = self.db.get_track(
+            sample.track.clip_id,
+            sample.track.track_id,
+            frame_numbers=important_frames,
+            channels=channel,
+        )
+        return frames
+
     def fetch_frame(self, frame_sample, channels=None):
         frame, label = self.db.get_frame(
             frame_sample.clip_id,
