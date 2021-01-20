@@ -103,7 +103,7 @@ class ClipClassifier(CPTVFileProcessor):
                                 region.frame_number
                             )
                         )
-                        return
+                        continue
                     frame = frames[0]
                     (
                         prediction,
@@ -231,7 +231,6 @@ class ClipClassifier(CPTVFileProcessor):
         for i, track in enumerate(clip.tracks):
             prediction = self.identify_track(clip, track)
             predictions.prediction_per_track[track.get_id()] = prediction
-
             description = prediction.description(self.classifier.labels)
             logging.info(
                 " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
