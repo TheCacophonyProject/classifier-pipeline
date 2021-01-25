@@ -15,6 +15,7 @@ from ml_tools.kerasmodel import KerasModel
 from ml_tools.imageprocessing import normalize, detect_objects
 import matplotlib
 import matplotlib.pyplot as plt
+from ml_tools import tools
 
 VISIT_INTERVAL = 10 * 60
 
@@ -109,13 +110,16 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
                 continue
             expected_tag = dataset.mapped_label(expected_tag)
             track_data = dataset.db.get_track(track.clip_id, track.track_id)
+            regions = []
+            for region in track.track_bounds:
+                regions.append(tools.Rectangle.from_ltrb(*region))
             track_prediction = classifier.classify_track_data(
-                track.track_id, track_data, regions=track.track_bounds
+                track.track_id, track_data, regions=regions
             )
             counts = [0] * len(classifier.labels)
-            for pred in track_prediction.original:
+            for pred in track_prediction.predictions:
                 counts[np.argmax(pred)] += 1
-            mean = np.mean(track_prediction.original, axis=0)
+            mean = np.mean(track_prediction.predictions, axis=0)
             max_lbl = np.argmax(mean)
             predicted_lbl = classifier.labels[max_lbl]
             vel_sum = [abs(vel[0]) + abs(vel[1]) for vel in track.frame_velocity]
