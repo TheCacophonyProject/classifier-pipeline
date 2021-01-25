@@ -94,7 +94,7 @@ class Visit:
 def process_job(queue, dataset, model_file, train_config, results_queue):
 
     classifier = KerasModel(train_config=train_config)
-    classifier.load_model(model_file)
+    classifier.load_model(model_file, trianing=False)
     logging.info("Loaded model")
     i = 0
 
@@ -156,7 +156,7 @@ class ModelEvalute:
         logging.info("classifier loading %s", self.model_file)
 
         self.classifier = KerasModel(train_config=self.config.train)
-        self.classifier.load_model(self.model_file)
+        self.classifier.load_model(self.model_file, training=False)
 
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
