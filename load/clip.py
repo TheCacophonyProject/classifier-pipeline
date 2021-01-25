@@ -120,7 +120,7 @@ class Clip:
         all the warms moving parts from the initial frame
         """
         if initial_frames is None:
-            return initial_diff
+            return np.zeros((frame.shape))
         else:
             diff = initial_frames - frame
             if initial_diff is not None:
@@ -139,7 +139,6 @@ class Clip:
         """
         frames = []
         if frame_reader.background_frames > 0:
-            print("using background")
             for frame in frame_reader:
                 if frame.background_frame:
                     frames.append(frame.pix)
@@ -165,6 +164,7 @@ class Clip:
                 )
                 if initial_frames is None:
                     initial_frames = frame_average
+
                 frames = []
 
         if len(frames) > 0:
