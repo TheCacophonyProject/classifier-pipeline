@@ -179,7 +179,7 @@ def preprocess_movement(
     channel,
     preprocess_fn=None,
     augment=False,
-    use_dots=True,
+    use_dots=False,
     reference_level=None,
     sample=None,
     overlay=None,

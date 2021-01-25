@@ -262,25 +262,25 @@ class KerasModel:
 
         if meta:
             self.load_meta(dir)
-        if not training:
-            self.params["retrain_layer"] = None
-            self.params["retrain_from"] = None
+
         if not self.model:
             self.build_model(
                 dense_sizes=self.params.dense_sizes,
                 retrain_from=self.params.retrain_layer,
                 dropout=self.params.dropout,
             )
+        if not training:
+            self.model.trainable = False
+        self.model.summary()
         self.model.load_weights(dir + "/variables/variables")
 
     def load_model(self, model_path, training=False):
         logging.info("Loading %s", model_path)
-        self.model = tf.keras.models.load_model(model_path)
         dir = os.path.dirname(model_path)
+        self.model = tf.keras.models.load_model(dir)
         self.load_meta(dir)
         if not training:
-            self.params["retrain_layer"] = None
-            self.params["retrain_from"] = None
+            self.model.trainable = False
         self.model.summary()
 
     def load_meta(self, dir):
@@ -368,7 +368,7 @@ class KerasModel:
             model_preprocess=self.preprocess_fn,
             load_threads=self.params.train_load_threads,
             use_movement=self.params.use_movement,
-            # cap_at="bird",
+            cap_at="bird",
             square_width=self.params.square_width,
         )
         self.validate = DataGenerator(
@@ -797,10 +797,10 @@ class KerasModel:
             y.extend(np.argmax(batch, axis=1))
 
         # test.epoch_data = None
-        cm = confusion_matrix(y, test_pred)
+        cm = confusion_matrix(y, test_pred, labels=np.arange(len(y)))
 
         # Log the confusion matrix as an image summary.
-        figure = plot_confusion_matrix(cm, class_names=test.labels)
+        figure = plot_confusion_matrix(cm, class_names=self.labels)
         plt.savefig(filename, format="png")
 
     def evaluate(self, dataset):

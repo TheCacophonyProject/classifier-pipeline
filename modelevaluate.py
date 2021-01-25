@@ -94,7 +94,7 @@ class Visit:
 def process_job(queue, dataset, model_file, train_config, results_queue):
 
     classifier = KerasModel(train_config=train_config)
-    classifier.load_weights(model_file)
+    classifier.load_model(model_file)
     logging.info("Loaded model")
     i = 0
 
@@ -156,7 +156,7 @@ class ModelEvalute:
         logging.info("classifier loading %s", self.model_file)
 
         self.classifier = KerasModel(train_config=self.config.train)
-        self.classifier.load_weights(self.model_file)
+        self.classifier.load_model(self.model_file)
 
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
@@ -380,9 +380,6 @@ logging.info("%s %s / %s / %s", "label", "segments", "frames", "tracks")
 for label in dataset.labels:
     segments, frames, tracks, _, _ = dataset.get_counts(label)
     logging.info("%s %s / %s / %s", label, segments, frames, tracks)
-
-check_noise(dataset, 195961, 17050)
-raise "ex"
 
 if args.confusion is not None:
     ev.save_confusion(dataset, args.confusion)
