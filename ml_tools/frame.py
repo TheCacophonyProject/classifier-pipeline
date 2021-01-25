@@ -130,9 +130,7 @@ class Frame:
 
     def brightness_adjust(self, adjust):
         if self.thermal is not None:
-            self.thermal *= adjust
-        if self.filtered is not None:
-            self.filtered *= adjust
+            self.thermal += adjust
 
     def contrast_adjust(self, adjust):
         if self.thermal is not None:
