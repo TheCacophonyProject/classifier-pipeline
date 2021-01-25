@@ -3,7 +3,7 @@ import dateutil
 import numpy as np
 import logging
 
-from ml_tools.imageprocessing import filtered_is_valid
+from ml_tools.imageprocessing import clear_frame
 from ml_tools import tools
 
 FRAMES_PER_SECOND = 9
@@ -142,7 +142,7 @@ class TrackHeader:
                 and mass <= self.upper_mass
             ):  # trying it out
                 if frame_data is not None:
-                    if not filtered_is_valid(frame_data[i], self.label):
+                    if not clear_frame(frame_data[i], self.label):
                         logging.debug(
                             "set_important_frames %s frame %s has no zeros in filtered frame",
                             self.unique_id,

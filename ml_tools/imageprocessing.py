@@ -144,7 +144,7 @@ def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5)):
     return components, small_mask, stats
 
 
-def filtered_is_valid(frame, label):
+def clear_frame(frame, label):
     # try and remove bad frames by checking for noise
     filtered = frame.filtered
     thermal = frame.thermal
