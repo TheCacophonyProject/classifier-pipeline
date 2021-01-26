@@ -238,7 +238,7 @@ def preprocess_movement(
         data[:, :, 1] = dots  # dots
     else:
         data[:, :, 1] = square_flow
-    data[:, :, 2] = overlay  # overlay
+    data[:, :, 2] = filtered_square  # overlay
     # for debugging
     tools.saveclassify_image(
         data,

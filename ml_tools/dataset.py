@@ -820,7 +820,19 @@ class Dataset:
         segments, if balance labels is set each label has an equal chance of
         being chosen
         """
-
+        if lbl_p is None:
+            lbl_p = {
+                "bird": 20,
+                "possum": 20,
+                "rodent": 20,
+                "hedgehog": 20,
+                "cat": 5,
+                "insect": 1,
+                "leporidae": 5,
+                "mustelid": 5,
+                "false-positive": 1,
+                "wallaby": 5,
+            }
         self.rebuild_segment_cdf(lbl_p=lbl_p)
         self.rebuild_frame_cdf(lbl_p=lbl_p)
 
