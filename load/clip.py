@@ -120,7 +120,7 @@ class Clip:
         all the warms moving parts from the initial frame
         """
         if initial_frames is None:
-            return initial_diff
+            return np.zeros((frame.shape))
         else:
             diff = initial_frames - frame
             if initial_diff is not None:
@@ -137,9 +137,19 @@ class Clip:
         Also check for animals in the background by checking for connected components in
         the intital_diff frame - this is the maximum change between first average frame and all other average frames in the clip
         """
+        frames = []
+        if frame_reader.background_frames > 0:
+            for frame in frame_reader:
+                if frame.background_frame:
+                    frames.append(frame.pix)
+                else:
+                    break
+            frame_average = np.average(frames, axis=0)
+            self.update_background(frame_average)
+            self._background_calculated()
+
         initial_frames = None
         initial_diff = None
-        frames = []
         for frame in frame_reader:
             ffc_affected = is_affected_by_ffc(frame)
             if ffc_affected:
@@ -154,6 +164,7 @@ class Clip:
                 )
                 if initial_frames is None:
                     initial_frames = frame_average
+
                 frames = []
 
         if len(frames) > 0:
