@@ -467,7 +467,7 @@ class Dataset:
             )
         return frames
 
-    def fetch_random_sample(self, sample, channel):
+    def fetch_random_sample(self, sample, channel=None):
         important_frames = sample.track.important_frames
         np.random.shuffle(important_frames)
         important_frames = important_frames[: sample.frames]

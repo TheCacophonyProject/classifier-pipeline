@@ -797,7 +797,7 @@ class KerasModel:
             y.extend(np.argmax(batch, axis=1))
 
         # test.epoch_data = None
-        cm = confusion_matrix(y, test_pred, labels=np.arange(len(y)))
+        cm = confusion_matrix(y, test_pred, labels=np.arange(len(self.labels)))
 
         # Log the confusion matrix as an image summary.
         figure = plot_confusion_matrix(cm, class_names=self.labels)

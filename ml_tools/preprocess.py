@@ -190,10 +190,16 @@ def preprocess_movement(
         augment=augment,
         default_inset=0,
     )
-    segment = [frame.get_channel(channel) for frame in segment]
+    thermal_segment = [frame.get_channel(channel) for frame in segment]
     # as long as one frame it's fine
     square, success = imageprocessing.square_clip(
-        segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+        thermal_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+    )
+    if not success:
+        return None
+    filtered_segment = [frame.get_channel(TrackChannels.filtered) for frame in segment]
+    filtered_square, success = imageprocessing.square_clip(
+        filtered_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
     )
     if not success:
         return None
@@ -222,13 +228,13 @@ def preprocess_movement(
         dots = dots / 255
         data[:, :, 1] = dots  # dots
     else:
-        data[:, :, 1] = np.zeros(overlay.shape)
+        data[:, :, 1] = filtered_square
     data[:, :, 2] = overlay  # overlay
     # for debugging
-    tools.saveclassify_image(
-        data,
-        f"samples/{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
-    )
+    # tools.saveclassify_image(
+    #     data,
+    #     f"samples/{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
+    # )
     if preprocess_fn:
         for i, frame in enumerate(data):
             frame = frame * 255
