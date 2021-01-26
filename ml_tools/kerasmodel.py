@@ -24,10 +24,7 @@ from sklearn.metrics import confusion_matrix
 from ml_tools.hyperparams import HyperParams
 
 #
-HP_DENSE_SIZES = hp.HParam(
-    "dense_sizes",
-    hp.Discrete(["1024 512"], []),
-)
+HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 512,"]))
 HP_TYPE = hp.HParam("type", hp.Discrete([14]))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([16, 32]))

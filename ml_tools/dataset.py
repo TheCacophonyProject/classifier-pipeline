@@ -587,7 +587,10 @@ class Dataset:
             if label_cap:
                 cap = min(label_cap, len(self.samples_for(label, remapped=True)))
             if label == "false-positive":
-                cap = min(cap, int(label_cap * 0.5))
+                if cap is None:
+                    cap = int(label_cap * 0.5)
+                else:
+                    cap = min(cap, int(label_cap * 0.5))
             new = self.get_sample(cap=cap, replace=replace, label=label, random=random)
             if new is not None and len(new) > 0:
                 samples.extend(new)
@@ -820,19 +823,6 @@ class Dataset:
         segments, if balance labels is set each label has an equal chance of
         being chosen
         """
-        if lbl_p is None:
-            lbl_p = {
-                "bird": 20,
-                "possum": 20,
-                "rodent": 20,
-                "hedgehog": 20,
-                "cat": 5,
-                "insect": 1,
-                "leporidae": 5,
-                "mustelid": 5,
-                "false-positive": 1,
-                "wallaby": 5,
-            }
         self.rebuild_segment_cdf(lbl_p=lbl_p)
         self.rebuild_frame_cdf(lbl_p=lbl_p)
 
