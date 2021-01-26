@@ -122,19 +122,22 @@ class DataGenerator(keras.utils.Sequence):
                 X = self.epoch_data[self.cur_epoch][0][index]
                 y = self.epoch_data[self.cur_epoch][1][index]
             elif self.preload:
-                X, y = self.preloader_queue.get()
+                X, y, y_original = self.preloader_queue.get()
             else:
-                X, y = self.loadbatch(index)
+                X, y, y_original = self.loadbatch(index)
 
             if self.epoch_data[self.cur_epoch][0][index] is None:
                 epoch_stats = self.epoch_stats[self.cur_epoch]
                 out_y = np.argmax(y, axis=1)
                 indices, counts = np.unique(out_y, return_counts=True)
-                for i, label_index in enumerate(indices):
-                    label = self.labels[label_index]
-                    count = counts[i]
-                    epoch_stats.setdefault(label, 0)
-                    epoch_stats[label] += count
+                for lbl in y_original:
+                    epoch_stats.setdefault(lbl, 0)
+                    epoch_stats[lbl] += 1
+                # for i, label_index in enumerate(indices):
+                #     label = self.labels[label_index]
+                #     count = counts[i]
+                #     epoch_stats.setdefault(label, 0)
+                #     epoch_stats[label] += count
         # always keep a copy of epoch data
         if index == 0 or (self.keep_epoch and self.use_previous_epoch is None):
             self.epoch_data[self.cur_epoch][0][index] = X
@@ -218,11 +221,10 @@ class DataGenerator(keras.utils.Sequence):
 def loadbatch(labels, dataset, samples, params):
     start = time.time()
     # samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
-    X, y = _data(labels, dataset, samples, params)
+    X, y, y_orig = _data(labels, dataset, samples, params)
 
     logging.debug("%s  Time to get data %s", dataset.name, time.time() - start)
-
-    return X, y
+    return X, y, y_orig
 
 
 def _data(labels, dataset, samples, params, to_categorical=True):
@@ -237,7 +239,7 @@ def _data(labels, dataset, samples, params, to_categorical=True):
 
     y = np.empty((len(samples)), dtype=int)
     data_i = 0
-
+    y_original = []
     for sample in samples:
         label = dataset.mapped_label(sample.label)
         if label not in labels:
@@ -311,7 +313,7 @@ def _data(labels, dataset, samples, params, to_categorical=True):
                 sample,
             )
             continue
-
+        y_original.append(sample.label)
         X[data_i] = data
         y[data_i] = labels.index(label)
         data_i += 1
@@ -320,7 +322,7 @@ def _data(labels, dataset, samples, params, to_categorical=True):
     y = y[:data_i]
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
-    return np.array(X), y
+    return np.array(X), y, y_original
 
 
 # continue to read examples until queue is full
