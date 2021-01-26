@@ -203,6 +203,15 @@ def preprocess_movement(
     )
     if not success:
         return None
+
+    flow_segment = [frame.get_channel(TrackChannels.flow) for frame in segment]
+
+    square_flow, success = imageprocessing.square_clip_flow(
+        flow_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+    )
+    if not success:
+        return None
+
     if overlay is None:
         dots, overlay = imageprocessing.movement_images(
             data,
