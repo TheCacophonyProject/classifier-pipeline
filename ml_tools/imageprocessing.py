@@ -139,6 +139,8 @@ def square_clip_flow(data_flow, frames_per_row, tile_dim, type=None):
     new_frame = np.zeros((frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]))
     i = 0
     success = False
+    hsv = np.zeros((tile_dim[0], tile_dim[1], 3), dtype=np.float32)
+    hsv[..., 1] = 255
     for x in range(frames_per_row):
         for y in range(frames_per_row):
             if i >= len(data_flow):
@@ -147,9 +149,16 @@ def square_clip_flow(data_flow, frames_per_row, tile_dim, type=None):
                 flow = data_flow[i]
             flow_h = flow[:, :, 0]
             flow_v = flow[:, :, 1]
-            flow_magnitude = (
-                np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
-            )
+
+            mag, ang = cv2.cartToPolar(flow_h, flow_v)
+            hsv[..., 0] = ang * 180 / np.pi / 2
+            hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+            rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+            flow_magnitude = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY)
+
+            # flow_magnitude = (
+            #     np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
+            # )
             frame, norm_success = normalize(flow_magnitude)
 
             if not norm_success:

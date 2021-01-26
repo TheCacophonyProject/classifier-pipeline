@@ -237,13 +237,13 @@ def preprocess_movement(
         dots = dots / 255
         data[:, :, 1] = dots  # dots
     else:
-        data[:, :, 1] = filtered_square
+        data[:, :, 1] = square_flow
     data[:, :, 2] = overlay  # overlay
     # for debugging
-    # tools.saveclassify_image(
-    #     data,
-    #     f"samples/{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
-    # )
+    tools.saveclassify_image(
+        data,
+        f"samples/{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
+    )
     if preprocess_fn:
         for i, frame in enumerate(data):
             frame = frame * 255
