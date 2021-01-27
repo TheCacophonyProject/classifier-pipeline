@@ -562,34 +562,6 @@ class KerasModel:
         epochs = 6
         type = 12
         batch_size = 32
-        self.train = DataGenerator(
-            self.datasets.train,
-            self.datasets.train.labels,
-            self.params.output_dim,
-            batch_size=batch_size,
-            buffer_size=self.params.buffer_size,
-            channel=self.params.channel,
-            model_preprocess=self.preprocess_fn,
-            load_threads=self.params.train_load_threads,
-            use_movement=self.params.use_movement,
-            shuffle=True,
-            cap_at="bird",
-            square_width=self.params.square_width,
-        )
-        self.validate = DataGenerator(
-            self.datasets.validation,
-            self.datasets.train.labels,
-            self.params.output_dim,
-            batch_size=batch_size,
-            buffer_size=self.params.buffer_size,
-            channel=self.params.channel,
-            model_preprocess=self.preprocess_fn,
-            epochs=epochs,
-            use_movement=self.params.use_movement,
-            shuffle=True,
-            cap_at="bird",
-            square_width=self.params.square_width,
-        )
 
         dir = self.log_dir + "/hparam_tuning"
         with tf.summary.create_file_writer(dir).as_default():
@@ -630,6 +602,34 @@ class KerasModel:
                                             HP_RETRAIN: retrain,
                                             HP_DROPOUT: dropout,
                                         }
+                                        self.train = DataGenerator(
+                                            self.datasets.train,
+                                            self.datasets.train.labels,
+                                            self.params.output_dim,
+                                            batch_size=batch_size,
+                                            buffer_size=self.params.buffer_size,
+                                            channel=self.params.channel,
+                                            model_preprocess=self.preprocess_fn,
+                                            load_threads=self.params.train_load_threads,
+                                            use_movement=self.params.use_movement,
+                                            shuffle=True,
+                                            cap_at="bird",
+                                            square_width=self.params.square_width,
+                                        )
+                                        self.validate = DataGenerator(
+                                            self.datasets.validation,
+                                            self.datasets.train.labels,
+                                            self.params.output_dim,
+                                            batch_size=batch_size,
+                                            buffer_size=self.params.buffer_size,
+                                            channel=self.params.channel,
+                                            model_preprocess=self.preprocess_fn,
+                                            epochs=epochs,
+                                            use_movement=self.params.use_movement,
+                                            shuffle=True,
+                                            cap_at="bird",
+                                            square_width=self.params.square_width,
+                                        )
                                         run_name = "run-%d" % session_num
                                         print("--- Starting trial: %s" % run_name)
                                         print({h.name: hparams[h] for h in hparams})
