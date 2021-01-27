@@ -30,7 +30,7 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import detect_objects
+from ml_tools.imageprocessing import detect_objects, normalize
 
 
 class ClipTrackExtractor:
@@ -127,15 +127,17 @@ class ClipTrackExtractor:
         Calculates filtered frame from thermal
         :param thermal: the thermal frame
         :param background: (optional) used for background subtraction
-        :return: the filtered frame
+        :return: uint8 filtered frame and adjusted clip threshold for normalized frame
         """
 
         filtered = np.float32(thermal.copy())
         avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
-        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
 
-        return filtered
+        filtered, stats = normalize(filtered, new_max=255)
+        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
+        mapped_thresh = clip.background_thresh / (stats[1] - stats[2]) * 255
+        return filtered, mapped_thresh
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
         """
@@ -143,9 +145,9 @@ class ClipTrackExtractor:
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-        filtered = self._get_filtered_frame(clip, thermal)
+        filtered, threshold = self._get_filtered_frame(clip, thermal)
         _, mask, component_details = detect_objects(
-            filtered.copy(), otsus=False, threshold=clip.background_thresh
+            filtered.copy(), otsus=False, threshold=threshold
         )
 
         prev_filtered = clip.frame_buffer.get_last_filtered()
