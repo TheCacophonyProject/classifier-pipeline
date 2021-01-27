@@ -147,6 +147,7 @@ class Clip:
             frame_average = np.average(frames, axis=0)
             self.update_background(frame_average)
             self._background_calculated()
+            return
 
         initial_frames = None
         initial_diff = None
