@@ -24,7 +24,7 @@ from sklearn.metrics import confusion_matrix
 from ml_tools.hyperparams import HyperParams
 
 #
-HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 512,"]))
+HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 512", ""]))
 HP_TYPE = hp.HParam("type", hp.Discrete([14]))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([16, 32]))
@@ -511,7 +511,7 @@ class KerasModel:
         logging.info("Labels: {}".format(self.labels))
 
     # GRID SEARCH
-    def train_test_model(self, hparams, log_dir, epochs=6):
+    def train_test_model(self, hparams, log_dir, epochs=1):
         # if not self.model:
         dense_size = hparams[HP_DENSE_SIZES].split()
         retrain_layer = hparams[HP_RETRAIN]
@@ -520,9 +520,11 @@ class KerasModel:
             dropout = None
         if retrain_layer == -1:
             retrain_layer = None
-
-        for i, size in enumerate(dense_size):
-            dense_size[i] = int(size)
+        if hparams[HP_DENSE_SIZES] == "":
+            dense_size = []
+        else:
+            for i, size in enumerate(dense_size):
+                dense_size[i] = int(size)
         self.train.batch_size = hparams.get(HP_BATCH_SIZE, 32)
         self.validate.batch_size = hparams.get(HP_BATCH_SIZE, 32)
         self.train.loaded_epochs = 0
@@ -568,7 +570,6 @@ class KerasModel:
             batch_size=batch_size,
             buffer_size=self.params.buffer_size,
             channel=self.params.channel,
-            use_filtered=self.params.use_filtered,
             model_preprocess=self.preprocess_fn,
             load_threads=self.params.train_load_threads,
             use_movement=self.params.use_movement,
@@ -584,7 +585,6 @@ class KerasModel:
             batch_size=batch_size,
             buffer_size=self.params.buffer_size,
             channel=self.params.channel,
-            use_filtered=self.params.use_filtered,
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             use_movement=self.params.use_movement,

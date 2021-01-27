@@ -63,7 +63,13 @@ def main():
     # tf.logging.set_verbosity(3)
 
     os.makedirs(conf.train.train_dir, exist_ok=True)
-    train_model(args.name, conf, conf.train.hyper_params, args.grid, args.weights)
+    train_model(
+        args.name,
+        conf,
+        conf.train.hyper_params,
+        grid_search=args.grid,
+        weights=args.weights,
+    )
 
 
 if __name__ == "__main__":

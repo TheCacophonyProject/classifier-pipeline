@@ -74,7 +74,7 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
                     "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
                 )
             )
-    print()
+    print(weights)
     if weights:
         model.load_weights(weights, meta=False)
     if grid_search:
