@@ -143,6 +143,7 @@ class Dataset:
             "segment_mass": 0,
             "no_data": 0,
         }
+        self.lbl_p = None
 
     def set_read_only(self, read_only):
         self.db.set_read_only(read_only)
@@ -823,6 +824,8 @@ class Dataset:
         segments, if balance labels is set each label has an equal chance of
         being chosen
         """
+        if lbl_p is None:
+            lbl_p = self.lbl_p
         self.rebuild_segment_cdf(lbl_p=lbl_p)
         self.rebuild_frame_cdf(lbl_p=lbl_p)
 
