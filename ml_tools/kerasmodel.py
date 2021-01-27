@@ -27,7 +27,7 @@ from ml_tools.hyperparams import HyperParams
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 512", ""]))
 HP_TYPE = hp.HParam("type", hp.Discrete([14]))
 
-HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([16, 32]))
+HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
 HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.01, 0.001, 0.0001]))
 HP_EPSILON = hp.HParam(
@@ -511,7 +511,7 @@ class KerasModel:
         logging.info("Labels: {}".format(self.labels))
 
     # GRID SEARCH
-    def train_test_model(self, hparams, log_dir, epochs=1):
+    def train_test_model(self, hparams, log_dir, epochs=5):
         # if not self.model:
         dense_size = hparams[HP_DENSE_SIZES].split()
         retrain_layer = hparams[HP_RETRAIN]
@@ -558,8 +558,7 @@ class KerasModel:
         return history
 
     def test_hparams(self):
-        self.datasets.train.reduce_samples(cap_at="wallaby", label_cap=1000)
-        self.datasets.validation.reduce_samples(cap_at="wallaby", label_cap=200)
+
         epochs = 6
         type = 12
         batch_size = 32
