@@ -30,11 +30,9 @@ HP_TYPE = hp.HParam("type", hp.Discrete([14]))
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
 HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.01, 0.001, 0.0001]))
-HP_EPSILON = hp.HParam(
-    "epislon", hp.Discrete([1e-7, 1.0, 0.1])
-)  # 1.0 and 0.1 for inception
-HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([0, -1]))
-HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.2, 0.1, 0.0]))
+HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
+HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([758, 742, -1]))
+HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.1]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -635,6 +633,8 @@ class KerasModel:
                                         print({h.name: hparams[h] for h in hparams})
                                         self.run(dir + "/" + run_name, hparams)
                                         session_num += 1
+                                        self.train.stop_load()
+                                        self.validate.stop_load()
 
     def run(self, log_dir, hparams):
 
