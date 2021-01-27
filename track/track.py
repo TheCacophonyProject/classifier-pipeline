@@ -84,12 +84,14 @@ class Track:
         self.track_tags = None
         self.kalman_tracker = Kalman()
         self.predicted_mid = None
+        self.crop_rectangle = None
 
     @classmethod
     def from_region(cls, clip, region):
         track = cls(clip.get_id(), fps=clip.frames_per_second)
         track.start_frame = region.frame_number
         track.start_s = region.frame_number / float(clip.frames_per_second)
+        track.crop_rectangle = clip.crop_rectangle
         track.add_region(region)
         return track
 
@@ -191,6 +193,8 @@ class Track:
                 self.last_bound.width,
                 self.last_bound.height,
             )
+            if self.crop_rectangle:
+                region.crop(self.crop_rectangle)
         else:
             region = self.last_bound.copy()
         region.blank = True

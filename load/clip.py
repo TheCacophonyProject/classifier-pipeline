@@ -328,6 +328,8 @@ class Clip:
         self.res_x = res_x
         self.res_y = res_y
         self._set_crop_rectangle()
+        for track in self.tracks:
+            track.crop_rectangle = self.crop_rectangle
 
     def _set_crop_rectangle(self):
 
