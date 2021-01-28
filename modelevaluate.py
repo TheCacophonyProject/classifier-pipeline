@@ -198,8 +198,15 @@ class ModelEvalute:
             )
             processes.append(p)
             p.start()
+        count = {}
         for track in dataset.tracks:
-            job_queue.put(track)
+            if track.label in count:
+                count[track.label] += 1
+            else:
+                count[track.label] = 0
+
+            if count[track.label] < 20:
+                job_queue.put(track)
         for i in range(len(processes)):
             job_queue.put("DONE")
 
@@ -377,10 +384,12 @@ dataset = datasets[args.dataset]
 
 groups = []
 groups.append((["bird"], "bird"))
+groups.append((["hedgehog"], "hedgehog"))
 groups.append((["rodent"], "rodent"))
 groups.append((["possum", "cat"], "possum"))
 groups.append((["human"], "human"))
 groups.append((["false-positive", "insect"], "false-positive"))
+dataset.lbl_p = config.train.label_probabilitie
 dataset.regroup(groups)
 
 logging.info(

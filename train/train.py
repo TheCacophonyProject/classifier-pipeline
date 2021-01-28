@@ -38,6 +38,7 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     model.import_dataset(datasets_filename, lbl_p=conf.train.label_probabilities)
     groups = []
     groups.append((["bird"], "bird"))
+    groups.append((["hedgehog"], "hedgehog"))
     groups.append((["rodent"], "rodent"))
     groups.append((["possum", "cat"], "possum"))
     groups.append((["human"], "human"))
@@ -76,7 +77,7 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
             )
     print(weights)
     if weights:
-        model.load_weights(weights, meta=False)
+        model.load_weights(weights, meta=False, training=True)
     if grid_search:
         print("Searching hparams")
         model.test_hparams()
