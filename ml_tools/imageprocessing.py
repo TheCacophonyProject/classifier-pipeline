@@ -110,7 +110,7 @@ def normalize(data, min=None, max=None, new_max=1):
         min = np.amin(data)
     if max == min:
         if max == 0:
-            return np.zeros((data.shape)), False
+            return np.zeros((data.shape)), (False, max, min)
         return data / max, (True, max, min)
     data -= min
     data = data / (max - min) * new_max
