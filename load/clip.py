@@ -147,6 +147,7 @@ class Clip:
             frame_average = np.average(frames, axis=0)
             self.update_background(frame_average)
             self._background_calculated()
+            return
 
         initial_frames = None
         initial_diff = None
@@ -328,6 +329,8 @@ class Clip:
         self.res_x = res_x
         self.res_y = res_y
         self._set_crop_rectangle()
+        for track in self.tracks:
+            track.crop_rectangle = self.crop_rectangle
 
     def _set_crop_rectangle(self):
 

@@ -206,8 +206,8 @@ def preprocess_movement(
         dim=square.shape,
         require_movement=True,
     )
-    overlay, success = imageprocessing.normalize(overlay, min=0)
-    if not success:
+    overlay, stats = imageprocessing.normalize(overlay, min=0)
+    if not stats[0]:
         return None
 
     data = np.empty((square.shape[0], square.shape[1], 3))
