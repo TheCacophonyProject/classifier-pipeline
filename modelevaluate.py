@@ -389,7 +389,7 @@ groups.append((["rodent"], "rodent"))
 groups.append((["possum", "cat"], "possum"))
 groups.append((["human"], "human"))
 groups.append((["false-positive", "insect"], "false-positive"))
-dataset.lbl_p = config.train.label_probabilitie
+dataset.lbl_p = config.train.label_probabilities
 dataset.regroup(groups)
 
 logging.info(
