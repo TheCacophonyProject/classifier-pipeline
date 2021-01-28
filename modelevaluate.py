@@ -95,7 +95,7 @@ class Visit:
 def process_job(queue, dataset, model_file, train_config, results_queue):
 
     classifier = KerasModel(train_config=train_config)
-    classifier.load_model(model_file, trianing=False)
+    classifier.load_model(model_file, training=False)
     logging.info("Loaded model")
     i = 0
 
