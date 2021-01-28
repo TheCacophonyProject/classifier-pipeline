@@ -136,7 +136,10 @@ class ClipTrackExtractor:
 
         filtered, stats = normalize(filtered, new_max=255)
         filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
-        mapped_thresh = clip.background_thresh / (stats[1] - stats[2]) * 255
+        if stats[1] == stats[2]:
+            mapped_thresh = clip.background_thresh
+        else:
+            mapped_thresh = clip.background_thresh / (stats[1] - stats[2]) * 255
         return filtered, mapped_thresh
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
@@ -158,7 +161,7 @@ class ClipTrackExtractor:
                 if clip.frame_on in track.frame_list:
                     track.add_frame_for_existing_region(
                         clip.frame_buffer.get_last_frame(),
-                        clip.background_thresh,
+                        threshold,
                         prev_filtered,
                     )
         else:
