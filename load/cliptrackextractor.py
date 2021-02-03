@@ -35,7 +35,13 @@ from ml_tools.imageprocessing import detect_objects, normalize
 
 class ClipTrackExtractor:
     BASE_DISTANCE_CHANGE = 450
-    BASE_MASS_CHANGE = 10
+    # minimum region mass change
+    MIN_MASS_CHANGE = 10
+    # enforce mass growth after X seconds
+    RESTRICT_MASS_AFTER = 1
+    # amount region mass can change
+    MASS_CHANGE_PERCENT = 0.4
+
     MAX_DISTANCE = 2000
     PREVIEW = "preview"
 
@@ -197,6 +203,21 @@ class ClipTrackExtractor:
 
                 max_distance = get_max_distance_change(track)
                 max_size_change = get_max_size_change(track, region)
+                max_mass_change = get_max_mass_change_percent(track)
+
+                if (
+                    max_mass_change
+                    and abs(track.average_mass() - region.mass) > max_mass_change
+                ):
+                    self.print_if_verbose(
+                        "track {} region mass {} deviates too much from {}".format(
+                            track.get_id(),
+                            track.average_mass(),
+                            region.mass,
+                        )
+                    )
+
+                    continue
                 if distance > max_distance:
                     self.print_if_verbose(
                         "track {} distance score {} bigger than max distance {}".format(
@@ -211,6 +232,7 @@ class ClipTrackExtractor:
                             track.get_id(), size_change, max_size_change
                         )
                     )
+                    continue
                 scores.append((distance, track, region))
 
         # makes tracking consistent by ordering by score then by frame since target then track id
@@ -357,12 +379,12 @@ class ClipTrackExtractor:
             for stats, track in track_stats:
                 start_s, end_s = clip.start_and_end_in_secs(track)
                 logging.info(
-                    " - track duration: %.1fsec, number of frames:%s, offset:%.1fpx, delta:%.1f, mass:%.1fpx",
+                    " - track %s duration: %.1fsec, number of frames:%s, stats %s",
+                    track.get_id(),
+                    stats,
                     end_s - start_s,
                     len(track),
-                    stats.max_offset,
-                    stats.delta_std,
-                    stats.average_mass,
+                    stats,
                 )
         # filter out tracks that probably are just noise.
         good_tracks = []
@@ -391,7 +413,7 @@ class ClipTrackExtractor:
             clip.filtered_tracks.extend(
                 [("Too many tracks", track) for track in clip.tracks[self.max_tracks :]]
             )
-            clip.tracks = clip.tracks[: self.max_tracks]
+            # clip.tracks = clip.tracks[: self.max_tracks]
 
     def filter_track(self, clip, track, stats):
         # discard any tracks that are less min_duration
@@ -412,7 +434,10 @@ class ClipTrackExtractor:
             )
             clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
             return True
-
+        if stats.mass_std > stats.average_mass * self.config.max_mass_std_percent:
+            self.print_if_verbose("Track filtered.  Mass too deviant")
+            clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
+            return True
         if stats.blank_percent > self.config.max_blank_percent:
             self.print_if_verbose("Track filtered.  Too Many Blanks")
             clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
@@ -423,7 +448,9 @@ class ClipTrackExtractor:
             return True
         # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
         if stats.delta_std < clip.track_min_delta:
-            self.print_if_verbose("Track filtered.  Too static")
+            self.print_if_verbose(
+                "Track filtered.  Too static {}".format(stats.delta_std)
+            )
             clip.filtered_tracks.append(("Track filtered.  Too static", track))
             return True
         if stats.delta_std > clip.track_max_delta:
@@ -471,6 +498,17 @@ def get_max_size_change(track, region):
         region_percent = 2
 
     return region_percent
+
+
+def get_max_mass_change_percent(track):
+    average_mass = track.average_mass()
+    if len(track) > ClipTrackExtractor.RESTRICT_MASS_AFTER * track.fps:
+        return max(
+            ClipTrackExtractor.MIN_MASS_CHANGE,
+            average_mass * ClipTrackExtractor.MASS_CHANGE_PERCENT,
+        )
+    else:
+        return None
 
 
 def get_max_distance_change(track):

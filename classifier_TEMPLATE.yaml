@@ -87,7 +87,7 @@ tracking:
             max_temp_thresh: null
             min_temp_thresh: null
             # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
-            track_min_delta: 100
+            track_min_delta: 90
             track_max_delta: 1500
     # these parameters are associated with the stats background method
     stats:

@@ -43,6 +43,9 @@ class Track:
     _track_id = 1
     # number of frames required before using kalman estimation
     MIN_KALMAN_FRAMES = 18
+    # Percentage increase that is considered jitter, e.g. if a region gets
+    # 30% bigger or smaller
+    JITTER_THRESHOLD = 0.3
 
     def __init__(self, clip_id, id=None, fps=9):
         """
@@ -184,6 +187,12 @@ class Track:
         self.frames_since_target_seen = 0
         self.kalman_tracker.correct(region)
 
+    def average_mass(self):
+        """ Average mass of last 5 frames that weren't blank """
+        return np.mean(
+            [bound.mass for bound in self.bounds_history if bound.blank == False][-5:]
+        )
+
     def add_blank_frame(self, buffer_frame=None):
         """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
         if self.frames > Track.MIN_KALMAN_FRAMES:
@@ -218,12 +227,11 @@ class Track:
 
         if len(self) <= 1:
             return TrackMovementStatistics()
-        # get movement vectors
-        mass_history = [int(bound.mass) for bound in self.bounds_history]
+        # get movement vectors only from non blank regions
+        non_blank = [bound for bound in self.bounds_history]
+        mass_history = [int(bound.mass) for bound in non_blank]
         variance_history = [
-            bound.pixel_variance
-            for bound in self.bounds_history
-            if bound.pixel_variance
+            bound.pixel_variance for bound in non_blank if bound.pixel_variance
         ]
 
         movement = 0
@@ -235,6 +243,8 @@ class Track:
             if i == 0:
                 continue
             region = self.bounds_history[i]
+            if region.blank or self.bounds_history[i - 1].blank:
+                continue
             if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
                 distance = (vx ** 2 + vy ** 2) ** 0.5
                 movement += distance
@@ -249,19 +259,18 @@ class Track:
         delta_std = float(np.mean(variance_history)) ** 0.5
         jitter_bigger = 0
         jitter_smaller = 0
-
         for i, bound in enumerate(self.bounds_history[1:]):
             prev_bound = self.bounds_history[i]
             if prev_bound.is_along_border or bound.is_along_border:
                 continue
             height_diff = bound.height - prev_bound.height
             width_diff = prev_bound.width - bound.width
-            if abs(height_diff) > prev_bound.height * 0.25:
+            if abs(height_diff) > prev_bound.height * Track.JITTER_THRESHOLD:
                 if height_diff > 0:
                     jitter_bigger += 1
                 else:
                     jitter_smaller += 1
-            elif abs(width_diff) > prev_bound.height * 0.25:
+            elif abs(width_diff) > prev_bound.height * Track.JITTER_THRESHOLD:
                 if width_diff > 0:
                     jitter_bigger += 1
                 else:
@@ -292,6 +301,7 @@ class Track:
             jitter_smaller=jitter_smaller,
             blank_percent=blank_percent,
             frames_moved=frames_moved,
+            mass_std=float(np.std(mass_history)),
         )
 
         return stats
@@ -435,6 +445,7 @@ class Track:
             return (0, 0)
         pred_vel_x = self.predicted_mid[0] - prev.mid_x
         pred_vel_y = self.predicted_mid[1] - prev.mid_y
+
         return (pred_vel_x, pred_vel_y)
 
     @property
@@ -504,7 +515,7 @@ class Track:
 
 TrackMovementStatistics = namedtuple(
     "TrackMovementStatistics",
-    "movement max_offset score average_mass median_mass delta_std region_jitter jitter_smaller jitter_bigger blank_percent frames_moved",
+    "movement max_offset score average_mass median_mass delta_std region_jitter jitter_smaller jitter_bigger blank_percent frames_moved mass_std",
 )
 TrackMovementStatistics.__new__.__defaults__ = (0,) * len(
     TrackMovementStatistics._fields
