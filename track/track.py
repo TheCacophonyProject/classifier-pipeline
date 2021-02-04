@@ -228,7 +228,7 @@ class Track:
         if len(self) <= 1:
             return TrackMovementStatistics()
         # get movement vectors only from non blank regions
-        non_blank = [bound for bound in self.bounds_history]
+        non_blank = [bound for bound in self.bounds_history if not bound.blank]
         mass_history = [int(bound.mass) for bound in non_blank]
         variance_history = [
             bound.pixel_variance for bound in non_blank if bound.pixel_variance
@@ -238,11 +238,17 @@ class Track:
         max_offset = 0
 
         frames_moved = 0
+        avg_vel = 0
+        count = 0
         first_point = self.bounds_history[0].mid
         for i, (vx, vy) in enumerate(zip(self.vel_x, self.vel_y)):
+            region = self.bounds_history[i]
+            if not region.blank:
+                count += 1
+                avg_vel += abs(vx) + abs(vy)
             if i == 0:
                 continue
-            region = self.bounds_history[i]
+
             if region.blank or self.bounds_history[i - 1].blank:
                 continue
             if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
@@ -251,7 +257,7 @@ class Track:
                 offset = eucl_distance(first_point, region.mid)
                 max_offset = max(max_offset, offset)
                 frames_moved += 1
-
+        avg_vel = avg_vel / count
         # the standard deviation is calculated by averaging the per frame variances.
         # this ends up being slightly different as I'm using /n rather than /(n-1) but that
         # shouldn't make a big difference as n = width*height*frames which is large.
@@ -288,7 +294,6 @@ class Track:
             + (100 - jitter_percent)
             + (100 - blank_percent)
         )
-
         stats = TrackMovementStatistics(
             movement=float(movement),
             max_offset=float(max_offset),
@@ -302,6 +307,7 @@ class Track:
             blank_percent=blank_percent,
             frames_moved=frames_moved,
             mass_std=float(np.std(mass_history)),
+            average_velocity=float(avg_vel),
         )
 
         return stats
@@ -515,7 +521,7 @@ class Track:
 
 TrackMovementStatistics = namedtuple(
     "TrackMovementStatistics",
-    "movement max_offset score average_mass median_mass delta_std region_jitter jitter_smaller jitter_bigger blank_percent frames_moved mass_std",
+    "movement max_offset score average_mass median_mass delta_std region_jitter jitter_smaller jitter_bigger blank_percent frames_moved mass_std, average_velocity",
 )
 TrackMovementStatistics.__new__.__defaults__ = (0,) * len(
     TrackMovementStatistics._fields

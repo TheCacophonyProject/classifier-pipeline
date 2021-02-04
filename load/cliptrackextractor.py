@@ -432,10 +432,13 @@ class ClipTrackExtractor:
             )
             clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
             return True
-        # if stats.mass_std > stats.average_mass * self.config.max_mass_std_percent:
-        #     self.print_if_verbose("Track filtered.  Mass too deviant")
-        #     clip.filtered_tracks.append(("Track filtered. Mass too deviant", track))
-        #     return True
+        if (
+            stats.average_velocity <= 2
+            and stats.mass_std > stats.average_mass * self.config.max_mass_std_percent
+        ):
+            self.print_if_verbose("Track filtered.  Mass too deviant")
+            clip.filtered_tracks.append(("Track filtered. Mass too deviant", track))
+            return True
         if stats.blank_percent > self.config.max_blank_percent:
             self.print_if_verbose("Track filtered.  Too Many Blanks")
             clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
