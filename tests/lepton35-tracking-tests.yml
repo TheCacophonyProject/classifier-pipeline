@@ -1,0 +1,140 @@
+!TestConfig
+clip_dir: tests/lepton35
+recording_tests:
+- !TestRecording
+  device: Eliminator 6
+  device_id: 1419
+  filename: 780559.cptv
+  group: akaroa01
+  group_id: 18
+  rec_id: 780559
+  tracks:
+  - !TestTrack
+    confidence: null
+    end: 65.89
+    end_pos:
+    - 65.89
+    - [1, 61, 35, 96]
+    expected: true
+    id: 780559
+    opt_end: 65.89
+    opt_start: 0
+    start: 0
+    start_pos:
+    - 0
+    - [8, 70, 41, 108]
+    tag: cat
+    track_id: 334991
+- !TestRecording
+  device: KZ8_1
+  device_id: 1348
+  filename: 783516.cptv
+  group: kaitorete
+  group_id: 202
+  rec_id: 783516
+  tracks:
+  - !TestTrack
+    confidence: null
+    end: 13
+    end_pos:
+    - 14.3
+    - [1, 32, 20, 50]
+    expected: true
+    id: 783516
+    opt_end: 14.3
+    opt_start: 2.56
+    start: 2.56
+    start_pos:
+    - 2.56
+    - [154, 32, 159, 50]
+    tag: leporidae
+    track_id: 336238
+- !TestRecording
+  device: KZ8_2
+  device_id: 1349
+  filename: 783303.cptv
+  group: kaitorete
+  group_id: 202
+  rec_id: 783303
+  tracks:
+  - !TestTrack
+    confidence: 0.85
+    end: 8
+    end_pos:
+    - 8
+    - [1, 58, 12, 81]
+    expected: true
+    id: 783303
+    opt_end: 8
+    opt_start: 5
+    start: 5
+    start_pos:
+    - 5
+    - [1, 62, 6, 79]
+    tag: unknown
+    track_id: 336199
+  - !TestTrack
+    confidence: null
+    end: 7.44
+    end_pos:
+    - 7.44
+    - [36, 38, 61, 56]
+    expected: true
+    id: 783303
+    opt_end: 7.44
+    opt_start: 3
+    start: 3
+    start_pos:
+    - 3
+    - [1, 62, 12, 80]
+    tag: null
+    track_id: 336198
+- !TestRecording
+  device: Eliminator7
+  device_id: 1426
+  filename: 780825.cptv
+  group: akaroa01
+  group_id: 18
+  rec_id: 780825
+  tracks:
+  - !TestTrack
+    confidence: 0.64
+    end: 44.44
+    end_pos:
+    - 44.44
+    - [110, 1, 159, 69]
+    expected: true
+    id: 780825
+    opt_end: 44.11
+    opt_start: 0.56
+    start: 0.56
+    start_pos:
+    - 44.11
+    - [92, 7, 159, 119]
+    tag: possum
+    track_id: 0
+- !TestRecording
+  device: Stoat hunter
+  device_id: 1435
+  filename: 783988.cptv
+  group: Shakespear Park
+  group_id: 207
+  rec_id: 783988
+  tracks:
+  - !TestTrack
+    confidence: 0.8
+    end: 5.11
+    end_pos:
+    - 5.11
+    - [114, 85, 122, 93]
+    expected: true
+    id: 783988
+    opt_end: 5.11
+    opt_start: 1.33
+    start: 1.33
+    start_pos:
+    - 1.33
+    - [143, 91, 150, 98]
+    tag: mustelid
+    track_id: 336487
+server: https://api.cacophony.org.nz

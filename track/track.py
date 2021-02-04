@@ -190,7 +190,7 @@ class Track:
     def average_mass(self):
         """ Average mass of last 5 frames that weren't blank """
         return np.mean(
-            [bound.mass for bound in self.bounds_history if bound.blank == False][-5:]
+            [bound.mass for bound in self.bounds_history if bound.blank == False][-3:]
         )
 
     def add_blank_frame(self, buffer_frame=None):

@@ -105,8 +105,8 @@ class TrackingConfig(DefaultConfig):
             enable_track_output=tracking["enable_track_output"],
             min_tag_confidence=tracking["min_tag_confidence"],
             min_moving_frames=tracking["min_moving_frames"],
+            max_blank_percent=tracking["max_blank_percent"],
             max_mass_std_percent=tracking["max_mass_std_percent"],
-            max_mass_std=tracking["max_mass_std"],
             max_jitter=tracking["max_jitter"],
             stats=None,
             filters=None,
@@ -164,7 +164,7 @@ class TrackingConfig(DefaultConfig):
             min_moving_frames=2,
             max_blank_percent=30,
             max_mass_std_percent=ClipTrackExtractor.MASS_CHANGE_PERCENT,
-            max_jitter=15,
+            max_jitter=20,
         )
 
     def validate(self):

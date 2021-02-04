@@ -38,9 +38,9 @@ class ClipTrackExtractor:
     # minimum region mass change
     MIN_MASS_CHANGE = 10
     # enforce mass growth after X seconds
-    RESTRICT_MASS_AFTER = 1
+    RESTRICT_MASS_AFTER = 1.5
     # amount region mass can change
-    MASS_CHANGE_PERCENT = 0.4
+    MASS_CHANGE_PERCENT = 0.55
 
     MAX_DISTANCE = 2000
     PREVIEW = "preview"
@@ -158,7 +158,6 @@ class ClipTrackExtractor:
         _, mask, component_details = detect_objects(
             filtered.copy(), otsus=False, threshold=threshold
         )
-
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
 
@@ -250,7 +249,6 @@ class ClipTrackExtractor:
             matched_tracks.add(track)
             used_regions.add(region)
             unmatched_regions.remove(region)
-
         return unmatched_regions, matched_tracks
 
     def _create_new_tracks(self, clip, unmatched_regions):
@@ -328,7 +326,6 @@ class ClipTrackExtractor:
                 id=i,
                 frame_number=clip.frame_on,
             )
-
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)
@@ -381,7 +378,6 @@ class ClipTrackExtractor:
                 logging.info(
                     " - track %s duration: %.1fsec, number of frames:%s, stats %s",
                     track.get_id(),
-                    stats,
                     end_s - start_s,
                     len(track),
                     stats,
@@ -398,6 +394,8 @@ class ClipTrackExtractor:
             if not self.filter_track(clip, track, stats):
                 good_tracks.append(track)
 
+        for filtered in clip.filtered_tracks:
+            print(filtered[0], filtered[1])
         clip.tracks = good_tracks
         self.print_if_verbose(
             "{} {}".format("Number of 'good' tracks", len(clip.tracks))
@@ -434,10 +432,10 @@ class ClipTrackExtractor:
             )
             clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
             return True
-        if stats.mass_std > stats.average_mass * self.config.max_mass_std_percent:
-            self.print_if_verbose("Track filtered.  Mass too deviant")
-            clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
-            return True
+        # if stats.mass_std > stats.average_mass * self.config.max_mass_std_percent:
+        #     self.print_if_verbose("Track filtered.  Mass too deviant")
+        #     clip.filtered_tracks.append(("Track filtered. Mass too deviant", track))
+        #     return True
         if stats.blank_percent > self.config.max_blank_percent:
             self.print_if_verbose("Track filtered.  Too Many Blanks")
             clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
@@ -502,10 +500,16 @@ def get_max_size_change(track, region):
 
 def get_max_mass_change_percent(track):
     average_mass = track.average_mass()
+
     if len(track) > ClipTrackExtractor.RESTRICT_MASS_AFTER * track.fps:
+        vel = track.velocity
+        mass_percent = ClipTrackExtractor.MASS_CHANGE_PERCENT
+        if np.sum(np.abs(vel)) > 5:
+            # faster tracks can be a bit more deviant
+            mass_percent = mass_percent + 0.1
         return max(
             ClipTrackExtractor.MIN_MASS_CHANGE,
-            average_mass * ClipTrackExtractor.MASS_CHANGE_PERCENT,
+            average_mass * mass_percent,
         )
     else:
         return None

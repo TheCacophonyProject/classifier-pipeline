@@ -11,8 +11,10 @@ import yaml
 import argparse
 
 from pathlib import Path
-from testconfig import TestRecording, TestConfig
-from api import API
+from .testconfig import TestRecording, TestConfig
+from cacophonyapi.user import UserAPI
+
+from .trackingtest import iter_to_file
 
 
 def parse_args():
@@ -43,26 +45,23 @@ def parse_args():
 
 def main():
     args = parse_args()
-    print(args.server)
-    api = API(args.user, args.password, args.server)
+    api = UserAPI(args.server, args.user, args.password)
     out_dir = Path(args.out_folder)
     tests = []
-    test_data = TestConfig(tests, args.server, args.out_folder)
+    test_data = TestConfig(
+        recording_tests=tests, server=args.server, clip_dir=args.out_folder
+    )
     for rec_id in args.ids:
-        rec_meta = api.query_rec(rec_id)
+        rec_meta = api.get(rec_id)
         tracks = api.get_tracks(rec_id)
-        filename = rec_id.with_suffix(".cptv")
+        filename = Path(rec_id).with_suffix(".cptv")
         fullpath = out_dir / filename
-        tests.append(
-            TestRecording.load_from_meta(rec_meta["recording"], tracks, filename)
-        )
-        if api.save_file(
-            fullpath,
-            api._download_signed(rec_meta["downloadRawJWT"]),
-        ):
-            print("Saved {} - {}.cptv".format(rec_id, fullpath))
-        else:
-            print("error saving {}".format(rec_id))
+        tests.append(TestRecording.load_from_meta(rec_meta, tracks, filename))
+        if not fullpath.exists():
+            if iter_to_file(fullpath, api.download_raw(rec_id)):
+                print("Saved {} - {}".format(rec_id, fullpath))
+            else:
+                print("error saving {}".format(rec_id))
     if os.path.exists(args.test_file):
         os.remove(args.test_file)
     with open(args.test_file, "w") as f:
