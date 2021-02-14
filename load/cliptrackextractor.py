@@ -170,24 +170,23 @@ class ClipTrackExtractor:
                         prev_filtered,
                     )
         else:
-            regions = self._get_regions_of_interest(
-                clip, component_details, filtered, prev_filtered
-            )
+            regions = []
+            if ffc_affected:
+                clip.active_tracks = set()
+            else:
+                regions = self._get_regions_of_interest(
+                    clip, component_details, filtered, prev_filtered
+                )
+                self._apply_region_matchings(clip, regions)
             clip.region_history.append(regions)
-            self._apply_region_matchings(
-                clip, regions, create_new_tracks=not ffc_affected
-            )
 
-    def _apply_region_matchings(self, clip, regions, create_new_tracks=True):
+    def _apply_region_matchings(self, clip, regions):
         """
         Work out the best matchings between tracks and regions of interest for the current frame.
         Create any new tracks required.
         """
         unmatched_regions, matched_tracks = self._match_existing_tracks(clip, regions)
-        if create_new_tracks:
-            new_tracks = self._create_new_tracks(clip, unmatched_regions)
-        else:
-            new_tracks = set()
+        new_tracks = self._create_new_tracks(clip, unmatched_regions)
         self._filter_inactive_tracks(clip, new_tracks, matched_tracks)
 
     def _match_existing_tracks(self, clip, regions):
