@@ -24,7 +24,6 @@ class TestConfig(yaml.YAMLObject):
 @attr.s
 class TestRecording(yaml.YAMLObject):
     yaml_tag = "!TestRecording"
-
     rec_id = attr.ib()
     filename = attr.ib()
     device_id = attr.ib()
@@ -36,7 +35,7 @@ class TestRecording(yaml.YAMLObject):
     @classmethod
     def load_from_meta(cls, rec_meta, track_meta, filepath):
         rec_id = rec_meta["id"]
-        filename = str(filepath.with_suffix(".cptv").absolute())
+        filename = filepath.name
         device_id = rec_meta["Device"]["id"]
         device = rec_meta["Device"]["devicename"]
         group_id = rec_meta["GroupId"]
@@ -47,7 +46,7 @@ class TestRecording(yaml.YAMLObject):
             tag = get_best_tag(track)
             if tag is None:
                 tag = {}
-            test_track = TestTrack.load_from_meta(track, tag)
+            test_track = TestTrack.load_from_meta(rec_id, track, tag)
             tracks.append(test_track)
         return cls(rec_id, filename, device_id, device, group_id, group, tracks)
 
@@ -68,10 +67,11 @@ class TestTrack(yaml.YAMLObject):
     expected = attr.ib()
 
     @classmethod
-    def load_from_meta(cls, track, tag):
+    def load_from_meta(cls, rec_id, track, tag):
         start = track["data"]["start_s"]
         end = track["data"]["end_s"]
         return cls(
+            id=rec_id,
             track_id=track["id"],
             tag=tag.get("what"),
             start=start,

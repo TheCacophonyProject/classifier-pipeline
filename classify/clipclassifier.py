@@ -255,14 +255,13 @@ class ClipClassifier(CPTVFileProcessor):
         save_file["source"] = filename
         if clip.camera_model:
             save_file["camera_model"] = clip.camera_model
-        save_file["temp_thresh"] = clip.temp_thresh
         save_file["background_thresh"] = clip.background_thresh
         start, end = clip.start_and_end_time_absolute()
         save_file["start_time"] = start.isoformat()
         save_file["end_time"] = end.isoformat()
         save_file["algorithm"] = {}
         save_file["algorithm"]["model"] = self.model_file
-        save_file["algorithm"]["tracker_version"] = clip.VERSION
+        save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
         save_file["algorithm"]["tracker_config"] = self.tracker_config.as_dict()
         if meta_data:
             save_file["camera"] = meta_data["Device"]["devicename"]

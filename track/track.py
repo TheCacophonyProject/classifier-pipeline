@@ -43,6 +43,11 @@ class Track:
     _track_id = 1
     # number of frames required before using kalman estimation
     MIN_KALMAN_FRAMES = 18
+    # Percentage increase that is considered jitter, e.g. if a region gets
+    # 30% bigger or smaller
+    JITTER_THRESHOLD = 0.3
+    # must change atleast 5 pixels to be considered for jitter
+    MIN_JITTER_CHANGE = 5
 
     def __init__(self, clip_id, id=None, fps=9):
         """
@@ -184,6 +189,12 @@ class Track:
         self.frames_since_target_seen = 0
         self.kalman_tracker.correct(region)
 
+    def average_mass(self):
+        """ Average mass of last 3 frames that weren't blank """
+        return np.mean(
+            [bound.mass for bound in self.bounds_history if bound.blank == False][-3:]
+        )
+
     def add_blank_frame(self, buffer_frame=None):
         """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
         if self.frames > Track.MIN_KALMAN_FRAMES:
@@ -218,30 +229,34 @@ class Track:
 
         if len(self) <= 1:
             return TrackMovementStatistics()
-        # get movement vectors
-        mass_history = [int(bound.mass) for bound in self.bounds_history]
+        # get movement vectors only from non blank regions
+        non_blank = [bound for bound in self.bounds_history if not bound.blank]
+        mass_history = [int(bound.mass) for bound in non_blank]
         variance_history = [
-            bound.pixel_variance
-            for bound in self.bounds_history
-            if bound.pixel_variance
+            bound.pixel_variance for bound in non_blank if bound.pixel_variance
         ]
-
         movement = 0
         max_offset = 0
 
         frames_moved = 0
+        avg_vel = 0
         first_point = self.bounds_history[0].mid
         for i, (vx, vy) in enumerate(zip(self.vel_x, self.vel_y)):
+            region = self.bounds_history[i]
+            if not region.blank:
+                avg_vel += abs(vx) + abs(vy)
             if i == 0:
                 continue
-            region = self.bounds_history[i]
+
+            if region.blank or self.bounds_history[i - 1].blank:
+                continue
             if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
                 distance = (vx ** 2 + vy ** 2) ** 0.5
                 movement += distance
                 offset = eucl_distance(first_point, region.mid)
                 max_offset = max(max_offset, offset)
                 frames_moved += 1
-
+        avg_vel = avg_vel / len(mass_history)
         # the standard deviation is calculated by averaging the per frame variances.
         # this ends up being slightly different as I'm using /n rather than /(n-1) but that
         # shouldn't make a big difference as n = width*height*frames which is large.
@@ -249,19 +264,24 @@ class Track:
         delta_std = float(np.mean(variance_history)) ** 0.5
         jitter_bigger = 0
         jitter_smaller = 0
-
         for i, bound in enumerate(self.bounds_history[1:]):
             prev_bound = self.bounds_history[i]
             if prev_bound.is_along_border or bound.is_along_border:
                 continue
             height_diff = bound.height - prev_bound.height
             width_diff = prev_bound.width - bound.width
-            if abs(height_diff) > prev_bound.height * 0.25:
+            thresh_h = max(
+                Track.MIN_JITTER_CHANGE, prev_bound.height * Track.JITTER_THRESHOLD
+            )
+            thresh_v = max(
+                Track.MIN_JITTER_CHANGE, prev_bound.width * Track.JITTER_THRESHOLD
+            )
+            if abs(height_diff) > thresh_h:
                 if height_diff > 0:
                     jitter_bigger += 1
                 else:
                     jitter_smaller += 1
-            elif abs(width_diff) > prev_bound.height * 0.25:
+            elif abs(width_diff) > thresh_v:
                 if width_diff > 0:
                     jitter_bigger += 1
                 else:
@@ -279,7 +299,6 @@ class Track:
             + (100 - jitter_percent)
             + (100 - blank_percent)
         )
-
         stats = TrackMovementStatistics(
             movement=float(movement),
             max_offset=float(max_offset),
@@ -292,6 +311,8 @@ class Track:
             jitter_smaller=jitter_smaller,
             blank_percent=blank_percent,
             frames_moved=frames_moved,
+            mass_std=float(np.std(mass_history)),
+            average_velocity=float(avg_vel),
         )
 
         return stats
@@ -435,6 +456,7 @@ class Track:
             return (0, 0)
         pred_vel_x = self.predicted_mid[0] - prev.mid_x
         pred_vel_y = self.predicted_mid[1] - prev.mid_y
+
         return (pred_vel_x, pred_vel_y)
 
     @property
@@ -504,7 +526,7 @@ class Track:
 
 TrackMovementStatistics = namedtuple(
     "TrackMovementStatistics",
-    "movement max_offset score average_mass median_mass delta_std region_jitter jitter_smaller jitter_bigger blank_percent frames_moved",
+    "movement max_offset score average_mass median_mass delta_std region_jitter jitter_smaller jitter_bigger blank_percent frames_moved mass_std, average_velocity",
 )
 TrackMovementStatistics.__new__.__defaults__ = (0,) * len(
     TrackMovementStatistics._fields

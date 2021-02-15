@@ -2,7 +2,6 @@ import attr
 import absl.logging
 import argparse
 import os
-import json
 import logging
 import math
 import sys
@@ -166,7 +165,7 @@ class RecordingMatch:
         self.matches.append(match)
 
     def print_summary(self):
-        print("*******{} Results ******".format(self.id))
+        print("*******{} Classification Results ******".format(self.id))
         print(
             "matches {}\tmismatches {}\tunmatched {}".format(
                 self.summary.classified_correct,
@@ -288,7 +287,6 @@ class Match:
 class TestClassify:
     def __init__(self, args):
         self.test_config = TestConfig.load_from_file(args.tests)
-
         self.classifier_config = Config.load_from_file(args.classify_config)
         model_file = self.classifier_config.classify.model
         if args.model_file:
@@ -314,7 +312,7 @@ class TestClassify:
                 filepath = out_dir / test.filename
                 if not filepath.exists():
                     if iter_to_file(
-                        out_dir / test.filename, api.download_recording(test.rec_id)
+                        out_dir / test.filename, api.download_raw(test.rec_id)
                     ):
                         logging.info("Saved %s", filepath)
         self.results = []

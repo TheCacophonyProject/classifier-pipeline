@@ -130,7 +130,9 @@ class Previewer:
                 )
                 draw = ImageDraw.Draw(image)
             elif self.preview_type == self.PREVIEW_TRACKING:
-                image = self.create_four_tracking_image(frame, clip.stats.min_temp)
+                image = self.create_four_tracking_image(
+                    frame, clip.stats.min_temp, clip.stats.max_temp
+                )
                 image = self.convert_and_resize(
                     image,
                     clip.stats.min_temp,
@@ -160,6 +162,8 @@ class Previewer:
                 self.add_tracks(
                     draw, clip.tracks, frame_number, predictions, screen_bounds
                 )
+            if frame.ffc_affected:
+                self.add_header(draw, image.width, image.height, "Calibrating ...")
             if self.debug and draw:
                 self.add_footer(
                     draw, image.width, image.height, footer, frame.ffc_affected
@@ -268,6 +272,17 @@ class Previewer:
                         v_offset=v_offset,
                         frame_offset=frame_offset,
                     )
+
+    def add_header(
+        self,
+        draw,
+        width,
+        height,
+        text,
+    ):
+        footer_size = self.font.getsize(text)
+        center = (width / 2 - footer_size[0] / 2.0, 5)
+        draw.text((center[0], center[1]), text, font=self.font)
 
     def add_footer(self, draw, width, height, text, ffc_affected):
         footer_text = "FFC {} {}".format(ffc_affected, text)
@@ -417,11 +432,12 @@ class Previewer:
                 )
 
     @staticmethod
-    def create_four_tracking_image(frame, min_temp):
+    def create_four_tracking_image(frame, min_temp, max_temp):
 
         thermal = frame.thermal
         filtered = frame.filtered + min_temp
-        mask = frame.mask * 10000
+        mask = frame.mask.copy()
+        mask[mask > 0] = max_temp
         flow_h, flow_v = frame.get_flow_split(clip_flow=True)
         if flow_h is None and flow_v is None:
             flow_magnitude = filtered
