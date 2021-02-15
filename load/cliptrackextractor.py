@@ -44,6 +44,7 @@ class ClipTrackExtractor:
 
     MAX_DISTANCE = 2000
     PREVIEW = "preview"
+    VERSION = 9
 
     def __init__(
         self, config, use_opt_flow, cache_to_disk, keep_frames=True, calc_stats=True
