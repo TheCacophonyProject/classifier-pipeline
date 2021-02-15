@@ -240,12 +240,10 @@ class Track:
 
         frames_moved = 0
         avg_vel = 0
-        count = 0
         first_point = self.bounds_history[0].mid
         for i, (vx, vy) in enumerate(zip(self.vel_x, self.vel_y)):
             region = self.bounds_history[i]
             if not region.blank:
-                count += 1
                 avg_vel += abs(vx) + abs(vy)
             if i == 0:
                 continue
@@ -258,7 +256,7 @@ class Track:
                 offset = eucl_distance(first_point, region.mid)
                 max_offset = max(max_offset, offset)
                 frames_moved += 1
-        avg_vel = avg_vel / count
+        avg_vel = avg_vel / len(mass_history)
         # the standard deviation is calculated by averaging the per frame variances.
         # this ends up being slightly different as I'm using /n rather than /(n-1) but that
         # shouldn't make a big difference as n = width*height*frames which is large.
