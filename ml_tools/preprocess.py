@@ -99,7 +99,8 @@ def preprocess_segment(
 
     # convert back into [F,C,H,W] array.
     data = np.float32(scaled_frames)
-
+    if len(data) == 0:
+        return None
     # map optical flow down to right level,
     # we pre-multiplied by 256 to fit into a 16bit int
     data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
@@ -205,8 +206,8 @@ def preprocess_movement(
         dim=square.shape,
         require_movement=True,
     )
-    overlay, success = imageprocessing.normalize(overlay, min=0)
-    if not success:
+    overlay, stats = imageprocessing.normalize(overlay, min=0)
+    if not stats[0]:
         return None
 
     data = np.empty((square.shape[0], square.shape[1], 3))
