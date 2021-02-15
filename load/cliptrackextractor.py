@@ -36,7 +36,7 @@ from ml_tools.imageprocessing import detect_objects, normalize
 class ClipTrackExtractor:
     BASE_DISTANCE_CHANGE = 450
     # minimum region mass change
-    MIN_MASS_CHANGE = 10
+    MIN_MASS_CHANGE = 20
     # enforce mass growth after X seconds
     RESTRICT_MASS_AFTER = 1.5
     # amount region mass can change
@@ -202,7 +202,6 @@ class ClipTrackExtractor:
                 max_distance = get_max_distance_change(track)
                 max_size_change = get_max_size_change(track, region)
                 max_mass_change = get_max_mass_change_percent(track)
-
                 if (
                     max_mass_change
                     and abs(track.average_mass() - region.mass) > max_mass_change
@@ -210,8 +209,8 @@ class ClipTrackExtractor:
                     self.print_if_verbose(
                         "track {} region mass {} deviates too much from {}".format(
                             track.get_id(),
-                            track.average_mass(),
                             region.mass,
+                            track.average_mass(),
                         )
                     )
 
@@ -393,8 +392,6 @@ class ClipTrackExtractor:
             if not self.filter_track(clip, track, stats):
                 good_tracks.append(track)
 
-        for filtered in clip.filtered_tracks:
-            print(filtered[0], filtered[1])
         clip.tracks = good_tracks
         self.print_if_verbose(
             "{} {}".format("Number of 'good' tracks", len(clip.tracks))
@@ -410,7 +407,7 @@ class ClipTrackExtractor:
             clip.filtered_tracks.extend(
                 [("Too many tracks", track) for track in clip.tracks[self.max_tracks :]]
             )
-            # clip.tracks = clip.tracks[: self.max_tracks]
+            clip.tracks = clip.tracks[: self.max_tracks]
 
     def filter_track(self, clip, track, stats):
         # discard any tracks that are less min_duration
@@ -431,13 +428,7 @@ class ClipTrackExtractor:
             )
             clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
             return True
-        if (
-            stats.average_velocity <= 2
-            and stats.mass_std > stats.average_mass * self.config.max_mass_std_percent
-        ):
-            self.print_if_verbose("Track filtered.  Mass too deviant")
-            clip.filtered_tracks.append(("Track filtered. Mass too deviant", track))
-            return True
+
         if stats.blank_percent > self.config.max_blank_percent:
             self.print_if_verbose("Track filtered.  Too Many Blanks")
             clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))

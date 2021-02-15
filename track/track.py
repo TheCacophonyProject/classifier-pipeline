@@ -46,6 +46,8 @@ class Track:
     # Percentage increase that is considered jitter, e.g. if a region gets
     # 30% bigger or smaller
     JITTER_THRESHOLD = 0.3
+    # must change atleast 5 pixels to be considered for jitter
+    MIN_JITTER_CHANGE = 5
 
     def __init__(self, clip_id, id=None, fps=9):
         """
@@ -188,7 +190,7 @@ class Track:
         self.kalman_tracker.correct(region)
 
     def average_mass(self):
-        """ Average mass of last 5 frames that weren't blank """
+        """ Average mass of last 3 frames that weren't blank """
         return np.mean(
             [bound.mass for bound in self.bounds_history if bound.blank == False][-3:]
         )
@@ -233,7 +235,6 @@ class Track:
         variance_history = [
             bound.pixel_variance for bound in non_blank if bound.pixel_variance
         ]
-
         movement = 0
         max_offset = 0
 
@@ -271,12 +272,18 @@ class Track:
                 continue
             height_diff = bound.height - prev_bound.height
             width_diff = prev_bound.width - bound.width
-            if abs(height_diff) > prev_bound.height * Track.JITTER_THRESHOLD:
+            thresh_h = max(
+                Track.MIN_JITTER_CHANGE, prev_bound.height * Track.JITTER_THRESHOLD
+            )
+            thresh_v = max(
+                Track.MIN_JITTER_CHANGE, prev_bound.width * Track.JITTER_THRESHOLD
+            )
+            if abs(height_diff) > thresh_h:
                 if height_diff > 0:
                     jitter_bigger += 1
                 else:
                     jitter_smaller += 1
-            elif abs(width_diff) > prev_bound.height * Track.JITTER_THRESHOLD:
+            elif abs(width_diff) > thresh_v:
                 if width_diff > 0:
                     jitter_bigger += 1
                 else:

@@ -130,7 +130,9 @@ class Previewer:
                 )
                 draw = ImageDraw.Draw(image)
             elif self.preview_type == self.PREVIEW_TRACKING:
-                image = self.create_four_tracking_image(frame, clip.stats.min_temp)
+                image = self.create_four_tracking_image(
+                    frame, clip.stats.min_temp, clip.stats.max_temp
+                )
                 image = self.convert_and_resize(
                     image,
                     clip.stats.min_temp,
@@ -430,11 +432,12 @@ class Previewer:
                 )
 
     @staticmethod
-    def create_four_tracking_image(frame, min_temp):
+    def create_four_tracking_image(frame, min_temp, max_temp):
 
         thermal = frame.thermal
         filtered = frame.filtered + min_temp
-        mask = frame.mask * 10000
+        mask = frame.mask.copy()
+        mask[mask > 0] = max_temp
         flow_h, flow_v = frame.get_flow_split(clip_flow=True)
         if flow_h is None and flow_v is None:
             flow_magnitude = filtered

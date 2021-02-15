@@ -72,6 +72,8 @@ tracking:
           - camera_model: "lepton3"
             # Default temperature threshold require for tracking
             temp_thresh: 2900
+            background_thresh: 20 # 1 degrees
+
             # Minimum raw temperature difference between background and track
             delta_thresh: 20
             # Min/Max temperature threshold value to use if dynamic threshold is true
@@ -83,12 +85,13 @@ tracking:
             track_max_delta: 150
           - camera_model: "lepton3.5"
             temp_thresh: 28000
+            background_thresh: 100 # 1 degrees
             delta_thresh: 100 # 1 degrees
             max_temp_thresh: null
             min_temp_thresh: null
             # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
-            track_min_delta: 90
-            track_max_delta: 1500
+            track_min_delta: 1.0
+            track_max_delta: 150
     # these parameters are associated with the stats background method
     stats:
         # auto threshold needs to find a near maximum value to calculate the threshold level
