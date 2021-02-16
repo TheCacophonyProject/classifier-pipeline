@@ -78,6 +78,7 @@ class Clip:
         self.track_min_delta = None
         self.track_max_delta = None
         self.background_thresh = None
+        self.tags = None
         # sets defaults
         self.set_model(None)
         if background is not None:
@@ -290,7 +291,7 @@ class Clip:
             self.device = os.path.splitext(os.path.basename(self.source_file))[0].split(
                 "-"
             )[-1]
-
+        self.tags = metadata.get("Tags")
         self.location = metadata.get("location")
         tracks = self.load_tracks_meta(
             metadata, include_filtered_channel, tag_precedence
