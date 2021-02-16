@@ -48,7 +48,7 @@ Evaluates the performance of a classify.py run and generates reports.
 
 # Setup
 
-Install the following prerequisites
+Install the following prerequisites (tested with Ubuntu 18.0 and Python Python 3.6.9)
 `apt-get install -y tzdata git python3 python3-dev python3-venv libcairo2-dev build-essential libgirepository1.0-dev libjpeg-dev python-cairo libhdf5-dev`
 1. Create a virtual environment in python3 and install the necessary prerequisites </br>
 `pip install -r requirements.txt`
