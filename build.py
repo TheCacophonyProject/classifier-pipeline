@@ -127,8 +127,10 @@ def diverse_validation(cameras, labels, max_cameras):
     until we either have reached max cameras, or there aren't any labels with less
     than MIN_TRACKS tracks
     """
-    val_cameras = []
+    if len(labels) == 0:
+        return [], cameras
 
+    val_cameras = []
     all_labels = labels.copy()
     # dont try add low data labels or we'll have none in train set
     for tag in LOW_DATA_LABELS:
@@ -220,6 +222,7 @@ def split_dataset_by_cameras(db, dataset, config, args):
     if rabbits:
         cameras.remove(rabbits)
         train_cameras.append(rabbits)
+
     validate_cameras, cameras = diverse_validation(
         cameras, dataset.labels, num_validate_cameras
     )
