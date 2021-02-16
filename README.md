@@ -17,7 +17,7 @@ The tracking algorithm tries to distinguish between animal tracks and false posi
 Creates training, validation and testing datasets from database of clips & tracks.
 Datasets contain frames and segments ( e.g. 45 frames).
 
-Frames (important frames) are calculated by choosing frames with a mass ( the count of pixels that have been deemed object by track extraction) between the lower and upper quartiles of a tracks mass distribution.
+Frames (important frames) are calculated by choosing frames with a mass ( the count of pixels that have been deemed an object by track extraction) between the lower and upper quartiles of a tracks mass distribution.
 
 Frames are also checked to see if they are noisy frames.
 This attempts to remove the following types of noisy frames:
@@ -26,15 +26,14 @@ This attempts to remove the following types of noisy frames:
 - Frames where nothing is there but noise
 
 Segments are calculated either by (depending on config):
+
 Choosing random permutations of the important frames.
-- Number of Segments
-- (# of important frames - segment duration) // 9 segments are selected
+- Number of Segments (# of important frames - segment duration) // 9 segments are selected
 
 or by choosing segment duration consecutive frames whose mass is above a certain amount        
-- Number of Segments
-- up to (# of frames - segment duration) // segment-frame-spacing
+- Number of Segments up to (# of frames - segment duration) // segment-frame-spacing
 
-Datasets are split by camera and location ( too try and remove any bias that may occur from using a camera in multiple sets).
+Datasets are split by camera and location ( to try and remove any bias that may occur from using a camera in multiple sets).
 
 Some labels have low amounts of data so a single camera is split into 2 cameras e.g. Wallabies and Leoparidaes
 
