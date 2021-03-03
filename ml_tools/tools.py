@@ -105,8 +105,8 @@ class Rectangle:
         """ Crops this rectangle so that it fits within given bounds"""
         self.left = max(self.left, bounds.left)
         self.top = max(self.top, bounds.top)
-        self.right = min(self.right, bounds.right)
-        self.bottom = min(self.bottom, bounds.bottom)
+        self.right = max(bounds.left, min(self.right, bounds.right))
+        self.bottom = max(bounds.top, min(self.bottom, bounds.bottom))
 
     def subimage(self, image):
         """Returns a subsection of the original image bounded by this rectangle
