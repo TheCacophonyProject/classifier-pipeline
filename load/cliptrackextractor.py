@@ -338,7 +338,10 @@ class ClipTrackExtractor:
                 ) / old_region.height
                 if crop_width_fraction > 0.25 or crop_height_fraction > 0.25:
                     continue
-            elif self.config.cropped_regions_strategy == "none":
+            elif (
+                self.config.cropped_regions_strategy == "none"
+                or self.config.cropped_regions_strategy is None
+            ):
                 if region.was_cropped:
                     continue
             elif self.config.cropped_regions_strategy != "all":
