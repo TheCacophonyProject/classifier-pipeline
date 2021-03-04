@@ -121,8 +121,8 @@ def square_clip(data, frames_per_row, tile_dim, type=None):
                 frame = data[-1]
             else:
                 frame = data[i]
-            frame, norm_success = normalize(frame)
-            if not norm_success:
+            frame, stats = normalize(frame)
+            if not stats[0]:
                 continue
             success = True
             new_frame[
@@ -174,17 +174,21 @@ def square_clip_flow(data_flow, frames_per_row, tile_dim, type=None):
 
 
 def normalize(data, min=None, max=None, new_max=1):
+    """
+    Normalize an array so that the values range from 0 -> new_max
+    Returns normalized array, stats tuple (Success, min used, max used)
+    """
     if max is None:
         max = np.amax(data)
     if min is None:
         min = np.amin(data)
     if max == min:
         if max == 0:
-            return np.zeros((data.shape)), False
-        return data / max, False
+            return np.zeros((data.shape)), (False, max, min)
+        return data / max, (True, max, min)
     data -= min
     data = data / (max - min) * new_max
-    return data, True
+    return data, (True, max, min)
 
 
 def save_image_channels(data, filename):

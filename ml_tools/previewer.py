@@ -159,6 +159,8 @@ class Previewer:
                 self.add_tracks(
                     draw, clip.tracks, frame_number, predictions, screen_bounds
                 )
+            if frame.ffc_affected:
+                self.add_header(draw, image.width, image.height, "Calibrating ...")
             if self.debug and draw:
                 self.add_footer(
                     draw, image.width, image.height, footer, frame.ffc_affected
@@ -270,6 +272,17 @@ class Previewer:
                         v_offset=v_offset,
                         frame_offset=frame_offset,
                     )
+
+    def add_header(
+        self,
+        draw,
+        width,
+        height,
+        text,
+    ):
+        footer_size = self.font.getsize(text)
+        center = (width / 2 - footer_size[0] / 2.0, 5)
+        draw.text((center[0], center[1]), text, font=self.font)
 
     def add_footer(self, draw, width, height, text, ffc_affected):
         footer_text = "FFC {} {}".format(ffc_affected, text)

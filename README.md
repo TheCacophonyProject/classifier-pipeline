@@ -123,11 +123,11 @@ may require manual editing to setup the tests if the original browse video did n
 well
 - Test CPTV files will be saved under out_dir and labelled as recordingid.cptv
 
-`python tests\generatetests.py out_dir Username Password <list of recording ids separated by a space>`
+`python generatetests.py out_dir Username Password <list of recording ids separated by a space>`
 
 e.g.
 
-`python tests\generatetests.py test_clips Derek password123 12554 122232`
+`python generatetests.py test_clips Derek password123 12554 122232`
 
 ## Running Tests
 

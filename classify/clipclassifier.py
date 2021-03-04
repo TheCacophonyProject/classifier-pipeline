@@ -104,7 +104,7 @@ class ClipClassifier(CPTVFileProcessor):
                                 region.frame_number
                             )
                         )
-                        return
+                        continue
                     frame = frames[0]
                     (
                         prediction,
@@ -232,7 +232,6 @@ class ClipClassifier(CPTVFileProcessor):
         for i, track in enumerate(clip.tracks):
             prediction = self.identify_track(clip, track)
             predictions.prediction_per_track[track.get_id()] = prediction
-
             description = prediction.description(self.classifier.labels)
             logging.info(
                 " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
@@ -257,14 +256,13 @@ class ClipClassifier(CPTVFileProcessor):
         save_file["source"] = filename
         if clip.camera_model:
             save_file["camera_model"] = clip.camera_model
-        save_file["temp_thresh"] = clip.temp_thresh
         save_file["background_thresh"] = clip.background_thresh
         start, end = clip.start_and_end_time_absolute()
         save_file["start_time"] = start.isoformat()
         save_file["end_time"] = end.isoformat()
         save_file["algorithm"] = {}
         save_file["algorithm"]["model"] = self.model_file
-        save_file["algorithm"]["tracker_version"] = clip.VERSION
+        save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
         save_file["algorithm"]["tracker_config"] = self.tracker_config.as_dict()
         if meta_data:
             save_file["camera"] = meta_data["Device"]["devicename"]

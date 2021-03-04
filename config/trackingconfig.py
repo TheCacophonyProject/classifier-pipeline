@@ -58,6 +58,8 @@ class TrackingConfig(DefaultConfig):
     moving_vel_thresh = attr.ib()
     min_moving_frames = attr.ib()
     max_blank_percent = attr.ib()
+    max_mass_std_percent = attr.ib()
+
     max_jitter = attr.ib()
     # used to provide defaults
     stats = attr.ib()
@@ -103,6 +105,7 @@ class TrackingConfig(DefaultConfig):
             min_tag_confidence=tracking["min_tag_confidence"],
             min_moving_frames=tracking["min_moving_frames"],
             max_blank_percent=tracking["max_blank_percent"],
+            max_mass_std_percent=tracking["max_mass_std_percent"],
             max_jitter=tracking["max_jitter"],
             stats=None,
             filters=None,
@@ -159,7 +162,8 @@ class TrackingConfig(DefaultConfig):
             moving_vel_thresh=4,
             min_moving_frames=2,
             max_blank_percent=30,
-            max_jitter=15,
+            max_mass_std_percent=ClipTrackExtractor.MASS_CHANGE_PERCENT,
+            max_jitter=20,
         )
 
     def validate(self):
