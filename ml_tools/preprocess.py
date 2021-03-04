@@ -119,7 +119,6 @@ def preprocess_segment(
             crop_region.top -= 1
             crop_region.bottom += 1
             crop_region.crop(frame_bounds)
-<<<<<<< HEAD
         frame.crop_by_region(crop_region, out=frame)
         frame.resize_with_aspect((FRAME_SIZE, FRAME_SIZE))
         if reference_level is not None:
@@ -140,74 +139,6 @@ def preprocess_segment(
         data.append(frame)
 
     return data, flip
-=======
-
-        cropped_frame = frame[
-            :,
-            crop_region.top : crop_region.bottom,
-            crop_region.left : crop_region.right,
-        ]
-
-        scaled_frame = [
-            cv2.resize(
-                np.float32(cropped_frame[channel]),
-                dsize=(FRAME_SIZE, FRAME_SIZE),
-                interpolation=cv2.INTER_LINEAR
-                if channel != TrackChannels.mask
-                else cv2.INTER_NEAREST,
-            )
-            for channel in range(channels)
-        ]
-        if reference_level:
-            scaled_frame[0] -= np.float32(reference_level[i])
-        scaled_frames.append(scaled_frame)
-
-    # convert back into [F,C,H,W] array.
-    data = np.float32(scaled_frames)
-    if len(data) == 0:
-        return None
-    # map optical flow down to right level,
-    # we pre-multiplied by 256 to fit into a 16bit int
-    data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
-
-    # write frame motion into center of frame
-    if encode_frame_offsets_in_flow:
-        F, C, H, W = data.shape
-        for x in range(-2, 2 + 1):
-            for y in range(-2, 2 + 1):
-                data[:, 2 : 3 + 1, H // 2 + y, W // 2 + x] = frame_velocity[:, :]
-
-    # set filtered track to delta frames
-    if filter_to_delta:
-        reference = np.clip(data[:, 0], 20, 999)
-        data[0, 1] = 0
-        data[1:, 1] = reference[1:] - reference[:-1]
-
-    # -------------------------------------------
-    # finally apply and additional augmentation
-
-    if augment:
-        if random.random() <= 0.75:
-            # we will adjust contrast and levels, but only within these bounds.
-            # that is a bright input may have brightness reduced, but not increased.
-            LEVEL_OFFSET = 4
-
-            # apply level and contrast shift
-            level_adjust = random.normalvariate(0, LEVEL_OFFSET)
-            contrast_adjust = tools.random_log(0.9, (1 / 0.9))
-
-            data[:, 0] *= contrast_adjust
-            data[:, 0] += level_adjust
-            data[:, 1] *= contrast_adjust
-
-        if random.random() <= 0.50:
-            # when we flip the frame remember to flip the horizontal velocity as well
-            data = np.flip(data, axis=3)
-            data[:, 2] = -data[:, 2]
-    np.clip(data[:, 0, :, :], a_min=0, a_max=None, out=data[:, 0, :, :])
-
-    return data
->>>>>>> origin/master
 
 
 def preprocess_frame(
@@ -270,35 +201,8 @@ def preprocess_movement(
     filtered_square, success = imageprocessing.square_clip(
         filtered_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
     )
-<<<<<<< HEAD
-    if not success:
-        return None
-
-    flow_segment = [frame.get_channel(TrackChannels.flow) for frame in segment]
-
-    # square_flow, success = imageprocessing.square_clip_flow(
-    #     flow_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
-    # )
-    # if not success:
-    #     return None
-
-    if overlay is None:
-        dots, overlay = imageprocessing.movement_images(
-            data,
-            regions,
-            dim=square.shape,
-            require_movement=True,
-        )
-    else:
-        overlay_full_size = np.zeros((square.shape[0], square.shape[1]))
-        overlay_full_size[: overlay.shape[0], : overlay.shape[1]] = overlay
-        overlay = overlay_full_size
-    overlay, success = imageprocessing.normalize(overlay, min=0)
-    if not success:
-=======
     overlay, stats = imageprocessing.normalize(overlay, min=0)
     if not stats[0]:
->>>>>>> origin/master
         return None
 
     if flipped:
