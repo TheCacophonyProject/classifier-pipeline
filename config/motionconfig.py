@@ -1,5 +1,6 @@
 import attr
 import inspect
+
 from .defaultconfig import DefaultConfig, deep_copy_map_if_key_not_exist
 
 
@@ -22,7 +23,7 @@ class MotionConfig(DefaultConfig):
     @classmethod
     def get_defaults(cls):
         return cls(
-            camera_thresholds=[ThresholdConfig.get_defaults()],
+            camera_thresholds={"default": ThresholdConfig.get_defaults()},
             dynamic_thresh=True,
         )
 
@@ -49,8 +50,9 @@ class MotionConfig(DefaultConfig):
         if not threshold:
             for model_thresh in self.camera_thresholds.values():
                 if model_thresh.default:
-                    threshold = model_thresh
-                    break
+                    return model_thresh
+
+            return self.camera_thresholds["default"]
         return threshold
 
 

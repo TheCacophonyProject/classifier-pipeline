@@ -2,12 +2,11 @@ import json
 import logging
 import os.path
 import time
-from typing import Dict
 
 from datetime import datetime
 import numpy as np
 
-from classify.trackprediction import Predictions, TrackPrediction
+from classify.trackprediction import Predictions
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
 from ml_tools import tools
