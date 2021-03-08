@@ -236,7 +236,6 @@ def _data(labels, dataset, samples, params, to_categorical=True):
             *params.output_dim,
         )
     )
-
     y = np.empty((len(samples)), dtype=int)
     data_i = 0
     y_original = []
@@ -294,18 +293,19 @@ def _data(labels, dataset, samples, params, to_categorical=True):
             )
         else:
             try:
-                data, label = dataset.fetch_sample(
+                data = dataset.fetch_sample(
                     sample, augment=params.augment, channels=params.channel
                 )
 
-                if label not in labels:
-                    continue
             except Exception as inst:
                 logging.error("Error fetching samples %s %s", sample, inst)
                 continue
 
             data = preprocess_frame(
-                data, params.output_dim, None, params.augment, params.model_preprocess
+                data,
+                params.output_dim,
+                preprocess_fn=params.model_preprocess,
+                sample=sample,
             )
         if data is None:
             logging.debug(
@@ -337,11 +337,14 @@ def preloader(q, load_queue, labels, dataset, params):
         if not q.full():
             samples = pickle.loads(load_queue.get())
             # datagen.loaded_epochs = samples[0]
-            segments = []
+            data = []
             for sample_id in samples[1]:
-                segments.append(dataset.segments_by_id[sample_id])
+                if params.use_movement:
+                    data.append(dataset.segments_by_id[sample_id])
+                else:
+                    data.append(dataset.frames_by_id[sample_id])
 
-            q.put(loadbatch(labels, dataset, segments, params))
+            q.put(loadbatch(labels, dataset, data, params))
 
         else:
             time.sleep(0.1)

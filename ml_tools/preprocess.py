@@ -52,7 +52,6 @@ def preprocess_segment(
     :param augment: if true applies a slightly random crop / scale
     :param default_inset: the default number of pixels to inset when no augmentation is applied.
     """
-
     if reference_level is not None:
         # -------------------------------------------
         # next adjust temperature and flow levels
@@ -141,28 +140,27 @@ def preprocess_segment(
     return data, flip
 
 
-def preprocess_frame(
-    data, output_dim, use_thermal=True, augment=False, preprocess_fn=None
-):
-    if use_thermal:
-        channel = TrackChannels.thermal
-    else:
-        channel = TrackChannels.filtered
-    data = data[channel]
-
-    max = np.amax(data)
-    min = np.amin(data)
-    if max == min:
+def preprocess_frame(frame, output_dim, preprocess_fn=None, sample=None):
+    thermal = frame.get_channel(TrackChannels.thermal)
+    filtered = frame.get_channel(TrackChannels.filtered)
+    thermal, stats = imageprocessing.normalize(thermal, min=0)
+    if not stats[0]:
         return None
+    filtered, stats = imageprocessing.normalize(filtered, min=0)
+    if not stats[0]:
+        return None
+    np.clip(filtered, a_min=0, a_max=None, out=filtered)
+    np.clip(filtered, a_min=0, a_max=None, out=filtered)
 
-    data -= min
-    data = data / (max - min)
-    np.clip(data, a_min=0, a_max=None, out=data)
+    data = np.empty((*thermal.shape, 3))
+    data[:, :, 0] = thermal
+    data[:, :, 1] = filtered
+    data[:, :, 2] = thermal
 
-    data = data[np.newaxis, :]
-    data = np.transpose(data, (1, 2, 0))
-    data = np.repeat(data, output_dim[2], axis=2)
-    data = imageprocessing.resize_cv(data, output_dim)
+    # tools.saveclassify_image(
+    #     data,
+    #     f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
+    # )
 
     # preprocess expects values in range 0-255
     if preprocess_fn:

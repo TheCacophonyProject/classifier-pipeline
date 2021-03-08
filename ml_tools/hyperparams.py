@@ -34,7 +34,7 @@ class HyperParams(dict):
 
     @property
     def output_dim(self):
-        output_dim = (self.frame_size, self.frame_size)
+        output_dim = (self.frame_size, self.frame_size, 3)
         if self.use_movement:
             output_dim = (
                 output_dim[0] * self.square_width,

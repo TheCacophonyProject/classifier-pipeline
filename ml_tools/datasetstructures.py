@@ -156,7 +156,14 @@ class TrackHeader:
                 frames.append(i)
         np.random.shuffle(frames)
         for frame in frames:
-            f = FrameSample(self.clip_id, self.track_id, frame, self.label)
+            f = FrameSample(
+                self.clip_id,
+                self.track_id,
+                frame,
+                self.label,
+                self.frame_temp_median[frame],
+                self.frame_velocity[frame],
+            )
             self.important_frames.append(f)
 
     def calculate_frame_crop(self):
@@ -473,11 +480,17 @@ class Camera:
 
 
 class FrameSample:
-    def __init__(self, clip_id, track_id, frame_num, label):
+    _frame_id = 1
+
+    def __init__(self, clip_id, track_id, frame_num, label, temp_median, velocity):
+        self.id = FrameSample._frame_id
+        FrameSample._frame_id += 1
         self.clip_id = clip_id
         self.track_id = track_id
         self.frame_num = frame_num
         self.label = label
+        self.temp_median = temp_median
+        self.velocity = velocity
 
     @property
     def unique_track_id(self):

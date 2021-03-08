@@ -98,6 +98,7 @@ class Dataset:
         self.frame_samples = []
         self.clips_to_samples = {}
         self.frames_by_label = {}
+        self.frames_by_id = {}
 
         # list of label names
         self.labels = []
@@ -396,6 +397,8 @@ class Dataset:
             self.segments_by_id[seg.id] = seg
         frames = self.frames_by_label.setdefault(track_header.label, [])
         samples = track_header.get_sample_frames()
+        for sample in samples:
+            self.frames_by_id[sample.id] = sample
         self.frame_samples.extend(samples)
         frames.extend(samples)
         camera = self.cameras_by_id.setdefault(
@@ -482,15 +485,21 @@ class Dataset:
         )
         return frames
 
-    def fetch_frame(self, frame_sample, channels=None):
-        frame, label = self.db.get_frame(
+    def fetch_frame(self, frame_sample, channels=None, augment=False):
+        frame = self.db.get_frame(
             frame_sample.clip_id,
             frame_sample.track_id,
             frame_sample.frame_num,
-            channels=channels,
         )
-        label = self.mapped_label(label)
-        return frame, label
+
+        data, flip = preprocess_segment(
+            [frame],
+            [frame_sample.temp_median],
+            [frame_sample.velocity],
+            augment=augment,
+            default_inset=self.DEFAULT_INSET,
+        )
+        return data[0]
 
     def fetch_sample(self, sample, augment=False, channels=None):
         if isinstance(sample, SegmentHeader):

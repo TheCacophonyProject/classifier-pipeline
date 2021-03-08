@@ -352,8 +352,8 @@ def main():
     config = load_config(args.config_file)
     datasets_filename = dataset_db_path(config)
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
-    add_overlay(datasets_filename, db)
-    return
+    # add_overlay(datasets_filename, db)
+    # return
     dataset = Dataset(
         db, "dataset", config, consecutive_segments=args.consecutive_segments
     )
