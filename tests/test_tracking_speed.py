@@ -18,7 +18,7 @@ class TestTrackingSpeed:
         config = Config.get_defaults()
         dir_name = os.path.dirname(os.path.realpath(__file__))
         file_name = os.path.join(dir_name, TestTrackingSpeed.CPTV_FILE_NO_BACKGROUND)
-        print("Tracking ", file_name)
+        print("Tracking cptv with no background ", file_name)
         track_extractor = ClipTrackExtractor(
             config.tracking,
             config.use_opt_flow
@@ -35,6 +35,7 @@ class TestTrackingSpeed:
         assert ms_per_frame < TestTrackingSpeed.MAX_FRAME_MS
 
         file_name = os.path.join(dir_name, TestTrackingSpeed.CPTV_FILE_BACKGROUND)
+        print("Tracking cptv with background ", file_name)
         start = time.time()
         clip = Clip(config.classify_tracking, file_name)
         track_extractor.parse_clip(clip)
