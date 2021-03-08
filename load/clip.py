@@ -156,7 +156,6 @@ class Clip:
             ffc_affected = is_affected_by_ffc(frame)
             if ffc_affected:
                 continue
-
             frames.append(frame.pix)
             if len(frames) == 9:
                 frame_average = np.average(frames, axis=0)
@@ -178,7 +177,6 @@ class Clip:
             if initial_frames is None:
                 initial_frames = frame_average
         frames = []
-
         np.clip(initial_diff, 0, None, out=initial_diff)
         initial_frames = self.remove_background_animals(initial_frames, initial_diff)
 
