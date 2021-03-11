@@ -37,6 +37,7 @@ class TrackHeader:
         res_x=CPTV_FILE_WIDTH,
         res_y=CPTV_FILE_HEIGHT,
         ffc_frames=None,
+        important_frames=None,
     ):
         self.res_x = res_x
         self.res_y = res_y
@@ -74,7 +75,7 @@ class TrackHeader:
         self.frames_per_second = frames_per_second
         self.calculate_velocity()
         self.calculate_frame_crop()
-        self.important_frames = []
+        self.important_frames = None
         self.important_predicted = 0
         self.frame_mass = frame_mass
         self.lower_mass = np.percentile(frame_mass, q=25)
@@ -82,6 +83,19 @@ class TrackHeader:
         self.median_mass = np.median(frame_mass)
         self.mean_mass = np.mean(frame_mass)
         self.ffc_frames = ffc_frames
+
+        if important_frames is not None:
+            self.important_frames = []
+            for frame_num in important_frames:
+                f = FrameSample(
+                    self.clip_id,
+                    self.track_id,
+                    frame_num,
+                    self.label,
+                    self.frame_temp_median[frame_num],
+                    self.frame_velocity[frame_num],
+                )
+                self.important_frames.append(f)
 
     def toJSON(self):
         meta_dict = {}
@@ -137,6 +151,7 @@ class TrackHeader:
     def set_important_frames(self, min_mass=None, frame_data=None, model=None):
         # this needs more testing
         frames = []
+        self.important_frames = []
         for i, mass in enumerate(self.frame_mass):
             if self.ffc_frames is not None and i in self.ffc_frames:
                 continue
@@ -367,6 +382,8 @@ class TrackHeader:
 
         bounds_history = track_meta["bounds_history"]
         ffc_frames = clip_meta.get("ffc_frames", [])
+        important_frames = track_meta.get("important_frames")
+
         header = TrackHeader(
             clip_id=int(clip_id),
             track_id=int(track_meta["id"]),
@@ -387,6 +404,7 @@ class TrackHeader:
             res_x=clip_meta.get("res_x", CPTV_FILE_WIDTH),
             res_y=clip_meta.get("res_y", CPTV_FILE_HEIGHT),
             ffc_frames=ffc_frames,
+            important_frames=important_frames,
         )
         return header
 

@@ -446,6 +446,14 @@ class TrackDatabase:
             else:
                 return False
 
+    def set_important_frames(self, clip_id, track_id, important_frames):
+        important_frames.sort()
+        with HDF5Manager(self.database, "a") as f:
+            clips = f["clips"]
+            clip_node = clips[clip_id]
+            track_node = clip_node[track_id]
+            track_node.attrs["important_frames"] = np.uint16(important_frames)
+
     def add_track(
         self,
         clip_id,
@@ -565,7 +573,6 @@ class TrackDatabase:
                         for bounds in track.bounds_history
                     ]
                 )
-
             f.flush()
 
             # mark the record as have been writen to.

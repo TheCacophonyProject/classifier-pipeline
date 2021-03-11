@@ -310,8 +310,17 @@ class Dataset:
             clip_id, clip_meta, track_meta, predictions
         )
         self.tracks.append(track_header)
-        frames = self.db.get_track(clip_id, track_id)
-        track_header.set_important_frames(self.min_frame_mass, frame_data=frames)
+        if track_header.important_frames is None:
+            frames = self.db.get_track(clip_id, track_id)
+            track_header.set_important_frames(
+                self.min_frame_mass, frame_data=frames, model=self.frame_model
+            )
+            self.db.set_important_frames(
+                clip_id,
+                track_id,
+                [sample.frame_num for sample in track_header.important_frames],
+            )
+
         segment_frame_spacing = int(
             round(self.segment_spacing * track_header.frames_per_second)
         )

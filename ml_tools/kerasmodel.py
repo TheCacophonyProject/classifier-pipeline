@@ -287,8 +287,8 @@ class KerasModel:
         self.params = HyperParams()
         self.params.update(meta["hyperparams"])
         self.labels = meta["labels"]
-        self.mapped_labels = meta["mapped_labels"]
-        self.label_probabilities = meta["label_probabilities"]
+        self.mapped_labels = meta.get("mapped_labels")
+        self.label_probabilities = meta.get("label_probabilities")
         self.preprocess_fn = self.get_preprocess_fn()
         self.type = meta.get("type")
 

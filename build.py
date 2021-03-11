@@ -313,7 +313,9 @@ def recalc_important(dataset_filename, db, model_file=None):
     for dataset in datasets:
         # if model:
         # dataset.frame_model = model
-
+        dataset.frames_by_id = {}
+        dataset.frame_samples = []
+        dataset.frames_by_label = {}
         for track in dataset.tracks:
             if track.label == "false-positive":
                 continue
@@ -334,6 +336,7 @@ def recalc_important(dataset_filename, db, model_file=None):
                 track.label,
                 dataset.name,
             )
+
         dataset.random_segments(require_movement=False)
         dataset.rebuild_cdf()
     print("after recalculating")
@@ -351,12 +354,26 @@ def add_overlay(dataset_filename, db):
         dataset.add_overlay()
 
 
+def set_important(dataset, model_file):
+
+    model = KerasModel()
+    model.load_model(model_file, training=False)
+    dataset.frame_model = model
+    tracks_loaded, total_tracks = dataset.load_tracks()
+
+
 def main():
     init_logging()
     args = parse_args()
     config = load_config(args.config_file)
     datasets_filename = dataset_db_path(config)
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
+    dataset = Dataset(
+        db, "dataset", config, consecutive_segments=args.consecutive_segments
+    )
+    set_important(dataset, config.classify.model)
+    print("set important.....")
+    return
     datasets = recalc_important(datasets_filename, db, config.classify.model)
     pickle.dump(datasets, open(dataset_db_path(config), "wb"))
     return
