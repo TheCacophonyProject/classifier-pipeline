@@ -756,6 +756,8 @@ def get_optical_flow_function(high_quality=False):
 def frame_to_jpg(
     frame, filename, colourmap_file=None, f_min=None, f_max=None, img_fmt="PNG"
 ):
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
+
     colourmap = _load_colourmap(colourmap_file)
     if f_min is None:
         f_min = np.amin(frame)

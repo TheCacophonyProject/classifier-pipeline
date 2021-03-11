@@ -140,9 +140,25 @@ def preprocess_segment(
     return data, flip
 
 
-def preprocess_frame(frame, output_dim, preprocess_fn=None, sample=None):
-    thermal = frame.get_channel(TrackChannels.thermal)
-    filtered = frame.get_channel(TrackChannels.filtered)
+def preprocess_frame(
+    frame,
+    augment,
+    thermal_median,
+    velocity,
+    output_dim,
+    preprocess_fn=None,
+    sample=None,
+):
+    processed_frame, flipped = preprocess_segment(
+        [frame],
+        [thermal_median],
+        [velocity],
+        augment=augment,
+        default_inset=0,
+    )
+    processed_frame = processed_frame[0]
+    thermal = processed_frame.get_channel(TrackChannels.thermal)
+    filtered = processed_frame.get_channel(TrackChannels.filtered)
     thermal, stats = imageprocessing.normalize(thermal, min=0)
     if not stats[0]:
         return None
@@ -156,7 +172,7 @@ def preprocess_frame(frame, output_dim, preprocess_fn=None, sample=None):
     data[:, :, 0] = thermal
     data[:, :, 1] = filtered
     data[:, :, 2] = thermal
-
+    # tools.saveclassify_image(data, f"test-{frame.frame_number}")
     # tools.saveclassify_image(
     #     data,
     #     f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",

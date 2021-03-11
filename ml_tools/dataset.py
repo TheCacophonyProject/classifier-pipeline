@@ -24,6 +24,8 @@ from ml_tools.preprocess import preprocess_segment
 from ml_tools import tools
 from ml_tools import imageprocessing
 
+# from ml_tools.kerasmodel import KerasModel
+
 
 class TrackChannels:
     """ Indexes to channels in track. """
@@ -145,6 +147,7 @@ class Dataset:
             "no_data": 0,
         }
         self.lbl_p = None
+        self.frame_model = None
 
     def set_read_only(self, read_only):
         self.db.set_read_only(read_only)
@@ -308,9 +311,7 @@ class Dataset:
         )
         self.tracks.append(track_header)
         frames = self.db.get_track(clip_id, track_id)
-        track_header.set_important_frames(
-            labels, self.min_frame_mass, frame_data=frames
-        )
+        track_header.set_important_frames(self.min_frame_mass, frame_data=frames)
         segment_frame_spacing = int(
             round(self.segment_spacing * track_header.frames_per_second)
         )
@@ -485,28 +486,21 @@ class Dataset:
         )
         return frames
 
-    def fetch_frame(self, frame_sample, channels=None, augment=False):
+    def fetch_frame(self, frame_sample, channels=None):
         frame = self.db.get_frame(
             frame_sample.clip_id,
             frame_sample.track_id,
             frame_sample.frame_num,
         )
 
-        data, flip = preprocess_segment(
-            [frame],
-            [frame_sample.temp_median],
-            [frame_sample.velocity],
-            augment=augment,
-            default_inset=self.DEFAULT_INSET,
-        )
-        return data[0]
+        return data
 
-    def fetch_sample(self, sample, augment=False, channels=None):
+    def fetch_sample(self, sample, channels=None):
         if isinstance(sample, SegmentHeader):
             label = sample.label
             if self.label_mapping:
                 label = self.mapped_label(sample.label)
-            return self.fetch_segment(sample, augment), label
+            return self.fetch_segment(sample), label
         return self.fetch_frame(sample, channels=channels)
 
     def fetch_segment(

@@ -2,9 +2,10 @@ import json
 import dateutil
 import numpy as np
 import logging
-
+import os
 from ml_tools.imageprocessing import filtered_is_valid
 from ml_tools import tools
+from ml_tools.frame import Frame
 
 FRAMES_PER_SECOND = 9
 
@@ -133,7 +134,7 @@ class TrackHeader:
         return len(self.important_frames)
 
     # trying to get only clear frames
-    def set_important_frames(self, labels, min_mass=None, frame_data=None):
+    def set_important_frames(self, min_mass=None, frame_data=None, model=None):
         # this needs more testing
         frames = []
         for i, mass in enumerate(self.frame_mass):
@@ -143,16 +144,35 @@ class TrackHeader:
                 min_mass is None
                 or mass >= min_mass
                 and mass >= self.lower_mass
-                and mass <= self.upper_mass
+                # and mass <= self.upper_mass
             ):  # trying it out
                 if frame_data is not None:
-                    if not filtered_is_valid(frame_data[i], self.label):
-                        logging.debug(
-                            "set_important_frames %s frame %s has no zeros in filtered frame",
-                            self.unique_id,
-                            i,
+                    if model and (self.label not in ["false-positive", "insect"]):
+                        prediction = model.classify_frame(
+                            frame_data[i], self.frame_temp_median[i]
                         )
-                        continue
+                        predicted_label = model.labels[np.argmax(prediction)]
+                        if predicted_label == "false-positive":
+                            logging.debug(
+                                "Frame %d for clip %s track %s is suspected to be a FP instead of %s",
+                                i + self.start_frame,
+                                self.clip_id,
+                                self.track_id,
+                                self.label,
+                            )
+                            continue
+                        # else:
+                        #     tools.frame_to_jpg(
+                        #         frame_data[i].thermal,
+                        #         f"FP/{self.clip_id}/{self.label}/{self.clip_id}-{self.track_id}-{i + self.start_frame}.png",
+                        #     )
+                    # if not filtered_is_valid(frame_data[i], self.label):
+                    #     logging.debug(
+                    #         "set_important_frames %s frame %s has no zeros in filtered frame",
+                    #         self.unique_id,
+                    #         i,
+                    #     )
+                    #     continue
                 frames.append(i)
         np.random.shuffle(frames)
         for frame in frames:

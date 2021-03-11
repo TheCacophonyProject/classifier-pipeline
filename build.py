@@ -15,6 +15,8 @@ from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
 from ml_tools.dataset import Dataset, dataset_db_path
 from ml_tools.datasetstructures import Camera
+from ml_tools.kerasmodel import KerasModel
+
 import pytz
 
 LOW_DATA_LABELS = ["wallaby", "human", "dog"]
@@ -302,13 +304,16 @@ def test_dataset(db, config, date):
     return test
 
 
-def recalc_important(dataset_filename, db):
+def recalc_important(dataset_filename, db, model_file=None):
     datasets = pickle.load(open(dataset_filename, "rb"))
     print_counts(datasets[0], *datasets)
     datasets[0].enable_augmentation = True
-
+    model = KerasModel()
+    model.load_model(model_file, training=False)
     for dataset in datasets:
-        print(dataset.name, dataset.enable_augmentation)
+        # if model:
+        # dataset.frame_model = model
+
         for track in dataset.tracks:
             if track.label == "false-positive":
                 continue
@@ -318,7 +323,7 @@ def recalc_important(dataset_filename, db):
             track.important_frames = []
             if track_data is None:
                 continue
-            track.set_important_frames([], 16, False, frame_data=track_data)
+            track.set_important_frames(20, track_data, model)
             print(
                 "recalculated",
                 track,
@@ -333,7 +338,7 @@ def recalc_important(dataset_filename, db):
         dataset.rebuild_cdf()
     print("after recalculating")
     print_counts(datasets[0], *datasets)
-
+    dataset.frame_model = None
     return datasets
 
 
@@ -352,6 +357,9 @@ def main():
     config = load_config(args.config_file)
     datasets_filename = dataset_db_path(config)
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
+    datasets = recalc_important(datasets_filename, db, config.classify.model)
+    pickle.dump(datasets, open(dataset_db_path(config), "wb"))
+    return
     # add_overlay(datasets_filename, db)
     # return
     dataset = Dataset(

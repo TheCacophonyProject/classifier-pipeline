@@ -293,16 +293,17 @@ def _data(labels, dataset, samples, params, to_categorical=True):
             )
         else:
             try:
-                data = dataset.fetch_sample(
-                    sample, augment=params.augment, channels=params.channel
-                )
+                frame = dataset.fetch_sample(sample)
 
             except Exception as inst:
                 logging.error("Error fetching samples %s %s", sample, inst)
                 continue
 
-            data = preprocess_frame(
-                data,
+            frame = preprocess_frame(
+                frame,
+                params.augment,
+                frame_sample.temp_median,
+                frame_sample.velocity,
                 params.output_dim,
                 preprocess_fn=params.model_preprocess,
                 sample=sample,

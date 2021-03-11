@@ -687,31 +687,32 @@ class KerasModel:
 
     def classify_track(self, clip, track, keep_all=True):
         track_data = []
+        thermal_median = []
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
             cropped_frame = frame.crop_by_region(region)
             track_data.append(cropped_frame)
+            thermal_median.append(np.median(frame.thermal))
         return self.classify_track_data(
-            track.get_id(), track_data, regions=track.bounds_history
+            track.get_id(), track_data, thermal_median, regions=track.bounds_history
         )
 
-    def classify_track_data(self, track_id, data, keep_all=True, regions=None):
+    def classify_track_data(
+        self, track_id, data, thermal_median, keep_all=True, regions=None
+    ):
         track_prediction = TrackPrediction(track_id, 0, keep_all)
         if self.params.use_movement:
-            predictions = self.classify_frames(data, regions=regions)
+            predictions = self.classify_frames(data, thermal_median, regions=regions)
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
         else:
-            skip = 9
             for i, frame in enumerate(data):
-                if i % skip == 0:
-                    continue
-                prediction = self.classify_frame(frame)
+                prediction = self.classify_frame(frame, thermal_median[i])
                 track_prediction.classified_frame(i, prediction, None)
 
         return track_prediction
 
-    def classify_frames(self, data, preprocess=True, regions=None):
+    def classify_frames(self, data, thermal_median, preprocess=True, regions=None):
         predictions = []
 
         filtered_data = []
@@ -745,7 +746,7 @@ class KerasModel:
             for i, frame_i in enumerate(seg_frames):
                 f = data[frame_i]
                 segment.append(f.copy())
-                median[i] = np.median(f.thermal)
+                median[i] = thermal_median[frame_i]
 
             frames = preprocess_movement(
                 square_data,
@@ -762,16 +763,18 @@ class KerasModel:
             predictions.append(output[0])
         return predictions
 
-    def classify_frame(self, frame, preprocess=True):
-
+    def classify_frame(self, frame, thermal_median, preprocess=True):
         if preprocess:
             frame = preprocess_frame(
                 frame,
+                False,
+                thermal_median,
+                0,
                 self.params.output_dim,
-                self.params.channel,
-                augment=False,
                 preprocess_fn=self.preprocess_fn,
             )
+            if frame is None:
+                return np.zeros(len(self.labels))
         output = self.model.predict(frame[np.newaxis, :])
         return output[0]
 
@@ -869,7 +872,6 @@ def plot_confusion_matrix(cm, class_names):
 
 def log_confusion_matrix(epoch, logs, model, validate, writer):
     # Use the model to predict the values from the validation dataset.
-    print("doing confusing", epoch)
     batch_y = validate.get_epoch_predictions(epoch)
     validate.use_previous_epoch = epoch
     # Calculate the confusion matrix.
