@@ -34,16 +34,16 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
             labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )
     #
-
+    groups = {}
+    groups["bird"] = ["bird"]
+    groups["hedgehog"] = ["hedgehog"]
+    groups["rodent"] = ["rodent"]
+    groups["possum"] = ["possum", "cat"]
+    groups["human"] = ["human"]
+    groups["false-positive"] = ["false-positive", "insect"]
+    model.mapped_labels = groups
     model.import_dataset(datasets_filename, lbl_p=conf.train.label_probabilities)
-    groups = []
-    groups.append((["bird"], "bird"))
-    groups.append((["hedgehog"], "hedgehog"))
-    groups.append((["rodent"], "rodent"))
-    groups.append((["possum", "cat"], "possum"))
-    groups.append((["human"], "human"))
-    groups.append((["false-positive", "insect"], "false-positive"))
-    model.regroup(groups)
+
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)
     print()

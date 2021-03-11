@@ -46,6 +46,7 @@ class TrainConfig(DefaultConfig):
         "mustelid": 5,
         "false-positive": 1,
         "wallaby": 5,
+        "vehicle": 1,
     }
 
     @classmethod

@@ -3,6 +3,8 @@ import logging
 import pickle
 import time
 import sys
+import os
+import json
 
 from dateutil.parser import parse
 from config.config import Config
@@ -382,15 +384,14 @@ dataset_file = dataset_db_path(config)
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
 
-groups = []
-groups.append((["bird"], "bird"))
-groups.append((["hedgehog"], "hedgehog"))
-groups.append((["rodent"], "rodent"))
-groups.append((["possum", "cat"], "possum"))
-groups.append((["human"], "human"))
-groups.append((["false-positive", "insect"], "false-positive"))
-dataset.lbl_p = config.train.label_probabilities
-dataset.regroup(groups)
+dir = os.path.dirname(model_file)
+meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
+mapped_labels = meta.get("mapped_labels")
+label_probabilities = meta.get("label_probabilities")
+
+dataset.lbl_p = label_probabilities
+if mapped_labels:
+    dataset.regroup(mapped_labels)
 
 logging.info(
     "Dataset loaded %s, using labels %s, mapped labels %s",
@@ -403,6 +404,15 @@ for label in dataset.labels:
     segments, frames, tracks, _, _ = dataset.get_counts(label)
     logging.info("%s %s / %s / %s", label, segments, frames, tracks)
 
+print("Mapped labels")
+for label in dataset.label_mapping.keys():
+    print(
+        "{} {:<20} {:<20}".format(
+            label,
+            dataset.mapped_label(label),
+            "{}/{}/{}/{:.1f}".format(*dataset.get_counts(label)),
+        )
+    )
 if args.confusion is not None:
     ev.save_confusion(dataset, args.confusion)
 else:

@@ -1017,23 +1017,21 @@ class Dataset:
         """
         self.label_mapping = {}
         counts = []
-        new_labels = []
         tracks_by_bin = {}
         samples = []
-        for g in groups:
-            new_labels.append(g[1])
+        for mapped_label, labels in groups.items():
             count = 0
-            for label in g[0]:
+            for label in labels:
                 lbl_samples = self.samples_for(label)
                 count += len(lbl_samples)
-                self.label_mapping[label] = g[1]
                 samples.extend(lbl_samples)
+                self.label_mapping[label] = mapped_label
                 for sample in lbl_samples:
                     track = self.tracks_by_id[sample.unique_track_id]
                     tracks_by_bin[track.bin_id] = track
             counts.append(count)
 
-        self.labels = new_labels
+        self.labels = list(groups.keys())
         self.tracks_by_bin = tracks_by_bin
         self.set_samples(samples)
         if self.use_segments:
@@ -1044,6 +1042,9 @@ class Dataset:
             if shuffle:
                 np.random.shuffle(self.segments)
         elif shuffle:
+            self.frames_by_id == {}
+            for sample in samples:
+                self.frames_by_id[sample.id] = sample
             np.random.shuffle(self.frame_samples)
         self.rebuild_cdf()
 

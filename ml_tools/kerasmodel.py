@@ -60,6 +60,8 @@ class KerasModel:
         self.preprocess_fn = None
         self.validate = None
         self.train = None
+        self.mapped_labels = None
+        self.label_probabilities = None
 
     def base_model(self, input_shape):
         pretrained_model = self.params.model
@@ -285,6 +287,8 @@ class KerasModel:
         self.params = HyperParams()
         self.params.update(meta["hyperparams"])
         self.labels = meta["labels"]
+        self.mapped_labels = meta["mapped_labels"]
+        self.label_probabilities = meta["label_probabilities"]
         self.preprocess_fn = self.get_preprocess_fn()
         self.type = meta.get("type")
 
@@ -304,6 +308,9 @@ class KerasModel:
         model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
         model_stats["version"] = self.VERSION
+        model_stats["mapped_labels"] = self.mapped_labels
+        model_stats["label_probabilities"] = self.label_probabilities
+
         if history:
             model_stats["history"] = history.history
         if test_results:
@@ -462,17 +469,19 @@ class KerasModel:
         )
         return [checkpoint_acc, checkpoint_loss, checkpoint_recall]
 
-    def regroup(self, groups, shuffle=True):
+    def regroup(self, shuffle=True):
+        if not self.mapped_labels:
+            logging.warn("Cant regroup without specifying mapped_labels")
+            return
         for fld in self.datasets._fields:
             dataset = getattr(self.datasets, fld)
-            dataset.regroup(groups, shuffle=shuffle)
+            dataset.regroup(self.mapped_labels, shuffle=shuffle)
         self.set_labels()
 
     def set_labels(self):
         # preserve label order if needed, this should be used when retraining
         # on a model already trained with our data
         self.labels = self.datasets.train.labels.copy()
-        print("training with", self.labels)
 
     def import_dataset(self, dataset_filename, ignore_labels=None, lbl_p=None):
         """
@@ -481,7 +490,7 @@ class KerasModel:
         :param ignore_labels: (optional) these labels will be removed from the dataset.
         :return:
         """
-
+        self.label_probabilities = lbl_p
         self.datasets = namedtuple("Datasets", "train, validation, test")
         datasets = pickle.load(open(dataset_filename, "rb"))
         self.datasets.train, self.datasets.validation, self.datasets.test = datasets
@@ -494,7 +503,8 @@ class KerasModel:
             if ignore_labels:
                 for label in ignore_labels:
                     dataset.remove_label(label)
-
+        if self.mapped_labels:
+            self.regroup()
         logging.info(
             "Training samples: {0:.1f}k".format(self.datasets.train.sample_count / 1000)
         )
