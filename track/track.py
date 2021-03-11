@@ -91,6 +91,8 @@ class Track:
         self.predicted_mid = None
         self.crop_rectangle = None
 
+        self.predictions = None
+
     @classmethod
     def from_region(cls, clip, region):
         track = cls(clip.get_id(), fps=clip.frames_per_second)

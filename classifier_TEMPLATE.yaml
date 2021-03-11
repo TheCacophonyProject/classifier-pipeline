@@ -298,7 +298,7 @@ build:
 
     # clips after this date will be ignored.
     # note: this is based on the UTC date.
-    clip_end_date: None
+    clip_end_date: null
 
     # minimum average mass for test segment
     test_min_mass: 20

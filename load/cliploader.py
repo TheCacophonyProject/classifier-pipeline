@@ -113,11 +113,13 @@ class ClipLoader:
             track_data = []
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
-                frame = track.crop_by_region(frame, region, filter_mask_by_region=False)
+                cropped = track.crop_by_region(
+                    frame, region, filter_mask_by_region=False
+                )
                 # zero out the filtered channel
                 if not self.config.load.include_filtered_channel:
-                    frame[TrackChannels.filtered] = 0
-                track_data.append(frame)
+                    cropped[TrackChannels.filtered] = 0
+                track_data.append((frame.thermal, cropped))
 
             self.database.add_track(
                 clip.get_id(),
