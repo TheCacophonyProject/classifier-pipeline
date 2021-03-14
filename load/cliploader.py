@@ -186,7 +186,6 @@ class ClipLoader:
                 cropped = track.crop_by_region(
                     frame, region, filter_mask_by_region=False
                 )
-
                 # zero out the filtered channel
                 if not self.config.load.include_filtered_channel:
                     cropped[TrackChannels.filtered] = 0

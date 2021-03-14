@@ -30,14 +30,21 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import detect_objects
+from ml_tools.imageprocessing import detect_objects, normalize
 
 
 class ClipTrackExtractor:
     BASE_DISTANCE_CHANGE = 450
-    BASE_MASS_CHANGE = 10
+    # minimum region mass change
+    MIN_MASS_CHANGE = 20
+    # enforce mass growth after X seconds
+    RESTRICT_MASS_AFTER = 1.5
+    # amount region mass can change
+    MASS_CHANGE_PERCENT = 0.55
+
     MAX_DISTANCE = 2000
     PREVIEW = "preview"
+    VERSION = 9
 
     def __init__(
         self,
@@ -135,15 +142,20 @@ class ClipTrackExtractor:
         Calculates filtered frame from thermal
         :param thermal: the thermal frame
         :param background: (optional) used for background subtraction
-        :return: the filtered frame
+        :return: uint8 filtered frame and adjusted clip threshold for normalized frame
         """
 
         filtered = np.float32(thermal.copy())
         avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
-        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
 
-        return filtered
+        filtered, stats = normalize(filtered, new_max=255)
+        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
+        if stats[1] == stats[2]:
+            mapped_thresh = clip.background_thresh
+        else:
+            mapped_thresh = clip.background_thresh / (stats[1] - stats[2]) * 255
+        return filtered, mapped_thresh
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
         """
@@ -151,11 +163,10 @@ class ClipTrackExtractor:
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-        filtered = self._get_filtered_frame(clip, thermal)
+        filtered, threshold = self._get_filtered_frame(clip, thermal)
         _, mask, component_details = detect_objects(
-            filtered.copy(), otsus=False, threshold=clip.background_thresh
+            filtered.copy(), otsus=False, threshold=threshold
         )
-
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
 
@@ -164,28 +175,27 @@ class ClipTrackExtractor:
                 if clip.frame_on in track.frame_list:
                     track.add_frame_for_existing_region(
                         clip.frame_buffer.get_last_frame(),
-                        clip.background_thresh,
+                        threshold,
                         prev_filtered,
                     )
         else:
-            regions = self._get_regions_of_interest(
-                clip, component_details, filtered, prev_filtered
-            )
+            regions = []
+            if ffc_affected:
+                clip.active_tracks = set()
+            else:
+                regions = self._get_regions_of_interest(
+                    clip, component_details, filtered, prev_filtered
+                )
+                self._apply_region_matchings(clip, regions)
             clip.region_history.append(regions)
-            self._apply_region_matchings(
-                clip, regions, create_new_tracks=not ffc_affected
-            )
 
-    def _apply_region_matchings(self, clip, regions, create_new_tracks=True):
+    def _apply_region_matchings(self, clip, regions):
         """
         Work out the best matchings between tracks and regions of interest for the current frame.
         Create any new tracks required.
         """
         unmatched_regions, matched_tracks = self._match_existing_tracks(clip, regions)
-        if create_new_tracks:
-            new_tracks = self._create_new_tracks(clip, unmatched_regions)
-        else:
-            new_tracks = set()
+        new_tracks = self._create_new_tracks(clip, unmatched_regions)
         self._filter_inactive_tracks(clip, new_tracks, matched_tracks)
 
     def _match_existing_tracks(self, clip, regions):
@@ -200,6 +210,20 @@ class ClipTrackExtractor:
 
                 max_distance = get_max_distance_change(track)
                 max_size_change = get_max_size_change(track, region)
+                max_mass_change = get_max_mass_change_percent(track)
+                if (
+                    max_mass_change
+                    and abs(track.average_mass() - region.mass) > max_mass_change
+                ):
+                    self.print_if_verbose(
+                        "track {} region mass {} deviates too much from {}".format(
+                            track.get_id(),
+                            region.mass,
+                            track.average_mass(),
+                        )
+                    )
+
+                    continue
                 if distance > max_distance:
                     self.print_if_verbose(
                         "track {} distance score {} bigger than max distance {}".format(
@@ -214,6 +238,7 @@ class ClipTrackExtractor:
                             track.get_id(), size_change, max_size_change
                         )
                     )
+                    continue
                 scores.append((distance, track, region))
 
         # makes tracking consistent by ordering by score then by frame since target then track id
@@ -231,7 +256,6 @@ class ClipTrackExtractor:
             matched_tracks.add(track)
             used_regions.add(region)
             unmatched_regions.remove(region)
-
         return unmatched_regions, matched_tracks
 
     def _create_new_tracks(self, clip, unmatched_regions):
@@ -309,7 +333,6 @@ class ClipTrackExtractor:
                 id=i,
                 frame_number=clip.frame_on,
             )
-
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)
@@ -323,7 +346,10 @@ class ClipTrackExtractor:
                 ) / old_region.height
                 if crop_width_fraction > 0.25 or crop_height_fraction > 0.25:
                     continue
-            elif self.config.cropped_regions_strategy == "none":
+            elif (
+                self.config.cropped_regions_strategy == "none"
+                or self.config.cropped_regions_strategy is None
+            ):
                 if region.was_cropped:
                     continue
             elif self.config.cropped_regions_strategy != "all":
@@ -360,12 +386,11 @@ class ClipTrackExtractor:
             for stats, track in track_stats:
                 start_s, end_s = clip.start_and_end_in_secs(track)
                 logging.info(
-                    " - track duration: %.1fsec, number of frames:%s, offset:%.1fpx, delta:%.1f, mass:%.1fpx",
+                    " - track %s duration: %.1fsec, number of frames:%s, stats %s",
+                    track.get_id(),
                     end_s - start_s,
                     len(track),
-                    stats.max_offset,
-                    stats.delta_std,
-                    stats.average_mass,
+                    stats,
                 )
         # filter out tracks that probably are just noise.
         good_tracks = []
@@ -426,7 +451,9 @@ class ClipTrackExtractor:
             return True
         # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
         if stats.delta_std < clip.track_min_delta:
-            self.print_if_verbose("Track filtered.  Too static")
+            self.print_if_verbose(
+                "Track filtered.  Too static {}".format(stats.delta_std)
+            )
             clip.filtered_tracks.append(("Track filtered.  Too static", track))
             return True
         if stats.delta_std > clip.track_max_delta:
@@ -474,6 +501,23 @@ def get_max_size_change(track, region):
         region_percent = 2
 
     return region_percent
+
+
+def get_max_mass_change_percent(track):
+    average_mass = track.average_mass()
+
+    if len(track) > ClipTrackExtractor.RESTRICT_MASS_AFTER * track.fps:
+        vel = track.velocity
+        mass_percent = ClipTrackExtractor.MASS_CHANGE_PERCENT
+        if np.sum(np.abs(vel)) > 5:
+            # faster tracks can be a bit more deviant
+            mass_percent = mass_percent + 0.1
+        return max(
+            ClipTrackExtractor.MIN_MASS_CHANGE,
+            average_mass * mass_percent,
+        )
+    else:
+        return None
 
 
 def get_max_distance_change(track):

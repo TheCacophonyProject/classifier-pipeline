@@ -58,6 +58,8 @@ class TrackingConfig(DefaultConfig):
     moving_vel_thresh = attr.ib()
     min_moving_frames = attr.ib()
     max_blank_percent = attr.ib()
+    max_mass_std_percent = attr.ib()
+
     max_jitter = attr.ib()
     # used to provide defaults
     stats = attr.ib()
@@ -104,6 +106,7 @@ class TrackingConfig(DefaultConfig):
             min_tag_confidence=tracking["min_tag_confidence"],
             min_moving_frames=tracking["min_moving_frames"],
             max_blank_percent=tracking["max_blank_percent"],
+            max_mass_std_percent=tracking["max_mass_std_percent"],
             max_jitter=tracking["max_jitter"],
             stats=None,
             filters=None,
@@ -145,22 +148,23 @@ class TrackingConfig(DefaultConfig):
             },
             verbose=False,
             # defaults provided in dictionaries, placesholders to stop init complaining
-            aoi_min_mass=None,
-            aoi_pixel_variance=None,
-            cropped_regions_strategy=None,
-            track_min_offset=None,
-            track_min_mass=None,
-            threshold_percentile=None,
-            min_threshold=None,
-            max_threshold=None,
-            track_overlap_ratio=None,
-            min_duration_secs=None,
+            aoi_min_mass=4.0,
+            aoi_pixel_variance=2.0,
+            cropped_regions_strategy="cautious",
+            track_min_offset=4.0,
+            track_min_mass=2.0,
+            threshold_percentile=99.9,
+            min_threshold=30,
+            max_threshold=50,
+            track_overlap_ratio=0.5,
+            min_duration_secs=3,
             min_tag_confidence=0.8,
             enable_track_output=True,
             moving_vel_thresh=4,
             min_moving_frames=2,
             max_blank_percent=30,
-            max_jitter=15,
+            max_mass_std_percent=ClipTrackExtractor.MASS_CHANGE_PERCENT,
+            max_jitter=20,
         )
 
     def validate(self):

@@ -301,7 +301,7 @@ class PiClassifier(Processor):
         save_file["temp_thresh"] = self.clip.temp_thresh
         save_file["algorithm"] = {}
         save_file["algorithm"]["model"] = self.config.classify.model
-        save_file["algorithm"]["tracker_version"] = self.clip.VERSION
+        save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
         save_file["tracks"] = []
         for track in self.clip.tracks:
             track_info = {}

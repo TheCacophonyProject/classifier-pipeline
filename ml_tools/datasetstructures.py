@@ -3,7 +3,7 @@ import dateutil
 import numpy as np
 import logging
 
-from ml_tools.imageprocessing import filtered_is_valid
+from ml_tools.imageprocessing import clear_frame
 from ml_tools import tools
 
 FRAMES_PER_SECOND = 9
@@ -142,7 +142,7 @@ class TrackHeader:
                 and mass <= self.upper_mass
             ):  # trying it out
                 if frame_data is not None:
-                    if not filtered_is_valid(frame_data[i], self.label):
+                    if not clear_frame(frame_data[i], self.label):
                         logging.debug(
                             "set_important_frames %s frame %s has no zeros in filtered frame",
                             self.unique_id,
@@ -217,9 +217,6 @@ class TrackHeader:
                 logging.debug("Not enough movment %s %s", self, self.label)
                 return
 
-        segment_count = (len(mass_history) - segment_width) // segment_frame_spacing
-        segment_count += 1
-
         if use_important:
             remaining = segment_width - self.num_sample_frames
             segment_count = max(0, (self.num_sample_frames - segment_width) // 9)
@@ -264,6 +261,9 @@ class TrackHeader:
                 self.segments.append(segment)
 
             return
+
+        segment_count = (len(mass_history) - segment_width) // segment_frame_spacing
+        segment_count += 1
         # scan through track looking for good segments to add to our datset
         for i in range(segment_count):
             segment_start = i * segment_frame_spacing

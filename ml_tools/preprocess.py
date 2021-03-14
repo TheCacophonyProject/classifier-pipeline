@@ -100,10 +100,7 @@ def preprocess_segment(
         if reference_level is not None:
             frame.thermal -= reference_level[i]
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
-        # dont think we need to do this
-        # map optical flow down to right level,
-        # we pre-multiplied by 256 to fit into a 16bit int
-        # data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
+
         if augment:
             if level_adjust is not None:
                 frame.thermal += level_adjust
@@ -178,8 +175,8 @@ def preprocess_movement(
         dim=square.shape,
         require_movement=True,
     )
-    overlay, success = imageprocessing.normalize(overlay, min=0)
-    if not success:
+    overlay, stats = imageprocessing.normalize(overlay, min=0)
+    if not stats[0]:
         return None
 
     if flipped:

@@ -37,7 +37,7 @@ class Clip:
     PREVIEW = "preview"
     FRAMES_PER_SECOND = 9
     local_tz = pytz.timezone("Pacific/Auckland")
-    VERSION = 8
+    VERSION = 9
     CLIP_ID = 1
     # used when calculating background, mininimum percentage the difference object
     # and background object must overlap i.e. they are a valid object
@@ -123,7 +123,7 @@ class Clip:
         all the warms moving parts from the initial frame
         """
         if initial_frames is None:
-            return initial_diff
+            return np.zeros((frame.shape))
         else:
             diff = initial_frames - frame
             if initial_diff is not None:
@@ -140,14 +140,24 @@ class Clip:
         Also check for animals in the background by checking for connected components in
         the intital_diff frame - this is the maximum change between first average frame and all other average frames in the clip
         """
+        frames = []
+        if frame_reader.background_frames > 0:
+            for frame in frame_reader:
+                if frame.background_frame:
+                    frames.append(frame.pix)
+                else:
+                    break
+            frame_average = np.average(frames, axis=0)
+            self.update_background(frame_average)
+            self._background_calculated()
+            return
+
         initial_frames = None
         initial_diff = None
-        frames = []
         for frame in frame_reader:
             ffc_affected = is_affected_by_ffc(frame)
             if ffc_affected:
                 continue
-
             frames.append(frame.pix)
             if len(frames) == 9:
                 frame_average = np.average(frames, axis=0)
@@ -157,6 +167,7 @@ class Clip:
                 )
                 if initial_frames is None:
                     initial_frames = frame_average
+
                 frames = []
 
         if len(frames) > 0:
@@ -171,7 +182,6 @@ class Clip:
             if initial_frames is None:
                 initial_frames = frame_average
         frames = []
-
         np.clip(initial_diff, 0, None, out=initial_diff)
         initial_frames = self.remove_background_animals(initial_frames, initial_diff)
 
@@ -209,6 +219,9 @@ class Clip:
             sub_components, sub_connected, sub_stats = detect_objects(
                 norm_back, otsus=True
             )
+
+            if sub_components == 0:
+                continue
 
             overlap_image = region.subimage(lower_mask) * 255
             overlap_pixels = np.sum(sub_connected[overlap_image > 0])
@@ -320,6 +333,8 @@ class Clip:
         self.res_x = res_x
         self.res_y = res_y
         self._set_crop_rectangle()
+        for track in self.tracks:
+            track.crop_rectangle = self.crop_rectangle
 
     def _set_crop_rectangle(self):
 

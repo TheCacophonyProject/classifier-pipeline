@@ -471,9 +471,10 @@ class Dataset:
         """ Returns a random segment from weighted list. """
         if not self.segments:
             return None
-        roll = random.random()
-        index = bisect(self.segment_cdf, roll)
-        return self.segments[index]
+        choice = np.random.choice(self.samples(), 1, p=self.segment_cdf)
+        if len(choice) > 0:
+            return choice[0]
+        return None
 
     def load_all(self, force=False):
         """ Loads all X and y into dataset if required. """
@@ -670,20 +671,22 @@ class Dataset:
             total += seg_weight
             self.segment_cdf.append(seg_weight)
 
-        # guarantee it's in the order we will sample by
+        if len(self.segment_cdf) > 0:
+            self.segment_cdf = [x / total for x in self.segment_cdf]
+
+        # guarantee that the cdf is in the same order that we will sample by
         for label, segments in self.segments_by_label.items():
             cdf = self.segment_label_cdf.setdefault(label, [])
             for segment in segments:
                 cdf.append(segment.weight)
 
-        if len(self.segment_cdf) > 0:
-            self.segment_cdf = [x / total for x in self.segment_cdf]
         for key, cdf in self.segment_label_cdf.items():
             total = sum(cdf)
             if total > 0:
                 self.segment_label_cdf[key] = [x / total for x in cdf]
             else:
                 self.segment_label_cdf[key] = []
+
         # do this after so labels are balanced
         if self.label_mapping:
             mapped_cdf = {}
