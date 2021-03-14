@@ -168,11 +168,12 @@ class TrackHeader:
                         )
                         if prediction is None:
                             logging.info(
-                                "Couldnt predict Frame %d for clip %s track %s",
+                                "Couldnt predict Frame %d for clip %s track %s region %s",
                                 i + self.start_frame,
                                 self.clip_id,
                                 self.track_id,
                                 self.label,
+                                self.track_bounds[i],
                             )
                         predicted_label = model.labels[np.argmax(prediction)]
                         if predicted_label == "false-positive":
