@@ -163,6 +163,8 @@ def diverse_validation(cameras, labels, max_cameras):
         if not found:
             missing_labels.remove(label)
         # always add to min label
+        if len(missing_labels) == 0:
+            break
         label = min(missing_labels, key=(lambda k: lbl_counts[k]))
 
     return val_cameras, cameras

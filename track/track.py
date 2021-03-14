@@ -119,7 +119,7 @@ class Track:
             np.around(100 * np.array(track_prediction.predictions))
         )
         self.predicted_confidence = int(round(100 * track_prediction.max_score))
-        self.prediction_classes = labels
+        self.prediction_classes = track_prediction.labels
 
     def load_track_meta(
         self,

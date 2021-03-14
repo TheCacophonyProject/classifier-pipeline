@@ -235,12 +235,14 @@ class KerasModel:
 
         if self.use_movement:
             data = []
+            thermal_median = []
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 frame = frame.crop_by_region(region)
+                thermal_median.append(np.median(frame.thermal))
                 data.append(frame)
             predictions = self.classify_using_movement(
-                data, regions=track.bounds_history
+                data, thermal_median, regions=track.bounds_history
             )
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
@@ -301,7 +303,7 @@ class KerasModel:
                 )
         return track_prediction
 
-    def classify_using_movement(self, data, regions):
+    def classify_using_movement(self, data, thermal_median, regions):
         """
         take any square_width, by square_width amount of frames and sort by
         time use as the r channel, g and b channel are the overall movment of
@@ -333,7 +335,7 @@ class KerasModel:
             for frame_i in seg_frames:
                 f = data[frame_i]
                 segment.append(f.copy())
-                medians.append(np.median(f.thermal[0]))
+                medians.append(thermal_median[i])
             frames = preprocess_movement(
                 data,
                 segment,

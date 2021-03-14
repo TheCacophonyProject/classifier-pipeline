@@ -190,9 +190,6 @@ class ClipLoader:
                 if not self.config.load.include_filtered_channel:
                     cropped[TrackChannels.filtered] = 0
                 track_data.append((frame.thermal, cropped))
-            if classifier:
-                track_prediction = classifier.classify_track(clip, track)
-                track.add_prediction_info(classifier.labels, track_prediction)
             self.database.add_track(
                 clip.get_id(),
                 track,
@@ -201,6 +198,9 @@ class ClipLoader:
                 start_time=start_time,
                 end_time=end_time,
             )
+            if classifier:
+                track_prediction = classifier.classify_track(clip, track)
+                track.add_prediction_info(track_prediction)
 
     def _filter_clip_tracks(self, clip_metadata):
         """
@@ -222,7 +222,6 @@ class ClipLoader:
         not in the excluded_tags list, defined in the config.
         """
         min_confidence = self.track_config.min_tag_confidence
-        excluded_tags = self.config.excluded_tags
         track_data = track_meta.get("data")
         if not track_data:
             return False
@@ -231,7 +230,7 @@ class ClipLoader:
         excluded_tags = [
             tag
             for tag in track_tags
-            if not tag.get("automatic", False) and tag in excluded_tags
+            if not tag.get("automatic", False) and tag in self.config.excluded_tags
         ]
 
         if len(excluded_tags) > 0:
@@ -270,7 +269,8 @@ class ClipLoader:
             if not self.database.has_prediction(str(metadata["id"])) and classifier:
                 logging.info("Adding predictions to %s", filename)
                 add_predictions(self.database, str(metadata["id"]), classifier)
-            logging.warning("Already loaded %s", filename)
+            else:
+                logging.warning("Already loaded %s", filename)
             return
 
         valid_tracks = self._filter_clip_tracks(metadata)

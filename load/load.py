@@ -41,7 +41,9 @@ def parse_params():
         help="Re process clips that already exist in the database",
     )
     parser.add_argument(
-        "--add-missing-predictions", action="count", help="Add predictions"
+        "--add-missing-predictions",
+        action="count",
+        help="Add missing prediction info to already loaded data",
     )
     parser.add_argument(
         "--calculate-predictions",
