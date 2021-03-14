@@ -774,7 +774,7 @@ class KerasModel:
                 preprocess_fn=self.preprocess_fn,
             )
             if frame is None:
-                return np.zeros(len(self.labels))
+                return None
         output = self.model.predict(frame[np.newaxis, :])
         return output[0]
 

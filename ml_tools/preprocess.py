@@ -156,6 +156,8 @@ def preprocess_frame(
         augment=augment,
         default_inset=0,
     )
+    if len(preprocess_frame) == 0:
+        return
     processed_frame = processed_frame[0]
     thermal = processed_frame.get_channel(TrackChannels.thermal)
     filtered = processed_frame.get_channel(TrackChannels.filtered)

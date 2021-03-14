@@ -166,6 +166,14 @@ class TrackHeader:
                         prediction = model.classify_frame(
                             frame_data[i], self.frame_temp_median[i]
                         )
+                        if prediction is None:
+                            logging.info(
+                                "Couldnt predict Frame %d for clip %s track %s",
+                                i + self.start_frame,
+                                self.clip_id,
+                                self.track_id,
+                                self.label,
+                            )
                         predicted_label = model.labels[np.argmax(prediction)]
                         if predicted_label == "false-positive":
                             logging.debug(
