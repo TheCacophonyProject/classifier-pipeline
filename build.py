@@ -293,7 +293,8 @@ def add_camera_tracks(
     dataset.balance_bins()
 
 
-def test_dataset(db, config, date):
+def test_dataset(db, config, date, datasets):
+
     test = Dataset(db, "test", config)
     tracks_loaded, total_tracks = test.load_tracks(shuffle=True, after_date=date)
     print("Test Loaded {}/{} tracks".format(tracks_loaded, total_tracks))
@@ -301,6 +302,32 @@ def test_dataset(db, config, date):
         if value != 0:
             print("Test  {} filtered {}".format(key, value))
 
+    validate = datasets[1]
+    wallaby_validate = validate.cameras_by_id.get("Wallaby-2")
+
+    if wallaby_validate is not None:
+        wallaby_count = 0
+        last_index = 0
+        wallaby_test = Camera("Wallaby-3")
+        test_tracks = []
+        for i, bin_id in enumerate(wallaby_validate.label_to_bins["wallaby"]):
+            bin = wallaby_validate.bins[bin_id]
+            for track in bin:
+                wallaby_count += 1
+                track.camera = "Wallaby-3"
+                wallaby_test.add_track(track)
+                wallaby_validate.remove_track(track)
+                test_tracks.append(track)
+            remove.append(bin_id)
+            last_index = i
+            if wallaby_count > MIN_TRACKS:
+                break
+        wallaby_validate_tracks.label_to_bins[
+            "wallaby"
+        ] = wallaby_validate_tracks.label_to_bins["wallaby"][last_index + 1 :]
+        for bin in remove:
+            del wallaby_validate_tracks.bins[bin]
+        test.add_tracks(test_tracks)
     return test
 
 
@@ -371,12 +398,12 @@ def main():
     dataset = Dataset(
         db, "dataset", config, consecutive_segments=args.consecutive_segments
     )
-    set_important(dataset, config.classify.model)
-    print("set important.....")
-    return
-    datasets = recalc_important(datasets_filename, db, config.classify.model)
-    pickle.dump(datasets, open(dataset_db_path(config), "wb"))
-    return
+    # set_important(dataset, config.classify.model)
+    # print("set important.....")
+    # return
+    # datasets = recalc_important(datasets_filename, db, config.classify.model)
+    # pickle.dump(datasets, open(dataset_db_path(config), "wb"))
+    # return
     # add_overlay(datasets_filename, db)
     # return
     dataset = Dataset(
@@ -405,7 +432,7 @@ def main():
     datasets = split_dataset_by_cameras(db, dataset, config, args)
     if args.date is None:
         args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=7)
-    test = test_dataset(db, config, args.date)
+    test = test_dataset(db, config, args.date, datasets)
     datasets = (*datasets, test)
     print_counts(dataset, *datasets)
     print_cameras(*datasets)
