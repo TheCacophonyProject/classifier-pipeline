@@ -402,14 +402,14 @@ class TrackDatabase:
         """
         Adds track to database.
         :param clip_id: id of the clip to add track to write
-        :param track_data: data for track, list of numpy arrays of shape [channels, height, width]
+        :param cropped_data: data for track, list of numpy arrays of shape [channels, height, width]
         :param track: the original track record, used to get stats for track
         :param opts: additional parameters used when creating dataset, if not provided defaults to no compression.
         """
 
         track_id = str(track.get_id())
 
-        frames = len(track_data)
+        frames = len(cropped_data)
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
             clip_node = clips[clip_id]
@@ -420,10 +420,11 @@ class TrackDatabase:
 
             # write each frame out individually, as they will probably be different sizes.
             original = None
+            channels = 5
             for frame_i, cropped in enumerate(cropped_data):
                 if original_thermal is not None:
                     original = original_thermal[frame_i]
-                channels, height, width = cropped.shape
+                height, width = cropped.shape
                 # using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
                 chunks = (1, height, width)
                 dims = (channels, height, width)
@@ -432,7 +433,7 @@ class TrackDatabase:
                     frame_node = cropped_frame.create_dataset(
                         str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
                     )
-                    frame_node[:, :, :] = cropped
+                    frame_node[:, :, :] = cropped.as_array()
                     if original is not None:
                         thermal_node = thermal_frame.create_dataset(
                             str(frame_i),

@@ -197,7 +197,7 @@ class ClipLoader:
                 cropped = frame.crop_by_region(region)
                 # zero out the filtered channel
                 if not self.config.load.include_filtered_channel:
-                    cropped[TrackChannels.filtered] = 0
+                    cropped.filtered = np.zeros(cropped.thermal.shape)
                 cropped_data.append(cropped)
 
             overlay = overlay_image(
