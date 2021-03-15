@@ -63,8 +63,6 @@ def parse_params():
         print(cv2.getBuildInformation())
         return None, None
 
-    init_logging()
-
     config = Config.load_from_file(args.config_file)
     if args.create_previews:
         config.loader.preview = "tracking"
@@ -100,6 +98,8 @@ def print_opencl_info():
 
 def main():
     config, args = parse_params()
+    init_logging()
+
     if config and args:
         load_clips(config, args)
 

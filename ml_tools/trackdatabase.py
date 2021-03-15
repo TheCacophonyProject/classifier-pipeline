@@ -323,6 +323,7 @@ class TrackDatabase:
                 frame_iter = iter(frame_numbers)
 
             for frame_number in frame_iter:
+                print("frames are", frame_number)
                 frame = track_node[str(frame_number)][:, :, :]
                 result.append(Frame.from_array(frame, frame_number, flow_clipped=True))
         return result
@@ -347,21 +348,21 @@ class TrackDatabase:
         with HDF5Manager(self.database, "a") as f:
             clip = f["clips"][(str(clip_id))]
             track_node = clip[str(track_id)]
-
             predicted_tag = track_prediction.predicted_tag()
-            self.all_class_confidences = track_prediction.class_confidences()
-            predictions = np.int16(
-                np.around(100 * np.array(track_prediction.predictions))
-            )
-            predicted_confidence = int(round(100 * track_prediction.max_score))
+            if track_prediction.num_frames_classified > 0:
+                self.all_class_confidences = track_prediction.class_confidences()
+                predictions = np.int16(
+                    np.around(100 * np.array(track_prediction.predictions))
+                )
+                predicted_confidence = int(round(100 * track_prediction.max_score))
 
-            self.add_prediction_data(
-                track_node,
-                predictions,
-                predicted_tag,
-                predicted_confidence,
-                labels=track_prediction.labels,
-            )
+                self.add_prediction_data(
+                    track_node,
+                    predictions,
+                    predicted_tag,
+                    predicted_confidence,
+                    labels=track_prediction.labels,
+                )
             clip.attrs["has_prediction"] = True
 
     def add_prediction_data(
@@ -392,8 +393,9 @@ class TrackDatabase:
         self,
         clip_id,
         track,
-        track_data,
-        opts=None,
+        cropped_data,
+        opts={},
+        original_thermal=None,
         start_time=None,
         end_time=None,
     ):
@@ -417,37 +419,29 @@ class TrackDatabase:
             thermal_frame = track_node.create_group("original")
 
             # write each frame out individually, as they will probably be different sizes.
-
-            for frame_i, frame_data in enumerate(track_data):
-                cropped = frame_data[1]
-                original = frame_data[0]
+            original = None
+            for frame_i, cropped in enumerate(cropped_data):
+                if original_thermal is not None:
+                    original = original_thermal[frame_i]
                 channels, height, width = cropped.shape
                 # using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
                 chunks = (1, height, width)
                 dims = (channels, height, width)
+
                 if opts is not None:
                     frame_node = cropped_frame.create_dataset(
                         str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
                     )
-                    thermal_node = thermal_frame.create_dataset(
-                        str(frame_i),
-                        original.shape,
-                        chunks=original.shape,
-                        **opts,
-                        dtype=np.int16,
-                    )
-                else:
-                    frame_node = cropped_frame.create_dataset(
-                        str(frame_i), dims, chunks=chunks, dtype=np.int16
-                    )
-                    thermal_node = thermal_frame.create_dataset(
-                        str(frame_i),
-                        original.shape,
-                        chunks=original.shape,
-                        dtype=np.int16,
-                    )
-                thermal_node[:, :] = original
-                frame_node[:, :, :] = cropped
+                    frame_node[:, :, :] = cropped
+                    if original is not None:
+                        thermal_node = thermal_frame.create_dataset(
+                            str(frame_i),
+                            original.shape,
+                            chunks=original.shape,
+                            **opts,
+                            dtype=np.int16,
+                        )
+                        thermal_node[:, :] = original
             # write out attributes
             if track:
                 track_stats = track.get_stats()

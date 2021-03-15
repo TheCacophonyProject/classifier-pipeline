@@ -152,7 +152,6 @@ def preprocess_movement(
     channel,
     preprocess_fn=None,
     augment=False,
-    use_dots=True,
     reference_level=None,
 ):
     segment, flipped = preprocess_segment(
@@ -169,7 +168,7 @@ def preprocess_movement(
     )
     if not success:
         return None
-    dots, overlay = imageprocessing.movement_images(
+    overlay = imageprocessing.overlay(
         data,
         regions,
         dim=square.shape,
@@ -181,15 +180,10 @@ def preprocess_movement(
 
     if flipped:
         overlay = np.flip(overlay, axis=1)
-        dots = np.flip(dots, axis=1)
 
     data = np.empty((square.shape[0], square.shape[1], 3))
     data[:, :, 0] = square
-    if use_dots:
-        dots = dots / 255
-        data[:, :, 1] = dots  # dots
-    else:
-        data[:, :, 1] = np.zeros(dots.shape)
+    data[:, :, 1] = np.zeros(overlay.shape)
     data[:, :, 2] = overlay  # overlay
     if preprocess_fn:
         for i, frame in enumerate(data):

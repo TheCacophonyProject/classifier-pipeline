@@ -13,29 +13,21 @@ def rotate(image, degrees, mode="nearest", order=1):
     return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
 
 
-def movement_images(
+def overlay(
     frames,
     regions,
     dim,
     require_movement=False,
 ):
-    """Return 2 images describing the movement, one has dots representing
-    the centre of mass, the other is a collage of all frames
-    """
+    """Return an image describing the movement, the other is a collage of all frames"""
     channel = TrackChannels.filtered
 
     i = 0
-    dots = np.zeros(dim)
     overlay = np.zeros(dim)
 
     prev = None
     prev_overlay = None
-    line_colour = 60
-    dot_colour = 120
 
-    img = Image.fromarray(np.uint8(dots))
-
-    d = ImageDraw.Draw(img)
     # draw movment lines and draw frame overlay
     center_distance = 0
     min_distance = 2
@@ -45,11 +37,7 @@ def movement_images(
         x = int(region.mid_x)
         y = int(region.mid_y)
 
-        # writing dot image
-        if prev is not None:
-            d.line(prev + (x, y), fill=line_colour, width=1)
         prev = (x, y)
-
         # writing overlay image
         if require_movement and prev_overlay:
             center_distance = eucl_distance(
@@ -70,14 +58,7 @@ def movement_images(
             min_distance = pow(region.width / 2.0, 2)
             prev_overlay = (x, y)
 
-    # then draw dots to dot image so they go over the top
-    for i, frame in enumerate(frames):
-        region = regions[i]
-        x = int(region.mid_x)
-        y = int(region.mid_y)
-        d.point([(x, y)], fill=dot_colour)
-
-    return np.array(img), overlay
+    return overlay
 
 
 def square_clip(data, frames_per_row, tile_dim, type=None):

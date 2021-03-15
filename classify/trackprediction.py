@@ -57,16 +57,12 @@ class TrackPrediction:
     """
 
     def __init__(self, track_id, start_frame, fp_index, labels, keep_all=True):
-        self.track_prediction = None
-        self.state = None
         self.track_id = track_id
         self.predictions = []
         self.fp_index = fp_index
         self.smoothed_predictions = []
         self.smoothed_novelties = []
-        self.uniform_prior = False
         self.class_best_score = None
-        self.track_prediction = None
 
         self.last_frame_classified = start_frame
         self.num_frames_classified = 0
@@ -241,6 +237,8 @@ class TrackPrediction:
 
     def class_confidences(self):
         confidences = {}
+        if self.class_best_score is None:
+            return confidences
         for i, value in enumerate(self.class_best_score):
             confidences[self.labels[i]] = round(float(value), 3)
         return confidences

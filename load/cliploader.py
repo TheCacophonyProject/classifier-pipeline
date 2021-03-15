@@ -23,6 +23,7 @@ import logging
 import multiprocessing
 import time
 from multiprocessing import Process, Queue
+import traceback
 
 from ml_tools import tools
 from ml_tools.kerasmodel import KerasModel
@@ -32,6 +33,7 @@ from .clip import Clip
 from .cliptrackextractor import ClipTrackExtractor
 from track.track import Track, TrackChannels
 from classify.trackprediction import TrackPrediction
+from ml_tools.imageprocessing import overlay
 
 import numpy as np
 
@@ -44,46 +46,53 @@ def process_job(loader, queue, model_file=None):
         classifier.load_model(model_file)
     while True:
         i += 1
-        clip = queue.get()
+        clip_id = queue.get()
         try:
-            if clip == "DONE":
+            if clip_id == "DONE":
                 break
             else:
-                loader.process_file(str(clip), classifier=classifier)
+                loader.process_file(str(clip_id), classifier=classifier)
             if i % 50 == 0:
                 logging.info("%s jobs left", queue.qsize())
         except Exception as e:
-            logging.error("Process_job error %s", e)
-            raise e
+            logging.error("Process_job error %s %s", clip_id, e)
+            traceback.print_exc()
 
 
 def prediction_job(queue, db, model_file):
     classifier = KerasModel()
-    classifier.load_model(model_file)
+    classifier.load_weights(model_file)
     logging.info("Loaded model")
     while True:
-        clip = queue.get()
-        if clip == "DONE":
+        clip_id = queue.get()
+        if clip_id == "DONE":
             break
         else:
             try:
-                add_prediction(db, clip, classifier)
+                add_predictions(db, clip_id, classifier)
             except Exception as e:
-                logging.error("Process_job error %s", e)
-                raise e
+                logging.error("Process_job error %s %s", clip_id, e)
+                traceback.print_exc()
 
 
-def add_predictions(db, clip, classifier):
-    tracks = db.get_clip_tracks(clip)
+def add_predictions(db, clip_id, classifier):
+    tracks = db.get_clip_tracks(clip_id)
+    clip_meta = db.get_clip_meta(clip_id)
     for track in tracks:
-        track_data = db.get_track(clip, track["id"])
+        print("track is....", track)
+        track_data = db.get_track(clip_id, track["id"])
         regions = []
         for rect in track["bounds_history"]:
             regions.append(tools.Rectangle.from_ltrb(*rect))
+
         track_prediction = classifier.classify_cropped_data(
-            track["id"], track["start_frame"], track_data, regions
+            track["id"],
+            track["start_frame"],
+            track_data,
+            clip_meta["frame_temp_median"],
+            regions,
         )
-        db.add_prediction(clip, track["id"], track_prediction)
+        db.add_prediction(clip_id, track["id"], track_prediction)
 
 
 class ClipLoader:
@@ -180,21 +189,31 @@ class ClipLoader:
             start_time, end_time = clip.start_and_end_time_absolute(
                 track.start_s, track.end_s
             )
-            track_data = []
+            original_thermal = []
+            cropped_data = []
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
+                original_thermal.append(frame.thermal)
                 cropped = track.crop_by_region(
                     frame, region, filter_mask_by_region=False
                 )
                 # zero out the filtered channel
                 if not self.config.load.include_filtered_channel:
                     cropped[TrackChannels.filtered] = 0
-                track_data.append((frame.thermal, cropped))
+                cropped_data.append((frame.thermal, cropped))
+
+            overlay = overlay(
+                cropped_data,
+                track.bounds_history,
+                dim=(120, 160),
+                require_movement=True,
+            )
             self.database.add_track(
                 clip.get_id(),
                 track,
-                track_data,
+                cropped_data,
                 opts=self.compression,
+                original_thermal=original_thermal,
                 start_time=start_time,
                 end_time=end_time,
             )

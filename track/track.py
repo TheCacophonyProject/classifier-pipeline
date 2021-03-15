@@ -112,7 +112,7 @@ class Track:
     def get_id(self):
         return self._id
 
-    def add_prediction_info(self, labels, track_prediction):
+    def add_prediction_info(self, track_prediction):
         self.predicted_tag = track_prediction.predicted_tag()
         self.all_class_confidences = track_prediction.class_confidences()
         self.predictions = np.int16(

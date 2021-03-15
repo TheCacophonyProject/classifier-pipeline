@@ -162,9 +162,14 @@ class KerasModel:
             self.build_model()
         self.model.load_weights(weights_path)
 
-    def load_model(self, dir):
+    def load_model(self, model_path, training=False):
+        logging.info("Loading %s", model_path)
+        dir = os.path.dirname(model_path)
         self.model = tf.keras.models.load_model(dir)
         self.load_meta(dir)
+        if not training:
+            self.model.trainable = False
+        self.model.summary()
 
     def load_meta(self, dir):
         meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
@@ -270,6 +275,7 @@ class KerasModel:
         track_id,
         start_frame,
         data,
+        thermal_median,
         regions,
         keep_all=True,
     ):
@@ -283,8 +289,12 @@ class KerasModel:
         )
 
         if self.use_movement:
-            predictions = self.classify_using_movement(data, regions=regions)
+            print("using movement....")
+            predictions = self.classify_using_movement(
+                data, thermal_median, regions=regions
+            )
             for i, prediction in enumerate(predictions):
+                print("got prediction", prediction)
                 track_prediction.classified_frame(i, prediction, None)
         else:
             for i, track_data in data:
