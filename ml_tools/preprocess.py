@@ -223,7 +223,7 @@ def preprocess_movement(
             return None
     else:
         overlay_full_size = np.zeros(square.shape)
-        overlay_full_size[: overlay.shape[0], : overly.shape[1]] = overlay
+        overlay_full_size[: overlay.shape[0], : overlay.shape[1]] = overlay
         overlay = overlay_full_size
     if flipped:
         overlay = np.flip(overlay, axis=1)
