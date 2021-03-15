@@ -35,15 +35,17 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
         )
     #
     groups = {}
-    groups["bird"] = ["bird"]
-    groups["hedgehog"] = ["hedgehog"]
-    groups["rodent"] = ["rodent"]
-    groups["possum"] = ["possum", "cat"]
-    groups["human"] = ["human"]
-    groups["false-positive"] = ["false-positive", "insect"]
-    model.mapped_labels = groups
+    animals = []
+    # false_positives = ["false-positive", "insect"]
     model.import_dataset(datasets_filename, lbl_p=conf.train.label_probabilities)
+    for label in model.datasets.train.labels:
+        if label != "wallaby":
+            animals.append(label)
 
+    groups["wallaby"] = ["wallaby"]
+    groups["not"] = animals
+    model.mapped_labels = groups
+    model.regroup()
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)
     print()
