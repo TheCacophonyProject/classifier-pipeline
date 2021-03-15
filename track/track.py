@@ -443,37 +443,6 @@ class Track:
 
         return frames_overlapped / len(self)
 
-    def crop_by_region_at_trackframe(self, frame, track_frame_number, clip_flow=True):
-        bounds = self.bounds_history[track_frame_number]
-        return self.crop_by_region(frame, bounds)
-
-    def crop_by_region(self, frame, region, clip_flow=True, filter_mask_by_region=True):
-        thermal = region.subimage(frame.thermal)
-        filtered = region.subimage(frame.filtered)
-        if frame.flow is not None:
-            flow_h = region.subimage(frame.flow_h)
-            flow_v = region.subimage(frame.flow_v)
-            if clip_flow and not frame.flow_clipped:
-                flow_h = get_clipped_flow(flow_h)
-                flow_v = get_clipped_flow(flow_v)
-        else:
-            flow_h = None
-            flow_v = None
-
-        mask = region.subimage(frame.mask).copy()
-        # make sure only our pixels are included in the mask.
-        if filter_mask_by_region:
-            mask[mask != region.id] = 0
-        mask[mask > 0] = 1
-        # stack together into a numpy array.
-        # by using int16 we lose a little precision on the filtered frames, but not much (only 1 bit)
-        if flow_h is not None and flow_v is not None:
-            return np.int16(np.stack((thermal, filtered, flow_h, flow_v, mask), axis=0))
-        else:
-            empty = np.zeros(filtered.shape)
-            return np.int16(np.stack((thermal, filtered, empty, empty, mask), axis=0))
-        return frame
-
     def set_end_s(self, fps):
         self.end_s = (self.end_frame + 1) / fps
 

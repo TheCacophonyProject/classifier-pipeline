@@ -13,7 +13,7 @@ def rotate(image, degrees, mode="nearest", order=1):
     return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
 
 
-def overlay(
+def overlay_image(
     frames,
     regions,
     dim,

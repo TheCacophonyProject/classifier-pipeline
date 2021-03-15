@@ -254,8 +254,8 @@ class KerasModel:
         else:
             for i, region in enumerate(track.bounds_history):
                 frame = clip.frame_buffer.get_frame(region.frame_number)
-                track_data = track.crop_by_region(frame, region)
-                prediction = self.classify_frame(track_data)
+                frame = frame.crop_by_region(region)
+                prediction = self.classify_frame(frame)
                 mass = region.mass
                 # we use the square-root here as the mass is in units squared.
                 # this effectively means we are giving weight based on the diameter

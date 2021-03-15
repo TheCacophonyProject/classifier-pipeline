@@ -161,10 +161,10 @@ class PiClassifier(Processor):
                     )
                 )
             else:
-                track_data = track.crop_by_region(frame, region)
+                cropped_frame = frame.crop_by_region(region)
                 # we use a tighter cropping here so we disable the default 2 pixel inset
                 frames = preprocess_segment(
-                    [track_data], [thermal_reference], default_inset=0
+                    [cropped_frame], [thermal_reference], default_inset=0
                 )
                 if frames is None:
                     logging.warning(

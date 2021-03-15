@@ -33,7 +33,7 @@ from .clip import Clip
 from .cliptrackextractor import ClipTrackExtractor
 from track.track import Track, TrackChannels
 from classify.trackprediction import TrackPrediction
-from ml_tools.imageprocessing import overlay
+from ml_tools.imageprocessing import overlay_image
 
 import numpy as np
 
@@ -194,15 +194,13 @@ class ClipLoader:
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 original_thermal.append(frame.thermal)
-                cropped = track.crop_by_region(
-                    frame, region, filter_mask_by_region=False
-                )
+                cropped = frame.crop_by_region(region)
                 # zero out the filtered channel
                 if not self.config.load.include_filtered_channel:
                     cropped[TrackChannels.filtered] = 0
-                cropped_data.append((frame.thermal, cropped))
+                cropped_data.append(cropped)
 
-            overlay = overlay(
+            overlay = overlay_image(
                 cropped_data,
                 track.bounds_history,
                 dim=(120, 160),

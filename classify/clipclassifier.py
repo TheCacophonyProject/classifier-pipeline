@@ -83,17 +83,16 @@ class ClipClassifier(CPTVFileProcessor):
             for i, region in enumerate(track.bounds_history):
                 frame = clip.frame_buffer.get_frame(region.frame_number)
 
-                track_data = track.crop_by_region(frame, region)
+                cropped = frame.crop_by_region(region)
 
                 # note: would be much better for the tracker to store the thermal references as it goes.
                 # frame = clip.frame_buffer.get_frame(frame_number)
                 thermal_reference = np.median(frame.thermal)
-                # track_data = track.crop_by_region_at_trackframe(frame, i)
                 if i % self.FRAME_SKIP == 0:
 
                     # we use a tighter cropping here so we disable the default 2 pixel inset
                     frames = preprocess_segment(
-                        [track_data], [thermal_reference], default_inset=0
+                        [cropped], [thermal_reference], default_inset=0
                     )
 
                     if frames is None:

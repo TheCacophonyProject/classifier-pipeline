@@ -168,7 +168,7 @@ def preprocess_movement(
     )
     if not success:
         return None
-    overlay = imageprocessing.overlay(
+    overlay = imageprocessing.overlay_image(
         data,
         regions,
         dim=square.shape,
