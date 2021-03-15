@@ -130,31 +130,6 @@ class TrackHeader:
     def num_sample_frames(self):
         return len(self.important_frames)
 
-    # trying to get only clear frames
-    def set_important_frames(self, labels, min_mass=None, frame_data=None):
-        # this needs more testing
-        frames = []
-        for i, mass in enumerate(self.frame_mass):
-            if (
-                min_mass is None
-                or mass >= min_mass
-                and mass >= self.lower_mass
-                and mass <= self.upper_mass
-            ):  # trying it out
-                if frame_data is not None:
-                    if not clear_frame(frame_data[i], self.label):
-                        logging.debug(
-                            "set_important_frames %s frame %s has no zeros in filtered frame",
-                            self.unique_id,
-                            i,
-                        )
-                        continue
-                frames.append(i)
-        np.random.shuffle(frames)
-        for frame in frames:
-            f = FrameSample(self.clip_id, self.track_id, frame, self.label)
-            self.important_frames.append(f)
-
     def calculate_frame_crop(self):
         # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
         # bounded rect and check it against frame size.
@@ -441,7 +416,7 @@ class Camera:
     def remove_track(self, track):
         self.segments -= 1
         self.segment_sum -= len(track.segments)
-        del self.label_to_tracks["wallaby"][track.unique_id]
+        del self.label_to_tracks[track.tag][track.unique_id]
 
     def add_track(self, track_header):
         tracks = self.label_to_tracks.setdefault(track_header.label, {})

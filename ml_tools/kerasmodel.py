@@ -278,6 +278,7 @@ class KerasModel:
         thermal_median,
         regions,
         keep_all=True,
+        overlay=None,
     ):
 
         try:
@@ -289,17 +290,15 @@ class KerasModel:
         )
 
         if self.use_movement:
-            print("using movement....")
             predictions = self.classify_using_movement(
-                data, thermal_median, regions=regions
+                data, thermal_median, regions=regions, overlay=overlay
             )
             for i, prediction in enumerate(predictions):
-                print("got prediction", prediction)
                 track_prediction.classified_frame(i, prediction, None)
         else:
-            for i, track_data in data:
+            for i, frame in enumerate(data):
                 region = regions[i]
-                prediction = self.classify_frame(track_data)
+                prediction = self.classify_frame(frame)
                 mass = region.mass
                 # we use the square-root here as the mass is in units squared.
                 # this effectively means we are giving weight based on the diameter
@@ -313,7 +312,7 @@ class KerasModel:
                 )
         return track_prediction
 
-    def classify_using_movement(self, data, thermal_median, regions):
+    def classify_using_movement(self, data, thermal_median, regions, overlay=None):
         """
         take any square_width, by square_width amount of frames and sort by
         time use as the r channel, g and b channel are the overall movment of
@@ -355,6 +354,7 @@ class KerasModel:
                 self.preprocess_fn,
                 reference_level=medians,
                 use_dots=self.params.get("use_dots", True),
+                overlay=overlay,
             )
             if frames is None:
                 continue

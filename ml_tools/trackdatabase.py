@@ -18,7 +18,7 @@ from multiprocessing import Lock
 import numpy as np
 from track.framebuffer import Frame
 
-special_datasets = ["background_frame", "predictions"]
+special_datasets = ["background_frame", "predictions", "overlay"]
 
 
 class HDF5Manager:
@@ -323,7 +323,6 @@ class TrackDatabase:
                 frame_iter = iter(frame_numbers)
 
             for frame_number in frame_iter:
-                print("frames are", frame_number)
                 frame = track_node[str(frame_number)][:, :, :]
                 result.append(Frame.from_array(frame, frame_number, flow_clipped=True))
         return result
@@ -394,6 +393,8 @@ class TrackDatabase:
         clip_id,
         track,
         cropped_data,
+        overlay,
+        important_frames,
         opts={},
         original_thermal=None,
         start_time=None,
@@ -485,12 +486,27 @@ class TrackDatabase:
                     ]
                 )
 
+                node_attrs["important_frames"] = np.uint16(important_frames)
+                if "overlay" not in track_node:
+                    overlay_node = track_node.create_dataset(
+                        "overlay", overlay.shape, chunks=overlay.shape, dtype=np.float32
+                    )
+                else:
+                    overlay_node = track_node["overlay"]
+                overlay_node[:, :] = overlay
+
             f.flush()
 
             # mark the record as have been writen to.
             # this means if we are interupted part way through the track will be overwritten
             clip_node.attrs["finished"] = True
             clip_node.attrs["has_prediction"] = has_prediction
+
+    def get_overlay(self, clip_id, track_id):
+        with HDF5Manager(self.database, "r") as f:
+            clip = f["clips"][str(clip_id)]
+            track = clip[str(track_id)]
+            return track["overlay"][:]
 
 
 def hdf5_attributes_dictionary(dataset):

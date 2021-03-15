@@ -22,6 +22,7 @@ import numpy as np
 from ml_tools.datasetstructures import TrackHeader, SegmentHeader, Camera
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools.preprocess import preprocess_segment
+from ml_tools.imageprocessing import clear_frame
 
 
 class TrackChannels:
@@ -294,7 +295,7 @@ class Dataset:
             clip_id, clip_meta, track_meta, predictions
         )
         self.tracks.append(track_header)
-        frames = self.db.get_track(clip_id, track_id)
+
         track_header.set_important_frames(
             labels, self.min_frame_mass, frame_data=frames
         )
@@ -876,3 +877,29 @@ def preloader(q, dataset):
 
 def dataset_db_path(config):
     return os.path.join(config.tracks_folder, "datasets.dat")
+
+    # trying to get only clear frames
+
+
+def get_important_frames(track_id, mass_history, min_mass=None, frame_data=None):
+    # this needs more testing
+    clear_frames = []
+    lower_mass = np.percentile(frame_mass, q=25)
+    upper_mass = np.percentile(frame_mass, q=75)
+    for i, mass in enumerate(mass_history):
+        if (
+            min_mass is None
+            or mass >= min_mass
+            and mass >= lower_mass
+            and mass <= upper_mass
+        ):  # trying it out
+            if frame_data is not None:
+                if not clear_frame(frame_data[i]):
+                    logging.debug(
+                        "get_important_frames %s frame %s has no zeros in filtered frame",
+                        track_id,
+                        i,
+                    )
+                    continue
+            clear_frames.append(i)
+    return clear_frames

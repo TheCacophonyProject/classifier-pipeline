@@ -25,7 +25,9 @@ import time
 from multiprocessing import Process, Queue
 import traceback
 
+from track.region import Region
 from ml_tools import tools
+
 from ml_tools.kerasmodel import KerasModel
 from ml_tools.previewer import Previewer
 from ml_tools.trackdatabase import TrackDatabase
@@ -33,7 +35,7 @@ from .clip import Clip
 from .cliptrackextractor import ClipTrackExtractor
 from track.track import Track, TrackChannels
 from classify.trackprediction import TrackPrediction
-from ml_tools.imageprocessing import overlay_image
+from ml_tools.imageprocessing import overlay_image, clear_frame
 
 import numpy as np
 
@@ -78,19 +80,24 @@ def prediction_job(queue, db, model_file):
 def add_predictions(db, clip_id, classifier):
     tracks = db.get_clip_tracks(clip_id)
     clip_meta = db.get_clip_meta(clip_id)
+    overlay = None
     for track in tracks:
-        print("track is....", track)
         track_data = db.get_track(clip_id, track["id"])
+        if classifier.use_movement:
+            overlay = db.get_overlay(clip_id, track["id"])
         regions = []
-        for rect in track["bounds_history"]:
-            regions.append(tools.Rectangle.from_ltrb(*rect))
+        for i, rect in enumerate(track["bounds_history"]):
+            region = Region.region_from_array(rect)
+            region.mass = track["mass_history"][i]
+            regions.append(region)
 
         track_prediction = classifier.classify_cropped_data(
             track["id"],
             track["start_frame"],
             track_data,
-            clip_meta["frame_temp_median"],
+            clip_meta["frame_temp_median"][track["start_frame"] : track["frames"]],
             regions,
+            overlay,
         )
         db.add_prediction(clip_id, track["id"], track_prediction)
 
@@ -206,10 +213,19 @@ class ClipLoader:
                 dim=(120, 160),
                 require_movement=True,
             )
+
+            important_frames = get_important_frames(
+                track.get_id(),
+                [bounds.mass for bounds in track.bounds_history],
+                self.config.build.train_min_mass,
+                cropped_data,
+            )
             self.database.add_track(
                 clip.get_id(),
                 track,
                 cropped_data,
+                overlay,
+                important_frames,
                 opts=self.compression,
                 original_thermal=original_thermal,
                 start_time=start_time,
@@ -343,3 +359,26 @@ def get_distributed_folder(name, num_folders=256, seed=31):
     for byte in str_bytes:
         hash_code = hash_code * seed + byte
     return "{:02x}".format(hash_code % num_folders)
+
+
+def get_important_frames(track_id, mass_history, min_mass=None, frame_data=None):
+    clear_frames = []
+    lower_mass = np.percentile(mass_history, q=25)
+    upper_mass = np.percentile(mass_history, q=75)
+    for i, mass in enumerate(mass_history):
+        if (
+            min_mass is None
+            or mass >= min_mass
+            and mass >= lower_mass
+            and mass <= upper_mass
+        ):  # trying it out
+            if frame_data is not None:
+                if not clear_frame(frame_data[i]):
+                    logging.debug(
+                        "get_important_frames %s frame %s has no zeros in filtered frame",
+                        track_id,
+                        i,
+                    )
+                    continue
+            clear_frames.append(i)
+    return clear_frames

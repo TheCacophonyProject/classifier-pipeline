@@ -134,7 +134,7 @@ def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5)):
     return components, small_mask, stats
 
 
-def clear_frame(frame, label):
+def clear_frame(frame):
     # try and remove bad frames by checking for noise
     filtered = frame.filtered
     thermal = frame.thermal
@@ -144,33 +144,5 @@ def clear_frame(frame, label):
     filtered_deviation = np.amax(filtered) != np.amin(filtered)
     if not thermal_deviation or not filtered_deviation:
         return False
-    if label == "false-positive":
-        return True
 
-    area = filtered.shape[0] * filtered.shape[1]
-    percentile = int(100 - 100 * 16.0 / area)
-    threshold = np.percentile(filtered, percentile)
-    threshold = max(0, threshold - 40)
-
-    rows = math.floor(0.1 * filtered.shape[0])
-    columns = math.floor(0.1 * filtered.shape[1])
-    rows = np.clip(rows, 1, 2)
-    columns = np.clip(columns, 1, 2)
-
-    top_left = 1 if np.amax(filtered[0:rows][:, 0:columns]) > threshold else 0
-    top_right = 1 if np.amax(filtered[0:rows][:, -columns - 1 : -1]) > threshold else 0
-    bottom_left = (
-        1 if np.amax(filtered[-rows - 1 : -1][:, 0:columns]) > threshold else 0
-    )
-    bottom_right = (
-        1 if np.amax(filtered[-rows - 1 : -1][:, -columns - 1 : -1]) > threshold else 0
-    )
-    # try and filter out bogus frames where data is on 3 or more corners
-    if (top_right + bottom_left + top_left + bottom_right) >= 3:
-        return False
-
-    num_less = len(filtered[filtered <= threshold])
-
-    if num_less <= area * 0.05 or np.amax(filtered) == np.amin(filtered):
-        return False
     return True

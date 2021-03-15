@@ -121,7 +121,7 @@ def preprocess_frame(
         channel = TrackChannels.thermal
     else:
         channel = TrackChannels.filtered
-    data = data[channel]
+    data = data.get_channel(channel)
 
     max = np.amax(data)
     min = np.amin(data)
@@ -153,6 +153,7 @@ def preprocess_movement(
     preprocess_fn=None,
     augment=False,
     reference_level=None,
+    overlay=None,
 ):
     segment, flipped = preprocess_segment(
         segment,
@@ -168,15 +169,20 @@ def preprocess_movement(
     )
     if not success:
         return None
-    overlay = imageprocessing.overlay_image(
-        data,
-        regions,
-        dim=square.shape,
-        require_movement=True,
-    )
-    overlay, stats = imageprocessing.normalize(overlay, min=0)
-    if not stats[0]:
-        return None
+    if overlay is None:
+        overlay = imageprocessing.overlay_image(
+            data,
+            regions,
+            dim=square.shape,
+            require_movement=True,
+        )
+        overlay, stats = imageprocessing.normalize(overlay, min=0)
+        if not stats[0]:
+            return None
+    else:
+        full_overlay = np.zeros((square.shape[0], square.shape[1]))
+        full_overlay[: overlay.shape[0], : overlay.shape[1]] = overlay
+        overlay = full_overlay
 
     if flipped:
         overlay = np.flip(overlay, axis=1)
