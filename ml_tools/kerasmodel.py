@@ -63,12 +63,12 @@ class KerasModel:
         self.mapped_labels = None
         self.label_probabilities = None
 
-    def base_model(self, input_shape):
+    def base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.params.model
         if pretrained_model == "resnet":
             return (
                 tf.keras.applications.ResNet50(
-                    weights="imagenet",
+                    weights=weights,
                     include_top=False,
                     input_shape=input_shape,
                 ),
@@ -77,21 +77,21 @@ class KerasModel:
         elif pretrained_model == "resnetv2":
             return (
                 tf.keras.applications.ResNet50V2(
-                    weights="imagenet", include_top=False, input_shape=input_shape
+                    weights=weights, include_top=False, input_shape=input_shape
                 ),
                 tf.keras.applications.resnet_v2.preprocess_input,
             )
         elif pretrained_model == "resnet152":
             return (
                 tf.keras.applications.ResNet152(
-                    weights="imagenet", include_top=False, input_shape=input_shape
+                    weights=weights, include_top=False, input_shape=input_shape
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
         elif pretrained_model == "vgg16":
             return (
                 tf.keras.applications.VGG16(
-                    weights="imagenet",
+                    weights=weights,
                     include_top=False,
                     input_shape=input_shape,
                 ),
@@ -100,7 +100,7 @@ class KerasModel:
         elif pretrained_model == "vgg19":
             return (
                 tf.keras.applications.VGG19(
-                    weights="imagenet",
+                    weights=weights,
                     include_top=False,
                     input_shape=input_shape,
                 ),
@@ -109,7 +109,7 @@ class KerasModel:
         elif pretrained_model == "mobilenet":
             return (
                 tf.keras.applications.MobileNetV2(
-                    weights="imagenet",
+                    weights=weights,
                     include_top=False,
                     input_shape=input_shape,
                 ),
@@ -118,7 +118,7 @@ class KerasModel:
         elif pretrained_model == "densenet121":
             return (
                 tf.keras.applications.DenseNet121(
-                    weights="imagenet",
+                    weights=weights,
                     include_top=False,
                     input_shape=input_shape,
                 ),
@@ -127,7 +127,7 @@ class KerasModel:
         elif pretrained_model == "inceptionresnetv2":
             return (
                 tf.keras.applications.InceptionResNetV2(
-                    weights="imagenet",
+                    weights=weights,
                     include_top=False,
                     input_shape=input_shape,
                 ),
@@ -136,7 +136,7 @@ class KerasModel:
         elif pretrained_model == "inceptionv3":
             return (
                 tf.keras.applications.InceptionV3(
-                    weights="imagenet",
+                    weights=weights,
                     include_top=False,
                     input_shape=input_shape,
                 ),
@@ -180,8 +180,8 @@ class KerasModel:
             width = self.params.square_width * self.params.frame_size
 
         inputs = tf.keras.Input(shape=(width, width, 3), name="input")
-
-        base_model, preprocess = self.base_model((width, width, 3))
+        weights = None if self.params.base_training else "imagenet"
+        base_model, preprocess = self.base_model((width, width, 3), weights=weights)
         self.preprocess_fn = preprocess
         x = base_model(inputs, training=self.params.base_training)  # IMPORTANT
 
