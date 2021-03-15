@@ -217,10 +217,14 @@ def preprocess_movement(
     filtered_square, success = imageprocessing.square_clip(
         filtered_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
     )
-    overlay, stats = imageprocessing.normalize(overlay, min=0)
-    if not stats[0]:
-        return None
-
+    if overlay is None:
+        overlay, stats = imageprocessing.normalize(overlay, min=0)
+        if not stats[0]:
+            return None
+    else:
+        overlay_full_size = np.zeros(square.shape)
+        overlay_full_size[: overlay.shape[0], : overly.shape[1]] = overlay
+        overlay = overlay_full_size
     if flipped:
         overlay = np.flip(overlay, axis=1)
         # dots = np.flip(dots, axis=1)
@@ -232,6 +236,7 @@ def preprocess_movement(
         data[:, :, 1] = dots  # dots
     else:
         data[:, :, 1] = filtered_square
+    data[:, :, 2] = np.zeros(filtered_square.shape)
     data[:, :, 2] = overlay
     # for debugging
     # tools.saveclassify_image(
