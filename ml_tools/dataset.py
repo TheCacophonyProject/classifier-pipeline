@@ -591,7 +591,8 @@ class Dataset:
 
         if (cap_at or cap_samples) and label_cap is None:
             if cap_at:
-                label_cap = len(self.samples_for(cap_at, remapped=True))
+                label_cap = len(self.samples_for(cap_at, remapped=True)) * 4
+                print("capping at 4 X", cap_at)
             else:
                 label_cap = self.get_label_caps(labels, remapped=True)
 
