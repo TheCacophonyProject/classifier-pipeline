@@ -152,7 +152,10 @@ class Clip:
 
         initial_frames = None
         initial_diff = None
+        first_frame = None
         for frame in frame_reader:
+            if first_frame is None:
+                first_frame = frame.pix
             ffc_affected = is_affected_by_ffc(frame)
             if ffc_affected:
                 continue
@@ -177,6 +180,12 @@ class Clip:
             if initial_frames is None:
                 initial_frames = frame_average
         frames = []
+        if initial_diff is None:
+            if first_frame is not None:
+                # fall back if whole clip is ffc
+                self.update_background(frame.pix)
+                self._background_calculated()
+            return
         np.clip(initial_diff, 0, None, out=initial_diff)
         initial_frames = self.remove_background_animals(initial_frames, initial_diff)
 

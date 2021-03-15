@@ -152,7 +152,8 @@ def preprocess_frame(
     else:
         channel = TrackChannels.filtered
     data = data[channel]
-
+    if data.shape[0] == 0 or data.shape[1] == 0:
+        return None
     max = np.amax(data)
     min = np.amin(data)
     if max == min:
