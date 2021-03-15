@@ -34,9 +34,11 @@ class Frame:
     def from_array(
         cls, frame_arr, frame_number, flow_clipped=False, ffc_affected=False
     ):
-        flow_h = frame_arr[TrackChannels.flow_h][:, :, np.newaxis]
-        flow_v = frame_arr[TrackChannels.flow_v][:, :, np.newaxis]
-        flow = np.concatenate((flow_h, flow_v), axis=2)
+        flow = None
+        if len(frame_arr) == 5:
+            flow_h = frame_arr[TrackChannels.flow_h][:, :, np.newaxis]
+            flow_v = frame_arr[TrackChannels.flow_v][:, :, np.newaxis]
+            flow = np.concatenate((flow_h, flow_v), axis=2)
         return cls(
             frame_arr[TrackChannels.thermal],
             frame_arr[TrackChannels.filtered],
@@ -48,14 +50,16 @@ class Frame:
         )
 
     def as_array(self, split_flow=True):
+        if self.flow is None:
+            return np.asarray([self.thermal, self.filtered, self.mask])
         if split_flow:
             return np.asarray(
                 [
                     self.thermal,
                     self.filtered,
-                    self.flow[:, :, 0] if self.flow is not None else None,
-                    self.flow[:, :, 1] if self.flow is not None else None,
                     self.mask,
+                    self.flow[:, :, 0],
+                    self.flow[:, :, 1],
                 ]
             )
 
@@ -176,6 +180,10 @@ class Frame:
         if self.flow is None:
             return None
         return self.flow[:, :, 1]
+
+    @property
+    def channels(self):
+        return 5 if self.flow is not None else 3
 
     @property
     def shape(self):

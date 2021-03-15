@@ -216,6 +216,7 @@ class ClipLoader:
 
             important_frames = get_important_frames(
                 track.get_id(),
+                clip.ffc_frames,
                 [bounds.mass for bounds in track.bounds_history],
                 self.config.build.train_min_mass,
                 cropped_data,
@@ -361,11 +362,15 @@ def get_distributed_folder(name, num_folders=256, seed=31):
     return "{:02x}".format(hash_code % num_folders)
 
 
-def get_important_frames(track_id, mass_history, min_mass=None, frame_data=None):
+def get_important_frames(
+    track_id, ffc_frames, mass_history, min_mass=None, frame_data=None
+):
     clear_frames = []
     lower_mass = np.percentile(mass_history, q=25)
     upper_mass = np.percentile(mass_history, q=75)
     for i, mass in enumerate(mass_history):
+        if i in ffc_frames:
+            continue
         if (
             min_mass is None
             or mass >= min_mass

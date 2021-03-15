@@ -31,9 +31,9 @@ class TrackChannels:
 
     thermal = 0
     filtered = 1
-    flow_h = 2
-    flow_v = 3
-    mask = 4
+    mask = 2
+    flow_h = 3
+    flow_v = 4
 
 
 class Track:
