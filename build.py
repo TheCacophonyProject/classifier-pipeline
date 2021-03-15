@@ -237,10 +237,12 @@ def split_wallaby_cameras(dataset, cameras):
         remove.append(bin_id)
         last_index = i
         if wallaby_count > wallaby_validate_tracks:
-            add_to = wallaby_test
             # 100 more for test
-            wallaby_validate_tracks += 100
-            break
+            if add_to == wallaby_validate:
+                add_to = wallaby_test
+                wallaby_validate_tracks += 100
+            else:
+                break
     wallaby.label_to_bins["wallaby"] = wallaby.label_to_bins["wallaby"][
         last_index + 1 :
     ]

@@ -501,7 +501,7 @@ class Camera:
     def remove_track(self, track):
         self.segments -= 1
         self.segment_sum -= len(track.segments)
-        del self.label_to_tracks["wallaby"][track.unique_id]
+        del self.label_to_tracks[track.label][track.unique_id]
 
     def add_track(self, track_header):
         tracks = self.label_to_tracks.setdefault(track_header.label, {})
