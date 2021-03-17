@@ -215,6 +215,8 @@ class KerasModel:
                 augment=False,
                 preprocess_fn=self.preprocess_fn,
             )
+            if frame is None:
+                return None
         output = self.model.predict(frame[np.newaxis, :])
         return output[0]
 
@@ -249,6 +251,8 @@ class KerasModel:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 track_data = track.crop_by_region(frame, region)
                 prediction = self.classify_frame(track_data)
+                if prediction is None:
+                    continue
                 mass = region.mass
                 # we use the square-root here as the mass is in units squared.
                 # this effectively means we are giving weight based on the diameter

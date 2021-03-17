@@ -60,8 +60,12 @@ class Frame:
                 [
                     self.thermal,
                     self.filtered,
-                    self.flow[:, :, 0] if self.flow is not None else None,
-                    self.flow[:, :, 1] if self.flow is not None else None,
+                    self.flow[:, :, 0]
+                    if self.flow is not None
+                    else np.zeros(self.filtered.shape),
+                    self.flow[:, :, 1]
+                    if self.flow is not None
+                    else np.zeros(self.filtered.shape),
                     self.mask,
                 ]
             )

@@ -152,15 +152,9 @@ def preprocess_frame(
     else:
         channel = TrackChannels.filtered
     data = data[channel]
-
-    max = np.amax(data)
-    min = np.amin(data)
-    if max == min:
+    data, stats = imageprocessing.normalize(data)
+    if not stats[0]:
         return None
-
-    data -= min
-    data = data / (max - min)
-    np.clip(data, a_min=0, a_max=None, out=data)
 
     data = data[np.newaxis, :]
     data = np.transpose(data, (1, 2, 0))
