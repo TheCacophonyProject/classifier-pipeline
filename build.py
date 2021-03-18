@@ -230,7 +230,7 @@ def split_wallaby_cameras(dataset, cameras):
     last_index = 0
     wallaby_count = 0
     total = len(dataset.tracks_by_label.get("wallaby", []))
-    wallaby_validate_tracks = max(total * 0.2, MIN_TRACKS)
+    wallaby_validate_tracks = max(total * 0.1, MIN_TRACKS)
     cameras_to_remove = set()
     for i, track in enumerate(wallaby_tracks):
         cameras_to_remove.add("{}-{}".format(track.camera, track.location))
