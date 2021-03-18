@@ -7,6 +7,7 @@ import argparse
 import os
 import pickle
 import numpy as np
+import random
 import datetime
 from dateutil.parser import parse as parse_date
 import logging
@@ -213,42 +214,47 @@ def diverse_validation(cameras, labels, max_cameras):
 
 # only have one wallaby camera so just take MIN_TRACKS from wallaby and make a validation camera
 def split_wallaby_cameras(dataset, cameras):
-    if "Wallaby-None" not in dataset.cameras_by_id:
+    wallaby_tracks = dataset.tracks_by_label["wallaby"]
+    if wallaby_tracks is None or len(wallaby_tracks) == 0:
         return None, None, None
-    wallaby = dataset.cameras_by_id["Wallaby-None"]
-    cameras.remove(wallaby)
-    print("wallaby bin", len(wallaby.bins))
-    wallaby_validate = Camera("Wallaby-2")
-    wallaby_test = Camera("Wallaby-3")
+
+    random.shuffle(wallaby_tracks)
+
+    print("wallaby tracks", len(wallaby_tracks))
+    wallaby_train = Camera("Wallaby-Train")
+
+    wallaby_validate = Camera("Wallaby-Val")
+    wallaby_test = Camera("Wallaby-Test")
 
     add_to = wallaby_validate
-    remove = []
     last_index = 0
     wallaby_count = 0
     total = len(dataset.tracks_by_label.get("wallaby", []))
     wallaby_validate_tracks = max(total * 0.2, MIN_TRACKS)
-    for i, bin_id in enumerate(wallaby.label_to_bins["wallaby"]):
-        bin = wallaby.bins[bin_id]
-        for track in bin:
-            wallaby_count += 1
-            track.camera = add_to.camera
-            add_to.add_track(track)
-            wallaby.remove_track(track)
-        remove.append(bin_id)
+    cameras_to_remove = set()
+    for i, track in enumerate(wallaby_tracks):
+        cameras_to_remove.add("{}-{}".format(track.camera, track.location))
+        wallaby_count += 1
+        track.camera = add_to.camera
+        add_to.add_track(track)
         last_index = i
-        if wallaby_count > wallaby_validate_tracks:
+        if wallaby_count >= wallaby_validate_tracks:
             # 100 more for test
             if add_to == wallaby_validate:
                 add_to = wallaby_test
                 wallaby_validate_tracks += 100
             else:
                 break
-    wallaby.label_to_bins["wallaby"] = wallaby.label_to_bins["wallaby"][
-        last_index + 1 :
-    ]
-    for bin in remove:
-        del wallaby.bins[bin]
-    return wallaby, wallaby_validate, wallaby_test
+
+    wallaby_tracks = wallaby_tracks[last_index + 1 :]
+    for track in wallaby_tracks:
+        track.camera = wallaby_train.camera
+        wallaby_train.add_track(track)
+    for camera_name in cameras_to_remove:
+        camera = dataset.cameras_by_id[camera_name]
+        camera.remove_label("wallaby")
+
+    return wallaby_train, wallaby_validate, wallaby_test
 
 
 def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
@@ -265,9 +271,11 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
         MIN_VALIDATE_CAMERAS, round(camera_count * validation_percent)
     )
 
-    wallaby, wallaby_validate, wallaby_test = split_wallaby_cameras(dataset, cameras)
-    if wallaby:
-        train_data.append(wallaby)
+    wallaby_train, wallaby_validate, wallaby_test = split_wallaby_cameras(
+        dataset, cameras
+    )
+    if wallaby_train:
+        train_data.append(wallaby_train)
     # has all the rabbits so put in training
     rabbits = dataset.cameras_by_id.get("ruru19w44a-[-36.03915 174.51675]")
     if rabbits:

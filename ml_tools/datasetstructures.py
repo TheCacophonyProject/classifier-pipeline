@@ -428,7 +428,6 @@ class Camera:
 
         self.bins = {}
         self.camera = camera
-        self.bin_segment_sum = {}
         self.segment_sum = 0
         self.segments = 0
         self.label_frames = {}
@@ -498,17 +497,28 @@ class Camera:
 
         return frames
 
+    def remove_label(self, label):
+        if label in self.label_to_tracks:
+            tracks = list(self.label_to_tracks[label].values())
+            while len(tracks) > 0:
+                track = tracks.pop()
+                self.remove_track(track)
+            del self.label_to_tracks[label]
+            del self.label_to_bins[label]
+            del self.label_frames[label]
+
     def remove_track(self, track):
         self.segments -= 1
         self.segment_sum -= len(track.segments)
         del self.label_to_tracks[track.label][track.unique_id]
+        self.label_to_bins[track.label].remove(track.bin_id)
+        self.label_frames[track.label] -= len(track.important_frames)
 
     def add_track(self, track_header):
         tracks = self.label_to_tracks.setdefault(track_header.label, {})
         tracks[track_header.unique_id] = track_header
         if track_header.bin_id not in self.bins:
             self.bins[track_header.bin_id] = []
-            self.bin_segment_sum[track_header.bin_id] = 0
 
         if track_header.label not in self.label_to_bins:
             self.label_to_bins[track_header.label] = []
@@ -521,7 +531,6 @@ class Camera:
         self.label_frames[track_header.label] += len(track_header.important_frames)
 
         segment_length = len(track_header.segments)
-        self.bin_segment_sum[track_header.bin_id] += segment_length
         self.segment_sum += segment_length
         self.segments += 1
 

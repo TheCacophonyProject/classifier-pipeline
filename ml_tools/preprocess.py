@@ -218,6 +218,12 @@ def preprocess_movement(
         filtered_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
     )
     if overlay is None:
+        dots, overlay = imageprocessing.movement_images(
+            data,
+            regions,
+            dim=square.shape,
+            require_movement=True,
+        )
         overlay, stats = imageprocessing.normalize(overlay, min=0)
         if not stats[0]:
             return None
