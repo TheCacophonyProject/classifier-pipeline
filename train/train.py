@@ -36,14 +36,16 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     #
     groups = {}
     animals = []
-    # false_positives = ["false-positive", "insect"]
+    false_positives = ["false-positive", "insect"]
     model.import_dataset(datasets_filename, lbl_p=conf.train.label_probabilities)
     for label in model.datasets.train.labels:
-        if label != "wallaby":
-            animals.append(label)
+        if label not in false_positives:
+            groups[label] = [label]
+        # if label != "wallaby":
+        #     animals.append(label)
 
-    groups["wallaby"] = ["wallaby"]
-    groups["not"] = animals
+    groups["false-positives"] = false_positives
+    # groups["not"] = animals
     model.mapped_labels = groups
     model.regroup()
     # display the data set summary

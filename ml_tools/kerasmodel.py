@@ -410,7 +410,7 @@ class KerasModel:
             validation_data=self.validate,
             epochs=epochs,
             shuffle=False,
-            class_weight=class_weight,
+            # class_weight=class_weight,
             callbacks=[
                 tf.keras.callbacks.TensorBoard(
                     self.log_dir, write_graph=True, write_images=True
