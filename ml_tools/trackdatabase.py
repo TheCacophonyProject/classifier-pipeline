@@ -294,6 +294,16 @@ class TrackDatabase:
                 results[clip_id] = [track_id for track_id in clips[clip_id]]
         return results
 
+    def clear_overlay(self):
+        with HDF5Manager(self.database, "a") as f:
+            clips = f["clips"]
+            for clip_id in clips:
+                clip = clips[clip_id]
+                for track in clip:
+                    if track not in special_datasets:
+                        if "overlay" in clip[track]:
+                            del clip[track]["overlay"]
+
     def get_all_track_ids(self, before_date=None, after_date=None):
         """
         Returns a list of clip_id, track_number pairs.

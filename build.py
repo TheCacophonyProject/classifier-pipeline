@@ -390,7 +390,7 @@ def main():
         db, "dataset", config, consecutive_segments=args.consecutive_segments
     )
     tracks_loaded, total_tracks = dataset.load_tracks(before_date=args.date)
-
+    db.clear_overlay()
     # dataset.add_overlay()
     # return
     # set_important(dataset, config.classify.model)
