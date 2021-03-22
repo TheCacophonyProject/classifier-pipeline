@@ -20,7 +20,7 @@ from ml_tools.kerasmodel import KerasModel
 
 import pytz
 
-LOW_DATA_LABELS = ["wallaby", "human", "dog"]
+LOW_DATA_LABELS = ["wallaby", "human", "dog", "vehicle"]
 MIN_TRACKS = 100
 
 CAP_DATA = True
