@@ -389,18 +389,17 @@ def main():
     dataset = Dataset(
         db, "dataset", config, consecutive_segments=args.consecutive_segments
     )
+    tracks_loaded, total_tracks = dataset.load_tracks(before_date=args.date)
+
+    # dataset.add_overlay()
+    # return
     # set_important(dataset, config.classify.model)
     # print("set important.....")
     # return
     # datasets = recalc_important(datasets_filename, db, config.classify.model)
     # pickle.dump(datasets, open(dataset_db_path(config), "wb"))
     # return
-    # add_overlay(datasets_filename, db)
-    # return
-    dataset = Dataset(
-        db, "dataset", config, consecutive_segments=args.consecutive_segments
-    )
-    tracks_loaded, total_tracks = dataset.load_tracks(before_date=args.date)
+
     print(
         "Loaded {}/{} tracks, found {:.1f}k segments".format(
             tracks_loaded, total_tracks, len(dataset.segments) / 1000

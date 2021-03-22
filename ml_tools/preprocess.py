@@ -228,6 +228,9 @@ def preprocess_movement(
         if not stats[0]:
             return None
     else:
+        overlay, stats = imageprocessing.normalize(overlay)
+        if stats[0] == False:
+            return None
         overlay_full_size = np.zeros(square.shape)
         overlay_full_size[: overlay.shape[0], : overlay.shape[1]] = overlay
         overlay = overlay_full_size
