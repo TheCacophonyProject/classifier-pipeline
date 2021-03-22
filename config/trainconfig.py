@@ -47,6 +47,7 @@ class TrainConfig(DefaultConfig):
         "false-positive": 1,
         "wallaby": 5,
         "vehicle": 1,
+        "human": 1,
     }
 
     @classmethod
