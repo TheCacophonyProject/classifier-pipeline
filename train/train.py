@@ -48,7 +48,7 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     # groups["false-positive"] = ["false-positive", "insect"]
 
     model.import_dataset(datasets_filename, lbl_p=conf.train.label_probabilities)
-    # for label in model.datasets.train.labels:
+    for label in model.datasets.train.labels:
         if label not in false_positives:
             groups[label] = [label]
         # if label != "wallaby":
