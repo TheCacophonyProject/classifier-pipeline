@@ -359,6 +359,12 @@ class KerasModel:
         self.log_dir = os.path.join(self.log_base, run_name)
         os.makedirs(self.log_base, exist_ok=True)
 
+        if not self.model:
+            self.build_model(
+                dense_sizes=self.params.dense_sizes,
+                retrain_from=self.params.retrain_layer,
+                dropout=self.params.dropout,
+            )
         self.train = DataGenerator(
             self.datasets.train,
             self.labels,
@@ -390,12 +396,6 @@ class KerasModel:
             cap_at="wallaby",
             square_width=self.params.square_width,
         )
-        if not self.model:
-            self.build_model(
-                dense_sizes=self.params.dense_sizes,
-                retrain_from=self.params.retrain_layer,
-                dropout=self.params.dropout,
-            )
         checkpoints = self.checkpoints(run_name)
 
         self.save_metadata(run_name)

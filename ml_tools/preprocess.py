@@ -253,7 +253,6 @@ def preprocess_movement(
     #     f"samples/{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
     # )
     if preprocess_fn:
-        for i, frame in enumerate(data):
-            frame = frame * 255
-            data[i] = preprocess_fn(frame)
+        data = data * 255
+        data = preprocess_fn(data)
     return data
