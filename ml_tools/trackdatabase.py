@@ -119,6 +119,13 @@ class TrackDatabase:
             track = clip[str(track_id)]
             return track["overlay"][:]
 
+    def has_overlay(self, clip_id, track_id):
+        with HDF5Manager(self.database, "r") as f:
+            clip = f["clips"][str(clip_id)]
+            track = clip[str(track_id)]
+            return "overlay" in track
+        return False
+
     def add_predictions(self, clip_id, model):
         logging.info("Add_prediction waiting")
         with HDF5Manager(self.database, "r") as f:

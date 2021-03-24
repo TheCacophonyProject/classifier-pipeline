@@ -954,6 +954,9 @@ class Dataset:
 
     def add_overlay(self):
         for track in self.tracks:
+            if self.db.has_overlay(track.clip_id, track.track_id):
+                continue
+            print("no overlay for ", track.clip_id, track.track_id)
             frames = self.db.get_track(track.clip_id, track.track_id)
             regions = []
             for region in track.track_bounds:
