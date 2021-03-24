@@ -1,8 +1,8 @@
-tensorflow==2.1.0
+tensorflow==2.1.0 #needed for older models only works on python3.6
 matplotlib~=3.0
 pytz
 cptv~=1.5.1
-opencv-python~=3.4
+opencv-contrib-python-headless~=4.5.1.48
 numpy~=1.18.5
 scipy==1.4.1
 python-dateutil
@@ -15,9 +15,10 @@ attrs~=19.1
 filelock~=3.0.12
 Astral~=1.10.1
 timezonefinder~=4.1.0
-pydbus~=0.6.0
-PyGObject~=3.34.0
-psutil~=5.6.7
 portalocker~=1.5.2
 toml~=0.10.0
 cacophonyapi
+#used when running on the pi (Still under construction)
+#pydbus~=0.6.0
+#PyGObject~=3.34.0
+#psutil~=5.6.7
