@@ -142,6 +142,8 @@ class ClipLoader:
         for clip in clips:
             if not self.database.has_prediction(clip):
                 job_queue.put(clip)
+        logging.info("Processing %d", job_queue.qsize())
+
         for i in range(len(processes)):
             job_queue.put("DONE")
         for process in processes:
@@ -164,14 +166,13 @@ class ClipLoader:
         if root is None:
             root = self.config.source_folder
 
-        job_count = 0
         for folder_path, _, files in os.walk(root):
             for name in files:
                 if os.path.splitext(name)[1] == ".cptv":
                     full_path = os.path.join(folder_path, name)
                     job_queue.put(full_path)
-                    job_count += 1
-        logging.info("Processing %d", job_count)
+
+        logging.info("Processing %d", job_queue.qsize())
         for i in range(len(processes)):
             job_queue.put("DONE")
         for process in processes:
@@ -215,7 +216,6 @@ class ClipLoader:
             )
 
             important_frames = get_important_frames(
-                track.get_id(),
                 clip.ffc_frames,
                 [bounds.mass for bounds in track.bounds_history],
                 self.config.build.train_min_mass,
@@ -362,9 +362,7 @@ def get_distributed_folder(name, num_folders=256, seed=31):
     return "{:02x}".format(hash_code % num_folders)
 
 
-def get_important_frames(
-    track_id, ffc_frames, mass_history, min_mass=None, frame_data=None
-):
+def get_important_frames(ffc_frames, mass_history, min_mass=None, frame_data=None):
     clear_frames = []
     lower_mass = np.percentile(mass_history, q=25)
     upper_mass = np.percentile(mass_history, q=75)
@@ -376,14 +374,9 @@ def get_important_frames(
             or mass >= min_mass
             and mass >= lower_mass
             and mass <= upper_mass
-        ):  # trying it out
+        ):
             if frame_data is not None:
                 if not clear_frame(frame_data[i]):
-                    logging.debug(
-                        "get_important_frames %s frame %s has no zeros in filtered frame",
-                        track_id,
-                        i,
-                    )
                     continue
             clear_frames.append(i)
     return clear_frames

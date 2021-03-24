@@ -35,6 +35,8 @@ class TrackHeader:
         start_frame,
         res_x=CPTV_FILE_WIDTH,
         res_y=CPTV_FILE_HEIGHT,
+        ffc_frames=None,
+        important_frames=None,
     ):
         self.res_x = res_x
         self.res_y = res_y
@@ -72,13 +74,28 @@ class TrackHeader:
         self.frames_per_second = frames_per_second
         self.calculate_velocity()
         self.calculate_frame_crop()
-        self.important_frames = []
         self.important_predicted = 0
         self.frame_mass = frame_mass
         self.lower_mass = np.percentile(frame_mass, q=25)
         self.upper_mass = np.percentile(frame_mass, q=75)
         self.median_mass = np.median(frame_mass)
         self.mean_mass = np.mean(frame_mass)
+        self.ffc_frames = ffc_frames
+        self.sample_frames = None
+
+        if important_frames is not None:
+            self.set_sample_frames(important_frames)
+
+    def set_sample_frames(self, important_frames):
+        self.sample_frames = []
+        for frame_num in important_frames:
+            f = FrameSample(
+                self.clip_id,
+                self.track_id,
+                frame_num,
+                self.label,
+            )
+            self.sample_frames.append(f)
 
     def toJSON(self):
         meta_dict = {}
@@ -105,21 +122,21 @@ class TrackHeader:
         if use_segments:
             self.segments.append(sample)
         else:
-            self.important_frames.append(sample)
+            self.sample_frames.append(sample)
 
     def get_sample_frames(self):
-        return self.important_frames
+        return self.sample_frames
 
     def remove_sample_frame(self, f):
         self.important_frams.remove(f)
 
     def get_sample_frame(self, i=0, remove=False):
-        if len(self.important_frames) == 0:
+        if len(self.sample_frames) == 0:
             return None
-        f = self.important_frames[i]
+        f = self.sample_frames[i]
 
         if remove:
-            del self.important_frames[i]
+            del self.sample_frames[i]
         return f
 
     @property
@@ -128,7 +145,7 @@ class TrackHeader:
 
     @property
     def num_sample_frames(self):
-        return len(self.important_frames)
+        return len(self.sample_frames)
 
     def calculate_frame_crop(self):
         # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
@@ -201,8 +218,8 @@ class TrackHeader:
             for i in range(segment_count):
                 frames = list(
                     np.random.choice(
-                        self.important_frames,
-                        min(segment_width, len(self.important_frames)),
+                        self.sample_frames,
+                        min(segment_width, len(self.sample_frames)),
                         replace=False,
                     )
                 )
@@ -210,7 +227,7 @@ class TrackHeader:
                 if remaining > 0:
                     frames.extend(
                         np.random.choice(
-                            self.important_frames,
+                            self.sample_frames,
                             remaining,
                             replace=False,
                         )
@@ -307,8 +324,9 @@ class TrackHeader:
                 track_start_frame : num_frames + track_start_frame
             ]
         )
-
         bounds_history = track_meta["bounds_history"]
+        ffc_frames = clip_meta.get("ffc_frames", [])
+        important_frames = track_meta.get("important_frames")
 
         header = TrackHeader(
             clip_id=int(clip_id),
@@ -329,6 +347,8 @@ class TrackHeader:
             start_frame=track_start_frame,
             res_x=clip_meta.get("res_x", CPTV_FILE_WIDTH),
             res_y=clip_meta.get("res_y", CPTV_FILE_HEIGHT),
+            ffc_frames=ffc_frames,
+            important_frames=important_frames,
         )
         return header
 
@@ -363,7 +383,7 @@ class Camera:
         bin_id = bins[self.bin_i]
         track = self.bins[bin_id][0]
         f = track.get_sample_frame()
-        if len(track.important_frames) == 0 or f is None:
+        if len(track.sample_frames) == 0 or f is None:
             del bins[self.bin_i]
             del self.bins[bin_id]
 
@@ -407,16 +427,16 @@ class Camera:
         frames = 0
         for track in tracks:
             if max_frames_per_track:
-                frames += max(len(track.important_frames), max_frames_per_track)
+                frames += max(len(track.sample_frames), max_frames_per_track)
             else:
-                frames += len(track.important_frames)
+                frames += len(track.sample_frames)
 
         return frames
 
     def remove_track(self, track):
         self.segments -= 1
         self.segment_sum -= len(track.segments)
-        del self.label_to_tracks[track.tag][track.unique_id]
+        del self.label_to_tracks[track.label][track.unique_id]
 
     def add_track(self, track_header):
         tracks = self.label_to_tracks.setdefault(track_header.label, {})
@@ -433,7 +453,7 @@ class Camera:
             self.label_to_bins[track_header.label].append(track_header.bin_id)
 
         self.bins[track_header.bin_id].append(track_header)
-        self.label_frames[track_header.label] += len(track_header.important_frames)
+        self.label_frames[track_header.label] += len(track_header.sample_frames)
 
         segment_length = len(track_header.segments)
         self.bin_segment_sum[track_header.bin_id] += segment_length

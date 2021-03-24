@@ -295,10 +295,6 @@ class Dataset:
             clip_id, clip_meta, track_meta, predictions
         )
         self.tracks.append(track_header)
-
-        track_header.set_important_frames(
-            labels, self.min_frame_mass, frame_data=frames
-        )
         segment_frame_spacing = int(
             round(self.segment_spacing * track_header.frames_per_second)
         )
@@ -622,7 +618,7 @@ class Dataset:
         self.frame_label_cdf = {}
 
         for track in self.tracks:
-            for frame in track.important_frames:
+            for frame in track.sample_frames:
                 frame_weight = track.frame_weight
                 if lbl_p and track.label in lbl_p:
                     frame_weight *= lbl_p[track.label]
@@ -881,11 +877,11 @@ def dataset_db_path(config):
     # trying to get only clear frames
 
 
-def get_important_frames(track_id, mass_history, min_mass=None, frame_data=None):
+def get_important_frames(track_id, mass_history, min_mass, frame_data):
     # this needs more testing
     clear_frames = []
-    lower_mass = np.percentile(frame_mass, q=25)
-    upper_mass = np.percentile(frame_mass, q=75)
+    lower_mass = np.percentile(mass_history, q=25)
+    upper_mass = np.percentile(mass_history, q=75)
     for i, mass in enumerate(mass_history):
         if (
             min_mass is None

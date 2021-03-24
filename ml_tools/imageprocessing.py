@@ -19,7 +19,7 @@ def overlay_image(
     dim,
     require_movement=False,
 ):
-    """Return an image describing the movement, the other is a collage of all frames"""
+    """Return an image describing the movement by creating a collage of all frames"""
     channel = TrackChannels.filtered
 
     i = 0
