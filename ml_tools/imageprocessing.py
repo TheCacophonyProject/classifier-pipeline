@@ -91,6 +91,8 @@ def normalize(data, min=None, max=None, new_max=1):
     Normalize an array so that the values range from 0 -> new_max
     Returns normalized array, stats tuple (Success, min used, max used)
     """
+    if data.shape[0] == 0 or data.shape[1] == 0:
+        return np.zeros((data.shape)), (False, None, None)
     if max is None:
         max = np.amax(data)
     if min is None:
