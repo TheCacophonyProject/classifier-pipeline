@@ -213,48 +213,48 @@ def diverse_validation(cameras, labels, max_cameras):
 
 
 # only have one wallaby camera so just take MIN_TRACKS from wallaby and make a validation camera
-def split_wallaby_cameras(dataset, cameras):
-    wallaby_tracks = dataset.tracks_by_label["wallaby"]
-    if wallaby_tracks is None or len(wallaby_tracks) == 0:
+def split_low_label(dataset, label, cameras):
+    tracks = dataset.tracks_by_label.get(label)
+    if tracks is None or len(tracks) == 0:
         return None, None, None
 
-    random.shuffle(wallaby_tracks)
+    random.shuffle(tracks)
 
-    print("wallaby tracks", len(wallaby_tracks))
-    wallaby_train = Camera("Wallaby-Train")
+    print(label, " tracks", len(tracks))
+    label_train = Camera("{}-Train".format(label))
 
-    wallaby_validate = Camera("Wallaby-Val")
-    wallaby_test = Camera("Wallaby-Test")
+    label_validate = Camera("{}-Val".format(label))
+    label_test = Camera("{}-Test".format(label))
 
-    add_to = wallaby_validate
+    add_to = label_validate
     last_index = 0
-    wallaby_count = 0
-    total = len(dataset.tracks_by_label.get("wallaby", []))
-    wallaby_validate_tracks = max(total * 0.1, MIN_TRACKS)
+    label_count = 0
+    total = len(dataset.tracks_by_label.get(label, []))
+    label_validate_tracks = max(total * 0.1, MIN_TRACKS)
     cameras_to_remove = set()
-    for i, track in enumerate(wallaby_tracks):
+    for i, track in enumerate(tracks):
         cameras_to_remove.add("{}-{}".format(track.camera, track.location))
-        wallaby_count += 1
+        label_count += 1
         track.camera = add_to.camera
         add_to.add_track(track)
         last_index = i
-        if wallaby_count >= wallaby_validate_tracks:
+        if label_count >= label_validate_tracks:
             # 100 more for test
-            if add_to == wallaby_validate:
-                add_to = wallaby_test
-                wallaby_validate_tracks += 100
+            if add_to == label_validate:
+                add_to = label_test
+                label_validate_tracks += 100
             else:
                 break
 
-    wallaby_tracks = wallaby_tracks[last_index + 1 :]
-    for track in wallaby_tracks:
-        track.camera = wallaby_train.camera
-        wallaby_train.add_track(track)
+    tracks = tracks[last_index + 1 :]
+    for track in tracks:
+        track.camera = label_train.camera
+        label_train.add_track(track)
     for camera_name in cameras_to_remove:
         camera = dataset.cameras_by_id[camera_name]
-        camera.remove_label("wallaby")
+        camera.remove_label(label)
 
-    return wallaby_train, wallaby_validate, wallaby_test
+    return label_train, label_validate, label_test
 
 
 def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
@@ -265,33 +265,48 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
     test = Dataset(db, "test", config)
 
     train_data = []
+    validate_data = []
+    test_data = []
     cameras = list(dataset.cameras_by_id.values())
     camera_count = len(cameras)
     validation_cameras = max(
         MIN_VALIDATE_CAMERAS, round(camera_count * validation_percent)
     )
 
-    wallaby_train, wallaby_validate, wallaby_test = split_wallaby_cameras(
-        dataset, cameras
+    wallaby_train, wallaby_validate, wallaby_test = split_low_label(
+        dataset, "wallaby", cameras
     )
-    if wallaby_train:
+    if wallaby_train is not None:
         train_data.append(wallaby_train)
+    if wallaby_validate is not None:
+        validate_data.append(wallaby_validate)
+    if wallaby_test is not None:
+        test_data.append(wallaby_test)
+
+    vehicle_train, vehicle_validate, vehicle_test = split_low_label(
+        dataset, "vehicle", cameras
+    )
+    if vehicle_train is not None:
+        train_data.append(vehicle_train)
+    if vehicle_validate is not None:
+        validate_data.append(vehicle_validate)
+    if vehicle_test is not None:
+        test_data.append(vehicle_test)
+
     # has all the rabbits so put in training
     rabbits = dataset.cameras_by_id.get("ruru19w44a-[-36.03915 174.51675]")
     if rabbits:
         cameras.remove(rabbits)
         train_data.append(rabbits)
-    validate_data, cameras = diverse_validation(
+    diverse_validate, cameras = diverse_validation(
         cameras, dataset.labels, validation_cameras
     )
-    if wallaby_validate:
-        validate_data.append(wallaby_validate)
+    validate_data.extend(diverse_validate)
     train_data.extend(cameras)
 
     add_camera_tracks(dataset.labels, train, train_data, balance_bins)
     add_camera_tracks(dataset.labels, validation, validate_data, balance_bins)
-    if wallaby_test is not None:
-        add_camera_tracks(dataset.labels, test, [wallaby_test], balance_bins)
+    add_camera_tracks(dataset.labels, test, test_data, balance_bins)
 
     return train, validation, test
 
