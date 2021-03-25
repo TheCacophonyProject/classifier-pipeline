@@ -111,13 +111,13 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
             if not expected_tag:
                 continue
             expected_tag = dataset.mapped_label(expected_tag)
-            clip_data = dataset.db.get_clip_meta(track.clip_id)
+            clip_meta = dataset.db.get_clip_meta(track.clip_id)
             track_meta = dataset.db.get_track_meta(track.clip_id, track.track_id)
 
             track_data = dataset.db.get_track(track.clip_id, track.track_id)
 
             regions = []
-            medians = clip_data["frame_temp_median"][
+            medians = clip_meta["frame_temp_median"][
                 track_meta["start_frame"] : track_meta["start_frame"]
                 + track_meta["frames"]
             ]
