@@ -111,13 +111,21 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
             if not expected_tag:
                 continue
             expected_tag = dataset.mapped_label(expected_tag)
+            clip_data = dataset.db.get_clip_meta(track.clip_id)["frame_temp_median"]
+            track_meta = dataset.db.get_track_meta(track.clip_id, track.track_id)
+
             track_data = dataset.db.get_track(track.clip_id, track.track_id)
+
             regions = []
+            medians = clip_data["frame_temp_median"][
+                track_meta["start_frame"] : track_meta["frames"]
+            ]
             for region in track.track_bounds:
                 regions.append(tools.Rectangle.from_ltrb(*region))
             track_prediction = classifier.classify_track_data(
-                track.track_id, track_data, regions=regions
+                track.track_id, track_data, medians, regions=regions
             )
+
             counts = [0] * len(classifier.labels)
             for pred in track_prediction.predictions:
                 counts[np.argmax(pred)] += 1

@@ -340,7 +340,7 @@ class TrackDatabase:
         :return:
         """
         with HDF5Manager(self.database) as f:
-            dataset = f["clips"][clip_id][str(track_number)]
+            dataset = f["clips"][str(clip_id)][str(track_number)]
             result = hdf5_attributes_dictionary(dataset)
             result["id"] = track_number
         return result
