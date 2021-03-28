@@ -419,7 +419,7 @@ mean = np.mean(prediction.predictions, axis=0)
 max_lbl = np.argmax(mean)
 print(
     "Clip {} Track {} predicted as {}}".format(
-        clip_id, track_id, classifier.labels[max_lbl]
+        args.clip_id, args.track_id, classifier.labels[max_lbl]
     )
 )
 raise "EX"
