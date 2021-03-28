@@ -205,7 +205,7 @@ class ModelEvalute:
         track_header = TrackHeader.from_meta(
             clip_id, clip_meta, track_meta, predictions
         )
-        evaluate_track(classifier, track_header)
+        return evaluate_track(classifier, track_header)
 
     def evaluate_tracks(self, dataset):
         dataset.set_read_only(True)
