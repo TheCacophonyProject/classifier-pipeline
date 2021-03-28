@@ -205,7 +205,7 @@ class ModelEvalute:
         track_header = TrackHeader.from_meta(
             clip_id, clip_meta, track_meta, predictions
         )
-        return evaluate_track(classifier, track_header)
+        return evaluate_track(classifier, track_header), classifier.labels
 
     def evaluate_tracks(self, dataset):
         dataset.set_read_only(True)
@@ -414,12 +414,14 @@ dataset_file = dataset_db_path(config)
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
 
-prediction = ev.evaluate_db_track(dataset.db, str(args.clip_id), str(args.track_id))
+prediction, labels = ev.evaluate_db_track(
+    dataset.db, str(args.clip_id), str(args.track_id)
+)
 mean = np.mean(prediction.predictions, axis=0)
 max_lbl = np.argmax(mean)
 print(
     "Clip {} Track {} predicted as {}}".format(
-        args.clip_id, args.track_id, classifier.labels[max_lbl]
+        args.clip_id, args.track_id, labels[max_lbl]
     )
 )
 raise "EX"
