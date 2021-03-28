@@ -18,6 +18,7 @@ from ml_tools.imageprocessing import normalize, detect_objects
 import matplotlib
 import matplotlib.pyplot as plt
 from ml_tools import tools
+from ml_tools.datasetstructures import TrackHeader
 
 VISIT_INTERVAL = 10 * 60
 
@@ -111,21 +112,7 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
             if not expected_tag:
                 continue
             expected_tag = dataset.mapped_label(expected_tag)
-            clip_meta = dataset.db.get_clip_meta(track.clip_id)
-            track_meta = dataset.db.get_track_meta(track.clip_id, track.track_id)
-
-            track_data = dataset.db.get_track(track.clip_id, track.track_id)
-
-            regions = []
-            medians = clip_meta["frame_temp_median"][
-                track_meta["start_frame"] : track_meta["start_frame"]
-                + track_meta["frames"]
-            ]
-            for region in track.track_bounds:
-                regions.append(tools.Rectangle.from_ltrb(*region))
-            track_prediction = classifier.classify_track_data(
-                track.track_id, track_data, medians, regions=regions
-            )
+            track_prediction = evaluate_track(classifier, track)
 
             counts = [0] * len(classifier.labels)
             for pred in track_prediction.predictions:
@@ -152,6 +139,24 @@ def process_job(queue, dataset, model_file, train_config, results_queue):
         if i % 50 == 0:
             logging.info("%s jobs left", queue.qsize())
     return
+
+
+def evaluate_track(classifier, track):
+    clip_meta = dataset.db.get_clip_meta(track.clip_id)
+    track_meta = dataset.db.get_track_meta(track.clip_id, track.track_id)
+
+    track_data = dataset.db.get_track(track.clip_id, track.track_id)
+
+    regions = []
+    medians = clip_meta["frame_temp_median"][
+        track_meta["start_frame"] : track_meta["start_frame"] + track_meta["frames"]
+    ]
+    for region in track.track_bounds:
+        regions.append(tools.Rectangle.from_ltrb(*region))
+    track_prediction = classifier.classify_track_data(
+        track.track_id, track_data, medians, regions=regions
+    )
+    return track_prediction
 
 
 class ModelEvalute:
@@ -189,6 +194,18 @@ class ModelEvalute:
         self.load_classifier()
         results = self.classifier.evaluate(dataset)
         print("Dataset", dataset_file, "loss,acc", results)
+
+    def evaluate_db_track(self, db, clip_id, track_id):
+        classifier = KerasModel(train_config=self.config.train)
+        classifier.load_weights(self.model_file, training=False)
+        logging.info("Loaded model")
+        clip_meta = db.get_clip_meta(clip_id)
+        track_meta = db.get_track_meta(clip_id, track_id)
+        predictions = db.get_track_predictions(clip_id, track_id)
+        track_header = TrackHeader.from_meta(
+            clip_id, clip_meta, track_meta, predictions
+        )
+        evaluate_track(classifier, track_header)
 
     def evaluate_tracks(self, dataset):
         dataset.set_read_only(True)
@@ -324,6 +341,11 @@ def load_args():
 
     parser.add_argument("-d", "--date", help="Use clips after this")
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
+
+    parser.add_argument("--track-id", help="Track id")
+
+    parser.add_argument("--clip-id", help="Clip id")
+
     args = parser.parse_args()
     return args
 
@@ -388,10 +410,19 @@ date = None
 if args.date:
     date = parse(args.date)
 
-
 dataset_file = dataset_db_path(config)
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
+
+prediction = ev.evaluate_db_track(dataset.db, str(clip_id), str(track_id))
+mean = np.mean(prediction.predictions, axis=0)
+max_lbl = np.argmax(mean)
+print(
+    "Clip {} Track {} predicted as {}}".format(
+        clip_id, track_id, classifier.labels[max_lbl]
+    )
+)
+raise "EX"
 
 dir = os.path.dirname(model_file)
 meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
