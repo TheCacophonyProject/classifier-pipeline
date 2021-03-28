@@ -420,7 +420,7 @@ prediction, labels = ev.evaluate_db_track(
 mean = np.mean(prediction.predictions, axis=0)
 max_lbl = np.argmax(mean)
 print(
-    "Clip {} Track {} predicted as {}}".format(
+    "Clip {} Track {} predicted as {}".format(
         args.clip_id, args.track_id, labels[max_lbl]
     )
 )
