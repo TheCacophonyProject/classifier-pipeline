@@ -405,7 +405,16 @@ def main():
         db, "dataset", config, consecutive_segments=args.consecutive_segments
     )
     tracks_loaded, total_tracks = dataset.load_tracks(before_date=args.date)
-    db.clear_overlay()
+    print("Cameras breakdown")
+    tracks_by_camera = {}
+    for track in dataset.tracks:
+        if track.camera not in tracks_by_camera:
+            tracks_by_camera[track.camera] = []
+        tracks_by_camera[track.camera].append(track)
+
+    for camera, tracks in tracks_by_camera.items():
+        print("{:<20} {}".format(camera, len(tracks)))
+
     # dataset.add_overlay()
     # return
     # set_important(dataset, config.classify.model)
