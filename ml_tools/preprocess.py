@@ -120,6 +120,7 @@ def preprocess_segment(
             crop_region.crop(frame_bounds)
         frame.crop_by_region(crop_region, out=frame)
         frame.resize_with_aspect((FRAME_SIZE, FRAME_SIZE))
+
         if reference_level is not None:
             frame.thermal -= reference_level[i]
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
@@ -127,12 +128,13 @@ def preprocess_segment(
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
         # data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
+        frame.normalize()
+
         if augment:
             if level_adjust is not None:
                 frame.brightness_adjust(level_adjust)
             if contrast_adjust is not None:
                 frame.contrast_adjust(contrast_adjust)
-
             if flip:
                 frame.flip()
         data.append(frame)
@@ -250,7 +252,7 @@ def preprocess_movement(
     # for debugging
     # tools.saveclassify_image(
     #     data,
-    #     f"samples/{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
+    #     f"samples/{sample.track.camera}-{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
     # )
     if preprocess_fn:
         data = data * 255

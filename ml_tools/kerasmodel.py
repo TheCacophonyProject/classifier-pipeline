@@ -316,7 +316,6 @@ class KerasModel:
         if test_results:
             model_stats["test_loss"] = test_results[0]
             model_stats["test_acc"] = test_results[1]
-
         run_dir = os.path.join(self.checkpoint_folder, run_name)
         if not os.path.exists(run_dir):
             os.mkdir(run_dir)
@@ -743,7 +742,6 @@ class KerasModel:
             seg_frames = frame_sample[:frames_per_classify]
             if len(seg_frames) == 0:
                 break
-            # print("using", seg_frames)
             segment = []
             median = np.zeros((len(seg_frames)))
             # update remaining

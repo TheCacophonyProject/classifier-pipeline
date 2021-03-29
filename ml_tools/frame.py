@@ -128,6 +128,12 @@ class Frame:
                 return self.flow_h, self.flow_v
         return None, None
 
+    def normalize(self):
+        if self.thermal is not None:
+            self.thermal, _ = normalize(self.thermal, new_max=255)
+        if self.filtered is not None:
+            self.filtered, _ = normalize(self.filtered, new_max=255)
+
     def brightness_adjust(self, adjust):
         if self.thermal is not None:
             self.thermal += adjust

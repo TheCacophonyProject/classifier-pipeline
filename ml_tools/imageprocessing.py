@@ -121,6 +121,7 @@ def square_clip(data, frames_per_row, tile_dim, type=None):
                 frame = data[-1]
             else:
                 frame = data[i]
+
             frame, stats = normalize(frame)
             if not stats[0]:
                 continue

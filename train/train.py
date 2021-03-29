@@ -9,7 +9,7 @@ from ml_tools.kerasmodel import KerasModel
 
 def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     """Trains a model with the given hyper parameters."""
-    run_name = os.path.join("train", run_name)
+    # run_name = os.path.join("train", run_name)
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
     # but we don't load the dataset till after that, so we load it here just to count the number of labels...
