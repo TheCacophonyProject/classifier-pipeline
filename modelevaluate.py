@@ -414,17 +414,17 @@ dataset_file = dataset_db_path(config)
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
 
-prediction, labels = ev.evaluate_db_track(
-    dataset.db, str(args.clip_id), str(args.track_id)
-)
-mean = np.mean(prediction.predictions, axis=0)
-max_lbl = np.argmax(mean)
-print(
-    "Clip {} Track {} predicted as {}".format(
-        args.clip_id, args.track_id, labels[max_lbl]
-    )
-)
-raise "EX"
+# prediction, labels = ev.evaluate_db_track(
+#     dataset.db, str(args.clip_id), str(args.track_id)
+# )
+# mean = np.mean(prediction.predictions, axis=0)
+# max_lbl = np.argmax(mean)
+# print(
+#     "Clip {} Track {} predicted as {}".format(
+#         args.clip_id, args.track_id, labels[max_lbl]
+#     )
+# )
+# raise "EX"
 
 dir = os.path.dirname(model_file)
 meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
