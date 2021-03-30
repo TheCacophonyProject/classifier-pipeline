@@ -7,6 +7,7 @@ import numpy as np
 from track.track import TrackChannels
 from classify.trackprediction import TrackPrediction
 from ml_tools.preprocess import (
+    FrameTypes,
     preprocess_movement,
     preprocess_frame,
 )
@@ -132,7 +133,7 @@ class KerasModel:
 
     def loss(self):
         softmax = tf.keras.losses.CategoricalCrossentropy(
-            label_smoothing=self.params["label_smoothing"],
+            label_smoothing=self.params.get("label_smoothing"),
         )
         return softmax
 
@@ -158,7 +159,7 @@ class KerasModel:
         self.load_meta(dir)
 
         if not self.model:
-            self.build_model()
+            self.build_model(self.dense_sizes)
         self.model.load_weights(weights_path)
 
     def load_model(self, dir):
@@ -172,9 +173,11 @@ class KerasModel:
         self.pretrained_model = self.params.get("model", "resnetv2")
         self.preprocess_fn = self.get_preprocess_fn()
         self.frame_size = meta.get("frame_size", 48)
-        self.square_width = meta.get("square_width", 1)
+        self.square_width = self.params.get("square_width", 1)
         self.use_movement = self.params.get("use_movement", False)
-        self.use_dots = self.params.get("use_dots", False)
+        self.green_type = self.params.get("green_type", FrameTypes.dots)
+        self.keep_aspect = self.params.get("keep_aspect", False)
+        self.dense_sizes = self.params.get("dense_sizes", [1024, 512])
 
     def get_preprocess_fn(self):
         if self.pretrained_model == "resnet":
@@ -308,7 +311,8 @@ class KerasModel:
                 channel,
                 self.preprocess_fn,
                 reference_level=medians,
-                use_dots=self.params.get("use_dots", True),
+                green_type=self.params.get("green_type", FrameTypes.dots),
+                keep_aspect=self.params.get("keep_aspect"),
             )
             if frames is None:
                 continue

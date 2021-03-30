@@ -13,6 +13,25 @@ FRAME_SIZE = 48
 MIN_SIZE = 4
 
 
+class FrameTypes:
+    """ Types of frames """
+
+    thermal_square = 0
+    filtered_square = 1
+    overlay = 2
+    dots = 3
+
+
+def resize_frame(frame, channel, keep_aspect=False):
+    if keep_aspect:
+        return imageprocessing.resize_with_aspect(
+            frame, (FRAME_SIZE, FRAME_SIZE), channel
+        )
+    return imageprocessing.resize_cv(
+        np.float32(frame), (FRAME_SIZE, FRAME_SIZE), channel
+    )
+
+
 def preprocess_segment(
     frames,
     reference_level=None,
@@ -21,6 +40,7 @@ def preprocess_segment(
     encode_frame_offsets_in_flow=False,
     default_inset=2,
     filter_to_delta=True,
+    keep_aspect=False,
 ):
     """
     Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
@@ -84,13 +104,7 @@ def preprocess_segment(
         ]
 
         scaled_frame = [
-            cv2.resize(
-                np.float32(cropped_frame[channel]),
-                dsize=(FRAME_SIZE, FRAME_SIZE),
-                interpolation=cv2.INTER_LINEAR
-                if channel != TrackChannels.mask
-                else cv2.INTER_NEAREST,
-            )
+            resize_frame(cropped_frame[channel], channel, keep_aspect)
             for channel in range(channels)
         ]
         if reference_level:
@@ -159,7 +173,7 @@ def preprocess_frame(
     data = data[np.newaxis, :]
     data = np.transpose(data, (1, 2, 0))
     data = np.repeat(data, output_dim[2], axis=2)
-    data = imageprocessing.resize_cv(data, output_dim)
+    data = imageprocessing.resize_cv(data, output_dim, channel)
 
     # preprocess expects values in range 0-255
     if preprocess_fn:
@@ -173,10 +187,11 @@ def preprocess_movement(
     segment,
     frames_per_row,
     regions,
-    channel,
+    red_channel,
     preprocess_fn=None,
     augment=False,
-    use_dots=True,
+    green_type=FrameTypes.dots,
+    keep_aspect=False,
     reference_level=None,
 ):
     segment = preprocess_segment(
@@ -185,35 +200,59 @@ def preprocess_movement(
         augment=augment,
         filter_to_delta=False,
         default_inset=0,
+        keep_aspect=keep_aspect,
     )
 
-    segment = segment[:, channel]
+    red_segment = segment[:, red_channel]
     # as long as one frame it's fine
-    square, success = imageprocessing.square_clip(
-        segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+    red_square, success = imageprocessing.square_clip(
+        red_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
     )
     if not success:
         return None
     dots, overlay = imageprocessing.movement_images(
         data,
         regions,
-        dim=square.shape,
+        dim=red_square.shape,
         require_movement=True,
     )
     overlay, stats = imageprocessing.normalize(overlay, min=0)
     if not stats[0]:
         return None
 
-    data = np.empty((square.shape[0], square.shape[1], 3))
-    data[:, :, 0] = square
-    if use_dots:
+    data = np.empty((red_square.shape[0], red_square.shape[1], 3))
+    data[:, :, 0] = red_square
+    if green_type == FrameTypes.dots:
         dots = dots / 255
-        data[:, :, 1] = dots  # dots
+        green_square = dots
+        data[:, :, 1] = dots
+        print("dots square")
+
+    elif green_type == FrameTypes.filtered_square:
+        green_segment = segment[:, TrackChannels.filtered]
+        green_square, success = imageprocessing.square_clip(
+            green_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+        )
+        if not success:
+            return None
+        print("filtered square")
+    elif green_type == FrameTypes.thermal_square:
+        green_segment = segment[:, TrackChannels.thermal]
+        green_square, success = imageprocessing.square_clip(
+            green_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+        )
+        if not success:
+            return None
+    elif green_type == FrameTypes.overlay:
+        green_square = overlay
     else:
-        data[:, :, 1] = np.zeros(dots.shape)
+        print("nos quare")
+        green_square = np.zeros(dots.shape)
+
+    data[:, :, 1] = green_square
     data[:, :, 2] = overlay  # overlay
     if preprocess_fn:
-        for i, frame in enumerate(data):
-            frame = frame * 255
-            data[i] = preprocess_fn(frame)
+        print("preprocessing...")
+        data = data * 255
+        data = preprocess_fn(data)
     return data
