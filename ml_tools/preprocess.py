@@ -8,7 +8,6 @@ from ml_tools import imageprocessing
 
 
 # size to scale each frame to when loaded.
-FRAME_SIZE = 48
 
 MIN_SIZE = 4
 
@@ -21,13 +20,13 @@ class FrameTypes:
     overlay = 2
 
 
-def resize_frame(frame, channel, keep_aspect=False):
+def resize_frame(frame, channel, frame_size, keep_aspect=False):
     if keep_aspect:
         return imageprocessing.resize_with_aspect(
-            frame, (FRAME_SIZE, FRAME_SIZE), channel
+            frame, (frame_size, frame_size), channel
         )
     return imageprocessing.resize_cv(
-        np.float32(frame), (FRAME_SIZE, FRAME_SIZE), channel
+        np.float32(frame), (frame_size, frame_size), channel
     )
 
 
@@ -40,6 +39,7 @@ def preprocess_segment(
     default_inset=2,
     filter_to_delta=True,
     keep_aspect=False,
+    frame_size=48,
 ):
     """
     Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
@@ -103,7 +103,7 @@ def preprocess_segment(
         ]
 
         scaled_frame = [
-            resize_frame(cropped_frame[channel], channel, keep_aspect)
+            resize_frame(cropped_frame[channel], channel, frame_size, keep_aspect)
             for channel in range(channels)
         ]
         if reference_level:
@@ -185,6 +185,7 @@ def preprocess_movement(
     data,
     segment,
     frames_per_row,
+    frame_size,
     regions,
     red_channel,
     preprocess_fn=None,
@@ -200,12 +201,13 @@ def preprocess_movement(
         filter_to_delta=False,
         default_inset=0,
         keep_aspect=keep_aspect,
+        frame_size=frame_size,
     )
 
     red_segment = segment[:, red_channel]
     # as long as one frame it's fine
     red_square, success = imageprocessing.square_clip(
-        red_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+        red_segment, frames_per_row, (frame_size, frame_size), type
     )
     if not success:
         return None
@@ -224,7 +226,7 @@ def preprocess_movement(
     if green_type == FrameTypes.filtered_square:
         green_segment = segment[:, TrackChannels.filtered]
         green_square, success = imageprocessing.square_clip(
-            green_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+            green_segment, frames_per_row, (frame_size, frame_size), type
         )
 
         if not success:
@@ -232,7 +234,7 @@ def preprocess_movement(
     elif green_type == FrameTypes.thermal_square:
         green_segment = segment[:, TrackChannels.thermal]
         green_square, success = imageprocessing.square_clip(
-            green_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+            green_segment, frames_per_row, (frame_size, frame_size), type
         )
         if not success:
             return None
@@ -243,6 +245,7 @@ def preprocess_movement(
 
     data[:, :, 1] = green_square
     data[:, :, 2] = overlay  # overlay
+
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)
