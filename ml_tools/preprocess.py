@@ -19,7 +19,6 @@ class FrameTypes:
     thermal_square = 0
     filtered_square = 1
     overlay = 2
-    dots = 3
 
 
 def resize_frame(frame, channel, keep_aspect=False):
@@ -190,7 +189,7 @@ def preprocess_movement(
     red_channel,
     preprocess_fn=None,
     augment=False,
-    green_type=FrameTypes.dots,
+    green_type=None,
     keep_aspect=False,
     reference_level=None,
 ):
@@ -210,7 +209,7 @@ def preprocess_movement(
     )
     if not success:
         return None
-    dots, overlay = imageprocessing.movement_images(
+    _, overlay = imageprocessing.movement_images(
         data,
         regions,
         dim=red_square.shape,
@@ -222,20 +221,14 @@ def preprocess_movement(
 
     data = np.empty((red_square.shape[0], red_square.shape[1], 3))
     data[:, :, 0] = red_square
-    if green_type == FrameTypes.dots:
-        dots = dots / 255
-        green_square = dots
-        data[:, :, 1] = dots
-        print("dots square")
-
-    elif green_type == FrameTypes.filtered_square:
+    if green_type == FrameTypes.filtered_square:
         green_segment = segment[:, TrackChannels.filtered]
         green_square, success = imageprocessing.square_clip(
             green_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
         )
+
         if not success:
             return None
-        print("filtered square")
     elif green_type == FrameTypes.thermal_square:
         green_segment = segment[:, TrackChannels.thermal]
         green_square, success = imageprocessing.square_clip(
@@ -246,13 +239,11 @@ def preprocess_movement(
     elif green_type == FrameTypes.overlay:
         green_square = overlay
     else:
-        print("nos quare")
-        green_square = np.zeros(dots.shape)
+        green_square = np.zeros(overlay.shape)
 
     data[:, :, 1] = green_square
     data[:, :, 2] = overlay  # overlay
     if preprocess_fn:
-        print("preprocessing...")
         data = data * 255
         data = preprocess_fn(data)
     return data

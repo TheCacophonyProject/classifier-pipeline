@@ -20,7 +20,6 @@ def resize_cv(image, dim, channel, extra_h=0, extra_v=0):
 
 
 def resize_with_aspect(frame, dim, channel):
-    print("resize with aspect")
     scale_percent = (dim / np.array(frame.shape)).min()
     width = int(frame.shape[1] * scale_percent)
     height = int(frame.shape[0] * scale_percent)

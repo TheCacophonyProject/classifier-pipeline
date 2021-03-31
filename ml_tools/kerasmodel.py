@@ -175,7 +175,7 @@ class KerasModel:
         self.frame_size = meta.get("frame_size", 48)
         self.square_width = self.params.get("square_width", 1)
         self.use_movement = self.params.get("use_movement", False)
-        self.green_type = self.params.get("green_type", FrameTypes.dots)
+        self.green_type = self.params.get("green_type")
         self.keep_aspect = self.params.get("keep_aspect", False)
         self.dense_sizes = self.params.get("dense_sizes", [1024, 512])
 
@@ -310,9 +310,11 @@ class KerasModel:
                 regions,
                 channel,
                 self.preprocess_fn,
-                reference_level=medians,
-                green_type=self.params.get("green_type", FrameTypes.dots),
-                keep_aspect=self.params.get("keep_aspect"),
+                reference_level=medians
+                if self.params.get("subtract_median", True)
+                else None,
+                green_type=self.green_type,
+                keep_aspect=self.params.get("keep_aspect", False),
             )
             if frames is None:
                 continue
