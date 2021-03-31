@@ -742,7 +742,7 @@ def blur_and_return_as_mask(frame, threshold):
 
 
 def get_optical_flow_function(high_quality=False):
-    opt_flow = cv2.optflow.createOptFlow_DualTVL1()
+    opt_flow = cv2.createOptFlow_DualTVL1()
     opt_flow.setUseInitialFlow(True)
     if not high_quality:
         # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
