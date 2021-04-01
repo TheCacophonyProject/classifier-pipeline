@@ -412,6 +412,7 @@ def set_important(dataset, model_file):
     model.load_model(model_file, training=False)
     dataset.frame_model = model
     tracks_loaded, total_tracks = dataset.load_tracks()
+    dataset.add_important()
 
 
 def main():
@@ -423,6 +424,7 @@ def main():
     dataset = Dataset(
         db, "dataset", config, consecutive_segments=args.consecutive_segments
     )
+    set_important(dataset, config.classify.model)
     tracks_loaded, total_tracks = dataset.load_tracks()
 
     # dataset.add_overlay()

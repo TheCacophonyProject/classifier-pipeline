@@ -952,6 +952,26 @@ class Dataset:
             result.extend(track.segments)
         return result
 
+    def add_important(self):
+        clip_meta = self.db.get_clip_meta(clip_id)
+        track_meta = self.db.get_track_meta(clip_id, track_id)
+        predictions = self.db.get_track_predictions(clip_id, track_id)
+        if self.filter_track(clip_meta, track_meta):
+            return False
+        track_header = TrackHeader.from_meta(
+            clip_id, clip_meta, track_meta, predictions
+        )
+        self.tracks.append(track_header)
+        frames = self.db.get_track(clip_id, track_id)
+        track_header.set_important_frames(
+            self.min_frame_mass, frame_data=frames, model=self.frame_model
+        )
+        self.db.set_important_frames(
+            clip_id,
+            track_id,
+            [sample.frame_num for sample in track_header.important_frames],
+        )
+
     def add_overlay(self):
         for track in self.tracks:
             if self.db.has_overlay(track.clip_id, track.track_id):
