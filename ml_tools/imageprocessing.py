@@ -13,7 +13,7 @@ def resize_cv(image, dim, channel, extra_h=0, extra_v=0):
         cv2.INTER_LINEAR if channel != TrackChannels.mask else cv2.INTER_NEAREST
     )
     return cv2.resize(
-        image,
+        np.float32(image),
         dsize=(dim[0] + extra_h, dim[1] + extra_v),
         interpolation=interpolation,
     )
