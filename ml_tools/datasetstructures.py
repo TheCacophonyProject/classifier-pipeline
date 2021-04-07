@@ -6,6 +6,7 @@ import os
 from ml_tools.imageprocessing import filtered_is_valid
 from ml_tools import tools
 from ml_tools.frame import Frame
+from ml_tools.preprocess import MIN_SIZE
 
 FRAMES_PER_SECOND = 9
 
@@ -162,6 +163,9 @@ class TrackHeader:
                 # and mass <= self.upper_mass
             ):  # trying it out
                 if frame_data is not None:
+                    height, width = frame_data[i].shape
+                    if height < MIN_SIZE or width < MIN_SIZE:
+                        continue
                     if model and (self.label not in ["false-positive", "insect"]):
                         prediction = model.classify_frame(
                             frame_data[i], self.frame_temp_median[i]
@@ -244,7 +248,6 @@ class TrackHeader:
         segment_width,
         segment_min_mass=None,
         use_important=True,
-        require_movement=False,
         scale=1,
     ):
 
@@ -254,46 +257,60 @@ class TrackHeader:
             return
         elif len(mass_history) < segment_width:
             return
-        if use_important:
-            mid_x = [
-                tools.Rectangle.from_ltrb(*bound).mid_x for bound in self.track_bounds
-            ]
-            mid_y = [
-                tools.Rectangle.from_ltrb(*bound).mid_y for bound in self.track_bounds
-            ]
-            vel_x = [cur - prev for cur, prev in zip(mid_x[1:], mid_x[:-1])]
-            vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
-
-            movement = sum((vx ** 2 + vy ** 2) ** 0.5 for vx, vy in zip(vel_x, vel_y))
-            widths = [
-                tools.Rectangle.from_ltrb(*bound).width for bound in self.track_bounds
-            ]
-            if movement < np.median(widths) * 2.0:
-                logging.debug("Not enough movment %s %s", self, self.label)
-                return
-
-        segment_count = (len(mass_history) - segment_width) // segment_frame_spacing
-        segment_count += 1
+        # if use_important:
+        #     mid_x = [
+        #         tools.Rectangle.from_ltrb(*bound).mid_x for bound in self.track_bounds
+        #     ]
+        #     mid_y = [
+        #         tools.Rectangle.from_ltrb(*bound).mid_y for bound in self.track_bounds
+        #     ]
+        #     vel_x = [cur - prev for cur, prev in zip(mid_x[1:], mid_x[:-1])]
+        #     vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
+        #
+        #     movement = sum((vx ** 2 + vy ** 2) ** 0.5 for vx, vy in zip(vel_x, vel_y))
+        #     widths = [
+        #         tools.Rectangle.from_ltrb(*bound).width for bound in self.track_bounds
+        #     ]
+        #     if movement < np.median(widths) * 2.0:
+        #         logging.debug("Not enough movment %s %s", self, self.label)
+        #         return
 
         if use_important:
-            remaining = segment_width - self.num_sample_frames
-            segment_count = max(0, (self.num_sample_frames - segment_width) // 9)
-            segment_count += 1
+
+            segment_count = max(1, self.num_sample_frames // segment_frame_spacing)
+            segment_count -= 1
             segment_count = int(scale * segment_count)
+            # give it slightly more than segment_width frames to choose some from
+            extra_frames = 2
             # take any segment_width frames, this could be done each epoch
             for i in range(segment_count):
+                i = int(i // scale)
+                segment_start = i * segment_frame_spacing
+                segment_end = segment_start + segment_width + extra_frames
+                if i > 0:
+                    segment_start -= extra_frames
+                else:
+                    segment_end += extra_frames
+                segment_end = min(self.num_sample_frames, segment_end)
+                sample_width = segment_end - segment_start
+                if sample_width < segment_width:
+                    segment_start = max(
+                        0, segment_start - (segment_width - sample_width)
+                    )
+                segment_Frames = self.important_frames[segment_start:segment_end]
                 frames = list(
                     np.random.choice(
-                        self.important_frames,
+                        segment_Frames,
                         min(segment_width, len(self.important_frames)),
                         replace=False,
                     )
                 )
+                remaining = segment_width - len(frames)
                 # sample another batch
                 if remaining > 0:
                     frames.extend(
                         np.random.choice(
-                            self.important_frames,
+                            segment_Frames,
                             remaining,
                             replace=False,
                         )
@@ -317,9 +334,9 @@ class TrackHeader:
                     frame_indices=frames,
                 )
                 self.segments.append(segment)
-            # print("segment count", seg_count, len(self.segments))
-
             return
+        segment_count = (len(mass_history) - segment_width) // segment_frame_spacing
+        segment_count += 1
         # scan through track looking for good segments to add to our datset
         for i in range(segment_count):
             segment_start = i * segment_frame_spacing

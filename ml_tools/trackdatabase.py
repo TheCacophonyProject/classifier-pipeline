@@ -467,8 +467,8 @@ class TrackDatabase:
         important_frames.sort()
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
-            clip_node = clips[clip_id]
-            track_node = clip_node[track_id]
+            clip_node = clips[str(clip_id)]
+            track_node = clip_node[str(track_id)]
             track_node.attrs["important_frames"] = np.uint16(important_frames)
 
     def add_track(

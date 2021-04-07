@@ -311,6 +311,7 @@ class Dataset:
         )
         self.tracks.append(track_header)
         if track_header.important_frames is None:
+            print("NONE???")
             frames = self.db.get_track(clip_id, track_id)
             track_header.set_important_frames(
                 self.min_frame_mass, frame_data=frames, model=self.frame_model
@@ -1126,12 +1127,10 @@ class Dataset:
         else:
             return len(self.frame_samples) > 0
 
-    def random_segments(self, require_movement=False, scale=1.0):
+    def recalculate_segments(self, scale=1.0):
         self.segments = []
         self.segments_by_label = {}
-        logging.debug(
-            "%s generating segments require_movement %s ", self.name, require_movement
-        )
+        logging.debug("%s generating segments require_movement ", self.name)
         empty_tracks = []
         for track in self.tracks:
             segment_frame_spacing = int(
@@ -1143,7 +1142,6 @@ class Dataset:
                 segment_frame_spacing,
                 segment_width,
                 self.segment_min_mass,
-                require_movement=require_movement,
                 scale=scale,
             )
             if len(track.segments) == 0:

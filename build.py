@@ -16,13 +16,14 @@ from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
 from ml_tools.dataset import Dataset, dataset_db_path
 from ml_tools.datasetstructures import Camera
+from track.track import TrackChannels
 from ml_tools.kerasmodel import KerasModel
 
 import pytz
 
 LOW_DATA_LABELS = ["wallaby", "human", "dog", "vehicle"]
 MIN_TRACKS = 100
-
+MIN_SIZE = 4
 CAP_DATA = True
 MIN_VALIDATE_CAMERAS = 5
 
@@ -415,6 +416,54 @@ def set_important(dataset, model_file):
     dataset.add_important()
 
 
+def redo_important(dataset, db):
+    # if model:
+    # dataset.frame_model = model
+    dataset.frames_by_id = {}
+    dataset.frame_samples = []
+    dataset.frames_by_label = {}
+    for track in dataset.tracks:
+        if track.label == "false-positive":
+            continue
+
+        pre = len(track.important_frames)
+        track_data = db.get_track(
+            track.clip_id, track.track_id, channels=TrackChannels.thermal
+        )
+        if track_data is None:
+            continue
+        keep_indices = []
+        for i, frame in enumerate(track.important_frames):
+
+            thermal = track_data[frame.frame_num].thermal
+            height, width = thermal.shape
+            if height < MIN_SIZE or width < MIN_SIZE:
+                continue
+            keep_indices.append(i)
+        track.important_frames = np.array(track.important_frames)[keep_indices]
+        dataset.db.set_important_frames(
+            track.clip_id,
+            track.track_id,
+            [sample.frame_num for sample in track.important_frames],
+        )
+        print(
+            "recalculated",
+            track,
+            "was",
+            pre,
+            "now",
+            len(track.important_frames),
+            track.label,
+            dataset.name,
+        )
+
+    # dataset.recalculate_segments(scale=1.5 if dataset.name == "train" else 1.0)
+    # dataset.rebuild_cdf()
+    # print("after recalculating")
+    # print_counts(datasets[0], *datasets)
+    # return datasets
+
+
 def main():
     init_logging()
     args = parse_args()
@@ -424,9 +473,12 @@ def main():
     dataset = Dataset(
         db, "dataset", config, consecutive_segments=args.consecutive_segments
     )
-    set_important(dataset, config.classify.model)
     tracks_loaded, total_tracks = dataset.load_tracks()
 
+    # set_important(dataset, config.classify.model)
+    redo_important(dataset, db)
+    # pickle.dump(datasets, open(dataset_db_path(config), "wb"))
+    return
     # dataset.add_overlay()
     # return
     # set_important(dataset, config.classify.model)
