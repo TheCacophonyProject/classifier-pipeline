@@ -827,7 +827,7 @@ class KerasModel:
         result = metric.result().numpy()
         print("F1 score")
         for i, label in enumerate(self.labels):
-            print("{} = {}".format(label, round(result[i], ndigits=2)))
+            print("{} = {}".format(label, round(result[i], 2)))
 
     def evaluate(self, dataset):
         dataset.set_read_only(True)
