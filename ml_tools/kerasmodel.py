@@ -823,7 +823,7 @@ class KerasModel:
 
     def f1(self, one_hot_y, pred_raw):
         metric = tfa.metrics.F1Score(num_classes=len(self.labels))
-        metric.update_state(one_hot_y, test_pred_raw)
+        metric.update_state(one_hot_y, pred_raw)
         result = metric.result().numpy()
         print("F1 score")
         for i, label in enumerate(self.labels):
