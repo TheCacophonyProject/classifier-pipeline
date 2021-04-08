@@ -342,7 +342,7 @@ def add_camera_tracks(
         for camera in cameras:
             tracks = camera.label_to_tracks.get(label, {}).values()
             all_tracks.extend(list(tracks))
-
+    dataset.recalculate_segments(scale=1.5 if dataset.name == "train" else 1.0)
     dataset.add_tracks(all_tracks, None)
     dataset.balance_bins()
 
@@ -475,10 +475,6 @@ def main():
     )
     tracks_loaded, total_tracks = dataset.load_tracks()
 
-    # set_important(dataset, config.classify.model)
-    redo_important(dataset, db)
-    # pickle.dump(datasets, open(dataset_db_path(config), "wb"))
-    return
     # dataset.add_overlay()
     # return
     # set_important(dataset, config.classify.model)

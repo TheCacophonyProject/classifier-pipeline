@@ -311,7 +311,6 @@ class Dataset:
         )
         self.tracks.append(track_header)
         if track_header.important_frames is None:
-            print("NONE???")
             frames = self.db.get_track(clip_id, track_id)
             track_header.set_important_frames(
                 self.min_frame_mass, frame_data=frames, model=self.frame_model
@@ -333,6 +332,7 @@ class Dataset:
                 segment_width,
                 self.segment_min_mass,
                 use_important=not self.consecutive_segments,
+                scale=1.5 if self.name == "train" else 1.0,
             )
 
         self.filtered_stats["segment_mass"] += track_header.filtered_stats[
@@ -1130,7 +1130,7 @@ class Dataset:
     def recalculate_segments(self, scale=1.0):
         self.segments = []
         self.segments_by_label = {}
-        logging.debug("%s generating segments require_movement ", self.name)
+        logging.info("%s generating segments scale %s", self.name, scale)
         empty_tracks = []
         for track in self.tracks:
             segment_frame_spacing = int(
