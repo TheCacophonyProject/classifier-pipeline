@@ -22,6 +22,7 @@ from classify.trackprediction import TrackPrediction
 from sklearn.metrics import confusion_matrix
 
 from ml_tools.hyperparams import HyperParams
+import tensorflow_addons as tfa
 
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 512", ""]))
@@ -377,7 +378,7 @@ class KerasModel:
             model_preprocess=self.preprocess_fn,
             load_threads=self.params.train_load_threads,
             use_movement=self.params.use_movement,
-            cap_at="wallaby",
+            cap_at="bird",
             square_width=self.params.square_width,
         )
         self.validate = DataGenerator(
@@ -392,7 +393,7 @@ class KerasModel:
             epochs=epochs,
             load_threads=1,
             use_movement=self.params.use_movement,
-            cap_at="wallaby",
+            cap_at="bird",
             square_width=self.params.square_width,
         )
         checkpoints = self.checkpoints(run_name)
@@ -432,7 +433,7 @@ class KerasModel:
                 model_preprocess=self.preprocess_fn,
                 epochs=1,
                 load_threads=self.params.train_load_threads,
-                cap_at="wallaby",
+                cap_at="bird",
                 square_width=self.params.square_width,
             )
             test_accuracy = self.model.evaluate(test)
@@ -798,7 +799,7 @@ class KerasModel:
             load_threads=self.params.train_load_threads,
             keep_epoch=True,
             cap_samples=True,
-            cap_at="wallaby",
+            cap_at="bird",
             square_width=self.params.square_width,
         )
         test_pred_raw = self.model.predict(test)
@@ -806,16 +807,27 @@ class KerasModel:
         test_pred = np.argmax(test_pred_raw, axis=1)
 
         batch_y = test.get_epoch_predictions(0)
-        y = []
+        one_hot_y = []
         for batch in batch_y:
-            y.extend(np.argmax(batch, axis=1))
-
+            one_hot_y.extend(np.int32(batch))
+        one_hot_y = np.array(one_hot_y)
+        self.f1(one_hot_y, test_pred_raw)
         # test.epoch_data = None
-        cm = confusion_matrix(y, test_pred, labels=np.arange(len(self.labels)))
+        cm = confusion_matrix(
+            np.argmax(one_hot_y, axis=1), test_pred, labels=np.arange(len(self.labels))
+        )
 
         # Log the confusion matrix as an image summary.
         figure = plot_confusion_matrix(cm, class_names=self.labels)
         plt.savefig(filename, format="png")
+
+    def f1(self, one_hot_y, pred_raw):
+        metric = tfa.metrics.F1Score(num_classes=len(self.labels))
+        metric.update_state(one_hot_y, test_pred_raw)
+        result = metric.result().numpy()
+        print("F1 score")
+        for i, label in enumerate(self.labels):
+            print("{} = {}".format(label, round(result[i], ndigits=2)))
 
     def evaluate(self, dataset):
         dataset.set_read_only(True)
@@ -838,7 +850,6 @@ class KerasModel:
         )
         test_accuracy = self.model.evaluate(test)
         test.stop_load()
-
         logging.info("Test accuracy is %s", test_accuracy)
 
 

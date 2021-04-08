@@ -457,12 +457,6 @@ def redo_important(dataset, db):
             dataset.name,
         )
 
-    # dataset.recalculate_segments(scale=1.5 if dataset.name == "train" else 1.0)
-    # dataset.rebuild_cdf()
-    # print("after recalculating")
-    # print_counts(datasets[0], *datasets)
-    # return datasets
-
 
 def main():
     init_logging()
@@ -474,16 +468,6 @@ def main():
         db, "dataset", config, consecutive_segments=args.consecutive_segments
     )
     tracks_loaded, total_tracks = dataset.load_tracks()
-
-    # dataset.add_overlay()
-    # return
-    # set_important(dataset, config.classify.model)
-    # print("set important.....")
-    # return
-    # datasets = recalc_important(datasets_filename, db, config.classify.model)
-    # pickle.dump(datasets, open(dataset_db_path(config), "wb"))
-    # return
-
     print(
         "Loaded {}/{} tracks, found {:.1f}k segments".format(
             tracks_loaded, total_tracks, len(dataset.segments) / 1000

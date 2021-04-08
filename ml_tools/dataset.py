@@ -496,6 +496,16 @@ class Dataset:
         )
         return frames
 
+    def fetch_segment_data(self, sample, channel=None):
+
+        frames = self.db.get_track(
+            sample.track.clip_id,
+            sample.track.track_id,
+            frame_numbers=sample.frame_indices,
+            channels=channel,
+        )
+        return frames
+
     def fetch_frame(self, frame_sample, channels=None):
         frame = self.db.get_frame(
             frame_sample.clip_id,
