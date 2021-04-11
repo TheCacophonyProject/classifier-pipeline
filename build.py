@@ -299,9 +299,12 @@ def split_randomly(db, dataset, config, args, balance_bins=True):
     train_cameras = []
     for label in dataset.labels:
         train_c, validate_c, test_c = split_low_label(dataset, label, holdout_cameras)
-        train_cameras.append(train_c)
-        validate_cameras.append(validate_c)
-        test_cameras.append(test_c)
+        if train_c is not None:
+            train_cameras.append(train_c)
+        if validate_c is not None:
+            validate_cameras.append(validate_c)
+        if test_c is not None:
+            test_cameras.append(test_c)
 
     add_camera_tracks(dataset.labels, train, train_cameras, balance_bins)
     add_camera_tracks(dataset.labels, validation, validate_cameras, balance_bins)
