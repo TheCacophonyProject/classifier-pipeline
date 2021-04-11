@@ -225,7 +225,7 @@ def diverse_validation(cameras, labels, max_cameras):
 # only have one wallaby camera so just take MIN_TRACKS from wallaby and make a validation camera
 def split_low_label(dataset, label, holdout_cameras):
     tracks = dataset.tracks_by_label.get(label)
-    tracks = [track for track in tracks if track.camera not in holdout_cameras]
+    tracks = [track for track in tracks if track.camera_id not in holdout_cameras]
     if tracks is None or len(tracks) == 0:
         return None, None, None
 
