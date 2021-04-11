@@ -189,7 +189,25 @@ class DataGenerator(keras.utils.Sequence):
                 cap_at=self.cap_at,
                 label_cap=self.label_cap,
             )
-            self.samples = [sample.id for sample in self.samples]
+            holdout_cameras = [
+                "TrapCam01-None",
+                "ospri11-None",
+                "TrapCam03-[-43.65495 172.63125]",
+                "TrapCam01-[-43.65495 172.63125]",
+                "A_S4_C1-[-43.65315 172.63215]",
+                "TrapCam01-[-43.65585 172.63125]",
+                "TrapCam03-[-43.65585 172.63125]",
+                "A_S4_C3-[-43.65405 172.62765]",
+                "A_S4_C2-[-43.65405 172.62945]",
+                "Wallaby2-[-44.76285 170.56f395]",
+            ]
+            self.samples = [
+                sample.id
+                for sample in self.samples
+                if sample.track.camera_id in holdout_cameras
+            ]
+
+            # self.samples = [sample.id for sample in self.samples]
 
             if self.shuffle:
                 np.random.shuffle(self.samples)
