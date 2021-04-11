@@ -35,6 +35,15 @@ def show_tracks_breakdown(dataset):
         print("  {:<20} {} tracks".format(label, count))
 
 
+def show_cameras_tracks(dataset):
+    for id, camera in dataset.cameras_by_id.items():
+        count = "Tracks:"
+        for label in dataset.labels:
+            count = "{} {}: {}".format(count, label, camera.label_track_count(label))
+        print("Camera", id)
+        print(count)
+
+
 def show_cameras_breakdown(dataset):
     print("Cameras breakdown")
     tracks_by_camera = {}
@@ -476,6 +485,8 @@ def main():
     for key, value in dataset.filtered_stats.items():
         if value != 0:
             print("  {} filtered {}".format(key, value))
+    print()
+    show_cameras_tracks(dataset)
     print()
     show_tracks_breakdown(dataset)
     print()
