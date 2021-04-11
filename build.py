@@ -35,6 +35,15 @@ def show_tracks_breakdown(dataset):
         print("  {:<20} {} tracks".format(label, count))
 
 
+def show_cameras_tracks(dataset):
+    for id, camera in dataset.cameras_by_id.items():
+        count = "Tracks:"
+        for label in dataset.labels:
+            count = "{} {}: {}".format(count, label, camera.label_track_count(label))
+        print("Camera", id)
+        print(count)
+
+
 def show_cameras_breakdown(dataset):
     print("Cameras breakdown")
     tracks_by_camera = {}
@@ -214,8 +223,9 @@ def diverse_validation(cameras, labels, max_cameras):
 
 
 # only have one wallaby camera so just take MIN_TRACKS from wallaby and make a validation camera
-def split_low_label(dataset, label):
+def split_low_label(dataset, label, holdout_cameras):
     tracks = dataset.tracks_by_label.get(label)
+    tracks = [track for track in tracks if track.camera_id not in holdout_cameras]
     if tracks is None or len(tracks) == 0:
         return None, None, None
 
@@ -262,18 +272,39 @@ def split_low_label(dataset, label):
 
 def split_randomly(db, dataset, config, args, balance_bins=True):
     # shuffle tracks and then add X% to validate, and 100 to test and rest to train
+    holdout_cameras = [
+        "TrapCam01-None",
+        "ospri11-None",
+        "TrapCam03-[-43.65495 172.63125]",
+        "TrapCam01-[-43.65495 172.63125]",
+        "A_S4_C1-[-43.65315 172.63215]",
+        "TrapCam01-[-43.65585 172.63125]",
+        "TrapCam03-[-43.65585 172.63125]",
+        "A_S4_C3-[-43.65405 172.62765]",
+        "A_S4_C2-[-43.65405 172.62945]",
+        "Wallaby2-[-44.76285 170.56f395]",
+    ]
+    test_cameras_only = []
+    for camera_name in holdout_cameras:
+        if camera_name in dataset.cameras_by_id:
+            print("holding out", camera_name)
+            test_cameras_only.append(dataset.cameras_by_id[camera_name])
+            del dataset.cameras_by_id[camera_name]
     train = Dataset(db, "train", config)
     train.enable_augmentation = True
     validation = Dataset(db, "validation", config)
     test = Dataset(db, "test", config)
-    test_cameras = []
+    test_cameras = test_cameras_only
     validate_cameras = []
     train_cameras = []
     for label in dataset.labels:
-        train_c, validate_c, test_c = split_low_label(dataset, label)
-        train_cameras.append(train_c)
-        validate_cameras.append(validate_c)
-        test_cameras.append(test_c)
+        train_c, validate_c, test_c = split_low_label(dataset, label, holdout_cameras)
+        if train_c is not None:
+            train_cameras.append(train_c)
+        if validate_c is not None:
+            validate_cameras.append(validate_c)
+        if test_c is not None:
+            test_cameras.append(test_c)
 
     add_camera_tracks(dataset.labels, train, train_cameras, balance_bins)
     add_camera_tracks(dataset.labels, validation, validate_cameras, balance_bins)
@@ -288,16 +319,37 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
     validation = Dataset(db, "validation", config)
     test = Dataset(db, "test", config)
 
+    holdout_cameras = [
+        "TrapCam01-None",
+        "ospri11-None",
+        "TrapCam03-[-43.65495 172.63125]",
+        "TrapCam01-[-43.65495 172.63125]",
+        "A_S4_C1-[-43.65315 172.63215]",
+        "TrapCam01-[-43.65585 172.63125]",
+        "TrapCam03-[-43.65585 172.63125]",
+        "A_S4_C3-[-43.65405 172.62765]",
+        "A_S4_C2-[-43.65405 172.62945]",
+        "Wallaby2-[-44.76285 170.56f395]",
+    ]
+    test_cameras_only = []
+    for camera_name in holdout_cameras:
+        if camera_name in dataset.cameras_by_id:
+            print("holding out", camera_name)
+            test_cameras_only.append(dataset.cameras_by_id[camera_name])
+            del dataset.cameras_by_id[camera_name]
+
     train_data = []
     validate_data = []
-    test_data = []
+    test_data = test_cameras_only
     cameras = list(dataset.cameras_by_id.values())
     camera_count = len(cameras)
     validation_cameras = max(
         MIN_VALIDATE_CAMERAS, round(camera_count * validation_percent)
     )
 
-    wallaby_train, wallaby_validate, wallaby_test = split_low_label(dataset, "wallaby")
+    wallaby_train, wallaby_validate, wallaby_test = split_low_label(
+        dataset, "wallaby", holdout_cameras
+    )
     if wallaby_train is not None:
         train_data.append(wallaby_train)
     if wallaby_validate is not None:
@@ -305,7 +357,9 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
     if wallaby_test is not None:
         test_data.append(wallaby_test)
 
-    vehicle_train, vehicle_validate, vehicle_test = split_low_label(dataset, "vehicle")
+    vehicle_train, vehicle_validate, vehicle_test = split_low_label(
+        dataset, "vehicle", holdout_cameras
+    )
     if vehicle_train is not None:
         train_data.append(vehicle_train)
     if vehicle_validate is not None:
@@ -476,6 +530,8 @@ def main():
     for key, value in dataset.filtered_stats.items():
         if value != 0:
             print("  {} filtered {}".format(key, value))
+    print()
+    show_cameras_tracks(dataset)
     print()
     show_tracks_breakdown(dataset)
     print()
