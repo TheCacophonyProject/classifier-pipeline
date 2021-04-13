@@ -137,6 +137,7 @@ class ClipClassifier(CPTVFileProcessor):
                         mass_scale=mass_weight * cropped_weight,
                         novelty=novelty,
                     )
+                track_prediction.complete()
         return track_prediction
 
     def get_classifier(self, model):
@@ -326,8 +327,8 @@ class ClipClassifier(CPTVFileProcessor):
                     prediction_data.append(pred_list)
                 model_info["predictions"] = prediction_data
                 for i, value in enumerate(prediction.class_best_score):
-                    label = self.classifier.labels[i]
-                    track_info["all_class_confidences"][label] = round(float(value), 3)
+                    label = predictions.labels[i]
+                    model_info["all_class_confidences"][label] = round(float(value), 3)
                 prediction_info.append(model_info)
             track_info["predictions"] = prediction_info
 
