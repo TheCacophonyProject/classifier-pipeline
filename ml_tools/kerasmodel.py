@@ -322,3 +322,23 @@ class KerasModel:
             output = self.model.predict(frames[np.newaxis, :])
             predictions.append(output[0])
         return predictions
+
+
+def is_keras_model(model_file):
+    path, ext = os.path.splitext(model_file)
+    if ext == ".pb":
+        return True
+    return False
+
+
+def validate_model(model_file):
+    path, ext = os.path.splitext(model_file)
+    if ext == ".pb":
+        weights_path = os.path.dirname(model_file) + "/variables/variables.index"
+        if not os.path.exists(os.path.join(weights_path)):
+            logging.error("No weights found named '{}'.".format(weights_path))
+            return False
+    elif not os.path.exists(model_file + ".meta"):
+        logging.error("No model found named '{}'.".format(model_file + ".meta"))
+        return False
+    return True

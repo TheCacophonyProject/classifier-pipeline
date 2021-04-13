@@ -9,9 +9,10 @@ UNIFORM_PRIOR = False
 
 
 class Predictions:
-    def __init__(self, labels):
+    def __init__(self, labels, model):
         self.labels = labels
         self.prediction_per_track = {}
+        self.model = model
         try:
             self.fp_index = self.labels.index("false-positive")
         except ValueError:
@@ -67,6 +68,8 @@ class TrackPrediction:
         self.keep_all = keep_all
         self.max_novelty = 0
         self.novelty_sum = 0
+        self.model_file = None
+        self.model_name = None
 
     def classified_clip(
         self, predictions, smoothed_predictions, smoothed_novelties, last_frame

@@ -13,7 +13,7 @@ from ml_tools import tools
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 import ml_tools.globals as globs
 from ml_tools.model import Model
-from ml_tools.kerasmodel import KerasModel
+from ml_tools.kerasmodel import KerasModel, is_keras_model
 
 from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer
@@ -26,14 +26,12 @@ class ClipClassifier(CPTVFileProcessor):
     # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
     FRAME_SKIP = 1
 
-    def __init__(self, config, tracking_config, model_file, kerasmodel=False):
+    def __init__(self, config, tracking_config, model=None):
         """ Create an instance of a clip classifier"""
 
         super(ClipClassifier, self).__init__(config, tracking_config)
-        self.model_file = model_file
-        self.kerasmodel = kerasmodel
+        self.model = model
         # prediction record for each track
-        self.predictions = Predictions(self.classifier.labels)
 
         self.previewer = Previewer.create_if_required(config, config.classify.preview)
 
@@ -64,7 +62,7 @@ class ClipClassifier(CPTVFileProcessor):
 
         return frame
 
-    def identify_track(self, clip: Clip, track: Track):
+    def identify_track(self, classifier, clip: Clip, track: Track):
         """
         Runs through track identifying segments, and then returns it's prediction of what kind of animal this is.
         One prediction will be made for every frame.
@@ -74,11 +72,17 @@ class ClipClassifier(CPTVFileProcessor):
         # go through making classifications at each frame
         # note: we should probably be doing this every 9 frames or so.
         state = None
-        if self.kerasmodel:
-            track_prediction = self.classifier.classify_track(clip, track)
-            self.predictions.prediction_per_track[track.get_id()] = track_prediction
+        if isinstance(classifier, KerasModel):
+            track_prediction = classifier.classify_track(clip, track)
         else:
-            track_prediction = self.predictions.get_or_create_prediction(track)
+            try:
+                fp_index = classifier.labels.index("false-positive")
+            except ValueError:
+                fp_index = None
+
+            track_prediction = (
+                TrackPrediction(track.get_id(), track.start_frame, fp_index, keep_all),
+            )
 
             for i, region in enumerate(track.bounds_history):
                 frame = clip.frame_buffer.get_frame(region.frame_number)
@@ -108,7 +112,7 @@ class ClipClassifier(CPTVFileProcessor):
                         prediction,
                         novelty,
                         state,
-                    ) = self.classifier.classify_frame_with_novelty(frame, state)
+                    ) = classifier.classify_frame_with_novelty(frame, state)
                     # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                     # score
 
@@ -121,7 +125,7 @@ class ClipClassifier(CPTVFileProcessor):
                     mass = region.mass
 
                     # we use the square-root here as the mass is in units squared.
-                    # this effectively means we are giving weight based on the diameter
+                    # this ezffectively means we are giving weight based on the diameter
                     # of the object rather than the mass.
                     mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
 
@@ -135,28 +139,26 @@ class ClipClassifier(CPTVFileProcessor):
                     )
         return track_prediction
 
-    @property
-    def classifier(self):
+    def get_classifier(self, model):
         """
         Returns a classifier object, which is created on demand.
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
         """
-        if globs._classifier is None:
-            t0 = datetime.now()
-            logging.info("classifier loading")
-            if self.kerasmodel:
-                model = KerasModel(self.config.train)
-                model.load_weights(self.model_file)
-                globs._classifier = model
-            else:
-                globs._classifier = Model(
-                    train_config=self.config.train,
-                    session=tools.get_session(disable_gpu=not self.config.use_gpu),
-                )
-                globs._classifier.load(self.model_file)
+        t0 = datetime.now()
+        logging.info("classifier loading")
+        classifier = None
+        if is_keras_model(model.model_file):
+            classifier = KerasModel(self.config.train)
+            classifier.load_weights(model.model_file)
+        else:
+            classifier = Model(
+                train_config=self.config.train,
+                session=tools.get_session(disable_gpu=not self.config.use_gpu),
+            )
+            classifier.load(model.model_file)
 
-            logging.info("classifier loaded ({})".format(datetime.now() - t0))
-        return globs._classifier
+        logging.info("classifier loaded ({})".format(datetime.now() - t0))
+        return classifier
 
     def get_meta_data(self, filename):
         """ Reads meta-data for a given cptv file. """
@@ -200,7 +202,7 @@ class ClipClassifier(CPTVFileProcessor):
         :param enable_preview: if true an MPEG preview file is created.
         """
 
-        clip, predictions = self.classify_file(filename)
+        clip, model_predictions = self.classify_file(filename)
 
         classify_name = self.get_classify_filename(filename)
         destination_folder = os.path.dirname(classify_name)
@@ -209,11 +211,15 @@ class ClipClassifier(CPTVFileProcessor):
             os.makedirs(destination_folder)
         mpeg_filename = classify_name + ".mp4"
         meta_filename = classify_name + ".txt"
+
         if self.previewer:
             logging.info("Exporting preview to '{}'".format(mpeg_filename))
-            self.previewer.export_clip_preview(mpeg_filename, clip, predictions)
+
+            self.previewer.export_clip_preview(
+                mpeg_filename, clip, list(model_predictions.values())[0]
+            )
         logging.info("saving meta data")
-        self.save_metadata(filename, meta_filename, clip, predictions)
+        self.save_metadata(filename, meta_filename, clip, model_predictions)
 
     def classify_file(self, filename):
         if not os.path.exists(filename):
@@ -221,16 +227,33 @@ class ClipClassifier(CPTVFileProcessor):
         logging.info("Processing file '{}'".format(filename))
 
         # prediction record for each track
-        predictions = Predictions(self.classifier.labels)
 
         start = time.time()
         clip = Clip(self.tracker_config, filename)
         self.track_extractor.parse_clip(clip)
+        predictions_per_model = {}
+        if self.model:
+            prediction = classify_clip(clip, self.model)
+            predictions_per_model[self.model]
+        else:
+            for model in self.config.classify.models:
+                prediction = self.classify_clip(clip, model)
+                predictions_per_model[model.name] = prediction
+        return clip, predictions_per_model
 
+    def classify_clip(self, clip, model):
+
+        classifier = self.get_classifier(model)
+
+        predictions = Predictions(classifier.labels, model)
         for i, track in enumerate(clip.tracks):
-            prediction = self.identify_track(clip, track)
+            prediction = self.identify_track(
+                classifier,
+                clip,
+                track,
+            )
             predictions.prediction_per_track[track.get_id()] = prediction
-            description = prediction.description(self.classifier.labels)
+            description = prediction.description(classifier.labels)
             logging.info(
                 " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
             )
@@ -239,10 +262,9 @@ class ClipClassifier(CPTVFileProcessor):
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
+        return predictions
 
-        return clip, predictions
-
-    def save_metadata(self, filename, meta_filename, clip, predictions):
+    def save_metadata(self, filename, meta_filename, clip, predictions_per_model):
         if self.cache_to_disk:
             clip.frame_buffer.remove_cache()
 
@@ -259,46 +281,55 @@ class ClipClassifier(CPTVFileProcessor):
         save_file["start_time"] = start.isoformat()
         save_file["end_time"] = end.isoformat()
         save_file["algorithm"] = {}
-        save_file["algorithm"]["model"] = self.model_file
         save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
         save_file["algorithm"]["tracker_config"] = self.tracker_config.as_dict()
         if meta_data:
             save_file["camera"] = meta_data["Device"]["devicename"]
             save_file["cptv_meta"] = meta_data
             save_file["original_tag"] = meta_data["primary_tag"]
+
         save_file["tracks"] = []
         for track in clip.tracks:
             track_info = {}
-            prediction = predictions.prediction_for(track.get_id())
             start_s, end_s = clip.start_and_end_in_secs(track)
             save_file["tracks"].append(track_info)
+            track_info["id"] = track.get_id()
             track_info["start_s"] = round(start_s, 2)
             track_info["end_s"] = round(end_s, 2)
-            track_info["num_frames"] = prediction.num_frames
+            track_info["num_frames"] = len(track)
             track_info["frame_start"] = track.start_frame
             track_info["frame_end"] = track.end_frame
-            track_info["label"] = prediction.predicted_tag(self.classifier.labels)
-            track_info["confidence"] = round(prediction.max_score, 2)
-            track_info["clarity"] = round(prediction.clarity, 3)
-            track_info["average_novelty"] = float(round(prediction.average_novelty, 2))
-            track_info["max_novelty"] = float(round(prediction.max_novelty, 2))
-            track_info["all_class_confidences"] = {}
-
-            # numpy data wont serialize
-            prediction_data = []
-            for pred in prediction.predictions:
-                pred_list = [int(round(p * 100)) for p in pred]
-                prediction_data.append(pred_list)
-            track_info["predictions"] = prediction_data
-            for i, value in enumerate(prediction.class_best_score):
-                label = self.classifier.labels[i]
-                track_info["all_class_confidences"][label] = round(float(value), 3)
 
             positions = []
             for region in track.bounds_history:
                 track_time = round(region.frame_number / clip.frames_per_second, 2)
                 positions.append([track_time, region])
             track_info["positions"] = positions
+            prediction_info = []
+            for model, predictions in predictions_per_model.items():
+                model_info = {
+                    "model_file": predictions.model.model_file,
+                    "model_name": predictions.model.name,
+                }
+                prediction = predictions.prediction_for(track.get_id())
+                model_info["label"] = prediction.predicted_tag(predictions.labels)
+                model_info["confidence"] = round(prediction.max_score, 2)
+                model_info["clarity"] = round(prediction.clarity, 3)
+                model_info["average_novelty"] = float(
+                    round(prediction.average_novelty, 2)
+                )
+                model_info["max_novelty"] = float(round(prediction.max_novelty, 2))
+                model_info["all_class_confidences"] = {}
+                prediction_data = []
+                for pred in prediction.predictions:
+                    pred_list = [int(round(p * 100)) for p in pred]
+                    prediction_data.append(pred_list)
+                model_info["predictions"] = prediction_data
+                for i, value in enumerate(prediction.class_best_score):
+                    label = self.classifier.labels[i]
+                    track_info["all_class_confidences"][label] = round(float(value), 3)
+                prediction_info.append(model_info)
+            track_info["predictions"] = prediction_info
 
         if self.config.classify.meta_to_stdout:
             print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
