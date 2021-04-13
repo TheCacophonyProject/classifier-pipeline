@@ -152,6 +152,36 @@ class Dataset:
     def set_read_only(self, read_only):
         self.db.set_read_only(read_only)
 
+    def random_segments_only(self):
+
+        remove = [segment for segment in self.segments if segment.top_mass]
+        print("removing the tops", len(remove))
+        for segment in remove:
+            segment.track.segments.remove(segment)
+            self.segments_by_label[segment.label].remove(segment)
+            del self.segments_by_id[segment.id]
+
+        self.segments = [segment for segment in self.segments if not segment.top_mass]
+
+        self.rebuild_cdf()
+
+    def highest_mass_only(self, best_only=False):
+        if best_only:
+            remove = [segment for segment in self.segments if not segment.best_mass]
+        else:
+            remove = [segment for segment in self.segments if not segment.top_mass]
+
+        for segment in remove:
+            segment.track.segments.remove(segment)
+            self.segments_by_label[segment.label].remove(segment)
+            del self.segments_by_id[segment.id]
+        if best_only:
+            self.segments = [segment for segment in self.segments if segment.best_mass]
+        else:
+            self.segments = [segment for segment in self.segments if segment.top_mass]
+
+        self.rebuild_cdf()
+
     @property
     def sample_count(self):
         return len(self.samples())

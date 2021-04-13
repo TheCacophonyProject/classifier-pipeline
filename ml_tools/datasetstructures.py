@@ -583,7 +583,11 @@ class SegmentHeader:
         weight,
         avg_mass,
         frame_indices=None,
+        best_mass=False,
+        top_mass=False,
     ):
+        self.top_mass = top_mass
+        self.best_mass = best_mass
         self.id = SegmentHeader._segment_id
         SegmentHeader._segment_id += 1
         # reference to track this segment came from
