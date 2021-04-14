@@ -209,6 +209,7 @@ def preprocess_movement(
     red_square, success = imageprocessing.square_clip(
         red_segment, frames_per_row, (frame_size, frame_size), type
     )
+
     if not success:
         return None
     _, overlay = imageprocessing.movement_images(

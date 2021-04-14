@@ -76,7 +76,9 @@ def main():
     model = None
     keras_model = None
     if args.model_file:
-        model = Model.load({"model_file": args.model_file, "name": args.model_file})
+        model = ModelConfig.load(
+            {"model_file": args.model_file, "name": args.model_file}
+        )
         model.validate()
     clip_classifier = ClipClassifier(config, config.classify_tracking, model)
 

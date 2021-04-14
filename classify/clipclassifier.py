@@ -234,8 +234,8 @@ class ClipClassifier(CPTVFileProcessor):
         self.track_extractor.parse_clip(clip)
         predictions_per_model = {}
         if self.model:
-            prediction = classify_clip(clip, self.model)
-            predictions_per_model[self.model]
+            prediction = self.classify_clip(clip, self.model)
+            predictions_per_model[self.model.name] = prediction
         else:
             for model in self.config.classify.models:
                 prediction = self.classify_clip(clip, model)
@@ -326,7 +326,7 @@ class ClipClassifier(CPTVFileProcessor):
                     pred_list = [int(round(p * 100)) for p in pred]
                     prediction_data.append(pred_list)
                 model_info["predictions"] = prediction_data
-                for i, value in enumerate(prediction.class_best_score):
+                for i, value in enumerate(prediction.overall_predictions):
                     label = predictions.labels[i]
                     model_info["all_class_confidences"][label] = round(float(value), 3)
                 prediction_info.append(model_info)

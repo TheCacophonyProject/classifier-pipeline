@@ -101,8 +101,9 @@ class TrackPrediction:
             self.smoothed_novelties = [smoothed_novelty]
 
     def complete(self):
-        self.overall_predictions = np.mean(self.predictions, axis=0) / np.sum(
-            self.predictions
+        self.overall_predictions = np.mean(self.predictions, axis=0)
+        self.overall_predictions = self.overall_predictions / np.sum(
+            self.overall_predictions
         )
 
     def smooth_prediction(self, prediction, mass_scale=1, novelty=None):
@@ -269,7 +270,8 @@ class TrackPrediction:
             n = 1
         if self.overall_predictions is None:
             return None
-        return float(sorted(self.overall_predictions, reverse=True)[n])
+
+        return float(sorted(self.overall_predictions)[-n])
 
     def label_at_time(self, frame_number, n=1):
         """ class label of nth best guess at a point in time."""
@@ -289,7 +291,7 @@ class TrackPrediction:
         prediction_index = int(frame_number / frames_per_prediction) + 1
         average = np.mean(self.predictions[:prediction_index], axis=0)
         average = average / np.sum(average)
-        return float(sorted(average, reverse=True)[n])
+        return float(sorted(average)[-n])
 
     def print_prediction(self, labels):
         logging.info(

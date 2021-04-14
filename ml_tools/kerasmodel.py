@@ -276,6 +276,7 @@ class KerasModel:
         time use as the r channel, g and b channel are the overall movment of
         the track
         """
+
         predictions = []
         if self.params.get("use_thermal", False):
             channel = TrackChannels.thermal
@@ -289,38 +290,42 @@ class KerasModel:
         # bounding regions with each classify for the over all movement, it
         # doesn't change the result much
         # take frames_per_classify random frames, sort by time then use this to classify
+
         num_classifies = math.ceil(float(num_frames) / frames_per_classify)
-        frame_sample = np.arange(num_frames)
-        np.random.shuffle(frame_sample)
-        for i in range(num_classifies):
-            seg_frames = frame_sample[:frames_per_classify]
-            segment = []
-            medians = []
-            # update remaining
-            frame_sample = frame_sample[frames_per_classify:]
-            seg_frames.sort()
-            for frame_i in seg_frames:
-                f = data[frame_i]
-                segment.append(f)
-                medians.append(np.median(f[0]))
-            frames = preprocess_movement(
-                data,
-                segment,
-                self.square_width,
-                self.frame_size,
-                regions,
-                channel,
-                self.preprocess_fn,
-                reference_level=medians
-                if self.params.get("subtract_median", True)
-                else None,
-                green_type=self.green_type,
-                keep_aspect=self.params.get("keep_aspect", False),
-            )
-            if frames is None:
-                continue
-            output = self.model.predict(frames[np.newaxis, :])
-            predictions.append(output[0])
+        # since we classify a rnadom segment each time, take a few permutations
+        combinations = max(1, frames_per_classify // 9)
+        for _ in range(combinations):
+            frame_sample = np.arange(num_frames)
+            np.random.shuffle(frame_sample)
+            for i in range(num_classifies):
+                seg_frames = frame_sample[:frames_per_classify]
+                segment = []
+                medians = []
+                # update remaining
+                frame_sample = frame_sample[frames_per_classify:]
+                seg_frames.sort()
+                for frame_i in seg_frames:
+                    f = data[frame_i]
+                    segment.append(f)
+                    medians.append(np.median(f[0]))
+                frames = preprocess_movement(
+                    data,
+                    segment,
+                    self.square_width,
+                    self.frame_size,
+                    regions,
+                    channel,
+                    self.preprocess_fn,
+                    reference_level=medians
+                    if self.params.get("subtract_median", True)
+                    else None,
+                    green_type=self.green_type,
+                    keep_aspect=self.params.get("keep_aspect", False),
+                )
+                if frames is None:
+                    continue
+                output = self.model.predict(frames[np.newaxis, :])
+                predictions.append(output[0])
         return predictions
 
 
