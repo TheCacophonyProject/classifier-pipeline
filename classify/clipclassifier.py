@@ -220,7 +220,8 @@ class ClipClassifier(CPTVFileProcessor):
                 mpeg_filename, clip, list(model_predictions.values())[0]
             )
         logging.info("saving meta data")
-        self.save_metadata(filename, meta_filename, clip, model_predictions)
+        models = self.model if self.model else self.config.classify.models
+        self.save_metadata(filename, meta_filename, clip, model_predictions, models)
 
     def classify_file(self, filename):
         if not os.path.exists(filename):
@@ -265,7 +266,9 @@ class ClipClassifier(CPTVFileProcessor):
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
         return predictions
 
-    def save_metadata(self, filename, meta_filename, clip, predictions_per_model):
+    def save_metadata(
+        self, filename, meta_filename, clip, predictions_per_model, models
+    ):
         if self.cache_to_disk:
             clip.frame_buffer.remove_cache()
 
@@ -309,6 +312,7 @@ class ClipClassifier(CPTVFileProcessor):
             prediction_info = []
             for model, predictions in predictions_per_model.items():
                 model_info = {
+                    "id": predictions.model.id,
                     "model_file": predictions.model.model_file,
                     "model_name": predictions.model.name,
                 }
@@ -331,7 +335,11 @@ class ClipClassifier(CPTVFileProcessor):
                     model_info["all_class_confidences"][label] = round(float(value), 3)
                 prediction_info.append(model_info)
             track_info["predictions"] = prediction_info
+        model_dictionaries = []
+        for model in models:
+            model_dictionaries.append(model.as_dict())
 
+        save_file["models"] = model_dictionaries
         if self.config.classify.meta_to_stdout:
             print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
         else:

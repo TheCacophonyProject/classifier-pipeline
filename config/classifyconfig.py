@@ -83,7 +83,7 @@ class ClassifyConfig(DefaultConfig):
 @attr.s
 class ModelConfig:
     DEFAULT_SCORE = 0
-
+    id = attr.ib()
     name = attr.ib()
     model_file = attr.ib()
     wallaby = attr.ib()
@@ -93,6 +93,7 @@ class ModelConfig:
     @classmethod
     def load(cls, raw):
         model = cls(
+            id=raw["id"],
             name=raw["name"],
             model_file=raw["model_file"],
             wallaby=raw.get("wallaby", False),
@@ -104,6 +105,9 @@ class ModelConfig:
     def validate(self):
         if not validate_model(self.model_file):
             raise ValueError(f"{self.model_file}is not valid")
+
+    def as_dict(self):
+        return attr.asdict(self)
 
 
 def load_scores(scores):
