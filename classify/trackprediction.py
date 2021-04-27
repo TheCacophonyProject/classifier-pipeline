@@ -67,8 +67,6 @@ class TrackPrediction:
         self.keep_all = keep_all
         self.max_novelty = 0
         self.novelty_sum = 0
-        self.model_file = None
-        self.model_name = None
         self.overall_predictions = None
 
     def classified_clip(

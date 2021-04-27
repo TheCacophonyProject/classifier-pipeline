@@ -125,7 +125,7 @@ class ClipClassifier(CPTVFileProcessor):
                     mass = region.mass
 
                     # we use the square-root here as the mass is in units squared.
-                    # this ezffectively means we are giving weight based on the diameter
+                    # this effectively means we are giving weight based on the diameter
                     # of the object rather than the mass.
                     mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
 

@@ -10,7 +10,6 @@ from config.config import Config
 from config.classifyconfig import ModelConfig
 
 from ml_tools.previewer import Previewer
-from ml_tools.kerasmodel import validate_model
 
 import absl.logging
 
@@ -93,9 +92,6 @@ def main():
 
     if not config.use_gpu:
         logging.info("GPU mode disabled.")
-
-    # just fetch the classifier now so it doesn't impact the benchmarking on the first clip analysed.
-    # _ = clip_classifier.classifier
 
     if os.path.splitext(args.source)[-1].lower() == ".cptv":
         source_file = tools.find_file_from_cmd_line(config.source_folder, args.source)

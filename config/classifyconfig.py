@@ -30,10 +30,7 @@ from ml_tools.kerasmodel import validate_model
 
 @attr.s
 class ClassifyConfig(DefaultConfig):
-
-    model = attr.ib()
     models = attr.ib()
-
     meta_to_stdout = attr.ib()
     preview = attr.ib()
     classify_folder = attr.ib()
@@ -43,7 +40,6 @@ class ClassifyConfig(DefaultConfig):
     def load(cls, classify, base_folder):
         return cls(
             models=ClassifyConfig.load_models(classify.get("models")),
-            model=classify["model"],
             meta_to_stdout=classify["meta_to_stdout"],
             preview=config.parse_options_param(
                 "preview", classify["preview"], Previewer.PREVIEW_OPTIONS
@@ -67,7 +63,6 @@ class ClassifyConfig(DefaultConfig):
         return cls(
             models=None,
             meta_to_stdout=False,
-            model=None,
             preview="none",
             classify_folder="classify",
             cache_to_disk=True,
@@ -76,8 +71,6 @@ class ClassifyConfig(DefaultConfig):
     def validate(self):
         for model in self.models:
             model.validate()
-        if self.model is None:
-            raise KeyError("model not found in configuration file")
 
 
 @attr.s
