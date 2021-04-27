@@ -69,6 +69,8 @@ class ClassifyConfig(DefaultConfig):
         )
 
     def validate(self):
+        if self.models is None:
+            return
         for model in self.models:
             model.validate()
 
