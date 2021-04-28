@@ -60,8 +60,8 @@ class TrackPrediction:
         self.smoothed_predictions = []
         self.smoothed_novelties = []
         self.uniform_prior = False
+        self.class_best_score = None
         self.track_prediction = None
-
         self.last_frame_classified = start_frame
         self.num_frames_classified = 0
         self.keep_all = keep_all
@@ -76,6 +76,7 @@ class TrackPrediction:
         self.smoothed_predictions = smoothed_predictions
         self.predictions = predictions
         self.smoothed_novelties = smoothed_novelties
+        self.class_best_score = np.max(self.smoothed_predictions, axis=0)
         self.max_novelty = float(max(self.smoothed_novelties))
         self.novelty_sum = sum(self.smoothed_novelties)
 
@@ -96,6 +97,13 @@ class TrackPrediction:
             self.predictions = [prediction]
             self.smoothed_predictions = [smoothed_prediction]
             self.smoothed_novelties = [smoothed_novelty]
+
+        if self.class_best_score is None:
+            self.class_best_score = smoothed_prediction
+        else:
+            self.class_best_score = np.maximum(
+                self.class_best_score, smoothed_prediction
+            )
 
     def smooth_prediction(self, prediction, mass_scale=1, novelty=None):
         prediction_smooth = 0.1
