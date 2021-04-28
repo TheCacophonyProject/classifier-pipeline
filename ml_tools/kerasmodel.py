@@ -500,8 +500,8 @@ class KerasModel:
         self.datasets = namedtuple("Datasets", "train, validation, test")
         datasets = pickle.load(open(dataset_filename, "rb"))
         self.datasets.train, self.datasets.validation, self.datasets.test = datasets
-        self.labels = self.datasets.train.labels
         for dataset in datasets:
+            dataset.labels.sort()
             dataset.set_read_only(True)
             dataset.lbl_p = lbl_p
             dataset.use_segments = self.params.use_segments
@@ -511,6 +511,8 @@ class KerasModel:
             if ignore_labels:
                 for label in ignore_labels:
                     dataset.remove_label(label)
+        self.labels = self.datasets.train.labels
+
         if self.mapped_labels:
             self.regroup()
         logging.info(
@@ -828,8 +830,13 @@ class KerasModel:
         metric.update_state(one_hot_y, pred_raw)
         result = metric.result().numpy()
         print("F1 score")
+        by_label = {}
         for i, label in enumerate(self.labels):
-            print("{} = {}".format(label, round(100 * result[i])))
+            by_label[label] = round(100 * result[i])
+        sorted = self.labels.copy()
+        sorted.sort()
+        for label in sorted:
+            print("{} = {}".format(label, by_label[label]))
 
     def evaluate(self, dataset):
         dataset.set_read_only(True)
@@ -869,8 +876,10 @@ def plot_confusion_matrix(cm, class_names):
     plt.title("Confusion matrix")
     plt.colorbar()
     tick_marks = np.arange(len(class_names))
-    plt.xticks(tick_marks, class_names, rotation=45)
-    plt.yticks(tick_marks, class_names)
+    sorted_names = class_names.copy()
+    sorted_names.sort()
+    plt.xticks(tick_marks, sorted_names, rotation=45)
+    plt.yticks(tick_marks, sorted_names)
 
     # Normalize the confusion matrix.
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
@@ -878,8 +887,12 @@ def plot_confusion_matrix(cm, class_names):
     # Use white text if squares are dark; otherwise black.
     threshold = cm.max() / 2.0
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        name_i = class_names[i]
+        name_j = class_names[j]
+        new_i = sorted_names.index(name_i)
+        new_j = sorted_names.index(name_j)
         color = "white" if cm[i, j] > threshold else "black"
-        plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
+        plt.text(new_j, new_i, cm[i, j], horizontalalignment="center", color=color)
 
     plt.tight_layout()
     plt.ylabel("True label")
