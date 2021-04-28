@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 import numpy as np
 
-from classify.trackprediction import Predictions
+from classify.trackprediction import Predictions, TrackPrediction
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
 from ml_tools import tools
@@ -21,13 +21,13 @@ from track.track import Track
 
 
 class ClipClassifier(CPTVFileProcessor):
-    """ Classifies tracks within CPTV files. """
+    """Classifies tracks within CPTV files."""
 
     # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
     FRAME_SKIP = 1
 
     def __init__(self, config, tracking_config, model=None):
-        """ Create an instance of a clip classifier"""
+        """Create an instance of a clip classifier"""
 
         super(ClipClassifier, self).__init__(config, tracking_config)
         self.model = model
@@ -161,7 +161,7 @@ class ClipClassifier(CPTVFileProcessor):
         return classifier
 
     def get_meta_data(self, filename):
-        """ Reads meta-data for a given cptv file. """
+        """Reads meta-data for a given cptv file."""
         source_meta_filename = os.path.splitext(filename)[0] + ".txt"
         if os.path.exists(source_meta_filename):
 

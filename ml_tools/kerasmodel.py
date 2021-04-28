@@ -14,7 +14,7 @@ from ml_tools.preprocess import (
 
 
 class KerasModel:
-    """ Defines a deep learning model using the tensorflow v2 keras framework """
+    """Defines a deep learning model using the tensorflow v2 keras framework"""
 
     def __init__(self, train_config=None):
         self.params = {

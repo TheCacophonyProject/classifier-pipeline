@@ -25,7 +25,7 @@ from ml_tools.preprocess import preprocess_segment
 
 
 class TrackChannels:
-    """ Indexes to channels in track. """
+    """Indexes to channels in track."""
 
     thermal = 0
     filtered = 1
@@ -468,7 +468,7 @@ class Dataset:
         return data
 
     def sample_segment(self):
-        """ Returns a random segment from weighted list. """
+        """Returns a random segment from weighted list."""
         if not self.segments:
             return None
         choice = np.random.choice(self.samples(), 1, p=self.segment_cdf)
@@ -477,7 +477,7 @@ class Dataset:
         return None
 
     def load_all(self, force=False):
-        """ Loads all X and y into dataset if required. """
+        """Loads all X and y into dataset if required."""
         if self.X is None or force:
             self.X, self.y = self.fetch_all()
 
@@ -547,7 +547,7 @@ class Dataset:
         self.rebuild_cdf()
 
     def _purge_track_segments(self):
-        """ Removes any segments from track_headers where the segment has been deleted """
+        """Removes any segments from track_headers where the segment has been deleted"""
         segment_set = set(self.segments)
 
         # remove segments from tracks
@@ -660,7 +660,7 @@ class Dataset:
             self.frame_label_cdf = mapped_cdf
 
     def rebuild_segment_cdf(self, lbl_p=None):
-        """ Calculates the CDF used for fast random sampling """
+        """Calculates the CDF used for fast random sampling"""
         self.segment_cdf = []
         total = 0
         self.segment_label_cdf = {}
@@ -711,18 +711,18 @@ class Dataset:
             self.segment_label_cdf = mapped_cdf
 
     def get_label_weight(self, label):
-        """ Returns the total weight for all segments of given label. """
+        """Returns the total weight for all segments of given label."""
         tracks = self.tracks_by_label.get(label)
         return sum(track.weight for track in tracks) if tracks else 0
 
     def get_label_segments_count(self, label):
-        """ Returns the total weight for all segments of given class. """
+        """Returns the total weight for all segments of given class."""
         tracks = self.tracks_by_label.get(label, [])
         result = sum([len(track.segments) for track in tracks])
         return result
 
     def get_label_segments(self, label):
-        """ Returns the total weight for all segments of given class. """
+        """Returns the total weight for all segments of given class."""
         result = []
         for track in self.tracks_by_label.get(label, []):
             result.extend(track.segments)
@@ -854,7 +854,7 @@ class Dataset:
 
 # continue to read examples until queue is full
 def preloader(q, dataset):
-    """ add a segment into buffer """
+    """add a segment into buffer"""
     logging.info(
         " -started async fetcher for %s with augment=%s segment_width=%s",
         dataset.name,

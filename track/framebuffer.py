@@ -134,7 +134,7 @@ class Frame:
 
 
 class FrameBuffer:
-    """ Stores entire clip in memory, required for some operations such as track exporting. """
+    """Stores entire clip in memory, required for some operations such as track exporting."""
 
     def __init__(
         self, cptv_name, high_quality_flow, cache_to_disk, calc_flow, keep_frames

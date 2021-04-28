@@ -9,7 +9,7 @@ null_tags = ["false-positive", "none", "no-tag"]
 
 class TrackResult:
     def __init__(self, track_record, clip_start, clip_end):
-        """ Creates track result from track stats entry. """
+        """Creates track result from track stats entry."""
         self.start_time = clip_start + timedelta(seconds=track_record["start_s"])
         self.end_time = clip_end + timedelta(seconds=track_record["end_s"])
         self.label = track_record["label"]
@@ -29,7 +29,7 @@ class TrackResult:
 
     @property
     def confidence(self):
-        """ The tracks 'confidence' level which is a combination of the score and clarity. """
+        """The tracks 'confidence' level which is a combination of the score and clarity."""
         score_uncertainty = 1 - self.score
         clarity_uncertainty = 1 - self.clarity
         return 1 - ((score_uncertainty * clarity_uncertainty) ** 0.5)
@@ -40,7 +40,7 @@ class TrackResult:
 
 class ClipResult:
     def __init__(self, full_path):
-        """ Initialise a clip result record from given stats file. """
+        """Initialise a clip result record from given stats file."""
         self.stats = read_stats_file(full_path)
 
         self.start_time = dateutil.parser.parse(self.stats["start_time"]) + timedelta(
@@ -65,7 +65,7 @@ class ClipResult:
         self.classifier_best_guess, self.classifier_best_score = self.get_best_guess()
 
     def get_best_guess(self):
-        """ Returns the best guess from classification data. """
+        """Returns the best guess from classification data."""
         class_confidences = {}
         best_confidence = 0
         best_label = "none"
@@ -110,14 +110,14 @@ class ClipResult:
 
 
 class VisitResult:
-    """ Represents a visit."""
+    """Represents a visit."""
 
     def __init__(self, first_clip):
-        """ First clip is used a basis for this visit.  All other clips should have the same camera and true_tag. """
+        """First clip is used a basis for this visit.  All other clips should have the same camera and true_tag."""
         self.clips = [first_clip]
 
     def add_clip(self, clip):
-        """ Adds a clip to the clip list.  Clips are maintained start_time sorted order. """
+        """Adds a clip to the clip list.  Clips are maintained start_time sorted order."""
         self.clips.append(clip)
         self.clips.sort(key=lambda clip: clip.start_time)
 
@@ -149,19 +149,19 @@ class VisitResult:
 
     @property
     def duration(self):
-        """ Duration of visit in seconds. """
+        """Duration of visit in seconds."""
         return (self.end_time - self.start_time).total_seconds()
 
     @property
     def predicted_tag(self):
-        """ Returns the predicted tag based on best guess from individual clips. """
+        """Returns the predicted tag based on best guess from individual clips."""
         sorted_clips = sorted(self.clips, key=lambda x: x.classifier_best_score)
         best_guess = sorted_clips[-1].classifier_best_guess
         return best_guess
 
     @property
     def predicted_confidence(self):
-        """ Returns the predicted tag based on best guess from individual clips. """
+        """Returns the predicted tag based on best guess from individual clips."""
         sorted_clips = sorted(self.clips, key=lambda x: x.classifier_best_score)
         best_guess = sorted_clips[-1].classifier_best_score
         return best_guess
@@ -178,7 +178,7 @@ class VisitResult:
 
 
 def read_stats_file(full_path):
-    """ reads in given stats file. """
+    """reads in given stats file."""
     stats = json.load(open(full_path, "r"))
 
     return stats

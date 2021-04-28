@@ -247,18 +247,18 @@ class TrackPrediction:
 
     @property
     def average_novelty(self):
-        """ average novelty for this track """
+        """average novelty for this track"""
         return float(self.novelty_sum / self.num_frames_classified)
 
     @property
     def clarity(self):
-        """ The distance between our highest scoring class and second highest scoring class. """
+        """The distance between our highest scoring class and second highest scoring class."""
         if self.class_best_score is None or len(self.class_best_score) < 2:
             return None
         return self.max_score - self.score(2)
 
     def label_index(self, n=None):
-        """ index of label of nth best guess. """
+        """index of label of nth best guess."""
 
         if n is None:
             return self.best_label_index
@@ -267,7 +267,7 @@ class TrackPrediction:
         return int(np.argsort(self.class_best_score)[-n])
 
     def score(self, n=None):
-        """ class prediction of nth best guess. """
+        """class prediction of nth best guess."""
         if n is None:
             return self.max_score
         if self.class_best_score is None:
@@ -275,7 +275,7 @@ class TrackPrediction:
         return float(sorted(self.class_best_score)[-n])
 
     def label_at_time(self, frame_number, n=1):
-        """ class label of nth best guess at a point in time."""
+        """class label of nth best guess at a point in time."""
         if n is None:
             return None
         frames_per_prediction = len(self.smoothed_predictions) / self.num_frames
@@ -284,7 +284,7 @@ class TrackPrediction:
         return int(np.argsort(average)[-n])
 
     def score_at_time(self, frame_number, n=-1):
-        """ class prediction of nth best at a point in time."""
+        """class prediction of nth best at a point in time."""
         if n is None:
             return None
 

@@ -13,7 +13,7 @@ MIN_SIZE = 4
 
 
 class FrameTypes:
-    """ Types of frames """
+    """Types of frames"""
 
     thermal_square = 0
     filtered_square = 1

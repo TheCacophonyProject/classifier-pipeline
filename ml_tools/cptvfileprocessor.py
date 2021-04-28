@@ -6,7 +6,7 @@ from datetime import datetime
 
 
 def process_job(job):
-    """ Just a wrapper to pass tupple containing (extractor, *params) to the process_file method. """
+    """Just a wrapper to pass tupple containing (extractor, *params) to the process_file method."""
     processor = job[0]
     path = job[1]
 
@@ -47,7 +47,7 @@ class CPTVFileProcessor:
         os.makedirs(config.classify.classify_folder, mode=0o775, exist_ok=True)
 
     def process_file(self, filename):
-        """ The function to process an individual file. """
+        """The function to process an individual file."""
         raise Exception("Process file method must be overwritten in sub class.")
 
     def process_all(self, root):
@@ -118,13 +118,13 @@ class CPTVFileProcessor:
                 pool.close()
 
     def log_message(self, message):
-        """ Record message in stdout.  Will be printed if verbose is enabled. """
+        """Record message in stdout.  Will be printed if verbose is enabled."""
         # note, python has really good logging... I should probably make use of this.
         if self.tracker_config.verbose:
             logging.info(message)
 
     def log_warning(self, message):
-        """ Record warning message in stdout."""
+        """Record warning message in stdout."""
         # note, python has really good logging... I should probably make use of this.
         logging.warning("Warning: %s", message)
 

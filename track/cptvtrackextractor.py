@@ -54,7 +54,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
             self.load_hints(config.extract.hints_file)
 
     def load_hints(self, filename):
-        """ Read in hints file from given path.  If file is not found an empty hints dictionary set."""
+        """Read in hints file from given path.  If file is not found an empty hints dictionary set."""
 
         self.hints = {}
 
@@ -319,10 +319,10 @@ class CPTVTrackExtractor(CPTVFileProcessor):
         return not self.database.has_clip(clip_id)
 
     def run_test(self, source_folder, test: TrackerTestCase):
-        """ Runs a specific test case. """
+        """Runs a specific test case."""
 
         def are_similar(value, expected, relative_error=0.2, abs_error=2.0):
-            """ Checks of value is similar to expected value. An expected value of 0 will always return true. """
+            """Checks of value is similar to expected value. An expected value of 0 will always return true."""
             if expected == 0:
                 return True
             return ((abs(value - expected) / expected) <= relative_error) or (
@@ -373,7 +373,7 @@ class CPTVTrackExtractor(CPTVFileProcessor):
                 logging.info("%s passed", test.source)
 
     def run_tests(self, source_folder, tests_file):
-        """ Processes file in test file and compares results to expected output. """
+        """Processes file in test file and compares results to expected output."""
 
         # disable hints for tests
         self.hints = []
