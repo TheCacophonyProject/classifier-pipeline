@@ -219,7 +219,7 @@ class ClipClassifier(CPTVFileProcessor):
                 mpeg_filename, clip, list(model_predictions.values())[0]
             )
         logging.info("saving meta data")
-        models = self.model if self.model else self.config.classify.models
+        models = [self.model] if self.model else self.config.classify.models
         self.save_metadata(filename, meta_filename, clip, model_predictions, models)
 
     def classify_file(self, filename):
