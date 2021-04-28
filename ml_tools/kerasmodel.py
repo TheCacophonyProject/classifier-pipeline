@@ -473,7 +473,12 @@ class KerasModel:
             save_weights_only=False,
             mode="max",
         )
-        return [checkpoint_acc, checkpoint_loss, checkpoint_recall]
+        earlyStopping = tf.keras.callbacks.EarlyStopping(patience=10)
+
+        return [
+            earlyStopping,
+            checkpoint_acc,
+        ]
 
     def regroup(self, shuffle=True):
         if not self.mapped_labels:
