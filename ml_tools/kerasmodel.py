@@ -267,7 +267,6 @@ class KerasModel:
                 track_prediction.classified_frame(
                     i, prediction, mass_weight * cropped_weight
                 )
-        track_prediction.complete()
         return track_prediction
 
     def classify_using_movement(self, data, regions):

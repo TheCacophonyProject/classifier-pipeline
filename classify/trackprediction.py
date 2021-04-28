@@ -67,7 +67,6 @@ class TrackPrediction:
         self.keep_all = keep_all
         self.max_novelty = 0
         self.novelty_sum = 0
-        self.overall_predictions = None
 
     def classified_clip(
         self, predictions, smoothed_predictions, smoothed_novelties, last_frame
@@ -97,12 +96,6 @@ class TrackPrediction:
             self.predictions = [prediction]
             self.smoothed_predictions = [smoothed_prediction]
             self.smoothed_novelties = [smoothed_novelty]
-
-    def complete(self):
-        self.overall_predictions = np.mean(self.predictions, axis=0)
-        self.overall_predictions = self.overall_predictions / np.sum(
-            self.overall_predictions
-        )
 
     def smooth_prediction(self, prediction, mass_scale=1, novelty=None):
         prediction_smooth = 0.1
@@ -161,7 +154,7 @@ class TrackPrediction:
         if len(self.smoothed_predictions) == 0:
             return "no classification"
         if frame_number is None or frame_number >= len(self.smoothed_predictions):
-            score = round(self.max_score * 100)
+            score = round(self.max_score * 10)
             label = labels[self.best_label_index]
             novelty = self.max_novelty
         else:
@@ -233,13 +226,16 @@ class TrackPrediction:
 
     @property
     def best_label_index(self):
-        if self.overall_predictions is None:
+        if self.class_best_score is None:
             return None
-        return np.argmax(self.overall_predictions)
+        return np.argmax(self.class_best_score)
 
     @property
     def max_score(self):
-        return self.score()
+        if self.class_best_score is None:
+            return None
+
+        return float(np.amax(self.class_best_score))
 
     @property
     def average_novelty(self):
@@ -249,7 +245,7 @@ class TrackPrediction:
     @property
     def clarity(self):
         """ The distance between our highest scoring class and second highest scoring class. """
-        if self.overall_predictions is None or len(self.overall_predictions) < 2:
+        if self.class_best_score is None or len(self.class_best_score) < 2:
             return None
         return self.max_score - self.score(2)
 
@@ -265,19 +261,18 @@ class TrackPrediction:
     def score(self, n=None):
         """ class prediction of nth best guess. """
         if n is None:
-            n = 1
-        if self.overall_predictions is None:
+            return self.max_score
+        if self.class_best_score is None:
             return None
-
-        return float(sorted(self.overall_predictions)[-n])
+        return float(sorted(self.class_best_score)[-n])
 
     def label_at_time(self, frame_number, n=1):
         """ class label of nth best guess at a point in time."""
         if n is None:
             return None
-        frames_per_prediction = len(self.predictions) / self.num_frames
+        frames_per_prediction = len(self.smoothed_predictions) / self.num_frames
         prediction_index = int(frame_number / frames_per_prediction) + 1
-        average = np.mean(self.predictions[:prediction_index], axis=0)
+        average = np.mean(self.smoothed_predictions[:prediction_index], axis=0)
         return int(np.argsort(average)[-n])
 
     def score_at_time(self, frame_number, n=-1):
@@ -285,9 +280,9 @@ class TrackPrediction:
         if n is None:
             return None
 
-        frames_per_prediction = len(self.predictions) / self.num_frames
+        frames_per_prediction = len(self.smoothed_predictions) / self.num_frames
         prediction_index = int(frame_number / frames_per_prediction) + 1
-        average = np.mean(self.predictions[:prediction_index], axis=0)
+        average = np.mean(self.smoothed_predictions[:prediction_index], axis=0)
         average = average / np.sum(average)
         return float(sorted(average)[-n])
 

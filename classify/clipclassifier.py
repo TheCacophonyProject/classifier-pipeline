@@ -137,7 +137,6 @@ class ClipClassifier(CPTVFileProcessor):
                         mass_scale=mass_weight * cropped_weight,
                         novelty=novelty,
                     )
-                track_prediction.complete()
         return track_prediction
 
     def get_classifier(self, model):
