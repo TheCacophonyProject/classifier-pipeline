@@ -262,9 +262,9 @@ class TrackPrediction:
 
         if n is None:
             return self.best_label_index
-        if self.overall_predictions is None:
+        if self.class_best_score is None:
             return None
-        return int(np.argsort(self.overall_predictions)[-n])
+        return int(np.argsort(self.class_best_score)[-n])
 
     def score(self, n=None):
         """ class prediction of nth best guess. """

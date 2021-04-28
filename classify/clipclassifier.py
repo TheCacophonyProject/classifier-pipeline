@@ -329,7 +329,7 @@ class ClipClassifier(CPTVFileProcessor):
                     pred_list = [int(round(p * 100)) for p in pred]
                     prediction_data.append(pred_list)
                 model_info["predictions"] = prediction_data
-                for i, value in enumerate(prediction.overall_predictions):
+                for i, value in enumerate(prediction.class_best_score):
                     label = predictions.labels[i]
                     model_info["all_class_confidences"][label] = round(float(value), 3)
                 prediction_info.append(model_info)
