@@ -219,26 +219,26 @@ def preprocess_movement(
     filtered_square, success = imageprocessing.square_clip(
         filtered_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
     )
-    if overlay is None:
-        dots, overlay = imageprocessing.movement_images(
-            data,
-            regions,
-            dim=square.shape,
-            require_movement=True,
-        )
-        overlay, stats = imageprocessing.normalize(overlay, min=0)
-        if not stats[0]:
-            return None
-    else:
-        overlay, stats = imageprocessing.normalize(overlay)
-        if stats[0] == False:
-            return None
-        overlay_full_size = np.zeros(square.shape)
-        overlay_full_size[: overlay.shape[0], : overlay.shape[1]] = overlay
-        overlay = overlay_full_size
-    if flipped:
-        overlay = np.flip(overlay, axis=1)
-        # dots = np.flip(dots, axis=1)
+    # if overlay is None:
+    #     dots, overlay = imageprocessing.movement_images(
+    #         data,
+    #         regions,
+    #         dim=square.shape,
+    #         require_movement=True,
+    #     )
+    #     overlay, stats = imageprocessing.normalize(overlay, min=0)
+    #     if not stats[0]:
+    #         return None
+    # else:
+    #     overlay, stats = imageprocessing.normalize(overlay)
+    #     if stats[0] == False:
+    #         return None
+    #     overlay_full_size = np.zeros(square.shape)
+    #     overlay_full_size[: overlay.shape[0], : overlay.shape[1]] = overlay
+    #     overlay = overlay_full_size
+    # if flipped:
+    #     overlay = np.flip(overlay, axis=1)
+    # dots = np.flip(dots, axis=1)
 
     data = np.empty((square.shape[0], square.shape[1], 3))
     data[:, :, 0] = square
