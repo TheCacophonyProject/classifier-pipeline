@@ -275,6 +275,64 @@ class TrackHeader:
         #         logging.debug("Not enough movment %s %s", self, self.label)
         #         return
 
+        segment_count = (len(mass_history) - segment_width) // segment_frame_spacing
+        segment_count += 1
+        segment_mass = []
+        for i in range(max(1, len(mass_history) - segment_width)):
+            mass = np.sum(mass_history[i : i + segment_width])
+            # if mass / segment_width > self.mean_mass:
+            segment_mass.append((i, mass))
+
+        sorted_mass = sorted(segment_mass, key=lambda x: x[1], reverse=True)
+        best_mass = True
+        prev = None
+
+        for _ in range(segment_count):
+            segment_info = sorted_mass[0]
+            index = segment_info[0]
+            avg_mass = segment_info[1] / segment_width
+            if (
+                not best_mass
+                and avg_mass < self.lower_mass
+                or avg_mass < segment_min_mass
+            ):
+                break
+
+            prev = index
+            b_h = self.track_bounds[index : index + 45]
+            m_h = mass_history[index : index + 45]
+
+            areas = (b_h[:, 2] - b_h[:, 0]) * (b_h[:, 3] - b_h[:, 1])
+            centrex = (b_h[:, 2] + b_h[:, 0]) / 2
+            centrey = (b_h[:, 3] + b_h[:, 1]) / 2
+            xv = np.hstack((0, centrex[1:] - centrex[:-1]))
+            yv = np.hstack((0, centrey[1:] - centrey[:-1]))
+            axv = xv / areas ** 0.5
+            ayv = yv / areas ** 0.5
+            segment = SegmentHeader(
+                track=self,
+                start_frame=index,
+                frames=segment_width,
+                weight=1,
+                avg_mass=segment_info[1] / segment_width,
+                frame_indices=np.arange(segment_width) + index,
+                movement_data=np.hstack((b_h, np.vstack((m_h, xv, yv, axv, ayv)).T)),
+                best_mass=best_mass,
+                top_mass=True,
+            )
+            best_mass = False
+            self.segments.append(segment)
+            sorted_mass = [
+                mass_info
+                for mass_info in sorted_mass
+                if mass_info[0] <= (index - segment_width)
+                or mass_info[0] >= (index + segment_width)
+            ]
+            if len(self.segments) == segment_count or len(sorted_mass) == 0:
+                break
+
+        return
+
         if use_important:
 
             segment_count = max(1, self.num_sample_frames // segment_frame_spacing)
@@ -583,9 +641,11 @@ class SegmentHeader:
         weight,
         avg_mass,
         frame_indices=None,
+        movement_data=None,
         best_mass=False,
         top_mass=False,
     ):
+        self.movement_data = movement_data
         self.top_mass = top_mass
         self.best_mass = best_mass
         self.id = SegmentHeader._segment_id

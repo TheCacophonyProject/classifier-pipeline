@@ -247,8 +247,8 @@ def preprocess_movement(
         data[:, :, 1] = dots  # dots
     else:
         data[:, :, 1] = filtered_square
-    data[:, :, 2] = np.zeros(filtered_square.shape)
-    data[:, :, 2] = overlay
+    # data[:, :, 2] = np.zeros(filtered_square.shape)
+    data[:, :, 2] = filtered_square
     # for debugging
     # tools.saveclassify_image(
     #     data,

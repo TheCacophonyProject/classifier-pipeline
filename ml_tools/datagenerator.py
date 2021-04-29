@@ -264,8 +264,8 @@ def _data(labels, dataset, samples, params, to_categorical=True):
             continue
         if params.use_movement:
             try:
-                # frame_data = dataset.fetch_segment_data(sample)
-                frame_data = dataset.fetch_random_sample(sample)
+                frame_data = dataset.fetch_segment_data(sample)
+                # frame_data = dataset.fetch_random_sample(sample)
 
                 overlay = dataset.db.get_overlay(
                     sample.track.clip_id, sample.track.track_id
@@ -289,7 +289,7 @@ def _data(labels, dataset, samples, params, to_categorical=True):
             if len(frame_data) < params.square_width ** 2:
                 missing = params.square_width ** 2 - len(frame_data)
                 indices = np.arange(len(frame_data))
-                np.random.shuffle(indices)
+                # np.random.shuffle(indices)
                 for frame_i in indices[:missing]:
                     frame_data.append(frame_data[frame_i].copy())
             ref = []
