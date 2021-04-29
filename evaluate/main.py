@@ -14,7 +14,7 @@ from .evaluateresults import *
 
 
 def is_stats_file(filename):
-    """ returns if filename is a valid stats file. """
+    """returns if filename is a valid stats file."""
     # note, we also have track stats files which have 4 parts, date-time-camera-track
     ext = os.path.splitext(filename)[-1].lower()
     parts = filename.split("-")
@@ -91,7 +91,7 @@ def show_breakdown(true_class, pred_class, title="Confusion Matrix"):
 
 
 def breakdown_tracks(visits):
-    """ Prints out a breakdown of per track accuracy. """
+    """Prints out a breakdown of per track accuracy."""
 
     print("-" * 60)
     print("Tracks:")
@@ -120,7 +120,7 @@ def breakdown_tracks(visits):
 
 
 def breakdown_clips(visits):
-    """ Prints out a breakdown of per clip accuracy. """
+    """Prints out a breakdown of per clip accuracy."""
 
     # display each clip
     print("-" * 60)
@@ -164,14 +164,14 @@ def breakdown_clips(visits):
 
 
 def show_error_tree(visits):
-    """ Prints a tree showing predictions at the visit, clip, and track level. """
+    """Prints a tree showing predictions at the visit, clip, and track level."""
     for i, visit in enumerate(visits):
         if visit.true_tag != visit.predicted_tag:
             visit.print_tree()
 
 
 def breakdown_visits(visits):
-    """ Prints out breakdown of per visit accuracy. """
+    """Prints out breakdown of per visit accuracy."""
 
     # display each visit
     print("-" * 60)
@@ -191,7 +191,7 @@ def breakdown_visits(visits):
 
 
 def show_errors_by_score(visits):
-    """ Displays errors in terms of their score level. """
+    """Displays errors in terms of their score level."""
 
     # visits by score
 
@@ -255,7 +255,7 @@ def show_errors_by_score(visits):
 
 
 def get_visits(path, visit_threshold):
-    """ Scans a folder loading all clip statstics, and formats them into visits. """
+    """Scans a folder loading all clip statstics, and formats them into visits."""
     all_records = []
     # fetch the records
     for filename in os.listdir(path):
@@ -427,7 +427,7 @@ def plot_camera_visits(camera, visits):
 
 
 def print_summary(visits):
-    """ Outputs a summary of visits.  This does not require pre-tagged data. """
+    """Outputs a summary of visits.  This does not require pre-tagged data."""
 
     print("Found {} visits.".format(len(visits)))
 
@@ -448,7 +448,7 @@ def print_summary(visits):
 
 
 def print_evaluation(visits):
-    """ Runs through all stats files in a folder and evaluates the performance of the classifier. """
+    """Runs through all stats files in a folder and evaluates the performance of the classifier."""
     breakdown_tracks(visits)
     breakdown_clips(visits)
     breakdown_visits(visits)

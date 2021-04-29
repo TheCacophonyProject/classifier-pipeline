@@ -108,7 +108,7 @@ class Clip:
         return not self.background_calculated
 
     def update_background(self, frame):
-        """ updates the clip background """
+        """updates the clip background"""
         if self.background is None:
             self.background = frame
         else:
@@ -368,7 +368,7 @@ class Clip:
 
 
 class ClipStats:
-    """ Stores background analysis statistics. """
+    """Stores background analysis statistics."""
 
     def __init__(self):
         self.mean_background_value = 0

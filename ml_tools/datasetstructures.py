@@ -13,7 +13,7 @@ CPTV_FILE_HEIGHT = 120
 
 
 class TrackHeader:
-    """ Header for track. """
+    """Header for track."""
 
     def __init__(
         self,
@@ -298,17 +298,17 @@ class TrackHeader:
 
     @property
     def camera_id(self):
-        """ Unique name of this track. """
+        """Unique name of this track."""
         return "{}-{}".format(self.camera, self.location)
 
     @property
     def bin_id(self):
-        """ Unique name of this track. """
+        """Unique name of this track."""
         return "{}-{}".format(self.clip_id, self.track_id)
 
     @property
     def weight(self):
-        """ Returns total weight for all segments in this track"""
+        """Returns total weight for all segments in this track"""
         return sum(segment.weight for segment in self.segments)
 
     @property
@@ -317,7 +317,7 @@ class TrackHeader:
 
     @staticmethod
     def from_meta(clip_id, clip_meta, track_meta, predictions=None):
-        """ Creates a track header from given metadata. """
+        """Creates a track header from given metadata."""
         correct_prediction = track_meta.get("correct_prediction", None)
         start_time = dateutil.parser.parse(track_meta["start_time"])
         end_time = dateutil.parser.parse(track_meta["end_time"])
@@ -480,7 +480,7 @@ class FrameSample:
 
 
 class SegmentHeader:
-    """ Header for segment. """
+    """Header for segment."""
 
     _segment_id = 1
 
@@ -524,7 +524,7 @@ class SegmentHeader:
 
     @property
     def name(self):
-        """ Unique name of this segment. """
+        """Unique name of this segment."""
         return self.clip_id + "-" + str(self.track_id) + "-" + str(self.start_frame)
 
     @property
@@ -555,12 +555,12 @@ class SegmentHeader:
 
     @property
     def end_frame(self):
-        """ end frame of segment"""
+        """end frame of segment"""
         return self.start_frame + self.frames
 
     @property
     def track_bin(self):
-        """ Unique name of this segments track. """
+        """Unique name of this segments track."""
         return self.track.bin_id
 
     def __str__(self):
@@ -570,6 +570,6 @@ class SegmentHeader:
 
 
 def get_cropped_fraction(region: tools.Rectangle, width, height):
-    """ Returns the fraction regions mass outside the rect ((0,0), (width, height)"""
+    """Returns the fraction regions mass outside the rect ((0,0), (width, height)"""
     bounds = tools.Rectangle(0, 0, width - 1, height - 1)
     return 1 - (bounds.overlap_area(region) / region.area)

@@ -77,7 +77,7 @@ def load_clips(config, args):
 
 
 def print_opencl_info():
-    """ Print information about opencv support for opencl. """
+    """Print information about opencv support for opencl."""
     if cv2.ocl.haveOpenCL():
         if cv2.ocl.useOpenCL():
             print("OpenCL found and enabled, threads={}".format(cv2.getNumThreads()))

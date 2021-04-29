@@ -4,7 +4,7 @@ from kalman.kalmanpreviewer import KalmanPreviewer
 
 class KalmanPredictor:
     def __init__(self, config, base_filename, tracker):
-        """ Create an instance of a clip classifier"""
+        """Create an instance of a clip classifier"""
 
         self.base_filename = base_filename
 

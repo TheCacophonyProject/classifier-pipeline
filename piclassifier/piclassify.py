@@ -52,7 +52,7 @@ class NeuralInterpreter:
         return res[0][0], res[0][1], None
 
     def load_json(self, filename):
-        """ Loads model and parameters from file. """
+        """Loads model and parameters from file."""
         stats = json.load(open(filename + ".txt", "r"))
 
         self.MODEL_NAME = stats["name"]
