@@ -314,7 +314,7 @@ class TrackPrediction:
         guesses = [
             "{} ({:.1f})".format(self.labels[self.label_index(i)], self.score(i) * 10)
             for i in range(1, min(len(self.labels), 4))
-            if self.score(i) > 0.5
+            if self.score(i) and self.score(i) > 0.5
         ]
         return guesses
 

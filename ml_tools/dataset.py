@@ -881,14 +881,8 @@ def get_important_frames(track_id, mass_history, min_mass, frame_data):
     # this needs more testing
     clear_frames = []
     lower_mass = np.percentile(mass_history, q=25)
-    upper_mass = np.percentile(mass_history, q=75)
     for i, mass in enumerate(mass_history):
-        if (
-            min_mass is None
-            or mass >= min_mass
-            and mass >= lower_mass
-            and mass <= upper_mass
-        ):  # trying it out
+        if min_mass is None or mass >= min_mass and mass >= lower_mass:  # trying it out
             if frame_data is not None:
                 if not clear_frame(frame_data[i]):
                     logging.debug(

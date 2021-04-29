@@ -147,7 +147,13 @@ class ClipLoader:
         for i in range(len(processes)):
             job_queue.put("DONE")
         for process in processes:
-            process.join()
+            try:
+                process.join()
+            except KeyboardInterrupt:
+                logging.info("KeyboardInterrupt, terminating.")
+                for process in processes:
+                    process.terminate()
+                exit()
 
     def process_all(self, root):
         job_queue = Queue()
@@ -176,7 +182,13 @@ class ClipLoader:
         for i in range(len(processes)):
             job_queue.put("DONE")
         for process in processes:
-            process.join()
+            try:
+                process.join()
+            except KeyboardInterrupt:
+                logging.info("KeyboardInterrupt, terminating.")
+                for process in processes:
+                    process.terminate()
+                exit()
 
     def _get_dest_folder(self, filename):
         return os.path.join(self.config.tracks_folder, get_distributed_folder(filename))
@@ -190,9 +202,6 @@ class ClipLoader:
         # Note: we do this even if there are no tracks so there there will be a blank clip entry as a record
         # that we have processed it.
         self.database.create_clip(clip)
-        prediction_classes = None
-        if classifier:
-            prediction_classes = classifier.model
         for track in clip.tracks:
             start_time, end_time = clip.start_and_end_time_absolute(
                 track.start_s, track.end_s

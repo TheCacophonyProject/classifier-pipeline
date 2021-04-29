@@ -450,7 +450,7 @@ class TrackDatabase:
                 node_attrs["id"] = track_id
                 if track.track_tags:
                     node_attrs["track_tags"] = [
-                        (track["what"], track["automatic"])
+                        [track["what"], track.get("automatic", False)]
                         for track in track.track_tags
                     ]
                 node_attrs["tag"] = track.tag
