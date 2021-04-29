@@ -259,7 +259,7 @@ class ClipTrackExtractor:
         return unmatched_regions, matched_tracks
 
     def _create_new_tracks(self, clip, unmatched_regions):
-        """ Create new tracks for any unmatched regions """
+        """Create new tracks for any unmatched regions"""
         new_tracks = set()
         for region in unmatched_regions:
             # make sure we don't overlap with existing tracks.  This can happen if a tail gets tracked as a new object
@@ -284,7 +284,7 @@ class ClipTrackExtractor:
         return new_tracks
 
     def _filter_inactive_tracks(self, clip, new_tracks, matched_tracks):
-        """ Filters tracks which are or have become inactive """
+        """Filters tracks which are or have become inactive"""
 
         unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
         clip.active_tracks = matched_tracks | new_tracks

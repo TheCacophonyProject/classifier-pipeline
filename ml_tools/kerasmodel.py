@@ -7,13 +7,14 @@ import numpy as np
 from track.track import TrackChannels
 from classify.trackprediction import TrackPrediction
 from ml_tools.preprocess import (
+    FrameTypes,
     preprocess_movement,
     preprocess_frame,
 )
 
 
 class KerasModel:
-    """ Defines a deep learning model using the tensorflow v2 keras framework """
+    """Defines a deep learning model using the tensorflow v2 keras framework"""
 
     def __init__(self, train_config=None):
         self.params = {
@@ -133,7 +134,7 @@ class KerasModel:
 
     def loss(self):
         softmax = tf.keras.losses.CategoricalCrossentropy(
-            label_smoothing=self.params["label_smoothing"],
+            label_smoothing=self.params.get("label_smoothing"),
         )
         return softmax
 
@@ -159,7 +160,7 @@ class KerasModel:
         self.load_meta(dir)
 
         if not self.model:
-            self.build_model()
+            self.build_model(self.dense_sizes)
         self.model.load_weights(weights_path)
 
     def load_model(self, model_path, training=False):
@@ -180,7 +181,9 @@ class KerasModel:
         self.frame_size = meta.get("frame_size", 48)
         self.square_width = meta.get("square_width", 1)
         self.use_movement = self.params.get("use_movement", False)
-        self.use_dots = self.params.get("use_dots", False)
+        self.green_type = self.params.get("green_type")
+        self.keep_aspect = self.params.get("keep_aspect", False)
+        self.dense_sizes = self.params.get("dense_sizes", [1024, 512])
 
     def get_preprocess_fn(self):
         if self.pretrained_model == "resnet":
@@ -271,7 +274,6 @@ class KerasModel:
                 track_prediction.classified_frame(
                     i, prediction, mass_weight * cropped_weight
                 )
-
         return track_prediction
 
     def classify_cropped_data(
@@ -322,6 +324,7 @@ class KerasModel:
         time use as the r channel, g and b channel are the overall movment of
         the track
         """
+
         predictions = []
         if self.params.get("use_thermal", False):
             channel = TrackChannels.thermal
@@ -335,33 +338,62 @@ class KerasModel:
         # bounding regions with each classify for the over all movement, it
         # doesn't change the result much
         # take frames_per_classify random frames, sort by time then use this to classify
+
         num_classifies = math.ceil(float(num_frames) / frames_per_classify)
-        frame_sample = np.arange(num_frames)
-        np.random.shuffle(frame_sample)
-        for i in range(num_classifies):
-            seg_frames = frame_sample[:frames_per_classify]
-            segment = []
-            medians = []
-            # update remaining
-            frame_sample = frame_sample[frames_per_classify:]
-            seg_frames.sort()
-            for frame_i in seg_frames:
-                f = data[frame_i]
-                segment.append(f.copy())
-                medians.append(thermal_median[i])
-            frames = preprocess_movement(
-                data,
-                segment,
-                self.square_width,
-                regions,
-                channel,
-                self.preprocess_fn,
-                reference_level=medians,
-                use_dots=self.params.get("use_dots", True),
-                overlay=overlay,
-            )
-            if frames is None:
-                continue
-            output = self.model.predict(frames[np.newaxis, :])
-            predictions.append(output[0])
+
+        # since we classify a random segment each time, take a few permutations
+        combinations = max(1, frames_per_classify // 9)
+        for _ in range(combinations):
+            frame_sample = np.arange(num_frames)
+            np.random.shuffle(frame_sample)
+            for i in range(num_classifies):
+                seg_frames = frame_sample[:frames_per_classify]
+                segment = []
+                medians = []
+                # update remaining
+                frame_sample = frame_sample[frames_per_classify:]
+                seg_frames.sort()
+                for frame_i in seg_frames:
+                    f = data[frame_i]
+                    segment.append(f.copy())
+                    medians.append(thermal_median[i])
+                frames = preprocess_movement(
+                    data,
+                    segment,
+                    self.square_width,
+                    self.frame_size,
+                    regions,
+                    channel,
+                    self.preprocess_fn,
+                    reference_level=medians
+                    if self.params.get("subtract_median", True)
+                    else None,
+                    green_type=self.green_type,
+                    keep_aspect=self.params.get("keep_aspect", False),
+                    overlay=overlay,
+                )
+                if frames is None:
+                    continue
+                output = self.model.predict(frames[np.newaxis, :])
+                predictions.append(output[0])
         return predictions
+
+
+def is_keras_model(model_file):
+    path, ext = os.path.splitext(model_file)
+    if ext == ".pb":
+        return True
+    return False
+
+
+def validate_model(model_file):
+    path, ext = os.path.splitext(model_file)
+    if ext == ".pb":
+        weights_path = os.path.dirname(model_file) + "/variables/variables.index"
+        if not os.path.exists(os.path.join(weights_path)):
+            logging.error("No weights found named '{}'.".format(weights_path))
+            return False
+    elif not os.path.exists(model_file + ".meta"):
+        logging.error("No model found named '{}'.".format(model_file + ".meta"))
+        return False
+    return True

@@ -8,9 +8,16 @@ from ml_tools import imageprocessing
 
 
 # size to scale each frame to when loaded.
-FRAME_SIZE = 48
 
 MIN_SIZE = 4
+
+
+class FrameTypes:
+    """Types of frames"""
+
+    thermal_square = 0
+    filtered_square = 1
+    overlay = 2
 
 
 def preprocess_segment(
@@ -18,7 +25,9 @@ def preprocess_segment(
     reference_level=None,
     frame_velocity=None,
     augment=False,
-    default_inset=0,
+    default_inset=2,
+    keep_aspect=False,
+    frame_size=48,
 ):
     """
     Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
@@ -96,11 +105,11 @@ def preprocess_segment(
             crop_region.bottom += 1
             crop_region.crop(frame_bounds)
         frame.crop_by_region(crop_region, out=frame)
-        frame.resize((FRAME_SIZE, FRAME_SIZE))
+        frame.resize((FRAME_SIZE, FRAME_SIZE), keep_aspect=keep_aspect)
         if reference_level is not None:
             frame.thermal -= reference_level[i]
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
-
+            resize_frame(cropped_frame[channel], channel, frame_size, keep_aspect)
         if augment:
             if level_adjust is not None:
                 frame.thermal += level_adjust
@@ -129,7 +138,7 @@ def preprocess_frame(
     data = data[np.newaxis, :]
     data = np.transpose(data, (1, 2, 0))
     data = np.repeat(data, output_dim[2], axis=2)
-    data = imageprocessing.resize_cv(data, output_dim)
+    data = imageprocessing.resize_cv(data, output_dim, channel)
 
     # preprocess expects values in range 0-255
     if preprocess_fn:
@@ -142,10 +151,13 @@ def preprocess_movement(
     data,
     segment,
     frames_per_row,
+    frame_size,
     regions,
-    channel,
+    red_channel,
     preprocess_fn=None,
     augment=False,
+    green_type=None,
+    keep_aspect=False,
     reference_level=None,
     overlay=None,
 ):
@@ -154,15 +166,19 @@ def preprocess_movement(
         reference_level=reference_level,
         augment=augment,
         default_inset=0,
+        keep_aspect=keep_aspect,
+        frame_size=frame_size,
     )
 
-    segment = [frame.get_channel(channel) for frame in segment]
+    red_segment = [frame.get_channel(channel) for frame in segment]
     # as long as one frame it's fine
-    square, success = imageprocessing.square_clip(
-        segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+    red_square, success = imageprocessing.square_clip(
+        red_segment, frames_per_row, (frame_size, frame_size), type
     )
+
     if not success:
         return None
+
     if overlay is None:
         overlay = imageprocessing.overlay_image(
             data,
@@ -177,16 +193,35 @@ def preprocess_movement(
         full_overlay = np.zeros((square.shape[0], square.shape[1]))
         full_overlay[: overlay.shape[0], : overlay.shape[1]] = overlay
         overlay = full_overlay
-
     if flipped:
         overlay = np.flip(overlay, axis=1)
 
-    data = np.empty((square.shape[0], square.shape[1], 3))
-    data[:, :, 0] = square
-    data[:, :, 1] = np.zeros(overlay.shape)
+    data = np.empty((red_square.shape[0], red_square.shape[1], 3))
+    data[:, :, 0] = red_square
+    if green_type == FrameTypes.filtered_square:
+        green_segment = segment[:, TrackChannels.filtered]
+        green_square, success = imageprocessing.square_clip(
+            green_segment, frames_per_row, (frame_size, frame_size), type
+        )
+
+        if not success:
+            return None
+    elif green_type == FrameTypes.thermal_square:
+        green_segment = segment[:, TrackChannels.thermal]
+        green_square, success = imageprocessing.square_clip(
+            green_segment, frames_per_row, (frame_size, frame_size), type
+        )
+        if not success:
+            return None
+    elif green_type == FrameTypes.overlay:
+        green_square = overlay
+    else:
+        green_square = np.zeros(overlay.shape)
+
+    data[:, :, 1] = green_square
     data[:, :, 2] = overlay  # overlay
+
     if preprocess_fn:
-        for i, frame in enumerate(data):
-            frame = frame * 255
-            data[i] = preprocess_fn(frame)
+        data = data * 255
+        data = preprocess_fn(data)
     return data

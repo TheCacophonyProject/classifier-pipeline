@@ -30,10 +30,10 @@ GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
 
 
 class Rectangle:
-    """ Defines a rectangle by the topleft point and width / height. """
+    """Defines a rectangle by the topleft point and width / height."""
 
     def __init__(self, topleft_x, topleft_y, width, height):
-        """ Defines new rectangle. """
+        """Defines new rectangle."""
         self.x = topleft_x
         self.y = topleft_y
         self.width = width
@@ -41,7 +41,7 @@ class Rectangle:
 
     @staticmethod
     def from_ltrb(left, top, right, bottom):
-        """ Construct a rectangle from left, top, right, bottom co-ords. """
+        """Construct a rectangle from left, top, right, bottom co-ords."""
         return Rectangle(left, top, right - left, bottom - top)
 
     def copy(self):
@@ -96,13 +96,13 @@ class Rectangle:
         self.height = value - self.y
 
     def overlap_area(self, other):
-        """ Compute the area overlap between this rectangle and another. """
+        """Compute the area overlap between this rectangle and another."""
         x_overlap = max(0, min(self.right, other.right) - max(self.left, other.left))
         y_overlap = max(0, min(self.bottom, other.bottom) - max(self.top, other.top))
         return x_overlap * y_overlap
 
     def crop(self, bounds):
-        """ Crops this rectangle so that it fits within given bounds"""
+        """Crops this rectangle so that it fits within given bounds"""
         self.left = max(self.left, bounds.left)
         self.top = max(self.top, bounds.top)
         self.right = max(bounds.left, min(self.right, bounds.right))
@@ -332,7 +332,7 @@ def most_common(lst):
 
 
 def is_gz_file(filepath):
-    """ returns if file is a gzip file or not"""
+    """returns if file is a gzip file or not"""
     with open(filepath, "rb") as test_f:
         return binascii.hexlify(test_f.read(2)) == b"1f8b"
 
@@ -420,17 +420,17 @@ def softmax(x):
 
 
 def to_HWC(data):
-    """ converts from CHW format to HWC format. """
+    """converts from CHW format to HWC format."""
     return np.transpose(data, axes=(1, 2, 0))
 
 
 def to_CHW(data):
-    """ converts from HWC format to CHW format. """
+    """converts from HWC format to CHW format."""
     return np.transpose(data, axes=(2, 0, 1))
 
 
 def random_log(a, b):
-    """ Returns a random number between a and b, but on a log scale"""
+    """Returns a random number between a and b, but on a log scale"""
     a = math.log(a)
     b = math.log(b)
     x = random.random() * (b - a) + a
@@ -659,7 +659,7 @@ def classify_segment(model, segment, verbose=False):
 
 
 def blosc_opts(complevel=9, complib="blosc:lz4", shuffle=True):
-    """ Gets params to pass for blosc compression.  Requires tables to be imported. """
+    """Gets params to pass for blosc compression.  Requires tables to be imported."""
     shuffle = 2 if shuffle == "bit" else 1 if shuffle else 0
     compressors = ["blosclz", "lz4", "lz4hc", "snappy", "zlib", "zstd"]
     complib = ["blosc:" + c for c in compressors].index(complib)
@@ -686,7 +686,7 @@ def product(numbers):
 
 
 def get_confusion_matrix(pred_class, true_class, classes, normalize=True):
-    """ get a confusion matrix figure from list of results with optional normalisation. """
+    """get a confusion matrix figure from list of results with optional normalisation."""
 
     cm = metrics.confusion_matrix(
         [classes[class_num] for class_num in pred_class],

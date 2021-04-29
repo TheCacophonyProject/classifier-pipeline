@@ -130,12 +130,21 @@ class Frame:
             frame.flow = flow
         return frame
 
-    def resize(self, dim):
-        self.thermal = resize_cv(self.thermal, dim)
-        self.mask = resize_cv(self.mask, dim, interpolation=cv2.INTER_NEAREST)
-        if self.flow is not None:
-            self.flow = resize_cv(self.flow, dim)
-        self.filtered = resize_cv(self.filtered, dim)
+    def resize(self, dim, keep_aspect=False):
+        if keep_aspect:
+            self.thermal = resize_with_aspect(self.thermal, dim, min_pad=True)
+            self.mask = resize_with_aspect(
+                self.mask, dim, interpolation=cv2.INTER_NEAREST
+            )
+            if self.flow is not None:
+                self.flow = resize_with_aspect(self.flow, dim)
+            self.filtered = resize_with_aspect(self.filtered, dim)
+        else:
+            self.thermal = resize_cv(self.thermal, dim)
+            self.mask = resize_cv(self.mask, dim, interpolation=cv2.INTER_NEAREST)
+            if self.flow is not None:
+                self.flow = resize_cv(self.flow, dim)
+            self.filtered = resize_cv(self.filtered, dim)
 
     def rotate(self, degrees):
         self.thermal = rotate(self.thermal, degrees)

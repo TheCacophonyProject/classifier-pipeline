@@ -24,12 +24,12 @@ class DefaultConfig(ABC):
     @classmethod
     @abstractmethod
     def get_defaults(cls):
-        """ The function to get default config. """
+        """The function to get default config."""
         ...
 
     @abstractmethod
     def validate(self):
-        """ The function to get default config. """
+        """The function to get default config."""
         ...
 
 

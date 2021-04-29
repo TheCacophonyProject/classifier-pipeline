@@ -22,7 +22,7 @@ from ml_tools.tools import Rectangle
 
 
 class Region(Rectangle):
-    """ Region is a rectangle extended to support mass. """
+    """Region is a rectangle extended to support mass."""
 
     def __init__(
         self,

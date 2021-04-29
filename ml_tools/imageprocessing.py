@@ -9,11 +9,35 @@ from ml_tools.tools import eucl_distance
 from track.track import TrackChannels
 
 
-def rotate(image, degrees, mode="nearest", order=1):
-    return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
+def resize_cv(image, dim, interpolation=None, extra_h=0, extra_v=0):
+
+    return cv2.resize(
+        np.float32(image),
+        dsize=(dim[0] + extra_h, dim[1] + extra_v),
+        interpolation=interpolation if interpolation else cv2.INTER_LINEAR,
+    )
 
 
-def overlay_image(
+def resize_with_aspect(frame, dim, min_pad=False, interpolation=None):
+    scale_percent = (dim / np.array(frame.shape)).min()
+    width = int(frame.shape[1] * scale_percent)
+    height = int(frame.shape[0] * scale_percent)
+    resize_dim = (width, height)
+    if min_pad:
+        pad = np.min(frame)
+    else:
+        pad = 0
+    resized = np.full(dim, pad, dtype=frame.dtype)
+    offset = np.int16((np.array(dim) - np.array(resize_dim)) / 2.0)
+    frame_resized = resize_cv(frame, resize_dim, interpolation=interpolation)
+    resized[
+        offset[1] : offset[1] + frame_resized.shape[0],
+        offset[0] : offset[0] + frame_resized.shape[1],
+    ] = frame_resized
+    return resized
+
+
+def movement_images(
     frames,
     regions,
     dim,
@@ -114,14 +138,6 @@ def save_image_channels(data, filename):
     concat = np.concatenate((r, g, b), axis=1)
     img = Image.fromarray(np.uint8(concat))
     img.save(filename + ".png")
-
-
-def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
-    return cv2.resize(
-        image,
-        dsize=(dim[0] + extra_h, dim[1] + extra_v),
-        interpolation=interpolation,
-    )
 
 
 def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5)):

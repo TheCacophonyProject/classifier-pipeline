@@ -27,7 +27,7 @@ from ml_tools.tools import get_optical_flow_function, get_clipped_flow
 
 
 class FrameBuffer:
-    """ Stores entire clip in memory, required for some operations such as track exporting. """
+    """Stores entire clip in memory, required for some operations such as track exporting."""
 
     def __init__(
         self, cptv_name, high_quality_flow, cache_to_disk, calc_flow, keep_frames
