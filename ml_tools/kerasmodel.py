@@ -5,6 +5,7 @@ import tensorflow as tf
 import pickle
 import logging
 from tensorboard.plugins.hparams import api as hp
+from ml_tools import tools
 
 from collections import namedtuple
 from ml_tools.datagenerator import DataGenerator
@@ -12,6 +13,8 @@ from ml_tools.preprocess import (
     preprocess_frame,
     preprocess_movement,
 )
+import tensorflow.keras as keras
+
 import numpy as np
 import os
 import time
@@ -826,7 +829,6 @@ class KerasModel:
         cm = confusion_matrix(
             np.argmax(one_hot_y, axis=1), test_pred, labels=np.arange(len(self.labels))
         )
-        cm = np.nan_to_num(cm)
         # Log the confusion matrix as an image summary.
         figure = plot_confusion_matrix(cm, class_names=self.labels)
         plt.savefig(filename, format="png")
@@ -867,6 +869,62 @@ class KerasModel:
         test.stop_load()
         logging.info("Test accuracy is %s", test_accuracy)
 
+    def track_confusion(self, dataset, filename="confusion.png"):
+        dataset.set_read_only(True)
+        dataset.use_segments = self.params.use_segments
+        cap_at = len(dataset.tracks_by_label.get("bird", []))
+        # cap_at = 1
+        predictions = []
+        actual = []
+        raw_predictions = []
+        one_hot = []
+        for label in dataset.label_mapping.keys():
+            label_tracks = dataset.tracks_by_label.get(label, [])
+            label_tracks = [track for track in label_tracks if len(track.segments) > 0]
+            sample_tracks = np.random.choice(
+                label_tracks, min(len(label_tracks), cap_at), replace=False
+            )
+            mapped_label = dataset.mapped_label(label)
+            for track in sample_tracks:
+                track_data = dataset.db.get_track(track.clip_id, track.track_id)
+
+                regions = []
+                for region in track.track_bounds:
+                    regions.append(tools.Rectangle.from_ltrb(*region))
+                track_prediction = self.classify_track_data(
+                    track.track_id,
+                    track_data,
+                    track.frame_temp_median,
+                    regions=regions,
+                )
+                if track_prediction is None or len(track_prediction.predictions) == 0:
+                    continue
+                avg = np.mean(track_prediction.predictions, axis=0)
+
+                # print(avg.shape, "mean preds are", np.round(100 * avg))
+                # print(
+                #     mapped_label,
+                #     " predictied as ",
+                #     self.labels[np.argmax(avg)],
+                #     "with",
+                #     np.amax(avg) * 100,
+                # )
+                actual.append(self.labels.index(mapped_label))
+                predictions.append(np.argmax(avg))
+                raw_predictions.append(avg)
+
+                one_hot.append(
+                    keras.utils.to_categorical(actual[-1], num_classes=len(self.labels))
+                )
+
+        self.f1(one_hot, raw_predictions)
+        # test.epoch_data = None
+        cm = confusion_matrix(actual, predictions, labels=np.arange(len(self.labels)))
+        # Log the confusion matrix as an image summary.
+        print("using ", self.labels, len(self.labels))
+        figure = plot_confusion_matrix(cm, class_names=self.labels)
+        plt.savefig(filename, format="png")
+
 
 # from tensorflow examples
 def plot_confusion_matrix(cm, class_names):
@@ -879,27 +937,25 @@ def plot_confusion_matrix(cm, class_names):
     """
 
     # Normalize the confusion matrix.
-    cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    print(cm)
+    # cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    # cm = np.nan_to_num(cm)
     figure = plt.figure(figsize=(8, 8))
-
     plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
     plt.title("Confusion matrix")
     plt.colorbar()
     tick_marks = np.arange(len(class_names))
-    plt.xticks(tick_marks, sorted_names, rotation=45)
-    plt.yticks(tick_marks, sorted_names)
+    plt.xticks(tick_marks, class_names, rotation=45)
+    plt.yticks(tick_marks, class_names)
+    #
+    cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    cm = np.nan_to_num(cm)
 
     # Use white text if squares are dark; otherwise black.
     threshold = cm.max() / 2.0
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         color = "white" if cm[i, j] > threshold else "black"
-        plt.text(
-            class_names[j],
-            class_names[i],
-            cm[i, j],
-            horizontalalignment="center",
-            color=color,
-        )
+        plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
 
     plt.tight_layout()
     plt.ylabel("True label")

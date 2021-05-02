@@ -176,13 +176,13 @@ class ModelEvalute:
         logging.info("classifier loading %s", self.model_file)
 
         self.classifier = KerasModel(train_config=self.config.train)
-        self.classifier.load_model(self.model_file, training=False)
+        self.classifier.load_weights(self.model_file, training=False)
 
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
     def save_confusion(self, dataset, output_file):
         self.load_classifier()
-        self.classifier.confusion(dataset, output_file)
+        self.classifier.track_confusion(dataset, output_file)
 
     def evaluate_dataset(self, dataset, tracks=False):
         for label in dataset.labels:
