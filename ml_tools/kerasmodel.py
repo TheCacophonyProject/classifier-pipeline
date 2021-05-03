@@ -14,7 +14,7 @@ from ml_tools.preprocess import (
     preprocess_movement,
 )
 import tensorflow.keras as keras
-
+from tensorflow.keras.layers import *
 import numpy as np
 import os
 import time
@@ -182,7 +182,6 @@ class KerasModel:
         width = self.params.frame_size
         if self.params.use_movement:
             width = self.params.square_width * self.params.frame_size
-
         inputs = tf.keras.Input(shape=(width, width, 3), name="input")
         weights = None if self.params.base_training else "imagenet"
         base_model, preprocess = self.base_model((width, width, 3), weights=weights)
@@ -199,6 +198,20 @@ class KerasModel:
             self.model = self.add_lstm(cnn)
         else:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
+            if self.params.mvm:
+                mvm_inputs = Input((45, 9))
+                inputs = [inputs, mvm_inputs]
+
+                mvm_features = Flatten()(mvm_inputs)
+                x = Concatenate()([x, mvm_features])
+
+                print(mvm_features.shape)
+                # mvm_inputs = tf.reshape(mvm_inputs, [None, 45 * 9])
+                # mvm_inputs = Flatten()(mvm_inputs)
+                # mvm_features = tf.keras.layers.Dense(i, activation="relu")(x)
+                # x = GlobalAveragePooling1D()(x)
+
+            # x = Flatten(x)
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
                 if dropout:
@@ -383,6 +396,7 @@ class KerasModel:
             use_movement=self.params.use_movement,
             cap_at="bird",
             square_width=self.params.square_width,
+            mvm=self.params.mvm,
         )
         self.validate = DataGenerator(
             self.datasets.validation,
@@ -398,6 +412,7 @@ class KerasModel:
             use_movement=self.params.use_movement,
             cap_at="bird",
             square_width=self.params.square_width,
+            mvm=self.params.mvm,
         )
         checkpoints = self.checkpoints(run_name)
 
@@ -438,6 +453,7 @@ class KerasModel:
                 load_threads=self.params.train_load_threads,
                 cap_at="bird",
                 square_width=self.params.square_width,
+                mvm=self.params.mvm,
             )
             test_accuracy = self.model.evaluate(test)
             test.stop_load()

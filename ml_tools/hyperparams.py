@@ -45,6 +45,10 @@ class HyperParams(dict):
 
     # Model hyper paramters
     @property
+    def mvm(self):
+        return self.get("mvm", False)
+
+    @property
     def model(self):
         return self.get("model", "resnetv2")
 

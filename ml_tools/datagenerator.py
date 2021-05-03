@@ -20,6 +20,7 @@ class GeneartorParams:
         self.channel = params.get("channel")
         self.square_width = params.get("square_width", 5)
         self.output_dim = output_dim
+        self.mvm = params.get("mvm", False)
 
 
 class DataGenerator(keras.utils.Sequence):
@@ -258,6 +259,7 @@ def _data(labels, dataset, samples, params, to_categorical=True):
     y = np.empty((len(samples)), dtype=int)
     data_i = 0
     y_original = []
+    mvm = []
     for sample in samples:
         label = dataset.mapped_label(sample.label)
         if label not in labels:
@@ -313,6 +315,7 @@ def _data(labels, dataset, samples, params, to_categorical=True):
                 sample=sample,
                 overlay=overlay,
             )
+            mvm.append(sample.movement_data)
         else:
             try:
                 frame = dataset.fetch_sample(sample)
@@ -345,6 +348,8 @@ def _data(labels, dataset, samples, params, to_categorical=True):
     y = y[:data_i]
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
+    if params.mvm:
+        return [np.array(X), np.array(mvm)], y, y_original
     return np.array(X), y, y_original
 
 

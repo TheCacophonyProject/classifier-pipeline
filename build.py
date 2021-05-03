@@ -22,7 +22,7 @@ from ml_tools.kerasmodel import KerasModel
 import pytz
 
 LOW_DATA_LABELS = ["wallaby", "human", "dog", "vehicle"]
-MIN_TRACKS = 100
+MIN_TRACKS = 1
 MIN_SIZE = 4
 CAP_DATA = True
 MIN_VALIDATE_CAMERAS = 5
