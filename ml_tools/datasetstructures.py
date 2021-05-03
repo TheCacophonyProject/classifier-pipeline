@@ -253,8 +253,12 @@ class TrackHeader:
 
         self.segments = []
         if use_important and self.num_sample_frames < segment_width:
-            # dont want to repeat too many frames
-            return
+            if self.label == "vehicle" or self.label == "human":
+                if self.num_sample_frames < (segment_width / 4.0):
+                    return
+            else:
+                # dont want to repeat too many frames
+                return
         elif len(mass_history) < segment_width:
             return
         # if use_important:
