@@ -531,7 +531,7 @@ class KerasModel:
             dataset.lbl_p = lbl_p
             dataset.use_segments = self.params.use_segments
             # dataset.random_segments_only()
-            dataset.recalculate_segments()
+            # dataset.recalculate_segments()
             # dataset.rebuild_cdf()
             if ignore_labels:
                 for label in ignore_labels:
