@@ -244,7 +244,7 @@ def split_low_label(dataset, label, holdout_cameras):
     label_count = 0
     total = len(dataset.tracks_by_label.get(label, []))
     num_validate_tracks = max(total * 0.15, MIN_TRACKS)
-    num_test_tracks = min(num_validate_tracks, MIN_TRACKS)
+    num_test_tracks = max(total * 0.05, MIN_TRACKS)
 
     cameras_to_remove = set()
     for i, track in enumerate(tracks):
