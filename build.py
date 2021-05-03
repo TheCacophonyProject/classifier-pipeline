@@ -538,8 +538,8 @@ def main():
     for key, value in dataset.filtered_stats.items():
         if value != 0:
             print("  {} filtered {}".format(key, value))
-    print()
-    show_cameras_tracks(dataset)
+    # print()
+    # show_cameras_tracks(dataset)
     print()
     show_tracks_breakdown(dataset)
     print()
