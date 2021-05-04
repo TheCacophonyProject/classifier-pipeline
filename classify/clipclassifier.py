@@ -81,7 +81,7 @@ class ClipClassifier(CPTVFileProcessor):
                 fp_index = None
 
             track_prediction = (
-                TrackPrediction(track.get_id(), track.start_frame, fp_index, keep_all),
+                TrackPrediction(track.get_id(), track.start_frame, fp_index),
             )
 
             for i, region in enumerate(track.bounds_history):
