@@ -21,6 +21,7 @@ class GeneartorParams:
         self.square_width = params.get("square_width", 5)
         self.output_dim = output_dim
         self.mvm = params.get("mvm", False)
+        self.type = params.get("type", 0)
 
 
 class DataGenerator(keras.utils.Sequence):
@@ -79,10 +80,11 @@ class DataGenerator(keras.utils.Sequence):
             for thread in self.preloader_threads:
                 thread.start()
         logging.info(
-            "datagen for %s shuffle %s cap %s",
+            "datagen for %s shuffle %s cap %s type %s",
             self.dataset.name,
             self.shuffle,
             self.cap_samples,
+            self.params.type,
         )
 
     def stop_load(self):
@@ -314,6 +316,7 @@ def _data(labels, dataset, samples, params, to_categorical=True):
                 reference_level=ref,
                 sample=sample,
                 overlay=overlay,
+                type=params.type,
             )
             mvm.append(sample.movement_data)
         else:

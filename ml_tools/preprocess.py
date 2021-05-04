@@ -201,6 +201,7 @@ def preprocess_movement(
     reference_level=None,
     sample=None,
     overlay=None,
+    type=None,
 ):
     segment, flipped = preprocess_segment(
         segment,
@@ -208,47 +209,69 @@ def preprocess_movement(
         augment=augment,
         default_inset=0,
     )
-    thermal_segment = [frame.get_channel(channel) for frame in segment]
-    # as long as one frame it's fine
-    square, success = imageprocessing.square_clip(
-        thermal_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
-    )
-    if not success:
-        return None
-    filtered_segment = [frame.get_channel(TrackChannels.filtered) for frame in segment]
-    filtered_square, success = imageprocessing.square_clip(
-        filtered_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
-    )
-    # if overlay is None:
-    #     dots, overlay = imageprocessing.movement_images(
-    #         data,
-    #         regions,
-    #         dim=square.shape,
-    #         require_movement=True,
-    #     )
-    #     overlay, stats = imageprocessing.normalize(overlay, min=0)
-    #     if not stats[0]:
-    #         return None
-    # else:
-    #     overlay, stats = imageprocessing.normalize(overlay)
-    #     if stats[0] == False:
-    #         return None
-    #     overlay_full_size = np.zeros(square.shape)
-    #     overlay_full_size[: overlay.shape[0], : overlay.shape[1]] = overlay
-    #     overlay = overlay_full_size
-    # if flipped:
-    #     overlay = np.flip(overlay, axis=1)
-    # dots = np.flip(dots, axis=1)
-
-    data = np.empty((square.shape[0], square.shape[1], 3))
-    data[:, :, 0] = square
-    if use_dots:
-        dots = dots / 255
-        data[:, :, 1] = dots  # dots
+    if type == 2:
+        # just use flow
+        flow_segment = [frame.get_channel(TrackChannels.flow) for frame in segment]
+        flow_square, success = imageprocessing.square_clip_flow(
+            flow_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), rgb=True
+        )
+        if success is None:
+            return None
+        data = flow_square
+        pass
     else:
+        thermal_segment = [frame.get_channel(channel) for frame in segment]
+        # as long as one frame it's fine
+        square, success = imageprocessing.square_clip(
+            thermal_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+        )
+        if not success:
+            return None
+        filtered_segment = [
+            frame.get_channel(TrackChannels.filtered) for frame in segment
+        ]
+        filtered_square, success = imageprocessing.square_clip(
+            filtered_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+        )
+        # if overlay is None:
+        #     dots, overlay = imageprocessing.movement_images(
+        #         data,
+        #         regions,
+        #         dim=square.shape,
+        #         require_movement=True,
+        #     )
+        #     overlay, stats = imageprocessing.normalize(overlay, min=0)
+        #     if not stats[0]:
+        #         return None
+        # else:
+        #     overlay, stats = imageprocessing.normalize(overlay)
+        #     if stats[0] == False:
+        #         return None
+        #     overlay_full_size = np.zeros(square.shape)
+        #     overlay_full_size[: overlay.shape[0], : overlay.shape[1]] = overlay
+        #     overlay = overlay_full_size
+        # if flipped:
+        #     overlay = np.flip(overlay, axis=1)
+        # dots = np.flip(dots, axis=1)
+
+        data = np.empty((square.shape[0], square.shape[1], 3))
+        if type == 0:
+            data[:, :, 0] = filtered_square
+        else:
+            data[:, :, 0] = square
         data[:, :, 1] = filtered_square
-    # data[:, :, 2] = np.zeros(filtered_square.shape)
-    data[:, :, 2] = filtered_square
+        # data[:, :, 2] = np.zeros(filtered_square.shape)
+        if type == 3:
+            flow_segment = [frame.get_channel(TrackChannels.flow) for frame in segment]
+            flow_square, success = imageprocessing.square_clip_flow(
+                flow_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+            )
+            if success is None:
+                return None
+            data[:, :, 2] = flow_square
+        else:
+            data[:, :, 2] = filtered_square
+
     # for debugging
     # tools.saveclassify_image(
     #     data,

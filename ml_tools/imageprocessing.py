@@ -135,9 +135,17 @@ def square_clip(data, frames_per_row, tile_dim, type=None):
     return new_frame, success
 
 
-def square_clip_flow(data_flow, frames_per_row, tile_dim, type=None):
+def square_clip_flow(data_flow, frames_per_row, tile_dim, rgb=False):
     # lay each frame out side by side in rows
-    new_frame = np.zeros((frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]))
+    if rgb:
+        new_frame = np.zeros(
+            (frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]), 3
+        )
+    else:
+        new_frame = np.zeros(
+            (frames_per_row * tile_dim[0], frames_per_row * tile_dim[1])
+        )
+
     i = 0
     success = False
     hsv = np.zeros((tile_dim[0], tile_dim[1], 3), dtype=np.float32)
@@ -155,20 +163,30 @@ def square_clip_flow(data_flow, frames_per_row, tile_dim, type=None):
             hsv[..., 0] = ang * 180 / np.pi / 2
             hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
             rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-            flow_magnitude = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY)
+            if rgb:
+                flow_magnitude = rgb
+            else:
+                flow_magnitude = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY)
 
-            # flow_magnitude = (
-            #     np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
-            # )
+                # flow_magnitude = (
+                #     np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
+                # )
             frame, norm_success = normalize(flow_magnitude)
 
             if not norm_success:
                 continue
             success = True
-            new_frame[
-                x * tile_dim[0] : (x + 1) * tile_dim[0],
-                y * tile_dim[1] : (y + 1) * tile_dim[1],
-            ] = np.float32(frame)
+            if rgb:
+                new_frame[
+                    x * tile_dim[0] : (x + 1) * tile_dim[0],
+                    y * tile_dim[1] : (y + 1) * tile_dim[1],
+                ] = np.float32(frame)
+            else:
+                new_frame[
+                    x * tile_dim[0] : (x + 1) * tile_dim[0],
+                    y * tile_dim[1] : (y + 1) * tile_dim[1],
+                    3,
+                ] = np.float32(frame)
             i += 1
 
     return new_frame, success
