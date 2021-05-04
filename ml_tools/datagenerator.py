@@ -21,7 +21,7 @@ class GeneartorParams:
         self.square_width = params.get("square_width", 5)
         self.output_dim = output_dim
         self.mvm = params.get("mvm", False)
-        self.type = params.get("type", 0)
+        self.type = params.get("type", 1)
 
 
 class DataGenerator(keras.utils.Sequence):

@@ -604,7 +604,6 @@ class KerasModel:
     def test_hparams(self):
 
         epochs = 6
-        type = 12
         batch_size = 32
 
         dir = self.log_dir + "/hparam_tuning"
@@ -833,6 +832,7 @@ class KerasModel:
             cap_samples=True,
             cap_at="bird",
             square_width=self.params.square_width,
+            type=self.params.type,
         )
         test_pred_raw = self.model.predict(test)
         test.stop_load()
@@ -883,6 +883,7 @@ class KerasModel:
             cap_samples=True,
             cap_at="bird",
             square_width=self.params.square_width,
+            type=self.params.type,
         )
         test_accuracy = self.model.evaluate(test)
         test.stop_load()

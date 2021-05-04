@@ -218,7 +218,7 @@ def preprocess_movement(
         if success is None:
             return None
         data = flow_square
-        pass
+        print("RGB FLOW")
     else:
         thermal_segment = [frame.get_channel(channel) for frame in segment]
         # as long as one frame it's fine
@@ -255,10 +255,14 @@ def preprocess_movement(
         # dots = np.flip(dots, axis=1)
 
         data = np.empty((square.shape[0], square.shape[1], 3))
+
         if type == 0:
             data[:, :, 0] = filtered_square
+            red = "filtered"
         else:
             data[:, :, 0] = square
+            red = "thermal"
+        green = "filtered"
         data[:, :, 1] = filtered_square
         # data[:, :, 2] = np.zeros(filtered_square.shape)
         if type == 3:
@@ -269,9 +273,11 @@ def preprocess_movement(
             if success is None:
                 return None
             data[:, :, 2] = flow_square
+            blue = "flow"
         else:
             data[:, :, 2] = filtered_square
-
+            blue = "filtered"
+        print("{}-{}-{}".format(red, green, blue))
     # for debugging
     # tools.saveclassify_image(
     #     data,
