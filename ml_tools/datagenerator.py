@@ -382,5 +382,5 @@ def preloader(q, load_queue, labels, dataset, params):
             q.put(loadbatch(labels, dataset, data, params))
 
         else:
-            logging.info("Quue is full for %s", dataset.name)
+            logging.debug("Quue is full for %s", dataset.name)
             time.sleep(0.1)
