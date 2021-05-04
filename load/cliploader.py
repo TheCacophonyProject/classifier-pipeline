@@ -24,7 +24,7 @@ import multiprocessing
 import time
 from multiprocessing import Process, Queue
 import traceback
-
+import json
 from track.region import Region
 from ml_tools import tools
 
@@ -269,7 +269,9 @@ class ClipLoader:
         if not track_data:
             return False
 
-        track_tags = track_meta.get("TrackTags", [])
+        track_tags = []
+        if "track_tags" in track_meta:
+            track_tags = json.loads(track_meta["track_tags"])
         excluded_tags = [
             tag
             for tag in track_tags
@@ -280,7 +282,7 @@ class ClipLoader:
             return False
 
         track_tag = Track.get_best_human_tag(
-            track_meta, self.config.load.tag_precedence, min_confidence
+            track_tags, self.config.load.tag_precedence, min_confidence
         )
         if track_tag is None:
             return False

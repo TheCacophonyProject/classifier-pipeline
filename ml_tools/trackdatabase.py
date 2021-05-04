@@ -12,6 +12,7 @@ import os
 import logging
 import filelock
 import datetime
+import json
 from dateutil.parser import parse as parse_date
 
 from multiprocessing import Lock
@@ -449,10 +450,8 @@ class TrackDatabase:
                 node_attrs = track_node.attrs
                 node_attrs["id"] = track_id
                 if track.track_tags:
-                    node_attrs["track_tags"] = [
-                        [track["what"], track.get("automatic", False)]
-                        for track in track.track_tags
-                    ]
+                    node_attrs["track_tags"] = json.dumps(track.track_tags)
+
                 node_attrs["tag"] = track.tag
                 node_attrs["frames"] = frames
                 node_attrs["start_frame"] = track.start_frame

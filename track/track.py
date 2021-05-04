@@ -145,8 +145,7 @@ class Track:
 
         self.track_tags = track_meta.get("TrackTags")
         self.prediction_classes = data.get("classes")
-        self.track_tags = track_meta.get("TrackTags")
-        tag = Track.get_best_human_tag(track_meta, tag_precedence, min_confidence)
+        tag = Track.get_best_human_tag(self.track_tags, tag_precedence, min_confidence)
         if tag:
             self.tag = tag["what"]
             self.confidence = tag["confidence"]
@@ -482,10 +481,9 @@ class Track:
         return len(self.bounds_history)
 
     @classmethod
-    def get_best_human_tag(cls, track_meta, tag_precedence, min_confidence=-1):
+    def get_best_human_tag(cls, track_tags, tag_precedence, min_confidence=-1):
         """returns highest precidence non AI tag from the metadata"""
 
-        track_tags = track_meta.get("TrackTags", [])
         track_tags = [
             tag
             for tag in track_tags

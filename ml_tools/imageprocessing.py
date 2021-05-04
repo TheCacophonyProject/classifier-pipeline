@@ -1,12 +1,17 @@
 import cv2
-from pathlib import Path
 import numpy as np
 import math
-from PIL import Image, ImageDraw
 
+from pathlib import Path
+from PIL import Image, ImageDraw
 from scipy import ndimage
+
 from ml_tools.tools import eucl_distance
 from track.track import TrackChannels
+
+
+def rotate(image, degrees, mode="nearest", order=1):
+    return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
 
 
 def resize_cv(image, dim, interpolation=None, extra_h=0, extra_v=0):
@@ -37,7 +42,7 @@ def resize_with_aspect(frame, dim, min_pad=False, interpolation=None):
     return resized
 
 
-def movement_images(
+def overlay_image(
     frames,
     regions,
     dim,
