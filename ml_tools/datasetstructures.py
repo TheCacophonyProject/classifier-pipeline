@@ -303,8 +303,8 @@ class TrackHeader:
                 break
 
             prev = index
-            b_h = self.track_bounds[index : index + 45]
-            m_h = mass_history[index : index + 45]
+            b_h = self.track_bounds[index : index + segment_width]
+            m_h = mass_history[index : index + segment_width]
 
             areas = (b_h[:, 2] - b_h[:, 0]) * (b_h[:, 3] - b_h[:, 1])
             centrex = (b_h[:, 2] + b_h[:, 0]) / 2

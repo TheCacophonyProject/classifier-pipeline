@@ -318,7 +318,8 @@ def _data(labels, dataset, samples, params, to_categorical=True):
                 overlay=overlay,
                 type=params.type,
             )
-            mvm.append(sample.movement_data)
+            if data is not None:
+                mvm.append(sample.movement_data)
         else:
             try:
                 frame = dataset.fetch_sample(sample)

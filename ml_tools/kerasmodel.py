@@ -26,6 +26,10 @@ from sklearn.metrics import confusion_matrix
 
 from ml_tools.hyperparams import HyperParams
 import tensorflow_addons as tfa
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+tf_device = "/gpu:1"
 
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 512", ""]))
@@ -199,7 +203,7 @@ class KerasModel:
         else:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             if self.params.mvm:
-                mvm_inputs = Input((45, 9))
+                mvm_inputs = Input((25, 9))
                 inputs = [inputs, mvm_inputs]
 
                 mvm_features = Flatten()(mvm_inputs)
@@ -528,7 +532,7 @@ class KerasModel:
             dataset.lbl_p = lbl_p
             dataset.use_segments = self.params.use_segments
             # dataset.random_segments_only()
-            # dataset.recalculate_segments()
+            dataset.recalculate_segments()
             # dataset.rebuild_cdf()
             if ignore_labels:
                 for label in ignore_labels:
