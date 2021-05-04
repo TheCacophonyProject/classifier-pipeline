@@ -45,7 +45,7 @@ class HyperParams(dict):
 
     # Model hyper paramters
     @property
-    def model(self):
+    def type(self):
         return self.get("type", 1)
 
     @property
