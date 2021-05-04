@@ -204,13 +204,7 @@ class KerasModel:
 
                 mvm_features = Flatten()(mvm_inputs)
                 x = Concatenate()([x, mvm_features])
-
-                print(mvm_features.shape)
-                # mvm_inputs = tf.reshape(mvm_inputs, [None, 45 * 9])
-                # mvm_inputs = Flatten()(mvm_inputs)
-                # mvm_features = tf.keras.layers.Dense(i, activation="relu")(x)
-                # x = GlobalAveragePooling1D()(x)
-
+                x = tf.keras.layers.Dense(1024, activation="relu")(x)
             # x = Flatten(x)
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)

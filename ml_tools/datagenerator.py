@@ -289,7 +289,7 @@ def _data(labels, dataset, samples, params, to_categorical=True):
                 continue
 
             # repeat some frames if need be
-            if len(frame_data) < params.square_width ** 2:
+            while len(frame_data) < params.square_width ** 2:
                 missing = params.square_width ** 2 - len(frame_data)
                 indices = np.arange(len(frame_data))
                 np.random.shuffle(indices)
@@ -346,6 +346,9 @@ def _data(labels, dataset, samples, params, to_categorical=True):
     # remove data that was null
     X = X[:data_i]
     y = y[:data_i]
+    if len(X) == 0:
+        logging.error("Empty length of x")
+
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
     if params.mvm:
@@ -375,4 +378,5 @@ def preloader(q, load_queue, labels, dataset, params):
             q.put(loadbatch(labels, dataset, data, params))
 
         else:
+            logging.info("Quue is full for %s", dataset.name)
             time.sleep(0.1)
