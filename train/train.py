@@ -2,7 +2,8 @@ import os
 import pickle
 
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ, Model_CNN
-from model_resnet import ResnetModel
+
+# from model_resnet import ResnetModel
 from ml_tools.dataset import dataset_db_path
 from ml_tools.kerasmodel import KerasModel
 
@@ -15,9 +16,9 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     # but we don't load the dataset till after that, so we load it here just to count the number of labels...
     datasets_filename = dataset_db_path(conf)
 
-    if conf.train.model == ResnetModel.MODEL_NAME:
-        model = ResnetModel(labels, conf.train)
-    elif conf.train.model == ModelCRNN_HQ.MODEL_NAME:
+    # if conf.train.model == ResnetModel.MODEL_NAME:
+    # model = ResnetModel(labels, conf.train)
+    if conf.train.model == ModelCRNN_HQ.MODEL_NAME:
         model = ModelCRNN_HQ(
             labels=len(labels), train_config=conf.train, training=True, **hyper_params
         )

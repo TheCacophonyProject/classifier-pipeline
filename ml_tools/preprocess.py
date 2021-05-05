@@ -127,7 +127,7 @@ def preprocess_segment(
         # dont think we need to do this
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
-        # data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
+        data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
         frame.normalize()
 
         if augment:
@@ -213,12 +213,16 @@ def preprocess_movement(
         # just use flow
         flow_segment = [frame.get_channel(TrackChannels.flow) for frame in segment]
         flow_square, success = imageprocessing.square_clip_flow(
-            flow_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), rgb=True
+            flow_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), use_rgb=True
         )
         if success is None:
             return None
         data = flow_square
-        print("RGB FLOW")
+        # tools.saveclassify_rgb(
+        #     data,
+        #     f"samples/{type}-{sample.track.camera}-{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
+        # )
+        # print("RGB FLOW")
     else:
         thermal_segment = [frame.get_channel(channel) for frame in segment]
         # as long as one frame it's fine
@@ -268,7 +272,7 @@ def preprocess_movement(
         if type == 3:
             flow_segment = [frame.get_channel(TrackChannels.flow) for frame in segment]
             flow_square, success = imageprocessing.square_clip_flow(
-                flow_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
+                flow_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), use_rgb=False
             )
             if success is None:
                 return None
@@ -277,12 +281,12 @@ def preprocess_movement(
         else:
             data[:, :, 2] = filtered_square
             blue = "filtered"
-        print("{}-{}-{}".format(red, green, blue))
-    # for debugging
-    # tools.saveclassify_image(
-    #     data,
-    #     f"samples/{sample.track.camera}-{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
-    # )
+        # print("{}-{}-{}".format(red, green, blue))
+        # for debugging
+        # tools.saveclassify_image(
+        #     data,
+        #     f"samples/{type}-{sample.track.camera}-{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
+        # )
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)

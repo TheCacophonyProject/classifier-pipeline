@@ -32,12 +32,12 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 tf_device = "/gpu:1"
 
 #
-HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete(["1024 512", ""]))
+HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
 HP_TYPE = hp.HParam("type", hp.Discrete([1, 2, 3]))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
-HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.1, 0.01, 0.001]))
+HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.01]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
 HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.1]))
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
@@ -555,7 +555,7 @@ class KerasModel:
         logging.info("Labels: {}".format(self.labels))
 
     # GRID SEARCH
-    def train_test_model(self, hparams, log_dir, epochs=5):
+    def train_test_model(self, hparams, log_dir, epochs=15):
         # if not self.model:
         dense_size = hparams[HP_DENSE_SIZES].split()
         retrain_layer = hparams[HP_RETRAIN]

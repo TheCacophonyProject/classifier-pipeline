@@ -135,11 +135,11 @@ def square_clip(data, frames_per_row, tile_dim, type=None):
     return new_frame, success
 
 
-def square_clip_flow(data_flow, frames_per_row, tile_dim, rgb=False):
+def square_clip_flow(data_flow, frames_per_row, tile_dim, use_rgb=False):
     # lay each frame out side by side in rows
-    if rgb:
+    if use_rgb:
         new_frame = np.zeros(
-            (frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]), 3
+            (frames_per_row * tile_dim[0], frames_per_row * tile_dim[1], 3)
         )
     else:
         new_frame = np.zeros(
@@ -163,7 +163,7 @@ def square_clip_flow(data_flow, frames_per_row, tile_dim, rgb=False):
             hsv[..., 0] = ang * 180 / np.pi / 2
             hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
             rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-            if rgb:
+            if use_rgb:
                 flow_magnitude = rgb
             else:
                 flow_magnitude = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY)
@@ -176,16 +176,16 @@ def square_clip_flow(data_flow, frames_per_row, tile_dim, rgb=False):
             if not norm_success:
                 continue
             success = True
-            if rgb:
+            if use_rgb:
                 new_frame[
                     x * tile_dim[0] : (x + 1) * tile_dim[0],
                     y * tile_dim[1] : (y + 1) * tile_dim[1],
+                    3,
                 ] = np.float32(frame)
             else:
                 new_frame[
                     x * tile_dim[0] : (x + 1) * tile_dim[0],
                     y * tile_dim[1] : (y + 1) * tile_dim[1],
-                    3,
                 ] = np.float32(frame)
             i += 1
 

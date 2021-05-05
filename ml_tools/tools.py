@@ -742,7 +742,7 @@ def blur_and_return_as_mask(frame, threshold):
 
 
 def get_optical_flow_function(high_quality=False):
-    opt_flow = cv2.createOptFlow_DualTVL1()
+    opt_flow = cv2.optflow.createOptFlow_DualTVL1()
     opt_flow.setUseInitialFlow(True)
     if not high_quality:
         # see https://stackoverflow.com/questions/19309567/speeding-up-optical-flow-createoptflow-dualtvl1
@@ -813,6 +813,12 @@ def get_timezone_str(lat, lng):
     if timezone_str is None:
         timezone_str = "Pacific/Auckland"
     return timezone_str
+
+
+def saveclassify_rgb(data, filename):
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
+    r = Image.fromarray(np.uint8(data * 255))
+    r.save(filename + ".png")
 
 
 def saveclassify_image(data, filename):
