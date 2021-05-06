@@ -75,8 +75,8 @@ class ClipClassifier(CPTVFileProcessor):
         if isinstance(classifier, KerasModel):
             track_prediction = classifier.classify_track(clip, track)
         else:
-            track_prediction = (
-                TrackPrediction(track.get_id(), track.start_frame, classifier.labels),
+            track_prediction = TrackPrediction(
+                track.get_id(), track.start_frame, classifier.labels
             )
 
             for i, region in enumerate(track.bounds_history):
@@ -90,7 +90,7 @@ class ClipClassifier(CPTVFileProcessor):
                 if i % self.FRAME_SKIP == 0:
 
                     # we use a tighter cropping here so we disable the default 2 pixel inset
-                    frames = preprocess_segment(
+                    frames, _ = preprocess_segment(
                         [cropped], [thermal_reference], default_inset=0
                     )
 
@@ -106,7 +106,7 @@ class ClipClassifier(CPTVFileProcessor):
                         prediction,
                         novelty,
                         state,
-                    ) = classifier.classify_frame_with_novelty(frame, state)
+                    ) = classifier.classify_frame_with_novelty(frame.as_array(), state)
                     # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                     # score
 
