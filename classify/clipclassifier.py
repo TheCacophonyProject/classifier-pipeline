@@ -26,7 +26,7 @@ class ClipClassifier(CPTVFileProcessor):
     # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
     FRAME_SKIP = 1
 
-    def __init__(self, config, tracking_config, model=None):
+    def __init__(self, config, tracking_config, model=None, cache_to_disk=None):
         """Create an instance of a clip classifier"""
 
         super(ClipClassifier, self).__init__(config, tracking_config)
@@ -37,14 +37,17 @@ class ClipClassifier(CPTVFileProcessor):
 
         self.start_date = None
         self.end_date = None
-        self.cache_to_disk = self.config.classify.cache_to_disk
+        if cache_to_disk is None:
+            self.cache_to_disk = self.config.classify.cache_to_disk
+        else:
+            self.cache_to_disk = cache_to_disk
         # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
         self.enable_per_track_information = False
         self.track_extractor = ClipTrackExtractor(
             self.config.tracking,
             self.config.use_opt_flow
             or config.classify.preview == Previewer.PREVIEW_TRACKING,
-            self.config.classify.cache_to_disk,
+            self.cache_to_disk,
         )
 
     def preprocess(self, frame, thermal_reference):
@@ -80,13 +83,12 @@ class ClipClassifier(CPTVFileProcessor):
             except ValueError:
                 fp_index = None
 
-            track_prediction = (
-                TrackPrediction(track.get_id(), track.start_frame, fp_index, keep_all),
+            track_prediction = TrackPrediction(
+                track.get_id(), track.start_frame, fp_index
             )
 
             for i, region in enumerate(track.bounds_history):
                 frame = clip.frame_buffer.get_frame(region.frame_number)
-
                 track_data = track.crop_by_region(frame, region)
 
                 # note: would be much better for the tracker to store the thermal references as it goes.
