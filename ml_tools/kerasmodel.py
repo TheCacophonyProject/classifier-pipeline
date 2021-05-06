@@ -33,13 +33,13 @@ tf_device = "/gpu:1"
 
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
-HP_TYPE = hp.HParam("type", hp.Discrete([1, 2, 3]))
+HP_TYPE = hp.HParam("type", hp.Discrete([0, 1, 2, 3]))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
 HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.01]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
-HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.1]))
+HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
 
 METRIC_ACCURACY = "accuracy"
@@ -603,7 +603,7 @@ class KerasModel:
 
     def test_hparams(self):
 
-        epochs = 6
+        epochs = 15
         batch_size = 32
 
         dir = self.log_dir + "/hparam_tuning"
@@ -678,16 +678,16 @@ class KerasModel:
                                         run_name = "run-%d" % session_num
                                         print("--- Starting trial: %s" % run_name)
                                         print({h.name: hparams[h] for h in hparams})
-                                        self.run(dir + "/" + run_name, hparams)
+                                        self.run(dir + "/" + run_name, hparams, epochs)
                                         session_num += 1
                                         self.train.stop_load()
                                         self.validate.stop_load()
 
-    def run(self, log_dir, hparams):
+    def run(self, log_dir, hparams, epochs):
 
         with tf.summary.create_file_writer(log_dir).as_default():
             hp.hparams(hparams)  # record the values used in this trial
-            history = self.train_test_model(hparams, log_dir)
+            history = self.train_test_model(hparams, log_dir, epochs=epochs)
             val_accuracy = history.history["val_accuracy"]
             val_loss = history.history["val_loss"]
 

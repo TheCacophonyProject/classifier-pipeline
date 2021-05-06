@@ -127,7 +127,10 @@ def preprocess_segment(
         # dont think we need to do this
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
-        data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
+        # data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
+        if frame.flow_clipped:
+            frame.flow *= 1.0 / 256.0
+            frame.flow_clipped = False
         frame.normalize()
 
         if augment:

@@ -176,17 +176,10 @@ def square_clip_flow(data_flow, frames_per_row, tile_dim, use_rgb=False):
             if not norm_success:
                 continue
             success = True
-            if use_rgb:
-                new_frame[
-                    x * tile_dim[0] : (x + 1) * tile_dim[0],
-                    y * tile_dim[1] : (y + 1) * tile_dim[1],
-                    3,
-                ] = np.float32(frame)
-            else:
-                new_frame[
-                    x * tile_dim[0] : (x + 1) * tile_dim[0],
-                    y * tile_dim[1] : (y + 1) * tile_dim[1],
-                ] = np.float32(frame)
+            new_frame[
+                x * tile_dim[0] : (x + 1) * tile_dim[0],
+                y * tile_dim[1] : (y + 1) * tile_dim[1],
+            ] = np.float32(frame)
             i += 1
 
     return new_frame, success
