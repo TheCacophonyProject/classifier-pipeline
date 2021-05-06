@@ -240,7 +240,7 @@ class KerasModel:
         except ValueError:
             fp_index = None
         track_prediction = TrackPrediction(
-            track.get_id(), track.start_frame, fp_index, self.labels, keep_all=keep_all
+            track.get_id(), track.start_frame, self.labels, keep_all=keep_all
         )
 
         if self.use_movement:
@@ -292,7 +292,7 @@ class KerasModel:
         except ValueError:
             fp_index = None
         track_prediction = TrackPrediction(
-            track_id, start_frame, fp_index, self.labels, keep_all=keep_all
+            track_id, start_frame, self.labels, keep_all=keep_all
         )
 
         if self.use_movement:

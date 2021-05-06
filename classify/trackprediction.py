@@ -13,10 +13,6 @@ class Predictions:
         self.labels = labels
         self.prediction_per_track = {}
         self.model = model
-        try:
-            self.fp_index = self.labels.index("false-positive")
-        except ValueError:
-            self.fp_index = None
 
     def get_or_create_prediction(self, track, keep_all=True):
         prediction = self.prediction_per_track.setdefault(
@@ -24,7 +20,6 @@ class Predictions:
             TrackPrediction(
                 track.get_id(),
                 track.start_frame,
-                self.fp_index,
                 self.labels,
                 keep_all=keep_all,
             ),
@@ -57,7 +52,11 @@ class TrackPrediction:
     track.
     """
 
-    def __init__(self, track_id, start_frame, fp_index, labels, keep_all=True):
+    def __init__(self, track_id, start_frame, labels, keep_all=True):
+        try:
+            fp_index = labels.index("false-positive")
+        except ValueError:
+            fp_index = None
         self.track_id = track_id
         self.predictions = []
         self.fp_index = fp_index
@@ -166,7 +165,7 @@ class TrackPrediction:
             return "no classification"
         if frame_number is None or frame_number >= len(self.smoothed_predictions):
             score = round(self.max_score * 10)
-            label = labels[self.best_label_index]
+            label = self.labels[self.best_label_index]
             novelty = self.max_novelty
         else:
             score = self.score_at_time(frame_number) * 10

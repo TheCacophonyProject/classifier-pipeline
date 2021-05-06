@@ -105,11 +105,10 @@ def preprocess_segment(
             crop_region.bottom += 1
             crop_region.crop(frame_bounds)
         frame.crop_by_region(crop_region, out=frame)
-        frame.resize((FRAME_SIZE, FRAME_SIZE), keep_aspect=keep_aspect)
+        frame.resize((frame_size, frame_size), keep_aspect=keep_aspect)
         if reference_level is not None:
             frame.thermal -= reference_level[i]
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
-            resize_frame(cropped_frame[channel], channel, frame_size, keep_aspect)
         if augment:
             if level_adjust is not None:
                 frame.thermal += level_adjust
@@ -170,7 +169,7 @@ def preprocess_movement(
         frame_size=frame_size,
     )
 
-    red_segment = [frame.get_channel(channel) for frame in segment]
+    red_segment = [frame.get_channel(red_channel) for frame in segment]
     # as long as one frame it's fine
     red_square, success = imageprocessing.square_clip(
         red_segment, frames_per_row, (frame_size, frame_size), type
@@ -183,7 +182,7 @@ def preprocess_movement(
         overlay = imageprocessing.overlay_image(
             data,
             regions,
-            dim=square.shape,
+            dim=red_square.shape,
             require_movement=True,
         )
         overlay, stats = imageprocessing.normalize(overlay, min=0)

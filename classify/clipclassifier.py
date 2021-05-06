@@ -75,13 +75,8 @@ class ClipClassifier(CPTVFileProcessor):
         if isinstance(classifier, KerasModel):
             track_prediction = classifier.classify_track(clip, track)
         else:
-            try:
-                fp_index = classifier.labels.index("false-positive")
-            except ValueError:
-                fp_index = None
-
             track_prediction = (
-                TrackPrediction(track.get_id(), track.start_frame, fp_index),
+                TrackPrediction(track.get_id(), track.start_frame, classifier.labels),
             )
 
             for i, region in enumerate(track.bounds_history):
@@ -253,7 +248,7 @@ class ClipClassifier(CPTVFileProcessor):
                 track,
             )
             predictions.prediction_per_track[track.get_id()] = prediction
-            description = prediction.description(classifier.labels)
+            description = prediction.description()
             logging.info(
                 " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
             )
@@ -315,7 +310,7 @@ class ClipClassifier(CPTVFileProcessor):
                     "model_name": predictions.model.name,
                 }
                 prediction = predictions.prediction_for(track.get_id())
-                model_info["label"] = prediction.predicted_tag(predictions.labels)
+                model_info["label"] = prediction.predicted_tag()
                 model_info["confidence"] = round(prediction.max_score, 2)
                 model_info["clarity"] = round(prediction.clarity, 3)
                 model_info["average_novelty"] = float(
@@ -329,7 +324,7 @@ class ClipClassifier(CPTVFileProcessor):
                     prediction_data.append(pred_list)
                 model_info["predictions"] = prediction_data
                 for i, value in enumerate(prediction.class_best_score):
-                    label = predictions.labels[i]
+                    label = prediction.labels[i]
                     model_info["all_class_confidences"][label] = round(float(value), 3)
                 prediction_info.append(model_info)
             track_info["predictions"] = prediction_info
