@@ -265,6 +265,10 @@ class ClipClassifier(CPTVFileProcessor):
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
+
+        if not is_keras_model(model.model_file):
+            tools.clear_session()
+
         return predictions
 
     def save_metadata(

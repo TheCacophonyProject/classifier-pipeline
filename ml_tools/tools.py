@@ -413,6 +413,12 @@ def get_session(disable_gpu=False):
     return session
 
 
+def clear_session():
+    import tensorflow as tf
+
+    tf.keras.backend.clear_session()
+
+
 def softmax(x):
     """Compute softmax values for each sets of scores in x."""
     e_x = np.exp(x - np.max(x))
