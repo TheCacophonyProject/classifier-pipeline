@@ -14,6 +14,17 @@ from ml_tools.previewer import Previewer
 import absl.logging
 
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
+
+
 def main():
     logging.root.removeHandler(absl.logging._absl_handler)
     absl.logging._warn_preinit_stderr = False
@@ -52,9 +63,15 @@ def main():
         "--model-file",
         help="Path to model file to use, will override config model",
     )
-
+    parser.add_argument(
+        "--cache",
+        type=str2bool,
+        nargs="?",
+        const=True,
+        default=None,
+        help="Dont keep video frames in memory for classification later, but cache them to disk (Best for large videos, but slower)",
+    )
     args = parser.parse_args()
-
     config = Config.load_from_file(args.config_file)
     config.validate()
     init_logging(args.timestamps)
@@ -79,7 +96,9 @@ def main():
             {"id": 1, "model_file": args.model_file, "name": args.model_file}
         )
         model.validate()
-    clip_classifier = ClipClassifier(config, config.classify_tracking, model)
+    clip_classifier = ClipClassifier(
+        config, config.classify_tracking, model, cache_to_disk=args.cache
+    )
 
     # parse start and end dates
     if args.start_date:
