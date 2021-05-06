@@ -557,27 +557,6 @@ class KerasModel:
     # GRID SEARCH
     def train_test_model(self, hparams, log_dir, epochs=15):
         # if not self.model:
-        dense_size = hparams[HP_DENSE_SIZES].split()
-        retrain_layer = hparams[HP_RETRAIN]
-        dropout = hparams[HP_DROPOUT]
-        if dropout == 0.0:
-            dropout = None
-        if retrain_layer == -1:
-            retrain_layer = None
-        if hparams[HP_DENSE_SIZES] == "":
-            dense_size = []
-        else:
-            for i, size in enumerate(dense_size):
-                dense_size[i] = int(size)
-        self.train.batch_size = hparams.get(HP_BATCH_SIZE, 32)
-        self.validate.batch_size = hparams.get(HP_BATCH_SIZE, 32)
-        self.train.loaded_epochs = 0
-        self.validate.loaded_epochs = 0
-        self.build_model(
-            dense_sizes=dense_size,
-            retrain_from=retrain_layer,
-            dropout=dropout,
-        )
 
         opt = None
         learning_rate = hparams[HP_LEARNING_RATE]
@@ -597,7 +576,7 @@ class KerasModel:
         )
 
         # _, accuracy = self.model.evaluate(self.validate)
-        self.train.stop_load()
+        # self.train.stop_load()
         # self.validate.stop_load()
         return history
 
@@ -628,8 +607,7 @@ class KerasModel:
         hparams = {}
         for batch_size in HP_BATCH_SIZE.domain.values:
             for dense_size in HP_DENSE_SIZES.domain.values:
-                for retrain in HP_RETRAIN.domain.values:
-
+                for retrain_layer in HP_RETRAIN.domain.values:
                     for learning_rate in HP_LEARNING_RATE.domain.values:
                         for type in HP_TYPE.domain.values:
                             for optimizer in HP_OPTIMIZER.domain.values:
@@ -642,9 +620,22 @@ class KerasModel:
                                             HP_OPTIMIZER: optimizer,
                                             HP_EPSILON: epsilon,
                                             HP_TYPE: type,
-                                            HP_RETRAIN: retrain,
+                                            HP_RETRAIN: retrain_layer,
                                             HP_DROPOUT: dropout,
                                         }
+
+                                        dense_layers = []
+                                        if dense_size != "":
+                                            for i, size in enumerate(dense_size):
+                                                dense_layers[i] = int(size)
+                                        print(hparams[HP_DENSE_SIZES])
+                                        self.build_model(
+                                            dense_sizes=dense_layers,
+                                            retrain_from=None
+                                            if retrain_layer == -1
+                                            else retrain_layer,
+                                            dropout=None if dropout == 0.0 else dropout,
+                                        )
                                         self.train = DataGenerator(
                                             self.datasets.train,
                                             self.datasets.train.labels,
@@ -653,6 +644,7 @@ class KerasModel:
                                             buffer_size=self.params.buffer_size,
                                             channel=self.params.channel,
                                             model_preprocess=self.preprocess_fn,
+                                            epochs=epochs,
                                             load_threads=self.params.train_load_threads,
                                             use_movement=self.params.use_movement,
                                             shuffle=True,
