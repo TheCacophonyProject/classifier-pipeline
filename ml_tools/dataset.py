@@ -1193,8 +1193,11 @@ class Dataset:
             elif segment_type == 2:
                 use_important = True
                 random_frames = False
-                segment_min_mass = self.segment_min_mass
             elif segment_type == 3:
+                use_important = False
+                random_frames = False
+                segment_min_mass = self.segment_min_mass
+            elif segment_type == 4:
                 top_frames = True
             track.calculate_segments(
                 track.frame_mass,

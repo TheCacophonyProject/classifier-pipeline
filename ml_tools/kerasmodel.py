@@ -41,7 +41,7 @@ HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.01]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
 HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
-HP_SEGMENT_TYPE = hp.HParam("segment_type", hp.Discrete([0, 1, 2]))
+HP_SEGMENT_TYPE = hp.HParam("segment_type", hp.Discrete([0, 1, 2, 3, 4]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -583,7 +583,7 @@ class KerasModel:
 
     def test_hparams(self):
 
-        epochs = 3
+        epochs = 15
         batch_size = 32
 
         dir = self.log_dir + "/hparam_tuning"
