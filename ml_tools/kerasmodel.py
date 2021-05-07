@@ -33,7 +33,7 @@ tf_device = "/gpu:1"
 
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
-HP_TYPE = hp.HParam("type", hp.Discrete([0, 1, 2, 3]))
+HP_TYPE = hp.HParam("type", hp.Discrete([1]))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
@@ -41,6 +41,7 @@ HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.01]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
 HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
+HP_SEGMENT_TYPE = hp.HParam("segment_type", hp.Discrete([0, 1, 2]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -582,7 +583,7 @@ class KerasModel:
 
     def test_hparams(self):
 
-        epochs = 15
+        epochs = 3
         batch_size = 32
 
         dir = self.log_dir + "/hparam_tuning"
@@ -597,6 +598,7 @@ class KerasModel:
                     HP_TYPE,
                     HP_RETRAIN,
                     HP_DROPOUT,
+                    HP_SEGMENT_TYPE,
                 ],
                 metrics=[
                     hp.Metric(METRIC_ACCURACY, display_name="Accuracy"),
@@ -613,67 +615,81 @@ class KerasModel:
                             for optimizer in HP_OPTIMIZER.domain.values:
                                 for epsilon in HP_EPSILON.domain.values:
                                     for dropout in HP_DROPOUT.domain.values:
-                                        hparams = {
-                                            HP_DENSE_SIZES: dense_size,
-                                            HP_BATCH_SIZE: batch_size,
-                                            HP_LEARNING_RATE: learning_rate,
-                                            HP_OPTIMIZER: optimizer,
-                                            HP_EPSILON: epsilon,
-                                            HP_TYPE: type,
-                                            HP_RETRAIN: retrain_layer,
-                                            HP_DROPOUT: dropout,
-                                        }
+                                        for (
+                                            segment_type
+                                        ) in HP_SEGMENT_TYPE.domain.values:
+                                            hparams = {
+                                                HP_DENSE_SIZES: dense_size,
+                                                HP_BATCH_SIZE: batch_size,
+                                                HP_LEARNING_RATE: learning_rate,
+                                                HP_OPTIMIZER: optimizer,
+                                                HP_EPSILON: epsilon,
+                                                HP_TYPE: type,
+                                                HP_RETRAIN: retrain_layer,
+                                                HP_DROPOUT: dropout,
+                                                HP_SEGMENT_TYPE: segment_type,
+                                            }
+                                            self.datasets.train.recalculate_segments(
+                                                segment_type=segment_type
+                                            )
+                                            self.datasets.validation.recalculate_segments(
+                                                segment_type=segment_type
+                                            )
 
-                                        dense_layers = []
-                                        if dense_size != "":
-                                            for i, size in enumerate(dense_size):
-                                                dense_layers[i] = int(size)
-                                        print(hparams[HP_DENSE_SIZES])
-                                        self.build_model(
-                                            dense_sizes=dense_layers,
-                                            retrain_from=None
-                                            if retrain_layer == -1
-                                            else retrain_layer,
-                                            dropout=None if dropout == 0.0 else dropout,
-                                        )
-                                        self.train = DataGenerator(
-                                            self.datasets.train,
-                                            self.datasets.train.labels,
-                                            self.params.output_dim,
-                                            batch_size=batch_size,
-                                            buffer_size=self.params.buffer_size,
-                                            channel=self.params.channel,
-                                            model_preprocess=self.preprocess_fn,
-                                            epochs=epochs,
-                                            load_threads=self.params.train_load_threads,
-                                            use_movement=self.params.use_movement,
-                                            shuffle=True,
-                                            cap_at="bird",
-                                            square_width=self.params.square_width,
-                                            type=type,
-                                        )
-                                        self.validate = DataGenerator(
-                                            self.datasets.validation,
-                                            self.datasets.train.labels,
-                                            self.params.output_dim,
-                                            batch_size=batch_size,
-                                            buffer_size=self.params.buffer_size,
-                                            channel=self.params.channel,
-                                            model_preprocess=self.preprocess_fn,
-                                            epochs=epochs,
-                                            use_movement=self.params.use_movement,
-                                            shuffle=True,
-                                            cap_at="bird",
-                                            square_width=self.params.square_width,
-                                            type=type,
-                                        )
-                                        run_name = "run-%d" % session_num
-                                        print("--- Starting trial: %s" % run_name)
-                                        print({h.name: hparams[h] for h in hparams})
-                                        self.run(dir + "/" + run_name, hparams, epochs)
-                                        session_num += 1
-                                        self.train.stop_load()
-                                        self.validate.stop_load()
+                                            dense_layers = []
+                                            if dense_size != "":
+                                                for i, size in enumerate(dense_size):
+                                                    dense_layers[i] = int(size)
+                                            self.build_model(
+                                                dense_sizes=dense_layers,
+                                                retrain_from=None
+                                                if retrain_layer == -1
+                                                else retrain_layer,
+                                                dropout=None
+                                                if dropout == 0.0
+                                                else dropout,
+                                            )
+
+                                            self.train = DataGenerator(
+                                                self.datasets.train,
+                                                self.datasets.train.labels,
+                                                self.params.output_dim,
+                                                batch_size=batch_size,
+                                                buffer_size=self.params.buffer_size,
+                                                channel=self.params.channel,
+                                                model_preprocess=self.preprocess_fn,
+                                                epochs=epochs,
+                                                load_threads=self.params.train_load_threads,
+                                                use_movement=self.params.use_movement,
+                                                shuffle=True,
+                                                cap_at="bird",
+                                                square_width=self.params.square_width,
+                                                type=type,
+                                            )
+                                            self.validate = DataGenerator(
+                                                self.datasets.validation,
+                                                self.datasets.train.labels,
+                                                self.params.output_dim,
+                                                batch_size=batch_size,
+                                                buffer_size=self.params.buffer_size,
+                                                channel=self.params.channel,
+                                                model_preprocess=self.preprocess_fn,
+                                                epochs=epochs,
+                                                use_movement=self.params.use_movement,
+                                                shuffle=True,
+                                                cap_at="bird",
+                                                square_width=self.params.square_width,
+                                                type=type,
+                                            )
+                                            run_name = "run-%d" % session_num
+                                            print("--- Starting trial: %s" % run_name)
+                                            print({h.name: hparams[h] for h in hparams})
+                                            self.run(
+                                                dir + "/" + run_name, hparams, epochs
+                                            )
+                                            session_num += 1
+                                            self.train.stop_load()
+                                            self.validate.stop_load()
 
     def run(self, log_dir, hparams, epochs):
 

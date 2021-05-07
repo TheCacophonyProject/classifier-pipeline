@@ -270,8 +270,8 @@ def _data(labels, dataset, samples, params, to_categorical=True):
             continue
         if params.use_movement:
             try:
-                # frame_data = dataset.fetch_segment_data(sample)
-                frame_data = dataset.fetch_random_sample(sample)
+                frame_data = dataset.fetch_segment_data(sample)
+                # frame_data = dataset.fetch_random_sample(sample)
                 overlay = None
                 #
                 # overlay = dataset.db.get_overlay(
@@ -377,7 +377,14 @@ def preloader(q, load_queue, labels, dataset, params):
             data = []
             for sample_id in samples[1]:
                 if params.use_movement:
+
                     data.append(dataset.segments_by_id[sample_id])
+                    logging.debug(
+                        "adding sample %s %s %s",
+                        sample_id,
+                        data[-1].label,
+                        data[-1].frame_indices,
+                    )
                 else:
                     data.append(dataset.frames_by_id[sample_id])
 

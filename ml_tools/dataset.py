@@ -1167,7 +1167,7 @@ class Dataset:
         else:
             return len(self.frame_samples) > 0
 
-    def recalculate_segments(self, scale=1.0):
+    def recalculate_segments(self, scale=1.0, segment_type=None):
         self.segments = []
         self.segments_by_label = {}
         logging.info("%s generating segments scale %s", self.name, scale)
@@ -1177,25 +1177,56 @@ class Dataset:
                 round(self.segment_spacing * track.frames_per_second)
             )
             segment_width = int(round(self.segment_length * track.frames_per_second))
+            use_important = True
+            random_frames = True
+            top_frames = True
+
+            segment_min_mass = self.segment_min_mass
+            if segment_type == 0:
+                use_important = True
+                random_frames = True
+                segment_min_mass = self.segment_min_mass
+            elif segment_type == 1:
+                use_important = False
+                random_frames = True
+                segment_min_mass = self.segment_min_mass
+            elif segment_type == 2:
+                use_important = True
+                random_frames = False
+                segment_min_mass = self.segment_min_mass
+            elif segment_type == 3:
+                top_frames = True
             track.calculate_segments(
                 track.frame_mass,
                 segment_frame_spacing,
                 segment_width,
-                self.segment_min_mass,
                 scale=scale,
+                random_frames=random_frames,
+                use_important=use_important,
+                top_frames=top_frames,
+                segment_min_mass=self.segment_min_mass,
             )
             if len(track.segments) == 0:
                 empty_tracks.append(track)
                 continue
+            for seg in track.segments:
+                self.segments_by_id[seg.id] = seg
+
             self.segments.extend(track.segments)
             segs = self.segments_by_label.setdefault(track.label, [])
             segs.extend(track.segments)
         for track in empty_tracks:
             self.tracks.remove(track)
             del self.tracks_by_id[track.unique_id]
-            self.tracks_by_bin[track.bin_id].remove(track)
+            if track.bin_id in self.tracks_by_bin:
+                del self.tracks_by_bin[track.bin_id]
 
         self.rebuild_cdf()
+        # print(self.name, "has", len(self.segments))
+        # for segment in self.segments:
+        #     print(
+        #         f"{segment.track.label} - {segment.track.clip_id}-{segment.track.track_id} -{segment.track.start_frame} segment {segment.id} {segment.start_frame} frame_indices {segment.frame_indices} best? { segment.best_mass} top {segment.top_mass}"
+        #     )
 
     # HISTORICAL
     def next_batch(self, n, disable_async=False, force_no_augmentation=False):
