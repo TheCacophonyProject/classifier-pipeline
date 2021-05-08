@@ -28,6 +28,9 @@ from ml_tools.hyperparams import HyperParams
 import tensorflow_addons as tfa
 import os
 
+from keras import backend as K
+import gc
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 tf_device = "/gpu:1"
 
@@ -692,6 +695,12 @@ class KerasModel:
                                             self.validate.stop_load()
                                             self.validate = None
                                             self.train = None
+                                            K.clear_session()
+                                            gc.collect()
+                                            del self.model
+                                            del self.train
+                                            del self.validate
+                                            gc.collect()
 
     def run(self, log_dir, hparams, epochs):
 
