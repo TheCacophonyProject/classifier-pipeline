@@ -41,7 +41,7 @@ HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.01]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
 HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
-HP_SEGMENT_TYPE = hp.HParam("segment_type", hp.Discrete([0, 1, 2, 3, 4]))
+HP_SEGMENT_TYPE = hp.HParam("segment_type", hp.Discrete([0, 1, 2, 3, 4, 5, 6]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -533,7 +533,7 @@ class KerasModel:
             dataset.lbl_p = lbl_p
             dataset.use_segments = self.params.use_segments
             # dataset.random_segments_only()
-            dataset.recalculate_segments()
+            # dataset.recalculate_segments()
             # dataset.rebuild_cdf()
             if ignore_labels:
                 for label in ignore_labels:
@@ -690,6 +690,8 @@ class KerasModel:
                                             session_num += 1
                                             self.train.stop_load()
                                             self.validate.stop_load()
+                                            self.validate = None
+                                            self.train = None
 
     def run(self, log_dir, hparams, epochs):
 

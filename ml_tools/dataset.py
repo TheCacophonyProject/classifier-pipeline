@@ -1179,8 +1179,8 @@ class Dataset:
             segment_width = int(round(self.segment_length * track.frames_per_second))
             use_important = True
             random_frames = True
-            top_frames = True
-
+            top_frames = False
+            random_sections = False
             segment_min_mass = self.segment_min_mass
             if segment_type == 0:
                 use_important = True
@@ -1199,6 +1199,15 @@ class Dataset:
                 segment_min_mass = self.segment_min_mass
             elif segment_type == 4:
                 top_frames = True
+            elif segment_type == 5:
+                use_important = False
+                random_frames = True
+                segment_min_mass = self.segment_min_mass
+                random_sections = True
+            elif segment_type == 6:
+                use_important = False
+                random_frames = False
+                segment_min_mass = None
             track.calculate_segments(
                 track.frame_mass,
                 segment_frame_spacing,
@@ -1207,7 +1216,8 @@ class Dataset:
                 random_frames=random_frames,
                 use_important=use_important,
                 top_frames=top_frames,
-                segment_min_mass=self.segment_min_mass,
+                segment_min_mass=segment_min_mass,
+                random_sections=random_sections,
             )
             if len(track.segments) == 0:
                 empty_tracks.append(track)

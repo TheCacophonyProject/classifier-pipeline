@@ -251,10 +251,11 @@ class TrackHeader:
         random_frames=True,
         scale=1,
         top_frames=False,
+        random_sections=False,
     ):
 
         self.segments = []
-
+        # raise "EX"
         if use_important:
             frame_indices = [frame.frame_num for frame in self.important_frames]
         else:
@@ -360,18 +361,30 @@ class TrackHeader:
                 segment_end += extra_frames
             segment_end = min(len(frame_indices), segment_end)
             sample_width = segment_end - segment_start
-            if sample_width < segment_width:
-                segment_start = max(0, segment_start - (segment_width - sample_width))
+            # if sample_width < segment_width:
+            # segment_start = max(0, segment_start - (segment_width - sample_width))
             if random_frames:
-                frames = list(
-                    np.random.choice(
-                        frame_indices,
-                        min(segment_width, len(frame_indices)),
-                        replace=False,
+                if random_sections:
+                    section = frame_indices[: int(segment_width * 2.2)]
+                    frames = list(
+                        np.random.choice(
+                            section,
+                            min(segment_width, len(section)),
+                            replace=False,
+                        )
                     )
-                )
-                for i in frames:
-                    frame_indices.remove(i)
+                else:
+                    frames = list(
+                        np.random.choice(
+                            frame_indices,
+                            min(segment_width, len(frame_indices)),
+                            replace=False,
+                        )
+                    )
+                frame_indices = [
+                    f_num for f_num in frame_indices if f_num not in frames
+                ]
+
             else:
                 frames = frame_indices[segment_start:segment_end]
             remaining = segment_width - len(frames)
@@ -385,6 +398,12 @@ class TrackHeader:
                     )
                 )
             frames.sort()
+            if random_sections:
+                frame_indices = [
+                    f_num
+                    for f_num in frame_indices
+                    if f_num > frames[0] + segment_frame_spacing
+                ]
             mass_slice = mass_history[frames]
             segment_avg_mass = np.mean(mass_slice)
             if segment_min_mass and segment_avg_mass < segment_min_mass:
@@ -398,12 +417,12 @@ class TrackHeader:
                 segment_weight_factor = 1.2
 
             movement_data = get_movement_data(
-                self.track_bounds[index : index + segment_width],
-                mass_history[index : index + segment_width],
+                self.track_bounds[frames],
+                mass_history[frames],
             )
             segment = SegmentHeader(
                 track=self,
-                start_frame=segment_start,
+                start_frame=frames[0],
                 frames=segment_width,
                 weight=segment_weight_factor,
                 avg_mass=segment_avg_mass,
