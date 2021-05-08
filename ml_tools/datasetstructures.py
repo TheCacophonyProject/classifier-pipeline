@@ -390,6 +390,7 @@ class TrackHeader:
             remaining = segment_width - len(frames)
             # sample another batch
             if remaining > 0:
+                frames = list(frames)
                 frames.extend(
                     np.random.choice(
                         frames,
