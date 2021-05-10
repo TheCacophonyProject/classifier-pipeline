@@ -250,10 +250,11 @@ class DataGenerator(keras.utils.Sequence):
             # zero last epoch
             self.epoch_data[-1] = ([None] * batches, [None] * batches)
 
-        last_stats = self.epoch_stats[-1]
-        self.epoch_stats.append({})
-        self.epoch_data.append(([None] * batches, [None] * batches))
-        self.epoch_labels.append([None] * batches)
+        last_stats = self.epoch_stats[self.cur_epoch]
+        if len(self.epoch_stats) < self.epochs:
+            self.epoch_stats.append({})
+            self.epoch_data.append(([None] * batches, [None] * batches))
+            self.epoch_labels.append([None] * batches)
 
         logging.info("epoch ended for %s %s", self.dataset.name, last_stats)
         self.cur_epoch += 1

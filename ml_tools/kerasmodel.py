@@ -72,6 +72,8 @@ class KerasModel:
         self.preprocess_fn = None
         self.validate = None
         self.train = None
+        self.test = None
+
         self.mapped_labels = None
         self.label_probabilities = None
 
@@ -418,6 +420,22 @@ class KerasModel:
             mvm=self.params.mvm,
             type=self.params.type,
         )
+        self.test = DataGenerator(
+            self.datasets.test,
+            self.datasets.train.labels,
+            self.params.output_dim,
+            batch_size=self.params.batch_size,
+            channel=self.params.channel,
+            use_movement=self.params.use_movement,
+            shuffle=True,
+            model_preprocess=self.preprocess_fn,
+            epochs=1,
+            load_threads=self.params.train_load_threads,
+            cap_at="bird",
+            square_width=self.params.square_width,
+            mvm=self.params.mvm,
+            type=self.params.type,
+        )
         checkpoints = self.checkpoints(run_name)
 
         self.save_metadata(run_name)
@@ -438,31 +456,16 @@ class KerasModel:
                     self.log_dir, write_graph=True, write_images=True
                 ),
                 *checkpoints,
-            ],  # log metrics
+            ],  # log metricslast_stats
         )
         self.validate.stop_load()
         self.train.stop_load()
+
         test_accuracy = None
         if self.datasets.test and self.datasets.test.has_data():
-            test = DataGenerator(
-                self.datasets.test,
-                self.datasets.train.labels,
-                self.params.output_dim,
-                batch_size=self.params.batch_size,
-                channel=self.params.channel,
-                use_movement=self.params.use_movement,
-                shuffle=True,
-                model_preprocess=self.preprocess_fn,
-                epochs=1,
-                load_threads=self.params.train_load_threads,
-                cap_at="bird",
-                square_width=self.params.square_width,
-                mvm=self.params.mvm,
-                type=self.params.type,
-            )
-            test_accuracy = self.model.evaluate(test)
-            test.stop_load()
+            test_accuracy = self.model.evaluate(self.test)
             logging.info("Test accuracy is %s", test_accuracy)
+        self.test.stop_load()
         self.save(run_name, history=history, test_results=test_accuracy)
 
     def checkpoints(self, run_name):
@@ -498,28 +501,13 @@ class KerasModel:
             mode="max",
         )
         earlyStopping = tf.keras.callbacks.EarlyStopping(patience=10)
-        test = DataGenerator(
-            self.datasets.test,
-            self.datasets.train.labels,
-            self.params.output_dim,
-            batch_size=self.params.batch_size,
-            channel=self.params.channel,
-            use_movement=self.params.use_movement,
-            shuffle=True,
-            model_preprocess=self.preprocess_fn,
-            epochs=1000,
-            load_threads=self.params.train_load_threads,
-            cap_at="bird",
-            square_width=self.params.square_width,
-            mvm=self.params.mvm,
-            type=self.params.type,
-        )
+
         file_writer_cm = tf.summary.create_file_writer(
             self.log_base + "/{}/cm".format(run_name)
         )
         cm_callback = keras.callbacks.LambdaCallback(
             on_epoch_end=lambda epoch, logs: log_confusion_matrix(
-                epoch, logs, self.model, test, file_writer_cm
+                epoch, logs, self.model, self.test, file_writer_cm
             )
         )
 
@@ -584,7 +572,7 @@ class KerasModel:
         logging.info("Labels: {}".format(self.labels))
 
     # GRID SEARCH
-    def train_test_model(self, hparams, log_dir, epochs=15):
+    def train_test_model(self, hparams, log_dir, writer, epochs=15):
         # if not self.model:
 
         opt = None
@@ -600,8 +588,17 @@ class KerasModel:
             loss=self.loss(),
             metrics=["accuracy"],
         )
+        cm_callback = keras.callbacks.LambdaCallback(
+            on_epoch_end=lambda epoch, logs: log_confusion_matrix(
+                epoch, logs, self.model, self.test, writer
+            )
+        )
         history = self.model.fit(
-            self.train, epochs=epochs, shuffle=False, validation_data=self.validate
+            self.train,
+            epochs=epochs,
+            shuffle=False,
+            validation_data=self.validate,
+            callbacks=[cm_callback],
         )
 
         # _, accuracy = self.model.evaluate(self.validate)
@@ -663,7 +660,9 @@ class KerasModel:
                                             self.datasets.validation.recalculate_segments(
                                                 segment_type=segment_type
                                             )
-
+                                            self.datasets.test.recalculate_segments(
+                                                segment_type=segment_type
+                                            )
                                             dense_layers = []
                                             if dense_size != "":
                                                 for i, size in enumerate(dense_size):
@@ -709,6 +708,21 @@ class KerasModel:
                                                 square_width=self.params.square_width,
                                                 type=type,
                                             )
+                                            self.test = DataGenerator(
+                                                self.datasets.test,
+                                                self.datasets.train.labels,
+                                                self.params.output_dim,
+                                                batch_size=batch_size,
+                                                buffer_size=self.params.buffer_size,
+                                                channel=self.params.channel,
+                                                model_preprocess=self.preprocess_fn,
+                                                epochs=1,
+                                                use_movement=self.params.use_movement,
+                                                shuffle=True,
+                                                cap_at="bird",
+                                                square_width=self.params.square_width,
+                                                type=type,
+                                            )
                                             run_name = "run-%d" % session_num
                                             print("--- Starting trial: %s" % run_name)
                                             print({h.name: hparams[h] for h in hparams})
@@ -718,22 +732,25 @@ class KerasModel:
                                             session_num += 1
                                             self.train.stop_load()
                                             self.validate.stop_load()
+                                            self.test.stop_load()
                                             self.validate = None
+                                            self.test = None
                                             self.train = None
                                             K.clear_session()
                                             gc.collect()
                                             del self.model
                                             del self.train
                                             del self.validate
+                                            del self.test
                                             gc.collect()
 
     def run(self, log_dir, hparams, epochs):
-        with tf.summary.create_file_writer(log_dir).as_default():
+        with tf.summary.create_file_writer(log_dir).as_default() as w:
             hp.hparams(hparams)  # record the values used in this trial
-            history = self.train_test_model(hparams, log_dir, epochs=epochs)
+            history = self.train_test_model(hparams, log_dir, w, epochs=epochs)
             val_accuracy = history.history["val_accuracy"]
             val_loss = history.history["val_loss"]
-            log_confusion_matrix(epochs, None, self.model, self.validate, None)
+            # log_confusion_matrix(epochs, None, self.model, self.validate, None)
 
             for step, accuracy in enumerate(val_accuracy):
                 loss = val_loss[step]
