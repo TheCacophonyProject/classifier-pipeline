@@ -53,6 +53,7 @@ class DataGenerator(keras.utils.Sequence):
         self.loaded_epochs = 0
         self.epoch_data = []
         self.epoch_stats = []
+        self.epoch_labels = []
         if self.preload:
             self.load_queue = multiprocessing.Queue()
         if self.preload:
@@ -62,7 +63,7 @@ class DataGenerator(keras.utils.Sequence):
         self.load_next_epoch()
         self.epoch_stats.append({})
         self.epoch_data.append(([None] * len(self), [None] * len(self)))
-
+        self.epoch_labels.append([None] * len(self))
         if self.preload:
             self.preloader_threads = [
                 multiprocessing.Process(
@@ -99,9 +100,12 @@ class DataGenerator(keras.utils.Sequence):
                 thread.exit()
         self.preloader_queue = None
 
+    def get_epoch_labels(self, epoch=-1):
+        return self.epoch_labels[epoch]
+
     def get_epoch_predictions(self, epoch=-1):
-        if self.keep_epoch:
-            return self.epoch_data[epoch][1]
+        if self.epoch_data is not None:
+            return self.epoch_data[epoch](0)
         return None
 
     def __len__(self):
@@ -147,7 +151,7 @@ class DataGenerator(keras.utils.Sequence):
         if index == 0 or (self.keep_epoch and self.use_previous_epoch is None):
             self.epoch_data[self.cur_epoch][0][index] = X
             self.epoch_data[self.cur_epoch][1][index] = y
-
+        self.epoch_labels[self.cur_epoch][index] = y
         # can start loading next epoch of training before validation
         # if (index + 1) == len(self):
         #     self.load_next_epoch(True)
@@ -226,17 +230,30 @@ class DataGenerator(keras.utils.Sequence):
                 self.load_queue.put(pickled_samples)
         self.loaded_epochs += 1
 
+    def reload_samples(self):
+
+        if self.shuffle:
+            np.random.shuffle(self.samples)
+        if self.preload:
+            for index in range(len(self)):
+                samples = self.samples[
+                    index * self.batch_size : (index + 1) * self.batch_size
+                ]
+                pickled_samples = pickle.dumps((self.loaded_epochs + 1, samples))
+                self.load_queue.put(pickled_samples)
+
     def on_epoch_end(self):
         "Updates indexes after each epoch"
         self.load_next_epoch(reuse=True)
         batches = len(self)
         if not self.keep_epoch:
             # zero last epoch
-            self.epoch_data[-1] = None
+            self.epoch_data[-1] = ([None] * batches, [None] * batches)
 
         last_stats = self.epoch_stats[-1]
         self.epoch_stats.append({})
         self.epoch_data.append(([None] * batches, [None] * batches))
+        self.epoch_labels.append([None] * batches)
 
         logging.info("epoch ended for %s %s", self.dataset.name, last_stats)
         self.cur_epoch += 1

@@ -31,6 +31,8 @@ class HyperParams(dict):
         self["shuffle"] = self.shuffle
         self["train_load_threads"] = self.train_load_threads
         self["channel"] = self.channel
+        self["type"] = self.type
+        self["segment_type"] = self.segment_type
 
     @property
     def output_dim(self):
@@ -42,6 +44,10 @@ class HyperParams(dict):
                 3,
             )
         return output_dim
+
+    @property
+    def segment_type(self):
+        return self.get("segment_type", 1)
 
     # Model hyper paramters
     @property

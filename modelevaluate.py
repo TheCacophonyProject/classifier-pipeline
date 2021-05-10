@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import cv2
 from multiprocessing import Process, Queue
-from ml_tools.dataset import dataset_db_path
+from ml_tools.dataset import dataset_db_path, Dataset
 from ml_tools.kerasmodel import KerasModel
 from ml_tools.imageprocessing import normalize, detect_objects
 import matplotlib
@@ -180,9 +180,12 @@ class ModelEvalute:
 
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
-    def save_confusion(self, dataset, output_file):
+    def save_confusion(self, dataset, output_file, track=False):
         self.load_classifier()
-        self.classifier.track_confusion(dataset, output_file)
+        if track:
+            self.classifier.track_confusion(dataset, output_file)
+        else:
+            self.classifier.confusion(dataset, output_file)
 
     def evaluate_dataset(self, dataset, tracks=False):
         for label in dataset.labels:
@@ -405,6 +408,8 @@ config = Config.load_from_file(args.config_file)
 model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
+else:
+    model_file = config.classify.model
 ev = ModelEvalute(config, model_file)
 date = None
 if args.date:
@@ -413,6 +418,10 @@ if args.date:
 dataset_file = dataset_db_path(config)
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
+print("evaluating on ", dataset.name)
+#
+dataset = Dataset(dataset.db, "dataset", config)
+tracks_loaded, total_tracks = dataset.load_tracks()
 
 # prediction, labels = ev.evaluate_db_track(
 #     dataset.db, str(args.clip_id), str(args.track_id)
@@ -456,6 +465,6 @@ for label in dataset.label_mapping.keys():
         )
     )
 if args.confusion is not None:
-    ev.save_confusion(dataset, args.confusion)
+    ev.save_confusion(dataset, args.confusion, args.tracks)
 else:
     ev.evaluate_dataset(dataset, args.tracks)

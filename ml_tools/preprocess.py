@@ -286,6 +286,7 @@ def preprocess_movement(
             blue = "filtered"
         # print("{}-{}-{}".format(red, green, blue))
         # for debugging
+
         # tools.saveclassify_image(
         #     data,
         #     f"samples/{type}-{sample.track.camera}-{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",

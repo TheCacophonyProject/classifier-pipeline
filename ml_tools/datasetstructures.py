@@ -284,7 +284,7 @@ class TrackHeader:
         #         logging.debug("Not enough movment %s %s", self, self.label)
         #         return
         segment_count = max(1, len(frame_indices) // segment_frame_spacing)
-        segment_count -= 1
+        # segment_count -= 1
         segment_count = int(scale * segment_count)
         if top_frames:
             segment_mass = []

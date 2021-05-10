@@ -498,10 +498,35 @@ class KerasModel:
             mode="max",
         )
         earlyStopping = tf.keras.callbacks.EarlyStopping(patience=10)
+        test = DataGenerator(
+            self.datasets.test,
+            self.datasets.train.labels,
+            self.params.output_dim,
+            batch_size=self.params.batch_size,
+            channel=self.params.channel,
+            use_movement=self.params.use_movement,
+            shuffle=True,
+            model_preprocess=self.preprocess_fn,
+            epochs=1000,
+            load_threads=self.params.train_load_threads,
+            cap_at="bird",
+            square_width=self.params.square_width,
+            mvm=self.params.mvm,
+            type=self.params.type,
+        )
+        file_writer_cm = tf.summary.create_file_writer(
+            self.log_base + "/{}/cm".format(run_name)
+        )
+        cm_callback = keras.callbacks.LambdaCallback(
+            on_epoch_end=lambda epoch, logs: log_confusion_matrix(
+                epoch, logs, self.model, test, file_writer_cm
+            )
+        )
 
         return [
             earlyStopping,
             checkpoint_acc,
+            cm_callback,
         ]
 
     def regroup(self, shuffle=True):
@@ -536,7 +561,7 @@ class KerasModel:
             dataset.lbl_p = lbl_p
             dataset.use_segments = self.params.use_segments
             # dataset.random_segments_only()
-            # dataset.recalculate_segments()
+            dataset.recalculate_segments(segment_type=self.params.segment_type)
             # dataset.rebuild_cdf()
             if ignore_labels:
                 for label in ignore_labels:
@@ -703,12 +728,12 @@ class KerasModel:
                                             gc.collect()
 
     def run(self, log_dir, hparams, epochs):
-
         with tf.summary.create_file_writer(log_dir).as_default():
             hp.hparams(hparams)  # record the values used in this trial
             history = self.train_test_model(hparams, log_dir, epochs=epochs)
             val_accuracy = history.history["val_accuracy"]
             val_loss = history.history["val_loss"]
+            log_confusion_matrix(epochs, None, self.model, self.validate, None)
 
             for step, accuracy in enumerate(val_accuracy):
                 loss = val_loss[step]
@@ -758,7 +783,9 @@ class KerasModel:
     ):
         track_prediction = TrackPrediction(track_id, 0, keep_all)
         if self.params.use_movement:
-            predictions = self.classify_frames(data, thermal_median, regions=regions)
+            predictions = self.classify_frames(
+                data, thermal_median, regions=regions, track_id=track_id
+            )
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
         else:
@@ -768,7 +795,10 @@ class KerasModel:
 
         return track_prediction
 
-    def classify_frames(self, data, thermal_median, preprocess=True, regions=None):
+    def classify_frames(
+        self, data, thermal_median, preprocess=True, regions=None, track_id=None
+    ):
+
         predictions = []
 
         filtered_data = []
@@ -780,29 +810,78 @@ class KerasModel:
                 valid_indices.append(i)
                 valid_regions.append(regions[i])
         frame_sample = valid_indices
-        frame_sample.extend(valid_indices)
-        np.random.shuffle(frame_sample)
         frames_per_classify = self.params.square_width ** 2
-        frames = len(filtered_data)
+        if self.params.segment_type < 2:
+            frame_sample.extend(valid_indices)
+            np.random.shuffle(frame_sample)
+            frames = len(filtered_data)
+            samples = 3 * math.ceil(float(frames) / frames_per_classify)
+            median = np.zeros((frames_per_classify))
+        else:
+            samples = max(1, len(valid_indices) // 9)
+            # samples -= 1
 
-        n_squares = 3 * math.ceil(float(frames) / frames_per_classify)
-        median = np.zeros((frames_per_classify))
-
-        for i in range(n_squares):
+        # print(
+        #     "segment type",
+        #     self.params.segment_type,
+        #     "frames",
+        #     frame_sample,
+        #     len(frame_sample),
+        #     samples,
+        # )
+        for i in range(samples):
             square_data = filtered_data
-            seg_frames = frame_sample[:frames_per_classify]
+            if self.params.segment_type >= 2:
+                start = i * 9
+                if self.params.segment_type == 5:
+                    seg_frames = frame_sample[start : start + frames_per_classify * 2]
+                    seg_frames = list(
+                        np.random.choice(
+                            seg_frames,
+                            min(frames_per_classify, len(seg_frames)),
+                            replace=False,
+                        )
+                    )
+
+                else:
+                    seg_frames = frame_sample[start : start + frames_per_classify]
+                if len(seg_frames) < frames_per_classify / 4.0 and i > 0:
+                    break
+                if len(seg_frames) < frames_per_classify:
+                    seg_frames.extend(
+                        list(
+                            np.random.choice(
+                                seg_frames,
+                                min(
+                                    frames_per_classify - len(seg_frames),
+                                    len(seg_frames),
+                                ),
+                                replace=False,
+                            )
+                        )
+                    )
+            else:
+                seg_frames = frame_sample[:frames_per_classify]
+                frame_sample = frame_sample[frames_per_classify:]
+
             if len(seg_frames) == 0:
                 break
             segment = []
             median = np.zeros((len(seg_frames)))
-            # update remaining
-            frame_sample = frame_sample[frames_per_classify:]
             seg_frames.sort()
-            for i, frame_i in enumerate(seg_frames):
+            # print(
+            #     track_id,
+            #     "Classify",
+            #     i,
+            #     " using",
+            #     seg_frames,
+            #     "segment type",
+            #     self.params.segment_type,
+            # )
+            for index, frame_i in enumerate(seg_frames):
                 f = data[frame_i]
                 segment.append(f.copy())
-                median[i] = thermal_median[frame_i]
-
+                median[index] = thermal_median[frame_i]
             frames = preprocess_movement(
                 square_data,
                 segment,
@@ -811,6 +890,7 @@ class KerasModel:
                 self.params.channel,
                 self.preprocess_fn,
                 reference_level=median,
+                sample="{}-{}".format(track_id, i),
             )
             if frames is None:
                 continue
@@ -834,6 +914,7 @@ class KerasModel:
         return output[0]
 
     def confusion(self, dataset, filename="confusion.png"):
+        dataset.recalculate_segments(segment_type=self.params.segment_type)
         dataset.set_read_only(True)
         dataset.use_segments = self.params.use_segments
         test = DataGenerator(
@@ -941,12 +1022,19 @@ class KerasModel:
                 avg = np.mean(track_prediction.predictions, axis=0)
 
                 # print(avg.shape, "mean preds are", np.round(100 * avg))
+                # for pred in track_prediction.predictions:
+                #     print("pred", np.round(pred * 100))
+                #
                 # print(
+                #     track.track_id,
+                #     track.clip_id,
                 #     mapped_label,
                 #     " predictied as ",
                 #     self.labels[np.argmax(avg)],
                 #     "with",
                 #     np.amax(avg) * 100,
+                #     "avg",
+                #     np.round(avg * 100),
                 # )
                 actual.append(self.labels.index(mapped_label))
                 predictions.append(np.argmax(avg))
@@ -960,7 +1048,7 @@ class KerasModel:
         # test.epoch_data = None
         cm = confusion_matrix(actual, predictions, labels=np.arange(len(self.labels)))
         # Log the confusion matrix as an image summary.
-        print("using ", self.labels, len(self.labels))
+        # print("using ", self.labels, len(self.labels))
         figure = plot_confusion_matrix(cm, class_names=self.labels)
         plt.savefig(filename, format="png")
 
@@ -976,7 +1064,7 @@ def plot_confusion_matrix(cm, class_names):
     """
 
     # Normalize the confusion matrix.
-    print(cm)
+    # print(cm)
     # cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     # cm = np.nan_to_num(cm)
     figure = plt.figure(figsize=(8, 8))
@@ -1002,40 +1090,30 @@ def plot_confusion_matrix(cm, class_names):
     return figure
 
 
-def log_confusion_matrix(epoch, logs, model, validate, writer):
+def log_confusion_matrix(epoch, logs, model, dataset, writer):
     # Use the model to predict the values from the validation dataset.
-    batch_y = validate.get_epoch_predictions(epoch)
-    validate.use_previous_epoch = epoch
-    # Calculate the confusion matrix.
-    if validate.keep_epoch:
-        # x = np.array(x)
-        y = []
-        for batch in batch_y:
-            y.extend(np.argmax(batch, axis=1))
-    else:
-        y = batch_y
 
-    print("predicting")
-    test_pred_raw = model.predict(validate)
-    print("predicted")
-    validate.epoch_data[epoch] = []
+    dataset.reload_samples()
+    test_pred_raw = model.predict(dataset)
+    dataset.cur_epoch -= 1
+    batch_y = dataset.get_epoch_labels(epoch=dataset.cur_epoch)
+
+    y = []
+    for batch in batch_y:
+        y.extend(np.argmax(batch, axis=1))
 
     # reset validation generator will be 1 epoch ahead
-    validate.use_previous_epoch = None
-    validate.cur_epoch -= 1
-    del validate.epoch_data[-1]
     test_pred = np.argmax(test_pred_raw, axis=1)
 
-    cm = confusion_matrix(y, test_pred)
+    cm = confusion_matrix(y, test_pred, labels=np.arange(len(dataset.labels)))
 
     # Log the confusion matrix as an image summary.
-    figure = plot_confusion_matrix(cm, class_names=validate.labels)
+    figure = plot_confusion_matrix(cm, class_names=dataset.labels)
     cm_image = plot_to_image(figure)
 
     # Log the confusion matrix as an image summary.
     with writer.as_default():
         tf.summary.image("Confusion Matrix", cm_image, step=epoch)
-    print("done confusion")
 
 
 def plot_to_image(figure):

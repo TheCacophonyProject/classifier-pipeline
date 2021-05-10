@@ -1170,7 +1170,9 @@ class Dataset:
     def recalculate_segments(self, scale=1.0, segment_type=None):
         self.segments = []
         self.segments_by_label = {}
-        logging.info("%s generating segments scale %s", self.name, scale)
+        logging.info(
+            "%s generating segments scale %s type %s", self.name, scale, segment_type
+        )
         empty_tracks = []
         for track in self.tracks:
             segment_frame_spacing = int(
