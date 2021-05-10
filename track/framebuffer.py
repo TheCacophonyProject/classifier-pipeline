@@ -40,7 +40,7 @@ class FrameBuffer:
         self.calc_flow = calc_flow
         self.keep_frames = keep_frames
         self.current_frame = 0
-        if cache_to_disk or calc_flow:
+        if calc_flow:
             self.set_optical_flow()
         self.reset()
 
