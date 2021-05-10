@@ -78,7 +78,9 @@ class Clip:
         self.track_min_delta = None
         self.track_max_delta = None
         self.background_thresh = None
+        self.ffc_frames = []
         self.tags = None
+
         # sets defaults
         self.set_model(None)
         if background is not None:
@@ -173,10 +175,13 @@ class Clip:
 
         if len(frames) > 0:
             frame_average = np.average(frames, axis=0)
+            if initial_frames is None:
+                initial_frames = frame_average
             self.update_background(frame_average)
             initial_diff = self.calculate_initial_diff(
                 frame_average, initial_frames, initial_diff
             )
+
             if initial_frames is None:
                 initial_frames = frame_average
         frames = []
@@ -360,6 +365,8 @@ class Clip:
             logging.info(info_string)
 
     def add_frame(self, thermal, filtered, mask, ffc_affected=False):
+        if ffc_affected:
+            self.ffc_frames.append(self.frame_on)
         self.frame_buffer.add_frame(
             thermal, filtered, mask, self.frame_on, ffc_affected
         )

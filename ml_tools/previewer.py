@@ -329,9 +329,7 @@ class Previewer:
         if prediction is None:
             return
 
-        current_prediction_string = prediction.get_classified_footer(
-            track_predictions.labels, frame_offset
-        )
+        current_prediction_string = prediction.get_classified_footer(frame_offset)
         self.add_text_to_track(
             draw,
             rect,

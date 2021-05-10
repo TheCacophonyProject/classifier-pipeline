@@ -27,7 +27,8 @@ class KerasModel:
             # training
             "batch_size": 16,
         }
-        self.params.update(train_config.hyper_params)
+        if train_config:
+            self.params.update(train_config.hyper_params)
         self.preprocess_fn = None
         self.labels = None
         self.frame_size = None
@@ -162,9 +163,14 @@ class KerasModel:
             self.build_model(self.dense_sizes)
         self.model.load_weights(weights_path)
 
-    def load_model(self, dir):
+    def load_model(self, model_path, training=False):
+        logging.info("Loading %s", model_path)
+        dir = os.path.dirname(model_path)
         self.model = tf.keras.models.load_model(dir)
         self.load_meta(dir)
+        if not training:
+            self.model.trainable = False
+        self.model.summary()
 
     def load_meta(self, dir):
         meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
@@ -234,26 +240,27 @@ class KerasModel:
         except ValueError:
             fp_index = None
         track_prediction = TrackPrediction(
-            track.get_id(), track.start_frame, fp_index, keep_all
+            track.get_id(), track.start_frame, self.labels, keep_all=keep_all
         )
 
         if self.use_movement:
             data = []
+            thermal_median = []
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 frame = frame.crop_by_region(region)
-                data.append(frame.as_array())
+                thermal_median.append(np.median(frame.thermal))
+                data.append(frame)
             predictions = self.classify_using_movement(
-                data, regions=track.bounds_history
+                data, thermal_median, regions=track.bounds_history
             )
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
         else:
             for i, region in enumerate(track.bounds_history):
-
                 frame = clip.frame_buffer.get_frame(region.frame_number)
-                track_data = track.crop_by_region(frame, region)
-                prediction = self.classify_frame(track_data)
+                frame = frame.crop_by_region(region)
+                prediction = self.classify_frame(frame)
                 if prediction is None:
                     continue
                 mass = region.mass
@@ -269,7 +276,49 @@ class KerasModel:
                 )
         return track_prediction
 
-    def classify_using_movement(self, data, regions):
+    def classify_cropped_data(
+        self,
+        track_id,
+        start_frame,
+        data,
+        thermal_median,
+        regions,
+        keep_all=True,
+        overlay=None,
+    ):
+
+        try:
+            fp_index = self.labels.index("false-positive")
+        except ValueError:
+            fp_index = None
+        track_prediction = TrackPrediction(
+            track_id, start_frame, self.labels, keep_all=keep_all
+        )
+
+        if self.use_movement:
+            predictions = self.classify_using_movement(
+                data, thermal_median, regions=regions, overlay=overlay
+            )
+            for i, prediction in enumerate(predictions):
+                track_prediction.classified_frame(i, prediction, None)
+        else:
+            for i, frame in enumerate(data):
+                region = regions[i]
+                prediction = self.classify_frame(frame)
+                mass = region.mass
+                # we use the square-root here as the mass is in units squared.
+                # this effectively means we are giving weight based on the diameter
+                # of the object rather than the mass.
+                mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
+
+                # cropped frames don't do so well so restrict their score
+                cropped_weight = 0.7 if region.was_cropped else 1.0
+                track_prediction.classified_frame(
+                    i, prediction, mass_weight * cropped_weight
+                )
+        return track_prediction
+
+    def classify_using_movement(self, data, thermal_median, regions, overlay=None):
         """
         take any square_width, by square_width amount of frames and sort by
         time use as the r channel, g and b channel are the overall movment of
@@ -291,6 +340,7 @@ class KerasModel:
         # take frames_per_classify random frames, sort by time then use this to classify
 
         num_classifies = math.ceil(float(num_frames) / frames_per_classify)
+
         # since we classify a random segment each time, take a few permutations
         combinations = max(1, frames_per_classify // 9)
         for _ in range(combinations):
@@ -305,8 +355,8 @@ class KerasModel:
                 seg_frames.sort()
                 for frame_i in seg_frames:
                     f = data[frame_i]
-                    segment.append(f)
-                    medians.append(np.median(f[0]))
+                    segment.append(f.copy())
+                    medians.append(thermal_median[i])
                 frames = preprocess_movement(
                     data,
                     segment,
@@ -320,6 +370,7 @@ class KerasModel:
                     else None,
                     green_type=self.green_type,
                     keep_aspect=self.params.get("keep_aspect", False),
+                    overlay=overlay,
                 )
                 if frames is None:
                     continue

@@ -47,10 +47,18 @@ class ClipTrackExtractor:
     VERSION = 9
 
     def __init__(
-        self, config, use_opt_flow, cache_to_disk, keep_frames=True, calc_stats=True
+        self,
+        config,
+        use_opt_flow,
+        cache_to_disk,
+        keep_frames=True,
+        calc_stats=True,
+        high_quality_optical_flow=False,
     ):
         self.config = config
         self.use_opt_flow = use_opt_flow
+        self.high_quality_optical_flow = high_quality_optical_flow
+
         self.stats = None
         self.cache_to_disk = cache_to_disk
         self.max_tracks = config.max_tracks
@@ -71,7 +79,7 @@ class ClipTrackExtractor:
         """
 
         clip.set_frame_buffer(
-            self.config.high_quality_optical_flow,
+            self.high_quality_optical_flow,
             self.cache_to_disk,
             self.use_opt_flow,
             self.keep_frames,

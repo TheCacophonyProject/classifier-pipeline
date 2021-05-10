@@ -90,6 +90,11 @@ And finally train the model
 
 `python train.py <build name>`
 
+## Database format
+
+Load.py will create a hdf5 file (dataset.hdf5) The format of this is described here:
+https://docs.google.com/document/d/1iPsp-LWRva8YTQHwXRq8R1vjJKT58wRNCn_8bi6BoW8/
+
 ## Classifying animals within a CPTV File
 
 A pre-trained model can be used to classify objects within a CPTV video

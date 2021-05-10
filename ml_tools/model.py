@@ -986,7 +986,6 @@ class Model:
         :param state: the previous state, or none for initial frame.
         :return: tuple (prediction, novelty, state).  Where prediction is score for each class, and novelty is a scalar
         """
-
         batch_X = frame[np.newaxis, np.newaxis, :]
         feed_dict = self.get_feed_dict(batch_X, state_in=state)
 

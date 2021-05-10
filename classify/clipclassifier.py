@@ -78,28 +78,23 @@ class ClipClassifier(CPTVFileProcessor):
         if isinstance(classifier, KerasModel):
             track_prediction = classifier.classify_track(clip, track)
         else:
-            try:
-                fp_index = classifier.labels.index("false-positive")
-            except ValueError:
-                fp_index = None
-
             track_prediction = TrackPrediction(
-                track.get_id(), track.start_frame, fp_index
+                track.get_id(), track.start_frame, classifier.labels
             )
 
             for i, region in enumerate(track.bounds_history):
                 frame = clip.frame_buffer.get_frame(region.frame_number)
-                track_data = track.crop_by_region(frame, region)
+
+                cropped = frame.crop_by_region(region)
 
                 # note: would be much better for the tracker to store the thermal references as it goes.
                 # frame = clip.frame_buffer.get_frame(frame_number)
                 thermal_reference = np.median(frame.thermal)
-                # track_data = track.crop_by_region_at_trackframe(frame, i)
                 if i % self.FRAME_SKIP == 0:
 
                     # we use a tighter cropping here so we disable the default 2 pixel inset
-                    frames = preprocess_segment(
-                        [track_data], [thermal_reference], default_inset=0
+                    frames, _ = preprocess_segment(
+                        [cropped], [thermal_reference], default_inset=0
                     )
 
                     if frames is None:
@@ -114,7 +109,7 @@ class ClipClassifier(CPTVFileProcessor):
                         prediction,
                         novelty,
                         state,
-                    ) = classifier.classify_frame_with_novelty(frame, state)
+                    ) = classifier.classify_frame_with_novelty(frame.as_array(), state)
                     # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
                     # score
 
@@ -256,7 +251,7 @@ class ClipClassifier(CPTVFileProcessor):
                 track,
             )
             predictions.prediction_per_track[track.get_id()] = prediction
-            description = prediction.description(classifier.labels)
+            description = prediction.description()
             logging.info(
                 " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
             )
@@ -322,7 +317,7 @@ class ClipClassifier(CPTVFileProcessor):
                     "model_name": predictions.model.name,
                 }
                 prediction = predictions.prediction_for(track.get_id())
-                model_info["label"] = prediction.predicted_tag(predictions.labels)
+                model_info["label"] = prediction.predicted_tag()
                 model_info["confidence"] = round(prediction.max_score, 2)
                 model_info["clarity"] = round(prediction.clarity, 3)
                 model_info["average_novelty"] = float(
@@ -336,7 +331,7 @@ class ClipClassifier(CPTVFileProcessor):
                     prediction_data.append(pred_list)
                 model_info["predictions"] = prediction_data
                 for i, value in enumerate(prediction.class_best_score):
-                    label = predictions.labels[i]
+                    label = prediction.labels[i]
                     model_info["all_class_confidences"][label] = round(float(value), 3)
                 prediction_info.append(model_info)
             track_info["predictions"] = prediction_info

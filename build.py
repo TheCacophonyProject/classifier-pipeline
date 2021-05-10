@@ -49,7 +49,7 @@ def show_segments_breakdown(dataset):
         print("  {:<20} {} segments".format(label, count))
 
 
-def show_important_frames_breakdown(dataset):
+def show_sample_frames_breakdown(dataset):
     print("important frames breakdown:")
     for label in dataset.labels:
         frame_count = len(dataset.frames_by_label[label])
@@ -222,7 +222,6 @@ def split_dataset_by_cameras(db, dataset, config, args):
     if rabbits:
         cameras.remove(rabbits)
         train_cameras.append(rabbits)
-
     validate_cameras, cameras = diverse_validation(
         cameras, dataset.labels, num_validate_cameras
     )
@@ -282,7 +281,7 @@ def main():
     print()
     show_segments_breakdown(dataset)
     print()
-    show_important_frames_breakdown(dataset)
+    show_sample_frames_breakdown(dataset)
     print()
     show_cameras_breakdown(dataset)
     print()
