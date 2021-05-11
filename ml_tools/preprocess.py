@@ -171,7 +171,6 @@ def preprocess_movement(
     )
     frame_types = {}
     channel_types = set([green_type, blue_type, red_type])
-    print("channel types are", channel_types)
     for type in channel_types:
         if type == FrameTypes.overlay:
             if overlay is None:
@@ -196,7 +195,7 @@ def preprocess_movement(
                 channel = TrackChannels.thermal
             else:
                 channel = TrackChannels.filtered
-            print("getting channel", channel, " for ", type)
+
             channel_segment = [frame.get_channel(channel) for frame in segment]
             channel_data, success = imageprocessing.square_clip(
                 channel_segment, frames_per_row, (frame_size, frame_size)
