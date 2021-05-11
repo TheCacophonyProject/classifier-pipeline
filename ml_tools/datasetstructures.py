@@ -158,8 +158,7 @@ class TrackHeader:
                 continue
             if (
                 min_mass is None
-                or mass >= min_mass
-                and mass >= self.lower_mass
+                or (mass >= min_mass and mass >= self.lower_mass)
                 # and mass <= self.upper_mass
             ):  # trying it out
                 if frame_data is not None:
