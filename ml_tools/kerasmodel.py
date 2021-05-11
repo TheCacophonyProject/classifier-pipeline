@@ -106,6 +106,15 @@ class KerasModel:
                 ),
                 tf.keras.applications.inception_resnet_v2.preprocess_input,
             )
+        elif self.pretrained_model == "inceptionv3":
+            return (
+                tf.keras.applications.InceptionV3(
+                    weights="imagenet",
+                    include_top=False,
+                    input_shape=input_shape,
+                ),
+                tf.keras.applications.inception_v3.preprocess_input,
+            )
 
         raise "Could not find model" + self.pretrained_model
 
@@ -181,7 +190,12 @@ class KerasModel:
         self.frame_size = meta.get("frame_size", 48)
         self.square_width = meta.get("square_width", 1)
         self.use_movement = self.params.get("use_movement", False)
-        self.green_type = self.params.get("green_type")
+        self.green_type = self.params.get("green_type", FrameTypes.filtered_square)
+        self.blue_type = self.params.get("blue_type", FrameTypes.overlay)
+        if self.params.get("use_thermal", False):
+            self.red_type = FrameTypes.thermal_square
+        else:
+            self.red_type = FrameTypes.filtered_square
         self.keep_aspect = self.params.get("keep_aspect", False)
         self.dense_sizes = self.params.get("dense_sizes", [1024, 512])
 
@@ -209,7 +223,8 @@ class KerasModel:
 
         elif self.pretrained_model == "inceptionresnetv2":
             return tf.keras.applications.inception_resnet_v2.preprocess_input
-
+        elif self.pretrained_model == "inceptionv3":
+            return tf.keras.applications.inception_v3.preprocess_input
         logging.warn(
             "pretrained model %s has no preprocessing function", self.pretrained_model
         )
@@ -326,10 +341,6 @@ class KerasModel:
         """
 
         predictions = []
-        if self.params.get("use_thermal", False):
-            channel = TrackChannels.thermal
-        else:
-            channel = TrackChannels.filtered
 
         frames_per_classify = self.square_width ** 2
         num_frames = len(data)
@@ -363,12 +374,13 @@ class KerasModel:
                     self.square_width,
                     self.frame_size,
                     regions,
-                    channel,
                     self.preprocess_fn,
                     reference_level=medians
                     if self.params.get("subtract_median", True)
                     else None,
+                    red_type=self.red_type,
                     green_type=self.green_type,
+                    blue_type=self.blue_type,
                     keep_aspect=self.params.get("keep_aspect", False),
                     overlay=overlay,
                 )

@@ -90,7 +90,7 @@ def overlay_image(
     return overlay
 
 
-def square_clip(data, frames_per_row, tile_dim, type=None):
+def square_clip(data, frames_per_row, tile_dim):
     # lay each frame out side by side in rows
     new_frame = np.zeros((frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]))
 
