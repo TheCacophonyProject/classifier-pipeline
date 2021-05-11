@@ -111,9 +111,8 @@ class Previewer:
 
         if self.debug:
             footer = Previewer.stats_footer(clip.stats)
-        if (
-            predictions
-            and self.preview_type == self.PREVIEW_CLASSIFIED
+        if predictions and (
+            self.preview_type == self.PREVIEW_CLASSIFIED
             or self.preview_type == self.PREVIEW_TRACKING
         ):
             self.create_track_descriptions(clip, predictions)
@@ -188,9 +187,12 @@ class Previewer:
             video_frames = []
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
-                frame = track.crop_by_region(frame, region)
+                cropped = frame.crop_by_region(region)
                 img = tools.convert_heat_to_img(
-                    frame[TrackChannels.thermal], self.colourmap, 0, 350
+                    cropped.thermal,
+                    self.colourmap,
+                    np.amin(cropped.thermal),
+                    np.amax(cropped.thermal),
                 )
                 img = img.resize((frame_width, frame_height), Image.NEAREST)
                 video_frames.append(np.asarray(img))

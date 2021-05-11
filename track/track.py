@@ -31,9 +31,9 @@ class TrackChannels:
 
     thermal = 0
     filtered = 1
-    mask = 2
-    flow_h = 3
-    flow_v = 4
+    flow_h = 2
+    flow_v = 3
+    mask = 4
 
 
 class Track:
@@ -90,8 +90,6 @@ class Track:
         self.kalman_tracker = Kalman()
         self.predicted_mid = None
         self.crop_rectangle = None
-
-        self.predictions = None
 
         self.predictions = None
         self.predicted_tag = None
