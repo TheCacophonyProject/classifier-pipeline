@@ -270,8 +270,8 @@ class ClipLoader:
             return False
 
         track_tags = []
-        if "track_tags" in track_meta:
-            track_tags = json.loads(track_meta["track_tags"])
+        if "TrackTags" in track_meta:
+            track_tags = track_meta["TrackTags"]
         excluded_tags = [
             tag
             for tag in track_tags
