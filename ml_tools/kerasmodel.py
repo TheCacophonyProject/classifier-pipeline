@@ -955,7 +955,7 @@ class KerasModel:
         test.stop_load()
         test_pred = np.argmax(test_pred_raw, axis=1)
 
-        batch_y = test.get_epoch_predictions(0)
+        batch_y = test.get_epoch_labels(0)
         one_hot_y = []
         for batch in batch_y:
             one_hot_y.extend(np.int32(batch))

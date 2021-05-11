@@ -419,9 +419,9 @@ dataset_file = dataset_db_path(config)
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
 print("evaluating on ", dataset.name)
-#
-dataset = Dataset(dataset.db, "dataset", config)
-tracks_loaded, total_tracks = dataset.load_tracks()
+# ALL TRACKS
+# dataset = Dataset(dataset.db, "dataset", config)
+# tracks_loaded, total_tracks = dataset.load_tracks()
 
 # prediction, labels = ev.evaluate_db_track(
 #     dataset.db, str(args.clip_id), str(args.track_id)
