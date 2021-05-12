@@ -500,7 +500,7 @@ class KerasModel:
             save_weights_only=False,
             mode="max",
         )
-        earlyStopping = tf.keras.callbacks.EarlyStopping(patience=10)
+        earlyStopping = tf.keras.callbacks.EarlyStopping(patience=22)
 
         file_writer_cm = tf.summary.create_file_writer(
             self.log_base + "/{}/cm".format(run_name)

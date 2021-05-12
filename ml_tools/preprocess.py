@@ -119,8 +119,11 @@ def preprocess_segment(
             crop_region.bottom += 1
             crop_region.crop(frame_bounds)
         frame.crop_by_region(crop_region, out=frame)
-        frame.resize_with_aspect((FRAME_SIZE, FRAME_SIZE))
-
+        try:
+            frame.resize_with_aspect((FRAME_SIZE, FRAME_SIZE))
+        except Exception as e:
+            logging.error("Error resizing frame %s exception %s", frame, e)
+            continue
         if reference_level is not None:
             frame.thermal -= reference_level[i]
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
