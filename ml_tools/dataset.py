@@ -1210,6 +1210,11 @@ class Dataset:
                 use_important = False
                 random_frames = False
                 segment_min_mass = None
+            elif segment_type == 7:
+                use_important = False
+                random_frames = True
+                top_frames = True
+                segment_min_mass = None
             track.calculate_segments(
                 track.frame_mass,
                 segment_frame_spacing,

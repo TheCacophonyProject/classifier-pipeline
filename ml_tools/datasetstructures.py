@@ -259,6 +259,13 @@ class TrackHeader:
             frame_indices = [frame.frame_num for frame in self.important_frames]
         else:
             frame_indices = np.arange(len(mass_history))
+            if top_frames and random_frames:
+                frame_indices = sorted(
+                    frame_indices, key=lambda f_i: mass_history[f_i], reverse=True
+                )
+                frame_indices = frame_indices[:50]
+                frame_indices.sort()
+
         if len(frame_indices) < segment_width:
             if self.label == "vehicle" or self.label == "human":
                 if len(frame_indices) < (segment_width / 4.0):
@@ -285,7 +292,7 @@ class TrackHeader:
         segment_count = max(1, len(frame_indices) // segment_frame_spacing)
         # segment_count -= 1
         segment_count = int(scale * segment_count)
-        if top_frames:
+        if top_frames and not random_frames:
             segment_mass = []
 
             for i in range(max(1, len(mass_history) - segment_width)):
