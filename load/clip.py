@@ -47,6 +47,7 @@ class Clip:
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
         Track._track_id = 1
+        self.ffc_frames = []
         self.tags = None
         self.disable_background_subtraction = False
         self.frame_on = 0
@@ -351,6 +352,9 @@ class Clip:
             logging.info(info_string)
 
     def add_frame(self, thermal, filtered, mask, ffc_affected=False):
+        if ffc_affected:
+            self.ffc_frames.append(self.frame_on)
+
         self.frame_buffer.add_frame(
             thermal, filtered, mask, self.frame_on, ffc_affected
         )

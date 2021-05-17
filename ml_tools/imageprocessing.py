@@ -236,7 +236,7 @@ def filtered_is_valid(frame, label):
         return False
     if label == "false-positive":
         return True
-
+    return True
     area = filtered.shape[0] * filtered.shape[1]
     percentile = int(100 - 100 * 16.0 / area)
     threshold = np.percentile(filtered, percentile)

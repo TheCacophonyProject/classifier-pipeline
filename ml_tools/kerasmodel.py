@@ -792,16 +792,34 @@ class KerasModel:
             track_data.append(cropped_frame)
             thermal_median.append(np.median(frame.thermal))
         return self.classify_track_data(
-            track.get_id(), track_data, thermal_median, regions=track.bounds_history
+            track.get_id(),
+            track_data,
+            thermal_median,
+            regions=track.bounds_history,
+            mass_history=[region.mass for region in track.bounds_history],
+            ffc_frames=clip.ffc_frames,
         )
 
     def classify_track_data(
-        self, track_id, data, thermal_median, keep_all=True, regions=None
+        self,
+        track_id,
+        data,
+        thermal_median,
+        keep_all=True,
+        regions=None,
+        mass_history=None,
+        ffc_frames=None,
     ):
         track_prediction = TrackPrediction(track_id, 0, keep_all)
         if self.params.use_movement:
             predictions = self.classify_frames(
-                data, thermal_median, regions=regions, track_id=track_id
+                data,
+                thermal_median,
+                regions=regions,
+                track_id=track_id,
+                mass_history=mass_history,
+                ffc_frames=ffc_frames,
+                top_frames=False,
             )
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
@@ -813,19 +831,48 @@ class KerasModel:
         return track_prediction
 
     def classify_frames(
-        self, data, thermal_median, preprocess=True, regions=None, track_id=None
+        self,
+        data,
+        thermal_median,
+        preprocess=True,
+        regions=None,
+        track_id=None,
+        top_frames=False,
+        mass_history=None,
+        ffc_frames=None,
     ):
-
+        # print(
+        #     "mass", mass_history, "ffc frames", ffc_frames, "top frames??", top_frames
+        # )
+        # print("frame numbers", [frame.frame_number for frame in data])
+        if ffc_frames is None:
+            ffc_frames = []
         predictions = []
 
         filtered_data = []
         valid_indices = []
         valid_regions = []
-        for i, frame in enumerate(data):
-            if filtered_is_valid(frame, ""):
-                filtered_data.append(frame)
-                valid_indices.append(i)
-                valid_regions.append(regions[i])
+
+        if top_frames:
+            valid_indices = np.arange(len(data))
+            valid_indices = [
+                f_i for f_i in valid_indices if data[f_i].frame_number not in ffc_frames
+            ]
+            valid_indices = sorted(
+                valid_indices, key=lambda f_i: mass_history[f_i], reverse=True
+            )
+            valid_indices = valid_indices[:50]
+            valid_indices.sort()
+            valid_regions = np.array(regions)[valid_indices]
+            filtered_data = np.array(data)[valid_indices]
+        else:
+            for i, frame in enumerate(data):
+                if frame.frame_number not in ffc_frames and filtered_is_valid(
+                    frame, ""
+                ):
+                    filtered_data.append(frame)
+                    valid_indices.append(i)
+                    valid_regions.append(regions[i])
         frame_sample = valid_indices
         frames_per_classify = self.params.square_width ** 2
         if self.params.segment_type < 2:
@@ -1033,6 +1080,8 @@ class KerasModel:
                     track_data,
                     track.frame_temp_median,
                     regions=regions,
+                    mass_history=track.frame_mass,
+                    ffc_frames=track.ffc_frames,
                 )
                 if track_prediction is None or len(track_prediction.predictions) == 0:
                     continue
