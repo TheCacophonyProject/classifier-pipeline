@@ -841,6 +841,7 @@ class KerasModel:
         mass_history=None,
         ffc_frames=None,
     ):
+        top_frames = True
         # print(
         #     "mass", mass_history, "ffc frames", ffc_frames, "top frames??", top_frames
         # )
@@ -854,14 +855,24 @@ class KerasModel:
         valid_regions = []
 
         if top_frames:
+            median_mass = np.median(mass_history)
+            print("median mass is", median_mass)
             valid_indices = np.arange(len(data))
             valid_indices = [
-                f_i for f_i in valid_indices if data[f_i].frame_number not in ffc_frames
+                f_i
+                for f_i in valid_indices
+                if mass_history[f_i] > median_mass
+                and data[f_i].frame_number not in ffc_frames
             ]
-            valid_indices = sorted(
-                valid_indices, key=lambda f_i: mass_history[f_i], reverse=True
-            )
-            valid_indices = valid_indices[:50]
+            print("using", len(valid_indices), " out of", len(data))
+
+            # valid_indices = [
+            #     f_i for f_i in valid_indices if data[f_i].frame_number not in ffc_frames
+            # ]
+            # valid_indices = sorted(
+            #     valid_indices, key=lambda f_i: mass_history[f_i], reverse=True
+            # )
+            # valid_indices = valid_indices[:50]
             valid_indices.sort()
             valid_regions = np.array(regions)[valid_indices]
             filtered_data = np.array(data)[valid_indices]
