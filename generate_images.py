@@ -10,8 +10,6 @@ import os
 import sys
 from config.config import Config
 from datetime import datetime
-
-from ml_tools.newmodel import NewModel
 from ml_tools.trackdatabase import TrackDatabase
 
 
@@ -39,22 +37,33 @@ def normalize(data, new_max=1):
 
 def save_track(dataset, track, folder, labels_dir, ext="png"):
     track_data = dataset.fetch_track(track, original=True, preprocess=False)
+    clip_meta = dataset.db.get_clip_meta(track.clip_id)
+
     clip_dir = os.path.join(folder, str(track.clip_id))
     if not os.path.isdir(clip_dir):
         logging.debug("Creating %s", clip_dir)
         os.mkdir(clip_dir)
 
-    for i, thermal in enumerate(track_data):
+    background = dataset.db.get_clip_background(track.clip_id)
+    if background is not None:
+        background = normalize(background, new_max=255)
+        img = Image.fromarray(np.uint8(background))
+        filename = "{}-background.{}".format(track.clip_id, ext)
+        logging.debug("Saving %s", os.path.join(clip_dir, filename))
+        img.save(os.path.join(clip_dir, filename))
+
+    for i, frame in enumerate(track_data):
+        thermal = frame.thermal
         normed = normalize(thermal, new_max=255)
         img = Image.fromarray(np.uint8(normed))
         filename = "{}-{}.{}".format(track.clip_id, i + track.start_frame, ext)
         logging.debug("Saving %s", os.path.join(clip_dir, filename))
 
         img.save(os.path.join(clip_dir, filename))
-    save_metadata(track, labels_dir)
+    save_metadata(clip_meta, track, labels_dir)
 
 
-def save_metadata(track, folder):
+def save_metadata(clip_meta, track, folder):
     meta_dir = os.path.join(folder, track.label)
     if not os.path.isdir(meta_dir):
         logging.debug("Creating %s", meta_dir)
@@ -62,7 +71,7 @@ def save_metadata(track, folder):
     filename = "{}-{}.txt".format(track.clip_id, track.track_id)
     fullpath = os.path.join(meta_dir, filename)
     with open(fullpath, "w") as f:
-        f.write(track.toJSON())
+        f.write(track.toJSON(clip_meta))
 
 
 def save_all(dataset, worker_threads, folder):
@@ -75,7 +84,7 @@ def save_all(dataset, worker_threads, folder):
         os.mkdir(labels_dir)
     job_queue = Queue()
     processes = []
-    for i in range(max(1, worker_threads)):
+    for i in range(max(1, 1)):
         p = Process(
             target=save_job,
             args=(job_queue, dataset, folder, labels_dir),

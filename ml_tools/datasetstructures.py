@@ -98,8 +98,13 @@ class TrackHeader:
                 )
                 self.important_frames.append(f)
 
-    def toJSON(self):
+    def toJSON(self, clip_meta):
         meta_dict = {}
+        ffc_frames = clip_meta.get("ffc_frames", [])
+        json_safe = []
+        for i in ffc_frames:
+            json_safe.append(int(i))
+        meta_dict["ffc_frames"] = json_safe
         meta_dict["clip_id"] = int(self.clip_id)
         meta_dict["track_id"] = int(self.track_id)
         meta_dict["camera"] = self.camera

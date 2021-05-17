@@ -434,14 +434,19 @@ class TrackDatabase:
                 frame_iter = iter(frame_numbers)
 
             for frame_number in frame_iter:
-                if channels is None:
-                    frame = track_node[str(frame_number)][:, :, :]
-                    result.append(
-                        Frame.from_array(frame, frame_number, flow_clipped=True)
-                    )
+                if original:
+                    frame = track_node[str(frame_number)][:, :]
+
+                    result.append(Frame.from_channel(frame, 0, frame_number))
                 else:
-                    frame = track_node[str(frame_number)][channels, :, :]
-                    result.append(Frame.from_channel(frame, channels, frame_number))
+                    if channels is None:
+                        frame = track_node[str(frame_number)][:, :, :]
+                        result.append(
+                            Frame.from_array(frame, frame_number, flow_clipped=True)
+                        )
+                    else:
+                        frame = track_node[str(frame_number)][channels, :, :]
+                        result.append(Frame.from_channel(frame, channels, frame_number))
 
         # except:
         # return None
