@@ -24,7 +24,7 @@ def save_job(queue, dataset, folder, labels_dir):
         else:
             save_track(dataset, track, folder, labels_dir)
         if i % 50 == 0:
-            logging.debug("%s jobs left", queue.qsize())
+            logging.info("%s jobs left", queue.qsize())
 
 
 def normalize(data, new_max=1):
@@ -128,7 +128,7 @@ def init_logging(timestamps=False):
     if timestamps:
         fmt = "%(asctime)s " + fmt
     logging.basicConfig(
-        stream=sys.stderr, level=logging.DEBUG, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
+        stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
     )
 
 
@@ -143,5 +143,11 @@ if args.base_folder:
 if not os.path.isdir(base_dir):
     logging.debug("Creating %s", base_dir)
     os.mkdir(base_dir)
+dataset = datasets[0]
+
+for track in dataset.tracks:
+    dataset.db.remove_original(track.clip_id, track.track_id)
+print("done")
+raise "DONE"
 for dataset in datasets:
     save_all(dataset, config.worker_threads, os.path.join(base_dir, dataset.name))
