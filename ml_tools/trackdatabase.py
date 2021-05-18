@@ -396,9 +396,7 @@ class TrackDatabase:
 
     def remove_original(self, clip_id, track_id):
         with HDF5Manager(self.database, mode="a") as f:
-            print("what does f have")
-            for key in f:
-                print("key", key)
+
             clips = f["clips"]
             track_node = clips[str(clip_id)][str(track_id)]
             if "original" not in track_node:
