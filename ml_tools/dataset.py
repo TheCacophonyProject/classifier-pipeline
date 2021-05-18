@@ -532,8 +532,14 @@ class Dataset:
             sample.track.clip_id,
             sample.track.track_id,
             frame_numbers=sample.frame_indices,
-            channels=channel,
+            channels=TrackChannels.thermal,
         )
+        background = self.db.get_clip_background(sample.track.clip_id)
+        for frame in frames:
+            region = sample.track.track_bounds[frame.frame_number]
+            region = tools.Rectangle.from_ltrb(*region)
+            cropped = region.subimage(background)
+            frame.filtered = frame.thermal - cropped
         return frames
 
     def fetch_frame(self, frame_sample, channels=None):
