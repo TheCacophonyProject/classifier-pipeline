@@ -112,6 +112,8 @@ class ClipTrackExtractor:
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             for frame in reader:
+                if frame.background_frame:
+                    continue
                 self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
 
         if not clip.from_metadata:
