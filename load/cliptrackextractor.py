@@ -20,6 +20,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import logging
 import numpy as np
+import time
 import yaml
 
 from cptv import CPTVReader
@@ -68,7 +69,7 @@ class ClipTrackExtractor:
         self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
         self.keep_frames = keep_frames
         self.calc_stats = calc_stats
-
+        self.tracking_time = None
         if self.config.dilation_pixels > 0:
             size = self.config.dilation_pixels * 2 + 1
             self.dilate_kernel = np.ones((size, size), np.uint8)
@@ -77,7 +78,8 @@ class ClipTrackExtractor:
         """
         Loads a cptv file, and prepares for track extraction.
         """
-
+        self.tracking_time = None
+        start = time.time()
         clip.set_frame_buffer(
             self.high_quality_optical_flow,
             self.cache_to_disk,
@@ -121,7 +123,7 @@ class ClipTrackExtractor:
 
         if self.calc_stats:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
-
+        self.tracking_time = time.time() - start
         return True
 
     def process_frame(self, clip, frame, ffc_affected=False):

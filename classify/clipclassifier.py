@@ -218,7 +218,14 @@ class ClipClassifier(CPTVFileProcessor):
             )
         logging.info("saving meta data")
         models = [self.model] if self.model else self.config.classify.models
-        self.save_metadata(filename, meta_filename, clip, model_predictions, models)
+        self.save_metadata(
+            filename,
+            meta_filename,
+            clip,
+            model_predictions,
+            models,
+            self.track_extractor.tracking_time,
+        )
 
     def classify_file(self, filename):
         if not os.path.exists(filename):
@@ -241,6 +248,7 @@ class ClipClassifier(CPTVFileProcessor):
         return clip, predictions_per_model
 
     def classify_clip(self, clip, model):
+        start = time.time()
 
         classifier = self.get_classifier(model)
 
@@ -261,14 +269,21 @@ class ClipClassifier(CPTVFileProcessor):
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
-
+        predictions.classify_time = time.time() - start
         tools.clear_session()
         del classifier
         gc.collect()
+
         return predictions
 
     def save_metadata(
-        self, filename, meta_filename, clip, predictions_per_model, models
+        self,
+        filename,
+        meta_filename,
+        clip,
+        predictions_per_model,
+        models,
+        tracking_time,
     ):
         if self.cache_to_disk:
             clip.frame_buffer.remove_cache()
@@ -285,6 +300,7 @@ class ClipClassifier(CPTVFileProcessor):
         start, end = clip.start_and_end_time_absolute()
         save_file["start_time"] = start.isoformat()
         save_file["end_time"] = end.isoformat()
+        save_file["tracking_time"] = round(tracking_time, 1)
         save_file["algorithm"] = {}
         save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
         save_file["algorithm"]["tracker_config"] = self.tracker_config.as_dict()
@@ -338,7 +354,15 @@ class ClipClassifier(CPTVFileProcessor):
             track_info["predictions"] = prediction_info
         model_dictionaries = []
         for model in models:
-            model_dictionaries.append(model.as_dict())
+            model_dic = model.as_dict()
+            model_time = [
+                predictions.classify_time
+                for predictions in predictions_per_model.values()
+                if predictions.model == model
+            ]
+            if len(model_time) > 0:
+                model_dic["classify_time"] = round(model_time[0], 1)
+            model_dictionaries.append(model_dic)
 
         save_file["models"] = model_dictionaries
         if self.config.classify.meta_to_stdout:
