@@ -4,7 +4,7 @@ import numpy as np
 from track.track import TrackChannels
 from ml_tools.tools import get_clipped_flow
 from scipy import ndimage
-from ml_tools.imageprocessing import resize_cv, rotate, normalize
+from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_with_aspect
 
 
 @attr.s(slots=True)

@@ -198,7 +198,7 @@ def preprocess_movement(
     data = np.empty((red_square.shape[0], red_square.shape[1], 3))
     data[:, :, 0] = red_square
     if green_type == FrameTypes.filtered_square:
-        green_segment = segment[:, TrackChannels.filtered]
+        green_segment = [frame.get_channel(TrackChannels.filtered) for frame in segment]
         green_square, success = imageprocessing.square_clip(
             green_segment, frames_per_row, (frame_size, frame_size), type
         )
@@ -206,7 +206,7 @@ def preprocess_movement(
         if not success:
             return None
     elif green_type == FrameTypes.thermal_square:
-        green_segment = segment[:, TrackChannels.thermal]
+        green_segment = [frame.get_channel(TrackChannels.thermal) for frame in segment]
         green_square, success = imageprocessing.square_clip(
             green_segment, frames_per_row, (frame_size, frame_size), type
         )
