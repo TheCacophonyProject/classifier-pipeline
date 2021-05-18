@@ -1,3 +1,4 @@
+import gc
 import json
 import logging
 import os.path
@@ -261,9 +262,9 @@ class ClipClassifier(CPTVFileProcessor):
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
 
-        if not is_keras_model(model.model_file):
-            tools.clear_session()
-
+        tools.clear_session()
+        del classifier
+        gc.collect()
         return predictions
 
     def save_metadata(
