@@ -841,7 +841,7 @@ class KerasModel:
         mass_history=None,
         ffc_frames=None,
     ):
-        top_frames = True
+        top_frames = False
         # print(
         #     "mass", mass_history, "ffc frames", ffc_frames, "top frames??", top_frames
         # )
@@ -1082,7 +1082,12 @@ class KerasModel:
             mapped_label = dataset.mapped_label(label)
             for track in sample_tracks:
                 track_data = dataset.db.get_track(track.clip_id, track.track_id)
-
+                background = dataset.db.get_clip_background(track.clip_id)
+                for frame in track_data:
+                    region = sample.track.track_bounds[frame.frame_number]
+                    region = tools.Rectangle.from_ltrb(*region)
+                    cropped = region.subimage(background)
+                    frame.filtered = frame.thermal - cropped
                 regions = []
                 for region in track.track_bounds:
                     regions.append(tools.Rectangle.from_ltrb(*region))
