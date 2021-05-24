@@ -98,7 +98,7 @@ class ClipClassifier(CPTVFileProcessor):
                         [cropped], [thermal_reference], default_inset=0
                     )
 
-                    if frames is None:
+                    if frames is None or len(frames) == 0:
                         logging.info(
                             "Frame {} of track could not be classified.".format(
                                 region.frame_number
