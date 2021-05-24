@@ -434,6 +434,8 @@ class Track:
             ):
                 our_bounds = self.bounds_history[our_index]
                 other_bounds = other_track.bounds_history[other_index]
+                if our_bounds.area == 0:
+                    continue
                 overlap = our_bounds.overlap_area(other_bounds) / our_bounds.area
                 if overlap >= threshold:
                     frames_overlapped += 1
