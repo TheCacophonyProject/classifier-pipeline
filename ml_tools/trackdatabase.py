@@ -74,6 +74,11 @@ class TrackDatabase:
             has_record = clip_id in clips and "finished" in clips[clip_id].attrs
         return has_record
 
+    def finished_processing(self, clip_id):
+        with HDF5Manager(self.database) as f:
+            clip_node = f["clips"][clip_id]
+            clip_node.attrs["finished"] = True
+
     def has_prediction(self, clip_id):
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
@@ -162,7 +167,6 @@ class TrackDatabase:
                 group_attrs["ffc_frames"] = clip.ffc_frames
 
             f.flush()
-            group.attrs["finished"] = True
 
     def latest_date(self):
         start_time = None
@@ -498,7 +502,6 @@ class TrackDatabase:
 
             # mark the record as have been writen to.
             # this means if we are interupted part way through the track will be overwritten
-            clip_node.attrs["finished"] = True
             clip_node.attrs["has_prediction"] = has_prediction
 
     def get_overlay(self, clip_id, track_id):
