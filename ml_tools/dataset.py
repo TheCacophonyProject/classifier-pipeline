@@ -28,7 +28,7 @@ from ml_tools import imageprocessing
 
 
 class TrackChannels:
-    """ Indexes to channels in track. """
+    """Indexes to channels in track."""
 
     thermal = 0
     filtered = 1
@@ -668,7 +668,7 @@ class Dataset:
         return self.frame_label_cdf.get(label, [])
 
     def get_sample(self, cap=None, replace=True, label=None, random=True):
-        """ Returns a random frames from weighted list. """
+        """Returns a random frames from weighted list."""
         if label:
             samples = self.samples_for(label, remapped=True)
             cdf = self.label_cdf(label)
@@ -686,7 +686,7 @@ class Dataset:
             return samples[:cap]
 
     def load_all(self, force=False):
-        """ Loads all X and y into dataset if required. """
+        """Loads all X and y into dataset if required."""
         if self.X is None or force:
             self.X, self.y = self.fetch_all()
 
@@ -776,7 +776,7 @@ class Dataset:
         return normal_bins, heavy_bins
 
     def balance_resample(self, required_samples, weight_modifiers=None):
-        """ Removes segments until all classes have given number of samples (or less)"""
+        """Removes segments until all classes have given number of samples (or less)"""
 
         new_segments = []
 
@@ -814,7 +814,7 @@ class Dataset:
         self.rebuild_cdf()
 
     def _purge_track_segments(self):
-        """ Removes any segments from track_headers where the segment has been deleted """
+        """Removes any segments from track_headers where the segment has been deleted"""
         segment_set = set(self.segments)
 
         # remove segments from tracks
@@ -933,7 +933,7 @@ class Dataset:
             self.frame_label_cdf = mapped_cdf
 
     def rebuild_segment_cdf(self, lbl_p=None):
-        """ Calculates the CDF used for fast random sampling """
+        """Calculates the CDF used for fast random sampling"""
         self.segment_cdf = []
         total = 0
         self.segment_label_cdf = {}
@@ -982,18 +982,18 @@ class Dataset:
             self.segment_label_cdf = mapped_cdf
 
     def get_label_weight(self, label):
-        """ Returns the total weight for all segments of given label. """
+        """Returns the total weight for all segments of given label."""
         tracks = self.tracks_by_label.get(label)
         return sum(track.weight for track in tracks) if tracks else 0
 
     def get_label_segments_count(self, label):
-        """ Returns the total weight for all segments of given class. """
+        """Returns the total weight for all segments of given class."""
         tracks = self.tracks_by_label.get(label, [])
         result = sum([len(track.segments) for track in tracks])
         return result
 
     def get_label_segments(self, label):
-        """ Returns the total weight for all segments of given class. """
+        """Returns the total weight for all segments of given class."""
         result = []
         for track in self.tracks_by_label.get(label, []):
             result.extend(track.segments)
@@ -1180,6 +1180,8 @@ class Dataset:
             "%s generating segments scale %s type %s", self.name, scale, segment_type
         )
         empty_tracks = []
+        filtered_stats = 0
+
         for track in self.tracks:
             segment_frame_spacing = int(
                 round(self.segment_spacing * track.frames_per_second)
@@ -1232,6 +1234,7 @@ class Dataset:
                 segment_min_mass=segment_min_mass,
                 random_sections=random_sections,
             )
+            filtered_stats = filtered_stats + track.filtered_stats["segment_mass"]
             if len(track.segments) == 0:
                 empty_tracks.append(track)
                 continue
@@ -1248,6 +1251,7 @@ class Dataset:
                 del self.tracks_by_bin[track.bin_id]
 
         self.rebuild_cdf()
+        print(sefl.name, "filtered stats are", filtered_stats)
         # print(self.name, "has", len(self.segments))
         # for segment in self.segments:
         #     print(
@@ -1322,7 +1326,7 @@ def fetch_all(self):
 
 # continue to read examples until queue is full
 def preloader(q, dataset):
-    """ add a segment into buffer """
+    """add a segment into buffer"""
     logging.info(
         " -started async fetcher for %s with augment=%s segment_width=%s",
         dataset.name,

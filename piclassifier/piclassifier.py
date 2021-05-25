@@ -19,7 +19,7 @@ from .processor import Processor
 
 
 class PiClassifier(Processor):
-    """ Classifies frames from leptond """
+    """Classifies frames from leptond"""
 
     PROCESS_FRAME = 3
     NUM_CONCURRENT_TRACKS = 1

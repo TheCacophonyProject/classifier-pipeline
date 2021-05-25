@@ -161,7 +161,7 @@ class Test:
         return track_prediction
 
     def get_meta_data(self, filename):
-        """ Reads meta-data for a given cptv file. """
+        """Reads meta-data for a given cptv file."""
         source_meta_filename = os.path.splitext(filename)[0] + ".txt"
         if os.path.exists(source_meta_filename):
 

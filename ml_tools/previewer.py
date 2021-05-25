@@ -81,7 +81,7 @@ class Previewer:
 
     @property
     def font(self):
-        """ gets default font. """
+        """gets default font."""
         if not globs._previewer_font:
             globs._previewer_font = ImageFont.truetype(
                 tools.resource_path("Ubuntu-R.ttf"), 12
@@ -90,7 +90,7 @@ class Previewer:
 
     @property
     def font_title(self):
-        """ gets default title font. """
+        """gets default title font."""
         if not globs._previewer_font_title:
             globs._previewer_font_title = ImageFont.truetype(
                 tools.resource_path("Ubuntu-B.ttf"), 14
@@ -199,7 +199,7 @@ class Previewer:
             tools.write_mpeg(filename_format.format(id + 1), video_frames)
 
     def convert_and_resize(self, frame, h_min, h_max, mode=Image.BILINEAR):
-        """ Converts the image to colour using colour map and resize """
+        """Converts the image to colour using colour map and resize"""
         thermal = frame[:120, :160].copy()
         image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
         image = image.resize(
@@ -368,7 +368,7 @@ class Previewer:
         draw.text((footer_rect.x, footer_rect.y), footer_text, font=self.font)
 
     def fit_to_image(self, rect: Region, screen_bounds: Region):
-        """ Modifies rect so that rect is visible within bounds. """
+        """Modifies rect so that rect is visible within bounds."""
         if screen_bounds is None:
             return
         if rect.left < screen_bounds.left:

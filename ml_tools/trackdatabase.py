@@ -20,7 +20,7 @@ special_datasets = ["background_frame", "predictions", "overlay"]
 
 
 class HDF5Manager:
-    """ Class to handle locking of HDF5 files. """
+    """Class to handle locking of HDF5 files."""
 
     LOCK_FILE = "/var/lock/classifier-hdf5.lock"
     READ_ONLY = False

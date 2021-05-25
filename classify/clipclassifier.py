@@ -21,13 +21,13 @@ from track.track import Track
 
 
 class ClipClassifier(CPTVFileProcessor):
-    """ Classifies tracks within CPTV files. """
+    """Classifies tracks within CPTV files."""
 
     # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
     FRAME_SKIP = 1
 
     def __init__(self, config, tracking_config, model_file, kerasmodel=False):
-        """ Create an instance of a clip classifier"""
+        """Create an instance of a clip classifier"""
 
         super(ClipClassifier, self).__init__(config, tracking_config)
         self.model_file = model_file
@@ -160,7 +160,7 @@ class ClipClassifier(CPTVFileProcessor):
         return globs._classifier
 
     def get_meta_data(self, filename):
-        """ Reads meta-data for a given cptv file. """
+        """Reads meta-data for a given cptv file."""
         source_meta_filename = os.path.splitext(filename)[0] + ".txt"
         if os.path.exists(source_meta_filename):
 

@@ -27,7 +27,7 @@ from ml_tools.tools import eucl_distance
 
 
 class TrackChannels:
-    """ Indexes to channels in track. """
+    """Indexes to channels in track."""
 
     thermal = 0
     filtered = 1
@@ -38,7 +38,7 @@ class TrackChannels:
 
 
 class Track:
-    """ Bounds of a tracked object over time. """
+    """Bounds of a tracked object over time."""
 
     # keeps track of which id number we are up to.
     _track_id = 1
@@ -208,13 +208,13 @@ class Track:
         self.kalman_tracker.correct(region)
 
     def average_mass(self):
-        """ Average mass of last 3 frames that weren't blank """
+        """Average mass of last 3 frames that weren't blank"""
         return np.mean(
             [bound.mass for bound in self.bounds_history if bound.blank == False][-3:]
         )
 
     def add_blank_frame(self, buffer_frame=None):
-        """ Maintains same bounds as previously, does not reset framce_since_target_seen counter """
+        """Maintains same bounds as previously, does not reset framce_since_target_seen counter"""
         if self.frames > Track.MIN_KALMAN_FRAMES:
             region = Region(
                 int(self.predicted_mid[0] - self.last_bound.width / 2.0),
@@ -505,7 +505,7 @@ class Track:
 
     @classmethod
     def get_best_human_tag(cls, track_meta, tag_precedence, min_confidence=-1):
-        """ returns highest precidence non AI tag from the metadata """
+        """returns highest precidence non AI tag from the metadata"""
 
         track_tags = track_meta.get("TrackTags", [])
         track_tags = [
@@ -534,7 +534,7 @@ class Track:
 
     @staticmethod
     def tag_ranking(track_tag, precedence, default_prec):
-        """ returns a ranking of tags based of what they are and confidence """
+        """returns a ranking of tags based of what they are and confidence"""
 
         what = track_tag.get("what")
         confidence = 1 - track_tag.get("confidence", 0)

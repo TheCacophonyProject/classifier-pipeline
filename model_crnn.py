@@ -27,7 +27,7 @@ class ConvModel(Model):
         pool_stride=1,
         disable_norm=False,
     ):
-        """ Adds a convolutional layer to the model. """
+        """Adds a convolutional layer to the model."""
 
         tf.compat.v1.summary.histogram(name + "/input", input_layer)
 
@@ -75,7 +75,7 @@ class ConvModel(Model):
         return out
 
     def process_inputs(self):
-        """ process input channels, returns thermal, flow, mask, """
+        """process input channels, returns thermal, flow, mask,"""
 
         # Setup placeholders
         if self.tflite:
@@ -198,7 +198,7 @@ class ConvModel(Model):
         return thermal, flow, mask
 
     def setup_novelty(self, logits, hidden):
-        """ Creates nodes required for novelty"""
+        """Creates nodes required for novelty"""
 
         # samples is [1000, C]
         # logits is [N, C]

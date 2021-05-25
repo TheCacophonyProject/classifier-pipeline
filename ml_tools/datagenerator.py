@@ -382,7 +382,7 @@ def _data(labels, dataset, samples, params, to_categorical=True):
 
 # continue to read examples until queue is full
 def preloader(q, load_queue, labels, dataset, params):
-    """ add a segment into buffer """
+    """add a segment into buffer"""
     logging.info(
         " -started async fetcher for %s augment=%s",
         dataset.name,

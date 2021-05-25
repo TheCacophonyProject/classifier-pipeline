@@ -98,7 +98,7 @@ class TestTrack(yaml.YAMLObject):
 
 
 def get_best_tag(track, min_confidence=0.6):
-    """ returns highest precidence tag from the metadata """
+    """returns highest precidence tag from the metadata"""
 
     track_tags = track.get("TrackTags", [])
     track_tags = [tag for tag in track_tags if tag.get("confidence") > min_confidence]

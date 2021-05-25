@@ -20,7 +20,7 @@ from ml_tools import visualise
 
 
 class Model:
-    """ Defines a deep learning model """
+    """Defines a deep learning model"""
 
     MODEL_NAME = "abstract model"
     MODEL_DESCRIPTION = ""
@@ -181,17 +181,17 @@ class Model:
 
     @property
     def steps_per_epoch(self):
-        """ Number of steps per epoch"""
+        """Number of steps per epoch"""
         return self.rows // self.batch_size
 
     @property
     def rows(self):
-        """ Number of examples in training sest"""
+        """Number of examples in training sest"""
         return self.datasets.train.rows
 
     @property
     def hyperparams_string(self):
-        """ Returns list of hyperparameters as a string. """
+        """Returns list of hyperparameters as a string."""
         return "\n".join(
             ["{}={}".format(param, value) for param, value in self.params.items()]
         )
@@ -308,7 +308,7 @@ class Model:
         return output_lists
 
     def eval_model(self, writer=None):
-        """ Evaluates the model on the test set. """
+        """Evaluates the model on the test set."""
         print("-" * 60)
         self.datasets.test.load_all()
         test_accuracy, _ = self.eval_batch(
@@ -875,7 +875,7 @@ class Model:
         json.dump(model_stats, open(filename + ".txt", "w"), indent=4)
 
     def load(self, filename):
-        """ Loads model and parameters from file. """
+        """Loads model and parameters from file."""
 
         logging.info("Loading model {}".format(filename))
         saver = tf.compat.v1.train.import_meta_graph(
@@ -902,11 +902,11 @@ class Model:
         self.params = stats["hyperparams"]
 
     def save_params(self, filename):
-        """ Saves model parameters. """
+        """Saves model parameters."""
         self.saver.save(self.session, filename)
 
     def restore_params(self, filename):
-        """ Restores model parameters. """
+        """Restores model parameters."""
         self.saver.restore(self.session, filename)
 
     def get_tensor(self, name, none_if_not_found=False):
@@ -925,7 +925,7 @@ class Model:
                 raise e
 
     def attach_nodes(self):
-        """ Gets references to key nodes in graph. """
+        """Gets references to key nodes in graph."""
 
         graph = self.session.graph
 
@@ -957,7 +957,7 @@ class Model:
         self.hidden_out = self.get_tensor("hidden_out", none_if_not_found=True)
 
     def freeze(self):
-        """ Freezes graph so that no additional changes can be made. """
+        """Freezes graph so that no additional changes can be made."""
         self.session.graph.finalize()
 
     def classify_frame(self, frame, state=None):
@@ -1046,7 +1046,7 @@ class Model:
         tf.compat.v1.summary.image(name, input[-2:-1], max_outputs=1)
 
     def create_writable_variable(self, name, shape):
-        """ Creates a variable in the model that can be written to. """
+        """Creates a variable in the model that can be written to."""
         var = tf.compat.v1.get_variable(
             name=name,
             initializer=tf.compat.v1.initializers.zeros,
@@ -1061,7 +1061,7 @@ class Model:
         return var
 
     def update_writeable_variable(self, name, data):
-        """ Updates the contents of a writeable variable in the model. """
+        """Updates the contents of a writeable variable in the model."""
         assign_op = self.session.graph.get_operation_by_name(name + "_assign_op")
         var_input = self.session.graph.get_tensor_by_name(name + "_in:0")
         self.session.run(assign_op, feed_dict={var_input: data})

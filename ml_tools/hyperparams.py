@@ -2,7 +2,7 @@ from ml_tools.dataset import TrackChannels
 
 
 class HyperParams(dict):
-    """ Defines hyper paramaters for model """
+    """Defines hyper paramaters for model"""
 
     def __init__(self, *args):
         super(HyperParams, self).__init__(*args)
