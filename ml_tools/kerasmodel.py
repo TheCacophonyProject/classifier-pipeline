@@ -966,6 +966,7 @@ class KerasModel:
                 self.preprocess_fn,
                 reference_level=median,
                 sample="{}-{}".format(track_id, i),
+                type=self.params.type,
             )
             if frames is None:
                 continue
