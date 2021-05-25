@@ -433,12 +433,17 @@ class TrackDatabase:
                 channels = cropped.channels
                 height, width = cropped.shape
                 # using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
+                height = max(1, height)
+                width = max(1, width)
                 chunks = (1, height, width)
                 dims = (channels, height, width)
                 frame_node = cropped_frame.create_dataset(
                     str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
                 )
-                frame_node[:, :, :] = cropped.as_array()
+                if cropped.shape[0] > 1 and cropped.shape[1] > 0:
+                    frame_node[:, :, :] = cropped.as_array()
+                else:
+                    frame_node[:, :, :] = np.zeros((dims))
                 if original is not None:
                     thermal_node = thermal_frame.create_dataset(
                         str(frame_i),

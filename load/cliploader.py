@@ -244,7 +244,7 @@ class ClipLoader:
             if classifier:
                 track_prediction = classifier.classify_track(clip, track)
                 track.add_prediction_info(track_prediction)
-            self.database.finished_processing(clip.get_id())
+        self.database.finished_processing(clip.get_id())
 
     def _filter_clip_tracks(self, clip_metadata):
         """

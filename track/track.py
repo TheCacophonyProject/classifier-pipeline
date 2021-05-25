@@ -199,9 +199,6 @@ class Track:
         if prev_filtered is not None:
             prev_filtered = region.subimage(prev_filtered)
         filtered = region.subimage(frame.filtered)
-        region.calculate_mass(filtered, mass_delta_threshold)
-        region.calculate_variance(filtered, prev_filtered)
-
         if self.prev_frame_num and frame.frame_number:
             frame_diff = frame.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
@@ -243,6 +240,7 @@ class Track:
         self.frames_since_target_seen += 1
         prediction = self.kalman_tracker.predict()
         self.predicted_mid = (prediction[0][0], prediction[1][0])
+        print("adding blank")
 
     def get_stats(self):
         """
