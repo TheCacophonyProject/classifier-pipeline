@@ -330,8 +330,10 @@ class ClipLoader:
             self.config.load.include_filtered_channel,
             self.config.load.tag_precedence,
         )
-
-        if not self.track_extractor.parse_clip(clip):
+        process_backgorund = metadata.get("tracker_version", 0) < 10
+        if not self.track_extractor.parse_clip(
+            clip, process_background=process_backgorund
+        ):
             logging.error("No valid clip found for %s", filename)
             return
 

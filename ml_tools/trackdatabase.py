@@ -75,7 +75,7 @@ class TrackDatabase:
         return has_record
 
     def finished_processing(self, clip_id):
-        with HDF5Manager(self.database) as f:
+        with HDF5Manager(self.database, "a") as f:
             clip_node = f["clips"][clip_id]
             clip_node.attrs["finished"] = True
 
