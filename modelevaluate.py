@@ -418,6 +418,11 @@ if args.date:
 dataset_file = dataset_db_path(config)
 datasets = pickle.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
+from ml_tools.trackdatabase import TrackDatabase
+
+db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
+dataset.db = db
+
 print("evaluating on ", dataset.name)
 # ALL TRACKS
 # dataset = Dataset(dataset.db, "dataset", config)

@@ -31,7 +31,7 @@ import os
 from keras import backend as K
 import gc
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 tf_device = "/gpu:1"
 
 #
@@ -51,7 +51,7 @@ METRIC_LOSS = "loss"
 
 
 class KerasModel:
-    """ Defines a deep learning model """
+    """Defines a deep learning model"""
 
     MODEL_NAME = "keras model"
     MODEL_DESCRIPTION = "Using pre trained keras application models"
@@ -759,7 +759,7 @@ class KerasModel:
 
     @property
     def hyperparams_string(self):
-        """ Returns list of hyperparameters as a string. """
+        """Returns list of hyperparameters as a string."""
         print(self.params)
         return "\n".join(
             ["{}={}".format(param, value) for param, value in self.params.items()]
@@ -1084,7 +1084,7 @@ class KerasModel:
                 track_data = dataset.db.get_track(track.clip_id, track.track_id)
                 background = dataset.db.get_clip_background(track.clip_id)
                 for frame in track_data:
-                    region = sample.track.track_bounds[frame.frame_number]
+                    region = track.track_bounds[frame.frame_number]
                     region = tools.Rectangle.from_ltrb(*region)
                     cropped = region.subimage(background)
                     frame.filtered = frame.thermal - cropped
