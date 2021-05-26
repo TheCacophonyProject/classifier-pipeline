@@ -119,7 +119,8 @@ def preprocess_segment(
             crop_region.bottom += 1
             crop_region.crop(frame_bounds)
         frame.crop_by_region(crop_region, out=frame)
-        assert np.all(np.mod(frame.mask, 1) == 0), "Mask isn't integer"
+        if frame.mask is not None:
+            assert np.all(np.mod(frame.mask, 1) == 0), "Mask isn't integer"
 
         try:
             frame.resize_with_aspect((FRAME_SIZE, FRAME_SIZE))
