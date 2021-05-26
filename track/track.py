@@ -199,12 +199,13 @@ class Track:
         if prev_filtered is not None:
             prev_filtered = region.subimage(prev_filtered)
         filtered = region.subimage(frame.filtered)
+        region.calculate_mass(filtered, mass_delta_threshold)
+        region.calculate_variance(filtered, prev_filtered)
         if self.prev_frame_num and frame.frame_number:
             frame_diff = frame.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
         self.update_velocity()
-
         self.prev_frame_num = frame.frame_number
         self.current_frame_num += 1
         self.frames_since_target_seen = 0

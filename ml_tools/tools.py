@@ -721,6 +721,8 @@ cm_blue_red = LinearSegmentedColormap("BlueRed2", color_dict)
 
 def calculate_mass(filtered, threshold):
     """Calculates mass of filtered frame with threshold applied"""
+    if filtered.size() == 0
+        return 0
     _, mass = blur_and_return_as_mask(filtered, threshold=threshold)
     return mass
 
