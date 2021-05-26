@@ -1251,7 +1251,7 @@ class Dataset:
                 del self.tracks_by_bin[track.bin_id]
 
         self.rebuild_cdf()
-        print(sefl.name, "filtered stats are", filtered_stats)
+        print(self.name, "filtered stats are", filtered_stats)
         # print(self.name, "has", len(self.segments))
         # for segment in self.segments:
         #     print(
