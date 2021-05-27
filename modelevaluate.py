@@ -425,8 +425,12 @@ dataset.db = db
 
 print("evaluating on ", dataset.name)
 # ALL TRACKS
-# dataset = Dataset(dataset.db, "dataset", config)
-# tracks_loaded, total_tracks = dataset.load_tracks()
+from dateutil.parser import parse as parse_date
+
+dataset = Dataset(dataset.db, "dataset", config)
+tracks_loaded, total_tracks = dataset.load_tracks(
+    after_date=parse_date("2021-03-29T08:07:54.240643+13:00")
+)
 
 # prediction, labels = ev.evaluate_db_track(
 #     dataset.db, str(args.clip_id), str(args.track_id)
