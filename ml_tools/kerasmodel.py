@@ -1080,12 +1080,15 @@ class KerasModel:
         actual = []
         raw_predictions = []
         one_hot = []
+        total = 0
+        correct = 0
         for label in dataset.label_mapping.keys():
             label_tracks = dataset.tracks_by_label.get(label, [])
             label_tracks = [track for track in label_tracks if len(track.segments) > 0]
             sample_tracks = np.random.choice(
                 label_tracks, min(len(label_tracks), cap_at), replace=False
             )
+            print("taking", len(sample_tracks), " from ", label)
             mapped_label = dataset.mapped_label(label)
             for track in sample_tracks:
                 track_data = dataset.db.get_track(track.clip_id, track.track_id)
@@ -1106,7 +1109,10 @@ class KerasModel:
                     mass_history=track.frame_mass,
                     ffc_frames=track.ffc_frames,
                 )
+                total += 1
                 if track_prediction is None or len(track_prediction.predictions) == 0:
+
+                    logging.warn("No predictions for", track)
                     continue
                 avg = np.mean(track_prediction.predictions, axis=0)
 
@@ -1128,11 +1134,15 @@ class KerasModel:
                 actual.append(self.labels.index(mapped_label))
                 predictions.append(np.argmax(avg))
                 raw_predictions.append(avg)
-
+                if actual[-1] == predictions[-1]:
+                    correct += 1
                 one_hot.append(
                     keras.utils.to_categorical(actual[-1], num_classes=len(self.labels))
                 )
+                if total % 50 == 0:
+                    logging.info("Processed %s / %s", total)
 
+        logging.info("Predicted correctly %s", round(100 * correct / total))
         self.f1(one_hot, raw_predictions)
         # test.epoch_data = None
         cm = confusion_matrix(actual, predictions, labels=np.arange(len(self.labels)))
