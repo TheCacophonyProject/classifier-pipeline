@@ -257,14 +257,15 @@ class TrackHeader:
         top_frames=False,
         random_sections=False,
     ):
-
         self.segments = []
         self.filtered_stats = {"segment_mass": 0}
         # raise "EX"
         if use_important:
             frame_indices = [frame.frame_num for frame in self.important_frames]
         else:
-            frame_indices = np.arange(len(mass_history))
+            # frame_indices = np.arange(len(mass_history))
+            frame_indices = [i for i, mass in enumerate(mass_history) if mass > 0]
+
             if top_frames and random_frames:
                 frame_indices = sorted(
                     frame_indices, key=lambda f_i: mass_history[f_i], reverse=True

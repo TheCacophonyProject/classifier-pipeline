@@ -878,6 +878,8 @@ class KerasModel:
             filtered_data = np.array(data)[valid_indices]
         else:
             for i, frame in enumerate(data):
+                if mass_history[i] == 0:
+                    continue
                 if frame.frame_number not in ffc_frames and filtered_is_valid(
                     frame, ""
                 ):
@@ -957,6 +959,10 @@ class KerasModel:
                 f = data[frame_i]
                 segment.append(f.copy())
                 median[index] = thermal_median[frame_i]
+            avg_mass = np.mean(median)
+            if avg_mass < 20:
+                print("filtered cause less than 20")
+                continue
             frames = preprocess_movement(
                 square_data,
                 segment,
