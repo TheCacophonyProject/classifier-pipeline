@@ -809,6 +809,7 @@ class KerasModel:
         regions=None,
         mass_history=None,
         ffc_frames=None,
+        segments=None,
     ):
         track_prediction = TrackPrediction(track_id, 0, keep_all)
         if self.params.use_movement:
@@ -820,6 +821,7 @@ class KerasModel:
                 mass_history=mass_history,
                 ffc_frames=ffc_frames,
                 top_frames=False,
+                segments=segments,
             )
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
@@ -840,7 +842,9 @@ class KerasModel:
         top_frames=False,
         mass_history=None,
         ffc_frames=None,
+        segments=None,
     ):
+
         top_frames = False
         # print(
         #     "mass", mass_history, "ffc frames", ffc_frames, "top frames??", top_frames
@@ -854,6 +858,39 @@ class KerasModel:
         valid_indices = []
         valid_regions = []
 
+        if segments is not None:
+            i = 0
+            for segment in segments:
+                i += 1
+                segment_frames = []
+                median = np.zeros((len(segment.frame_indices)))
+                masses = []
+                segment.frame_indices.sort()
+                for index, frame_i in enumerate(segment.frame_indices):
+                    f = data[frame_i]
+                    segment_frames.append(f.copy())
+                    median[index] = thermal_median[frame_i]
+                    masses.append(mass_history[frame_i])
+                avg_mass = np.mean(masses)
+                if avg_mass < 16:
+                    print("filtered cause less than 16")
+                    continue
+                frames = preprocess_movement(
+                    None,
+                    segment_frames,
+                    self.params.square_width,
+                    None,
+                    self.params.channel,
+                    self.preprocess_fn,
+                    reference_level=median,
+                    sample="{}-{}".format(track_id, i),
+                    type=self.params.type,
+                )
+                if frames is None:
+                    continue
+                output = self.model.predict(frames[np.newaxis, :])
+                predictions.append(output[0])
+            return predictions
         if top_frames:
             median_mass = np.median(mass_history)
             print("median mass is", median_mass)
@@ -1076,7 +1113,9 @@ class KerasModel:
     def track_confusion(self, dataset, filename="confusion.png"):
         dataset.set_read_only(True)
         dataset.use_segments = self.params.use_segments
-        cap_at = len(dataset.tracks_by_label.get("bird", []))
+        label_tracks = dataset.tracks_by_label.get("bird", [])
+        label_tracks = [track for track in label_tracks if len(track.segments) > 0]
+        cap_at = len(label_tracks)
         # cap_at = 1
         predictions = []
         actual = []
@@ -1110,11 +1149,12 @@ class KerasModel:
                     regions=regions,
                     mass_history=track.frame_mass,
                     ffc_frames=track.ffc_frames,
+                    segments=track.segments,
                 )
                 total += 1
                 if track_prediction is None or len(track_prediction.predictions) == 0:
 
-                    logging.warn("No predictions for", track)
+                    logging.warn("No predictions for %s", track)
                     continue
                 avg = np.mean(track_prediction.predictions, axis=0)
 
@@ -1142,7 +1182,7 @@ class KerasModel:
                     keras.utils.to_categorical(actual[-1], num_classes=len(self.labels))
                 )
                 if total % 50 == 0:
-                    logging.info("Processed %s / %s", total)
+                    logging.info("Processed %s", total)
 
         logging.info("Predicted correctly %s", round(100 * correct / total))
         self.f1(one_hot, raw_predictions)
