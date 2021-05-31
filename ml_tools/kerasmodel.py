@@ -945,6 +945,7 @@ class KerasModel:
                 break
             segment = []
             median = np.zeros((len(seg_frames)))
+            masses = []
             seg_frames.sort()
             # print(
             #     track_id,
@@ -959,9 +960,10 @@ class KerasModel:
                 f = data[frame_i]
                 segment.append(f.copy())
                 median[index] = thermal_median[frame_i]
-            avg_mass = np.mean(median)
-            if avg_mass < 20:
-                print("filtered cause less than 20")
+                masses.append(mass_history[frame_i])
+            avg_mass = np.mean(masses)
+            if avg_mass < 16:
+                print("filtered cause less than 16")
                 continue
             frames = preprocess_movement(
                 square_data,
