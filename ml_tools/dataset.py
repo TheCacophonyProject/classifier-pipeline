@@ -363,14 +363,6 @@ class Dataset:
             use_important=not self.consecutive_segments,
             scale=1.5 if self.name == "train" else 1.0,
         )
-        print(
-            "calculating segments with",
-            self.segment_min_mass,
-            "width",
-            segment_width,
-            " frame spacing",
-            segment_frame_spacing,
-        )
 
         self.filtered_stats["segment_mass"] += track_header.filtered_stats[
             "segment_mass"
@@ -1206,7 +1198,6 @@ class Dataset:
                 use_important = False
                 random_frames = True
                 segment_min_mass = self.segment_min_mass
-                print("min_mass", segment_min_mass)
             elif segment_type == 2:
                 use_important = True
                 random_frames = False
