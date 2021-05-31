@@ -340,30 +340,37 @@ class Dataset:
             clip_id, clip_meta, track_meta, predictions
         )
         self.tracks.append(track_header)
-        if track_header.important_frames is None:
-            frames = self.db.get_track(clip_id, track_id)
-            track_header.set_important_frames(
-                self.min_frame_mass, frame_data=frames, model=self.frame_model
-            )
-            self.db.set_important_frames(
-                clip_id,
-                track_id,
-                [sample.frame_num for sample in track_header.important_frames],
-            )
+        # if track_header.important_frames is None:
+        #     frames = self.db.get_track(clip_id, track_id)
+        #     track_header.set_important_frames(
+        #         self.min_frame_mass, frame_data=frames, model=self.frame_model
+        #     )
+        #     self.db.set_important_frames(
+        #         clip_id,
+        #         track_id,
+        #         [sample.frame_num for sample in track_header.important_frames],
+        #     )
 
         segment_frame_spacing = int(
             round(self.segment_spacing * track_header.frames_per_second)
         )
         segment_width = int(round(self.segment_length * track_header.frames_per_second))
-        if track_header.num_sample_frames > segment_width / 3.0:
-            track_header.calculate_segments(
-                track_meta["mass_history"],
-                segment_frame_spacing,
-                segment_width,
-                self.segment_min_mass,
-                use_important=not self.consecutive_segments,
-                scale=1.5 if self.name == "train" else 1.0,
-            )
+        track_header.calculate_segments(
+            track_meta["mass_history"],
+            segment_frame_spacing,
+            segment_width,
+            self.segment_min_mass,
+            use_important=not self.consecutive_segments,
+            scale=1.5 if self.name == "train" else 1.0,
+        )
+        print(
+            "calculating segments with",
+            self.segment_min_mass,
+            "width",
+            segment_width,
+            " frame spacing",
+            segment_frame_spacing,
+        )
 
         self.filtered_stats["segment_mass"] += track_header.filtered_stats[
             "segment_mass"
@@ -1199,6 +1206,7 @@ class Dataset:
                 use_important = False
                 random_frames = True
                 segment_min_mass = self.segment_min_mass
+                print("min_mass", segment_min_mass)
             elif segment_type == 2:
                 use_important = True
                 random_frames = False

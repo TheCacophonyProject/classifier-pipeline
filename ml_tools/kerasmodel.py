@@ -31,7 +31,7 @@ import os
 from keras import backend as K
 import gc
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 tf_device = "/gpu:1"
 
 #
