@@ -872,9 +872,9 @@ class KerasModel:
                     median[index] = thermal_median[frame_i]
                     masses.append(mass_history[frame_i])
                 avg_mass = np.mean(masses)
-                if avg_mass < 16:
-                    print("filtered cause less than 16")
-                    continue
+                # if avg_mass < 16:
+                #     print("filtered cause less than 16")
+                #     continue
                 frames = preprocess_movement(
                     None,
                     segment_frames,
@@ -999,9 +999,9 @@ class KerasModel:
                 median[index] = thermal_median[frame_i]
                 masses.append(mass_history[frame_i])
             avg_mass = np.mean(masses)
-            if avg_mass < 16:
-                print("filtered cause less than 16")
-                continue
+            # if avg_mass < 16:
+            #     print("filtered cause less than 16")
+            #     continue
             frames = preprocess_movement(
                 square_data,
                 segment,
@@ -1113,9 +1113,9 @@ class KerasModel:
     def track_confusion(self, dataset, filename="confusion.png"):
         dataset.set_read_only(True)
         dataset.use_segments = self.params.use_segments
-        label_tracks = dataset.tracks_by_label.get("bird", [])
-        label_tracks = [track for track in label_tracks if len(track.segments) > 0]
-        cap_at = len(label_tracks)
+        # label_tracks = dataset.tracks_by_label.get("bird", [])
+        # label_tracks = [track for track in label_tracks if len(track.segments) > 0]
+        # cap_at = len(label_tracks)
         # cap_at = 1
         predictions = []
         actual = []
@@ -1126,9 +1126,12 @@ class KerasModel:
         for label in dataset.label_mapping.keys():
             label_tracks = dataset.tracks_by_label.get(label, [])
             label_tracks = [track for track in label_tracks if len(track.segments) > 0]
-            sample_tracks = np.random.choice(
-                label_tracks, min(len(label_tracks), cap_at), replace=False
-            )
+            if label == "insect" or label == "false-positive":
+                sample_tracks = np.random.choice(
+                    label_tracks, min(len(label_tracks), 70), replace=False
+                )
+            else:
+                sample_tracks = label_tracks
             print("taking", len(sample_tracks), " from ", label)
             mapped_label = dataset.mapped_label(label)
             for track in sample_tracks:
@@ -1153,7 +1156,9 @@ class KerasModel:
                 )
                 total += 1
                 if track_prediction is None or len(track_prediction.predictions) == 0:
-
+                    actual.append(self.labels.index(mapped_label))
+                    predictions.append(self.labels.index("false-positives"))
+                    raw_predictions.append(100)
                     logging.warn("No predictions for %s", track)
                     continue
                 avg = np.mean(track_prediction.predictions, axis=0)
