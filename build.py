@@ -261,6 +261,7 @@ def split_label(dataset, label, holdout_cameras, existing_test_count=0):
 
             track.camera = "{}-{}".format(track.camera, camera_type)
             add_to.add_track(track)
+        dataset.tracks_by_bin[track_bin] = []
         last_index = i
         if label_count >= num_validate_tracks:
             # 100 more for test
