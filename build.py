@@ -277,7 +277,7 @@ def split_label(dataset, label, holdout_cameras, existing_test_count=0):
     camera_type = "train"
     for i, track_bin in enumerate(track_bins):
         tracks = dataset.tracks_by_bin[track_bin]
-        for track in track_bins:
+        for track in tracks:
             track.camera = "{}-{}".format(track.camera, camera_type)
             train_c.add_track(track)
     for camera_name in cameras_to_remove:
