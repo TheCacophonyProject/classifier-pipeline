@@ -437,13 +437,17 @@ def add_camera_tracks(
     dataset.balance_bins()
 
 
-def test_dataset(test, config, date):
-    tracks_loaded, total_tracks = test.load_tracks(shuffle=True, after_date=date)
+def test_dataset(db, test, config, args, date):
+    dataset = Dataset(
+        db, "dataset", config, consecutive_segments=args.consecutive_segments
+    )
+    tracks_loaded, total_tracks = dataset.load_tracks(after_date=args.date)
+
     print("Test Loaded {}/{} tracks".format(tracks_loaded, total_tracks))
     for key, value in test.filtered_stats.items():
         if value != 0:
             print("Test  {} filtered {}".format(key, value))
-
+    test.add_tracks(dataset.tracks)
     return test
 
 
@@ -559,7 +563,7 @@ def main():
     dataset = Dataset(
         db, "dataset", config, consecutive_segments=args.consecutive_segments
     )
-    tracks_loaded, total_tracks = dataset.load_tracks()
+    tracks_loaded, total_tracks = dataset.load_tracks(before_date=args.date)
     print(
         "Loaded {}/{} tracks, found {:.1f}k segments".format(
             tracks_loaded, total_tracks, len(dataset.segments) / 1000
@@ -583,10 +587,10 @@ def main():
     print("Splitting data set into train / validation")
     # datasets = split_dataset_by_cameras(db, dataset, config, args)
     datasets = split_randomly(db, dataset, config, args, test_clips)
-    validate_datasets(datasets, test_clips)
     # if args.date is None:
     #     args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=7)
-    # test_dataset(datasets[2], config, args.date)
+    test_dataset(db, datasets[2], config, args, args.date)
+    validate_datasets(datasets, test_clips)
     print_counts(dataset, *datasets)
     print_cameras(*datasets)
     pickle.dump(datasets, open(dataset_db_path(config), "wb"))
