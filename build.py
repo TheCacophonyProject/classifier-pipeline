@@ -254,8 +254,8 @@ def split_label(dataset, label, holdout_cameras, existing_test_count=0):
     cameras_to_remove = set()
     for i, track_bin in enumerate(track_bins):
         tracks = dataset.tracks_by_bin[track_bin]
-        cameras_to_remove.add("{}-{}".format(tracks[0].camera, tracks[0].location))
         for track in tracks:
+            cameras_to_remove.add("{}-{}".format(tracks[0].camera, tracks[0].location))
             if track.label == label:
                 label_count += 1
 
