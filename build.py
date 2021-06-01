@@ -108,7 +108,6 @@ def print_counts(dataset, train, validation, test):
     print("{:<20} {:<21} {:<21} {:<21}".format("Class", "Train", "Validation", "Test"))
     print("-" * 90)
     print("Segments / Frames / Tracks/ Bins/ weight")
-
     # display the dataset summary
     for label in dataset.labels:
         print(
@@ -223,17 +222,21 @@ def diverse_validation(cameras, labels, max_cameras):
 
 
 # only have one wallaby camera so just take MIN_TRACKS from wallaby and make a validation camera
-def split_low_label(dataset, label, holdout_cameras):
-    tracks = dataset.tracks_by_label.get(label)
-    tracks = [
-        track
+def split_label(dataset, label, holdout_cameras, existing_test_count=0):
+    tracks = dataset.tracks_by_label.get(label, [])
+    track_bins = [
+        track.bin_id
         for track in tracks
         if track.camera_id not in holdout_cameras and len(track.segments) > 0
     ]
-    if tracks is None or len(tracks) == 0:
+
+    if len(track_bins) == 0:
         return None, None, None
 
-    random.shuffle(tracks)
+    # remove duplicates
+    track_bins = list(set(track_bins))
+
+    random.shuffle(track_bins)
     train_c = Camera("{}-Train".format(label))
     validate_c = Camera("{}-Val".format(label))
     test_c = Camera("{}-Test".format(label))
@@ -247,28 +250,36 @@ def split_low_label(dataset, label, holdout_cameras):
     if label in ["vehicle", "human"]:
         min_t = 10
     num_validate_tracks = max(total * 0.15, min_t)
-    num_test_tracks = max(total * 0.05, min_t)
+    num_test_tracks = max(total * 0.05, min_t) - existing_test_count
     cameras_to_remove = set()
-    for i, track in enumerate(tracks):
-        cameras_to_remove.add("{}-{}".format(track.camera, track.location))
-        label_count += 1
-        track.camera = "{}-{}".format(track.camera, camera_type)
-        add_to.add_track(track)
+    for i, track_bin in enumerate(track_bins):
+        tracks = dataset.tracks_by_bin[track_bin]
+        cameras_to_remove.add("{}-{}".format(tracks[0].camera, tracks[0].location))
+        for track in tracks:
+            if track.label == label:
+                label_count += 1
+
+            track.camera = "{}-{}".format(track.camera, camera_type)
+            add_to.add_track(track)
         last_index = i
         if label_count >= num_validate_tracks:
             # 100 more for test
             if add_to == validate_c:
                 add_to = test_c
                 camera_type = "test"
+                if num_test_tracks < 0:
+                    break
                 num_validate_tracks += num_test_tracks
             else:
                 break
 
-    tracks = tracks[last_index + 1 :]
+    track_bins = track_bins[last_index + 1 :]
     camera_type = "train"
-    for track in tracks:
-        track.camera = "{}-{}".format(track.camera, camera_type)
-        train_c.add_track(track)
+    for i, track_bin in enumerate(track_bins):
+        tracks = dataset.tracks_by_bin[track_bin]
+        for track in track_bins:
+            track.camera = "{}-{}".format(track.camera, camera_type)
+            train_c.add_track(track)
     for camera_name in cameras_to_remove:
         camera = dataset.cameras_by_id[camera_name]
         camera.remove_label(label)
@@ -276,7 +287,17 @@ def split_low_label(dataset, label, holdout_cameras):
     return train_c, validate_c, test_c
 
 
-def split_randomly(db, dataset, config, args, balance_bins=True):
+def get_test_set_camera(dataset, test_clips):
+    test_c = Camera("Test-Set-Camera")
+
+    test_tracks = [track for track in dataset.tracks if track.clip_id in test_clips]
+    for track in test_tracks:
+        dataset.remove_track(track)
+        test_c.add_track(track)
+    return test_c
+
+
+def split_randomly(db, dataset, config, args, test_clips=None, balance_bins=True):
     # shuffle tracks and then add X% to validate, and 100 to test and rest to train
     # holdout_cameras = [
     #     "TrapCam01-None",
@@ -302,10 +323,17 @@ def split_randomly(db, dataset, config, args, balance_bins=True):
     validation = Dataset(db, "validation", config)
     test = Dataset(db, "test", config)
     test_cameras = test_cameras_only
+    if test_clips is not None:
+        test_c = get_test_set_camera(dataset, test_clips)
+        add_camera_tracks(dataset.labels, test, [test_c], balance_bins)
+        # test_cameras.append(test_c)
     validate_cameras = []
     train_cameras = []
     for label in dataset.labels:
-        train_c, validate_c, test_c = split_low_label(dataset, label, holdout_cameras)
+        existing_test_count = len(test.tracks_by_label.get(label, []))
+        train_c, validate_c, test_c = split_label(
+            dataset, label, holdout_cameras, existing_test_count=existing_test_count
+        )
         if train_c is not None:
             train_cameras.append(train_c)
         if validate_c is not None:
@@ -321,10 +349,10 @@ def split_randomly(db, dataset, config, args, balance_bins=True):
 
 def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
     validation_percent = 0.3
-    train = Dataset(db, "train", config)
+    train = Dataset(db, "train", config, labels=dataset.labels)
     train.enable_augmentation = True
-    validation = Dataset(db, "validation", config)
-    test = Dataset(db, "test", config)
+    validation = Dataset(db, "validation", config, labels=dataset.labels)
+    test = Dataset(db, "test", config, labels=dataset.labels)
 
     # holdout_cameras = [
     #     "TrapCam01-None",
@@ -355,7 +383,7 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
         MIN_VALIDATE_CAMERAS, round(camera_count * validation_percent)
     )
 
-    wallaby_train, wallaby_validate, wallaby_test = split_low_label(
+    wallaby_train, wallaby_validate, wallaby_test = split_label(
         dataset, "wallaby", holdout_cameras
     )
     if wallaby_train is not None:
@@ -365,7 +393,7 @@ def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
     if wallaby_test is not None:
         test_data.append(wallaby_test)
 
-    vehicle_train, vehicle_validate, vehicle_test = split_low_label(
+    vehicle_train, vehicle_validate, vehicle_test = split_label(
         dataset, "vehicle", holdout_cameras
     )
     if vehicle_train is not None:
@@ -404,8 +432,8 @@ def add_camera_tracks(
         for camera in cameras:
             tracks = camera.label_to_tracks.get(label, {}).values()
             all_tracks.extend(list(tracks))
-    dataset.recalculate_segments(scale=1.0)
     dataset.add_tracks(all_tracks, None)
+    dataset.recalculate_segments(scale=1.0)
     dataset.balance_bins()
 
 
@@ -524,6 +552,8 @@ def main():
     init_logging()
     args = parse_args()
     config = load_config(args.config_file)
+    test_clips = config.build.test_clips()
+    print("# of test clips are", len(test_clips))
     datasets_filename = dataset_db_path(config)
     db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
     dataset = Dataset(
@@ -552,13 +582,35 @@ def main():
 
     print("Splitting data set into train / validation")
     # datasets = split_dataset_by_cameras(db, dataset, config, args)
-    datasets = split_randomly(db, dataset, config, args)
+    datasets = split_randomly(db, dataset, config, args, test_clips)
+    validate_datasets(datasets, test_clips)
     # if args.date is None:
     #     args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=7)
     # test_dataset(datasets[2], config, args.date)
     print_counts(dataset, *datasets)
     print_cameras(*datasets)
     pickle.dump(datasets, open(dataset_db_path(config), "wb"))
+
+
+def validate_datasets(datasets, test_clips):
+    for dataset in datasets:
+        clips = set([track.clip_id for track in dataset.tracks])
+        tracks = set([track.track_id for track in dataset.tracks])
+        if test_clips is not None and dataset.name != "test":
+            assert (
+                len(clips.intersection(set(test_clips))) == 0
+            ), "test clips should only be in test set"
+        if len(clips) == 0:
+            continue
+        if len(tracks) == 0:
+            continue
+        for other in datasets:
+            if dataset.name == other.name:
+                continue
+            other_clips = set([track.clip_id for track in other.tracks])
+            other_tracks = set([track.track_id for track in other.tracks])
+            assert clips != other_clips, "clips should only be in one set"
+            assert tracks != other_tracks, "tracks should only be in one set"
 
 
 if __name__ == "__main__":

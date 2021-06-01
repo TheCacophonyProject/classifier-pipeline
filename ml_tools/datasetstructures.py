@@ -97,6 +97,20 @@ class TrackHeader:
                     self.frame_velocity[frame_num],
                 )
                 self.important_frames.append(f)
+        else:
+            self.important_frames = []
+            for frame_num, mass in enumerate(self.frame_mass):
+                if mass == 0:
+                    continue
+                f = FrameSample(
+                    self.clip_id,
+                    self.track_id,
+                    frame_num,
+                    self.label,
+                    self.frame_temp_median[frame_num],
+                    self.frame_velocity[frame_num],
+                )
+                self.important_frames.append(f)
 
     def toJSON(self, clip_meta):
         meta_dict = {}
@@ -251,7 +265,7 @@ class TrackHeader:
         segment_frame_spacing,
         segment_width,
         segment_min_mass=None,
-        use_important=True,
+        use_important=False,
         random_frames=True,
         scale=1,
         top_frames=False,
@@ -458,7 +472,9 @@ class TrackHeader:
     @property
     def bin_id(self):
         """Unique name of this track."""
-        return "{}-{}".format(self.clip_id, self.track_id)
+        return "{}".format(self.clip_id)
+
+        # return "{}-{}".format(self.clip_id, self.track_id)
 
     @property
     def weight(self):
@@ -610,7 +626,8 @@ class Camera:
         self.segments -= 1
         self.segment_sum -= len(track.segments)
         del self.label_to_tracks[track.label][track.unique_id]
-        self.label_to_bins[track.label].remove(track.bin_id)
+        if track.bin_id in self.label_to_bins[track.label]:
+            self.label_to_bins[track.label].remove(track.bin_id)
         self.label_frames[track.label] -= len(track.important_frames)
 
     def add_track(self, track_header):

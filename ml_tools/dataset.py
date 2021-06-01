@@ -63,6 +63,7 @@ class Dataset:
         use_segments=True,
         use_predictions=False,
         consecutive_segments=False,
+        labels=[],
     ):
         self.consecutive_segments = consecutive_segments
         self.camera_bins = {}
@@ -103,7 +104,7 @@ class Dataset:
         self.frames_by_id = {}
 
         # list of label names
-        self.labels = []
+        self.labels = labels
 
         # minimum mass of a segment frame for it to be included
 
@@ -302,7 +303,7 @@ class Dataset:
         return result
 
     def add_track_header(self, track_header, max_segments_per_track=None):
-        if track_header.bin_id in self.tracks_by_bin:
+        if track_header.unique_id in self.tracks_by_id:
             return False
 
         # gp test less segments more tracks
@@ -360,7 +361,6 @@ class Dataset:
             segment_frame_spacing,
             segment_width,
             self.segment_min_mass,
-            use_important=not self.consecutive_segments,
             scale=1.5 if self.name == "train" else 1.0,
         )
 
@@ -426,9 +426,9 @@ class Dataset:
         bins = self.tracks_by_bin.setdefault(track_header.bin_id, [])
         bins.append(track_header)
 
-        if track_header.label not in self.tracks_by_label:
-
+        if track_header.label not in self.labels:
             self.labels.append(track_header.label)
+        if track_header.label not in self.tracks_by_label:
             self.tracks_by_label[track_header.label] = []
         self.tracks_by_label[track_header.label].append(track_header)
         segs = self.segments_by_label.setdefault(track_header.label, [])
@@ -1179,7 +1179,6 @@ class Dataset:
         )
         empty_tracks = []
         filtered_stats = 0
-
         for track in self.tracks:
             segment_frame_spacing = int(
                 round(self.segment_spacing * track.frames_per_second)
@@ -1243,10 +1242,7 @@ class Dataset:
             segs = self.segments_by_label.setdefault(track.label, [])
             segs.extend(track.segments)
         for track in empty_tracks:
-            self.tracks.remove(track)
-            del self.tracks_by_id[track.unique_id]
-            if track.bin_id in self.tracks_by_bin:
-                del self.tracks_by_bin[track.bin_id]
+            self.remove_track(track)
 
         self.rebuild_cdf()
         print(self.name, "filtered stats are", filtered_stats)
@@ -1255,6 +1251,13 @@ class Dataset:
         #     print(
         #         f"{segment.track.label} - {segment.track.clip_id}-{segment.track.track_id} -{segment.track.start_frame} segment {segment.id} {segment.start_frame} frame_indices {segment.frame_indices} best? { segment.best_mass} top {segment.top_mass}"
         #     )
+
+    def remove_track(self, track):
+        self.tracks.remove(track)
+        del self.tracks_by_id[track.unique_id]
+        if track.bin_id in self.tracks_by_bin:
+            del self.tracks_by_bin[track.bin_id]
+        self.tracks_by_label[track.label].remove(track)
 
     # HISTORICAL
     def next_batch(self, n, disable_async=False, force_no_augmentation=False):

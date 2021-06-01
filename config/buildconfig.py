@@ -20,6 +20,8 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import attr
 import dateutil.parser
 import os
+import logging
+from os import path
 from .defaultconfig import DefaultConfig
 
 
@@ -27,6 +29,7 @@ from .defaultconfig import DefaultConfig
 class BuildConfig(DefaultConfig):
     banned_clips_file = attr.ib()
     banned_clips = attr.ib()
+    test_clips_folder = attr.ib()
     clip_end_date = attr.ib()
     cap_bin_weight = attr.ib()
     use_previous_split = attr.ib()
@@ -47,6 +50,7 @@ class BuildConfig(DefaultConfig):
     def load(cls, build):
         return cls(
             banned_clips_file=build["banned_clips_file"],
+            test_clips_folder=build["test_clips_folder"],
             clip_end_date=dateutil.parser.parse(build["clip_end_date"])
             if build["clip_end_date"]
             else None,
@@ -72,6 +76,7 @@ class BuildConfig(DefaultConfig):
     @classmethod
     def get_defaults(cls):
         return cls(
+            test_clips_folder=None,
             banned_clips_file=None,
             clip_end_date=None,
             cap_bin_weight=1.5,
@@ -94,11 +99,34 @@ class BuildConfig(DefaultConfig):
     def validate(self):
         return True
 
+    def test_clips(self):
+        if not self.test_clips_folder or not path.exists(self.test_clips_folder):
+            return None
+        if not os.path.isdir(self.test_clips_folder):
+            return None
+        test_clips = []
+        for f in os.listdir(self.test_clips_folder):
+            file_path = path.join(self.test_clips_folder, f)
+            if path.isfile(file_path) and path.splitext(file_path)[1] == ".list":
+                with open(file_path) as stream:
+                    for line in stream:
+                        if line.strip() == "":
+                            continue
+                        try:
+                            test_clips.append(int(line.strip()))
+                        except:
+                            logging.warn(
+                                "Could not parse clip_id %s from %s",
+                                line,
+                                file_path,
+                            )
+        return test_clips
+
 
 def load_banned_clips_file(filename):
     if not filename or not os.path.exists(filename):
         return None
-    if not os.path.isfile(filename):
+    if not path.isfile(filename):
         return None
     files = []
 
