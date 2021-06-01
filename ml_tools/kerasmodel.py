@@ -1156,9 +1156,9 @@ class KerasModel:
                 )
                 total += 1
                 if track_prediction is None or len(track_prediction.predictions) == 0:
-                    actual.append(self.labels.index(mapped_label))
-                    predictions.append(self.labels.index("false-positives"))
-                    raw_predictions.append(100)
+                    # actual.append(self.labels.index(mapped_label))
+                    # predictions.append(self.labels.index("false-positives"))
+                    # raw_predictions.append(100)
                     logging.warn("No predictions for %s", track)
                     continue
                 avg = np.mean(track_prediction.predictions, axis=0)
