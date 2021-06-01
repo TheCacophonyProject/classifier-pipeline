@@ -13,6 +13,7 @@ class Predictions:
         self.labels = labels
         self.prediction_per_track = {}
         self.model = model
+        self.classify_time = None
 
     def get_or_create_prediction(self, track, keep_all=True):
         prediction = self.prediction_per_track.setdefault(
