@@ -459,7 +459,7 @@ class TrackDatabase:
                             logging.error(
                                 "trying to get clip %s track %s frame %s",
                                 clip_id,
-                                track_id,
+                                track_number,
                                 frame_number,
                             )
                     else:

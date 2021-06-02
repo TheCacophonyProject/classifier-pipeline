@@ -514,6 +514,7 @@ class KerasModel:
         return [
             earlyStopping,
             checkpoint_acc,
+            checkpoint_loss,
             # cm_callback,
         ]
 

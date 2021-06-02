@@ -278,6 +278,10 @@ class TrackHeader:
             frame_indices = [frame.frame_num for frame in self.important_frames]
         else:
             # frame_indices = np.arange(len(mass_history))
+            nonzero_mass = [mass for mass in mass_history if mass > 0]
+            segment_min_mass = min(segment_min_mass, np.median(nonzero_mass))
+            if segment_min_mass < 16:
+                print("using min mass of", segment_min_mass)
             frame_indices = [i for i, mass in enumerate(mass_history) if mass > 0]
 
             if top_frames and random_frames:
