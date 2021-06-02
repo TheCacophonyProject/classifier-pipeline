@@ -31,7 +31,7 @@ import os
 from keras import backend as K
 import gc
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 tf_device = "/gpu:1"
 
 #
@@ -514,7 +514,7 @@ class KerasModel:
         return [
             earlyStopping,
             checkpoint_acc,
-            cm_callback,
+            # cm_callback,
         ]
 
     def regroup(self, shuffle=True):

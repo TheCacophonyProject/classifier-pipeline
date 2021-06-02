@@ -450,10 +450,18 @@ class TrackDatabase:
                     result.append(Frame.from_channel(frame, 0, frame_number))
                 else:
                     if channels is None:
-                        frame = track_node[str(frame_number)][:, :, :]
-                        result.append(
-                            Frame.from_array(frame, frame_number, flow_clipped=True)
-                        )
+                        try:
+                            frame = track_node[str(frame_number)][:, :, :]
+                            result.append(
+                                Frame.from_array(frame, frame_number, flow_clipped=True)
+                            )
+                        except:
+                            logging.error(
+                                "trying to get clip %s track %s frame %s",
+                                clip_id,
+                                track_id,
+                                frame_number,
+                            )
                     else:
                         frame = track_node[str(frame_number)][channels, :, :]
                         result.append(Frame.from_channel(frame, channels, frame_number))
