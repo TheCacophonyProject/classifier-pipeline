@@ -143,11 +143,5 @@ if args.base_folder:
 if not os.path.isdir(base_dir):
     logging.debug("Creating %s", base_dir)
     os.mkdir(base_dir)
-dataset = datasets[0]
-
-for track in dataset.tracks:
-    dataset.db.remove_original(track.clip_id, track.track_id)
-print("done")
-raise "DONE"
 for dataset in datasets:
     save_all(dataset, config.worker_threads, os.path.join(base_dir, dataset.name))
