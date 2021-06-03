@@ -1,7 +1,7 @@
 import cv2
+import enum
 import numpy as np
 import random
-
 from ml_tools import tools
 from track.track import TrackChannels
 from ml_tools import imageprocessing
@@ -12,12 +12,18 @@ from ml_tools import imageprocessing
 MIN_SIZE = 4
 
 
-class FrameTypes:
+class FrameTypes(enum.Enum):
     """Types of frames"""
 
-    thermal_square = 0
-    filtered_square = 1
-    overlay = 2
+    thermal_tiled = 0
+    filtered_tiled = 1
+    flow_tiled = 2
+    overlay = 3
+    flow_rgb = 4
+
+    @staticmethod
+    def is_valid(name):
+        return name in FrameTypes.__members__.keys()
 
 
 def preprocess_segment(
@@ -109,6 +115,9 @@ def preprocess_segment(
         if reference_level is not None:
             frame.thermal -= reference_level[i]
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
+        if frame.flow_clipped:
+            frame.flow *= 1.0 / 256.0
+            frame.flow_clipped = False
         if augment:
             if level_adjust is not None:
                 frame.thermal += level_adjust
@@ -152,11 +161,11 @@ def preprocess_movement(
     frames_per_row,
     frame_size,
     regions,
+    red_type,
+    green_type,
+    blue_type,
     preprocess_fn=None,
     augment=False,
-    red_type=None,
-    green_type=None,
-    blue_type=None,
     keep_aspect=False,
     reference_level=None,
     overlay=None,
@@ -189,9 +198,17 @@ def preprocess_movement(
 
             if flipped:
                 channel_data = np.flip(channel_data, axis=1)
-
+        elif type == FrameTypes.flow_tiled:
+            channel_segment = [
+                frame.get_channel(TrackChannels.flow) for frame in segment
+            ]
+            channel_data, success = imageprocessing.square_clip_flow(
+                channel_segment, frames_per_row, (frame_size, frame_size)
+            )
+            if not success:
+                return None
         else:
-            if type == FrameTypes.thermal_square:
+            if type == FrameTypes.thermal_tiled:
                 channel = TrackChannels.thermal
             else:
                 channel = TrackChannels.filtered
@@ -209,6 +226,7 @@ def preprocess_movement(
     data = np.stack(
         (frame_types[red_type], frame_types[green_type], frame_types[blue_type]), axis=2
     )
+
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)

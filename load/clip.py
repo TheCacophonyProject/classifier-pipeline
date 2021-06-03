@@ -229,7 +229,7 @@ class Clip:
                 norm_back, otsus=True
             )
 
-            if sub_components == 0:
+            if sub_components <= 1:
                 continue
 
             overlap_image = region.subimage(lower_mask) * 255

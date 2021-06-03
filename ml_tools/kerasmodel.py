@@ -170,7 +170,7 @@ class KerasModel:
 
         if not self.model:
             self.build_model(self.dense_sizes)
-        self.model.load_weights(weights_path)
+        self.model.load_weights(weights_path).expect_partial()
 
     def load_model(self, model_path, training=False):
         logging.info("Loading %s", model_path)
@@ -190,12 +190,29 @@ class KerasModel:
         self.frame_size = meta.get("frame_size", 48)
         self.square_width = meta.get("square_width", 1)
         self.use_movement = self.params.get("use_movement", False)
-        self.green_type = self.params.get("green_type", FrameTypes.filtered_square)
-        self.blue_type = self.params.get("blue_type", FrameTypes.overlay)
-        if self.params.get("use_thermal", False):
-            self.red_type = FrameTypes.thermal_square
+        self.green_type = self.params.get("green_type", FrameTypes.filtered_tiled.name)
+        self.blue_type = self.params.get("blue_type", FrameTypes.overlay.name)
+        self.red_type = self.params.get("red_type", FrameTypes.thermal_tiled.name)
+        self.use_background_filtered = self.params.get("use_background_filtered", True)
+
+        # convert to enums and vlaidate
+        if FrameTypes.is_valid(self.red_type):
+            self.red_type = FrameTypes[self.red_type]
         else:
-            self.red_type = FrameTypes.filtered_square
+            raise Exception(f"Red type {self.red_type} isnt a valid frame type")
+
+        if FrameTypes.is_valid(self.green_type):
+            self.green_type = FrameTypes[self.green_type]
+        else:
+            raise Exception(f"Green type {self.green_type} isnt a valid frame type")
+
+        if FrameTypes.is_valid(self.blue_type):
+            self.blue_type = FrameTypes[self.blue_type]
+        else:
+            raise Exception(f"Blue type {self.blue_type} isnt a valid frame type")
+        logging.debug(
+            "using types r %s g %s b %s", self.red_type, self.green_type, self.blue_type
+        )
         self.keep_aspect = self.params.get("keep_aspect", False)
         self.dense_sizes = self.params.get("dense_sizes", [1024, 512])
 
@@ -267,7 +284,10 @@ class KerasModel:
                 thermal_median.append(np.median(frame.thermal))
                 data.append(frame)
             predictions = self.classify_using_movement(
-                data, thermal_median, regions=track.bounds_history
+                data,
+                thermal_median,
+                track.bounds_history,
+                clip.background,
             )
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
@@ -298,6 +318,7 @@ class KerasModel:
         data,
         thermal_median,
         regions,
+        background,
         keep_all=True,
         overlay=None,
     ):
@@ -312,7 +333,11 @@ class KerasModel:
 
         if self.use_movement:
             predictions = self.classify_using_movement(
-                data, thermal_median, regions=regions, overlay=overlay
+                data,
+                thermal_median,
+                regions,
+                background,
+                overlay=overlay,
             )
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
@@ -333,7 +358,9 @@ class KerasModel:
                 )
         return track_prediction
 
-    def classify_using_movement(self, data, thermal_median, regions, overlay=None):
+    def classify_using_movement(
+        self, data, thermal_median, regions, background, overlay=None
+    ):
         """
         take any square_width, by square_width amount of frames and sort by
         time use as the r channel, g and b channel are the overall movment of
@@ -365,7 +392,10 @@ class KerasModel:
                 frame_sample = frame_sample[frames_per_classify:]
                 seg_frames.sort()
                 for frame_i in seg_frames:
-                    f = data[frame_i]
+                    f = data[frame_i].copy()
+                    if self.use_background_filtered:
+                        region_background = regions[frame_i].subimage(background)
+                        f.filtered = f.thermal - region_background
                     segment.append(f.copy())
                     medians.append(thermal_median[i])
                 frames = preprocess_movement(
@@ -374,13 +404,13 @@ class KerasModel:
                     self.square_width,
                     self.frame_size,
                     regions,
+                    self.red_type,
+                    self.green_type,
+                    self.blue_type,
                     self.preprocess_fn,
                     reference_level=medians
                     if self.params.get("subtract_median", True)
                     else None,
-                    red_type=self.red_type,
-                    green_type=self.green_type,
-                    blue_type=self.blue_type,
                     keep_aspect=self.params.get("keep_aspect", False),
                     overlay=overlay,
                 )
