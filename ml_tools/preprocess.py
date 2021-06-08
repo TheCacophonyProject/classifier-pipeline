@@ -111,24 +111,7 @@ def preprocess_segment(
             crop_region.bottom += 1
             crop_region.crop(frame_bounds)
         frame.crop_by_region(crop_region, out=frame)
-        if frame.frame_number == 9:
-            print(
-                "PRE RESIZE frame filtered",
-                frame.frame_number,
-                frame.filtered[0, :10],
-                np.amax(frame.filtered),
-                np.amin(frame.filtered),
-            )
-            print("keeping apsec??", keep_aspect)
         frame.resize((frame_size, frame_size), keep_aspect=keep_aspect)
-        if frame.frame_number == 9:
-            print(
-                "POST RESIZE frame filtered",
-                frame.frame_number,
-                frame.filtered[0, :10],
-                np.amax(frame.filtered),
-                np.amin(frame.filtered),
-            )
         if reference_level is not None:
             frame.thermal -= reference_level[i]
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
@@ -188,11 +171,6 @@ def preprocess_movement(
     reference_level=None,
     overlay=None,
 ):
-    first_frame = segment[0]
-    print(
-        "FIrst frame filtered", first_frame.frame_number, first_frame.filtered[0, :10]
-    )
-
     segment, flipped = preprocess_segment(
         segment,
         reference_level=reference_level,
@@ -201,7 +179,6 @@ def preprocess_movement(
         keep_aspect=keep_aspect,
         frame_size=frame_size,
     )
-    print("Post frame filtered", first_frame.frame_number, first_frame.filtered[0, :10])
     frame_types = {}
     channel_types = set([green_type, blue_type, red_type])
     for type in channel_types:
