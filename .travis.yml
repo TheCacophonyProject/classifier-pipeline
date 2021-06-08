@@ -23,7 +23,7 @@ script:
 - sudo chmod -R 777 /var/spool/cptv
 - |
   python -c "import gdown
-  gdown.download(\"https://drive.google.com/u/1/uc?id=1F55gbIjmil1hOV4kuW2rSZFA3RB69qez\", \"model_hq.tar\", quiet=False)"
+  gdown.download(\"https://drive.google.com/file/d/1F55gbIjmil1hOV4kuW2rSZFA3RB69qez\", \"model_hq.tar\", quiet=False)"
 - mkdir model
 - tar -C model -xvf model_hq.tar
 - python3 classify.py all -c tests/test-config.yaml -m model/training-best.sav
