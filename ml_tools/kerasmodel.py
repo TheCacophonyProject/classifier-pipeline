@@ -386,6 +386,33 @@ class KerasModel:
             np.random.shuffle(frame_sample)
             for i in range(num_classifies):
                 seg_frames = frame_sample[:frames_per_classify]
+                seg_frames = [
+                    0,
+                    5,
+                    36,
+                    37,
+                    39,
+                    41,
+                    47,
+                    52,
+                    71,
+                    80,
+                    105,
+                    109,
+                    112,
+                    115,
+                    119,
+                    127,
+                    142,
+                    144,
+                    148,
+                    165,
+                    168,
+                    169,
+                    187,
+                    189,
+                    192,
+                ]
                 segment = []
                 medians = []
                 # update remaining
@@ -418,6 +445,8 @@ class KerasModel:
                     continue
                 output = self.model.predict(frames[np.newaxis, :])
                 predictions.append(output[0])
+                print("predictions", np.round(100 * predictions[-1]))
+                raise "DONE"
         return predictions
 
 

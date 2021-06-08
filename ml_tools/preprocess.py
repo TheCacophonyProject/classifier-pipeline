@@ -170,6 +170,11 @@ def preprocess_movement(
     reference_level=None,
     overlay=None,
 ):
+    first_frame = segment[0]
+    print(
+        "FIrst frame filtered", first_frame.frame_number, first_frame.filtered[0, :10]
+    )
+
     segment, flipped = preprocess_segment(
         segment,
         reference_level=reference_level,
@@ -178,6 +183,7 @@ def preprocess_movement(
         keep_aspect=keep_aspect,
         frame_size=frame_size,
     )
+    print("Post frame filtered", first_frame.frame_number, first_frame.filtered[0, :10])
     frame_types = {}
     channel_types = set([green_type, blue_type, red_type])
     for type in channel_types:
