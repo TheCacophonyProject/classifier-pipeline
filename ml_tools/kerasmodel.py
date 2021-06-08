@@ -163,6 +163,8 @@ class KerasModel:
         return optimizer
 
     def load_weights(self, file):
+        logging.info("Loading %s", file)
+
         dir = os.path.dirname(file)
         weights_path = dir + "/variables/variables"
 
