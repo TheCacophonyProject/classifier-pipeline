@@ -49,6 +49,12 @@ class Frame:
             ffc_affected=ffc_affected,
         )
 
+    def normalize(self):
+        if self.thermal is not None:
+            self.thermal, _ = normalize(self.thermal, new_max=255)
+        if self.filtered is not None:
+            self.filtered, _ = normalize(self.filtered, new_max=255)
+
     def as_array(self, split_flow=True):
         if self.flow is None:
             return np.asarray([self.thermal, self.filtered, self.mask])

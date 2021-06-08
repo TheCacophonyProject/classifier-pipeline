@@ -111,13 +111,31 @@ def preprocess_segment(
             crop_region.bottom += 1
             crop_region.crop(frame_bounds)
         frame.crop_by_region(crop_region, out=frame)
+        if frame.frame_number == 9:
+            print(
+                "PRE RESIZE frame filtered",
+                frame.frame_number,
+                frame.filtered[0, :10],
+                np.amax(frame.filtered),
+                np.amin(frame.filtered),
+            )
+            print("keeping apsec??", keep_aspect)
         frame.resize((frame_size, frame_size), keep_aspect=keep_aspect)
+        if frame.frame_number == 9:
+            print(
+                "POST RESIZE frame filtered",
+                frame.frame_number,
+                frame.filtered[0, :10],
+                np.amax(frame.filtered),
+                np.amin(frame.filtered),
+            )
         if reference_level is not None:
             frame.thermal -= reference_level[i]
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
         if frame.flow_clipped:
             frame.flow *= 1.0 / 256.0
             frame.flow_clipped = False
+        frame.normalize()
         if augment:
             if level_adjust is not None:
                 frame.thermal += level_adjust
