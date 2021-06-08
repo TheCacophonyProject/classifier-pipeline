@@ -146,8 +146,9 @@ class Frame:
                 flow_h = resize_with_aspect(self.flow_h, dim)
                 flow_v = resize_with_aspect(self.flow_v, dim)
                 self.flow = np.stack((flow_h, flow_v), axis=2)
-
+            print("doing resize filtered", self.filtered.shape)
             self.filtered = resize_with_aspect(self.filtered, dim)
+            print("Fitlered min is", np.amin(self.filtered))
         else:
             self.thermal = resize_cv(self.thermal, dim)
             self.mask = resize_cv(self.mask, dim, interpolation=cv2.INTER_NEAREST)

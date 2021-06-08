@@ -31,6 +31,7 @@ def resize_with_aspect(frame, dim, min_pad=False, interpolation=None):
     if min_pad:
         pad = np.min(frame)
     else:
+        print("pad is 0")
         pad = 0
     resized = np.full(dim, pad, dtype=frame.dtype)
     offset = np.int16((np.array(dim) - np.array(resize_dim)) / 2.0)
