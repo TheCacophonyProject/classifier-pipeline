@@ -50,6 +50,7 @@ class ClipClassifier(CPTVFileProcessor):
             or config.classify.preview == Previewer.PREVIEW_TRACKING,
             self.cache_to_disk,
         )
+        classifier = self.get_classifier(self.config.classify.models[0])
 
     def preprocess(self, frame, thermal_reference):
         """
@@ -147,7 +148,7 @@ class ClipClassifier(CPTVFileProcessor):
         classifier = None
         if is_keras_model(model.model_file):
             classifier = KerasModel(self.config.train)
-            classifier.load_weights(model.model_file)
+            classifier.load_model(model.model_file, model.model_weights)
         else:
             classifier = Model(
                 train_config=self.config.train,
