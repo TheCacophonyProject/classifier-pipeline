@@ -11,6 +11,7 @@ from ml_tools.preprocess import (
     preprocess_movement,
     preprocess_frame,
 )
+from ml_tools import dennismodel
 
 
 class KerasModel:
@@ -293,6 +294,17 @@ class KerasModel:
             )
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
+        elif self.dennis_model:
+            frames = []
+            for i, region in enumerate(track.bounds_history):
+                frame = clip.frame_buffer.get_frame(region.frame_number)
+                frame = frame.crop_by_region(region)
+                frame = dennis_model.preprocess_frame(frame, region)
+                if frame is not None:
+                    frames.append(frame)
+
+            predicts = self.model.predict(frames)
+            print("predicts")
         else:
             for i, region in enumerate(track.bounds_history):
                 frame = clip.frame_buffer.get_frame(region.frame_number)
