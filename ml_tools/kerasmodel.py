@@ -443,14 +443,15 @@ class KerasModel:
         weight_for_0 = 1
         weight_for_1 = 1 / 4
         class_weight = {}
-        for i in range(labels):
-            if labels[i] == "bird":
+        for i, label in enumerate(self.labels):
+            if label == "bird":
                 class_weight[i] = 1.1
-            elif labels[i] == "wallaby":
+            elif label == "wallaby":
                 class_weight[i] = 0.8
             else:
                 class_weight[i] = 1
-
+            print("weight for", label, " is", class_weight[i])
+        print(class_weight)
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
