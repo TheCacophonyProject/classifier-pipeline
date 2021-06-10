@@ -370,10 +370,23 @@ class KerasModel:
             )
 
     def close(self):
+        if self.test:
+            self.test.stop_load()
         if self.validate:
             self.validate.stop_load()
         if self.train:
             self.train.stop_load()
+
+        self.validate = None
+        self.test = None
+        self.train = None
+        K.clear_session()
+        gc.collect()
+        del self.model
+        del self.train
+        del self.validate
+        del self.test
+        gc.collect()
 
     def train_model(self, epochs, run_name):
         self.log_dir = os.path.join(self.log_base, run_name)
