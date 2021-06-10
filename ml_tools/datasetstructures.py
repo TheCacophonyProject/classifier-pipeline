@@ -270,6 +270,7 @@ class TrackHeader:
         scale=1,
         top_frames=False,
         random_sections=False,
+        repeats=1,
     ):
         self.segments = []
         self.filtered_stats = {"segment_mass": 0}
@@ -380,90 +381,94 @@ class TrackHeader:
         # give it slightly more than segment_width frames to choose some from
         extra_frames = 2
         # take any segment_width frames, this could be done each epoch
-        for i in range(segment_count):
-            if len(frame_indices) < segment_width and len(self.segments) > 1:
-                break
-            if len(frame_indices) < (segment_width / 4.0):
-                break
-            i = int(i // scale)
-            segment_start = i * segment_frame_spacing
-            segment_end = segment_start + segment_width + extra_frames
-            if i > 0:
-                segment_start -= extra_frames
-            else:
-                segment_end += extra_frames
-            segment_end = min(len(frame_indices), segment_end)
-            sample_width = segment_end - segment_start
-            # if sample_width < segment_width:
-            # segment_start = max(0, segment_start - (segment_width - sample_width))
-            if random_frames:
-                if random_sections:
-                    section = frame_indices[: int(segment_width * 2.2)]
-                    frames = list(
-                        np.random.choice(
-                            section,
-                            min(segment_width, len(section)),
-                            replace=False,
-                        )
-                    )
+        whole_indices = frame_indices.copy()
+        for _ in range(repeats):
+            frame_indices = whole_indices
+            for i in range(segment_count):
+                if len(frame_indices) < segment_width and len(self.segments) > 1:
+                    break
+                if len(frame_indices) < (segment_width / 4.0):
+                    break
+                i = int(i // scale)
+                segment_start = i * segment_frame_spacing
+                segment_end = segment_start + segment_width + extra_frames
+                if i > 0:
+                    segment_start -= extra_frames
                 else:
-                    frames = list(
+                    segment_end += extra_frames
+                segment_end = min(len(frame_indices), segment_end)
+                sample_width = segment_end - segment_start
+                # if sample_width < segment_width:
+                # segment_start = max(0, segment_start - (segment_width - sample_width))
+                if random_frames:
+                    if random_sections:
+                        section = frame_indices[: int(segment_width * 2.2)]
+                        frames = list(
+                            np.random.choice(
+                                section,
+                                min(segment_width, len(section)),
+                                replace=False,
+                            )
+                        )
+                    else:
+                        frames = list(
+                            np.random.choice(
+                                frame_indices,
+                                min(segment_width, len(frame_indices)),
+                                replace=False,
+                            )
+                        )
+                    frame_indices = [
+                        f_num for f_num in frame_indices if f_num not in frames
+                    ]
+
+                else:
+                    frames = frame_indices[segment_start:segment_end]
+                remaining = segment_width - len(frames)
+                # sample another batch
+                if remaining > 0:
+                    frames = list(frames)
+                    frames.extend(
                         np.random.choice(
-                            frame_indices,
-                            min(segment_width, len(frame_indices)),
+                            frames,
+                            min(remaining, len(frames)),
                             replace=False,
                         )
                     )
-                frame_indices = [
-                    f_num for f_num in frame_indices if f_num not in frames
-                ]
+                frames.sort()
+                if random_sections:
+                    frame_indices = [
+                        f_num
+                        for f_num in frame_indices
+                        if f_num > frames[0] + segment_frame_spacing
+                    ]
+                mass_slice = mass_history[frames]
+                segment_avg_mass = np.mean(mass_slice)
+                if segment_min_mass and segment_avg_mass < segment_min_mass:
+                    self.filtered_stats["segment_mass"] += 1
+                    continue
+                if segment_avg_mass < 50:
+                    segment_weight_factor = 0.75
+                elif segment_avg_mass < 100:
+                    segment_weight_factor = 1
+                else:
+                    segment_weight_factor = 1.2
 
-            else:
-                frames = frame_indices[segment_start:segment_end]
-            remaining = segment_width - len(frames)
-            # sample another batch
-            if remaining > 0:
-                frames = list(frames)
-                frames.extend(
-                    np.random.choice(
-                        frames,
-                        min(remaining, len(frames)),
-                        replace=False,
-                    )
+                movement_data = get_movement_data(
+                    self.track_bounds[frames],
+                    mass_history[frames],
                 )
-            frames.sort()
-            if random_sections:
-                frame_indices = [
-                    f_num
-                    for f_num in frame_indices
-                    if f_num > frames[0] + segment_frame_spacing
-                ]
-            mass_slice = mass_history[frames]
-            segment_avg_mass = np.mean(mass_slice)
-            if segment_min_mass and segment_avg_mass < segment_min_mass:
-                self.filtered_stats["segment_mass"] += 1
-                continue
-            if segment_avg_mass < 50:
-                segment_weight_factor = 0.75
-            elif segment_avg_mass < 100:
-                segment_weight_factor = 1
-            else:
-                segment_weight_factor = 1.2
-
-            movement_data = get_movement_data(
-                self.track_bounds[frames],
-                mass_history[frames],
-            )
-            segment = SegmentHeader(
-                track=self,
-                start_frame=frames[0],
-                frames=segment_width,
-                weight=segment_weight_factor,
-                avg_mass=segment_avg_mass,
-                frame_indices=frames,
-                movement_data=movement_data,
-            )
-            self.segments.append(segment)
+                segment = SegmentHeader(
+                    track=self,
+                    start_frame=frames[0],
+                    frames=segment_width,
+                    weight=segment_weight_factor,
+                    avg_mass=segment_avg_mass,
+                    frame_indices=frames,
+                    movement_data=movement_data,
+                )
+                self.segments.append(segment)
+        # print(self, " has", len(self.segments), " segments")
         # for segment in self.segments:
         #     print(
         #         f"{self.label} - {self.clip_id}-{self.track_id} -{self.start_frame} segment {segment.id} {segment.start_frame} frame_indices {segment.frame_indices} best? { segment.best_mass} top {segment.top_mass}"
