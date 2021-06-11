@@ -1181,6 +1181,7 @@ class Dataset:
         start = time.time()
         empty_tracks = []
         filtered_stats = 0
+
         for track in self.tracks:
             segment_frame_spacing = int(
                 round(self.segment_spacing * track.frames_per_second)
@@ -1243,8 +1244,8 @@ class Dataset:
             self.segments.extend(track.segments)
             segs = self.segments_by_label.setdefault(track.label, [])
             segs.extend(track.segments)
-        for track in empty_tracks:
-            self.remove_track(track)
+        # for track in empty_tracks:
+        #     self.remove_track(track)
 
         self.rebuild_cdf()
         print(

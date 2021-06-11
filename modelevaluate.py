@@ -405,6 +405,9 @@ def check_noise(dataset, clip_id, track_id):
 args = load_args()
 init_logging()
 config = Config.load_from_file(args.config_file)
+
+test_clips = config.build.test_clips()
+print("# of matts test clips are", len(test_clips))
 model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
@@ -415,10 +418,16 @@ date = None
 if args.date:
     date = parse(args.date)
 
-# dataset_file = dataset_db_path(config)
-# datasets = pickle.load(open(dataset_file, "rb"))
-# dataset = datasets[args.dataset]
+dataset_file = dataset_db_path(config)
+datasets = pickle.load(open(dataset_file, "rb"))
+dataset = datasets[args.dataset]
 #
+############################
+# to just eval on matts test set
+# remove_tracks = [track for track in dataset.tracks if track.clip_id not in test_clips]
+# for track in remove_tracks:
+#     dataset.remove_track(track)
+
 from ml_tools.trackdatabase import TrackDatabase
 
 db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
