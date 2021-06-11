@@ -415,18 +415,19 @@ date = None
 if args.date:
     date = parse(args.date)
 
-dataset_file = dataset_db_path(config)
-datasets = pickle.load(open(dataset_file, "rb"))
-dataset = datasets[args.dataset]
+# dataset_file = dataset_db_path(config)
+# datasets = pickle.load(open(dataset_file, "rb"))
+# dataset = datasets[args.dataset]
+#
 from ml_tools.trackdatabase import TrackDatabase
 
 db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
-dataset.db = db
+# dataset.db = db
 
 # ALL TRACKS
 from dateutil.parser import parse as parse_date
 
-dataset = Dataset(dataset.db, "dataset", config)
+dataset = Dataset(db, "dataset", config)
 tracks_loaded, total_tracks = dataset.load_tracks(
     after_date=parse_date("2021-03-29T08:07:54.240643+13:00")
 )
