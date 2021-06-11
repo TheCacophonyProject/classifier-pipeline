@@ -301,6 +301,7 @@ class TrackHeader:
                     return
             else:
                 return
+        frame_indices = np.array(frame_indices)
         segment_count = max(1, len(frame_indices) // segment_frame_spacing)
         segment_count = int(scale * segment_count)
         if top_frames and not random_frames:
@@ -382,17 +383,21 @@ class TrackHeader:
                             min(segment_width, len(section)),
                             replace=False,
                         )
-
+                        frame_indices = [
+                            f_num for f_num in frame_indices if f_num not in frames
+                        ]
                     else:
-                        frames = np.random.choice(
-                            frame_indices,
+                        indices = np.random.choice(
+                            len(frame_indices),
                             min(segment_width, len(frame_indices)),
                             replace=False,
                         )
-
-                    frame_indices = [
-                        f_num for f_num in frame_indices if f_num not in frames
-                    ]
+                        frames = frame_indices[indices]
+                        frame_indices = np.delete(frame_indices, indices)
+                        # print("segment frames", frames, "still unused", frame_indices)
+                        # frame_indices = [
+                        #     f_num for f_num in frame_indices if f_num not in frames
+                        # ]
 
                 else:
                     i = int(i // scale)
@@ -448,7 +453,7 @@ class TrackHeader:
                     movement_data=movement_data,
                 )
                 self.segments.append(segment)
-        # print(self, " has", len(self.segments), " segments")
+        #
         # for segment in self.segments:
         #     print(
         #         f"{self.label} - {self.clip_id}-{self.track_id} -{self.start_frame} segment {segment.id} {segment.start_frame} frame_indices {segment.frame_indices} best? { segment.best_mass} top {segment.top_mass}"
