@@ -79,9 +79,11 @@ class DataGenerator(keras.utils.Sequence):
                         self.preloader_queue,
                         self.load_queue,
                         self.labels,
-                        self.dataset,
+                        self.dataset.name,
+                        self.dataset.db,
                         self.params,
                         self.segments,
+                        self.dataset.label_mapping,
                     ),
                 )
                 for _ in range(self.params.load_threads)
@@ -272,16 +274,16 @@ class DataGenerator(keras.utils.Sequence):
         self.cur_epoch += 1
 
 
-def loadbatch(labels, dataset, samples, params):
+def loadbatch(labels, db, samples, params, mapped_labels):
     start = time.time()
     # samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
-    X, y, y_orig = _data(labels, dataset, samples, params)
+    X, y, y_orig = _data(labels, db, samples, params, mapped_labels)
 
-    logging.debug("%s  Time to get data %s", dataset.name, time.time() - start)
+    logging.debug("%s  Time to get data %s", "NULL", time.time() - start)
     return X, y, y_orig
 
 
-def _data(labels, dataset, samples, params, to_categorical=True):
+def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
     "Generates data containing batch_size samples"
     # Initialization
     X = np.empty(
@@ -295,12 +297,12 @@ def _data(labels, dataset, samples, params, to_categorical=True):
     y_original = []
     mvm = []
     for sample in samples:
-        label = dataset.mapped_label(sample.label)
+        label = mapped_labels[sample.label]
         if label not in labels:
             continue
         if params.use_movement:
             try:
-                frame_data = dataset.fetch_segment_data(sample)
+                frame_data = db.fetch_segment_data(sample)
                 # frame_data = dataset.fetch_random_sample(sample)
                 overlay = None
                 #
@@ -393,11 +395,11 @@ def _data(labels, dataset, samples, params, to_categorical=True):
 
 
 # continue to read examples until queue is full
-def preloader(q, load_queue, labels, dataset, params, segments):
+def preloader(q, load_queue, labels, name, db, params, segments, label_mapping):
     """add a segment into buffer"""
     logging.info(
         " -started async fetcher for %s augment=%s",
-        dataset.name,
+        name,
         params.augment,
     )
     while True:
@@ -430,11 +432,11 @@ def preloader(q, load_queue, labels, dataset, params, segments):
                     else:
                         data.append(dataset.frames_by_id[sample_id])
 
-                q.put(loadbatch(labels, dataset, data, params))
+                q.put(loadbatch(labels, db, data, params, label_mapping))
 
             else:
-                logging.debug("Quue is full for %s", dataset.name)
+                logging.debug("Quue is full for %s", name)
                 time.sleep(0.1)
         except Exception as e:
-            logging.info("Queue %s error %s ", dataset.name, e)
+            logging.info("Queue %s error %s ", name, e)
             raise e

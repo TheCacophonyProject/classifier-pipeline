@@ -71,7 +71,6 @@ class Dataset:
         # database holding track data
         self.db = track_db
         self.label_mapping = None
-        self.original_segments = None
         # name of this dataset
         self.name = name
         self.use_predictions = use_predictions
@@ -1173,6 +1172,10 @@ class Dataset:
             return len(self.frame_samples) > 0
 
     def recalculate_segments(self, scale=1.0, segment_type=1):
+        self.segments_by_id.clear()
+        self.segments_by_label.clear()
+        del self.segments[:]
+        del self.segments
         self.segments = []
         self.segments_by_label = {}
         self.segments_by_id = {}
@@ -1250,8 +1253,9 @@ class Dataset:
 
         self.rebuild_cdf()
         logging.info(
-            "%s filtered stats are %s took  %s",
+            "%s #segments %s filtered stats are %s took  %s",
             self.name,
+            len(self.segments),
             filtered_stats,
             time.time() - start,
         )

@@ -15,6 +15,7 @@ import numpy as np
 from classify.trackprediction import TrackPrediction
 from dateutil.parser import parse as parse_date
 from .frame import Frame
+from ml_tools import tools
 
 special_datasets = ["background_frame", "predictions", "overlay"]
 
@@ -628,6 +629,22 @@ class TrackDatabase:
             # this means if we are interupted part way through the track will be overwritten
             clip_node.attrs["finished"] = True
             clip_node.attrs["has_prediction"] = has_prediction
+
+    def fetch_segment_data(self, sample, channel=None):
+
+        frames = self.get_track(
+            sample.track.clip_id,
+            sample.track.track_id,
+            frame_numbers=sample.frame_indices,
+            channels=0,
+        )
+        background = self.get_clip_background(sample.track.clip_id)
+        for frame in frames:
+            region = sample.track.track_bounds[frame.frame_number]
+            region = tools.Rectangle.from_ltrb(*region)
+            cropped = region.subimage(background)
+            frame.filtered = frame.thermal - cropped
+        return frames
 
 
 def hdf5_attributes_dictionary(dataset):
