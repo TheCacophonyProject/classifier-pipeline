@@ -225,8 +225,9 @@ class DataGenerator(keras.utils.Sequence):
             if self.shuffle:
                 np.random.shuffle(self.samples)
         if self.preload:
+            datsaet_pickles = pickle.dumps(self.dataset)
             for i in range(self.params.load_threads):
-                self.load_queue.put(pickle.dumps(self.dataset))
+                self.load_queue.put(datsaet_pickles)
 
             for index in range(len(self)):
                 samples = self.samples[
