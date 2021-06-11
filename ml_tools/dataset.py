@@ -1249,11 +1249,10 @@ class Dataset:
         #     self.remove_track(track)
 
         self.rebuild_cdf()
-        print(
+        logging.info(
+            "%s filtered stats are %s took  %s",
             self.name,
-            "filtered stats are",
             filtered_stats,
-            " took",
             time.time() - start,
         )
         # print(self.name, "has", len(self.segments))
