@@ -22,7 +22,7 @@ from ml_tools.kerasmodel import KerasModel
 import pytz
 
 LOW_DATA_LABELS = ["wallaby", "human", "dog", "vehicle"]
-MIN_TRACKS = 100
+MIN_TRACKS = 1
 MIN_SIZE = 4
 CAP_DATA = True
 MIN_VALIDATE_CAMERAS = 5
@@ -251,6 +251,7 @@ def split_label(dataset, label, holdout_cameras, existing_test_count=0):
         min_t = 10
     num_validate_tracks = max(total * 0.15, min_t)
     num_test_tracks = max(total * 0.05, min_t) - existing_test_count
+    num_test_tracks = 0
     cameras_to_remove = set()
     for i, track_bin in enumerate(track_bins):
         tracks = dataset.tracks_by_bin[track_bin]
@@ -268,7 +269,7 @@ def split_label(dataset, label, holdout_cameras, existing_test_count=0):
             if add_to == validate_c:
                 add_to = test_c
                 camera_type = "test"
-                if num_test_tracks < 0:
+                if num_test_tracks <= 0:
                     break
                 num_validate_tracks += num_test_tracks
             else:

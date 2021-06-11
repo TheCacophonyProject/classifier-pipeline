@@ -22,6 +22,8 @@ class GeneartorParams:
         self.output_dim = output_dim
         self.mvm = params.get("mvm", False)
         self.type = params.get("type", 1)
+        self.segment_type = params.get("segment_type", 1)
+        self.load_threads = params.get("load_threads", 2)
 
 
 class DataGenerator(keras.utils.Sequence):
@@ -64,6 +66,7 @@ class DataGenerator(keras.utils.Sequence):
         self.epoch_stats.append({})
         self.epoch_data.append(([None] * len(self), [None] * len(self)))
         self.epoch_labels.append([None] * len(self))
+        self.preloader_threads = []
         if self.preload:
             self.preloader_threads = [
                 multiprocessing.Process(
@@ -76,7 +79,7 @@ class DataGenerator(keras.utils.Sequence):
                         self.params,
                     ),
                 )
-                for _ in range(params.get("load_threads", 2))
+                for _ in range(self.params.load_threads)
             ]
             for thread in self.preloader_threads:
                 thread.start()
@@ -191,6 +194,7 @@ class DataGenerator(keras.utils.Sequence):
             return self.resuse_previous_epoch()
 
         else:
+            self.dataset.recalculate_segments(segment_type=self.params.segment_type)
             self.samples = self.dataset.epoch_samples(
                 cap_samples=self.cap_samples,
                 replace=False,
@@ -218,10 +222,12 @@ class DataGenerator(keras.utils.Sequence):
             # ]
 
             self.samples = [sample.id for sample in self.samples]
-
             if self.shuffle:
                 np.random.shuffle(self.samples)
         if self.preload:
+            for i in range(self.params.load_threads):
+                self.load_queue.put(pickle.dumps(self.dataset))
+
             for index in range(len(self)):
                 samples = self.samples[
                     index * self.batch_size : (index + 1) * self.batch_size
@@ -389,25 +395,40 @@ def preloader(q, load_queue, labels, dataset, params):
         params.augment,
     )
     while True:
-        if not q.full():
-            samples = pickle.loads(load_queue.get())
-            # datagen.loaded_epochs = samples[0]
-            data = []
-            for sample_id in samples[1]:
-                if params.use_movement:
-
-                    data.append(dataset.segments_by_id[sample_id])
-                    logging.debug(
-                        "adding sample %s %s %s",
-                        sample_id,
-                        data[-1].label,
-                        data[-1].frame_indices,
+        try:
+            if not q.full():
+                samples = pickle.loads(load_queue.get())
+                if not isinstance(samples, tuple):
+                    dataset = samples
+                    logging.info(
+                        " -Updated dataset %s augment=%s",
+                        dataset.name,
+                        params.augment,
                     )
-                else:
-                    data.append(dataset.frames_by_id[sample_id])
+                    time.sleep(3)  # hack to make sure others get dataset
+                    samples = pickle.loads(load_queue.get())
+                if not isinstance(samples, tuple):
+                    raise Exception("Samples isn't a list", samples)
+                # datagen.loaded_epochs = samples[0]
+                data = []
+                for sample_id in samples[1]:
+                    if params.use_movement:
 
-            q.put(loadbatch(labels, dataset, data, params))
+                        data.append(dataset.segments_by_id[sample_id])
+                        logging.debug(
+                            "adding sample %s %s %s",
+                            sample_id,
+                            data[-1].label,
+                            data[-1].frame_indices,
+                        )
+                    else:
+                        data.append(dataset.frames_by_id[sample_id])
 
-        else:
-            logging.debug("Quue is full for %s", dataset.name)
-            time.sleep(0.1)
+                q.put(loadbatch(labels, dataset, data, params))
+
+            else:
+                logging.debug("Quue is full for %s", dataset.name)
+                time.sleep(0.1)
+        except Exception as e:
+            logging.info("Queue %s error %s ", dataset.name, e)
+            raise e

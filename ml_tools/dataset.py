@@ -1171,9 +1171,10 @@ class Dataset:
         else:
             return len(self.frame_samples) > 0
 
-    def recalculate_segments(self, scale=1.0, segment_type=None):
+    def recalculate_segments(self, scale=1.0, segment_type=1):
         self.segments = []
         self.segments_by_label = {}
+        self.segments_by_id = {}
         logging.info(
             "%s generating segments scale %s type %s", self.name, scale, segment_type
         )

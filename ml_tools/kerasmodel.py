@@ -415,6 +415,7 @@ class KerasModel:
             square_width=self.params.square_width,
             mvm=self.params.mvm,
             type=self.params.type,
+            segment_type=self.params.segment_type,
         )
         self.validate = DataGenerator(
             self.datasets.validation,
@@ -432,6 +433,7 @@ class KerasModel:
             square_width=self.params.square_width,
             mvm=self.params.mvm,
             type=self.params.type,
+            segment_type=self.params.segment_type,
         )
         self.test = DataGenerator(
             self.datasets.test,
@@ -448,6 +450,7 @@ class KerasModel:
             square_width=self.params.square_width,
             mvm=self.params.mvm,
             type=self.params.type,
+            segment_type=self.params.segment_type,
         )
         checkpoints = self.checkpoints(run_name)
 
@@ -713,6 +716,7 @@ class KerasModel:
                                                 cap_at="bird",
                                                 square_width=self.params.square_width,
                                                 type=type,
+                                                segment_type=self.params.segment_type,
                                             )
                                             self.validate = DataGenerator(
                                                 self.datasets.validation,
@@ -728,6 +732,7 @@ class KerasModel:
                                                 cap_at="bird",
                                                 square_width=self.params.square_width,
                                                 type=type,
+                                                segment_type=self.params.segment_type,
                                             )
                                             self.test = DataGenerator(
                                                 self.datasets.test,
@@ -743,6 +748,7 @@ class KerasModel:
                                                 cap_at="bird",
                                                 square_width=self.params.square_width,
                                                 type=type,
+                                                segment_type=self.params.segment_type,
                                             )
                                             run_name = "run-%d" % session_num
                                             print("--- Starting trial: %s" % run_name)
@@ -1075,6 +1081,7 @@ class KerasModel:
             cap_at="bird",
             square_width=self.params.square_width,
             type=self.params.type,
+            segment_type=self.params.segment_type,
         )
         test_pred_raw = self.model.predict(test)
         test.stop_load()
@@ -1126,6 +1133,7 @@ class KerasModel:
             cap_at="bird",
             square_width=self.params.square_width,
             type=self.params.type,
+            segment_type=self.params.segment_type,
         )
         test_accuracy = self.model.evaluate(test)
         test.stop_load()
