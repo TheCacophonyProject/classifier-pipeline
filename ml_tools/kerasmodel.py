@@ -435,23 +435,6 @@ class KerasModel:
             type=self.params.type,
             segment_type=self.params.segment_type,
         )
-        self.test = DataGenerator(
-            self.datasets.test,
-            self.datasets.train.labels,
-            self.params.output_dim,
-            batch_size=self.params.batch_size,
-            channel=self.params.channel,
-            use_movement=self.params.use_movement,
-            shuffle=True,
-            model_preprocess=self.preprocess_fn,
-            epochs=1,
-            load_threads=self.params.train_load_threads,
-            cap_at="bird",
-            square_width=self.params.square_width,
-            mvm=self.params.mvm,
-            type=self.params.type,
-            segment_type=self.params.segment_type,
-        )
         checkpoints = self.checkpoints(run_name)
 
         self.save_metadata(run_name)
@@ -486,6 +469,23 @@ class KerasModel:
 
         test_accuracy = None
         if self.datasets.test and self.datasets.test.has_data():
+            self.test = DataGenerator(
+                self.datasets.test,
+                self.datasets.train.labels,
+                self.params.output_dim,
+                batch_size=self.params.batch_size,
+                channel=self.params.channel,
+                use_movement=self.params.use_movement,
+                shuffle=True,
+                model_preprocess=self.preprocess_fn,
+                epochs=1,
+                load_threads=2,
+                cap_at="bird",
+                square_width=self.params.square_width,
+                mvm=self.params.mvm,
+                type=self.params.type,
+                segment_type=self.params.segment_type,
+            )
             test_accuracy = self.model.evaluate(self.test)
             logging.info("Test accuracy is %s", test_accuracy)
         self.test.stop_load()
