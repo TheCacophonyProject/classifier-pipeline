@@ -7,6 +7,7 @@ import multiprocessing
 import time
 from ml_tools import tools
 from ml_tools.preprocess import preprocess_movement, preprocess_frame
+from multiprocessing import Manager, Pool
 
 FRAMES_PER_SECOND = 9
 
@@ -60,7 +61,9 @@ class DataGenerator(keras.utils.Sequence):
             self.load_queue = multiprocessing.Queue()
         if self.preload:
             self.preloader_queue = multiprocessing.Queue(params.get("buffer_size", 128))
-
+        self.segments = None
+        manager = Manager()
+        self.segments = manager.dict()
         # load epoch
         self.load_next_epoch()
         self.epoch_stats.append({})
@@ -68,6 +71,7 @@ class DataGenerator(keras.utils.Sequence):
         self.epoch_labels.append([None] * len(self))
         self.preloader_threads = []
         if self.preload:
+
             self.preloader_threads = [
                 multiprocessing.Process(
                     target=preloader,
@@ -77,6 +81,7 @@ class DataGenerator(keras.utils.Sequence):
                         self.labels,
                         self.dataset,
                         self.params,
+                        self.segments,
                     ),
                 )
                 for _ in range(self.params.load_threads)
@@ -220,15 +225,15 @@ class DataGenerator(keras.utils.Sequence):
             #     for sample in self.samples
             #     if sample.track.camera_id in holdout_cameras
             # ]
-
+            self.segments.clear()
+            local_dic = {}
+            for segment in self.samples:
+                local_dic[segment.id] = segment
+            self.segments.update(local_dic)
             self.samples = [sample.id for sample in self.samples]
             if self.shuffle:
                 np.random.shuffle(self.samples)
         if self.preload:
-            datsaet_pickles = pickle.dumps(self.dataset)
-            for i in range(self.params.load_threads):
-                self.load_queue.put(datsaet_pickles)
-
             for index in range(len(self)):
                 samples = self.samples[
                     index * self.batch_size : (index + 1) * self.batch_size
@@ -388,7 +393,7 @@ def _data(labels, dataset, samples, params, to_categorical=True):
 
 
 # continue to read examples until queue is full
-def preloader(q, load_queue, labels, dataset, params):
+def preloader(q, load_queue, labels, dataset, params, segments):
     """add a segment into buffer"""
     logging.info(
         " -started async fetcher for %s augment=%s",
@@ -399,15 +404,15 @@ def preloader(q, load_queue, labels, dataset, params):
         try:
             if not q.full():
                 samples = pickle.loads(load_queue.get())
-                if not isinstance(samples, tuple):
-                    dataset = samples
-                    logging.info(
-                        " -Updated dataset %s augment=%s",
-                        dataset.name,
-                        params.augment,
-                    )
-                    time.sleep(3)  # hack to make sure others get dataset
-                    samples = pickle.loads(load_queue.get())
+                # if not isinstance(samples, tuple):
+                #     dataset = samples
+                #     logging.info(
+                #         " -Updated dataset %s augment=%s",
+                #         dataset.name,
+                #         params.augment,
+                #     )
+                #     time.sleep(3)  # hack to make sure others get dataset
+                #     samples = pickle.loads(load_queue.get())
                 if not isinstance(samples, tuple):
                     raise Exception("Samples isn't a list", samples)
                 # datagen.loaded_epochs = samples[0]
@@ -415,7 +420,7 @@ def preloader(q, load_queue, labels, dataset, params):
                 for sample_id in samples[1]:
                     if params.use_movement:
 
-                        data.append(dataset.segments_by_id[sample_id])
+                        data.append(segments[sample_id])
                         logging.debug(
                             "adding sample %s %s %s",
                             sample_id,
