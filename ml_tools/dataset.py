@@ -1178,6 +1178,7 @@ class Dataset:
         logging.info(
             "%s generating segments scale %s type %s", self.name, scale, segment_type
         )
+        start = time.time()
         empty_tracks = []
         filtered_stats = 0
         for track in self.tracks:
@@ -1246,7 +1247,13 @@ class Dataset:
             self.remove_track(track)
 
         self.rebuild_cdf()
-        print(self.name, "filtered stats are", filtered_stats)
+        print(
+            self.name,
+            "filtered stats are",
+            filtered_stats,
+            " took",
+            time.time() - start,
+        )
         # print(self.name, "has", len(self.segments))
         # for segment in self.segments:
         #     print(

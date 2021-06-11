@@ -279,14 +279,15 @@ class TrackHeader:
             frame_indices = [frame.frame_num for frame in self.important_frames]
         else:
             # frame_indices = np.arange(len(mass_history))
-            nonzero_mass = [mass for mass in mass_history if mass > 0]
-            segment_min_mass = min(segment_min_mass, np.median(nonzero_mass))
 
             frame_indices = [
                 i
                 for i, mass in enumerate(mass_history)
                 if mass > 0 and i not in self.ffc_frames
             ]
+            segment_min_mass = min(
+                segment_min_mass, np.median(mass_history[frame_indices])
+            )
             if top_frames and random_frames:
                 frame_indices = sorted(
                     frame_indices, key=lambda f_i: mass_history[f_i], reverse=True
@@ -300,25 +301,7 @@ class TrackHeader:
                     return
             else:
                 return
-        # if use_important:
-        #     mid_x = [
-        #         tools.Rectangle.from_ltrb(*bound).mid_x for bound in self.track_bounds
-        #     ]
-        #     mid_y = [
-        #         tools.Rectangle.from_ltrb(*bound).mid_y for bound in self.track_bounds
-        #     ]
-        #     vel_x = [cur - prev for cur, prev in zip(mid_x[1:], mid_x[:-1])]
-        #     vel_y = [cur - prev for cur, prev in zip(mid_y[1:], mid_y[:-1])]
-        #
-        #     movement = sum((vx ** 2 + vy ** 2) ** 0.5 for vx, vy in zip(vel_x, vel_y))
-        #     widths = [
-        #         tools.Rectangle.from_ltrb(*bound).width for bound in self.track_bounds
-        #     ]
-        #     if movement < np.median(widths) * 2.0:
-        #         logging.debug("Not enough movment %s %s", self, self.label)
-        #         return
         segment_count = max(1, len(frame_indices) // segment_frame_spacing)
-        # segment_count -= 1
         segment_count = int(scale * segment_count)
         if top_frames and not random_frames:
             segment_mass = []
@@ -389,16 +372,7 @@ class TrackHeader:
                     break
                 if len(frame_indices) < (segment_width / 4.0):
                     break
-                i = int(i // scale)
-                segment_start = i * segment_frame_spacing
-                segment_end = segment_start + segment_width + extra_frames
-                if i > 0:
-                    segment_start -= extra_frames
-                else:
-                    segment_end += extra_frames
-                segment_end = min(len(frame_indices), segment_end)
-                sample_width = segment_end - segment_start
-                # if sample_width < segment_width:
+
                 # segment_start = max(0, segment_start - (segment_width - sample_width))
                 if random_frames:
                     if random_sections:
@@ -423,6 +397,15 @@ class TrackHeader:
                     ]
 
                 else:
+                    i = int(i // scale)
+                    segment_start = i * segment_frame_spacing
+                    segment_end = segment_start + segment_width + extra_frames
+                    if i > 0:
+                        segment_start -= extra_frames
+                    else:
+                        segment_end += extra_frames
+                    segment_end = min(len(frame_indices), segment_end)
+                    # if sample_width < segment_width:
                     frames = frame_indices[segment_start:segment_end]
                 remaining = segment_width - len(frames)
                 # sample another batch
@@ -454,10 +437,11 @@ class TrackHeader:
                 else:
                     segment_weight_factor = 1.2
 
-                movement_data = get_movement_data(
-                    self.track_bounds[frames],
-                    mass_history[frames],
-                )
+                # movement_data = get_movement_data(
+                #     self.track_bounds[frames],
+                #     mass_history[frames],
+                # )
+                movement_data = None
                 segment = SegmentHeader(
                     track=self,
                     start_frame=frames[0],
