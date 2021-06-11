@@ -377,21 +377,19 @@ class TrackHeader:
                 if random_frames:
                     if random_sections:
                         section = frame_indices[: int(segment_width * 2.2)]
-                        frames = list(
-                            np.random.choice(
-                                section,
-                                min(segment_width, len(section)),
-                                replace=False,
-                            )
+                        frames = np.random.choice(
+                            section,
+                            min(segment_width, len(section)),
+                            replace=False,
                         )
+
                     else:
-                        frames = list(
-                            np.random.choice(
-                                frame_indices,
-                                min(segment_width, len(frame_indices)),
-                                replace=False,
-                            )
+                        frames = np.random.choice(
+                            frame_indices,
+                            min(segment_width, len(frame_indices)),
+                            replace=False,
                         )
+
                     frame_indices = [
                         f_num for f_num in frame_indices if f_num not in frames
                     ]
@@ -410,14 +408,12 @@ class TrackHeader:
                 remaining = segment_width - len(frames)
                 # sample another batch
                 if remaining > 0:
-                    frames = list(frames)
-                    frames.extend(
-                        np.random.choice(
-                            frames,
-                            min(remaining, len(frames)),
-                            replace=False,
-                        )
+                    extra_frames = np.random.choice(
+                        frames,
+                        min(remaining, len(frames)),
+                        replace=False,
                     )
+                    frames = np.concatenate([frames, extra_frames])
                 frames.sort()
                 if random_sections:
                     frame_indices = [
