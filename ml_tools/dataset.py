@@ -531,6 +531,7 @@ class Dataset:
             sample.track.clip_id,
             sample.track.track_id,
             frame_numbers=sample.frame_indices,
+            channels=TrackChannels.thermal,
         )
         background = self.db.get_clip_background(sample.track.clip_id)
         for frame in frames:
