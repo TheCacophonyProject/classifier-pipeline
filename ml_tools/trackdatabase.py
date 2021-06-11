@@ -463,9 +463,18 @@ class TrackDatabase:
                                 frame_number,
                             )
                     else:
-                        frame = track_node[str(frame_number)][channels, :, :]
-                        result.append(Frame.from_channel(frame, channels, frame_number))
-
+                        try:
+                            frame = track_node[str(frame_number)][channels, :, :]
+                            result.append(
+                                Frame.from_channel(frame, channels, frame_number)
+                            )
+                        except:
+                            logging.error(
+                                "trying to get clip %s track %s frame %s",
+                                clip_id,
+                                track_number,
+                                frame_number,
+                            )
         # except:
         # return None
         return result
