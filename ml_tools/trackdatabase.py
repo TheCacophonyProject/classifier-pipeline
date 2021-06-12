@@ -633,14 +633,14 @@ class TrackDatabase:
     def fetch_segment_data(self, sample, channel=None):
 
         frames = self.get_track(
-            sample.track.clip_id,
-            sample.track.track_id,
+            sample.clip_id,
+            sample.track_id,
             frame_numbers=sample.frame_indices,
             channels=0,
         )
-        background = self.get_clip_background(sample.track.clip_id)
+        background = self.get_clip_background(sample.clip_id)
         for frame in frames:
-            region = sample.track.track_bounds[frame.frame_number]
+            region = sample.track_bounds[frame.frame_number]
             region = tools.Rectangle.from_ltrb(*region)
             cropped = region.subimage(background)
             frame.filtered = frame.thermal - cropped

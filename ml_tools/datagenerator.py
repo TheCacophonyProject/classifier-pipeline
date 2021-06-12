@@ -7,7 +7,6 @@ import multiprocessing
 import time
 from ml_tools import tools
 from ml_tools.preprocess import preprocess_movement, preprocess_frame
-from multiprocessing import Manager, Pool
 
 FRAMES_PER_SECOND = 9
 
@@ -62,8 +61,7 @@ class DataGenerator(keras.utils.Sequence):
         if self.preload:
             self.preloader_queue = multiprocessing.Queue(params.get("buffer_size", 128))
         self.segments = None
-        manager = Manager()
-        self.segments = manager.dict()
+        self.segments = []
         # load epoch
         self.load_next_epoch()
         self.epoch_stats.append({})
@@ -82,7 +80,6 @@ class DataGenerator(keras.utils.Sequence):
                         self.dataset.name,
                         self.dataset.db,
                         self.params,
-                        self.segments,
                         self.dataset.label_mapping,
                     ),
                 )
@@ -227,21 +224,20 @@ class DataGenerator(keras.utils.Sequence):
             #     for sample in self.samples
             #     if sample.track.camera_id in holdout_cameras
             # ]
-            self.segments.clear()
-            local_dic = {}
-            for segment in self.samples:
-                local_dic[segment.id] = segment
-            self.segments.update(local_dic)
-            self.samples = [sample.id for sample in self.samples]
             if self.shuffle:
                 np.random.shuffle(self.samples)
+            for sample in self.samples:
+                sample.track = None
         if self.preload:
+
             for index in range(len(self)):
                 samples = self.samples[
                     index * self.batch_size : (index + 1) * self.batch_size
                 ]
                 pickled_samples = pickle.dumps((self.loaded_epochs + 1, samples))
                 self.load_queue.put(pickled_samples)
+                if index % 10 == 0:
+                    time.sleep(3)
         self.loaded_epochs += 1
 
     def reload_samples(self):
@@ -337,7 +333,7 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
             )
 
             for frame in frame_data:
-                ref.append(sample.track.frame_temp_median[frame.frame_number])
+                ref.append(sample.frame_temp_median[frame.frame_number])
             data = preprocess_movement(
                 None,
                 frame_data,
@@ -395,7 +391,7 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
 
 
 # continue to read examples until queue is full
-def preloader(q, load_queue, labels, name, db, params, segments, label_mapping):
+def preloader(q, load_queue, labels, name, db, params, label_mapping):
     """add a segment into buffer"""
     logging.info(
         " -started async fetcher for %s augment=%s",
@@ -419,13 +415,13 @@ def preloader(q, load_queue, labels, name, db, params, segments, label_mapping):
                     raise Exception("Samples isn't a list", samples)
                 # datagen.loaded_epochs = samples[0]
                 data = []
-                for sample_id in samples[1]:
+                for segment in samples[1]:
                     if params.use_movement:
 
-                        data.append(segments[sample_id])
+                        data.append(segment)
                         logging.debug(
                             "adding sample %s %s %s",
-                            sample_id,
+                            segment.id,
                             data[-1].label,
                             data[-1].frame_indices,
                         )

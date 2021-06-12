@@ -688,7 +688,17 @@ class SegmentHeader:
         self.id = SegmentHeader._segment_id
         SegmentHeader._segment_id += 1
         # reference to track this segment came from
+        self.clip_id = track.clip_id
+        self.track_id = track.track_id
+        self.frame_indices = frame_indices
+
+        self.track_bounds = {}
+        self.frame_temp_median = {}
+        for i in frame_indices:
+            self.track_bounds[i] = track.track_bounds[i]
+            self.frame_temp_median[i] = track.frame_temp_median[i]
         self.track = track
+        self.label = track.label
         # first frame of this segment referenced by start of track
         self.start_frame = start_frame
         # length of segment in frames
@@ -697,22 +707,17 @@ class SegmentHeader:
         self.weight = weight
         # average mass of the segment
         self.avg_mass = avg_mass
-        self.frame_indices = frame_indices
 
     @property
     def unique_track_id(self):
         # reference to clip this segment came from
         return self.track.unique_id
 
-    @property
-    def clip_id(self):
-        # reference to clip this segment came from
-        return self.track.clip_id
-
-    @property
-    def label(self):
-        # label for this segment
-        return self.track.label
+    #
+    # @property
+    # def clip_id(self):
+    #     # reference to clip this segment came from
+    #     return self.track.clip_id
 
     @property
     def name(self):
@@ -726,24 +731,26 @@ class SegmentHeader:
             self.start_frame : self.start_frame + self.frames
         ]
 
-    @property
-    def track_bounds(self):
-        # original location of this tracks bounds.
-        return self.track.track_bounds[
-            self.start_frame : self.start_frame + self.frames
-        ]
+    #
+    # @property
+    # def track_bounds(self):
+    #     # original location of this tracks bounds.
+    #     return self.track.track_bounds[
+    #         self.start_frame : self.start_frame + self.frames
+    #     ]
 
     @property
     def frame_crop(self):
         # how much each frame has been cropped.
         return self.track.frame_crop[self.start_frame : self.start_frame + self.frames]
 
-    @property
-    def frame_temp_median(self):
-        # thermal reference temperature for each frame (i.e. which temp is 0)
-        return self.track.frame_temp_median[
-            self.start_frame : self.start_frame + self.frames
-        ]
+    #
+    # @property
+    # def frame_temp_median(self):
+    #     # thermal reference temperature for each frame (i.e. which temp is 0)
+    #     return self.track.frame_temp_median[
+    #         self.start_frame : self.start_frame + self.frames
+    #     ]
 
     @property
     def end_frame(self):

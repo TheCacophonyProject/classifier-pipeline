@@ -499,7 +499,7 @@ class KerasModel:
             monitor="val_loss",
             verbose=1,
             save_best_only=True,
-            save_weights_only=False,
+            save_weights_only=True,
             mode="auto",
         )
         val_acc = os.path.join(self.checkpoint_folder, run_name, "val_acc")
@@ -509,7 +509,7 @@ class KerasModel:
             monitor="val_accuracy",
             verbose=1,
             save_best_only=True,
-            save_weights_only=False,
+            save_weights_only=True,
             mode="max",
         )
 
@@ -520,7 +520,7 @@ class KerasModel:
             monitor="val_recall",
             verbose=1,
             save_best_only=True,
-            save_weights_only=False,
+            save_weights_only=True,
             mode="max",
         )
         earlyStopping = tf.keras.callbacks.EarlyStopping(patience=22)
