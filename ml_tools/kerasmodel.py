@@ -380,6 +380,7 @@ class KerasModel:
         self.validate = None
         self.test = None
         self.train = None
+        slef.model = None
         K.clear_session()
         gc.collect()
         del self.model
