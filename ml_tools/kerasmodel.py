@@ -445,9 +445,9 @@ class KerasModel:
         class_weight = {}
         for i, label in enumerate(self.labels):
             if label == "bird":
-                class_weight[i] = 1.5
+                class_weight[i] = 1.4
             elif label == "wallaby":
-                class_weight[i] = 0.5
+                class_weight[i] = 0.6
             else:
                 class_weight[i] = 1
             print("weight for", label, " is", class_weight[i])
