@@ -259,6 +259,14 @@ class DataGenerator(keras.utils.Sequence):
                     ]
                     index += 1
                     batches.append(samples)
+                    if self.params.load_threads == 1 and len(batches) > 60:
+                        pickled_batches = pickle.dumps(
+                            (self.loaded_epochs + 1, batches)
+                        )
+                        self.load_queue.put(pickled_batches)
+                        print(self.dataset.name, "adding", len(batches))
+                        batches = []
+
                 print(self.dataset.name, "adding", len(batches))
                 if len(batches) > 0:
                     pickled_batches = pickle.dumps((self.loaded_epochs + 1, batches))
@@ -481,5 +489,5 @@ def preloader(q, load_queue, labels, name, db, params, label_mapping):
                 q.put(loadbatch(labels, db, batch, params, label_mapping))
 
         else:
-            logging.debug("Quue is full for %s", dataset.name)
+            logging.debug("Quue is full for %s", name)
             time.sleep(0.1)
