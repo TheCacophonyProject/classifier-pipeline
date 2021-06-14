@@ -294,13 +294,14 @@ class KerasModel:
         self.model.summary()
         self.model.load_weights(dir + "/variables/variables")
 
-    def load_model(self, model_path, training=False):
-        logging.info("Loading %s", model_path)
+    def load_model(self, model_path, training=False, weights=None):
+        logging.info("Loading %s with weight %s", model_path, weights)
         dir = os.path.dirname(model_path)
         self.model = tf.keras.models.load_model(dir)
         self.load_meta(dir)
         if not training:
             self.model.trainable = False
+        self.model.load_weights(weights)
         self.model.summary()
 
     def load_meta(self, dir):

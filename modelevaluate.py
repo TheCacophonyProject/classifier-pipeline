@@ -160,10 +160,11 @@ def evaluate_track(classifier, track):
 
 
 class ModelEvalute:
-    def __init__(self, config, model_file):
+    def __init__(self, config, model_file, weights):
         self.model_file = model_file
         self.classifier = None
         self.config = config
+        self.weights = weights
         # self.load_classifier(model_file, type)
         # self.db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
 
@@ -176,7 +177,9 @@ class ModelEvalute:
         logging.info("classifier loading %s", self.model_file)
 
         self.classifier = KerasModel(train_config=self.config.train)
-        self.classifier.load_weights(self.model_file, training=False)
+        self.classifier.load_model(
+            self.model_file, training=False, weights=self.weights
+        )
 
         logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
@@ -329,6 +332,8 @@ def load_args():
         "--model-file",
         help="Path to model file to use, will override config model",
     )
+    parser.add_argument("-w", "--weights", help="Weights to load into model")
+
     parser.add_argument(
         "-s",
         "--dataset",
@@ -413,7 +418,8 @@ if args.model_file:
     model_file = args.model_file
 else:
     model_file = config.classify.model
-ev = ModelEvalute(config, model_file)
+
+ev = ModelEvalute(config, model_file, args.weights)
 date = None
 if args.date:
     date = parse(args.date)
