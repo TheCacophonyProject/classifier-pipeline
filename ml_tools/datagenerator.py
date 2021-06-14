@@ -5,6 +5,7 @@ import tensorflow.keras as keras
 import numpy as np
 import multiprocessing
 import time
+import gc
 from ml_tools import tools
 from ml_tools.preprocess import preprocess_movement, preprocess_frame
 
@@ -271,6 +272,10 @@ class DataGenerator(keras.utils.Sequence):
                 if len(batches) > 0:
                     pickled_batches = pickle.dumps((self.loaded_epochs + 1, batches))
                     self.load_queue.put(pickled_batches)
+            # del self.samples[:]
+            self.dataset.segments = []
+            self.samples = np.empty(len(self.samples))
+            gc.collect()
         self.loaded_epochs += 1
 
     def reload_samples(self):
@@ -484,10 +489,13 @@ def preloader(q, load_queue, labels, name, db, params, label_mapping):
         if not q.full():
             batches = pickle.loads(load_queue.get())
             # datagen.loaded_epochs = samples[0]
-            for batch in batches[1]:
+            for i, batch in enumerate(batches[1]):
                 data = []
                 q.put(loadbatch(labels, db, batch, params, label_mapping))
-
+                batches[1][i] = None
+            del batches
+            batches = None
+            gc.collect()
         else:
             logging.debug("Quue is full for %s", name)
             time.sleep(0.1)

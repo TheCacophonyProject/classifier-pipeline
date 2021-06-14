@@ -937,8 +937,8 @@ class Dataset:
         self.segment_label_cdf = {}
         for segment in self.segments:
             seg_weight = segment.weight
-            if lbl_p and segment.track.label in lbl_p:
-                seg_weight *= lbl_p[segment.track.label]
+            if lbl_p and segment.label in lbl_p:
+                seg_weight *= lbl_p[segment.label]
             total += seg_weight
             self.segment_cdf.append(seg_weight)
 

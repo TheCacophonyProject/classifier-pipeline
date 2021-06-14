@@ -697,7 +697,7 @@ class SegmentHeader:
         for i in frame_indices:
             self.track_bounds[i] = track.track_bounds[i]
             self.frame_temp_median[i] = track.frame_temp_median[i]
-        self.track = track
+        self.track = None
         self.label = track.label
         # first frame of this segment referenced by start of track
         self.start_frame = start_frame
@@ -711,7 +711,7 @@ class SegmentHeader:
     @property
     def unique_track_id(self):
         # reference to clip this segment came from
-        return self.track.unique_id
+        return "{}-{}".format(self.clip_id, self.track_id)
 
     #
     # @property
