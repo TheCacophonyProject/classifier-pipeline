@@ -11,7 +11,7 @@ from ml_tools.preprocess import (
     preprocess_movement,
     preprocess_frame,
 )
-from ml_tools import dennismodel
+from ml_tools import preprocessresnet
 
 
 class KerasModel:
@@ -296,23 +296,31 @@ class KerasModel:
             )
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
-        elif self.model_name == "dennis":
-            print("ruinning dennis model")
+        elif self.model_name == "resnet18":
             frames = []
+            weights = []
             for i, region in enumerate(track.bounds_history):
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 frame = frame.crop_by_region(region)
-                frame = dennismodel.preprocess_frame(frame, region, self.frame_size)
+                frame = preprocessresnet.preprocess_frame(
+                    frame, region, self.frame_size
+                )
                 if frame is not None:
                     frames.append(frame)
-
+                    weights.append(frame)
             predicts = self.model.predict(np.array(frames))
             predicts_squared = predicts ** 2
-            pixelcount_weights = np.array([(f > 0).sum() for f in frames])
-            label = np.argmax(
-                dennismodel.sum_weighted(predicts_squared, pixelcount_weights)
+            smoothed_predictions = preprocessresnet.sum_weighted(
+                predicts, predicts_squared
             )
-            print("predicts", self.labels[label])
+            smoothed_predictions = smoothed_predictions / np.max(smoothed_predictions)
+            pixelcount_weights = np.array([(f > 0).sum() for f in frames])
+            track_prediction.classified_clip(
+                predicts_squared,
+                smoothed_predictions,
+                None,
+                track.end_frame,
+            )
         else:
             for i, region in enumerate(track.bounds_history):
                 frame = clip.frame_buffer.get_frame(region.frame_number)
@@ -456,9 +464,9 @@ def validate_model(model_file, weights_path=None):
     if ext == ".pb":
         if weights_path is None:
             weights_path = os.path.dirname(model_file) + "/variables/variables.index"
-        if not os.path.exists(os.path.join(weights_path) + ".index"):
-            logging.error("No weights found named '{}'".format(weights_path))
-            return False
+        # if not os.path.exists(os.path.join(weights_path) + ".index"):
+        #     logging.error("No weights found named '{}'".format(weights_path))
+        #     return False
     elif not os.path.exists(model_file + ".meta"):
         logging.error("No model found named '{}'.".format(model_file + ".meta"))
         return False
