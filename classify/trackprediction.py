@@ -80,8 +80,9 @@ class TrackPrediction:
         self.predictions = predictions
         self.smoothed_novelties = smoothed_novelties
         self.class_best_score = np.max(self.smoothed_predictions, axis=0)
-        self.max_novelty = float(max(self.smoothed_novelties))
-        self.novelty_sum = sum(self.smoothed_novelties)
+        if self.smoothed_novelties is not None:
+            self.max_novelty = float(max(self.smoothed_novelties))
+            self.novelty_sum = sum(self.smoothed_novelties)
 
     def classified_frame(self, frame_number, prediction, mass_scale=1, novelty=None):
         self.last_frame_classified = frame_number

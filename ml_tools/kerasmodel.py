@@ -11,6 +11,7 @@ from ml_tools.preprocess import (
     preprocess_movement,
     preprocess_frame,
 )
+from ml_tools import preprocessresnet
 
 
 class KerasModel:
@@ -32,13 +33,13 @@ class KerasModel:
         self.preprocess_fn = None
         self.labels = None
         self.frame_size = None
-        self.pretrained_model = None
+        self.model_name = None
         self.model = None
         self.use_movement = False
         self.square_width = 1
 
     def get_base_model(self, input_shape):
-        if self.pretrained_model == "resnet":
+        if self.model_name == "resnet":
             return (
                 tf.keras.applications.ResNet50(
                     weights="imagenet",
@@ -47,21 +48,21 @@ class KerasModel:
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
-        elif self.pretrained_model == "resnetv2":
+        elif self.model_name == "resnetv2":
             return (
                 tf.keras.applications.ResNet50V2(
                     weights="imagenet", include_top=False, input_shape=input_shape
                 ),
                 tf.keras.applications.resnet_v2.preprocess_input,
             )
-        elif self.pretrained_model == "resnet152":
+        elif self.model_name == "resnet152":
             return (
                 tf.keras.applications.ResNet152(
                     weights="imagenet", include_top=False, input_shape=input_shape
                 ),
                 tf.keras.applications.resnet.preprocess_input,
             )
-        elif self.pretrained_model == "vgg16":
+        elif self.model_name == "vgg16":
             return (
                 tf.keras.applications.VGG16(
                     weights="imagenet",
@@ -70,7 +71,7 @@ class KerasModel:
                 ),
                 tf.keras.applications.vgg16.preprocess_input,
             )
-        elif self.pretrained_model == "vgg19":
+        elif self.model_name == "vgg19":
             return (
                 tf.keras.applications.VGG19(
                     weights="imagenet",
@@ -79,7 +80,7 @@ class KerasModel:
                 ),
                 tf.keras.applications.vgg19.preprocess_input,
             )
-        elif self.pretrained_model == "mobilenet":
+        elif self.model_name == "mobilenet":
             return (
                 tf.keras.applications.MobileNetV2(
                     weights="imagenet",
@@ -88,7 +89,7 @@ class KerasModel:
                 ),
                 tf.keras.applications.mobilenet_v2.preprocess_input,
             )
-        elif self.pretrained_model == "densenet121":
+        elif self.model_name == "densenet121":
             return (
                 tf.keras.applications.DenseNet121(
                     weights="imagenet",
@@ -97,7 +98,7 @@ class KerasModel:
                 ),
                 tf.keras.applications.densenet.preprocess_input,
             )
-        elif self.pretrained_model == "inceptionresnetv2":
+        elif self.model_name == "inceptionresnetv2":
             return (
                 tf.keras.applications.InceptionResNetV2(
                     weights="imagenet",
@@ -106,7 +107,7 @@ class KerasModel:
                 ),
                 tf.keras.applications.inception_resnet_v2.preprocess_input,
             )
-        elif self.pretrained_model == "inceptionv3":
+        elif self.model_name == "inceptionv3":
             return (
                 tf.keras.applications.InceptionV3(
                     weights="imagenet",
@@ -116,7 +117,7 @@ class KerasModel:
                 tf.keras.applications.inception_v3.preprocess_input,
             )
 
-        raise "Could not find model" + self.pretrained_model
+        raise "Could not find model" + self.model_name
 
     def build_model(self, dense_sizes=[1024, 512]):
         input_shape = (
@@ -167,27 +168,29 @@ class KerasModel:
 
         dir = os.path.dirname(file)
         weights_path = dir + "/variables/variables"
-
         self.load_meta(dir)
 
         if not self.model:
+            print("loading weifghts and building")
             self.build_model(self.dense_sizes)
         self.model.load_weights(weights_path).expect_partial()
 
-    def load_model(self, model_path, training=False):
+    def load_model(self, model_path, weights=None, training=False):
         logging.info("Loading %s", model_path)
         dir = os.path.dirname(model_path)
         self.model = tf.keras.models.load_model(dir)
-        self.load_meta(dir)
         if not training:
             self.model.trainable = False
-        self.model.summary()
+        if weights:
+            print("loading weights", weights)
+            self.model.load_weights(weights).expect_partial()
+        self.load_meta(dir)
 
     def load_meta(self, dir):
         meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
-        self.params = meta["hyperparams"]
+        self.params = meta.get("hyperparams", {})
         self.labels = meta["labels"]
-        self.pretrained_model = self.params.get("model", "resnetv2")
+        self.model_name = self.params.get("model", "resnetv2")
         self.preprocess_fn = self.get_preprocess_fn()
         self.frame_size = meta.get("frame_size", 48)
         self.square_width = meta.get("square_width", 1)
@@ -219,33 +222,33 @@ class KerasModel:
         self.dense_sizes = self.params.get("dense_sizes", [1024, 512])
 
     def get_preprocess_fn(self):
-        if self.pretrained_model == "resnet":
+        if self.model_name == "resnet":
             return tf.keras.applications.resnet.preprocess_input
 
-        elif self.pretrained_model == "resnetv2":
+        elif self.model_name == "resnetv2":
             return tf.keras.applications.resnet_v2.preprocess_input
 
-        elif self.pretrained_model == "resnet152":
+        elif self.model_name == "resnet152":
             return tf.keras.applications.resnet.preprocess_input
 
-        elif self.pretrained_model == "vgg16":
+        elif self.model_name == "vgg16":
             return tf.keras.applications.vgg16.preprocess_input
 
-        elif self.pretrained_model == "vgg19":
+        elif self.model_name == "vgg19":
             return tf.keras.applications.vgg19.preprocess_input
 
-        elif self.pretrained_model == "mobilenet":
+        elif self.model_name == "mobilenet":
             return tf.keras.applications.mobilenet_v2.preprocess_input
 
-        elif self.pretrained_model == "densenet121":
+        elif self.model_name == "densenet121":
             return tf.keras.applications.densenet.preprocess_input
 
-        elif self.pretrained_model == "inceptionresnetv2":
+        elif self.model_name == "inceptionresnetv2":
             return tf.keras.applications.inception_resnet_v2.preprocess_input
-        elif self.pretrained_model == "inceptionv3":
+        elif self.model_name == "inceptionv3":
             return tf.keras.applications.inception_v3.preprocess_input
         logging.warn(
-            "pretrained model %s has no preprocessing function", self.pretrained_model
+            "pretrained model %s has no preprocessing function", self.model_name
         )
         return None
 
@@ -293,6 +296,31 @@ class KerasModel:
             )
             for i, prediction in enumerate(predictions):
                 track_prediction.classified_frame(i, prediction, None)
+        elif self.model_name == "resnet18":
+            frames = []
+            weights = []
+            for i, region in enumerate(track.bounds_history):
+                frame = clip.frame_buffer.get_frame(region.frame_number)
+                frame = frame.crop_by_region(region)
+                frame = preprocessresnet.preprocess_frame(
+                    frame, region, self.frame_size
+                )
+                if frame is not None:
+                    frames.append(frame)
+                    weights.append(frame)
+            predicts = self.model.predict(np.array(frames))
+            predicts_squared = predicts ** 2
+            smoothed_predictions = preprocessresnet.sum_weighted(
+                predicts, predicts_squared
+            )
+            smoothed_predictions = smoothed_predictions / np.max(smoothed_predictions)
+            pixelcount_weights = np.array([(f > 0).sum() for f in frames])
+            track_prediction.classified_clip(
+                predicts_squared,
+                smoothed_predictions,
+                None,
+                track.end_frame,
+            )
         else:
             for i, region in enumerate(track.bounds_history):
                 frame = clip.frame_buffer.get_frame(region.frame_number)
@@ -398,6 +426,7 @@ class KerasModel:
                     if self.use_background_filtered:
                         region_background = regions[frame_i].subimage(background)
                         f.filtered = f.thermal - region_background
+                        print("sub bak?")
                     segment.append(f.copy())
                     medians.append(thermal_median[i])
                 frames = preprocess_movement(
@@ -430,13 +459,14 @@ def is_keras_model(model_file):
     return False
 
 
-def validate_model(model_file):
+def validate_model(model_file, weights_path=None):
     path, ext = os.path.splitext(model_file)
     if ext == ".pb":
-        weights_path = os.path.dirname(model_file) + "/variables/variables.index"
-        if not os.path.exists(os.path.join(weights_path)):
-            logging.error("No weights found named '{}'.".format(weights_path))
-            return False
+        if weights_path is None:
+            weights_path = os.path.dirname(model_file) + "/variables/variables.index"
+        # if not os.path.exists(os.path.join(weights_path) + ".index"):
+        #     logging.error("No weights found named '{}'".format(weights_path))
+        #     return False
     elif not os.path.exists(model_file + ".meta"):
         logging.error("No model found named '{}'.".format(model_file + ".meta"))
         return False
