@@ -1,4 +1,4 @@
-tensorflow==2.1.0
+tensorflow==2.5.0rc1
 matplotlib~=3.0
 pytz
 cptv~=1.5.1
