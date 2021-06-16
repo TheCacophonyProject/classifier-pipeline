@@ -287,14 +287,18 @@ class KerasModel:
                 frame = frame.crop_by_region(region)
                 thermal_median.append(np.median(frame.thermal))
                 data.append(frame)
-            predictions = self.classify_using_movement(
+            predictions, smoothed_predictions = self.classify_using_movement(
                 data,
                 thermal_median,
                 track.bounds_history,
                 clip.background,
             )
-            for i, prediction in enumerate(predictions):
-                track_prediction.classified_frame(i, prediction, None)
+            track_prediction.classified_clip(
+                predictions,
+                smoothed_predictions,
+                None,
+                track.end_frame,
+            )
         elif self.model_name == "resnet18":
             frames = []
             weights = []
@@ -306,17 +310,16 @@ class KerasModel:
                 )
                 if frame is not None:
                     frames.append(frame)
-                    weights.append(frame)
+                    weights.append(frame[frame > 0].sum())
             predicts = self.model.predict(np.array(frames))
             predicts_squared = predicts ** 2
             smoothed_predictions = preprocessresnet.sum_weighted(
-                predicts, predicts_squared
+                weights, predicts_squared
             )
             smoothed_predictions = smoothed_predictions / np.max(smoothed_predictions)
-            pixelcount_weights = np.array([(f > 0).sum() for f in frames])
             track_prediction.classified_clip(
                 predicts_squared,
-                smoothed_predictions,
+                [smoothed_predictions],
                 None,
                 track.end_frame,
             )
@@ -397,7 +400,7 @@ class KerasModel:
         """
 
         predictions = []
-
+        weights = []
         frames_per_classify = self.square_width ** 2
         num_frames = len(data)
 
@@ -407,47 +410,55 @@ class KerasModel:
         # take frames_per_classify random frames, sort by time then use this to classify
 
         num_classifies = math.ceil(float(num_frames) / frames_per_classify)
-
-        # since we classify a random segment each time, take a few permutations
-        combinations = max(1, frames_per_classify // 9)
-        for _ in range(combinations):
-            frame_sample = np.arange(num_frames)
-            np.random.shuffle(frame_sample)
-            for i in range(num_classifies):
-                seg_frames = frame_sample[:frames_per_classify]
-                segment = []
-                medians = []
-                # update remaining
-                frame_sample = frame_sample[frames_per_classify:]
-                seg_frames.sort()
-                for frame_i in seg_frames:
-                    f = data[frame_i].copy()
-                    if self.use_background_filtered:
-                        region_background = regions[frame_i].subimage(background)
-                        f.filtered = f.thermal - region_background
-                    segment.append(f.copy())
-                    medians.append(thermal_median[i])
-                frames = preprocess_movement(
-                    data,
-                    segment,
-                    self.square_width,
-                    self.frame_size,
-                    regions,
-                    self.red_type,
-                    self.green_type,
-                    self.blue_type,
-                    self.preprocess_fn,
-                    reference_level=medians
-                    if self.params.get("subtract_median", True)
-                    else None,
-                    keep_aspect=self.params.get("keep_aspect", False),
-                    overlay=overlay,
-                )
-                if frames is None:
-                    continue
-                output = self.model.predict(frames[np.newaxis, :])
-                predictions.append(output[0])
-        return predictions
+        for i in range(4):
+            # since we classify a random segment each time, take a few permutations
+            combinations = max(1, frames_per_classify // 9)
+            for _ in range(combinations):
+                frame_sample = np.arange(num_frames)
+                np.random.shuffle(frame_sample)
+                for i in range(num_classifies):
+                    seg_frames = frame_sample[:frames_per_classify]
+                    segment = []
+                    medians = []
+                    # update remaining
+                    frame_sample = frame_sample[frames_per_classify:]
+                    seg_frames.sort()
+                    weight = 0
+                    for frame_i in seg_frames:
+                        f = data[frame_i].copy()
+                        weight += np.sum(f.filtered)
+                        if self.use_background_filtered:
+                            region_background = regions[frame_i].subimage(background)
+                            f.filtered = f.thermal - region_background
+                        segment.append(f.copy())
+                        medians.append(thermal_median[i])
+                    frames = preprocess_movement(
+                        data,
+                        segment,
+                        self.square_width,
+                        self.frame_size,
+                        regions,
+                        self.red_type,
+                        self.green_type,
+                        self.blue_type,
+                        self.preprocess_fn,
+                        reference_level=medians
+                        if self.params.get("subtract_median", True)
+                        else None,
+                        keep_aspect=self.params.get("keep_aspect", False),
+                        overlay=overlay,
+                    )
+                    if frames is None:
+                        continue
+                    output = self.model.predict(frames[np.newaxis, :])
+                    predictions.append(output[0])
+                    weights.append(weight)
+        predicts_squared = np.array(predictions) ** 2
+        smoothed_predictions = preprocessresnet.sum_weighted(
+            np.array(weights), predicts_squared
+        )
+        smoothed_predictions /= np.amax(smoothed_predictions)
+        return predicts_squared, [smoothed_predictions]
 
 
 def is_keras_model(model_file):
@@ -460,8 +471,11 @@ def is_keras_model(model_file):
 def validate_model(model_file, weights_path=None):
     path, ext = os.path.splitext(model_file)
     if ext == ".pb":
-        if weights_path is None:
-            weights_path = os.path.dirname(model_file) + "/variables/variables.index"
+        if not os.path.exists(model_file):
+            return False
+
+        # if weights_path is None:weights
+        # weights_path = os.path.dirname(model_file) + "/variables/variables.index"
         # if not os.path.exists(os.path.join(weights_path) + ".index"):
         #     logging.error("No weights found named '{}'".format(weights_path))
         #     return False
