@@ -27,6 +27,7 @@ def preprocess_frame(frame, bound, out_dim):
                     bound.top, bound.bottom, min_top, max_bottom, maxdim
                 )
                 f[r0:r1, c0:c1] = frame
+                frame = f
             if any(
                 a == b
                 for a, b in zip(
@@ -36,24 +37,38 @@ def preprocess_frame(frame, bound, out_dim):
                 dim = out_dim
             else:
                 dim = maxdim - int((maxdim - out_dim) / 4 + 1) * 4
-            f = cv2.resize(f, (dim, dim), interpolation=cv2.INTER_AREA)
+            frame = cv2.resize(frame, (dim, dim), interpolation=cv2.INTER_AREA)
         else:
             if bound.left == min_left:
-                f = np.zeros((frame.shape[0], out_dim))
-                f[: frame.shape[0], :] = frame
+                frame = fill_cols(frame, True, out_dim)
             elif bound.right == max_right:
-                f = np.zeros((frame.shape[0], out_dim))
-                f[:, out_dim - frame.shape[1] :] = frame
+                frame = fill_cols(frame, False, out_dim)
             if bound.top == min_top:
-                f = np.zeros((out_dim, frame.shape[1]))
-                f[:, : frame.shape[1]] = frame
+                frame = fill_rows(frame, True, out_dim)
             elif bound.bottom == max_bottom:
-                f = np.zeros((out_dim, frame.shape[1]))
-                f[out_dim - frame.shape[0] :, :] = frame
-            else:
-                f = frame
-    f = center_frame(f, out_dim)
-    f = f[:, :, np.newaxis]
+                frame = fill_rows(frame, False, out_dim)
+
+    frame = center_frame(frame, out_dim)
+    frame = frame[:, :, np.newaxis]
+    return frame
+
+
+def fill_rows(frame, fill_high, space):
+    f = np.zeros((space, frame.shape[1]))
+    # print(f'frame {frame.shape}, f {f.shape}')
+    if fill_high:
+        f[: frame.shape[0], :] = frame
+    else:
+        f[space - frame.shape[0] :, :] = frame
+    return f
+
+
+def fill_cols(frame, fill_high, space):
+    f = np.zeros((frame.shape[0], space))
+    if fill_high:
+        f[:, : frame.shape[1]] = frame
+    else:
+        f[:, space - frame.shape[1] :] = frame
     return f
 
 
