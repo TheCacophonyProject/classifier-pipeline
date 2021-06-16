@@ -171,7 +171,6 @@ class KerasModel:
         self.load_meta(dir)
 
         if not self.model:
-            print("loading weifghts and building")
             self.build_model(self.dense_sizes)
         self.model.load_weights(weights_path).expect_partial()
 
@@ -182,7 +181,7 @@ class KerasModel:
         if not training:
             self.model.trainable = False
         if weights:
-            print("loading weights", weights)
+            logging.info("loading weights", weights)
             self.model.load_weights(weights).expect_partial()
         self.load_meta(dir)
 
@@ -426,7 +425,6 @@ class KerasModel:
                     if self.use_background_filtered:
                         region_background = regions[frame_i].subimage(background)
                         f.filtered = f.thermal - region_background
-                        print("sub bak?")
                     segment.append(f.copy())
                     medians.append(thermal_median[i])
                 frames = preprocess_movement(
