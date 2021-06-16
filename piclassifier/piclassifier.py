@@ -6,7 +6,9 @@ import time
 
 import psutil
 import numpy as np
-
+from tensorflow.keras.applications.inception_v3 import (
+    preprocess_input as inc3preprocess,
+)
 from classify.trackprediction import Predictions
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
@@ -16,6 +18,10 @@ from ml_tools import tools
 from .cptvrecorder import CPTVRecorder
 from .motiondetector import MotionDetector
 from .processor import Processor
+from ml_tools.preprocess import (
+    preprocess_frame,
+    preprocess_movement,
+)
 
 
 class PiClassifier(Processor):
@@ -93,7 +99,6 @@ class PiClassifier(Processor):
         frames = self.motion_detector.thermal_window.get_frames()
         self.clip.update_background(self.motion_detector.background)
         self.clip._background_calculated()
-        print("setting background", self.clip.background)
         for frame in frames:
             self.track_extractor.process_frame(self.clip, frame.copy())
 
@@ -147,73 +152,42 @@ class PiClassifier(Processor):
         prediction = 0.0
         novelty = 0.0
         active_tracks = self.get_active_tracks()
-        frame = self.clip.frame_buffer.get_last_frame()
-        if frame is None:
-            return
-        thermal_reference = np.median(frame.thermal)
 
         for i, track in enumerate(active_tracks):
+
+            regions = []
+            if len(track) < 10:
+                print("less than 25??")
+                continue
             track_prediction = self.predictions.get_or_create_prediction(
                 track, keep_all=False
             )
-            region = track.bounds_history[-1]
-            if region.frame_number != frame.frame_number:
-                logging.warning(
-                    "frame doesn't match last frame {} and {}".format(
-                        region.frame_number, frame.frame_number
-                    )
-                )
-            else:
-                track_data = track.crop_by_region(frame, region)
-                # we use a tighter cropping here so we disable the default 2 pixel inset
-                frames = preprocess_segment(
-                    [track_data], [thermal_reference], default_inset=0
-                )
-                if frames is None:
-                    logging.warning(
-                        "Frame {} of track could not be classified.".format(
-                            region.frame_number
-                        )
-                    )
-                    continue
-                p_frame = frames[0]
-                (
-                    prediction,
-                    novelty,
-                    state,
-                ) = self.classifier.classify_frame_with_novelty(
-                    p_frame, track_prediction.state
-                )
-                track_prediction.state = state
-                if self.fp_index is not None:
-                    prediction[self.fp_index] *= 0.8
-                state *= 0.98
-                mass = region.mass
-                mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
-                cropped_weight = 0.7 if region.was_cropped else 1.0
+            regions = track.bounds_history[-25:]
+            frames = self.clip.frame_buffer.get_last_x(len(regions))
+            if frames is None:
+                return
+            refs = []
+            for frame in frames:
+                refs.append(np.median(frame.thermal))
+                thermal_reference = np.median(frame.thermal)
+            segment_data = []
+            for i, frame in enumerate(frames):
+                segment_data.append(frame.crop_by_region(regions[i]))
 
-                prediction *= mass_weight * cropped_weight
-
-                if len(track_prediction.predictions) == 0:
-                    if track_prediction.uniform_prior:
-                        smooth_prediction = np.ones([self.num_labels]) * (
-                            1 / self.num_labels
-                        )
-                    else:
-                        smooth_prediction = prediction
-                    smooth_novelty = 0.5
-                else:
-                    smooth_prediction = track_prediction.predictions[-1]
-                    smooth_novelty = track_prediction.novelties[-1]
-                    smooth_prediction = (
-                        1 - prediction_smooth
-                    ) * smooth_prediction + prediction_smooth * prediction
-                    smooth_novelty = (
-                        1 - prediction_smooth
-                    ) * smooth_novelty + prediction_smooth * novelty
-                track_prediction.classified_frame(
-                    self.clip.frame_on, smooth_prediction, smooth_novelty
-                )
+            preprocessed = preprocess_movement(
+                None,
+                segment_data,
+                5,
+                None,
+                0,
+                inc3preprocess,
+                reference_level=refs,
+                sample="Test-{}".format(self.clip.frame_on),
+                type=1,
+            )
+            prediction = self.classifier.classify_frame(preprocessed)
+            print("prediction is", np.round(100 * prediction))
+            track_prediction.classified_frame(self.clip.frame_on, prediction, None)
 
     def get_recent_frame(self):
         return self.motion_detector.get_recent_frame()

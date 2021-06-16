@@ -50,7 +50,7 @@ class NeuralInterpreter:
         input_x = input_x.reshape((1, 3, 160, 160))
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
-        return res[0][0], res[0][1], None
+        return res[0]
 
     def load_json(self, filename):
         """Loads model and parameters from file."""
@@ -59,6 +59,7 @@ class NeuralInterpreter:
         self.MODEL_NAME = stats["name"]
         self.MODEL_DESCRIPTION = stats["description"]
         self.labels = stats["labels"]
+        print(self.labels)
         # self.eval_score = stats["score"]
         self.params = stats["hyperparams"]
 

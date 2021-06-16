@@ -233,7 +233,9 @@ def preprocess_movement(
         # )
         # print("RGB FLOW")
     else:
-        thermal_segment = [frame.get_channel(channel) for frame in segment]
+        thermal_segment = [
+            frame.get_channel(TrackChannels.thermal) for frame in segment
+        ]
         # as long as one frame it's fine
         square, success = imageprocessing.square_clip(
             thermal_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
@@ -293,10 +295,7 @@ def preprocess_movement(
         # print("{}-{}-{}".format(red, green, blue))
         # # for debugging
         #
-        # tools.saveclassify_image(
-        #     data,
-        #     f"samples/{type}-{sample.track.camera}-{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
-        # )
+        tools.saveclassify_image(data, f"samples/{type}-{sample}")
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)

@@ -91,6 +91,14 @@ class FrameBuffer:
             return self.frames[-1]
         return None
 
+    def get_last_x(self, x=25):
+        if self.cache and self.prev_frame:
+            return self.prev_frame
+        elif len(self.frames) > 0:
+            print("how many frames??", len(self.frames))
+            return self.frames[-x:]
+        return None
+
     def get_last_filtered(self, region=None):
 
         if self.cache:
