@@ -50,7 +50,6 @@ class ClipClassifier(CPTVFileProcessor):
             or config.classify.preview == Previewer.PREVIEW_TRACKING,
             self.cache_to_disk,
         )
-        classifier = self.get_classifier(self.config.classify.models[0])
 
     def preprocess(self, frame, thermal_reference):
         """
