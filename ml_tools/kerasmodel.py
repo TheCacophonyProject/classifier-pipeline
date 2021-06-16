@@ -471,9 +471,9 @@ def is_keras_model(model_file):
 def validate_model(model_file, weights_path=None):
     path, ext = os.path.splitext(model_file)
     if ext == ".pb":
-        if not os.path.exists(model_file):
-            return False
-
+        # if not os.path.exists(model_file):
+        #     return False
+        pass
         # if weights_path is None:weights
         # weights_path = os.path.dirname(model_file) + "/variables/variables.index"
         # if not os.path.exists(os.path.join(weights_path) + ".index"):
