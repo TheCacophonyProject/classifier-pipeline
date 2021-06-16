@@ -33,8 +33,8 @@ class NeuralInterpreter:
     def __init__(self, model_name):
         from openvino.inference_engine import IENetwork, IECore
 
-        # device = "CPU"
-        device = "MYRIAD"
+        device = "CPU"
+        # device = "MYRIAD"
         model_xml = model_name + ".xml"
         model_bin = os.path.splitext(model_xml)[0] + ".bin"
         ie = IECore()
@@ -45,9 +45,9 @@ class NeuralInterpreter:
         self.exec_net = ie.load_network(network=net, device_name=device)
         self.load_json(model_name)
 
-    def classify_frame_with_novelty(self, input_x):
+    def classify_frame(self, input_x):
         input_x = np.array([[input_x]])
-        input_x = input_x.reshape((1, 48, 1, 5, 48))
+        input_x = input_x.reshape((1, 3, 160, 160))
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
         return res[0][0], res[0][1], None
@@ -59,7 +59,7 @@ class NeuralInterpreter:
         self.MODEL_NAME = stats["name"]
         self.MODEL_DESCRIPTION = stats["description"]
         self.labels = stats["labels"]
-        self.eval_score = stats["score"]
+        # self.eval_score = stats["score"]
         self.params = stats["hyperparams"]
 
 
@@ -97,7 +97,7 @@ class LiteInterpreter:
 
         self.interpreter.invoke()
 
-    def classify_frame_with_novelty(self, input_x, state_in=None):
+    def classify_frame(self, input_x, state_in=None):
         self.run(input_x, state_in)
         pred = self.interpreter.get_tensor(self.out_values["prediction"])[0]
         nov = self.interpreter.get_tensor(self.out_values["novelty"])
@@ -212,6 +212,7 @@ def parse_cptv(cptv_file, config, thermal_config):
 
 
 def get_processor(config, thermal_config, headers):
+    print(thermal_config.motion.run_classifier, "classifying")
     if thermal_config.motion.run_classifier:
         classifier = get_classifier(config)
         return PiClassifier(config, thermal_config, classifier, headers)

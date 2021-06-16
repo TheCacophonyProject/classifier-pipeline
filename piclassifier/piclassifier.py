@@ -65,7 +65,7 @@ class PiClassifier(Processor):
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.motion_detector = MotionDetector(
             thermal_config,
-            self.config.tracking.dynamic_thresh,
+            self.config.tracking.motion.dynamic_thresh,
             CPTVRecorder(thermal_config, headers),
             headers,
         )
@@ -91,14 +91,17 @@ class PiClassifier(Processor):
 
         # process preview_frames
         frames = self.motion_detector.thermal_window.get_frames()
+        self.clip.update_background(self.motion_detector.background)
+        self.clip._background_calculated()
+        print("setting background", self.clip.background)
         for frame in frames:
             self.track_extractor.process_frame(self.clip, frame.copy())
 
     def startup_classifier(self):
         # classifies an empty frame to force loading of the model into memory
 
-        p_frame = np.zeros((5, 48, 48), np.float32)
-        self.classifier.classify_frame_with_novelty(p_frame, None)
+        p_frame = np.zeros((1, 160, 160, 3), np.float32)
+        self.classifier.classify_frame(p_frame)
 
     def get_active_tracks(self):
         """

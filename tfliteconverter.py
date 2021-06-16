@@ -10,6 +10,8 @@ import pickle
 from ml_tools.model import Model
 from model_crnn import ModelCRNN_HQ, Model_CNN
 
+tf.keras.backend.set_learning_phase(0)
+
 MODEL_DIR = "../cptv-download/train/checkpoints"
 MODEL_NAME = "training-most-recent.sav"
 SAVED_DIR = "saved_model"
@@ -107,10 +109,10 @@ def run_model(args):
         in_values[detail["name"]] = detail["index"]
     # print(in_values)
     output_details = interpreter.get_output_details()
-    input_shape = input_details[in_values["input_1"]]["shape"]
-
+    input_shape = input_details[in_values["input"]]["shape"]
+    print(input_shape)
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
-    interpreter.set_tensor(in_values["input_1"], input_data)
+    interpreter.set_tensor(in_values["input"], input_data)
     interpreter.invoke()
     print("model pass 1")
     out_values = {}
@@ -119,11 +121,11 @@ def run_model(args):
     print(out_values)
     print("pred", out_values["Identity"])
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
-    interpreter.set_tensor(in_values["input_1"], input_data)
-    interpreter.set_tensor(in_values["state_in"], out_values["state_out"])
+    interpreter.set_tensor(in_values["input"], input_data)
+    # interpreter.set_tensor(in_values["state_in"], out_values["state_out"])
     interpreter.invoke()
     print("model pass 2")
-    print("pred", out_values["prediction"])
+    print("pred", out_values["Identity"])
 
 
 def representative_dataset_gen():
@@ -161,6 +163,9 @@ def convert_model(args):
     print("converting to tflite: ", os.path.join(args.model_dir, SAVED_DIR))
 
     model = tf.keras.models.load_model(args.model_dir)
+    model.trainable = False
+    model.summary()
+    model.save(os.path.join(args.model_dir, "inference"), save_format="tf")
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     tflite_model = converter.convert()
     open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
@@ -174,7 +179,7 @@ def convert_model(args):
     # gets input shape and the order of the inputs as it seems to be random
     for i, val in enumerate(inputs):
         input_map[val.name] = (i, val.shape)
-    concrete_func.inputs[input_map["X:0"][0]].set_shape([1, 1, 5, 48, 48])
+    concrete_func.inputs[input_map["X:0"][0]].set_shape([1, 160, 160, 3])
 
     converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
 

@@ -111,7 +111,8 @@ class MotionDetector(Processor):
         self.thermal_thresh = 0
         self.background = None
         self.last_background_change = None
-        self.background_weight = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
+        self.background_weight = np.zeros((headers.res_y, headers.res_x))
+        self.background_weight[:] = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
         self.movement_detected = False
         self.dynamic_thresh = dynamic_thresh
         self.temp_thresh = self.config.temp_thresh
@@ -148,7 +149,17 @@ class MotionDetector(Processor):
                     self.background,
                     thermal_frame,
                 )
-                back_changed = np.amax(self.background != new_background)
+                new_weights = self.background_weight[self.background != new_background]
+                # these have changed so reset weighting
+                new_weights[:] = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
+
+                # these havent changed, increase weighting
+                if self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0:
+                    self.background_weight[
+                        self.background == new_background
+                    ] *= MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
+                back_changed = new_weights.size > 0
+                # np.amax(self.background != new_background)
 
             if back_changed:
                 self.last_background_change = self.processed
@@ -167,9 +178,9 @@ class MotionDetector(Processor):
                         )
                     )
                     temp_changed = True
-                    self.background_weight = (
-                        MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
-                    )
+                    # self.background_weight[
+                    #     :
+                    # ] = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
 
             if (
                 not temp_changed

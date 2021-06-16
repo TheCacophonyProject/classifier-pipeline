@@ -17,7 +17,7 @@ class MotionConfig(DefaultConfig):
             camera_thresholds=MotionConfig.load_camera_thresholds(
                 threshold.get("camera_thresholds")
             ),
-            dynamic_thresh=threshold["dynamic_thresh"],
+            dynamic_thresh=threshold.get("dynamic_thresh", True),
         )
 
     @classmethod
