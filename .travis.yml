@@ -1,3 +1,5 @@
+# require the branch name to be master (note for PRs this is the base branch name)
+if: (type = push AND branch IN (master)) OR (type = pull_request)
 dist: bionic
 language: python
 python:
