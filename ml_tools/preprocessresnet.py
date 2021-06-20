@@ -11,7 +11,6 @@ edge_bounds = [min_left, min_top, max_right, max_bottom]
 def preprocess_frame(frame, bound, out_dim):
     frame = frame.filtered
     if np.sum(frame) == 0:
-        print(f"discarding zero frame")
         return None
     else:
         maxdim = max(frame.shape)
