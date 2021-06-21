@@ -418,6 +418,7 @@ class KerasModel:
             mvm=self.params.mvm,
             type=self.params.type,
             segment_type=self.params.segment_type,
+            keep_edge=self.params.keep_edge,
         )
         self.validate = DataGenerator(
             self.datasets.validation,
@@ -436,6 +437,7 @@ class KerasModel:
             mvm=self.params.mvm,
             type=self.params.type,
             segment_type=self.params.segment_type,
+            keep_edge=self.params.keep_edge,
         )
         checkpoints = self.checkpoints(run_name)
 
@@ -487,6 +489,7 @@ class KerasModel:
                 mvm=self.params.mvm,
                 type=self.params.type,
                 segment_type=self.params.segment_type,
+                keep_edge=self.params.keep_edge,
             )
             test_accuracy = self.model.evaluate(self.test)
             logging.info("Test accuracy is %s", test_accuracy)
@@ -1175,6 +1178,7 @@ class KerasModel:
                     region = tools.Rectangle.from_ltrb(*region)
                     cropped = region.subimage(background)
                     frame.filtered = frame.thermal - cropped
+                    frame.region - region
                 regions = []
                 for region in track.track_bounds:
                     regions.append(tools.Rectangle.from_ltrb(*region))

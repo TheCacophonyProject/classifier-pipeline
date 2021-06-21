@@ -46,6 +46,10 @@ class HyperParams(dict):
         return output_dim
 
     @property
+    def keep_edge(self):
+        return self.get("keep_edge", False)
+
+    @property
     def segment_type(self):
         return self.get("segment_type", 1)
 

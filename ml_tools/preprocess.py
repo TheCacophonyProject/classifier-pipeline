@@ -43,6 +43,7 @@ def preprocess_segment(
     frame_velocity=None,
     augment=False,
     default_inset=0,
+    keep_edge=False,
 ):
     """
     Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
@@ -123,7 +124,7 @@ def preprocess_segment(
         #     assert np.all(np.mod(frame.mask, 1) == 0), "Mask isn't integer"
 
         try:
-            frame.resize_with_aspect((FRAME_SIZE, FRAME_SIZE))
+            frame.resize_with_aspect((FRAME_SIZE, FRAME_SIZE), keep_edge=keep_edge)
         except Exception as e:
             logging.error("Error resizing frame %s exception %s", frame, e)
             continue
@@ -211,12 +212,14 @@ def preprocess_movement(
     sample=None,
     overlay=None,
     type=None,
+    keep_edge=False,
 ):
     segment, flipped = preprocess_segment(
         segment,
         reference_level=reference_level,
         augment=augment,
         default_inset=0,
+        keep_edge=keep_edge,
     )
     if type == 2:
         # just use flow

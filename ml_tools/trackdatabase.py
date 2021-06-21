@@ -644,6 +644,7 @@ class TrackDatabase:
             region = tools.Rectangle.from_ltrb(*region)
             cropped = region.subimage(background)
             frame.filtered = frame.thermal - cropped
+            frame.region = region
         return frames
 
 

@@ -30,6 +30,49 @@ def resize_and_pad(
     return resized
 
 
+def resize_and_pad(
+    frame,
+    resize_dim,
+    new_dim,
+    region,
+    crop_region,
+    keep_edge=False,
+    pad=None,
+    interpolation=cv2.INTER_LINEAR,
+    extra_h=0,
+    extra_v=0,
+):
+    if pad is None:
+        pad = np.min(frame)
+    resized = np.full(new_dim, pad, dtype=frame.dtype)
+    offset_x = 0
+    offset_y = 0
+    frame_resized = resize_cv(frame, resize_dim)
+    frame_height, frame_width = frame_resized.shape
+    offset_x = (new_dim[1] - frame_width) // 2
+    offset_y = (new_dim[0] - frame_height) // 2
+
+    if keep_edge:
+        if region.left == crop_region.left:
+            offset_x = 0
+
+        elif region.right == crop_region.right:
+            offset_x = new_dim[1] - frame_width
+
+        if region.top == crop_region.top:
+            offset_y = 0
+
+        elif region.bottom == crop_region.bottom:
+            offset_y = new_dim[0] - frame_height
+
+    resized[
+        offset_y : offset_y + frame_height,
+        offset_x : offset_x + frame_width,
+    ] = frame_resized
+
+    return resized
+
+
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
     return cv2.resize(
         image,

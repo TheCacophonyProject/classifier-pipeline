@@ -25,6 +25,7 @@ class GeneartorParams:
         self.type = params.get("type", 1)
         self.segment_type = params.get("segment_type", 1)
         self.load_threads = params.get("load_threads", 2)
+        self.keep_edge = params.get("keep_edge", False)
 
 
 class DataGenerator(keras.utils.Sequence):
@@ -364,6 +365,7 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
                 sample=sample,
                 overlay=overlay,
                 type=params.type,
+                keep_edge=params.keep_edge,
             )
             if data is not None:
                 mvm.append(sample.movement_data)
