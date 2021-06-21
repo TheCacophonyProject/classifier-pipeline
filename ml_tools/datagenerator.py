@@ -79,7 +79,7 @@ class DataGenerator(keras.utils.Sequence):
                         self.load_queue,
                         self.labels,
                         self.dataset.name,
-                        self.dataset.db,
+                        self.dataset,
                         self.params,
                         self.dataset.label_mapping,
                     ),
@@ -204,7 +204,7 @@ class DataGenerator(keras.utils.Sequence):
             return self.resuse_previous_epoch()
 
         else:
-            self.dataset.recalculate_segments(segment_type=self.params.segment_type)
+            # self.dataset.recalculate_segments(segment_type=self.params.segment_type)
             self.samples = self.dataset.epoch_samples(
                 cap_samples=self.cap_samples,
                 replace=False,
@@ -213,29 +213,8 @@ class DataGenerator(keras.utils.Sequence):
                 label_cap=self.label_cap,
             )
             holdout_cameras = []
-            # holdout_cameras = [
-            #     "TrapCam01-None",
-            #     "ospri11-None",
-            #     "TrapCam03-[-43.65495 172.63125]",
-            #     "TrapCam01-[-43.65495 172.63125]",
-            #     "A_S4_C1-[-43.65315 172.63215]",
-            #     "TrapCam01-[-43.65585 172.63125]",
-            #     "TrapCam03-[-43.65585 172.63125]",
-            #     "A_S4_C3-[-43.65405 172.62765]",
-            #     "A_S4_C2-[-43.65405 172.62945]",
-            #     "Wallaby2-[-44.76285 170.56f395]",
-            # ]
-            # self.samples = [
-            #     sample.id
-            #     for sample in self.samples
-            #     if sample.track.camera_id in holdout_cameras
-            # ]
-            # if self.shuffle:
-            #     np.random.shuffle(self.samples)
-            # for sample in self.samples:
-            #     sample.track = None
 
-            # self.samples = [sample.id for sample in self.samples]
+            self.samples = [sample.id for sample in self.samples]
             if self.shuffle:
                 np.random.shuffle(self.samples)
 
@@ -260,7 +239,7 @@ class DataGenerator(keras.utils.Sequence):
                     ]
                     index += 1
                     batches.append(samples)
-                    if self.params.load_threads == 1 and len(batches) > 60:
+                    if self.params.load_threads == 1 and len(batches) > 500:
                         pickled_batches = pickle.dumps(
                             (self.loaded_epochs + 1, batches)
                         )
@@ -478,7 +457,7 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
 
 
 # continue to read examples until queue is full
-def preloader(q, load_queue, labels, name, db, params, label_mapping):
+def preloader(q, load_queue, labels, name, dataset, params, label_mapping):
     """add a segment into buffer"""
     logging.info(
         " -started async fetcher for %s augment=%s",
@@ -491,11 +470,11 @@ def preloader(q, load_queue, labels, name, db, params, label_mapping):
             # datagen.loaded_epochs = samples[0]
             for i, batch in enumerate(batches[1]):
                 data = []
-                q.put(loadbatch(labels, db, batch, params, label_mapping))
-                batches[1][i] = None
-            del batches
-            batches = None
-            gc.collect()
+                # samples = dataset.segments_by_id[batch]
+                for id in batch:
+                    data.append(dataset.segments_by_id[id])
+                q.put(loadbatch(labels, dataset.db, data, params, label_mapping))
+
         else:
             logging.debug("Quue is full for %s", name)
             time.sleep(0.1)

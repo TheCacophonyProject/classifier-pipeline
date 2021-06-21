@@ -490,7 +490,7 @@ class KerasModel:
             )
             test_accuracy = self.model.evaluate(self.test)
             logging.info("Test accuracy is %s", test_accuracy)
-        self.test.stop_load()
+            self.test.stop_load()
         self.save(run_name, history=history, test_results=test_accuracy)
 
     def checkpoints(self, run_name):
@@ -525,7 +525,9 @@ class KerasModel:
             save_weights_only=True,
             mode="max",
         )
-        earlyStopping = tf.keras.callbacks.EarlyStopping(patience=22)
+        earlyStopping = tf.keras.callbacks.EarlyStopping(
+            patience=22, monitor="val_accuracy"
+        )
 
         file_writer_cm = tf.summary.create_file_writer(
             self.log_base + "/{}/cm".format(run_name)
