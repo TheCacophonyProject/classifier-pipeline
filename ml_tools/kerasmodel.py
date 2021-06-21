@@ -468,9 +468,8 @@ class KerasModel:
                 *checkpoints,
             ],  # log metricslast_stats
         )
-        self.validate.stop_load()
         self.train.stop_load()
-
+        self.validate.stop_load()
         test_accuracy = None
         if self.datasets.test and self.datasets.test.has_data():
             self.test = DataGenerator(
@@ -483,7 +482,7 @@ class KerasModel:
                 shuffle=True,
                 model_preprocess=self.preprocess_fn,
                 epochs=1,
-                load_threads=2,
+                load_threads=8,
                 cap_at="bird",
                 square_width=self.params.square_width,
                 mvm=self.params.mvm,
@@ -491,6 +490,7 @@ class KerasModel:
                 segment_type=self.params.segment_type,
                 keep_edge=self.params.keep_edge,
             )
+            logging.info("Evaluating test", len(self.test))
             test_accuracy = self.model.evaluate(self.test)
             logging.info("Test accuracy is %s", test_accuracy)
             self.test.stop_load()

@@ -102,7 +102,7 @@ class DataGenerator(keras.utils.Sequence):
     def stop_load(self):
         if not self.preload or not self.load_queue:
             return
-        print("stopping ", self.dataset.name)
+        logging.info("stopping %s", self.dataset.name)
         for thread in self.preloader_threads:
             if hasattr(thread, "terminate"):
                 thread.terminate()

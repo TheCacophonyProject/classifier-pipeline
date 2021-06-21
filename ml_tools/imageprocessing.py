@@ -1,3 +1,4 @@
+import logging
 import cv2
 from pathlib import Path
 import numpy as np
@@ -51,7 +52,6 @@ def resize_and_pad(
     frame_height, frame_width = frame_resized.shape
     offset_x = (new_dim[1] - frame_width) // 2
     offset_y = (new_dim[0] - frame_height) // 2
-
     if keep_edge:
         if region.left == crop_region.left:
             offset_x = 0

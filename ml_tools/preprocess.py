@@ -10,6 +10,10 @@ import tensorflow as tf
 FRAME_SIZE = 32
 
 MIN_SIZE = 4
+EDGE = 1
+
+res_x = 120
+res_y = 160
 
 
 def convert(image):
@@ -60,6 +64,8 @@ def preprocess_segment(
         assert len(frames) == len(
             reference_level
         ), "Reference level shape and data shape not match."
+
+    crop_rectangle = tools.Rectangle(EDGE, EDGE, res_x - 2 * EDGE, res_y - 2 * EDGE)
 
     # -------------------------------------------
     # first we scale to the standard size
@@ -124,7 +130,9 @@ def preprocess_segment(
         #     assert np.all(np.mod(frame.mask, 1) == 0), "Mask isn't integer"
 
         try:
-            frame.resize_with_aspect((FRAME_SIZE, FRAME_SIZE), keep_edge=keep_edge)
+            frame.resize_with_aspect(
+                (FRAME_SIZE, FRAME_SIZE), crop_rectangle, keep_edge=keep_edge
+            )
         except Exception as e:
             logging.error("Error resizing frame %s exception %s", frame, e)
             continue
