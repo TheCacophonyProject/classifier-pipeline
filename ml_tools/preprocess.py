@@ -306,7 +306,7 @@ def preprocess_movement(
         #
         # tools.saveclassify_image(
         #     data,
-        #     f"samples/{type}-{sample.track.camera}-{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
+        #     f"samples/{type}{sample.label}-{sample.clip_id}-{sample.track_id}-{flipped}",
         # )
     if preprocess_fn:
         data = data * 255
