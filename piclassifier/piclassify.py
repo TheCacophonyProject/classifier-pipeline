@@ -46,8 +46,8 @@ class NeuralInterpreter:
         self.load_json(model_name)
 
     def classify_frame(self, input_x):
-        input_x = np.array([[input_x]])
-        input_x = input_x.reshape((1, 3, 160, 160))
+        rearranged_arr = np.transpose(input_x, axes=[2, 0, 1])
+        input_x = np.array([[rearranged_arr]])
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
         return res[0]
@@ -59,7 +59,6 @@ class NeuralInterpreter:
         self.MODEL_NAME = stats["name"]
         self.MODEL_DESCRIPTION = stats["description"]
         self.labels = stats["labels"]
-        print(self.labels)
         # self.eval_score = stats["score"]
         self.params = stats["hyperparams"]
 

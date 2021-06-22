@@ -105,7 +105,7 @@ class PiClassifier(Processor):
     def startup_classifier(self):
         # classifies an empty frame to force loading of the model into memory
 
-        p_frame = np.zeros((1, 160, 160, 3), np.float32)
+        p_frame = np.zeros((160, 160, 3), np.float32)
         self.classifier.classify_frame(p_frame)
 
     def get_active_tracks(self):
@@ -157,15 +157,21 @@ class PiClassifier(Processor):
 
             regions = []
             if len(track) < 10:
-                print("less than 25??")
                 continue
             track_prediction = self.predictions.get_or_create_prediction(
                 track, keep_all=False
             )
-            regions = track.bounds_history[-25:]
+            regions = track.bounds_history[-50:]
             frames = self.clip.frame_buffer.get_last_x(len(regions))
             if frames is None:
                 return
+            indices = np.random.choice(
+                len(regions), min(25, len(regions)), replace=False
+            )
+            indices.sort()
+            frames = np.array(frames)[indices]
+            regions = np.array(regions)[indices]
+
             refs = []
             for frame in frames:
                 refs.append(np.median(frame.thermal))
@@ -186,7 +192,7 @@ class PiClassifier(Processor):
                 type=1,
             )
             prediction = self.classifier.classify_frame(preprocessed)
-            print("prediction is", np.round(100 * prediction))
+            # print("prediction is", np.round(100 * prediction))
             track_prediction.classified_frame(self.clip.frame_on, prediction, None)
 
     def get_recent_frame(self):

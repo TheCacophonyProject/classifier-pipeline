@@ -95,7 +95,6 @@ class FrameBuffer:
         if self.cache and self.prev_frame:
             return self.prev_frame
         elif len(self.frames) > 0:
-            print("how many frames??", len(self.frames))
             return self.frames[-x:]
         return None
 
