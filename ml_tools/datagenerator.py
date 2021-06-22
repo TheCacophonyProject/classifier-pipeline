@@ -80,7 +80,8 @@ class DataGenerator(keras.utils.Sequence):
                         self.load_queue,
                         self.labels,
                         self.dataset.name,
-                        self.dataset,
+                        self.dataset.db,
+                        self.dataset.segments_by_id,
                         self.params,
                         self.dataset.label_mapping,
                     ),
@@ -459,7 +460,7 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
 
 
 # continue to read examples until queue is full
-def preloader(q, load_queue, labels, name, dataset, params, label_mapping):
+def preloader(q, load_queue, labels, name, db, segments_by_id, params, label_mapping):
     """add a segment into buffer"""
     logging.info(
         " -started async fetcher for %s augment=%s",
@@ -474,8 +475,8 @@ def preloader(q, load_queue, labels, name, dataset, params, label_mapping):
                 data = []
                 # samples = dataset.segments_by_id[batch]
                 for id in batch:
-                    data.append(dataset.segments_by_id[id])
-                q.put(loadbatch(labels, dataset.db, data, params, label_mapping))
+                    data.append(segments_by_id[id])
+                q.put(loadbatch(labels, db, data, params, label_mapping))
 
         else:
             logging.debug("Quue is full for %s", name)

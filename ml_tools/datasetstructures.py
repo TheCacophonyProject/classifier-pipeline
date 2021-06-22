@@ -71,11 +71,11 @@ class TrackHeader:
         # original tracking bounds
         self.track_bounds = track_bounds
         # what fraction of pixels are from out of bounds
-        self.frame_crop = []
+        self.frame_crop = None
         self.num_frames = num_frames
         self.frames_per_second = frames_per_second
-        self.calculate_velocity()
-        self.calculate_frame_crop()
+        # self.calculate_velocity()
+        # self.calculate_frame_crop()
         self.important_frames = None
         self.important_predicted = 0
         self.frame_mass = frame_mass
@@ -89,12 +89,7 @@ class TrackHeader:
             self.important_frames = []
             for frame_num in important_frames:
                 f = FrameSample(
-                    self.clip_id,
-                    self.track_id,
-                    frame_num,
-                    self.label,
-                    self.frame_temp_median[frame_num],
-                    self.frame_velocity[frame_num],
+                    self.clip_id, self.track_id, frame_num, self.label, None, None
                 )
                 self.important_frames.append(f)
         else:
@@ -103,12 +98,7 @@ class TrackHeader:
                 if mass == 0:
                     continue
                 f = FrameSample(
-                    self.clip_id,
-                    self.track_id,
-                    frame_num,
-                    self.label,
-                    self.frame_temp_median[frame_num],
-                    self.frame_velocity[frame_num],
+                    self.clip_id, self.track_id, frame_num, self.label, None, None
                 )
                 self.important_frames.append(f)
 
