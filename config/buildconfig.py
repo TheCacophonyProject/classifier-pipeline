@@ -113,7 +113,10 @@ class BuildConfig(DefaultConfig):
                         if line.strip() == "":
                             continue
                         try:
-                            test_clips.append(int(line.strip()))
+                            clips = line.split(",")
+                            # print("line is", line, "clips are", clips)
+                            for clip in clips:
+                                test_clips.append(int(clip))
                         except:
                             logging.warn(
                                 "Could not parse clip_id %s from %s",
