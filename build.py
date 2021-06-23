@@ -18,7 +18,7 @@ from ml_tools.dataset import Dataset, dataset_db_path
 from ml_tools.datasetstructures import Camera
 from track.track import TrackChannels
 from ml_tools.kerasmodel import KerasModel
-
+import joblib
 import pytz
 
 LOW_DATA_LABELS = ["wallaby", "human", "dog", "vehicle"]
@@ -596,7 +596,12 @@ def main():
     validate_datasets(datasets, test_clips)
     print_counts(dataset, *datasets)
     print_cameras(*datasets)
-    pickle.dump(datasets, open(dataset_db_path(config), "wb"))
+    joblib.dump(datasets, open(dataset_db_path(config), "wb"))
+    db_path = dataset_db_path(config)
+    db_path = os.path.splitext(db_path)[0]
+    joblib.dump(datasets[0], open(f"{db_path}-train.dat", "wb"))
+    joblib.dump(datasets[1], open(f"{db_path}-validate.dat", "wb"))
+    joblib.dump(datasets[2], open(f"{db_path}-test.dat", "wb"))
 
 
 def validate_datasets(datasets, test_clips):
