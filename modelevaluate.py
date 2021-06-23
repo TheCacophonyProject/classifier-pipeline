@@ -411,8 +411,7 @@ args = load_args()
 init_logging()
 config = Config.load_from_file(args.config_file)
 
-test_clips = config.build.test_clips()
-print("# of matts test clips are", len(test_clips))
+
 model_file = config.classify.model
 if args.model_file:
     model_file = args.model_file
