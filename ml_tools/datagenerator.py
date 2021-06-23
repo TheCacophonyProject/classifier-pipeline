@@ -91,13 +91,14 @@ class DataGenerator(keras.utils.Sequence):
             for thread in self.preloader_threads:
                 thread.start()
         logging.info(
-            "datagen for %s shuffle %s cap %s type %s epochs %s preprocess %s",
+            "datagen for %s shuffle %s cap %s type %s epochs %s preprocess %s keep_edge %s",
             self.dataset.name,
             self.shuffle,
             self.cap_samples,
             self.params.type,
             self.epochs,
             self.params.model_preprocess,
+            self.params.keep_edge,
         )
 
     def stop_load(self):

@@ -490,7 +490,7 @@ class KerasModel:
                 segment_type=self.params.segment_type,
                 keep_edge=self.params.keep_edge,
             )
-            logging.info("Evaluating test", len(self.test))
+            logging.info("Evaluating test %s", len(self.test))
             test_accuracy = self.model.evaluate(self.test)
             logging.info("Test accuracy is %s", test_accuracy)
             self.test.stop_load()

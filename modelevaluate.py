@@ -440,12 +440,12 @@ db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
 # dataset.db = db
 
 # ALL TRACKS
-from dateutil.parser import parse as parse_date
-
-dataset = Dataset(db, "dataset", config)
-tracks_loaded, total_tracks = dataset.load_tracks(
-    after_date=parse_date("2021-03-29T08:07:54.240643+13:00")
-)
+# from dateutil.parser import parse as parse_date
+#
+# dataset = Dataset(db, "dataset", config)
+# tracks_loaded, total_tracks = dataset.load_tracks(
+#     after_date=parse_date("2021-03-29T08:07:54.240643+13:00")
+# )
 dataset.recalculate_segments(segment_type=1)
 print("evaluating on ", dataset.name)
 
