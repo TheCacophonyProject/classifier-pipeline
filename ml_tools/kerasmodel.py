@@ -893,7 +893,7 @@ class KerasModel:
         filtered_data = []
         valid_indices = []
         valid_regions = []
-
+        print("keeping edge?", self.params.keep_edge)
         if segments is not None:
             i = 0
             for segment in segments:
@@ -921,6 +921,7 @@ class KerasModel:
                     reference_level=median,
                     sample="{}-{}".format(track_id, i),
                     type=self.params.type,
+                    keep_edge=self.params.keep_edge,
                 )
                 if frames is None:
                     continue
@@ -1091,6 +1092,7 @@ class KerasModel:
             square_width=self.params.square_width,
             type=self.params.type,
             segment_type=self.params.segment_type,
+            keep_edge=self.params.keep_edge,
         )
         test_pred_raw = self.model.predict(test)
         test.stop_load()
@@ -1143,6 +1145,7 @@ class KerasModel:
             square_width=self.params.square_width,
             type=self.params.type,
             segment_type=self.params.segment_type,
+            keep_edge=self.params.keep_edge,
         )
         test_accuracy = self.model.evaluate(test)
         test.stop_load()
