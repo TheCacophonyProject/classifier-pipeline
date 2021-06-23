@@ -893,7 +893,6 @@ class KerasModel:
         filtered_data = []
         valid_indices = []
         valid_regions = []
-        print("keeping edge?", self.params.keep_edge)
         if segments is not None:
             i = 0
             for segment in segments:
@@ -926,7 +925,10 @@ class KerasModel:
                 if frames is None:
                     continue
                 output = self.model.predict(frames[np.newaxis, :])
-                predictions.append(output[0])
+                pred = output[0]
+                pred = pred * pred
+                pred = pred * np.sum(masses)
+                predictions.append(pred)
             return predictions
         if top_frames:
             median_mass = np.median(mass_history)
@@ -1183,7 +1185,7 @@ class KerasModel:
                     region = tools.Rectangle.from_ltrb(*region)
                     cropped = region.subimage(background)
                     frame.filtered = frame.thermal - cropped
-                    frame.region - region
+                    frame.region = region
                 regions = []
                 for region in track.track_bounds:
                     regions.append(tools.Rectangle.from_ltrb(*region))
