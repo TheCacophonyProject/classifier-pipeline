@@ -116,7 +116,7 @@ class BuildConfig(DefaultConfig):
                             clips = line.split(",")
                             # print("line is", line, "clips are", clips)
                             for clip in clips:
-                                test_clips.append(int(clip))
+                                test_clips.append(int(clip.strip()))
                         except:
                             logging.warn(
                                 "Could not parse clip_id %s from %s",
