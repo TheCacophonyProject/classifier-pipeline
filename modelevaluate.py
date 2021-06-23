@@ -5,7 +5,7 @@ import time
 import sys
 import os
 import json
-
+import joblib
 from dateutil.parser import parse
 from config.config import Config
 from datetime import datetime, timedelta
@@ -418,14 +418,14 @@ if args.model_file:
 else:
     model_file = config.classify.model
 
-ev = ModelEvalute(config, model_file, args.weights)
 date = None
 if args.date:
     date = parse(args.date)
-
+print("loading")
 dataset_file = dataset_db_path(config)
-datasets = pickle.load(open(dataset_file, "rb"))
+datasets = joblib.load(open(dataset_file, "rb"))
 dataset = datasets[args.dataset]
+ev = ModelEvalute(config, model_file, args.weights)
 #
 ############################
 # to just eval on matts test set
