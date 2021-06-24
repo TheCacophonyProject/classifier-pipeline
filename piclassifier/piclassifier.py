@@ -30,7 +30,7 @@ class PiClassifier(Processor):
     PROCESS_FRAME = 3
     NUM_CONCURRENT_TRACKS = 1
     DEBUG_EVERY = 100
-    MAX_CONSEC = 3
+    MAX_CONSEC = 1
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
     SKIP_FRAMES = 25
