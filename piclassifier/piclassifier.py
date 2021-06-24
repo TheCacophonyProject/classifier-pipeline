@@ -33,7 +33,7 @@ class PiClassifier(Processor):
     MAX_CONSEC = 3
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
-    SKIP_FRAMES = 7
+    SKIP_FRAMES = 25
 
     def __init__(self, config, thermal_config, classifier, headers):
         self.headers = headers

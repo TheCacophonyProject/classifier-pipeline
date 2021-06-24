@@ -61,7 +61,7 @@ class CPTVRecorder:
         self.writer.preview_secs = self.preview_secs
         default_thresh = self.motion.temp_thresh
         self.motion.temp_thresh = temp_thresh
-        self.writer.motion = yaml.dump(self.motion).encode()[:255]
+        self.writer.motion_config = yaml.dump(self.motion).encode()[:255]
         self.motion.temp_thresh = default_thresh
 
         # add brand model fps etc to cptv when python-cptv supports

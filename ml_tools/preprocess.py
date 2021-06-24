@@ -295,7 +295,7 @@ def preprocess_movement(
         # print("{}-{}-{}".format(red, green, blue))
         # # for debugging
         #
-        tools.saveclassify_image(data, f"samples/{type}-{sample}")
+        # tools.saveclassify_image(data, f"samples/{type}-{sample}")
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)
