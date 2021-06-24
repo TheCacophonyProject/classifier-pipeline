@@ -21,7 +21,6 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import logging
 import numpy as np
 import yaml
-
 from cptv import CPTVReader
 import cv2
 
@@ -71,8 +70,6 @@ class ClipTrackExtractor:
         if self.config.dilation_pixels > 0:
             size = self.config.dilation_pixels * 2 + 1
             self.dilate_kernel = np.ones((size, size), np.uint8)
-
-        self.detecting_objects_time = 0
 
     def parse_clip(self, clip):
         """
@@ -151,7 +148,7 @@ class ClipTrackExtractor:
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
 
         filtered, stats = normalize(filtered, new_max=255)
-        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
+        # filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
         if stats[1] == stats[2]:
             mapped_thresh = clip.background_thresh
         else:
@@ -165,11 +162,9 @@ class ClipTrackExtractor:
             If specified background subtraction algorithm will be used.
         """
         filtered, threshold = self._get_filtered_frame(clip, thermal)
-        start = time.time()
         _, mask, component_details = detect_objects(
             filtered.copy(), otsus=False, threshold=threshold
         )
-        detecting_objects_time += time.time() - start
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
 

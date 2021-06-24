@@ -47,7 +47,9 @@ class PiClassifier(Processor):
         self.config = config
         self.classifier = classifier
         self.num_labels = len(classifier.labels)
-
+        self.process_time = 0
+        self.tracking_time = 0
+        self.identify_time = 0
         self.predictions = Predictions(classifier.labels)
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
@@ -211,12 +213,15 @@ class PiClassifier(Processor):
     def process_frame(self, lepton_frame):
         start = time.time()
         self.motion_detector.process_frame(lepton_frame)
+        self.process_time += time.time() - start
         if self.motion_detector.recorder.recording:
             if self.clip is None:
                 self.new_clip()
+            t_start = time.time()
             self.track_extractor.process_frame(
                 self.clip, lepton_frame.pix, self.motion_detector.ffc_affected
             )
+            self.tracking_time += time.time() - t_start
             if self.motion_detector.ffc_affected or self.clip.on_preview():
                 self.skip_classifying = PiClassifier.SKIP_FRAMES
                 self.classified_consec = 0
@@ -226,7 +231,9 @@ class PiClassifier(Processor):
                 and self.skip_classifying <= 0
                 and not self.clip.on_preview()
             ):
+                id_start = time.time()
                 self.identify_last_frame()
+                self.identify_time += time.time() - id_start
                 self.classified_consec += 1
                 if self.classified_consec == PiClassifier.MAX_CONSEC:
                     self.skip_classifying = PiClassifier.SKIP_FRAMES
@@ -244,13 +251,19 @@ class PiClassifier(Processor):
             and self.frame_num % PiClassifier.DEBUG_EVERY == 0
         ):
             logging.info(
-                "fps {}/sec time to process {}ms cpu % {} memory % {}".format(
+                "tracking {} process {} identify {} fps {}/sec time to process {}ms cpu % {} memory % {}".format(
+                    round(self.tracking_time, 3),
+                    round(self.process_time, 3),
+                    round(self.identify_time, 3),
                     round(1 / timetaken, 2),
                     round(timetaken * 1000, 2),
                     psutil.cpu_percent(),
                     psutil.virtual_memory()[2],
                 )
             )
+            self.tracking_time = 0
+            self.process_time = 0
+            self.identify_time = 0
 
     def create_mp4(self):
         previewer = Previewer(self.config, "classified")

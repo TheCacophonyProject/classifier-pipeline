@@ -3,7 +3,7 @@ from datetime import timedelta
 import logging
 
 import numpy as np
-
+import time
 from ml_tools.tools import Rectangle
 from .processor import Processor
 
@@ -250,6 +250,7 @@ class MotionDetector(Processor):
 
     def process_frame(self, cptv_frame):
         if self.can_record() or (self.recorder and self.recorder.recording):
+
             cropped_frame = self.crop_rectangle.subimage(cptv_frame.pix)
             frame = np.int32(cropped_frame)
             prev_ffc = self.ffc_affected
@@ -279,6 +280,7 @@ class MotionDetector(Processor):
         else:
             self.thermal_window.update_current_frame(cptv_frame.pix)
             self.movement_detected = False
+
         self.num_frames += 1
 
     def skip_frame(self):
