@@ -72,6 +72,8 @@ class ClipTrackExtractor:
             size = self.config.dilation_pixels * 2 + 1
             self.dilate_kernel = np.ones((size, size), np.uint8)
 
+        self.detecting_objects_time = 0
+
     def parse_clip(self, clip):
         """
         Loads a cptv file, and prepares for track extraction.
@@ -163,9 +165,11 @@ class ClipTrackExtractor:
             If specified background subtraction algorithm will be used.
         """
         filtered, threshold = self._get_filtered_frame(clip, thermal)
+        start = time.time()
         _, mask, component_details = detect_objects(
             filtered.copy(), otsus=False, threshold=threshold
         )
+        detecting_objects_time += time.time() - start
         prev_filtered = clip.frame_buffer.get_last_filtered()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
 
