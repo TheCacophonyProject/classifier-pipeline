@@ -72,15 +72,23 @@ class TrackPrediction:
         self.labels = labels
 
     def classified_clip(
-        self, predictions, smoothed_predictions, smoothed_novelties, last_frame
+        self,
+        predictions,
+        smoothed_predictions,
+        smoothed_novelties,
+        last_frame,
+        best_mean=True,
     ):
         self.last_frame_classified = last_frame
         self.num_frames_classified = len(predictions)
         self.smoothed_predictions = smoothed_predictions
         self.predictions = predictions
         self.smoothed_novelties = smoothed_novelties
-        average = np.mean(self.smoothed_predictions, axis=1)
-        self.class_best_score = np.max(self.smoothed_predictions, axis=0)
+        if best_mean:
+            self.class_best_score = np.mean(self.smoothed_predictions, axis=0)
+        else:
+            self.class_best_score = np.maximum(self.smoothed_predictions, axis=0)
+
         if self.smoothed_novelties is not None:
             self.max_novelty = float(max(self.smoothed_novelties))
             self.novelty_sum = sum(self.smoothed_novelties)
