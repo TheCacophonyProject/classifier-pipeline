@@ -18,7 +18,7 @@ from dateutil.parser import parse as parse_date
 from multiprocessing import Lock
 import numpy as np
 from track.framebuffer import Frame
-from ml_tools.region import Region
+from track.region import Region
 
 special_datasets = ["background_frame", "predictions", "overlay"]
 
