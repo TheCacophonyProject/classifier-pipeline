@@ -34,6 +34,8 @@ def preprocess_segment(
     default_inset=2,
     keep_aspect=False,
     frame_size=48,
+    crop_rectangle=None,
+    keep_edge=False,
 ):
     """
     Preprocesses the raw track data, scaling it to correct size, and adjusting to standard levels
@@ -111,7 +113,12 @@ def preprocess_segment(
             crop_region.bottom += 1
             crop_region.crop(frame_bounds)
         frame.crop_by_region(crop_region, out=frame)
-        frame.resize((frame_size, frame_size), keep_aspect=keep_aspect)
+        frame.resize(
+            (frame_size, frame_size),
+            keep_aspect=keep_aspect,
+            keep_edge=keep_edge,
+            crop_rectangle=crop_rectangle,
+        )
         if reference_level is not None:
             frame.thermal -= reference_level[i]
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
@@ -170,6 +177,8 @@ def preprocess_movement(
     keep_aspect=False,
     reference_level=None,
     overlay=None,
+    crop_rectangle=None,
+    keep_edge=False,
 ):
     segment, flipped = preprocess_segment(
         segment,
@@ -178,6 +187,8 @@ def preprocess_movement(
         default_inset=0,
         keep_aspect=keep_aspect,
         frame_size=frame_size,
+        crop_rectangle=crop_rectangle,
+        keep_edge=keep_edge,
     )
     frame_types = {}
     channel_types = set([green_type, blue_type, red_type])

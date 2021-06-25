@@ -292,6 +292,7 @@ class KerasModel:
                 thermal_median,
                 track.bounds_history,
                 clip.background,
+                clip.crop_rectangle,
             )
             track_prediction.classified_clip(
                 predictions,
@@ -351,6 +352,7 @@ class KerasModel:
         thermal_median,
         regions,
         background,
+        crop_rectangle,
         keep_all=True,
         overlay=None,
     ):
@@ -369,6 +371,7 @@ class KerasModel:
                 thermal_median,
                 regions,
                 background,
+                crop_rectangle,
                 overlay=overlay,
             )
             for i, prediction in enumerate(predictions):
@@ -391,7 +394,7 @@ class KerasModel:
         return track_prediction
 
     def classify_using_movement(
-        self, data, thermal_median, regions, background, overlay=None
+        self, data, thermal_median, regions, background, crop_rectangle, overlay=None
     ):
         """
         take any square_width, by square_width amount of frames and sort by
@@ -447,6 +450,8 @@ class KerasModel:
                         else None,
                         keep_aspect=self.params.get("keep_aspect", False),
                         overlay=overlay,
+                        crop_rectangle=crop_rectangle,
+                        keep_edge=self.params.get("keep_edge", False),
                     )
                     if frames is None:
                         continue

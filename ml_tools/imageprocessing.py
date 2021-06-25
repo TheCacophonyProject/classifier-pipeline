@@ -23,22 +23,53 @@ def resize_cv(image, dim, interpolation=None, extra_h=0, extra_v=0):
     )
 
 
-def resize_with_aspect(frame, dim, min_pad=False, interpolation=None):
-    scale_percent = (dim / np.array(frame.shape)).min()
-    width = int(frame.shape[1] * scale_percent)
-    height = int(frame.shape[0] * scale_percent)
-    resize_dim = (width, height)
+def resize_with_aspect(
+    frame,
+    dim,
+    region=None,
+    crop_region=None,
+    keep_edge=False,
+    min_pad=False,
+    interpolation=cv2.INTER_LINEAR,
+):
+    """Resize a numpy frame array while maintaining aspect ratio.
+    Pad pixels where needed with minimum frame value or supplied pad value
+    If keep edge is true and the frame is the edge of our crop_region make
+    sure to keep the resize frame on the edge, otherwise place the original
+    frame in the center of our resized frame"""
     if min_pad:
         pad = np.min(frame)
     else:
         pad = 0
+    scale_percent = (dim / np.array(frame.shape)).min()
+    width = int(frame.shape[1] * scale_percent)
+    height = int(frame.shape[0] * scale_percent)
+    resize_dim = (width, height)
     resized = np.full(dim, pad, dtype=frame.dtype)
-    offset = np.int16((np.array(dim) - np.array(resize_dim)) / 2.0)
+    offset_x = 0
+    offset_y = 0
     frame_resized = resize_cv(frame, resize_dim, interpolation=interpolation)
+    frame_height, frame_width = frame_resized.shape
+    offset_x = (dim[1] - frame_width) // 2
+    offset_y = (dim[0] - frame_height) // 2
+    if keep_edge and crop_region and region:
+        if region.left == crop_region.left:
+            offset_x = 0
+
+        elif region.right == crop_region.right:
+            offset_x = dim[1] - frame_width
+
+        if region.top == crop_region.top:
+            offset_y = 0
+
+        elif region.bottom == crop_region.bottom:
+            offset_y = dim[0] - frame_height
+
     resized[
-        offset[1] : offset[1] + frame_resized.shape[0],
-        offset[0] : offset[0] + frame_resized.shape[1],
+        offset_y : offset_y + frame_height,
+        offset_x : offset_x + frame_width,
     ] = frame_resized
+
     return resized
 
 

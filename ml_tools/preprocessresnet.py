@@ -54,7 +54,6 @@ def preprocess_frame(frame, bound, out_dim):
 
 def fill_rows(frame, fill_high, space):
     f = np.zeros((space, frame.shape[1]))
-    # print(f'frame {frame.shape}, f {f.shape}')
     if fill_high:
         f[: frame.shape[0], :] = frame
     else:
