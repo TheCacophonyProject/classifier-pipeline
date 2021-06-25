@@ -311,7 +311,7 @@ class KerasModel:
                 )
                 if frame is not None:
                     frames.append(frame)
-                    weights.append(frame[frame > 0].sum())
+                    weights.append(region.mass)
             predicts = self.model.predict(np.array(frames))
             predicts_squared = predicts ** 2
             smoothed_predictions = preprocessresnet.sum_weighted(
@@ -401,7 +401,7 @@ class KerasModel:
         time use as the r channel, g and b channel are the overall movment of
         the track
         """
-
+        smoothed_predictions = []
         predictions = []
         weights = []
         frames_per_classify = self.square_width ** 2
@@ -426,12 +426,13 @@ class KerasModel:
                     # update remaining
                     frame_sample = frame_sample[frames_per_classify:]
                     seg_frames.sort()
-                    weight = 0
+                    mass = 0
                     for frame_i in seg_frames:
                         f = data[frame_i].copy()
-                        weight += np.sum(f.filtered)
+                        region = regions[frame_i]
+                        mass += region.mass
                         if self.use_background_filtered:
-                            region_background = regions[frame_i].subimage(background)
+                            region_background = region.subimage(background)
                             f.filtered = f.thermal - region_background
                         segment.append(f.copy())
                         medians.append(thermal_median[i])
@@ -457,13 +458,11 @@ class KerasModel:
                         continue
                     output = self.model.predict(frames[np.newaxis, :])
                     predictions.append(output[0])
-                    weights.append(weight)
+                    smoothed_predictions.append(output[0] ** 2 * mass)
+
         predicts_squared = np.array(predictions) ** 2
-        smoothed_predictions = preprocessresnet.sum_weighted(
-            np.array(weights), predicts_squared
-        )
         smoothed_predictions /= np.amax(smoothed_predictions)
-        return predicts_squared, [smoothed_predictions]
+        return predicts_squared, smoothed_predictions
 
 
 def is_keras_model(model_file):

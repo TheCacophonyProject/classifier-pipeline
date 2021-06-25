@@ -79,6 +79,7 @@ class TrackPrediction:
         self.smoothed_predictions = smoothed_predictions
         self.predictions = predictions
         self.smoothed_novelties = smoothed_novelties
+        average = np.mean(self.smoothed_predictions, axis=1)
         self.class_best_score = np.max(self.smoothed_predictions, axis=0)
         if self.smoothed_novelties is not None:
             self.max_novelty = float(max(self.smoothed_novelties))
@@ -246,9 +247,9 @@ class TrackPrediction:
 
     @property
     def best_label_index(self):
-        if self.class_best_score is None:
+        if self.smoothed_predictions is None:
             return None
-        return np.argmax(self.class_best_score)
+        return np.argmax(np.mean(self.smoothed_predictions, axis=0))
 
     @property
     def max_score(self):
