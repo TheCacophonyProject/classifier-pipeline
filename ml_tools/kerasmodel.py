@@ -889,7 +889,7 @@ class KerasModel:
         if ffc_frames is None:
             ffc_frames = []
         predictions = []
-
+        smoothed_predictions = []
         filtered_data = []
         valid_indices = []
         valid_regions = []
@@ -926,8 +926,7 @@ class KerasModel:
                     continue
                 output = self.model.predict(frames[np.newaxis, :])
                 pred = output[0]
-                pred = pred * pred
-                pred = pred * np.sum(masses)
+                pred = pred ** 2 * np.sum(masses)
                 predictions.append(pred)
             return predictions
         if top_frames:
@@ -1056,6 +1055,7 @@ class KerasModel:
                 continue
             output = self.model.predict(frames[np.newaxis, :])
             predictions.append(output[0])
+            smoothed_predictions.append(output[0] ** 2 * np.sum(masses))
         return predictions
 
     def classify_frame(self, frame, thermal_median, preprocess=True):
@@ -1178,6 +1178,7 @@ class KerasModel:
             print("taking", len(sample_tracks), " from ", label)
             mapped_label = dataset.mapped_label(label)
             for track in sample_tracks:
+
                 track_data = dataset.db.get_track(track.clip_id, track.track_id)
                 background = dataset.db.get_clip_background(track.clip_id)
                 for frame in track_data:
@@ -1223,7 +1224,9 @@ class KerasModel:
                 #     np.round(avg * 100),
                 # )
                 actual.append(self.labels.index(mapped_label))
-                predictions.append(np.argmax(avg))
+                # predictions.append(np.argmax(avg))
+                predictions.append(track_prediction.best_label_index)
+
                 raw_predictions.append(avg)
                 if actual[-1] == predictions[-1]:
                     correct += 1
