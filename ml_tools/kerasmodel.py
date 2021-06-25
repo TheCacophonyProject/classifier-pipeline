@@ -181,7 +181,7 @@ class KerasModel:
         if not training:
             self.model.trainable = False
         if weights:
-            logging.info("loading weights", weights)
+            logging.info("loading weights %s", weights)
             self.model.load_weights(weights).expect_partial()
         self.load_meta(dir)
 
@@ -413,52 +413,52 @@ class KerasModel:
         # take frames_per_classify random frames, sort by time then use this to classify
 
         num_classifies = math.ceil(float(num_frames) / frames_per_classify)
-        for i in range(4):
-            # since we classify a random segment each time, take a few permutations
-            combinations = max(1, frames_per_classify // 9)
-            for _ in range(combinations):
-                frame_sample = np.arange(num_frames)
-                np.random.shuffle(frame_sample)
-                for i in range(num_classifies):
-                    seg_frames = frame_sample[:frames_per_classify]
-                    segment = []
-                    medians = []
-                    # update remaining
-                    frame_sample = frame_sample[frames_per_classify:]
-                    seg_frames.sort()
-                    mass = 0
-                    for frame_i in seg_frames:
-                        f = data[frame_i].copy()
-                        region = regions[frame_i]
-                        mass += region.mass
-                        if self.use_background_filtered:
-                            region_background = region.subimage(background)
-                            f.filtered = f.thermal - region_background
-                        segment.append(f.copy())
-                        medians.append(thermal_median[i])
-                    frames = preprocess_movement(
-                        data,
-                        segment,
-                        self.square_width,
-                        self.frame_size,
-                        regions,
-                        self.red_type,
-                        self.green_type,
-                        self.blue_type,
-                        self.preprocess_fn,
-                        reference_level=medians
-                        if self.params.get("subtract_median", True)
-                        else None,
-                        keep_aspect=self.params.get("keep_aspect", False),
-                        overlay=overlay,
-                        crop_rectangle=crop_rectangle,
-                        keep_edge=self.params.get("keep_edge", False),
-                    )
-                    if frames is None:
-                        continue
-                    output = self.model.predict(frames[np.newaxis, :])
-                    predictions.append(output[0])
-                    smoothed_predictions.append(output[0] ** 2 * mass)
+
+        # since we classify a random segment each time, take a few permutations
+        combinations = max(1, frames_per_classify // 25)
+        for _ in range(combinations):
+            frame_sample = np.arange(num_frames)
+            np.random.shuffle(frame_sample)
+            for i in range(num_classifies):
+                seg_frames = frame_sample[:frames_per_classify]
+                segment = []
+                medians = []
+                # update remaining
+                frame_sample = frame_sample[frames_per_classify:]
+                seg_frames.sort()
+                mass = 0
+                for frame_i in seg_frames:
+                    f = data[frame_i].copy()
+                    region = regions[frame_i]
+                    mass += region.mass
+                    if self.use_background_filtered:
+                        region_background = region.subimage(background)
+                        f.filtered = f.thermal - region_background
+                    segment.append(f.copy())
+                    medians.append(thermal_median[i])
+                frames = preprocess_movement(
+                    data,
+                    segment,
+                    self.square_width,
+                    self.frame_size,
+                    regions,
+                    self.red_type,
+                    self.green_type,
+                    self.blue_type,
+                    self.preprocess_fn,
+                    reference_level=medians
+                    if self.params.get("subtract_median", True)
+                    else None,
+                    keep_aspect=self.params.get("keep_aspect", False),
+                    overlay=overlay,
+                    crop_rectangle=crop_rectangle,
+                    keep_edge=self.params.get("keep_edge", False),
+                )
+                if frames is None:
+                    continue
+                output = self.model.predict(frames[np.newaxis, :])
+                predictions.append(output[0])
+                smoothed_predictions.append(output[0] ** 2 * mass)
 
         predicts_squared = np.array(predictions) ** 2
         smoothed_predictions /= np.amax(smoothed_predictions)
