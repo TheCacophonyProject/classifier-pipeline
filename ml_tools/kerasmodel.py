@@ -392,7 +392,7 @@ class KerasModel:
         del self.test
         gc.collect()
 
-    def train_model(self, epochs, run_name):
+    def train_model(self, epochs, run_name, weights=None):
         self.log_dir = os.path.join(self.log_base, run_name)
         os.makedirs(self.log_base, exist_ok=True)
 
@@ -402,6 +402,8 @@ class KerasModel:
                 retrain_from=self.params.retrain_layer,
                 dropout=self.params.dropout,
             )
+        if weights is not None:
+            self.model.load_weights(weights)
         self.train = DataGenerator(
             self.datasets.train,
             self.labels,

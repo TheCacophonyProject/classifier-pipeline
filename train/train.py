@@ -89,8 +89,8 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
                 )
             )
     print(weights)
-    if weights:
-        model.load_weights(weights, meta=False, training=True)
+    # if weights:
+    #     model.load_weights(weights, meta=False, training=True)
     if grid_search:
         print("Searching hparams")
         model.test_hparams()
@@ -108,6 +108,8 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
         )
     )
 
-    model.train_model(epochs=conf.train.epochs, run_name=run_name + "_" + "TEST")
+    model.train_model(
+        epochs=conf.train.epochs, run_name=run_name + "_" + "TEST", weights=weights
+    )
     # model.save()
     model.close()
