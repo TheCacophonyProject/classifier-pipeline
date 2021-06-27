@@ -273,7 +273,7 @@ class TrackHeader:
             frame_indices = [
                 i
                 for i, mass in enumerate(mass_history)
-                if mass > 0 and i not in self.ffc_frames
+                if mass > 0 and (i + self.start_frame) not in self.ffc_frames
             ]
             segment_min_mass = min(
                 segment_min_mass, np.median(mass_history[frame_indices])
