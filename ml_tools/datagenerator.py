@@ -470,14 +470,18 @@ def preloader(q, load_queue, labels, name, db, segments_by_id, params, label_map
     )
     while True:
         if not q.full():
-            batches = pickle.loads(load_queue.get())
-            # datagen.loaded_epochs = samples[0]
-            for i, batch in enumerate(batches[1]):
-                data = []
-                # samples = dataset.segments_by_id[batch]
-                for id in batch:
-                    data.append(segments_by_id[id])
-                q.put(loadbatch(labels, db, data, params, label_mapping))
+            try:
+                item = load_queue.get(block=False, timeout=30)
+                batches = pickle.loads(item)
+                # datagen.loaded_epochs = samples[0]
+                for i, batch in enumerate(batches[1]):
+                    data = []
+                    # samples = dataset.segments_by_id[batch]
+                    for id in batch:
+                        data.append(segments_by_id[id])
+                    q.put(loadbatch(labels, db, data, params, label_mapping))
+            except:
+                pass
 
         else:
             logging.debug("Quue is full for %s", name)
