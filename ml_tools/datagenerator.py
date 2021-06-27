@@ -242,13 +242,13 @@ class DataGenerator(keras.utils.Sequence):
                     ]
                     index += 1
                     batches.append(samples)
-                    if self.params.load_threads == 1 and len(batches) > 500:
-                        pickled_batches = pickle.dumps(
-                            (self.loaded_epochs + 1, batches)
-                        )
-                        self.load_queue.put(pickled_batches)
-                        print(self.dataset.name, "adding", len(batches))
-                        batches = []
+                    # if self.params.load_threads == 1 and len(batches) > 500:
+                    #     pickled_batches = pickle.dumps(
+                    #         (self.loaded_epochs + 1, batches)
+                    #     )
+                    #     self.load_queue.put(pickled_batches)
+                    #     print(self.dataset.name, "adding", len(batches))
+                    #     batches = []
 
                 print(self.dataset.name, "adding", len(batches))
                 if len(batches) > 0:
