@@ -77,15 +77,15 @@ class TrackPrediction:
         smoothed_predictions,
         smoothed_novelties,
         last_frame,
-        best_mean=True,
+        use_sum=True,
     ):
         self.last_frame_classified = last_frame
         self.num_frames_classified = len(predictions)
         self.smoothed_predictions = smoothed_predictions
         self.predictions = predictions
         self.smoothed_novelties = smoothed_novelties
-        if best_mean:
-            self.class_best_score = np.mean(self.smoothed_predictions, axis=0)
+        if use_sum:
+            self.class_best_score = np.sum(self.smoothed_predictions, axis=0)
             # normalize so it sums to 1
             self.class_best_score = self.class_best_score / np.sum(
                 self.class_best_score
