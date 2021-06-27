@@ -86,6 +86,10 @@ class TrackPrediction:
         self.smoothed_novelties = smoothed_novelties
         if best_mean:
             self.class_best_score = np.mean(self.smoothed_predictions, axis=0)
+            # normalize so it sums to 1
+            self.class_best_score = self.class_best_score / np.sum(
+                self.class_best_score
+            )
         else:
             self.class_best_score = np.maximum(self.smoothed_predictions, axis=0)
 

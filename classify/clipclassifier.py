@@ -343,7 +343,7 @@ class ClipClassifier(CPTVFileProcessor):
                 model_info["max_novelty"] = float(round(prediction.max_novelty, 2))
                 model_info["all_class_confidences"] = {}
                 prediction_data = []
-                for pred in prediction.predictions:
+                for pred in prediction.smoothed_predictions:
                     pred_list = [int(round(p * 100)) for p in pred]
                     prediction_data.append(pred_list)
                 model_info["predictions"] = prediction_data

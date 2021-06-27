@@ -300,6 +300,7 @@ class KerasModel:
                 None,
                 track.end_frame,
             )
+
         elif self.model_name == "resnet18":
             frames = []
             weights = []
@@ -366,7 +367,7 @@ class KerasModel:
         )
 
         if self.use_movement:
-            predictions = self.classify_using_movement(
+            predictions, smoothed_predictions = self.classify_using_movement(
                 data,
                 thermal_median,
                 regions,
@@ -374,8 +375,12 @@ class KerasModel:
                 crop_rectangle,
                 overlay=overlay,
             )
-            for i, prediction in enumerate(predictions):
-                track_prediction.classified_frame(i, prediction, None)
+            track_prediction.classified_clip(
+                predictions,
+                smoothed_predictions,
+                None,
+                track.end_frame,
+            )
         else:
             for i, frame in enumerate(data):
                 region = regions[i]
@@ -461,7 +466,6 @@ class KerasModel:
                 smoothed_predictions.append(output[0] ** 2 * mass)
 
         predicts_squared = np.array(predictions) ** 2
-        smoothed_predictions /= np.amax(smoothed_predictions)
         return predicts_squared, smoothed_predictions
 
 
