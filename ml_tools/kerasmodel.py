@@ -544,11 +544,22 @@ class KerasModel:
                 epoch, logs, self.model, self.test, file_writer_cm
             )
         )
-
+        #         "lr_callback": {
+        #   "monitor": "val_categorical_accuracy",
+        #   "mode": "max",
+        #   "factor": 0.65,
+        #   "patience": 15,
+        #   "min_lr": 0.00002,
+        #   "verbose": 1
+        # },
+        reduce_lr_callback = keras.callbacks.ReduceLROnPlateau(
+            monitor="val_accuracy", verbose=1
+        )
         return [
             earlyStopping,
             checkpoint_acc,
             checkpoint_loss,
+            reduce_lr_callback
             # cm_callback,
         ]
 
