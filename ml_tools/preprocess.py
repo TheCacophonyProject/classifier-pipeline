@@ -2,6 +2,7 @@ import numpy as np
 import random
 from ml_tools import tools
 from track.track import TrackChannels
+import logging
 from ml_tools import imageprocessing
 
 import tensorflow as tf

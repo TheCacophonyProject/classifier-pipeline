@@ -251,6 +251,7 @@ def split_label(dataset, label, holdout_cameras, existing_test_count=0):
         min_t = 10
     num_validate_tracks = max(total * 0.15, min_t)
     num_test_tracks = max(total * 0.05, min_t) - existing_test_count
+    num_test_tracks = 0
     cameras_to_remove = set()
     for i, track_bin in enumerate(track_bins):
         tracks = dataset.tracks_by_bin[track_bin]
@@ -592,7 +593,7 @@ def main():
     datasets = split_randomly(db, dataset, config, args, test_clips)
     # if args.date is None:
     #     args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=7)
-    test_dataset(db, datasets[2], config, args, args.date)
+    #test_dataset(db, datasets[2], config, args, args.date)
     validate_datasets(datasets, test_clips)
     print_counts(dataset, *datasets)
     print_cameras(*datasets)

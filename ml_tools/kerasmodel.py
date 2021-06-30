@@ -2,6 +2,7 @@ import itertools
 import io
 import math
 import tensorflow as tf
+import joblib
 import pickle
 import logging
 from tensorboard.plugins.hparams import api as hp
@@ -31,7 +32,7 @@ import os
 from keras import backend as K
 import gc
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 tf_device = "/gpu:1"
 
 #
@@ -587,7 +588,7 @@ class KerasModel:
         """
         self.label_probabilities = lbl_p
         self.datasets = namedtuple("Datasets", "train, validation, test")
-        datasets = pickle.load(open(dataset_filename, "rb"))
+        datasets = joblib.load(open(dataset_filename, "rb"))
         self.datasets.train, self.datasets.validation, self.datasets.test = datasets
         for dataset in datasets:
             dataset.labels.sort()
