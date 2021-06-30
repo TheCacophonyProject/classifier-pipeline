@@ -8,6 +8,7 @@ from ml_tools.tools import eucl_distance
 from track.track import TrackChannels
 from scipy import ndimage
 from matplotlib import pyplot as plt
+from PIL import Image
 
 
 def resize_and_pad(
@@ -82,7 +83,10 @@ def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
 
 
 def rotate(image, degrees, mode="nearest", order=1):
-    return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
+    image = Image.fromarray(image)
+    rotated = Image.Image.rotate(image, degrees)
+    return np.array(rotated)
+    #return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
 
 
 def movement_images(
