@@ -122,9 +122,7 @@ def preprocess_segment(
         if reference_level is not None:
             frame.thermal -= reference_level[i]
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
-        if frame.flow_clipped:
-            frame.flow *= 1.0 / 256.0
-            frame.flow_clipped = False
+        frame.unclip_flow()
         frame.normalize()
         if augment:
             if level_adjust is not None:

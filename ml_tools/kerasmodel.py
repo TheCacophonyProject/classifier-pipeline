@@ -199,7 +199,7 @@ class KerasModel:
         self.red_type = self.params.get("red_type", FrameTypes.thermal_tiled.name)
         self.use_background_filtered = self.params.get("use_background_filtered", True)
 
-        # convert to enums and vlaidate
+        # convert to enums and validate
         if FrameTypes.is_valid(self.red_type):
             self.red_type = FrameTypes[self.red_type]
         else:
@@ -476,17 +476,11 @@ def is_keras_model(model_file):
     return False
 
 
-def validate_model(model_file, weights_path=None):
+def validate_model(model_file):
     path, ext = os.path.splitext(model_file)
     if ext == ".pb":
-        # if not os.path.exists(model_file):
-        #     return False
-        pass
-        # if weights_path is None:weights
-        # weights_path = os.path.dirname(model_file) + "/variables/variables.index"
-        # if not os.path.exists(os.path.join(weights_path) + ".index"):
-        #     logging.error("No weights found named '{}'".format(weights_path))
-        #     return False
+        if not os.path.exists(model_file):
+            return False
     elif not os.path.exists(model_file + ".meta"):
         logging.error("No model found named '{}'.".format(model_file + ".meta"))
         return False

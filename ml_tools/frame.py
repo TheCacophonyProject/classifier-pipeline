@@ -102,6 +102,11 @@ class Frame:
         if prev_frame:
             prev_frame.scaled_thermal = None
 
+    def unclip_flow(self):
+        if self.flow_clipped:
+            self.flow *= 1.0 / 256.0
+            self.flow_clipped = False
+
     def clip_flow(self):
         if self.flow is not None:
             self.flow = get_clipped_flow(self.flow)

@@ -259,9 +259,9 @@ class TrackPrediction:
 
     @property
     def best_label_index(self):
-        if self.smoothed_predictions is None:
+        if self.class_best_score is None:
             return None
-        return np.argmax(np.mean(self.smoothed_predictions, axis=0))
+        return np.argmax(self.class_best_score)
 
     @property
     def max_score(self):

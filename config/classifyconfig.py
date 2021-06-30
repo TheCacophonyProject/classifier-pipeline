@@ -101,7 +101,7 @@ class ModelConfig:
         return model
 
     def validate(self):
-        if not validate_model(self.model_file, self.model_weights):
+        if not validate_model(self.model_file):
             raise ValueError(f"{self.model_file}is not valid")
 
     def as_dict(self):
