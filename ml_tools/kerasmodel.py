@@ -596,6 +596,7 @@ class KerasModel:
         self.datasets = namedtuple("Datasets", "train, validation, test")
         datasets = joblib.load(open(dataset_filename, "rb"))
         self.datasets.train, self.datasets.validation, self.datasets.test = datasets
+        self.datasets.train.name = "train"
         for dataset in datasets:
             dataset.labels.sort()
             dataset.set_read_only(True)

@@ -83,6 +83,7 @@ def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
 
 
 def rotate(image, degrees, mode="nearest", order=1):
+    # print("image is", image.dtype, np.amax(image), np.amin(image))
     # image = Image.fromarray(image)
     # rotated = Image.Image.rotate(image, degrees)
     # return np.array(rotated)

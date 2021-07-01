@@ -54,7 +54,8 @@ class DataGenerator(keras.utils.Sequence):
         self.label_cap = params.get("label_cap")
         self.shuffle = params.get("shuffle", True)
         self.batch_size = params.get("batch_size", 16)
-
+        self.epoch_samples = []
+        self.sample_size = None
         self.cur_epoch = 0
         self.loaded_epochs = 0
         self.epoch_data = []
@@ -129,12 +130,20 @@ class DataGenerator(keras.utils.Sequence):
     def __len__(self):
         "Denotes the number of batches per epoch"
 
-        return int(math.ceil(len(self.samples) / self.batch_size))
+        return int(math.ceil(self.sample_size / self.batch_size))
 
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
-        # logging.info("%s requsting index %s", self.dataset.name, index)
+        logging.info("%s requsting index %s", self.dataset.name, index)
+        if index == len(self) - 1:
+            logging.info(
+                "%s on epoch %s index % s loading next epoch data",
+                self.dataset.name,
+                self.loaded_epochs,
+                index,
+            )
+            self.load_next_epoch()
         if self.keep_epoch and self.use_previous_epoch is not None:
             X = self.epoch_data[self.use_previous_epoch][0][
                 index * self.batch_size : (index + 1) * self.batch_size
@@ -239,6 +248,8 @@ class DataGenerator(keras.utils.Sequence):
             if self.shuffle:
                 np.random.shuffle(self.samples)
 
+            if self.cur_epoch == 0:
+                self.sample_size = len(self.samples)
         if self.preload:
             batches_per_process = int(math.ceil(len(self) / self.params.load_threads))
             batches = []
@@ -276,6 +287,7 @@ class DataGenerator(keras.utils.Sequence):
                     self.load_queue.put(pickled_batches)
             # del self.samples[:]
             self.dataset.segments = []
+            self.epoch_samples.append(len(self.samples))
             self.samples = np.empty(len(self.samples))
             gc.collect()
         self.loaded_epochs += 1
@@ -294,7 +306,14 @@ class DataGenerator(keras.utils.Sequence):
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
-        self.load_next_epoch(reuse=True)
+        # self.load_next_epoch(reuse=True)
+        self.sample_size = self.epoch_samples[-1]
+        logging.info(
+            "%s setting sample size from %s and last epoch was %s",
+            self.dataset.name,
+            len(self.epoch_samples),
+            self.cur_epoch,
+        )
         batches = len(self)
         if not self.keep_epoch:
             # zero last epoch
@@ -500,6 +519,7 @@ def preloader(q, load_queue, labels, name, db, segments_by_id, params, label_map
         name,
         params.augment,
     )
+    epoch = 0
     while True:
         try:
             item = load_queue.get(block=True, timeout=30)
@@ -535,7 +555,7 @@ def preloader(q, load_queue, labels, name, db, segments_by_id, params, label_map
                             exc_info=True,
                         )
                 total += 1
-                logging.info(
+                logging.debug(
                     "%s put %s out of %s %s",
                     total,
                     name,
@@ -543,8 +563,8 @@ def preloader(q, load_queue, labels, name, db, segments_by_id, params, label_map
                     q.qsize(),
                 )
         except (queue.Empty):
-            logging.debug("%s Samples Queue empty epoch %s", name, batches[0])
+            logging.debug("%s Samples Queue empty epoch %s", name, epoch)
 
         except Exception as inst:
-            logging.error("%s %s error %s", batches[0], name, inst, exc_info=True)
+            logging.error("%s epoch %s error %s", name, epoch, inst, exc_info=True)
             pass
