@@ -171,12 +171,17 @@ class ClipLoader:
             p.start()
         if root is None:
             root = self.config.source_folder
-
+        file_paths = []
         for folder_path, _, files in os.walk(root):
             for name in files:
                 if os.path.splitext(name)[1] == ".cptv":
                     full_path = os.path.join(folder_path, name)
-                    job_queue.put(full_path)
+                    file_paths.append(full_path)
+        # allows to know the order of processing
+        file_paths.sort()
+        job_queue.put(full_path)
+        for file_path in file_paths:
+            job_queue.put(file_path)
 
         logging.info("Processing %d", job_queue.qsize())
         for i in range(len(processes)):

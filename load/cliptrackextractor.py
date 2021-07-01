@@ -90,7 +90,9 @@ class ClipTrackExtractor:
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             clip.set_res(reader.x_resolution, reader.y_resolution)
-
+            if clip.from_metadata:
+                for track in clip.tracks:
+                    track.crop_regions()
             camera_model = None
             if reader.model:
                 camera_model = reader.model.decode()

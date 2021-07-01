@@ -103,8 +103,8 @@ class Rectangle:
 
     def crop(self, bounds):
         """Crops this rectangle so that it fits within given bounds"""
-        self.left = max(self.left, bounds.left)
-        self.top = max(self.top, bounds.top)
+        self.left = min(bounds.right, max(self.left, bounds.left))
+        self.top = min(bounds.bottom, max(self.top, bounds.top))
         self.right = max(bounds.left, min(self.right, bounds.right))
         self.bottom = max(bounds.top, min(self.bottom, bounds.bottom))
 
@@ -131,10 +131,12 @@ class Rectangle:
         return self.width * self.height
 
     def __repr__(self):
-        return "({0},{1},{2},{3})".format(self.left, self.top, self.right, self.bottom)
+        return "(x{0},y{1},x2{2},y2{3})".format(
+            self.left, self.top, self.right, self.bottom
+        )
 
     def __str__(self):
-        return "<({0},{1})-{2}x{3}>".format(self.x, self.y, self.width, self.height)
+        return "<(x{0},y{1})-h{2}xw{3}>".format(self.x, self.y, self.height, self.width)
 
 
 class CustomJSONEncoder(json.JSONEncoder):
