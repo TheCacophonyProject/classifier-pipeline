@@ -8,6 +8,8 @@ import time
 import gc
 from ml_tools import tools
 from ml_tools.preprocess import preprocess_movement, preprocess_frame
+from ml_tools.dataset import TrackChannels
+import queue
 
 FRAMES_PER_SECOND = 9
 
@@ -132,7 +134,7 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
-        logging.info("%s requsting index %s", self.dataset.name, index)
+        # logging.info("%s requsting index %s", self.dataset.name, index)
         if self.keep_epoch and self.use_previous_epoch is not None:
             X = self.epoch_data[self.use_previous_epoch][0][
                 index * self.batch_size : (index + 1) * self.batch_size
@@ -149,10 +151,20 @@ class DataGenerator(keras.utils.Sequence):
             elif self.preload:
                 while True:
                     try:
-                        X, y, y_original = self.preloader_queue.get(block=True, timeout=30)
+                        X, y, y_original = self.preloader_queue.get(
+                            block=True, timeout=30
+                        )
                         break
+                    except (queue.Empty):
+                        logging.debug("%s Preload queue is empty", self.dataset.name)
                     except Exception as inst:
-                        logging.info("COULDNT Get data in 30 seconds %s %s",self.dataset.name, inst)
+                        logging.error(
+                            "%s error getting preloaded data %s",
+                            self.dataset.name,
+                            inst,
+                            exc_info=True,
+                        )
+                        pass
             else:
                 X, y, y_original = self.loadbatch(index)
 
@@ -212,7 +224,7 @@ class DataGenerator(keras.utils.Sequence):
             return self.resuse_previous_epoch()
 
         else:
-            logging.info("%s loading pepoch %s",self.dataset.name, self.loaded_epochs);
+            logging.info("%s loading epoch %s", self.dataset.name, self.loaded_epochs)
             # self.dataset.recalculate_segments(segment_type=self.params.segment_type)
             self.samples = self.dataset.epoch_samples(
                 cap_samples=self.cap_samples,
@@ -256,7 +268,9 @@ class DataGenerator(keras.utils.Sequence):
                     #     print(self.dataset.name, "adding", len(batches))
                     #     batches = []
 
-                print(self.dataset.name, "adding", len(batches), self.load_queue.qsize())
+                print(
+                    self.dataset.name, "adding", len(batches), self.load_queue.qsize()
+                )
                 if len(batches) > 0:
                     pickled_batches = pickle.dumps((self.loaded_epochs + 1, batches))
                     self.load_queue.put(pickled_batches)
@@ -327,8 +341,13 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
         if params.use_movement:
             try:
                 data_time = time.time()
-                frame_data = db.fetch_segment_data(sample)
-                total_db_time += time.time()- data_time
+                channels = [TrackChannels.thermal]
+                if params.type == 3:
+                    channels.append(TrackChannels.flow_h)
+                    channels.append(TrackChannels.flow_v)
+
+                frame_data = db.fetch_segment_data(sample, channels=channels)
+                total_db_time += time.time() - data_time
                 # frame_data = dataset.fetch_random_sample(sample)
                 overlay = None
                 #
@@ -342,10 +361,7 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
 
             if len(frame_data) < 5:
                 logging.error(
-                    "Important frames filtered for %s %s / %s",
-                    sample,
-                    len(frame_data),
-                    len(sample.track.important_frames),
+                    "Not enough frame data for %s %s", sample, len(frame_data)
                 )
                 continue
 
@@ -415,8 +431,13 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
 
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
-    total_time = time.time()-start
-    logging.info("%s took %s to load db out of total %s",params.augment,total_db_time,total_time )
+    total_time = time.time() - start
+    # logging.info(
+    #     "%s took %s to load db out of total %s",
+    #     params.augment,
+    #     total_db_time,
+    #     total_time,
+    # )
     if params.mvm:
         return [np.array(X), np.array(mvm)], y, y_original
     return np.array(X), y, y_original
@@ -480,31 +501,50 @@ def preloader(q, load_queue, labels, name, db, segments_by_id, params, label_map
         params.augment,
     )
     while True:
-        if 1 == 1:
-            try:
-                item = load_queue.get(block=True, timeout=30)
-                batches = pickle.loads(item)
-                # datagen.loaded_epochs = samples[0]
-                logging.info("epoch %s got %s",batches[0], len(batches[1]))
-                total = 0
-                for i, batch in enumerate(batches[1]):
-                    data = []
-                    # samples = dataset.segments_by_id[batch]
-                    for s_id in batch:
-                        data.append(segments_by_id[s_id])
-                    batch_data = loadbatch(labels, db, data, params, label_mapping)
-                    while True:
-                        try:
-                            q.put(batch_data, block=True, timeout=30)
-                            break
-                        except Exception as e:
-                            logging.error("%s - %s batch %s Put error %s",batches[0],name,i,e,exc_info=True)
-                    total +=1
-                    logging.info("%s put %s out of %s %s",total,name, len(batches[1]),q.qsize())
-            except Exception as inst:
-                logging.error("%s %s error %s", batches[0],name, inst, exc_info=True)
-                pass
+        try:
+            item = load_queue.get(block=True, timeout=30)
+            batches = pickle.loads(item)
+            # datagen.loaded_epochs = samples[0]
+            epoch = batches[0]
+            logging.info(
+                "%s Preloader got (%s) batches for epoch %s",
+                name,
+                len(batches[1]),
+                epoch,
+            )
+            total = 0
+            for i, batch in enumerate(batches[1]):
+                data = []
+                # samples = dataset.segments_by_id[batch]
+                for s_id in batch:
+                    data.append(segments_by_id[s_id])
+                batch_data = loadbatch(labels, db, data, params, label_mapping)
+                while True:
+                    try:
+                        q.put(batch_data, block=True, timeout=30)
+                        break
+                    except (queue.Full):
+                        logging.debug("%s Batch Queue full epoch %s", name, epoch)
+                    except Exception as e:
+                        logging.error(
+                            "%s - %s batch %s Put error %s",
+                            epoch,
+                            name,
+                            i,
+                            e,
+                            exc_info=True,
+                        )
+                total += 1
+                logging.info(
+                    "%s put %s out of %s %s",
+                    total,
+                    name,
+                    len(batches[1]),
+                    q.qsize(),
+                )
+        except (queue.Empty):
+            logging.debug("%s Samples Queue empty epoch %s", name, batches[0])
 
-        else:
-            logging.info("Quue is full for %s", name)
-            time.sleep(0.1)
+        except Exception as inst:
+            logging.error("%s %s error %s", batches[0], name, inst, exc_info=True)
+            pass

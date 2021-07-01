@@ -337,7 +337,13 @@ class KerasModel:
         model_stats["label_probabilities"] = self.label_probabilities
 
         if history:
-            model_stats["history"] = history.history
+            json_history = {}
+            for key, item in history.history.items():
+                if isinstance(item, list) and isinstance(item[0], np.floating):
+                    json_history[key] = [float(i) for i in item]
+                else:
+                    json_history[key] = item
+            model_stats["history"] = json_history
         if test_results:
             model_stats["test_loss"] = test_results[0]
             model_stats["test_acc"] = test_results[1]

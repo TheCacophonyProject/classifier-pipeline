@@ -144,7 +144,7 @@ def preprocess_segment(
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
         # data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
-        if frame.flow_clipped:
+        if frame.flow is not None and frame.flow_clipped:
             frame.flow *= 1.0 / 256.0
             frame.flow_clipped = False
         frame.normalize()
@@ -305,10 +305,10 @@ def preprocess_movement(
         # print("{}-{}-{}".format(red, green, blue))
         # # for debugging
         #
-        # tools.saveclassify_image(
-        #     data,
-        #     f"samples/{type}{sample.label}-{sample.clip_id}-{sample.track_id}-{flipped}",
-        # )
+        tools.saveclassify_image(
+            data,
+            f"samples/{type}{sample.label}-{sample.clip_id}-{sample.track_id}-{flipped}",
+        )
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)

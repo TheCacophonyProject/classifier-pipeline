@@ -83,10 +83,10 @@ def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
 
 
 def rotate(image, degrees, mode="nearest", order=1):
-    image = Image.fromarray(image)
-    rotated = Image.Image.rotate(image, degrees)
-    return np.array(rotated)
-    #return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
+    # image = Image.fromarray(image)
+    # rotated = Image.Image.rotate(image, degrees)
+    # return np.array(rotated)
+    return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
 
 
 def movement_images(

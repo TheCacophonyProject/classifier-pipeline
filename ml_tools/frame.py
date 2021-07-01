@@ -33,31 +33,34 @@ class Frame:
 
     @classmethod
     def from_channel(
-        cls, frame, channel, frame_number, flow_clipped=False, ffc_affected=False
+        cls, frame, channels, frame_number, flow_clipped=True, ffc_affected=False
     ):
-        flow = None
-        if TrackChannels.thermal == channel:
-            thermal = frame
-        else:
-            thermal = None
-        if TrackChannels.filtered == channel:
-            filtered = frame
-        else:
-            filtered = None
-
-        if TrackChannels.mask == channel:
-            mask = frame
-        else:
-            mask = None
-        return cls(
-            thermal,
-            filtered,
-            mask,
+        f = cls(
+            None,
+            None,
+            None,
             frame_number,
-            flow=flow,
             flow_clipped=flow_clipped,
             ffc_affected=ffc_affected,
         )
+        flow_h = None
+        flow_v = None
+        for channel, data in zip(channels, frame):
+            if TrackChannels.thermal == channel:
+                f.thermal = data
+            if TrackChannels.filtered == channel:
+                f.filtered = data
+
+            if TrackChannels.mask == channel:
+                f.mask = data
+            if TrackChannels.flow_h == channel:
+                flow_h = data
+            if TrackChannels.flow_v == channel:
+                flow_v = data
+        if flow_h is not None and flow_v is not None:
+            flow = np.stack((flow_h, flow_v), axis=2)
+            f.flow = flow
+        return f
 
     @classmethod
     def from_array(

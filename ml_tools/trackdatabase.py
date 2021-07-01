@@ -462,6 +462,7 @@ class TrackDatabase:
                                 clip_id,
                                 track_number,
                                 frame_number,
+                                exc_info=True,
                             )
                     else:
                         try:
@@ -475,6 +476,7 @@ class TrackDatabase:
                                 clip_id,
                                 track_number,
                                 frame_number,
+                                exc_info=True,
                             )
         # except:
         # return None
@@ -630,20 +632,21 @@ class TrackDatabase:
             clip_node.attrs["finished"] = True
             clip_node.attrs["has_prediction"] = has_prediction
 
-    def fetch_segment_data(self, sample, channel=None):
+    def fetch_segment_data(self, sample, channels=None):
 
         frames = self.get_track(
             sample.clip_id,
             sample.track_id,
             frame_numbers=sample.frame_indices,
-            channels=0,
+            channels=channels,
         )
         background = self.get_clip_background(sample.clip_id)
         for frame in frames:
             region = sample.track_bounds[frame.frame_number]
             region = tools.Rectangle.from_ltrb(*region)
             cropped = region.subimage(background)
-            frame.filtered = frame.thermal #- cropped
+            frame.filtered = frame.thermal - cropped
+            # print("setting filtered data from back")
             frame.region = region
         return frames
 
