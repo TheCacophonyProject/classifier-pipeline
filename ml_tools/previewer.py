@@ -188,6 +188,8 @@ class Previewer:
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 cropped = frame.crop_by_region(region)
+                if cropped.size == 0:
+                    continue
                 img = tools.convert_heat_to_img(
                     cropped.thermal,
                     self.colourmap,

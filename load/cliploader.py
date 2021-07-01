@@ -179,7 +179,6 @@ class ClipLoader:
                     file_paths.append(full_path)
         # allows to know the order of processing
         file_paths.sort()
-        job_queue.put(full_path)
         for file_path in file_paths:
             job_queue.put(file_path)
 
