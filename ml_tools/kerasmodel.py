@@ -653,6 +653,7 @@ class KerasModel:
             shuffle=False,
             validation_data=self.validate,
             callbacks=[cm_callback],
+            verbose=2,
         )
 
         # _, accuracy = self.model.evaluate(self.validate)

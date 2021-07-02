@@ -135,7 +135,7 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
-        logging.info("%s requsting index %s", self.dataset.name, index)
+        logging.debug("%s requsting index %s", self.dataset.name, index)
         if index == len(self) - 1:
             logging.info(
                 "%s on epoch %s index % s loading next epoch data",
@@ -254,11 +254,10 @@ class DataGenerator(keras.utils.Sequence):
             batches_per_process = int(math.ceil(len(self) / self.params.load_threads))
             batches = []
             index = 0
-            print(
+            logging.info(
+                "%s num of batches %s bathes per process %s",
                 self.dataset.name,
-                "num of batches",
                 len(self),
-                "batches per process",
                 batches_per_process,
             )
             for i in range(self.params.load_threads):
