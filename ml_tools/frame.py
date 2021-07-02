@@ -57,9 +57,12 @@ class Frame:
                 flow_h = data
             if TrackChannels.flow_v == channel:
                 flow_v = data
+            if TrackChannels.flow == channel:
+                f.flow = data
         if flow_h is not None and flow_v is not None:
             flow = np.stack((flow_h, flow_v), axis=2)
             f.flow = flow
+
         return f
 
     @classmethod

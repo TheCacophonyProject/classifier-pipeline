@@ -35,6 +35,7 @@ class TrackChannels:
     flow_h = 2
     flow_v = 3
     mask = 4
+    flow = 5
 
 
 class Dataset:
@@ -148,6 +149,7 @@ class Dataset:
         }
         self.lbl_p = None
         self.frame_model = None
+        self.numpy_file = None
 
     def set_read_only(self, read_only):
         self.db.set_read_only(read_only)

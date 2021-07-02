@@ -10,6 +10,7 @@ from ml_tools import tools
 from ml_tools.preprocess import preprocess_movement, preprocess_frame
 from ml_tools.dataset import TrackChannels
 import queue
+from ml_tools.frame import Frame
 
 FRAMES_PER_SECOND = 9
 
@@ -87,6 +88,7 @@ class DataGenerator(keras.utils.Sequence):
                         self.dataset.segments_by_id,
                         self.params,
                         self.dataset.label_mapping,
+                        dataset.numpy_file,
                     ),
                 )
                 for _ in range(self.params.load_threads)
@@ -337,6 +339,21 @@ def loadbatch(labels, db, samples, params, mapped_labels):
     return X, y, y_orig
 
 
+def get_frames(f, segment, channels):
+    frames = []
+    for frame_i in segment.frame_indices:
+        frame_info = segment.track_info[frame_i]
+        data = []
+        for channel in channels:
+            f.seek(frame_info[channel])
+            channel_data = np.load(f)
+            data.append(channel_data)
+        frame = Frame.from_channel(data, channels, frame_i, flow_clipped=True)
+        frame.region = tools.Rectangle.from_ltrb(*segment.track_bounds[frame_i])
+        frames.append(frame)
+    return frames
+
+
 def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
     "Generates data containing batch_size samples"
     # Initialization
@@ -359,12 +376,11 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
         if params.use_movement:
             try:
                 data_time = time.time()
-                channels = [TrackChannels.thermal]
+                channels = [TrackChannels.thermal, TrackChannels.filtered]
                 if params.type == 3:
-                    channels.append(TrackChannels.flow_h)
-                    channels.append(TrackChannels.flow_v)
+                    channels.append(TrackChannels.flow)
 
-                frame_data = db.fetch_segment_data(sample, channels=channels)
+                frame_data = get_frames(db, sample, channels)
                 total_db_time += time.time() - data_time
                 # frame_data = dataset.fetch_random_sample(sample)
                 overlay = None
@@ -450,12 +466,12 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
     total_time = time.time() - start
-    # logging.info(
-    #     "%s took %s to load db out of total %s",
-    #     params.augment,
-    #     total_db_time,
-    #     total_time,
-    # )
+    logging.info(
+        "%s took %s to load db out of total %s",
+        params.augment,
+        total_db_time,
+        total_time,
+    )
     if params.mvm:
         return [np.array(X), np.array(mvm)], y, y_original
     return np.array(X), y, y_original
@@ -511,59 +527,64 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
 
 
 # continue to read examples until queue is full
-def preloader(q, load_queue, labels, name, db, segments_by_id, params, label_mapping):
+def preloader(
+    q, load_queue, labels, name, db, segments_by_id, params, label_mapping, numpyfile
+):
     """add a segment into buffer"""
     logging.info(
-        " -started async fetcher for %s augment=%s",
+        " -started async fetcher for %s augment=%s numpyfile %s",
         name,
         params.augment,
+        numpyfile,
     )
-    epoch = 0
-    while True:
-        try:
-            item = load_queue.get(block=True, timeout=30)
-            batches = pickle.loads(item)
-            # datagen.loaded_epochs = samples[0]
-            epoch = batches[0]
-            logging.info(
-                "%s Preloader got (%s) batches for epoch %s",
-                name,
-                len(batches[1]),
-                epoch,
-            )
-            total = 0
-            for i, batch in enumerate(batches[1]):
-                data = []
-                # samples = dataset.segments_by_id[batch]
-                for s_id in batch:
-                    data.append(segments_by_id[s_id])
-                batch_data = loadbatch(labels, db, data, params, label_mapping)
-                while True:
-                    try:
-                        q.put(batch_data, block=True, timeout=30)
-                        break
-                    except (queue.Full):
-                        logging.debug("%s Batch Queue full epoch %s", name, epoch)
-                    except Exception as e:
-                        logging.error(
-                            "%s - %s batch %s Put error %s",
-                            epoch,
-                            name,
-                            i,
-                            e,
-                            exc_info=True,
-                        )
-                total += 1
-                logging.debug(
-                    "%s put %s out of %s %s",
-                    total,
+    with open(numpyfile, "rb") as f:
+
+        epoch = 0
+        while True:
+            try:
+                item = load_queue.get(block=True, timeout=30)
+                batches = pickle.loads(item)
+                # datagen.loaded_epochs = samples[0]
+                epoch = batches[0]
+                logging.info(
+                    "%s Preloader got (%s) batches for epoch %s",
                     name,
                     len(batches[1]),
-                    q.qsize(),
+                    epoch,
                 )
-        except (queue.Empty):
-            logging.debug("%s Samples Queue empty epoch %s", name, epoch)
+                total = 0
+                for i, batch in enumerate(batches[1]):
+                    data = []
+                    # samples = dataset.segments_by_id[batch]
+                    for s_id in batch:
+                        data.append(segments_by_id[s_id])
+                    batch_data = loadbatch(labels, f, data, params, label_mapping)
+                    while True:
+                        try:
+                            q.put(batch_data, block=True, timeout=30)
+                            break
+                        except (queue.Full):
+                            logging.debug("%s Batch Queue full epoch %s", name, epoch)
+                        except Exception as e:
+                            logging.error(
+                                "%s - %s batch %s Put error %s",
+                                epoch,
+                                name,
+                                i,
+                                e,
+                                exc_info=True,
+                            )
+                    total += 1
+                    logging.debug(
+                        "%s put %s out of %s %s",
+                        total,
+                        name,
+                        len(batches[1]),
+                        q.qsize(),
+                    )
+            except (queue.Empty):
+                logging.debug("%s Samples Queue empty epoch %s", name, epoch)
 
-        except Exception as inst:
-            logging.error("%s epoch %s error %s", name, epoch, inst, exc_info=True)
-            pass
+            except Exception as inst:
+                logging.error("%s epoch %s error %s", name, epoch, inst, exc_info=True)
+                pass

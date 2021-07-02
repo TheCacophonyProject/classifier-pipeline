@@ -15,7 +15,9 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
     # but we don't load the dataset till after that, so we load it here just to count the number of labels...
     datasets_filename = dataset_db_path(conf)
-
+    datasets_filename = os.path.join(
+        os.path.dirname(datasets_filename), "numpydataset.dat"
+    )
     # if conf.train.model == ResnetModel.MODEL_NAME:
     # model = ResnetModel(labels, conf.train)
     if conf.train.model == ModelCRNN_HQ.MODEL_NAME:

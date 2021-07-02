@@ -427,11 +427,11 @@ class TrackDatabase:
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             track_node = clips[str(clip_id)][str(track_number)]
-
             if start_frame is None:
                 start_frame = 0
             if end_frame is None:
                 end_frame = track_node.attrs["frames"]
+
             result = []
             if original:
                 track_node = track_node["original"]
@@ -478,6 +478,7 @@ class TrackDatabase:
                                 frame_number,
                                 exc_info=True,
                             )
+
         # except:
         # return None
         return result

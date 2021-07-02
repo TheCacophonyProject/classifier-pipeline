@@ -58,7 +58,7 @@ class TrackHeader:
         self.start_frame = start_frame
         # duration in seconds
         self.duration = duration
-        # camera this track came from
+        # camera this track came fromsegment
         self.camera = camera
 
         self.location = location
@@ -101,6 +101,7 @@ class TrackHeader:
                     self.clip_id, self.track_id, frame_num, self.label, None, None
                 )
                 self.important_frames.append(f)
+        self.track_info = None
 
     def toJSON(self, clip_meta):
         meta_dict = {}
@@ -260,7 +261,7 @@ class TrackHeader:
         scale=1,
         top_frames=False,
         random_sections=False,
-        repeats=1,
+        repeats=100,
     ):
         self.segments = []
         self.filtered_stats = {"segment_mass": 0}
@@ -687,7 +688,7 @@ class SegmentHeader:
         for i in frame_indices:
             self.track_bounds[i] = track.track_bounds[i]
             self.frame_temp_median[i] = track.frame_temp_median[i]
-        self.track = None
+        self.track_info = track.track_info
         self.label = track.label
         # first frame of this segment referenced by start of track
         self.start_frame = start_frame
