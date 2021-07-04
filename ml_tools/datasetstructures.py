@@ -260,7 +260,7 @@ class TrackHeader:
         scale=1,
         top_frames=False,
         random_sections=False,
-        repeats=1,
+        repeats=1000,
     ):
         self.segments = []
         self.filtered_stats = {"segment_mass": 0}

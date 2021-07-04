@@ -1,6 +1,7 @@
 import os
 import pickle
-
+import time
+import logging
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ, Model_CNN
 
 # from model_resnet import ResnetModel
@@ -45,7 +46,7 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     # groups["leporidae"] = ["leporidae"]
 
     # groups["false-positive"] = ["false-positive", "insect"]
-
+    logging.info("Importing dataset")
     model.import_dataset(datasets_filename, lbl_p=conf.train.label_probabilities)
     for label in model.datasets.train.labels:
         if label not in false_positives:
@@ -57,6 +58,8 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     # groups["not"] = animals
     model.mapped_labels = groups
     model.regroup()
+    logging.info("IMPORTED")
+    time.sleep(300)
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)
     print()

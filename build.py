@@ -593,10 +593,10 @@ def main():
     datasets = split_randomly(db, dataset, config, args, test_clips)
     # if args.date is None:
     #     args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=7)
-    #test_dataset(db, datasets[2], config, args, args.date)
+    # test_dataset(db, datasets[2], config, args, args.date)
     validate_datasets(datasets, test_clips)
     print_counts(dataset, *datasets)
-    print_cameras(*datasets)
+    # print_cameras(*datasets)
     joblib.dump(datasets, open(dataset_db_path(config), "wb"))
     db_path = dataset_db_path(config)
     db_path = os.path.splitext(db_path)[0]

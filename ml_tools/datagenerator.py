@@ -450,12 +450,12 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
     total_time = time.time() - start
-    # logging.info(
-    #     "%s took %s to load db out of total %s",
-    #     params.augment,
-    #     total_db_time,
-    #     total_time,
-    # )
+    logging.info(
+        "%s took %s to load db out of total %s",
+        params.augment,
+        total_db_time,
+        total_time,
+    )
     if params.mvm:
         return [np.array(X), np.array(mvm)], y, y_original
     return np.array(X), y, y_original
