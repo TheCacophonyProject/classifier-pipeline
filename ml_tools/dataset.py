@@ -60,7 +60,7 @@ class Dataset:
 
     def __init__(
         self,
-        track_db: TrackDatabase,
+        db_file,
         name="Dataset",
         config=None,
         use_segments=True,
@@ -72,12 +72,11 @@ class Dataset:
         # self.camera_bins = {}
         self.use_segments = use_segments
         # database holding track data
-        self.db = track_db
+        self.db_file = db_file
+        self.load_db()
         self.label_mapping = None
         # name of this dataset
         self.name = name
-        self.use_predictions = use_predictions
-        self.original_samples = None
         # list of our tracks
         self.tracks = []
         self.tracks_by_label = {}
@@ -133,14 +132,34 @@ class Dataset:
         }
         self.lbl_p = None
 
+    def clear_tracks(self):
+        del self.tracks
+        del self.tracks_by_label
+        del self.tracks_by_bin
+        del self.tracks_by_id
+        # self.tracks = []
+        # self.tracks_by_label = {}
+        # self.tracks_by_bin = {}
+        # self.tracks_by_id = {}
+
+    def load_db(self):
+        self.db = TrackDatabase(self.db_file)
+
     def clear_unused(self):
         if self.use_segments:
-            self.frame_cdf = []
-            self.frame_label_cdf = {}
 
-            self.frame_samples = []
-            self.frames_by_label = {}
-            self.frames_by_id = {}
+            del self.frame_cdf
+            del self.frame_label_cdf
+
+            del self.frame_samples
+            del self.frames_by_label
+            del self.frames_by_id
+            # self.frame_cdf = []
+            # self.frame_label_cdf = {}
+            #
+            # self.frame_samples = []
+            # self.frames_by_label = {}
+            # self.frames_by_id = {}
         else:
             self.segment_cdf = []
             self.segment_label_cdf = {}
@@ -151,7 +170,8 @@ class Dataset:
         gc.collect()
 
     def set_read_only(self, read_only):
-        self.db.set_read_only(read_only)
+        if self.db is not None:
+            self.db.set_read_only(read_only)
 
     def random_segments_only(self):
         remove = [segment for segment in self.segments if segment.top_mass]

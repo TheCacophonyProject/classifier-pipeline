@@ -605,6 +605,7 @@ class KerasModel:
             # dataset.random_segments_only()
             dataset.recalculate_segments(segment_type=self.params.segment_type)
             # dataset.rebuild_cdf()
+            dataset.load_db()
             if ignore_labels:
                 for label in ignore_labels:
                     dataset.remove_label(label)

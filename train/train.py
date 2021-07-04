@@ -58,8 +58,8 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     # groups["not"] = animals
     model.mapped_labels = groups
     model.regroup()
+
     logging.info("IMPORTED")
-    time.sleep(300)
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)
     print()
@@ -91,6 +91,7 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
                     "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
                 )
             )
+
     print(weights)
     # if weights:
     #     model.load_weights(weights, meta=False, training=True)
@@ -110,6 +111,9 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
             model.datasets.train.sample_count / 1000
         )
     )
+    model.datasets.train.clear_tracks()
+    model.datasets.validation.clear_tracks()
+    model.datasets.test.clear_tracks()
 
     model.train_model(
         epochs=conf.train.epochs, run_name=run_name + "_" + "TEST", weights=weights
