@@ -66,16 +66,16 @@ def save_numpy(dataset, file):
                 frame_info[TrackChannels.filtered] = f.tell()
                 np.save(f, frame.filtered)
 
-                flow_h = frame.flow[:, :, 0]
-                flow_v = frame.flow[:, :, 1]
-                mag, ang = cv2.cartToPolar(flow_h, flow_v)
-                hsv = np.zeros(
-                    (frame.flow.shape[0], frame.flow.shape[1], 3), dtype=np.float32
-                )
-                hsv[..., 0] = ang * 180 / np.pi / 2
-                hsv[..., 1] = 255
-                hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
-                rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+                # flow_h = frame.flow[:, :, 0]
+                # flow_v = frame.flow[:, :, 1]
+                # mag, ang = cv2.cartToPolar(flow_h, flow_v)
+                # hsv = np.zeros(
+                #     (frame.flow.shape[0], frame.flow.shape[1], 3), dtype=np.float32
+                # )
+                # hsv[..., 0] = ang * 180 / np.pi / 2
+                # hsv[..., 1] = 255
+                # hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+                # rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
                 frame_info[TrackChannels.flow] = f.tell()
                 np.save(f, hsv)
             track.track_info = track_frames
