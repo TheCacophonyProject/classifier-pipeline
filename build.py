@@ -20,6 +20,7 @@ from track.track import TrackChannels
 from ml_tools.kerasmodel import KerasModel
 import joblib
 import pytz
+import savenumpy
 
 LOW_DATA_LABELS = ["wallaby", "human", "dog", "vehicle"]
 MIN_TRACKS = 100
@@ -283,10 +284,10 @@ def split_label(dataset, label, holdout_cameras, existing_test_count=0):
             track.camera = "{}-{}".format(track.camera, camera_type)
             train_c.add_track(track)
         dataset.tracks_by_bin[track_bin] = []
-
-    for camera_name in cameras_to_remove:
-        camera = dataset.cameras_by_id[camera_name]
-        camera.remove_label(label)
+    #
+    # for camera_name in cameras_to_remove:
+    #     camera = dataset.cameras_by_id[camera_name]
+    #     camera.remove_label(label)
 
     return train_c, validate_c, test_c
 
@@ -301,7 +302,7 @@ def get_test_set_camera(dataset, test_clips):
     return test_c
 
 
-def split_randomly(db, dataset, config, args, test_clips=None, balance_bins=True):
+def split_randomly(db_file, dataset, config, args, test_clips=None, balance_bins=True):
     # shuffle tracks and then add X% to validate, and 100 to test and rest to train
     # holdout_cameras = [
     #     "TrapCam01-None",
@@ -322,10 +323,10 @@ def split_randomly(db, dataset, config, args, test_clips=None, balance_bins=True
             print("holding out", camera_name)
             test_cameras_only.append(dataset.cameras_by_id[camera_name])
             del dataset.cameras_by_id[camera_name]
-    train = Dataset(db, "train", config)
+    train = Dataset(db_file, "train", config)
     train.enable_augmentation = True
-    validation = Dataset(db, "validation", config)
-    test = Dataset(db, "test", config)
+    validation = Dataset(db_file, "validation", config)
+    test = Dataset(db_file, "test", config)
     test_cameras = test_cameras_only
     if test_clips is not None:
         test_c = get_test_set_camera(dataset, test_clips)
@@ -351,12 +352,12 @@ def split_randomly(db, dataset, config, args, test_clips=None, balance_bins=True
     return train, validation, test
 
 
-def split_dataset_by_cameras(db, dataset, config, args, balance_bins=True):
+def split_dataset_by_cameras(db_file, dataset, config, args, balance_bins=True):
     validation_percent = 0.3
-    train = Dataset(db, "train", config, labels=dataset.labels)
+    train = Dataset(db_file, "train", config, labels=dataset.labels)
     train.enable_augmentation = True
-    validation = Dataset(db, "validation", config, labels=dataset.labels)
-    test = Dataset(db, "test", config, labels=dataset.labels)
+    validation = Dataset(db_file, "validation", config, labels=dataset.labels)
+    test = Dataset(db_file, "test", config, labels=dataset.labels)
 
     # holdout_cameras = [
     #     "TrapCam01-None",
@@ -441,9 +442,9 @@ def add_camera_tracks(
     dataset.balance_bins()
 
 
-def test_dataset(db, test, config, args, date):
+def test_dataset(db_file, test, config, args, date):
     dataset = Dataset(
-        db, "dataset", config, consecutive_segments=args.consecutive_segments
+        db_file, "dataset", config, consecutive_segments=args.consecutive_segments
     )
     tracks_loaded, total_tracks = dataset.load_tracks(after_date=args.date)
 
@@ -561,11 +562,11 @@ def main():
     args = parse_args()
     config = load_config(args.config_file)
     test_clips = config.build.test_clips()
-    print("# of test clips are", len(test_clips))
+    logging.info("# of test clips are %s", len(test_clips))
     datasets_filename = dataset_db_path(config)
-    db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
+    db_file = os.path.join(config.tracks_folder, "dataset.hdf5")
     dataset = Dataset(
-        db, "dataset", config, consecutive_segments=args.consecutive_segments
+        db_file, "dataset", config, consecutive_segments=args.consecutive_segments
     )
     tracks_loaded, total_tracks = dataset.load_tracks(before_date=args.date)
     print(
@@ -590,16 +591,22 @@ def main():
 
     print("Splitting data set into train / validation")
     # datasets = split_dataset_by_cameras(db, dataset, config, args)
-    datasets = split_randomly(db, dataset, config, args, test_clips)
+    datasets = split_randomly(db_file, dataset, config, args, test_clips)
     # if args.date is None:
     #     args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=7)
-    #test_dataset(db, datasets[2], config, args, args.date)
+    # test_dataset(db, datasets[2], config, args, args.date)
     validate_datasets(datasets, test_clips)
     print_counts(dataset, *datasets)
-    print_cameras(*datasets)
-    joblib.dump(datasets, open(dataset_db_path(config), "wb"))
-    db_path = dataset_db_path(config)
-    db_path = os.path.splitext(db_path)[0]
+    base_dir = os.path.dirname(datasets_filename)
+    for dataset in datasets:
+        savenumpy.save_numpy(dataset, os.path.join(base_dir, dataset.name))
+
+    dataset.clear_unused()
+    for dataset in datasets:
+        dataset.db = None
+    # print_cameras(*datasets)
+    joblib.dump(datasets, open(datasets_filename, "wb"))
+    db_path = os.path.splitext(datasets_filename)[0]
     joblib.dump(datasets[0], open(f"{db_path}-train.dat", "wb"))
     joblib.dump(datasets[1], open(f"{db_path}-validate.dat", "wb"))
     joblib.dump(datasets[2], open(f"{db_path}-test.dat", "wb"))

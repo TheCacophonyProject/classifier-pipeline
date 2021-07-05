@@ -1,6 +1,7 @@
 import os
 import pickle
-
+import time
+import logging
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ, Model_CNN
 
 # from model_resnet import ResnetModel
@@ -15,9 +16,7 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
     # but we don't load the dataset till after that, so we load it here just to count the number of labels...
     datasets_filename = dataset_db_path(conf)
-    datasets_filename = os.path.join(
-        os.path.dirname(datasets_filename), "numpydataset.dat"
-    )
+    # datasets_filename = os.path.join(os.path.dirname(datasets_filename), "datasets.dat")
     # if conf.train.model == ResnetModel.MODEL_NAME:
     # model = ResnetModel(labels, conf.train)
     if conf.train.model == ModelCRNN_HQ.MODEL_NAME:
@@ -47,7 +46,7 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     # groups["leporidae"] = ["leporidae"]
 
     # groups["false-positive"] = ["false-positive", "insect"]
-
+    logging.info("Importing dataset %s ", datasets_filename)
     model.import_dataset(datasets_filename, lbl_p=conf.train.label_probabilities)
     for label in model.datasets.train.labels:
         if label not in false_positives:
@@ -59,6 +58,8 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     # groups["not"] = animals
     model.mapped_labels = groups
     model.regroup()
+
+    logging.info("IMPORTED")
     # display the data set summary
     print("Training on labels", model.datasets.train.labels)
     print()
@@ -90,6 +91,7 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
                     "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
                 )
             )
+
     print(weights)
     # if weights:
     #     model.load_weights(weights, meta=False, training=True)
@@ -109,6 +111,9 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
             model.datasets.train.sample_count / 1000
         )
     )
+    model.datasets.train.clear_tracks()
+    model.datasets.validation.clear_tracks()
+    model.datasets.test.clear_tracks()
 
     model.train_model(
         epochs=conf.train.epochs, run_name=run_name + "_" + "TEST", weights=weights

@@ -7,6 +7,7 @@ import logging
 import numpy as np
 from ml_tools import tools
 from config.config import Config
+import cv2
 
 
 def load_args():
@@ -32,9 +33,9 @@ def init_logging(timestamps=False):
 
 
 def save_numpy(dataset, file):
-    logging.info("Writing %s to %s", dataset.name, file)
     track_indexes = {}
     dataset.numpy_file = f"{file}.npy"
+    logging.info("Writing %s to %s", dataset.name, dataset.numpy_file)
     with open(f"{file}.npy", "wb") as f:
         for track in dataset.tracks:
             track_frames = {}
@@ -64,8 +65,19 @@ def save_numpy(dataset, file):
                 np.save(f, frame.thermal)
                 frame_info[TrackChannels.filtered] = f.tell()
                 np.save(f, frame.filtered)
+
+                flow_h = frame.flow[:, :, 0]
+                flow_v = frame.flow[:, :, 1]
+                mag, ang = cv2.cartToPolar(flow_h, flow_v)
+                hsv = np.zeros(
+                    (frame.flow.shape[0], frame.flow.shape[1], 3), dtype=np.float32
+                )
+                hsv[..., 0] = ang * 180 / np.pi / 2
+                hsv[..., 1] = 255
+                hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
+                rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
                 frame_info[TrackChannels.flow] = f.tell()
-                np.save(f, frame.flow)
+                np.save(f, hsv)
             track.track_info = track_frames
         f.close()
 
@@ -87,15 +99,16 @@ def read_tracks(dataset, file):
                     filtered = np.load(f)
 
 
-args = load_args()
-init_logging()
-config = Config.load_from_file(args.config_file)
-
-dataset_file = dataset_db_path(config)
-datasets = joblib.load(open(dataset_file, "rb"))
-base_dir = os.path.dirname(dataset_file)
-for dataset in datasets:
-    save_numpy(dataset, os.path.join(base_dir, dataset.name))
-    read_tracks(dataset, os.path.join(base_dir, dataset.name))
-
-joblib.dump(datasets, open(os.path.join(base_dir, "numpydataset.dat"), "wb"))
+#
+# args = load_args()
+# init_logging()
+# config = Config.load_from_file(args.config_file)
+#
+# dataset_file = dataset_db_path(config)
+# datasets = joblib.load(open(dataset_file, "rb"))
+# base_dir = os.path.dirname(dataset_file)
+# for dataset in datasets:
+#     save_numpy(dataset, os.path.join(base_dir, dataset.name))
+#     read_tracks(dataset, os.path.join(base_dir, dataset.name))
+#
+# joblib.dump(datasets, open(os.path.join(base_dir, "numpydataset.dat"), "wb"))

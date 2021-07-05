@@ -348,6 +348,7 @@ def get_frames(f, segment, channels):
             f.seek(frame_info[channel])
             channel_data = np.load(f)
             data.append(channel_data)
+
         frame = Frame.from_channel(data, channels, frame_i, flow_clipped=True)
         frame.region = tools.Rectangle.from_ltrb(*segment.track_bounds[frame_i])
         frames.append(frame)
