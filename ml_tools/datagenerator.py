@@ -391,7 +391,9 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
                 # )
 
             except Exception as inst:
-                logging.error("Error fetching sample %s %s", sample, inst)
+                logging.error(
+                    "Error fetching sample %s %s", sample, inst, exc_info=True
+                )
                 continue
 
             if len(frame_data) < 5:

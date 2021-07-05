@@ -66,6 +66,7 @@ def resize_and_pad(
         elif region.bottom == crop_region.bottom:
             offset_y = new_dim[0] - frame_height
     if len(resized.shape) == 3:
+        print("padding with", pad)
         resized[
             offset_y : offset_y + frame_height, offset_x : offset_x + frame_width, :
         ] = frame_resized

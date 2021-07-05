@@ -135,9 +135,7 @@ def preprocess_segment(
                 (FRAME_SIZE, FRAME_SIZE), crop_rectangle, keep_edge=keep_edge
             )
         except Exception as e:
-            logging.error(
-                "Error resizing frame %s exception %s", frame, e, exc_info=True
-            )
+            logging.error("Error resizing frame %s exception %s", frame, e)
             continue
         if reference_level is not None:
             frame.thermal -= reference_level[i]
@@ -146,7 +144,9 @@ def preprocess_segment(
         # map optical flow down to right level,
         # we pre-multiplied by 256 to fit into a 16bit int
         # data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
-
+        # if frame.flow is not None and frame.flow_clipped:
+        #     frame.flow *= 1.0 / 256.0
+        #     frame.flow_clipped = False
         frame.normalize()
 
         if augment:
@@ -307,7 +307,7 @@ def preprocess_movement(
         #
         tools.saveclassify_image(
             data,
-            f"samples/{type}{sample.label}-{sample.clip_id}-{sample.track_id}-{flipped}",
+            f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
         )
     if preprocess_fn:
         data = data * 255

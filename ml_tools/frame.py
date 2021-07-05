@@ -219,17 +219,35 @@ class Frame:
                 pad=0,
             )
         if self.flow is not None:
-            flow = resize_and_pad(
-                self.flow,
-                (*resize_dim, 3),
-                (*dim, 3),
+            # flow = resize_and_pad(
+            #     self.flow,
+            #     (*resize_dim, 3),
+            #     (*dim, 3),
+            #     self.region,
+            #     crop_rectangle,
+            #     keep_edge=keep_edge,
+            #     pad=0,
+            # )
+            # self.flow = flow
+            flow_h = resize_and_pad(
+                self.flow[:, :, 0],
+                resize_dim,
+                dim,
                 self.region,
                 crop_rectangle,
                 keep_edge=keep_edge,
                 pad=0,
             )
-
-            self.flow = flow
+            flow_v = resize_and_pad(
+                self.flow[:, :, 1],
+                resize_dim,
+                dim,
+                self.region,
+                crop_rectangle,
+                keep_edge=keep_edge,
+                pad=0,
+            )
+            self.flow = np.stack((flow_h, flow_v), axis=2)
 
     def resize(self, dim):
         self.thermal = resize_cv(self.thermal, dim)

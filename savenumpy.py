@@ -77,7 +77,7 @@ def save_numpy(dataset, file):
                 # hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
                 # rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
                 frame_info[TrackChannels.flow] = f.tell()
-                np.save(f, hsv)
+                np.save(f, frame.flow)
             track.track_info = track_frames
         f.close()
 
