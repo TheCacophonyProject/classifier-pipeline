@@ -341,6 +341,14 @@ def loadbatch(labels, db, samples, params, mapped_labels):
     return X, y, y_orig
 
 
+def get_cached_frames(db, sample):
+    track_frames = db[sample.unique_track_id]
+    frames = []
+    for f_i in sample.frame_indices:
+        frames.append(track_frames[f_i])
+    return frames
+
+
 def _batch_frames(labels, db, samples, params, mapped_labels, to_categorical=True):
     "Generates data containing batch_size samples"
     # Initialization
@@ -358,7 +366,8 @@ def _batch_frames(labels, db, samples, params, mapped_labels, to_categorical=Tru
             channels.append(TrackChannels.flow)
 
         try:
-            frame_data = get_frames(db, sample, channels)
+            # frame_data = get_frames(db, sample, channels)
+            frame_data = get_cached_frames(db, sample)
         except Exception as inst:
 
             logging.error("Error fetching sample %s %s", sample, inst, exc_info=True)
@@ -612,6 +621,61 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
 #             raise e
 
 
+def get_batch_frames(f, tracks, channels, name):
+    start = time.time()
+    frames_by_track = {}
+    count = 0
+    for track_info, frame_indices, u_id, regions_by_frames in tracks:
+        # frames = track[1]
+        frame_indices.sort()
+        track_data = {}
+        frames_by_track[u_id] = track_data
+        # track_info = trackp0[]
+
+        for frame_i in frame_indices:
+            if frame_i in track_data:
+                continue
+            count += 1
+            frame_info = track_info[frame_i]
+            data = []
+            for channel in channels:
+                f.seek(frame_info[channel])
+                channel_data = np.load(f)
+                data.append(channel_data)
+
+            frame = Frame.from_channel(data, channels, frame_i, flow_clipped=True)
+            track_data[frame_i] = frame
+            frame.region = tools.Rectangle.from_ltrb(*regions_by_frames[frame_i])
+    logging.info("%s time to load %s frames %s", name, count, time.time() - start)
+    return frames_by_track
+
+
+def load_batch_frames(numpyfile, batches, segments_by_id, channels, name):
+    with open(numpyfile, "rb") as f:
+        seg_data = []
+        data_by_track = {}
+        for batch in batches:
+            for s_id in batch:
+                segment = segments_by_id[s_id]
+                seg_data.append(segments_by_id[s_id])
+                track_segments = data_by_track.setdefault(
+                    segment.unique_track_id,
+                    (segment.track_info, [], segment.unique_track_id, {}),
+                )
+                regions_by_frames = track_segments[3]
+                regions_by_frames.update(segment.track_bounds)
+                track_segments[1].extend(segment.frame_indices)
+        # sort by position in file
+        track_segments = sorted(
+            data_by_track.values(),
+            key=lambda track_segment: next(iter(track_segment[0].values()))[
+                TrackChannels.thermal
+            ],
+        )
+        track_frames = get_batch_frames(f, track_segments, channels, name)
+    return track_frames, seg_data
+
+
 # continue to read examples until queue is full
 def preloader(
     q, load_queue, labels, name, db, segments_by_id, params, label_mapping, numpyfile
@@ -623,54 +687,72 @@ def preloader(
         params.augment,
         numpyfile,
     )
-    with open(numpyfile, "rb") as f:
+    channels = [TrackChannels.thermal, TrackChannels.filtered]
+    if params.type == 3:
+        channels.append(TrackChannels.flow)
 
-        epoch = 0
-        while True:
-            try:
-                item = load_queue.get(block=True, timeout=30)
-                batches = pickle.loads(item)
-                # datagen.loaded_epochs = samples[0]
-                epoch = batches[0]
-                logging.info(
-                    "%s Preloader got (%s) batches for epoch %s",
+    track_data = {}
+
+    epoch = 0
+    while True:
+        try:
+            item = load_queue.get(block=True, timeout=30)
+            batches = pickle.loads(item)
+            # datagen.loaded_epochs = samples[0]
+            epoch = batches[0]
+            logging.info(
+                "%s Preloader got (%s) batches for epoch %s",
+                name,
+                len(batches[1]),
+                epoch,
+            )
+            total = 0
+
+            data_i = 0
+            seg_data = []
+
+            for i, batch in enumerate(batches[1]):
+                if data_i >= len(seg_data):
+                    track_frames, seg_data = load_batch_frames(
+                        numpyfile,
+                        batches[1][i : i + 1000],
+                        segments_by_id,
+                        channels,
+                        name,
+                    )
+                    data_i = 0
+                data = seg_data[data_i : data_i + len(batch)]
+                data_i += len(batch)
+
+                batch_data = loadbatch(
+                    labels, track_frames, data, params, label_mapping
+                )
+                while True:
+                    try:
+                        q.put(batch_data, block=True, timeout=30)
+                        break
+                    except (queue.Full):
+                        logging.debug("%s Batch Queue full epoch %s", name, epoch)
+                    except Exception as e:
+                        logging.error(
+                            "%s - %s batch %s Put error %s",
+                            epoch,
+                            name,
+                            i,
+                            e,
+                            exc_info=True,
+                        )
+                total += 1
+                logging.debug(
+                    "%s put %s out of %s %s",
+                    total,
                     name,
                     len(batches[1]),
-                    epoch,
+                    q.qsize(),
                 )
-                total = 0
-                for i, batch in enumerate(batches[1]):
-                    data = []
-                    # samples = dataset.segments_by_id[batch]
-                    for s_id in batch:
-                        data.append(segments_by_id[s_id])
-                    batch_data = loadbatch(labels, f, data, params, label_mapping)
-                    while True:
-                        try:
-                            q.put(batch_data, block=True, timeout=30)
-                            break
-                        except (queue.Full):
-                            logging.debug("%s Batch Queue full epoch %s", name, epoch)
-                        except Exception as e:
-                            logging.error(
-                                "%s - %s batch %s Put error %s",
-                                epoch,
-                                name,
-                                i,
-                                e,
-                                exc_info=True,
-                            )
-                    total += 1
-                    logging.debug(
-                        "%s put %s out of %s %s",
-                        total,
-                        name,
-                        len(batches[1]),
-                        q.qsize(),
-                    )
-            except (queue.Empty):
-                logging.debug("%s Samples Queue empty epoch %s", name, epoch)
+        except (queue.Empty):
+            logging.debug("%s Samples Queue empty epoch %s", name, epoch)
 
-            except Exception as inst:
-                logging.error("%s epoch %s error %s", name, epoch, inst, exc_info=True)
-                pass
+        except Exception as inst:
+            logging.error("%s epoch %s error %s", name, epoch, inst, exc_info=True)
+            pass
