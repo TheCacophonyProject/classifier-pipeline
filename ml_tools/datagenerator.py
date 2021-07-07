@@ -177,7 +177,7 @@ class DataGenerator(keras.utils.Sequence):
                             exc_info=True,
                         )
                         pass
-                X = process_frames(X, self.params)
+                # X = process_frames(X, self.params)
             else:
                 X, y, y_original = self.loadbatch(index)
 
@@ -335,7 +335,7 @@ class DataGenerator(keras.utils.Sequence):
 def loadbatch(labels, db, samples, params, mapped_labels):
     start = time.time()
     # samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
-    X, y, y_orig = _batch_frames(labels, db, samples, params, mapped_labels)
+    X, y, y_orig = _data(labels, db, samples, params, mapped_labels)
     print("loaded batch", len(X))
     logging.debug("%s  Time to get data %s", "NULL", time.time() - start)
     return X, y, y_orig
@@ -349,44 +349,46 @@ def get_cached_frames(db, sample):
     return frames
 
 
-def _batch_frames(labels, db, samples, params, mapped_labels, to_categorical=True):
-    "Generates data containing batch_size samples"
-    # Initialization
-    start = time.time()
-    X = []
-    y = np.empty((len(samples)), dtype=int)
-    data_i = 0
-    y_original = []
-    for sample in samples:
-        label = mapped_labels[sample.label]
-        if label not in labels:
-            continue
-        channels = [TrackChannels.thermal, TrackChannels.filtered]
-        if params.type == 3:
-            channels.append(TrackChannels.flow)
-
-        try:
-            # frame_data = get_frames(db, sample, channels)
-            frame_data = get_cached_frames(db, sample)
-        except Exception as inst:
-
-            logging.error("Error fetching sample %s %s", sample, inst, exc_info=True)
-            continue
-        if len(frame_data) < 5:
-            logging.error("Not enough frame data for %s %s", sample, len(frame_data))
-            continue
-        y_original.append(sample.label)
-        X.append(frame_data)
-        y[data_i] = labels.index(label)
-        data_i += 1
-    X = X[:data_i]
-    y = y[:data_i]
-    if len(X) == 0:
-        logging.error("Empty length of x")
-
-    y = keras.utils.to_categorical(y, num_classes=len(labels))
-
-    return X, y, y_original
+#
+#
+# def _batch_frames(labels, db, samples, params, mapped_labels, to_categorical=True):
+#     "Generates data containing batch_size samples"
+#     # Initialization
+#     start = time.time()
+#     X = []
+#     y = np.empty((len(samples)), dtype=int)
+#     data_i = 0
+#     y_original = []
+#     for sample in samples:
+#         label = mapped_labels[sample.label]
+#         if label not in labels:
+#             continue
+#         channels = [TrackChannels.thermal, TrackChannels.filtered]
+#         if params.type == 3:
+#             channels.append(TrackChannels.flow)
+#
+#         try:
+#             # frame_data = get_frames(db, sample, channels)
+#             frame_data = get_cached_frames(db, sample)
+#         except Exception as inst:
+#
+#             logging.error("Error fetching sample %s %s", sample, inst, exc_info=True)
+#             continue
+#         if len(frame_data) < 5:
+#             logging.error("Not enough frame data for %s %s", sample, len(frame_data))
+#             continue
+#         y_original.append(sample.label)
+#         X.append(frame_data)
+#         y[data_i] = labels.index(label)
+#         data_i += 1
+#     X = X[:data_i]
+#     y = y[:data_i]
+#     if len(X) == 0:
+#         logging.error("Empty length of x")
+#
+#     y = keras.utils.to_categorical(y, num_classes=len(labels))
+#
+#     return X, y, y_original
 
 
 def get_frames(f, segment, channels):
@@ -471,8 +473,8 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
                 channels = [TrackChannels.thermal, TrackChannels.filtered]
                 if params.type == 3:
                     channels.append(TrackChannels.flow)
-
-                frame_data = get_frames(db, sample, channels)
+                frame_data = get_cached_frames(db, sample)
+                # frame_data = get_frames(db, sample, channels)
                 total_db_time += time.time() - data_time
                 # frame_data = dataset.fetch_random_sample(sample)
                 overlay = None
