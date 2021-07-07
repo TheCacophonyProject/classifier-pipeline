@@ -420,7 +420,7 @@ class KerasModel:
         num_classifies = math.ceil(float(num_frames) / frames_per_classify)
 
         # since we classify a random segment each time, take a few permutations
-        combinations = max(1, frames_per_classify // 25)
+        combinations = max(1, frames_per_classify // frames_per_classify)
         for _ in range(combinations):
             frame_sample = np.arange(num_frames)
             np.random.shuffle(frame_sample)
