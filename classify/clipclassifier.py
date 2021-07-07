@@ -276,6 +276,51 @@ class ClipClassifier(CPTVFileProcessor):
 
         return predictions
 
+    def thumbnail(self, clip, predictions_per_model):
+        model = list(predictions_per_model.values())[0]
+        track_predictions = list(model.prediction_per_track.values())
+        animals = [
+            pred
+            for pred in track_predictions
+            if pred.predicted_tag() != "false-positive"
+        ]
+        for pred in animals:
+            print(pred.predicted_tag())
+        print("has animals", len(animals))
+        if len(animals) == 0:
+            animals = track_prediction
+        sorted_predictions = sorted(animals, key=lambda x: x.max_score, reverse=True)
+        track_masses = {}
+        segment_width = 5
+        for track in clip.tracks:
+            mass_history = [int(bound.mass) for bound in track.bounds_history]
+            segment_mass = []
+
+            for i in range(max(1, len(mass_history) - segment_width)):
+                mass = np.sum(mass_history[i : i + segment_width])
+                # if mass / segment_width > self.mean_mass:
+                segment_mass.append((i, mass))
+            if len(segment_mass) == 0:
+                continue
+            sorted_mass = sorted(segment_mass, key=lambda x: x[1], reverse=True)
+            print(sorted_mass)
+            track_masses[track.get_id()] = (track, *sorted_mass[0])
+        print("track mass", track_masses)
+        print("sorted prediction is", sorted_predictions[0].track_id)
+        best_track = sorted_predictions[0].track_id
+        best_mass = track_masses[best_track]
+
+        import matplotlib.pyplot as plt
+
+        f, axarr = plt.subplots(segment_width, 2)
+        track = best_mass[0]
+        for row, i in enumerate(range(segment_width)):
+            f = clip.frame_buffer.get_frame(best_mass[1] + i + track.start_frame)
+            f.crop_by_region(track.bounds_history[best_mass[1] + i], out=f)
+            axarr[row, 0].imshow(f.thermal)
+            axarr[row, 1].imshow(f.filtered)
+        plt.show()
+
     def save_metadata(
         self,
         filename,
@@ -285,6 +330,7 @@ class ClipClassifier(CPTVFileProcessor):
         models,
         tracking_time,
     ):
+        self.thumbnail(clip, predictions_per_model)
         if self.cache_to_disk:
             clip.frame_buffer.remove_cache()
 
