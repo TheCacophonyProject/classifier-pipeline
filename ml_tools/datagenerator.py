@@ -165,6 +165,7 @@ class DataGenerator(keras.utils.Sequence):
                         X, y, y_original = self.preloader_queue.get(
                             block=True, timeout=30
                         )
+
                         break
                     except (queue.Empty):
                         logging.debug("%s Preload queue is empty", self.dataset.name)
@@ -176,6 +177,7 @@ class DataGenerator(keras.utils.Sequence):
                             exc_info=True,
                         )
                         pass
+                X = process_frames(X, self.params)
             else:
                 X, y, y_original = self.loadbatch(index)
 
@@ -333,10 +335,49 @@ class DataGenerator(keras.utils.Sequence):
 def loadbatch(labels, db, samples, params, mapped_labels):
     start = time.time()
     # samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
-    X, y, y_orig = _data(labels, db, samples, params, mapped_labels)
-
+    X, y, y_orig = _batch_frames(labels, db, samples, params, mapped_labels)
+    print("loaded batch", len(X))
     logging.debug("%s  Time to get data %s", "NULL", time.time() - start)
     return X, y, y_orig
+
+
+def _batch_frames(labels, db, samples, params, mapped_labels, to_categorical=True):
+    "Generates data containing batch_size samples"
+    # Initialization
+    start = time.time()
+    X = []
+    y = np.empty((len(samples)), dtype=int)
+    data_i = 0
+    y_original = []
+    for sample in samples:
+        label = mapped_labels[sample.label]
+        if label not in labels:
+            continue
+        channels = [TrackChannels.thermal, TrackChannels.filtered]
+        if params.type == 3:
+            channels.append(TrackChannels.flow)
+
+        try:
+            frame_data = get_frames(db, sample, channels)
+        except Exception as inst:
+
+            logging.error("Error fetching sample %s %s", sample, inst, exc_info=True)
+            continue
+        if len(frame_data) < 5:
+            logging.error("Not enough frame data for %s %s", sample, len(frame_data))
+            continue
+        y_original.append(sample.label)
+        X.append(frame_data)
+        y[data_i] = labels.index(label)
+        data_i += 1
+    X = X[:data_i]
+    y = y[:data_i]
+    if len(X) == 0:
+        logging.error("Empty length of x")
+
+    y = keras.utils.to_categorical(y, num_classes=len(labels))
+
+    return X, y, y_original
 
 
 def get_frames(f, segment, channels):
@@ -353,6 +394,47 @@ def get_frames(f, segment, channels):
         frame.region = tools.Rectangle.from_ltrb(*segment.track_bounds[frame_i])
         frames.append(frame)
     return frames
+
+
+def process_frames(batch_data, params):
+    X = np.empty(
+        (
+            len(batch_data),
+            *params.output_dim,
+        )
+    )
+    data_i = 0
+    for frame_data in batch_data:
+        # repeat some frames if need be
+        while len(frame_data) < params.square_width ** 2:
+            missing = params.square_width ** 2 - len(frame_data)
+            indices = np.arange(len(frame_data))
+            np.random.shuffle(indices)
+            for frame_i in indices[:missing]:
+                frame_data.append(frame_data[frame_i].copy())
+        ref = None
+        frame_data = sorted(frame_data, key=lambda frame_data: frame_data.frame_number)
+        #
+        # for frame in frame_data:
+        #     ref.append(sample.frame_temp_median[frame.frame_number])
+        data = preprocess_movement(
+            None,
+            frame_data,
+            params.square_width,
+            None,
+            params.channel,
+            preprocess_fn=params.model_preprocess,
+            augment=params.augment,
+            use_dots=params.use_dots,
+            reference_level=ref,
+            # sample=sample,
+            # overlay=overlay,
+            type=params.type,
+            keep_edge=params.keep_edge,
+        )
+        X[data_i] = data
+        data_i += 1
+    return X
 
 
 def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
@@ -486,7 +568,8 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
 #     """add a segment into buffer"""
 #     logging.info(
 #         " -started async fetcher for %s augment=%s",
-#         name,
+#         name,883392:   INFO GOT X 4
+
 #         params.augment,
 #     )
 #     while True:
