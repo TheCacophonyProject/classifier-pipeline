@@ -66,7 +66,6 @@ class DataGenerator(keras.utils.Sequence):
             self.load_queue = multiprocessing.Queue()
         if self.preload:
             self.preloader_queue = multiprocessing.Queue(params.get("buffer_size", 128))
-        print("buffer is", params.get("buffer_size", 128))
         self.segments = None
         self.segments = []
         # load epoch
@@ -345,7 +344,7 @@ def loadbatch(labels, db, samples, params, mapped_labels):
     start = time.time()
     # samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
     X, y, y_orig = _data(labels, db, samples, params, mapped_labels)
-    logging.debug("%s  Time to get data %s", "NULL", time.time() - start)
+    # logging.info("%s  Time to get data %s", "NULL", time.time() - start)
     return X, y, y_orig
 
 
@@ -570,12 +569,12 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
     total_time = time.time() - start
-    # logging.info(
-    #     "%s took %s to load db out of total %s",
-    #     params.augment,
-    #     total_db_time,
-    #     total_time,
-    # )
+    logging.info(
+        "%s took %s to load db out of total %s",
+        params.augment,
+        total_db_time,
+        total_time,
+    )
     if params.mvm:
         return [np.array(X), np.array(mvm)], y, y_original
     return np.array(X), y, y_original
@@ -667,6 +666,7 @@ def load_batch_frames(
     channels,
     name,
 ):
+    start = time.time()
     with open(numpyfile, "rb") as f:
         data_by_track = {}
         for batch in batches:
@@ -693,6 +693,8 @@ def load_batch_frames(
             ],
         )
         track_frames = get_batch_frames(f, track_frames, track_segments, channels, name)
+    logging.info("%s time to load load_batch_frames %s", name, time.time() - start)
+
     return track_frames, seg_data, track_seg_count
 
 
@@ -732,7 +734,7 @@ def preloader(
             total = 0
 
             memory_batches = 500
-            load_more_at = 32 * memory_batches / 2
+            load_more_at = 32 * memory_batches
             loaded_up_to = 0
             for i, batch in enumerate(batches[1]):
                 if len(seg_data) < load_more_at and loaded_up_to < len(batches[1]):
