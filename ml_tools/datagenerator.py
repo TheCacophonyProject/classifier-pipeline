@@ -201,7 +201,7 @@ class DataGenerator(keras.utils.Sequence):
         # can start loading next epoch of training before validation
         # if (index + 1) == len(self):
         #     self.load_next_epoch(True)
-        logging.info(
+        logging.debug(
             "%s requsting index %s took %s q has %s",
             self.dataset.name,
             index,
@@ -652,7 +652,7 @@ def get_batch_frames(f, frames_by_track, tracks, channels, name):
             frame = Frame.from_channel(data, channels, frame_i, flow_clipped=True)
             track_data[frame_i] = frame
             frame.region = tools.Rectangle.from_ltrb(*regions_by_frames[frame_i])
-    logging.info("%s time to load %s frames %s", name, count, time.time() - start)
+    # logging.info("%s time to load %s frames %s", name, count, time.time() - start)
     return frames_by_track
 
 
@@ -693,7 +693,7 @@ def load_batch_frames(
             ],
         )
         track_frames = get_batch_frames(f, track_frames, track_segments, channels, name)
-    logging.info("%s time to load load_batch_frames %s", name, time.time() - start)
+    # logging.info("%s time to load load_batch_frames %s", name, time.time() - start)
 
     return track_frames, seg_data, track_seg_count
 
@@ -741,7 +741,7 @@ def preloader(
 
                     next_load = batches[1][loaded_up_to : loaded_up_to + memory_batches]
                     logging.info(
-                        "%s loading more data %s have %s loading %s of %s qsize %s ",
+                        "%s loading more data, have segments: %s  loading %s - %s of %s qsize %s ",
                         name,
                         len(seg_data),
                         loaded_up_to,
@@ -771,6 +771,10 @@ def preloader(
                 batch_data = loadbatch(
                     labels, track_frames, data, params, label_mapping
                 )
+                if i == 0:
+                    memory_batches = int(memory_batches // 2)
+                    load_more_at = 32 * memory_batches
+
                 while True:
                     try:
                         q.put(batch_data, block=True, timeout=30)
