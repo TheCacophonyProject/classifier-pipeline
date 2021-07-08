@@ -111,6 +111,9 @@ class DataGenerator(keras.utils.Sequence):
             return
         logging.info("stopping %s", self.dataset.name)
         for thread in self.preloader_threads:
+            self.load_queue.put("STOP")
+        time.sleep(40)
+        for thread in self.preloader_threads:
             if hasattr(thread, "terminate"):
                 thread.terminate()
             else:
@@ -165,7 +168,6 @@ class DataGenerator(keras.utils.Sequence):
                         X, y, y_original = self.preloader_queue.get(
                             block=True, timeout=30
                         )
-
                         break
                     except (queue.Empty):
                         logging.debug("%s Preload queue is empty", self.dataset.name)
@@ -569,7 +571,7 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
     total_time = time.time() - start
-    logging.info(
+    logging.debug(
         "%s took %s to load db out of total %s",
         params.augment,
         total_db_time,
@@ -652,13 +654,13 @@ def get_batch_frames(f, frames_by_track, tracks, channels, name):
             frame = Frame.from_channel(data, channels, frame_i, flow_clipped=True)
             track_data[frame_i] = frame
             frame.region = tools.Rectangle.from_ltrb(*regions_by_frames[frame_i])
-    # logging.info("%s time to load %s frames %s", name, count, time.time() - start)
+    logging.info("%s time to load %s frames %s", name, count, time.time() - start)
     return frames_by_track
 
 
 def load_batch_frames(
     track_frames,
-    seg_data,
+    batch_q,
     track_seg_count,
     numpyfile,
     batches,
@@ -667,12 +669,22 @@ def load_batch_frames(
     name,
 ):
     start = time.time()
+    to_delete = []
+    for id, count in track_seg_count.items():
+        if count <= 0:
+            del track_frames[id]
+            to_delete.append(id)
+    for id in to_delete:
+        del track_seg_count[id]
+    gc.collect()
+    all_batches = []
     with open(numpyfile, "rb") as f:
         data_by_track = {}
         for batch in batches:
+            batch_segments = []
             for s_id in batch:
                 segment = segments_by_id[s_id]
-                seg_data.append(segments_by_id[s_id])
+                batch_segments.append(segments_by_id[s_id])
                 track_segments = data_by_track.setdefault(
                     segment.unique_track_id,
                     (segment.track_info, [], segment.unique_track_id, {}),
@@ -685,6 +697,7 @@ def load_batch_frames(
                     track_seg_count[segment.unique_track_id] += 1
                 else:
                     track_seg_count[segment.unique_track_id] = 1
+            all_batches.append(batch_segments)
         # sort by position in file
         track_segments = sorted(
             data_by_track.values(),
@@ -693,10 +706,16 @@ def load_batch_frames(
             ],
         )
         track_frames = get_batch_frames(f, track_frames, track_segments, channels, name)
+        for batch in all_batches:
+            batch_q.put(batch_segments)
+
     # logging.info("%s time to load load_batch_frames %s", name, time.time() - start)
 
-    return track_frames, seg_data, track_seg_count
+    return track_frames, track_seg_count
 
+
+from queue import Queue
+import threading
 
 # continue to read examples until queue is full
 def preloader(
@@ -719,9 +738,29 @@ def preloader(
     seg_data = []
     track_frames = {}
     track_seg_count = {}
+    batch_q = Queue()
+
+    t = threading.Thread(
+        target=process_batches,
+        args=(
+            batch_q,
+            q,
+            labels,
+            track_frames,
+            track_seg_count,
+            params,
+            label_mapping,
+            name,
+        ),
+    )
+    t.start()
     while True:
         try:
             item = load_queue.get(block=True, timeout=30)
+            if item == "STOP":
+                batch_q.put("STOP")
+                logging.info("%s received stop", name)
+                break
             batches = pickle.loads(item)
             # datagen.loaded_epochs = samples[0]
             epoch = batches[0]
@@ -734,24 +773,24 @@ def preloader(
             total = 0
 
             memory_batches = 500
-            load_more_at = 32 * memory_batches
+            load_more_at = memory_batches
             loaded_up_to = 0
             for i, batch in enumerate(batches[1]):
-                if len(seg_data) < load_more_at and loaded_up_to < len(batches[1]):
+                if batch_q.qsize() < load_more_at and loaded_up_to < len(batches[1]):
 
                     next_load = batches[1][loaded_up_to : loaded_up_to + memory_batches]
                     logging.info(
                         "%s loading more data, have segments: %s  loading %s - %s of %s qsize %s ",
                         name,
-                        len(seg_data),
+                        batch_q.qsize(),
                         loaded_up_to,
                         len(next_load),
                         len(batches[1]),
                         q.qsize(),
                     )
-                    track_frames, seg_data, track_seg_count = load_batch_frames(
+                    track_frames, track_seg_count = load_batch_frames(
                         track_frames,
-                        seg_data,
+                        batch_q,
                         track_seg_count,
                         numpyfile,
                         next_load,
@@ -763,39 +802,9 @@ def preloader(
                     logging.info(
                         "%s loaded more data %s loaded up to %s",
                         name,
-                        len(seg_data),
+                        batch_q.qsize(),
                         loaded_up_to,
                     )
-
-                data = seg_data[: len(batch)]
-                batch_data = loadbatch(
-                    labels, track_frames, data, params, label_mapping
-                )
-                if i == 0:
-                    memory_batches = int(memory_batches // 2)
-                    load_more_at = 32 * memory_batches
-
-                while True:
-                    try:
-                        q.put(batch_data, block=True, timeout=30)
-                        break
-                    except (queue.Full):
-                        logging.debug("%s Batch Queue full epoch %s", name, epoch)
-                    except Exception as e:
-                        logging.error(
-                            "%s - %s batch %s Put error %s",
-                            epoch,
-                            name,
-                            i,
-                            e,
-                            exc_info=True,
-                        )
-                for seg in data:
-                    track_seg_count[seg.unique_track_id] -= 1
-                    if track_seg_count[seg.unique_track_id] <= 0:
-                        del track_frames[seg.unique_track_id]
-                        del track_seg_count[seg.unique_track_id]
-
                 total += 1
                 logging.debug(
                     "%s put %s out of %s %s",
@@ -804,10 +813,47 @@ def preloader(
                     len(batches[1]),
                     q.qsize(),
                 )
-                seg_data = seg_data[len(data) :]
         except (queue.Empty):
             logging.debug("%s Samples Queue empty epoch %s", name, epoch)
 
         except Exception as inst:
             logging.error("%s epoch %s error %s", name, epoch, inst, exc_info=True)
             pass
+
+
+def process_batches(
+    batch_queue, q, labels, track_frames, track_seg_count, params, label_mapping, name
+):
+    while True:
+        try:
+            segments = batch_queue.get(block=True, timeout=30)
+            if segments == "STOP":
+                logging.info("%s process batch thread received stop")
+                return
+            # print("got some data", segments)
+            # print("track fames", track_frames)
+            batch_data = loadbatch(
+                labels, track_frames, segments, params, label_mapping
+            )
+
+            while True:
+                try:
+                    q.put(batch_data, block=True, timeout=30)
+                    break
+                except (queue.Full):
+                    logging.debug("%s Batch Queue full epoch %s", name, epoch)
+                except Exception as e:
+                    logging.error(
+                        "%s - %s batch %s Put error %s",
+                        epoch,
+                        name,
+                        i,
+                        e,
+                        exc_info=True,
+                    )
+                    raise e
+            for seg in segments:
+                track_seg_count[seg.unique_track_id] -= 1
+
+        except (queue.Empty):
+            logging.debug("%s process_batches Queue empty epoch", name)

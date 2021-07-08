@@ -466,7 +466,7 @@ class KerasModel:
                 class_weight[i] = 1
             print("weight for", label, " is", class_weight[i])
         print(class_weight)
-        time.sleep(100)
+        time.sleep(1)
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
@@ -494,7 +494,7 @@ class KerasModel:
                 shuffle=True,
                 model_preprocess=self.preprocess_fn,
                 epochs=1,
-                load_threads=8,
+                load_threads=self.params.train_load_threads,
                 cap_at="bird",
                 square_width=self.params.square_width,
                 mvm=self.params.mvm,
