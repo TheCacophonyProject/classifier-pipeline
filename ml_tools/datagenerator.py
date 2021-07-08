@@ -336,7 +336,6 @@ def loadbatch(labels, db, samples, params, mapped_labels):
     start = time.time()
     # samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
     X, y, y_orig = _data(labels, db, samples, params, mapped_labels)
-    print("loaded batch", len(X))
     logging.debug("%s  Time to get data %s", "NULL", time.time() - start)
     return X, y, y_orig
 
@@ -345,7 +344,7 @@ def get_cached_frames(db, sample):
     track_frames = db[sample.unique_track_id]
     frames = []
     for f_i in sample.frame_indices:
-        frames.append(track_frames[f_i])
+        frames.append(track_frames[f_i].copy())
     return frames
 
 
@@ -562,12 +561,12 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
     total_time = time.time() - start
-    logging.info(
-        "%s took %s to load db out of total %s",
-        params.augment,
-        total_db_time,
-        total_time,
-    )
+    # logging.info(
+    #     "%s took %s to load db out of total %s",
+    #     params.augment,
+    #     total_db_time,
+    #     total_time,
+    # )
     if params.mvm:
         return [np.array(X), np.array(mvm)], y, y_original
     return np.array(X), y, y_original
@@ -623,16 +622,13 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
 #             raise e
 
 
-def get_batch_frames(f, tracks, channels, name):
+def get_batch_frames(f, frames_by_track, tracks, channels, name):
     start = time.time()
-    frames_by_track = {}
     count = 0
     for track_info, frame_indices, u_id, regions_by_frames in tracks:
         # frames = track[1]
         frame_indices.sort()
-        track_data = {}
-        frames_by_track[u_id] = track_data
-        # track_info = trackp0[]
+        track_data = frames_by_track.setdefault(u_id, {})
 
         for frame_i in frame_indices:
             if frame_i in track_data:
@@ -652,9 +648,17 @@ def get_batch_frames(f, tracks, channels, name):
     return frames_by_track
 
 
-def load_batch_frames(numpyfile, batches, segments_by_id, channels, name):
+def load_batch_frames(
+    track_frames,
+    seg_data,
+    track_seg_count,
+    numpyfile,
+    batches,
+    segments_by_id,
+    channels,
+    name,
+):
     with open(numpyfile, "rb") as f:
-        seg_data = []
         data_by_track = {}
         for batch in batches:
             for s_id in batch:
@@ -667,6 +671,10 @@ def load_batch_frames(numpyfile, batches, segments_by_id, channels, name):
                 regions_by_frames = track_segments[3]
                 regions_by_frames.update(segment.track_bounds)
                 track_segments[1].extend(segment.frame_indices)
+                if segment.unique_track_id in track_seg_count:
+                    track_seg_count[segment.unique_track_id] += 1
+                else:
+                    track_seg_count[segment.unique_track_id] = 1
         # sort by position in file
         track_segments = sorted(
             data_by_track.values(),
@@ -674,8 +682,8 @@ def load_batch_frames(numpyfile, batches, segments_by_id, channels, name):
                 TrackChannels.thermal
             ],
         )
-        track_frames = get_batch_frames(f, track_segments, channels, name)
-    return track_frames, seg_data
+        track_frames = get_batch_frames(f, track_frames, track_segments, channels, name)
+    return track_frames, seg_data, track_seg_count
 
 
 # continue to read examples until queue is full
@@ -696,6 +704,9 @@ def preloader(
     track_data = {}
 
     epoch = 0
+    seg_data = []
+    track_frames = {}
+    track_seg_count = {}
     while True:
         try:
             item = load_queue.get(block=True, timeout=30)
@@ -710,22 +721,44 @@ def preloader(
             )
             total = 0
 
-            data_i = 0
-            seg_data = []
-
+            memory_batches = 500
+            load_more_at = 32 * memory_batches / 2
+            loaded_up_to = 0
             for i, batch in enumerate(batches[1]):
-                if data_i >= len(seg_data):
-                    track_frames, seg_data = load_batch_frames(
+                if len(seg_data) < load_more_at and loaded_up_to < len(batches[1]):
+
+                    next_load = batches[1][loaded_up_to : loaded_up_to + memory_batches]
+                    # print(
+                    #     name,
+                    #     "loading more data",
+                    #     len(seg_data),
+                    #     "have up to",
+                    #     loaded_up_to,
+                    #     "loading",
+                    #     len(next_load),
+                    #     "out of ",
+                    #     len(batches[1]),
+                    # )
+                    track_frames, seg_data, track_seg_count = load_batch_frames(
+                        track_frames,
+                        seg_data,
+                        track_seg_count,
                         numpyfile,
-                        batches[1][i : i + 1000],
+                        next_load,
                         segments_by_id,
                         channels,
                         name,
                     )
-                    data_i = 0
-                data = seg_data[data_i : data_i + len(batch)]
-                data_i += len(batch)
+                    loaded_up_to = i + len(next_load)
+                    # print(
+                    #     name,
+                    #     "loaded more data",
+                    #     len(seg_data),
+                    #     " loaded up to",
+                    #     loaded_up_to,
+                    # )
 
+                data = seg_data[: len(batch)]
                 batch_data = loadbatch(
                     labels, track_frames, data, params, label_mapping
                 )
@@ -744,6 +777,12 @@ def preloader(
                             e,
                             exc_info=True,
                         )
+                for seg in data:
+                    track_seg_count[seg.unique_track_id] -= 1
+                    if track_seg_count[seg.unique_track_id] <= 0:
+                        del track_frames[seg.unique_track_id]
+                        del track_seg_count[seg.unique_track_id]
+
                 total += 1
                 logging.debug(
                     "%s put %s out of %s %s",
@@ -752,6 +791,7 @@ def preloader(
                     len(batches[1]),
                     q.qsize(),
                 )
+                seg_data = seg_data[len(data) :]
         except (queue.Empty):
             logging.debug("%s Samples Queue empty epoch %s", name, epoch)
 
