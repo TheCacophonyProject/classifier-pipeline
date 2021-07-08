@@ -66,6 +66,7 @@ class DataGenerator(keras.utils.Sequence):
             self.load_queue = multiprocessing.Queue()
         if self.preload:
             self.preloader_queue = multiprocessing.Queue(params.get("buffer_size", 128))
+        print("buffer is", params.get("buffer_size", 128))
         self.segments = None
         self.segments = []
         # load epoch
@@ -137,7 +138,7 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
-        logging.debug("%s requsting index %s", self.dataset.name, index)
+        start = time.time()
         if index == len(self) - 1:
             logging.info(
                 "%s on epoch %s index % s loading next epoch data",
@@ -201,6 +202,14 @@ class DataGenerator(keras.utils.Sequence):
         # can start loading next epoch of training before validation
         # if (index + 1) == len(self):
         #     self.load_next_epoch(True)
+        logging.info(
+            "%s requsting index %s took %s q has %s",
+            self.dataset.name,
+            index,
+            time.time() - start,
+            self.preloader_queue.qsize(),
+        )
+
         return X, y
 
     def resuse_previous_epoch(self):
@@ -671,6 +680,7 @@ def load_batch_frames(
                 regions_by_frames = track_segments[3]
                 regions_by_frames.update(segment.track_bounds)
                 track_segments[1].extend(segment.frame_indices)
+
                 if segment.unique_track_id in track_seg_count:
                     track_seg_count[segment.unique_track_id] += 1
                 else:
@@ -728,17 +738,15 @@ def preloader(
                 if len(seg_data) < load_more_at and loaded_up_to < len(batches[1]):
 
                     next_load = batches[1][loaded_up_to : loaded_up_to + memory_batches]
-                    # print(
-                    #     name,
-                    #     "loading more data",
-                    #     len(seg_data),
-                    #     "have up to",
-                    #     loaded_up_to,
-                    #     "loading",
-                    #     len(next_load),
-                    #     "out of ",
-                    #     len(batches[1]),
-                    # )
+                    logging.info(
+                        "%s loading more data %s have %s loading %s of %s qsize %s ",
+                        name,
+                        len(seg_data),
+                        loaded_up_to,
+                        len(next_load),
+                        len(batches[1]),
+                        q.qsize(),
+                    )
                     track_frames, seg_data, track_seg_count = load_batch_frames(
                         track_frames,
                         seg_data,
@@ -750,13 +758,12 @@ def preloader(
                         name,
                     )
                     loaded_up_to = i + len(next_load)
-                    # print(
-                    #     name,
-                    #     "loaded more data",
-                    #     len(seg_data),
-                    #     " loaded up to",
-                    #     loaded_up_to,
-                    # )
+                    logging.info(
+                        "%s loaded more data %s loaded up to %s",
+                        name,
+                        len(seg_data),
+                        loaded_up_to,
+                    )
 
                 data = seg_data[: len(batch)]
                 batch_data = loadbatch(

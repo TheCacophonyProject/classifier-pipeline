@@ -466,6 +466,7 @@ class KerasModel:
                 class_weight[i] = 1
             print("weight for", label, " is", class_weight[i])
         print(class_weight)
+        time.sleep(100)
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
