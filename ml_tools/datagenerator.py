@@ -772,7 +772,7 @@ def preloader(
             )
             total = 0
 
-            memory_batches = 500
+            memory_batches = 300
             load_more_at = memory_batches
             loaded_up_to = 0
             for i, batch in enumerate(batches[1]):
@@ -805,6 +805,9 @@ def preloader(
                         batch_q.qsize(),
                         loaded_up_to,
                     )
+                if i == 0:
+                    memory_batches = memory_batches / 2
+                    load_more_at = memory_batches / 2
                 total += 1
                 logging.debug(
                     "%s put %s out of %s %s",
