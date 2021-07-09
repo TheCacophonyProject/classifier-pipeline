@@ -829,7 +829,9 @@ def preloader(
                         len(batches),
                         q.qsize(),
                     )
-
+                    if loaded_up_to >= len(batches):
+                        logging.info("%s loaded epoch %s", name, epoch)
+                        break
                 else:
                     time.sleep(2)
 
