@@ -671,6 +671,8 @@ def load_batch_frames(
     start = time.time()
     to_delete = []
     for id, count in track_seg_count.items():
+        if count < 0:
+            logging.error("%s id is less than 0 %s is count %s", name, id, count)
         if count <= 0:
             del track_frames[id]
             to_delete.append(id)
@@ -684,7 +686,7 @@ def load_batch_frames(
             batch_segments = []
             for s_id in batch:
                 segment = segments_by_id[s_id]
-                batch_segments.append(segments_by_id[s_id])
+                batch_segments.append(segment)
                 track_segments = data_by_track.setdefault(
                     segment.unique_track_id,
                     (segment.track_info, [], segment.unique_track_id, {}),
@@ -692,9 +694,14 @@ def load_batch_frames(
                 regions_by_frames = track_segments[3]
                 regions_by_frames.update(segment.track_bounds)
                 track_segments[1].extend(segment.frame_indices)
-
                 if segment.unique_track_id in track_seg_count:
                     track_seg_count[segment.unique_track_id] += 1
+                    # logging.info(
+                    #     "%s has count of %s for %s",
+                    #     name,
+                    #     segment.unique_track_id,
+                    #     track_seg_count[segment.unique_track_id],
+                    # )
                 else:
                     track_seg_count[segment.unique_track_id] = 1
             all_batches.append(batch_segments)
@@ -705,9 +712,10 @@ def load_batch_frames(
                 TrackChannels.thermal
             ],
         )
-        track_frames = get_batch_frames(f, track_frames, track_segments, channels, name)
-        for batch in all_batches:
-            batch_q.put(batch_segments)
+
+        get_batch_frames(f, track_frames, track_segments, channels, name)
+    for batch in all_batches:
+        batch_q.put(batch)
 
     # logging.info("%s time to load load_batch_frames %s", name, time.time() - start)
 
@@ -761,13 +769,12 @@ def preloader(
                 batch_q.put("STOP")
                 logging.info("%s received stop", name)
                 break
-            batches = pickle.loads(item)
+            epoch, batches = pickle.loads(item)
             # datagen.loaded_epochs = samples[0]
-            epoch = batches[0]
             logging.info(
                 "%s Preloader got (%s) batches for epoch %s",
                 name,
-                len(batches[1]),
+                len(batches),
                 epoch,
             )
             total = 0
@@ -775,20 +782,26 @@ def preloader(
             memory_batches = 300
             load_more_at = memory_batches
             loaded_up_to = 0
-            for i, batch in enumerate(batches[1]):
-                if batch_q.qsize() < load_more_at and loaded_up_to < len(batches[1]):
-
-                    next_load = batches[1][loaded_up_to : loaded_up_to + memory_batches]
+            # for i, batch in enumerate(batches):
+            while True:
+                if batch_q.qsize() < load_more_at and loaded_up_to < len(batches):
+                    logging.info(
+                        "%s loading %s:%s",
+                        name,
+                        loaded_up_to,
+                        loaded_up_to + memory_batches,
+                    )
+                    next_load = batches[loaded_up_to : loaded_up_to + memory_batches]
                     logging.info(
                         "%s loading more data, have segments: %s  loading %s - %s of %s qsize %s ",
                         name,
                         batch_q.qsize(),
                         loaded_up_to,
-                        len(next_load),
-                        len(batches[1]),
+                        loaded_up_to + len(next_load),
+                        len(batches),
                         q.qsize(),
                     )
-                    track_frames, track_seg_count = load_batch_frames(
+                    load_batch_frames(
                         track_frames,
                         batch_q,
                         track_seg_count,
@@ -798,24 +811,28 @@ def preloader(
                         channels,
                         name,
                     )
-                    loaded_up_to = i + len(next_load)
+                    if loaded_up_to == 0:
+                        memory_batches = memory_batches // 2
+                        load_more_at = memory_batches // 2
+                    loaded_up_to = loaded_up_to + len(next_load)
                     logging.info(
-                        "%s loaded more data %s loaded up to %s",
+                        "%s loaded more data qsize is %s loaded up to %s",
                         name,
                         batch_q.qsize(),
                         loaded_up_to,
                     )
-                if i == 0:
-                    memory_batches = memory_batches / 2
-                    load_more_at = memory_batches / 2
-                total += 1
-                logging.debug(
-                    "%s put %s out of %s %s",
-                    total,
-                    name,
-                    len(batches[1]),
-                    q.qsize(),
-                )
+                    total += 1
+                    logging.debug(
+                        "%s put %s out of %s %s",
+                        total,
+                        name,
+                        len(batches),
+                        q.qsize(),
+                    )
+
+                else:
+                    time.sleep(2)
+
         except (queue.Empty):
             logging.debug("%s Samples Queue empty epoch %s", name, epoch)
 
@@ -838,25 +855,24 @@ def process_batches(
             batch_data = loadbatch(
                 labels, track_frames, segments, params, label_mapping
             )
-
+            for seg in segments:
+                track_seg_count[seg.unique_track_id] -= 1
+                assert track_seg_count[seg.unique_track_id] >= 0
             while True:
                 try:
                     q.put(batch_data, block=True, timeout=30)
                     break
                 except (queue.Full):
-                    logging.debug("%s Batch Queue full epoch %s", name, epoch)
+                    logging.debug("%s Batch Queue full", name)
                 except Exception as e:
                     logging.error(
-                        "%s - %s batch %s Put error %s",
-                        epoch,
+                        "%s batch %s Put error %s",
                         name,
                         i,
                         e,
                         exc_info=True,
                     )
                     raise e
-            for seg in segments:
-                track_seg_count[seg.unique_track_id] -= 1
 
         except (queue.Empty):
             logging.debug("%s process_batches Queue empty epoch", name)
