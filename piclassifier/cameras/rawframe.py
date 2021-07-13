@@ -38,7 +38,7 @@ class RawFrame(ABC):
 
 
 def get_uint16(raw, offset):
-    return unpack_from(">I", raw, offset)
+    return unpack_from(">I", raw, offset)[0]
 
 
 def get_uint32(raw, offset):
