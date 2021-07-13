@@ -244,7 +244,7 @@ def handle_headers(connection):
 
 def handle_connection(connection, config, thermal_config):
     headers = handle_headers(connection)
-    logging.info("parsed camera headers", headers)
+    logging.info("parsed camera headers %s", headers)
     processor = get_processor(config, thermal_config, headers)
     service = SnapshotService(processor)
 
