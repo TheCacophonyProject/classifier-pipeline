@@ -91,7 +91,7 @@ class CPTVRecorder:
         final_name = os.path.splitext(self.filename)[0]
         if self.clip is not None:
             meta_name = os.path.splitext(final_name)[0]
-            logging.debug("saving meta to %s", os.path.join(meta_name, "txt"))
+            logging.debug("saving meta to %s", "{}.{}".format(meta_name, "txt"))
             self.clip.save_metadata("{}.{}".format(meta_name, "txt"))
         self.writer.close()
         os.rename(self.filename, final_name)

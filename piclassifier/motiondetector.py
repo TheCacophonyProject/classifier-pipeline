@@ -265,6 +265,7 @@ class MotionDetector(Processor):
                 self.thermal_window.add(cptv_frame.pix)
                 if self.background is None:
                     self.background = cptv_frame.pix
+                    logging.debug("Setting background with %s", np.amax(cptv_frame.pix))
                     self.last_background_change = self.processed
                 else:
                     self.calc_temp_thresh(cptv_frame.pix, prev_ffc)
