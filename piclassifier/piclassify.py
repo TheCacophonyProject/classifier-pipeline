@@ -186,6 +186,8 @@ def main():
         logging.info("connection from %s", client_address)
         try:
             handle_connection(connection, config, thermal_config)
+        except:
+            logging.error("Error with connection", exc_info=True)
         finally:
             # Clean up the connection
             connection.close()
