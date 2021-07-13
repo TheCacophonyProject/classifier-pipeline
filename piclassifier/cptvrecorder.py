@@ -73,7 +73,7 @@ class CPTVRecorder:
 
         self.writer.write_header()
         self.recording = True
-        logging.debug("recording started temp_thresh: %d", temp_thresh)
+        logging.info("recording %s started temp_thresh: %d", self.filename, temp_thresh)
 
     def write_frame(self, cptv_frame, temp_thresh):
         if self.writer is None:
