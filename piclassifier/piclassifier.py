@@ -80,7 +80,7 @@ class PiClassifier(Processor):
         self.startup_classifier()
 
         self._output_dir = thermal_config.recorder.output_dir
-        self.meta_dir = os.path.join(thermal_config.recorder.output_dir, "metadata")
+        self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)
 
@@ -287,7 +287,7 @@ class PiClassifier(Processor):
             self.tracking = False
 
     def save_metadata(self):
-        filename = datetime.now().strftime("%Y%m%d.%H%M%S.%f.meta")
+        filename = datetime.now().strftime("%Y%m%d.%H%M%S.%f.txt")
 
         # record results in text file.
         save_file = {}
