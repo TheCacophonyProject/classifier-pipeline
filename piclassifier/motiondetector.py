@@ -137,6 +137,11 @@ class MotionDetector(Processor):
         self.ffc_affected = False
 
     def calc_temp_thresh(self, thermal_frame, prev_ffc):
+        logging.debug(
+            "frame pixels are %s back max %s",
+            np.amax(thermal_frame),
+            np.amax(self.background),
+        )
         if self.dynamic_thresh:
             temp_changed = False
 
