@@ -85,7 +85,11 @@ class PiClassifier(Processor):
             os.makedirs(self.meta_dir)
 
     def new_clip(self):
-        self.clip = Clip(self.config.tracking, "stream")
+        self.clip = Clip(
+            self.config.tracking,
+            "stream",
+            tracking_version=self.track_extractor.VERSION,
+        )
         self.clip.video_start_time = datetime.now()
         self.clip.num_preview_frames = self.preview_frames
 

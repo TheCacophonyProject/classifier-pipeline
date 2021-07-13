@@ -37,13 +37,19 @@ class Clip:
     PREVIEW = "preview"
     FRAMES_PER_SECOND = 9
     local_tz = pytz.timezone("Pacific/Auckland")
-    VERSION = 9
     CLIP_ID = 1
     # used when calculating background, mininimum percentage the difference object
     # and background object must overlap i.e. they are a valid object
     MIN_ORIGIN_OVERLAP = 0.80
 
-    def __init__(self, trackconfig, sourcefile, background=None, calc_stats=True):
+    def __init__(
+        self,
+        trackconfig,
+        sourcefile,
+        background=None,
+        calc_stats=True,
+        tracking_version=None,
+    ):
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
         Track._track_id = 1
@@ -81,6 +87,7 @@ class Clip:
         self.track_max_delta = None
         self.background_thresh = None
         self.predictions = None
+        self.tracking_version = tracking_version
         # sets defaults
         self.set_model(None)
         if background is not None:
@@ -98,7 +105,7 @@ class Clip:
         save_file["temp_thresh"] = self.temp_thresh
         save_file["algorithm"] = {}
         save_file["algorithm"]["model"] = "PI-INC3"
-        save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
+        save_file["algorithm"]["tracker_version"] = self.tracking_version
         save_file["tracks"] = []
         for track in self.tracks:
             track_info = {}
@@ -120,7 +127,7 @@ class Clip:
                 track_info["max_novelty"] = round(prediction.max_novelty, 2)
                 track_info["all_class_confidences"] = {}
                 for i, value in enumerate(prediction.class_best_score):
-                    label = self.classifier.labels[i]
+                    label = self.predictions.labels[i]
                     track_info["all_class_confidences"][label] = round(float(value), 3)
 
             positions = []
