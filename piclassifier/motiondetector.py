@@ -169,12 +169,11 @@ class MotionDetector(Processor):
                 self.temp_thresh = int(round(np.average(self.background)))
                 if self.temp_thresh != old_temp:
                     logging.debug(
-                        "{} MotionDetector temp threshold changed from {} to {} new background average is {} weighting was {}".format(
+                        "{} MotionDetector temp threshold changed from {} to {} new background average is {}".format(
                             self.num_frames,
                             old_temp,
                             self.temp_thresh,
                             np.average(self.background),
-                            self.background_weight,
                         )
                     )
                     temp_changed = True

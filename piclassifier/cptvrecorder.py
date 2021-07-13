@@ -43,8 +43,8 @@ class CPTVRecorder:
             else:
                 self.write_frame(cptv_frame, temp_thresh)
 
-        if self.frames == self.max_frames:
-            self.stop_recording()
+            if self.frames == self.max_frames:
+                self.stop_recording()
 
     def has_minimum(self):
         return self.frames > self.write_until
@@ -84,6 +84,7 @@ class CPTVRecorder:
     def stop_recording(self):
         self.recording = False
         logging.debug("recording ended")
+        self.write_until = 0
         if self.writer is None:
             return
 
