@@ -217,7 +217,7 @@ class PiClassifier(Processor):
         if self.motion_detector.recorder.recording:
             if self.clip is None:
                 self.new_clip()
-                self.motion_detector.recording.clip = self.clip
+                self.motion_detector.recorder.clip = self.clip
 
             t_start = time.time()
             self.track_extractor.process_frame(
