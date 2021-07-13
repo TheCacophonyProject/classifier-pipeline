@@ -87,8 +87,8 @@ class Clip:
             self.background = background
             self._background_calculated()
 
-    def save_metadata(self):
-        filename = datetime.now().strftime("%Y%m%d.%H%M%S.%f.txt")
+    def save_metadata(self, filename):
+        # filename = datetime.now().strftime("%Y%m%d.%H%M%S.%f.txt")
 
         # record results in text file.
         save_file = {}
