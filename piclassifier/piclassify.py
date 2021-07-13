@@ -214,7 +214,6 @@ def parse_cptv(cptv_file, config, thermal_config):
 
 
 def get_processor(config, thermal_config, headers):
-    print(thermal_config.motion.run_classifier, "classifying")
     if thermal_config.motion.run_classifier:
         classifier = get_classifier(config)
         return PiClassifier(config, thermal_config, classifier, headers)
@@ -230,7 +229,6 @@ def get_processor(config, thermal_config, headers):
 def handle_headers(connection):
     headers = ""
     line = ""
-    print("getting headfers")
     while True:
         data = connection.recv(1).decode()
 
@@ -245,16 +243,8 @@ def handle_headers(connection):
 
 
 def handle_connection(connection, config, thermal_config):
-    headers = HeaderInfo(
-        res_x=160,
-        res_y=120,
-        fps=9,
-        brand="",
-        model="",
-        frame_size=160 * 120 * 2,
-        pixel_bits=16,
-    )
-    logging.info("parsed camera headers", headers)
+    headers = handle_headers(connection)
+    logging.info("parsed camera headers %s", headers)
     processor = get_processor(config, thermal_config, headers)
     service = SnapshotService(processor)
 
