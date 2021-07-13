@@ -2,7 +2,7 @@ from datetime import datetime
 import logging
 import os
 import yaml
-
+from load.cliptrackextractor import ClipTrackExtractor
 from cptv import CPTVWriter
 
 CPTV_TEMP_EXT = ".cptv.temp"
