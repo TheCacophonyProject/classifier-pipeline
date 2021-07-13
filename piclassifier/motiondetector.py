@@ -207,8 +207,10 @@ class MotionDetector(Processor):
                 delta_frame[
                     delta_frame >= self.config.delta_thresh
                 ] = self.config.delta_thresh
-                delta_frame = delta_frame2 + delta_frame
-                diff = len(delta_frame[delta_frame == self.config.delta_thresh * 2])
+                delta_combined = delta_frame2 + delta_frame
+                diff = len(
+                    delta_combined[delta_combined == self.config.delta_thresh * 2]
+                )
             else:
                 delta_frame[
                     delta_frame >= self.config.delta_thresh

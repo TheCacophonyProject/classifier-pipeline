@@ -80,11 +80,57 @@ class Clip:
         self.track_min_delta = None
         self.track_max_delta = None
         self.background_thresh = None
+        self.predictions = None
         # sets defaults
         self.set_model(None)
         if background is not None:
             self.background = background
             self._background_calculated()
+
+    def save_metadata(self):
+        filename = datetime.now().strftime("%Y%m%d.%H%M%S.%f.txt")
+
+        # record results in text file.
+        save_file = {}
+        start, end = self.start_and_end_time_absolute()
+        save_file["start_time"] = start.isoformat()
+        save_file["end_time"] = end.isoformat()
+        save_file["temp_thresh"] = self.temp_thresh
+        save_file["algorithm"] = {}
+        save_file["algorithm"]["model"] = "PI-INC3"
+        save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
+        save_file["tracks"] = []
+        for track in self.tracks:
+            track_info = {}
+            prediction = self.predictions.prediction_for(track.get_id())
+            start_s, end_s = self.start_and_end_in_secs(track)
+            save_file["tracks"].append(track_info)
+            track_info["start_s"] = round(start_s, 2)
+            track_info["end_s"] = round(end_s, 2)
+            track_info["num_frames"] = track.frames
+            track_info["frame_start"] = track.start_frame
+            track_info["frame_end"] = track.end_frame
+            if prediction and prediction.best_label_index is not None:
+                track_info["label"] = self.predictions.labels[
+                    prediction.best_label_index
+                ]
+                track_info["confidence"] = round(prediction.score(), 2)
+                track_info["clarity"] = round(prediction.clarity, 3)
+                track_info["average_novelty"] = round(prediction.average_novelty, 2)
+                track_info["max_novelty"] = round(prediction.max_novelty, 2)
+                track_info["all_class_confidences"] = {}
+                for i, value in enumerate(prediction.class_best_score):
+                    label = self.classifier.labels[i]
+                    track_info["all_class_confidences"][label] = round(float(value), 3)
+
+            positions = []
+            for region in track.bounds_history:
+                track_time = round(region.frame_number / self.frames_per_second, 2)
+                positions.append([track_time, region])
+            track_info["positions"] = positions
+
+        with open(os.path.join(self.meta_dir, filename), "w") as f:
+            json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
 
     def set_model(self, camera_model):
         self.camera_model = camera_model

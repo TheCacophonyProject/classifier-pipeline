@@ -96,7 +96,7 @@ class PiClassifier(Processor):
             self.config.use_opt_flow,
             True,
         )
-
+        self.clip.predictions = self.predictions
         # process preview_frames
         frames = self.motion_detector.thermal_window.get_frames()
         self.clip.update_background(self.motion_detector.background)
@@ -217,6 +217,7 @@ class PiClassifier(Processor):
         if self.motion_detector.recorder.recording:
             if self.clip is None:
                 self.new_clip()
+
             t_start = time.time()
             self.track_extractor.process_frame(
                 self.clip, lepton_frame.pix, self.motion_detector.ffc_affected

@@ -23,6 +23,7 @@ class CPTVRecorder:
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.write_until = 0
+        self.clip = None
 
     def force_stop(self):
         if not self.recording:
