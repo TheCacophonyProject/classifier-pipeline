@@ -16,6 +16,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
+import attr
 import math
 import numpy as np
 from collections import namedtuple
@@ -480,6 +481,38 @@ class Track:
 
     def __len__(self):
         return len(self.bounds_history)
+
+    def start_and_end_in_secs(self):
+        if self.end_s is None:
+            self.end_s = (self.end_frame + 1) / self.frames_per_second
+
+        return (self.start_s, self.end_s)
+
+    def get_metadata(self, predictions_per_model=None):
+        track_info = {}
+        start_s, end_s = self.start_and_end_in_secs()
+
+        track_info["id"] = self.get_id()
+        track_info["start_s"] = round(start_s, 2)
+        track_info["end_s"] = round(end_s, 2)
+        track_info["num_frames"] = len(self)
+        track_info["frame_start"] = self.start_frame
+        track_info["frame_end"] = self.end_frame
+
+        positions = []
+        for region in self.bounds_history:
+            region_info = attr.asdict(region)
+            positions.append(region_info)
+        track_info["positions"] = positions
+        prediction_info = []
+        for model, predictions in predictions_per_model.items():
+            prediction = predictions.prediction_for(self.get_id())
+            prediciont_meta = prediction.get_metadata()
+            # prediciont_meta.update(predictions.model.as_dict())
+            prediciont_meta["model_id"] = predictions.model.id
+            prediction_info.append(prediciont_meta)
+        track_info["predictions"] = prediction_info
+        return track_info
 
     @classmethod
     def get_best_human_tag(cls, track_tags, tag_precedence, min_confidence=-1):

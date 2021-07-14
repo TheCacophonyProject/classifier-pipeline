@@ -332,6 +332,24 @@ class TrackPrediction:
         ]
         return guesses
 
+    def get_metadata(self):
+        prediction_meta = {}
+        prediction_meta["label"] = self.predicted_tag()
+        prediction_meta["confidence"] = round(self.max_score, 2)
+        prediction_meta["clarity"] = round(self.clarity, 3)
+        prediction_meta["average_novelty"] = float(round(self.average_novelty, 2))
+        prediction_meta["max_novelty"] = float(round(self.max_novelty, 2))
+        prediction_meta["all_class_confidences"] = {}
+        prediction_data = []
+        for pred in self.smoothed_predictions:
+            pred_list = [int(round(p * 100)) for p in pred]
+            prediction_data.append(pred_list)
+        prediction_meta["predictions"] = prediction_data
+        for i, value in enumerate(self.class_best_score):
+            label = self.labels[i]
+            prediction_meta["all_class_confidences"][label] = round(float(value), 3)
+        return prediction_meta
+
 
 @attr.s(slots=True)
 class TrackResult:

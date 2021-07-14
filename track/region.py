@@ -19,37 +19,23 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
+import attr
 
 
+@attr.s(eq=False)
 class Region(Rectangle):
     """Region is a rectangle extended to support mass."""
 
-    def __init__(
-        self,
-        topleft_x,
-        topleft_y,
-        width,
-        height,
-        mass=0,
-        pixel_variance=0,
-        id=0,
-        frame_number=0,
-        was_cropped=False,
-        blank=False,
-    ):
-        super().__init__(topleft_x, topleft_y, width, height)
-        # number of active pixels in region
-        self.mass = mass
-        # how much pixels in this region have changed since last frame
-        self.pixel_variance = pixel_variance
-        # an identifier for this region
-        self.id = id
-        # frame index from clip
-        self.frame_number = frame_number
-        # if this region was cropped or not
-        self.was_cropped = was_cropped
-        self.is_along_border = False
-        self.blank = blank
+    mass = attr.ib(default=0)
+    # how much pixels in this region have changed since last frame
+    frame_number = attr.ib(default=0)
+    pixel_variance = attr.ib(default=0)
+    id = attr.ib(default=0)
+
+    # if this region was cropped or not
+    was_cropped = attr.ib(default=False)
+    blank = attr.ib(default=False)
+    is_along_border = attr.ib(default=False)
 
     @classmethod
     def region_from_array(cls, region_bounds, frame_number=0):
@@ -106,10 +92,12 @@ class Region(Rectangle):
             self.width,
             self.height,
             self.mass,
+            self.frame_number,
             self.pixel_variance,
             self.id,
-            self.frame_number,
             self.was_cropped,
+            self.blank,
+            self.is_along_border,
         )
 
     def average_distance(self, other):

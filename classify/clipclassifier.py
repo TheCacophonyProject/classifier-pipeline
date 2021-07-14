@@ -287,7 +287,6 @@ class ClipClassifier(CPTVFileProcessor):
         models,
         tracking_time,
     ):
-        get_thumbnail(clip, predictions_per_model)
         if self.cache_to_disk:
             clip.frame_buffer.remove_cache()
 
@@ -312,49 +311,12 @@ class ClipClassifier(CPTVFileProcessor):
             save_file["cptv_meta"] = meta_data
             save_file["original_tag"] = meta_data["primary_tag"]
 
-        save_file["tracks"] = []
+        tracks = []
         for track in clip.tracks:
-            track_info = {}
-            start_s, end_s = clip.start_and_end_in_secs(track)
-            save_file["tracks"].append(track_info)
-            track_info["id"] = track.get_id()
-            track_info["start_s"] = round(start_s, 2)
-            track_info["end_s"] = round(end_s, 2)
-            track_info["num_frames"] = len(track)
-            track_info["frame_start"] = track.start_frame
-            track_info["frame_end"] = track.end_frame
+            track_info = track.get_metadata(predictions_per_model)
+            tracks.append(track_info)
+        save_file["tracks"] = tracks
 
-            positions = []
-            for region in track.bounds_history:
-                track_time = round(region.frame_number / clip.frames_per_second, 2)
-                positions.append([track_time, region])
-            track_info["positions"] = positions
-            prediction_info = []
-            for model, predictions in predictions_per_model.items():
-                model_info = {
-                    "id": predictions.model.id,
-                    "model_file": predictions.model.model_file,
-                    "model_name": predictions.model.name,
-                }
-                prediction = predictions.prediction_for(track.get_id())
-                model_info["label"] = prediction.predicted_tag()
-                model_info["confidence"] = round(prediction.max_score, 2)
-                model_info["clarity"] = round(prediction.clarity, 3)
-                model_info["average_novelty"] = float(
-                    round(prediction.average_novelty, 2)
-                )
-                model_info["max_novelty"] = float(round(prediction.max_novelty, 2))
-                model_info["all_class_confidences"] = {}
-                prediction_data = []
-                for pred in prediction.smoothed_predictions:
-                    pred_list = [int(round(p * 100)) for p in pred]
-                    prediction_data.append(pred_list)
-                model_info["predictions"] = prediction_data
-                for i, value in enumerate(prediction.class_best_score):
-                    label = prediction.labels[i]
-                    model_info["all_class_confidences"][label] = round(float(value), 3)
-                prediction_info.append(model_info)
-            track_info["predictions"] = prediction_info
         model_dictionaries = []
         for model in models:
             model_dic = model.as_dict()
@@ -368,6 +330,8 @@ class ClipClassifier(CPTVFileProcessor):
             model_dictionaries.append(model_dic)
 
         save_file["models"] = model_dictionaries
+        thumbnail_region = get_thumbnail(clip, predictions_per_model)
+        save_file["thumbnail"] = thumbnail_region
         if self.config.classify.meta_to_stdout:
             print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
         else:
