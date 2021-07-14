@@ -151,6 +151,8 @@ class CustomJSONEncoder(json.JSONEncoder):
             return float(obj)
         elif isinstance(obj, np.bool_):
             return bool(obj)
+        elif isinstance(obj, np.ndarray):
+            return list(obj)
         elif isinstance(obj, datetime.datetime):
             return obj.isoformat()
             # Let the base class default method raise the TypeError
