@@ -142,6 +142,15 @@ class Rectangle:
     def __str__(self):
         return "<({0},{1})-{2}x{3}>".format(self.x, self.y, self.width, self.height)
 
+    def as_dict(self):
+        region_info = attr.asdict(
+            self,
+            filter=lambda attr, value: attr.name
+            not in ["is_along_border", "was_cropped", "id"],
+        )
+        region_info["pixel_variance"] = round(region_info["pixel_variance"], 2)
+        return region_info
+
 
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):

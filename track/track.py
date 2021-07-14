@@ -16,7 +16,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
-import attr
 import math
 import numpy as np
 from collections import namedtuple
@@ -505,8 +504,7 @@ class Track:
 
         positions = []
         for region in self.bounds_history:
-            region_info = attr.asdict(region)
-            positions.append(region_info)
+            positions.append(region.as_dict())
         track_info["positions"] = positions
         prediction_info = []
         for model_id, predictions in predictions_per_model.items():

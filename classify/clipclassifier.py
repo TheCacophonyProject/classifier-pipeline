@@ -1,4 +1,3 @@
-import attr
 import gc
 import json
 import logging
@@ -322,7 +321,7 @@ class ClipClassifier(CPTVFileProcessor):
 
         save_file["models"] = model_dictionaries
         thumbnail_region = get_thumbnail(clip, predictions_per_model)
-        save_file["thumbnail_region"] = attr.asdict(thumbnail_region)
+        save_file["thumbnail_region"] = thumbnail_region.as_dict()
         if self.config.classify.meta_to_stdout:
             print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
         else:
