@@ -94,12 +94,6 @@ def get_thumbnail(clip, predictions_per_model):
 
     f, axarr = plt.subplots(1, 2)
     f = clip.frame_buffer.get_frame(best_region.frame_number)
-    # DEBUGGING PURPOSES REMOVE BEFORE CHECKING IN
-    best_region.enlarge(10, max=clip.crop_rectangle)
-    f.crop_by_region(best_region, out=f)
-    axarr[0].imshow(f.thermal)
-    axarr[1].imshow(f.filtered)
-    plt.savefig(f"{clip.source_file}-thumb.png")
     return best_region
 
 
