@@ -105,7 +105,7 @@ class Clip:
         save_file["end_time"] = end.isoformat()
         save_file["temp_thresh"] = self.temp_thresh
         save_file["algorithm"] = {}
-        save_file["algorithm"]["model"] = "PI-INC3"
+        save_file["algorithm"]["model_name"] = "PI-INC3"
         save_file["algorithm"]["tracker_version"] = self.tracking_version
         save_file["tracks"] = []
         for track in self.tracks:
