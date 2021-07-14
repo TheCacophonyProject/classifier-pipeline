@@ -273,7 +273,7 @@ class ClipTrackExtractor:
             if len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
                 continue
 
-            track = Track.from_region(clip, region)
+            track = Track.from_region(clip, region, ClipTrackExtractor.VERSION)
             new_tracks.add(track)
             clip._add_active_track(track)
             self.print_if_verbose(

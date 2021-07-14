@@ -51,7 +51,7 @@ class Track:
     # must change atleast 5 pixels to be considered for jitter
     MIN_JITTER_CHANGE = 5
 
-    def __init__(self, clip_id, id=None, fps=9):
+    def __init__(self, clip_id, id=None, fps=9, tracker_version=None):
         """
         Creates a new Track.
         :param id: id number for track, if not specified is provided by an auto-incrementer
@@ -99,10 +99,13 @@ class Track:
 
         self.all_class_confidences = None
         self.prediction_classes = None
+        self.tracker_version = tracker_version
 
     @classmethod
-    def from_region(cls, clip, region):
-        track = cls(clip.get_id(), fps=clip.frames_per_second)
+    def from_region(cls, clip, region, tracker_version=None):
+        track = cls(
+            clip.get_id(), fps=clip.frames_per_second, tracker_version=tracker_version
+        )
         track.start_frame = region.frame_number
         track.start_s = region.frame_number / float(clip.frames_per_second)
         track.crop_rectangle = clip.crop_rectangle
@@ -493,6 +496,7 @@ class Track:
         start_s, end_s = self.start_and_end_in_secs()
 
         track_info["id"] = self.get_id()
+        track_info["tracker_version"] = self.tracker_version
         track_info["start_s"] = round(start_s, 2)
         track_info["end_s"] = round(end_s, 2)
         track_info["num_frames"] = len(self)
@@ -505,11 +509,11 @@ class Track:
             positions.append(region_info)
         track_info["positions"] = positions
         prediction_info = []
-        for model, predictions in predictions_per_model.items():
+        for model_id, predictions in predictions_per_model.items():
             prediction = predictions.prediction_for(self.get_id())
             prediciont_meta = prediction.get_metadata()
             # prediciont_meta.update(predictions.model.as_dict())
-            prediciont_meta["model_id"] = predictions.model.id
+            prediciont_meta["model_id"] = model_id
             prediction_info.append(prediciont_meta)
         track_info["predictions"] = prediction_info
         return track_info

@@ -1,3 +1,4 @@
+import time
 import math
 import os
 import json
@@ -278,7 +279,7 @@ class KerasModel:
         track_prediction = TrackPrediction(
             track.get_id(), track.start_frame, self.labels, keep_all=keep_all
         )
-
+        track_prediction.classify_time = time.time()
         if self.use_movement:
             data = []
             thermal_median = []
@@ -343,6 +344,7 @@ class KerasModel:
                 track_prediction.classified_frame(
                     i, prediction, mass_weight * cropped_weight
                 )
+        track_prediction.classify_time = time.time() - track_prediction.classify_time
         return track_prediction
 
     def classify_cropped_data(

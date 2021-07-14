@@ -1,3 +1,4 @@
+import attr
 import gc
 import json
 import logging
@@ -234,24 +235,20 @@ class ClipClassifier(CPTVFileProcessor):
             raise Exception("File {} not found.".format(filename))
         logging.info("Processing file '{}'".format(filename))
 
-        # prediction record for each track
-
         start = time.time()
         clip = Clip(self.tracker_config, filename)
         self.track_extractor.parse_clip(clip)
         predictions_per_model = {}
         if self.model:
             prediction = self.classify_clip(clip, self.model)
-            predictions_per_model[self.model.name] = prediction
+            predictions_per_model[self.model.id] = prediction
         else:
             for model in self.config.classify.models:
                 prediction = self.classify_clip(clip, model)
-                predictions_per_model[model.name] = prediction
+                predictions_per_model[model.id] = prediction
         return clip, predictions_per_model
 
     def classify_clip(self, clip, model):
-        start = time.time()
-
         classifier = self.get_classifier(model)
 
         predictions = Predictions(classifier.labels, model)
@@ -271,7 +268,6 @@ class ClipClassifier(CPTVFileProcessor):
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
-        predictions.classify_time = time.time() - start
         tools.clear_session()
         del classifier
         gc.collect()
@@ -320,18 +316,13 @@ class ClipClassifier(CPTVFileProcessor):
         model_dictionaries = []
         for model in models:
             model_dic = model.as_dict()
-            model_time = [
-                predictions.classify_time
-                for predictions in predictions_per_model.values()
-                if predictions.model == model
-            ]
-            if len(model_time) > 0:
-                model_dic["classify_time"] = round(model_time[0], 1)
+            model_predictions = predictions_per_model[model.id]
+            model_dic["classify_time"] = round(model_predictions.classify_time, 1)
             model_dictionaries.append(model_dic)
 
         save_file["models"] = model_dictionaries
         thumbnail_region = get_thumbnail(clip, predictions_per_model)
-        save_file["thumbnail"] = thumbnail_region
+        save_file["thumbnail_region"] = attr.asdict(thumbnail_region)
         if self.config.classify.meta_to_stdout:
             print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
         else:

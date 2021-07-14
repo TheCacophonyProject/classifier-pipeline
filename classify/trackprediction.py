@@ -13,7 +13,6 @@ class Predictions:
         self.labels = labels
         self.prediction_per_track = {}
         self.model = model
-        self.classify_time = None
 
     def get_or_create_prediction(self, track, keep_all=True):
         prediction = self.prediction_per_track.setdefault(
@@ -45,6 +44,15 @@ class Predictions:
     def prediction_description(self, track_id):
         return self.prediction_per_track.get(track_id).description()
 
+    @property
+    def classify_time(self):
+        classify_time = [
+            prediction.classify_time
+            for prediction in self.prediction_per_track.values()
+            if prediction.classify_time is not None
+        ]
+        return np.sum(classify_time)
+
 
 class TrackPrediction:
     """
@@ -70,6 +78,7 @@ class TrackPrediction:
         self.max_novelty = 0
         self.novelty_sum = 0
         self.labels = labels
+        self.classify_time = None
 
     def classified_clip(
         self,
@@ -334,6 +343,9 @@ class TrackPrediction:
 
     def get_metadata(self):
         prediction_meta = {}
+        if self.classify_time is not None:
+            prediction_meta["classify_time"] = round(self.classify_time, 1)
+
         prediction_meta["label"] = self.predicted_tag()
         prediction_meta["confidence"] = round(self.max_score, 2)
         prediction_meta["clarity"] = round(self.clarity, 3)
