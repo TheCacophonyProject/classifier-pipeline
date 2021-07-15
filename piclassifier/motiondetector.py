@@ -170,7 +170,7 @@ class MotionDetector(Processor):
                 len(new_background == cropped_thermal),
                 edgeless_back.size,
             )
-            logging.debug("backgournd weighting %s", self.backgorund_weight)
+            logging.debug("backgournd weighting %s", self.background_weight)
             if len(back_changed > 0):
                 self.last_background_change = self.processed
                 edgeless_back[:, :] = new_background
