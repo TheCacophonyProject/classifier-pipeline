@@ -176,8 +176,8 @@ class MotionDetector(Processor):
                 edgeless_back[:, :] = new_background
                 logging.debug(
                     "updated background %s equal? %s new back shape %s",
-                    np.all(edgeless_back <= cropped_thermal),
-                    np.all(edgeless_back == cropped_thermal),
+                    len(edgeless_back < cropped_thermal),
+                    len(edgeless_back == cropped_thermal),
                     new_background.shape,
                 )
                 old_temp = self.temp_thresh
