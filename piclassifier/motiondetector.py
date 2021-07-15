@@ -281,7 +281,6 @@ class MotionDetector(Processor):
                 if self.recorder.frames == 1:
                     import matplotlib.pyplot as plt
 
-                    ax1 = fig.add_subplot(2, 2, 1)
                     f, axarr = plt.subplots(2, 2)
                     axarr[0, 0].imshow(self.background)
                     axarr[0, 1].imshow(test_crop)
