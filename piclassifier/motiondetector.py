@@ -265,13 +265,13 @@ class MotionDetector(Processor):
                 self.thermal_window.add(cptv_frame.pix)
                 if self.background is None:
                     self.background = cptv_frame.pix
-                    logging.debug(
-                        "Setting background with %s", np.amax(cropped_frame.pix)
-                    )
+                    logging.debug("Setting background with %s", np.amax(cropped_frame))
                     import matplotlib.pyplot as plt
 
                     imgplot = plt.imshow(self.background)
-                    plt.savefig("background{}-{}".format(time.time(), self.processed))
+                    plt.savefig(
+                        "background{}-{}.png".format(time.time(), self.processed)
+                    )
                     self.last_background_change = self.processed
                 else:
                     self.calc_temp_thresh(cptv_frame.pix, prev_ffc)

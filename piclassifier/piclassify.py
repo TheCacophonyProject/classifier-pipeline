@@ -264,7 +264,12 @@ def handle_connection(connection, config, thermal_config):
             processor.disconnected()
             service.quit()
             return
-
+        message = data[:5].decode("utf-8")
+        if message == clear:
+            logging.info("processign error from camera")
+            processor.disconnected()
+            service.quit()
+            return
         frame = raw_frame.parse(data)
 
         t_max = np.amax(frame.pix)
