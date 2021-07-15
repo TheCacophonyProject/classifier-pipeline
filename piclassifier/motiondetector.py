@@ -184,10 +184,12 @@ class MotionDetector(Processor):
                     temp_changed = True
                 import matplotlib.pyplot as plt
 
+                diff = edgeless_back - cropped_thermal
+                diff = 255 * (diff - np.amin(diff)) / (np.amax(diff) - np.amin(diff))
                 f, axarr = plt.subplots(2, 2)
                 axarr[0, 0].imshow(edgeless_back)
                 axarr[0, 1].imshow(cropped_thermal)
-                axarr[1, 0].imshow(edgeless_back - cropped_thermal)
+                axarr[1, 0].imshow(diff)
                 plt.savefig(
                     "backgroundupdate{}-{}.png".format(time.time(), self.processed)
                 )
@@ -296,11 +298,17 @@ class MotionDetector(Processor):
                 if self.recorder.frames == 1:
                     import matplotlib.pyplot as plt
 
+                    diff = (
+                        self.crop_rectangle.subimage(self.background) - cropped_thermal
+                    )
+                    diff = (
+                        255 * (diff - np.amin(diff)) / (np.amax(diff) - np.amin(diff))
+                    )
                     f, axarr = plt.subplots(2, 2)
                     axarr[0, 0].imshow(self.background)
                     axarr[0, 1].imshow(test_crop)
                     axarr[1, 0].imshow(cropped_frame)
-                    axarr[1, 1].imshow(self.background - test_crop)
+                    axarr[1, 1].imshow(diff)
                     plt.savefig(
                         "background{}-{}.png".format(time.time(), self.processed)
                     )
