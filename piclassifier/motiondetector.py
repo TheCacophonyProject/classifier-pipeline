@@ -191,6 +191,7 @@ class MotionDetector(Processor):
 
         else:
             self.temp_thresh = self.config.temp_thresh
+        logging.info("back shape %s", self.background.shape)
 
     def detect(self, clipped_frame):
         oldest = self.clipped_window.oldest
