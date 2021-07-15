@@ -278,7 +278,7 @@ def handle_connection(connection, config, thermal_config):
         cropped_frame = processor.crop_rectangle.subimage(frame.pix)
         t_max = np.amax(cropped_frame)
         t_min = np.amin(cropped_frame)
-        logging.info("Cropped frame max %s and min %s", t_max, t_min)
+        # logging.info("Cropped frame max %s and min %s", t_max, t_min)
         if t_max > 10000 or t_min == 0:
             logging.warning(
                 "received frame has odd values skipping thermal frame max {} thermal frame min {} cpu % {} memory % {}".format(
