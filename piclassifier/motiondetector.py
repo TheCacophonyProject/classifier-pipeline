@@ -163,11 +163,14 @@ class MotionDetector(Processor):
                 ] *= MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
             back_changed = new_weights.size > 0
             # np.amax(self.background != new_background)
-
+            logging.info("back change %s", new_weights.size)
             if back_changed:
                 self.last_background_change = self.processed
                 edgeless_back[:, :] = new_background
-                logging.debug("updated background %s", edgeless_back <= cropped_thermal)
+                logging.debug(
+                    "updated background %s new back shape",
+                    edgeless_back <= cropped_thermal,
+                )
                 old_temp = self.temp_thresh
                 self.temp_thresh = int(round(np.average(edgeless_back)))
                 if self.temp_thresh != old_temp:
@@ -179,7 +182,15 @@ class MotionDetector(Processor):
                         )
                     )
                     temp_changed = True
+                import matplotlib.pyplot as plt
 
+                f, axarr = plt.subplots(2, 2)
+                axarr[0, 0].imshow(edgeless_back)
+                axarr[0, 1].imshow(cropped_thermal)
+                axarr[1, 0].imshow(edgeless_back - cropped_thermal)
+                plt.savefig(
+                    "backgroundupdate{}-{}.png".format(time.time(), self.processed)
+                )
             if (
                 not temp_changed
                 and self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0
