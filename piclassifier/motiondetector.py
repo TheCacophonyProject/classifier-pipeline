@@ -159,7 +159,7 @@ class MotionDetector(Processor):
             # these havent changed, increase weighting
             if self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0:
                 self.background_weight[
-                    edgeless_backd == new_background
+                    edgeless_back == new_background
                 ] *= MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
             back_changed = new_weights.size > 0
             # np.amax(self.background != new_background)
@@ -285,7 +285,7 @@ class MotionDetector(Processor):
                     axarr[0, 0].imshow(self.background)
                     axarr[0, 1].imshow(test_crop)
                     axarr[1, 0].imshow(cropped_frame)
-                    axarr[1, 1].imshow(self.backgorund - test_crop)
+                    axarr[1, 1].imshow(self.background - test_crop)
                     plt.savefig(
                         "background{}-{}.png".format(time.time(), self.processed)
                     )

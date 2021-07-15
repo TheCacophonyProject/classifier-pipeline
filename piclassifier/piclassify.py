@@ -289,4 +289,6 @@ def handle_connection(connection, config, thermal_config):
             processor.skip_frame()
             continue
         if read < 500:
-            processor.process_frame(frame)
+            processor.skip_frame()
+            continue
+        processor.process_frame(frame)
