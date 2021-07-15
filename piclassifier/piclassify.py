@@ -256,7 +256,7 @@ def handle_connection(connection, config, thermal_config):
     service = SnapshotService(processor)
 
     raw_frame = lepton3.Lepton3(headers)
-
+    read = 0
     while True:
         data = connection.recv(headers.frame_size, socket.MSG_WAITALL)
         if not data:
@@ -273,6 +273,7 @@ def handle_connection(connection, config, thermal_config):
                 return
         except:
             pass
+        read += 1
         frame = raw_frame.parse(data)
         cropped_frame = processor.crop_rectangle.subimage(frame.pix)
         t_max = np.amax(cropped_frame)
@@ -287,4 +288,5 @@ def handle_connection(connection, config, thermal_config):
             # this frame has bad data probably from lack of CPU
             processor.skip_frame()
             continue
-        processor.process_frame(frame)
+        if read < 500:
+            processor.process_frame(frame)

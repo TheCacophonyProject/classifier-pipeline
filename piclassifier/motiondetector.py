@@ -258,6 +258,7 @@ class MotionDetector(Processor):
         if self.can_record() or (self.recorder and self.recorder.recording):
 
             cropped_frame = self.crop_rectangle.subimage(cptv_frame.pix)
+            test_crop = cropped_frame.copy()
             frame = np.int32(cropped_frame)
             prev_ffc = self.ffc_affected
             self.ffc_affected = is_affected_by_ffc(cptv_frame)
@@ -266,12 +267,6 @@ class MotionDetector(Processor):
                 if self.background is None:
                     self.background = cptv_frame.pix
                     logging.debug("Setting background with %s", np.amax(cropped_frame))
-                    import matplotlib.pyplot as plt
-
-                    imgplot = plt.imshow(self.background)
-                    plt.savefig(
-                        "background{}-{}.png".format(time.time(), self.processed)
-                    )
                     self.last_background_change = self.processed
                 else:
                     self.calc_temp_thresh(cptv_frame.pix, prev_ffc)
@@ -290,6 +285,18 @@ class MotionDetector(Processor):
                 self.recorder.process_frame(
                     self.movement_detected, cptv_frame, self.temp_thresh
                 )
+                if self.recorder.frames == 1:
+                    import matplotlib.pyplot as plt
+
+                    ax1 = fig.add_subplot(2, 2, 1)
+                    f, axarr = plt.subplots(2, 2)
+                    axarr[0, 0].imshow(self.background)
+                    axarr[0, 1].imshow(test_crop)
+                    axarr[1, 0].imshow(cropped_frame)
+                    axarr[1, 1].imshow(self.backgorund - test_crop)
+                    plt.savefig(
+                        "background{}-{}.png".format(time.time(), self.processed)
+                    )
         else:
             self.thermal_window.update_current_frame(cptv_frame.pix)
             self.movement_detected = False
