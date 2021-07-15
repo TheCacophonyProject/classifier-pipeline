@@ -202,9 +202,12 @@ class MotionDetector(Processor):
                     "backgroundupdate{}-{}.png".format(time.time(), self.processed)
                 )
                 logging.debug(
-                    "this minus that %s %s",
+                    "cropped less %s max %s min %s back max, %s min %s",
+                    len(cropped_thermal > edgeless_back),
                     np.amax(cropped_thermal),
+                    np.amin(cropped_thermal),
                     np.amax(edgeless_back),
+                    np.amin(edgeless_back),
                 )
 
         else:
