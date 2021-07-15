@@ -111,7 +111,9 @@ class MotionDetector(Processor):
         self.thermal_thresh = 0
         self.background = None
         self.last_background_change = None
-        self.background_weight = np.zeros((headers.res_y, headers.res_x))
+        self.background_weight = np.zeros(
+            (headers.res_y - edge * 2, headers.res_x - edge * 2)
+        )
         self.background_weight[:] = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
         self.movement_detected = False
         self.dynamic_thresh = dynamic_thresh
@@ -136,55 +138,47 @@ class MotionDetector(Processor):
         self.recorder = recorder
         self.ffc_affected = False
 
-    def calc_temp_thresh(self, thermal_frame, prev_ffc):
+    def calc_temp_thresh(self, cropped_thermal):
         logging.debug(
             "frame pixels are %s back max %s",
-            np.amax(thermal_frame),
+            np.amax(cropped_thermal),
             np.amax(self.background),
         )
         if self.dynamic_thresh:
             temp_changed = False
+            edgeless_back = self.crop_rectangle.subimage(self.background)
+            new_background = np.where(
+                edgeless_back < cropped_thermal * self.background_weight,
+                edgeless_back,
+                cropped_thermal,
+            )
+            new_weights = self.background_weight[edgeless_back != new_background]
+            # these have changed so reset weighting
+            new_weights[:] = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
 
-            if prev_ffc:
-                new_background = thermal_frame
-                back_changed = True
-            else:
-                new_background = np.where(
-                    self.background < thermal_frame * self.background_weight,
-                    self.background,
-                    thermal_frame,
-                )
-                new_weights = self.background_weight[self.background != new_background]
-                # these have changed so reset weighting
-                new_weights[:] = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
-
-                # these havent changed, increase weighting
-                if self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0:
-                    self.background_weight[
-                        self.background == new_background
-                    ] *= MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
-                back_changed = new_weights.size > 0
-                # np.amax(self.background != new_background)
+            # these havent changed, increase weighting
+            if self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0:
+                self.background_weight[
+                    edgeless_backd == new_background
+                ] *= MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
+            back_changed = new_weights.size > 0
+            # np.amax(self.background != new_background)
 
             if back_changed:
                 self.last_background_change = self.processed
-                self.background = new_background
+                edgeless_back[:, :] = new_background
 
                 old_temp = self.temp_thresh
-                self.temp_thresh = int(round(np.average(self.background)))
+                self.temp_thresh = int(round(np.average(edgeless_back)))
                 if self.temp_thresh != old_temp:
                     logging.debug(
-                        "{} MotionDetector temp threshold changed from {} to {} new background average is {}".format(
+                        "{} MotionDetector temp threshold changed from {} to {} ".format(
                             self.num_frames,
                             old_temp,
                             self.temp_thresh,
-                            np.average(self.background),
                         )
                     )
                     temp_changed = True
-                    # self.background_weight[
-                    #     :
-                    # ] = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
 
             if (
                 not temp_changed
@@ -257,9 +251,8 @@ class MotionDetector(Processor):
     def process_frame(self, cptv_frame):
         if self.can_record() or (self.recorder and self.recorder.recording):
 
-            cropped_frame = self.crop_rectangle.subimage(cptv_frame.pix)
+            cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
             test_crop = cropped_frame.copy()
-            frame = np.int32(cropped_frame)
             prev_ffc = self.ffc_affected
             self.ffc_affected = is_affected_by_ffc(cptv_frame)
             if not self.ffc_affected:
@@ -269,9 +262,9 @@ class MotionDetector(Processor):
                     logging.debug("Setting background with %s", np.amax(cropped_frame))
                     self.last_background_change = self.processed
                 else:
-                    self.calc_temp_thresh(cptv_frame.pix, prev_ffc)
+                    self.calc_temp_thresh(cropped_frame)
 
-            clipped_frame = np.clip(frame, a_min=self.temp_thresh, a_max=None)
+            clipped_frame = np.clip(cropped_frame, a_min=self.temp_thresh, a_max=None)
             self.clipped_window.add(clipped_frame)
 
             if self.ffc_affected or prev_ffc:
