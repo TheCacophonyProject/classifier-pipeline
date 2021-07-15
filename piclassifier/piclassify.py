@@ -266,7 +266,7 @@ def handle_connection(connection, config, thermal_config):
             return
         try:
             message = data[:5].decode("utf-8")
-            if message == clear:
+            if message == "clear":
                 logging.info("processign error from camera")
                 processor.disconnected()
                 service.quit()
