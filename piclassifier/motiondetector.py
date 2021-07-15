@@ -141,11 +141,6 @@ class MotionDetector(Processor):
     def calc_temp_thresh(self, cropped_thermal):
         edgeless_back = self.crop_rectangle.subimage(self.background)
 
-        logging.debug(
-            "frame pixels are %s back max %s",
-            np.amax(cropped_thermal),
-            np.amax(edgeless_back),
-        )
         if self.dynamic_thresh:
             temp_changed = False
             new_background = np.where(
@@ -186,24 +181,25 @@ class MotionDetector(Processor):
                         )
                     )
                     temp_changed = True
-                import matplotlib.pyplot as plt
-
-                diff = cropped_thermal - edgeless_back
-                diff = 255 * (diff - np.amin(diff)) / (np.amax(diff) - np.amin(diff))
-                f, axarr = plt.subplots(2, 2)
-                axarr[0, 0].imshow(edgeless_back)
-                axarr[0, 1].imshow(cropped_thermal)
-                axarr[1, 0].imshow(diff)
-                plt.savefig(
-                    "backgroundupdate{}-{}.png".format(time.time(), self.processed)
-                )
-                logging.debug(
-                    "cropped less max %s min %s back max, %s min %s",
-                    np.amax(cropped_thermal),
-                    np.amin(cropped_thermal),
-                    np.amax(edgeless_back),
-                    np.amin(edgeless_back),
-                )
+                # import matplotlib.pyplot as plt
+                #
+                # diff = cropped_thermal - edgeless_back
+                # diff = 255 * (diff - np.amin(diff)) / (np.amax(diff) - np.amin(diff))
+                # f, axarr = plt.subplots(2, 2)
+                # axarr[0, 0].imshow(edgeless_back)
+                # axarr[0, 1].imshow(cropped_thermal)
+                # axarr[1, 0].imshow(diff)
+                # plt.savefig(
+                #     "backgroundupdate{}-{}.png".format(time.time(), self.processed)
+                # )
+                # plt.clf()
+                # logging.debug(
+                #     "cropped less max %s min %s back max, %s min %s",
+                #     np.amax(cropped_thermal),
+                #     np.amin(cropped_thermal),
+                #     np.amax(edgeless_back),
+                #     np.amin(edgeless_back),
+                # )
 
         else:
             self.temp_thresh = self.config.temp_thresh
@@ -294,21 +290,21 @@ class MotionDetector(Processor):
                 self.recorder.process_frame(
                     self.movement_detected, cptv_frame, self.temp_thresh
                 )
-                if self.recorder.frames == 1:
-                    import matplotlib.pyplot as plt
-
-                    diff = cropped_frame - self.crop_rectangle.subimage(self.background)
-                    diff = (
-                        255 * (diff - np.amin(diff)) / (np.amax(diff) - np.amin(diff))
-                    )
-                    f, axarr = plt.subplots(2, 2)
-                    axarr[0, 0].imshow(self.background)
-                    axarr[0, 1].imshow(test_crop)
-                    axarr[1, 0].imshow(cropped_frame)
-                    axarr[1, 1].imshow(diff)
-                    plt.savefig(
-                        "background{}-{}.png".format(time.time(), self.processed)
-                    )
+                # if self.recorder.frames == 1:
+                #     import matplotlib.pyplot as plt
+                #
+                #     diff = cropped_frame - self.crop_rectangle.subimage(self.background)
+                #     diff = (
+                #         255 * (diff - np.amin(diff)) / (np.amax(diff) - np.amin(diff))
+                #     )
+                #     f, axarr = plt.subplots(2, 2)
+                #     axarr[0, 0].imshow(self.background)
+                #     axarr[0, 1].imshow(test_crop)
+                #     axarr[1, 0].imshow(cropped_frame)
+                #     axarr[1, 1].imshow(diff)
+                #     plt.savefig(
+                #         "background{}-{}.png".format(time.time(), self.processed)
+                #     )
         else:
             self.thermal_window.update_current_frame(cptv_frame.pix)
             self.movement_detected = False
