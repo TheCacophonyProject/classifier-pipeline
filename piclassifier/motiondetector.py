@@ -139,14 +139,15 @@ class MotionDetector(Processor):
         self.ffc_affected = False
 
     def calc_temp_thresh(self, cropped_thermal):
+        edgeless_back = self.crop_rectangle.subimage(self.background)
+
         logging.debug(
             "frame pixels are %s back max %s",
             np.amax(cropped_thermal),
-            np.amax(self.background),
+            np.amax(edgeless_back),
         )
         if self.dynamic_thresh:
             temp_changed = False
-            edgeless_back = self.crop_rectangle.subimage(self.background)
             new_background = np.where(
                 edgeless_back < cropped_thermal * self.background_weight,
                 edgeless_back,
@@ -163,13 +164,17 @@ class MotionDetector(Processor):
                 ] *= MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
             back_changed = new_weights.size > 0
             # np.amax(self.background != new_background)
-            logging.info("back change %s", new_weights.size)
+            logging.info(
+                "back change %s out of %s", new_weights.size, edgeless_back.size
+            )
             if back_changed:
                 self.last_background_change = self.processed
                 edgeless_back[:, :] = new_background
                 logging.debug(
-                    "updated background %s new back shape",
+                    "updated background %s equal? %s new back shape %s",
                     np.all(edgeless_back <= cropped_thermal),
+                    np.all(edgeless_back == cropped_thermal),
+                    new_background.shape,
                 )
                 old_temp = self.temp_thresh
                 self.temp_thresh = int(round(np.average(edgeless_back)))
@@ -194,7 +199,9 @@ class MotionDetector(Processor):
                     "backgroundupdate{}-{}.png".format(time.time(), self.processed)
                 )
                 logging.debug(
-                    "this minus that %s", np.amax(cropped_thermal - edgeless_back)
+                    "this minus that %s",
+                    np.amax(cropped_thermal),
+                    np.amax(edgeless_back),
                 )
             if (
                 not temp_changed
@@ -207,7 +214,6 @@ class MotionDetector(Processor):
 
         else:
             self.temp_thresh = self.config.temp_thresh
-        logging.info("back shape %s", self.background.shape)
 
     def detect(self, clipped_frame):
         oldest = self.clipped_window.oldest
