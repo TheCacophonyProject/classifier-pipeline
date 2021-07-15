@@ -122,6 +122,7 @@ class Clip:
                 track_info["label"] = self.predictions.labels[
                     prediction.best_label_index
                 ]
+                track_info["confident_tag"] = track_info["label"]
                 track_info["confidence"] = round(prediction.score(), 2)
                 track_info["clarity"] = round(prediction.clarity, 3)
                 track_info["average_novelty"] = round(prediction.average_novelty, 2)

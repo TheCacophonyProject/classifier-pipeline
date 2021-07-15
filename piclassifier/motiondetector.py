@@ -1,7 +1,7 @@
 from threading import Lock
 from datetime import timedelta
 import logging
-
+import time
 import numpy as np
 import time
 from ml_tools.tools import Rectangle
@@ -268,6 +268,10 @@ class MotionDetector(Processor):
                     logging.debug(
                         "Setting background with %s", np.amax(cropped_frame.pix)
                     )
+                    import matplotlib.pyplot as plt
+
+                    imgplot = plt.imshow(self.background)
+                    plt.savefig("background{}-{}".format(time.time(), self.processed))
                     self.last_background_change = self.processed
                 else:
                     self.calc_temp_thresh(cptv_frame.pix, prev_ffc)

@@ -129,14 +129,21 @@ def parse_args():
     return args
 
 
+classifier = None
+
+
 def get_classifier(config):
+    global classifier
+    if classifier is not None:
+        return classifier
     model_name, model_type = os.path.splitext(config.classify.model)
     if model_type == ".tflite":
-        return LiteInterpreter(model_name)
+        classifier = LiteInterpreter(model_name)
     elif model_type == ".xml":
-        return NeuralInterpreter(model_name)
+        classifier = NeuralInterpreter(model_name)
     else:
-        return get_full_classifier(config)
+        classifier = get_full_classifier(config)
+    return classifier
 
 
 def get_full_classifier(config):
