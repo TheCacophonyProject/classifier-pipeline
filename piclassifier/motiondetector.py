@@ -191,6 +191,9 @@ class MotionDetector(Processor):
                 plt.savefig(
                     "backgroundupdate{}-{}.png".format(time.time(), self.processed)
                 )
+                logging.debug(
+                    "this minus that %s", np.amax(edgeless_back - cropped_thermal)
+                )
             if (
                 not temp_changed
                 and self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0

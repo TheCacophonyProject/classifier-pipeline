@@ -288,7 +288,7 @@ def handle_connection(connection, config, thermal_config):
             # this frame has bad data probably from lack of CPU
             processor.skip_frame()
             continue
-        if read < 500:
+        if read < 10:
             processor.skip_frame()
             continue
         processor.process_frame(frame)
