@@ -114,7 +114,7 @@ class MotionDetector(Processor):
         self.background_weight = np.zeros(
             (headers.res_y - edge * 2, headers.res_x - edge * 2)
         )
-        self.background_weight[:] = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
+        self.background_weight[:, :] = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
         self.movement_detected = False
         self.dynamic_thresh = dynamic_thresh
         self.temp_thresh = self.config.temp_thresh
@@ -155,7 +155,7 @@ class MotionDetector(Processor):
             )
             multiply = 1
             if self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0:
-                multiply = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAM
+                multiply = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
             self.background_weight = np.where(
                 edgeless_back < cropped_thermal * self.background_weight,
                 self.background_weight * multiply,
@@ -165,9 +165,13 @@ class MotionDetector(Processor):
             back_changed = new_background != edgeless_back
             # np.amax(self.background != new_background)
             logging.info(
-                "back change %s out of %s", len(back_changed), edgeless_back.size
+                "back change %s out of %s",
+                len(back_changed),
+                len(new_background == cropped_thermal),
+                edgeless_back.size,
             )
-            if back_changed:
+            logging.debug("backgournd weighting %s", self.backgorund_weight)
+            if len(back_changed > 0):
                 self.last_background_change = self.processed
                 edgeless_back[:, :] = new_background
                 logging.debug(
