@@ -298,9 +298,7 @@ class MotionDetector(Processor):
                 if self.recorder.frames == 1:
                     import matplotlib.pyplot as plt
 
-                    diff = (
-                        self.crop_rectangle.subimage(self.background) - cropped_thermal
-                    )
+                    diff = self.crop_rectangle.subimage(self.background) - cropped_frame
                     diff = (
                         255 * (diff - np.amin(diff)) / (np.amax(diff) - np.amin(diff))
                     )
