@@ -165,7 +165,7 @@ class MotionDetector(Processor):
             back_changed = new_background != edgeless_back
             # np.amax(self.background != new_background)
             logging.info(
-                "back change %s out of %s",
+                "back change %s  the same as cropped themal %s out of %s",
                 len(back_changed),
                 len(new_background == cropped_thermal),
                 edgeless_back.size,
@@ -175,10 +175,9 @@ class MotionDetector(Processor):
                 self.last_background_change = self.processed
                 edgeless_back[:, :] = new_background
                 logging.debug(
-                    "updated background %s equal? %s new back shape %s",
+                    "updated background %s equal? %s",
                     len(edgeless_back < cropped_thermal),
                     len(edgeless_back == cropped_thermal),
-                    new_background.shape,
                 )
                 old_temp = self.temp_thresh
                 self.temp_thresh = int(round(np.average(edgeless_back)))
