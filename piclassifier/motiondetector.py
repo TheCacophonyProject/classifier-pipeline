@@ -167,7 +167,7 @@ class MotionDetector(Processor):
             if back_changed:
                 self.last_background_change = self.processed
                 edgeless_back[:, :] = new_background
-
+                logging.debug("updated background %s", edgeless_back <= cropped_thermal)
                 old_temp = self.temp_thresh
                 self.temp_thresh = int(round(np.average(edgeless_back)))
                 if self.temp_thresh != old_temp:
