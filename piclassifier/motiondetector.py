@@ -153,19 +153,19 @@ class MotionDetector(Processor):
                 edgeless_back,
                 cropped_thermal,
             )
-            new_weights = self.background_weight[edgeless_back != new_background]
-            # these have changed so reset weighting
-            new_weights[:] = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
-
-            # these havent changed, increase weighting
+            multiply = 1
             if self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0:
-                self.background_weight[
-                    edgeless_back == new_background
-                ] *= MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
-            back_changed = new_weights.size > 0
+                multiply = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAM
+            self.background_weight = np.where(
+                edgeless_back < cropped_thermal * self.background_weight,
+                self.background_weight * multiply,
+                MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME,
+            )
+
+            back_changed = new_background != edgeless_back
             # np.amax(self.background != new_background)
             logging.info(
-                "back change %s out of %s", new_weights.size, edgeless_back.size
+                "back change %s out of %s", len(back_changed), edgeless_back.size
             )
             if back_changed:
                 self.last_background_change = self.processed
@@ -199,17 +199,9 @@ class MotionDetector(Processor):
                     "backgroundupdate{}-{}.png".format(time.time(), self.processed)
                 )
                 logging.debug(
-                    "this minus that %s",
+                    "this minus that %s %s",
                     np.amax(cropped_thermal),
                     np.amax(edgeless_back),
-                )
-            if (
-                not temp_changed
-                and self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0
-            ):
-                self.background_weight = (
-                    self.background_weight
-                    * MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
                 )
 
         else:
