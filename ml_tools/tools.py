@@ -157,7 +157,6 @@ class CustomJSONEncoder(json.JSONEncoder):
             return list(obj)
         elif isinstance(obj, datetime.datetime):
             return obj.isoformat()
-            # Let the base class default method raise the TypeError
         elif isinstance(obj, Rectangle):
             return obj.meta_dictionary()
         # Let the base class default method raise the TypeError
