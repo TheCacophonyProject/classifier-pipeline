@@ -1,7 +1,5 @@
 import numpy as np
 
-THUMBNAIL_SIZE = 30
-
 
 def visit_tag(clip, predictions_per_model):
     """From all tracks get that tag that occurs the most, choosing any tag of an
@@ -51,6 +49,8 @@ def track_score(pred, track):
 def best_trackless_region(clip):
     """Choose a frame for clips without any track"""
     best_region = None
+    THUMBNAIL_SIZE = 64
+
     # if we have regions take best mass of un tracked regions
     for regions in clip.region_history:
         for region in regions:

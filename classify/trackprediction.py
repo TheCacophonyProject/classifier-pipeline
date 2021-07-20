@@ -352,14 +352,13 @@ class TrackPrediction:
         prediction_meta["average_novelty"] = float(round(self.average_novelty, 2))
         prediction_meta["max_novelty"] = float(round(self.max_novelty, 2))
         prediction_meta["all_class_confidences"] = {}
-        prediction_data = []
-        for pred in self.smoothed_predictions:
-            pred_list = [int(round(p * 100)) for p in pred]
-            prediction_data.append(pred_list)
-        prediction_meta["predictions"] = prediction_data
+
+        prediction_meta["predictions"] = np.uint16(
+            np.round(100 * self.smoothed_predictions)
+        )
         for i, value in enumerate(self.class_best_score):
             label = self.labels[i]
-            prediction_meta["all_class_confidences"][label] = round(float(value), 3)
+            prediction_meta["all_class_confidences"][label] = round(value, 3)
         return prediction_meta
 
 
