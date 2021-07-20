@@ -100,7 +100,7 @@ def get_thumbnail(clip, predictions_per_model):
 
 
 def best_predicted_region(clip, predictions_per_model):
-    """ Get the best region based of predictions and track scores """
+    """Get the best region based of predictions and track scores"""
     predictions = None
     for model_predictions in predictions_per_model.values():
         if predictions is None:
