@@ -37,18 +37,10 @@ class Rectangle:
     width = attr.ib()
     height = attr.ib()
 
-    # @classmethod
-    # def __init__(self, topleft_x, topleft_y, width, height):
-    #     """Defines new rectangle."""
-    #     self.x = topleft_x
-    #     self.y = topleft_y
-    #     self.width = width
-    # self.height = height
-
     @staticmethod
     def from_ltrb(left, top, right, bottom):
         """Construct a rectangle from left, top, right, bottom co-ords."""
-        return Rectangle(x=left, y=top, width=right - left, height=bottom - top)
+        return Rectangle(left, top, width=right - left, height=bottom - top)
 
     def copy(self):
         return Rectangle(self.x, self.y, self.width, self.height)
@@ -142,7 +134,8 @@ class Rectangle:
     def __str__(self):
         return "<({0},{1})-{2}x{3}>".format(self.x, self.y, self.width, self.height)
 
-    def as_dict(self):
+    def meta_dictionary(self):
+        # Return object as dictionary without is_along_border,was_cropped and id for saving to json
         region_info = attr.asdict(
             self,
             filter=lambda attr, value: attr.name
@@ -166,7 +159,7 @@ class CustomJSONEncoder(json.JSONEncoder):
             return obj.isoformat()
             # Let the base class default method raise the TypeError
         elif isinstance(obj, Rectangle):
-            return int(obj.left), int(obj.top), int(obj.right), int(obj.bottom)
+            return obj.meta_dictionary()
         # Let the base class default method raise the TypeError
         return json.JSONEncoder.default(self, obj)
 
