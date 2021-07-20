@@ -4,7 +4,11 @@ THUMBNAIL_SIZE = 30
 
 
 def visit_tag(clip, predictions_per_model):
+    """From all tracks get that tag that occurs the most, choosing any tag of an
+    animal over infinite false-positives"""
     animal_count = {}
+    if len(clip.tracks) == 0:
+        return None, None
     for track in clip.tracks:
         model = list(predictions_per_model.values())[0]
         prediction = model.prediction_for(track.get_id())
@@ -12,8 +16,6 @@ def visit_tag(clip, predictions_per_model):
 
         animal_count.setdefault(label, [])
         animal_count[label].append(prediction)
-    if len(animal_count) == 0:
-        return None, None
     highest_count = sorted(
         animal_count.keys(),
         key=lambda label: 0 if label == "false-positive" else len(animal_count[label]),
@@ -23,6 +25,7 @@ def visit_tag(clip, predictions_per_model):
 
 
 def track_score(pred, track):
+    """Give track a thumbnail score based of prediction std deviation of mass and mass, return the score and best frame"""
     mass_history = [int(bound.mass) for bound in track.bounds_history]
     segment_mass = []
     sorted_mass = np.argsort(mass_history)
@@ -30,11 +33,14 @@ def track_score(pred, track):
     max_mass_i = sorted_mass[-1]
 
     pred_confidence = pred.max_score
-    pred_score = pred_confidence / 0.1
+    # give up to 10 points for good prediction confidence
+    pred_score = pred_confidence * 10
 
     max_mass = mass_history[max_mass_i]
     median_mass = mass_history[median_mass_i]
+    # subtract points for percentage devation
     deviation_score = -5 * np.std(mass_history) / max_mass
+    # 0 - 5 based of size
     mass_score = min(5, median_mass / 16)
     score = pred_score + deviation_score + mass_score
     best_frame = median_mass_i
@@ -43,8 +49,9 @@ def track_score(pred, track):
 
 
 def best_trackless_region(clip):
+    """Choose a frame for clips without any track"""
     best_region = None
-    # if we have regions take best mass
+    # if we have regions take best mass of un tracked regions
     for regions in clip.region_history:
         for region in regions:
             if best_region is None or region.mass > best_region.mass:
@@ -83,25 +90,28 @@ def best_trackless_region(clip):
 
 
 def get_thumbnail(clip, predictions_per_model):
-    segment_width = 5
-
     tag, predictions = visit_tag(clip, predictions_per_model)
     if tag is None:
         best_region = best_trackless_region(clip)
     else:
         best_region = best_predicted_region(clip, predictions_per_model)
-    import matplotlib.pyplot as plt
 
-    f, axarr = plt.subplots(1, 2)
-    f = clip.frame_buffer.get_frame(best_region.frame_number)
     return best_region
 
 
 def best_predicted_region(clip, predictions_per_model):
-    predictions = list(predictions_per_model.values())[0].prediction_per_track.values()
+    """ Get the best region based of predictions and track scores """
+    predictions = None
+    for model_predictions in predictions_per_model.values():
+        if predictions is None:
+            # set default
+            predictions = model_predictions
+        if model_predictions.model.thumbnail_model:
+            predictions = model_predictions
+            break
     best_score = None
-    for pred in predictions:
-        track = next(track for track in clip.tracks if track.get_id() == pred.track_id)
+    for track in clip.tracks:
+        pred = predictions.prediction_for(track.get_id())
         score, best_frame = track_score(
             pred,
             track,
@@ -109,7 +119,6 @@ def best_predicted_region(clip, predictions_per_model):
         if score is None:
             continue
         if best_score is None or score > best_score[0]:
-            best_score = (score, pred, track, best_frame)
-    best_track = best_score[2]
-    best_frame = best_score[3]
-    return best_track.bounds_history[best_frame]
+            best_score = (score, track.bounds_history[best_frame])
+
+    return best_score[1]

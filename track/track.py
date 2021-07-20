@@ -501,8 +501,6 @@ class Track:
         track_info["num_frames"] = len(self)
         track_info["frame_start"] = self.start_frame
         track_info["frame_end"] = self.end_frame
-        first_bound = self.bounds_history[0]
-
         track_info["positions"] = self.bounds_history
         prediction_info = []
         for model_id, predictions in predictions_per_model.items():
