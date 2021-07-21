@@ -506,7 +506,6 @@ class Track:
         for model_id, predictions in predictions_per_model.items():
             prediction = predictions.prediction_for(self.get_id())
             prediciont_meta = prediction.get_metadata()
-            # prediciont_meta.update(predictions.model.as_dict())
             prediciont_meta["model_id"] = model_id
             prediction_info.append(prediciont_meta)
         track_info["predictions"] = prediction_info
