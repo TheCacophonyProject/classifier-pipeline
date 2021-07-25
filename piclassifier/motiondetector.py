@@ -104,7 +104,7 @@ class MotionDetector(Processor):
         )
 
         self.thermal_window = SlidingWindow(
-            (self.preview_frames, headers.res_y, headers.res_x), np.uint16
+            (self.preview_frames, headers.res_y, headers.res_x), "O"
         )
         self.processed = 0
         self.num_frames = 0
@@ -268,7 +268,7 @@ class MotionDetector(Processor):
             prev_ffc = self.ffc_affected
             self.ffc_affected = is_affected_by_ffc(cptv_frame)
             if not self.ffc_affected:
-                self.thermal_window.add(cptv_frame.pix)
+                self.thermal_window.add(cptv_frame)
                 if self.background is None:
                     self.background = cptv_frame.pix
                     logging.debug("Setting background with %s", np.amax(cropped_frame))
@@ -294,7 +294,7 @@ class MotionDetector(Processor):
                         self.thermal_window.get_frames(), self.temp_thresh
                     )
         else:
-            self.thermal_window.update_current_frame(cptv_frame.pix)
+            self.thermal_window.update_current_frame(cptv_frame)
             self.movement_detected = False
 
         self.num_frames += 1
