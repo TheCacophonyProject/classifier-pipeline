@@ -287,7 +287,7 @@ class MotionDetector(Processor):
                 self.movement_detected = self.detect(clipped_frame)
             self.processed += 1
             if self.recorder:
-                if self.recorder.recoridng:
+                if self.recorder.recording:
                     self.recorder.process_frame(self.movement_detected, cptv_frame)
                 else:
                     self.recorder.start_recording(
