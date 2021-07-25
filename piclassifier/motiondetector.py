@@ -287,24 +287,12 @@ class MotionDetector(Processor):
                 self.movement_detected = self.detect(clipped_frame)
             self.processed += 1
             if self.recorder:
-                self.recorder.process_frame(
-                    self.movement_detected, cptv_frame, self.temp_thresh
-                )
-                # if self.recorder.frames == 1:
-                #     import matplotlib.pyplot as plt
-                #
-                #     diff = cropped_frame - self.crop_rectangle.subimage(self.background)
-                #     diff = (
-                #         255 * (diff - np.amin(diff)) / (np.amax(diff) - np.amin(diff))
-                #     )
-                #     f, axarr = plt.subplots(2, 2)
-                #     axarr[0, 0].imshow(self.background)
-                #     axarr[0, 1].imshow(test_crop)
-                #     axarr[1, 0].imshow(cropped_frame)
-                #     axarr[1, 1].imshow(diff)
-                #     plt.savefig(
-                #         "background{}-{}.png".format(time.time(), self.processed)
-                #     )
+                if self.recorder.recoridng:
+                    self.recorder.process_frame(self.movement_detected, cptv_frame)
+                else:
+                    self.recorder.start_recording(
+                        self.thermal_window.get_frames(), self.temp_thresh
+                    )
         else:
             self.thermal_window.update_current_frame(cptv_frame.pix)
             self.movement_detected = False
