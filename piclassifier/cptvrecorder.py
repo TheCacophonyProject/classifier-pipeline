@@ -82,15 +82,12 @@ class CPTVRecorder:
 
         self.recording = True
         for frame in preview_frames:
-            logging.info("frame %s", frame.fpa_temp)
             self.write_frame(frame)
         self.write_until = self.frames + self.min_frames
 
         logging.info("recording %s started temp_thresh: %d", self.filename, temp_thresh)
 
     def write_frame(self, cptv_frame):
-        logging.info("%s Writing %s", self.frames, cptv_frame.fpa_temp)
-
         self.writer.write_frame(cptv_frame)
         self.frames += 1
 

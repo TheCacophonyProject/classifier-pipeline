@@ -91,7 +91,6 @@ class PiClassifier(Processor):
         )
         self.clip.video_start_time = datetime.now()
         self.clip.num_preview_frames = self.preview_frames
-
         self.clip.set_res(self.res_x, self.res_y)
         self.clip.set_frame_buffer(
             self.config.classify_tracking.high_quality_optical_flow,
@@ -102,6 +101,20 @@ class PiClassifier(Processor):
         self.clip.predictions = self.predictions
         # process preview_frames
         frames = self.motion_detector.thermal_window.get_frames()
+        edge_pixels = self.config.tracking.edge_pixels
+        for i in range(edge_pixels):
+            self.motion_detector.background[i] = self.motion_detector.background[
+                edge_pixels
+            ]
+            self.motion_detector.background[-i - 1] = self.motion_detector.background[
+                edge_pixels
+            ]
+            self.motion_detector.background[:, i] = self.motion_detector.background[
+                edge_pixels
+            ]
+            self.motion_detector.background[
+                :, -i - 1
+            ] = self.motion_detector.background[edge_pixels]
         self.clip.update_background(self.motion_detector.background)
         self.clip._background_calculated()
         for frame in frames:

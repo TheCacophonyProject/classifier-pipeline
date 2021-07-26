@@ -194,6 +194,11 @@ class ClipTrackExtractor:
         """
         unmatched_regions, matched_tracks = self._match_existing_tracks(clip, regions)
         new_tracks = self._create_new_tracks(clip, unmatched_regions)
+        logging.info(
+            "Creating new trakcs %s at frame %si from regions %s",
+            len(new_tracks, clip.frame_on),
+            unmatched_regions,
+        )
         self._filter_inactive_tracks(clip, new_tracks, matched_tracks)
 
     def _match_existing_tracks(self, clip, regions):
