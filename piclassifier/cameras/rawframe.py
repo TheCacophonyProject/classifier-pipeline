@@ -24,7 +24,7 @@ class RawFrame(ABC):
             thermal_frame.byteswap(),
             telemetry.time_on,
             telemetry.last_ffc_time,
-            telemetry.frame_count,
+            telemetry.frame_counter,
             telemetry.fpa_temp_last_ffc,
         )
 
