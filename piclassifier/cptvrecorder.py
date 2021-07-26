@@ -4,6 +4,8 @@ import os
 import yaml
 from load.cliptrackextractor import ClipTrackExtractor
 from cptv import CPTVWriter
+from cptv import Frame
+from datetime import timedelta
 
 CPTV_TEMP_EXT = ".cptv.temp"
 
@@ -68,7 +70,8 @@ class CPTVRecorder:
         self.writer.motion_config = yaml.dump(self.motion).encode()[:255]
         self.motion.temp_thresh = default_thresh
 
-        f = Frame(background_frame, 0, 0, 0, 0)
++        f = Frame(background_frame, timedelta(), timedelta(), 0, 0)
+
         f.background_frame = True
         self.writer.background_frame = f
         # add brand model fps etc to cptv when python-cptv supports
