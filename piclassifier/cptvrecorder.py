@@ -70,7 +70,7 @@ class CPTVRecorder:
         self.writer.motion_config = yaml.dump(self.motion).encode()[:255]
         self.motion.temp_thresh = default_thresh
 
-+        f = Frame(background_frame, timedelta(), timedelta(), 0, 0)
+        f = Frame(background_frame, timedelta(), timedelta(), 0, 0)
 
         f.background_frame = True
         self.writer.background_frame = f

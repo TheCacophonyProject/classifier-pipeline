@@ -107,14 +107,14 @@ class PiClassifier(Processor):
                 edge_pixels
             ]
             self.motion_detector.background[-i - 1] = self.motion_detector.background[
-                edge_pixels
+                -edge_pixels - 1
             ]
             self.motion_detector.background[:, i] = self.motion_detector.background[
-                edge_pixels
+                :, edge_pixels
             ]
             self.motion_detector.background[
                 :, -i - 1
-            ] = self.motion_detector.background[edge_pixels]
+            ] = self.motion_detector.background[:, -1 - edge_pixels]
         self.clip.update_background(self.motion_detector.background)
         self.clip._background_calculated()
         for frame in frames:
