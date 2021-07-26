@@ -46,6 +46,7 @@ class NeuralInterpreter:
         self.load_json(model_name)
 
     def classify_frame(self, input_x):
+        logging.info("classify with shape %s", input_x.shape)
         rearranged_arr = np.transpose(input_x, axes=[2, 0, 1])
         input_x = np.array([[rearranged_arr]])
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
