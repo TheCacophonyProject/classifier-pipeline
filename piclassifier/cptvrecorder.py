@@ -50,7 +50,7 @@ class CPTVRecorder:
     def has_minimum(self):
         return self.frames > self.write_until
 
-    def start_recording(self, preview_frames, temp_thresh):
+    def start_recording(self, background_frame, preview_frames, temp_thresh):
         if self.recording:
             logging.warn("Already recording, stop recording first")
             return
@@ -68,6 +68,9 @@ class CPTVRecorder:
         self.writer.motion_config = yaml.dump(self.motion).encode()[:255]
         self.motion.temp_thresh = default_thresh
 
+        f = Frame(background_frame, 0, 0, 0, 0)
+        f.background_frame = True
+        self.writer.background_frame = f
         # add brand model fps etc to cptv when python-cptv supports
 
         if self.device_config.name:
@@ -76,6 +79,7 @@ class CPTVRecorder:
             self.writer.device_id = self.device_config.device_id
 
         self.writer.write_header()
+
         self.recording = True
         for frame in preview_frames:
             logging.info("frame %s", frame.fpa_temp)

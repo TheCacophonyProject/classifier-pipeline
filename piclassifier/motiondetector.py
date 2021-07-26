@@ -288,7 +288,9 @@ class MotionDetector(Processor):
                     self.recorder.process_frame(self.movement_detected, cptv_frame)
                 elif self.movement_detected:
                     self.recorder.start_recording(
-                        self.thermal_window.get_frames(), self.temp_thresh
+                        self.background,
+                        self.thermal_window.get_frames(),
+                        self.temp_thresh,
                     )
         else:
             self.thermal_window.update_current_frame(cptv_frame)
