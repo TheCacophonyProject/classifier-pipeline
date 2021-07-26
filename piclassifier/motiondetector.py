@@ -33,12 +33,6 @@ class SlidingWindow:
                 return self.frames[self.last_index]
             return None
 
-    def current_copy(self):
-        with self.lock:
-            if self.last_index is not None:
-                return self.frames[self.last_index].copy()
-            return None
-
     def get_frames(self):
         with self.lock:
             if self.last_index is None:
@@ -251,7 +245,7 @@ class MotionDetector(Processor):
         return False
 
     def get_recent_frame(self):
-        return self.thermal_window.current_copy()
+        return self.thermal_window.current.pix.copy()
 
     def can_record(self):
         return self.rec_window.inside_window()
