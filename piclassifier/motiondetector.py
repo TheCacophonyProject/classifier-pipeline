@@ -11,7 +11,10 @@ from .processor import Processor
 class SlidingWindow:
     def __init__(self, shape, dtype):
         self.lock = Lock()
-        self.frames = np.empty(shape, dtype)
+        if dtype == "O":
+            self.frames = [None] * shape
+        else:
+            self.frames = np.empty(shape, dtype)
         self.last_index = None
         self.size = len(self.frames)
         self.oldest_index = None
