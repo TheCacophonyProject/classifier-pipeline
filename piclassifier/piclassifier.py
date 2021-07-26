@@ -106,7 +106,7 @@ class PiClassifier(Processor):
         self.clip.update_background(self.motion_detector.background)
         self.clip._background_calculated()
         for frame in frames:
-            self.track_extractor.process_frame(self.clip, frame.copy())
+            self.track_extractor.process_frame(self.clip, frame.pix.copy())
 
     def startup_classifier(self):
         # classifies an empty frame to force loading of the model into memory

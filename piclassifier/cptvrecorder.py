@@ -34,15 +34,15 @@ class CPTVRecorder:
         else:
             self.delete_recording()
 
-    def process_frame(self, movement_detected, cptv_frame, temp_thresh):
+    def process_frame(self, movement_detected, cptv_frame):
         if movement_detected:
             self.write_until = self.frames + self.min_frames
-            self.write_frame(cptv_frame, temp_thresh)
+            self.write_frame(cptv_frame)
         elif self.recording:
             if self.has_minimum():
                 self.stop_recording()
             else:
-                self.write_frame(cptv_frame, temp_thresh)
+                self.write_frame(cptv_frame)
 
             if self.frames == self.max_frames:
                 self.stop_recording()

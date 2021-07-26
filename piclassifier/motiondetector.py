@@ -12,7 +12,7 @@ class SlidingWindow:
     def __init__(self, shape, dtype):
         self.lock = Lock()
         if dtype == "O":
-            self.frames = [None] * shape
+            self.frames = [None] * shape[0]
         else:
             self.frames = np.empty(shape, dtype)
         self.last_index = None
