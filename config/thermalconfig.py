@@ -67,6 +67,9 @@ class MotionConfig:
             run_classifier=motion.get("run-classifier", False),
         )
 
+    def as_dict(self):
+        return attr.asdict(self)
+
 
 @attr.s
 class RecorderConfig:
