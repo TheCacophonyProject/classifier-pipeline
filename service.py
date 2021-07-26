@@ -30,7 +30,7 @@ class Service(object):
         if last_frame is None:
             return "Reading from camera has not start yet."
 
-        frame_to_jpg(last_frame.pix, self.processor.output_dir + "/" + SNPASHOT_NAME)
+        frame_to_jpg(last_frame, self.processor.output_dir + "/" + SNPASHOT_NAME)
         return "Success"
 
 
