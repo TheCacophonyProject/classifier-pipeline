@@ -52,11 +52,12 @@ If a recording has tracks
 animal being favoured over false-positive
 e.g. rat, possum, possum, false-positive, false-positive, false-positive.... Will be a possum tag
 
-- All tracks tagged as this will be given a score based of based of prediction confidence, std deviation of mass and mass.
-- Choose highest scoring track and take the frame with the 75th percentile mass frame as the thumbnail frame
+- All tracks will be scored on prediction confidence, standard deviation of mass and mass.
+- Choose highest scoring track and take the region with the 75th percentile mass as the thumbnail region
 
 If there are no tracks for a recording
--Choose the region with greatest mass if any regions (these are points of interest that never eventuated into tracks)
+
+- Choose the region with greatest mass if any regions (these are points of interest that never eventuated into tracks)
 - Otherwise take the frame with the highest mean pixel value and find the highest mean pixel 64 x64 region
 
 ### evaluate.py
