@@ -45,7 +45,7 @@ class ClipTrackExtractor:
 
     MAX_DISTANCE = 2000
     PREVIEW = "preview"
-    VERSION = 9
+    VERSION = 10
 
     def __init__(
         self,
