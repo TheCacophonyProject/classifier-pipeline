@@ -27,7 +27,7 @@ def track_score(pred, track):
     mass_history = [int(bound.mass) for bound in track.bounds_history]
     segment_mass = []
     sorted_mass = np.argsort(mass_history)
-    median_mass_i = sorted_mass[int(len(sorted_mass) * 3 / 4)]
+    upperq_i = sorted_mass[int(len(sorted_mass) * 3 / 4)]
     max_mass_i = sorted_mass[-1]
 
     pred_confidence = pred.max_score
@@ -35,13 +35,13 @@ def track_score(pred, track):
     pred_score = pred_confidence * 10
 
     max_mass = mass_history[max_mass_i]
-    median_mass = mass_history[median_mass_i]
+    upperq_mass = mass_history[upperq_i]
     # subtract points for percentage devation
     deviation_score = -5 * np.std(mass_history) / max_mass
     # 0 - 5 based of size
-    mass_score = min(5, median_mass / 16)
+    mass_score = min(5, upperq_mass / 16)
     score = pred_score + deviation_score + mass_score
-    best_frame = median_mass_i
+    best_frame = upperq_i
 
     return score, best_frame
 
@@ -94,12 +94,12 @@ def get_thumbnail(clip, predictions_per_model):
     if tag is None:
         best_region = best_trackless_region(clip)
     else:
-        best_region = best_predicted_region(clip, predictions_per_model)
+        best_region = best_predicted_region(clip, tag, predictions_per_model)
 
     return best_region
 
 
-def best_predicted_region(clip, predictions_per_model):
+def best_predicted_region(clip, visit_tag, predictions_per_model):
     """Get the best region based of predictions and track scores"""
     predictions = None
     for model_predictions in predictions_per_model.values():
@@ -111,7 +111,10 @@ def best_predicted_region(clip, predictions_per_model):
             break
     best_score = None
     for track in clip.tracks:
+
         pred = predictions.prediction_for(track.get_id())
+        if pred.predicted_tag() != visit_tag:
+            continue
         score, best_frame = track_score(
             pred,
             track,

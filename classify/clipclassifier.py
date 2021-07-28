@@ -144,7 +144,6 @@ class ClipClassifier(CPTVFileProcessor):
         Returns a classifier object, which is created on demand.
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
         """
-        t0 = datetime.now()
         logging.info("classifier loading")
         classifier = None
         if is_keras_model(model.model_file):
@@ -157,7 +156,6 @@ class ClipClassifier(CPTVFileProcessor):
             )
             classifier.load(model.model_file)
 
-        logging.info("classifier loaded ({})".format(datetime.now() - t0))
         return classifier
 
     def get_meta_data(self, filename):
@@ -248,9 +246,12 @@ class ClipClassifier(CPTVFileProcessor):
         return clip, predictions_per_model
 
     def classify_clip(self, clip, model):
+        load_start = time.time()
         classifier = self.get_classifier(model)
-
+        load_time = time.time() - load_start
+        logging.info("classifier loaded (%s)", load_time)
         predictions = Predictions(classifier.labels, model)
+        predictions.model_load_time = load_time
         for i, track in enumerate(clip.tracks):
             prediction = self.identify_track(
                 classifier,
@@ -316,7 +317,9 @@ class ClipClassifier(CPTVFileProcessor):
         for model in models:
             model_dic = model.as_dict()
             model_predictions = predictions_per_model[model.id]
-            model_dic["classify_time"] = round(model_predictions.classify_time, 1)
+            model_dic["classify_time"] = round(
+                model_predictions.classify_time + model_predictions.model_load_time, 1
+            )
             model_dictionaries.append(model_dic)
 
         save_file["models"] = model_dictionaries
