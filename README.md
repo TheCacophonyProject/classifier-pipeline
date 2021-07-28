@@ -57,8 +57,8 @@ e.g. rat, possum, possum, false-positive, false-positive, false-positive.... Wil
 
 If there are no tracks for a recording
 
-- Choose the region with greatest mass if any regions (these are points of interest that never eventuated into tracks)
-- Otherwise take the frame with the highest mean pixel value and find the highest mean pixel 64 x64 region
+Choose the region with greatest mass if any regions exist (these are points of interest that never eventuated into tracks)
+Otherwise take the frame with the highest mean pixel value and find the highest mean pixel 64 x64 region
 
 ### evaluate.py
 Evaluates the performance of a classify.py run and generates reports.
