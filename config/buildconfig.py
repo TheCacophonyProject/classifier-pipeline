@@ -42,9 +42,6 @@ class BuildConfig(DefaultConfig):
     test_set_bins = attr.ib()
     segment_length = attr.ib()
     segment_spacing = attr.ib()
-    previous_split = attr.ib()
-    max_segments_per_track = attr.ib()
-    max_frames_per_track = attr.ib()
 
     @classmethod
     def load(cls, build):
@@ -68,9 +65,6 @@ class BuildConfig(DefaultConfig):
             test_set_bins=build["test_set_bins"],
             segment_length=build["segment_length"],
             segment_spacing=build["segment_spacing"],
-            previous_split=build["previous_split"],
-            max_segments_per_track=build["max_segments_per_track"],
-            max_frames_per_track=build["max_frames_per_track"],
         )
 
     @classmethod
@@ -91,9 +85,6 @@ class BuildConfig(DefaultConfig):
             test_set_bins=10,
             segment_length=3,
             segment_spacing=1,
-            previous_split="template.dat",
-            max_segments_per_track=None,
-            max_frames_per_track=None,
         )
 
     def validate(self):

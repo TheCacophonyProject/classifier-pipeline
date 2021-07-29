@@ -8,7 +8,7 @@ import time
 import gc
 from ml_tools import tools
 from ml_tools.preprocess import preprocess_movement, preprocess_frame
-from ml_tools.dataset import TrackChannels
+from track.track import TrackChannels
 from ml_tools.frame import Frame
 from collections import Counter
 
@@ -87,7 +87,7 @@ class DataGenerator(keras.utils.Sequence):
                     self.dataset.segments_by_id,
                     self.params,
                     self.dataset.label_mapping,
-                    dataset.numpy_file,
+                    self.dataset.numpy_data,
                 ),
             )
             for _ in range(self.params.load_threads)
@@ -414,7 +414,6 @@ def get_batch_frames(f, frames_by_track, tracks, channels, name):
     start = time.time()
     count = 0
     data = [None] * len(channels)
-
     for track_info, frame_indices, u_id, regions_by_frames in tracks:
         # frames = track[1]
         frame_indices.sort()
@@ -456,7 +455,7 @@ def load_batch_frames(
     track_frames,
     batch_q,
     track_seg_count,
-    numpyfile,
+    numpy_meta,
     batches,
     segments_by_id,
     channels,
@@ -465,7 +464,7 @@ def load_batch_frames(
     # loads frmaes from numpy file
     start = time.time()
     all_batches = []
-    with open(numpyfile, "rb") as f:
+    with numpy_meta as f:
         data_by_track = {}
         for batch in batches:
             batch_segments = []
@@ -485,25 +484,27 @@ def load_batch_frames(
                     track_seg_count[segment.unique_track_id] = 1
             all_batches.append(batch_segments)
         # sort by position in file
+
         track_segments = sorted(
             data_by_track.values(),
             key=lambda track_segment: track_segment[0]["background"],
         )
 
         get_batch_frames(f, track_frames, track_segments, channels, name)
+
     return all_batches
 
 
 # continue to read examples until queue is full
 def preloader(
-    q, load_queue, labels, name, db, segments_by_id, params, label_mapping, numpyfile
+    q, load_queue, labels, name, db, segments_by_id, params, label_mapping, numpy_meta
 ):
     """add a segment into buffer"""
     logging.info(
         " -started async fetcher for %s augment=%s numpyfile %s",
         name,
         params.augment,
-        numpyfile,
+        numpy_meta.filename,
     )
     # filtered always loaded
     channels = [TrackChannels.thermal]
@@ -580,7 +581,7 @@ def preloader(
                         track_frames,
                         batch_q,
                         track_seg_count,
-                        numpyfile,
+                        numpy_meta,
                         next_load,
                         segments_by_id,
                         channels,

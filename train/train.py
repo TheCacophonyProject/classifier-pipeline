@@ -5,7 +5,6 @@ import logging
 from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ, Model_CNN
 
 # from model_resnet import ResnetModel
-from ml_tools.dataset import dataset_db_path
 from ml_tools.kerasmodel import KerasModel
 
 
@@ -15,7 +14,6 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
 
     # a little bit of a pain, the model needs to know how many classes to classify during initialisation,
     # but we don't load the dataset till after that, so we load it here just to count the number of labels...
-    datasets_filename = dataset_db_path(conf)
     # datasets_filename = os.path.join(os.path.dirname(datasets_filename), "datasets.dat")
     # if conf.train.model == ResnetModel.MODEL_NAME:
     # model = ResnetModel(labels, conf.train)
@@ -46,9 +44,9 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     # groups["leporidae"] = ["leporidae"]
 
     # groups["false-positive"] = ["false-positive", "insect"]
-    logging.info("Importing dataset %s ", datasets_filename)
-    model.import_dataset(datasets_filename, lbl_p=conf.train.label_probabilities)
-    for label in model.datasets.train.labels:
+    logging.info("Importing datasets from %s ", conf.tracks_folder)
+    model.import_dataset(conf.tracks_folder, lbl_p=conf.train.label_probabilities)
+    for label in model.train_dataset.labels:
         if label not in false_positives:
             groups[label] = [label]
         # if label != "wallaby":
@@ -61,34 +59,34 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
 
     logging.info("IMPORTED")
     # display the data set summary
-    print("Training on labels", model.datasets.train.labels)
+    print("Training on labels", model.train_dataset.labels)
     print()
     print(
         "{:<20} {:<20} {:<20} {:<20} (segments/frames/tracks/bins)".format(
             "label", "train", "validation", "test"
         )
     )
-    for label in model.datasets.train.labels:
+    for label in model.train_dataset.labels:
         print(
             "{:<20} {:<20} {:<20} {:<20}".format(
                 label,
-                "{}/{}/{}/{:.1f}".format(*model.datasets.train.get_counts(label)),
-                "{}/{}/{}/{:.1f}".format(*model.datasets.validation.get_counts(label)),
-                "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
+                "{}/{}/{}/{:.1f}".format(*model.train_dataset.get_counts(label)),
+                "{}/{}/{}/{:.1f}".format(*model.validation_dataset.get_counts(label)),
+                "{}/{}/{}/{:.1f}".format(*model.test_dataset.get_counts(label)),
             )
         )
-    if model.datasets.train.label_mapping:
+    if model.train_dataset.label_mapping:
         print("Mapped labels")
-        for label in model.datasets.train.label_mapping.keys():
+        for label in model.train_dataset.label_mapping.keys():
             print(
                 "{} {:<20} {:<20} {:<20} {:<20}".format(
                     label,
-                    model.datasets.train.mapped_label(label),
-                    "{}/{}/{}/{:.1f}".format(*model.datasets.train.get_counts(label)),
+                    model.train_dataset.mapped_label(label),
+                    "{}/{}/{}/{:.1f}".format(*model.train_dataset.get_counts(label)),
                     "{}/{}/{}/{:.1f}".format(
-                        *model.datasets.validation.get_counts(label)
+                        *model.validation_dataset.get_counts(label)
                     ),
-                    "{}/{}/{}/{:.1f}".format(*model.datasets.test.get_counts(label)),
+                    "{}/{}/{}/{:.1f}".format(*model.test_dataset.get_counts(label)),
                 )
             )
 
@@ -108,12 +106,11 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     print()
     print(
         "Found {0:.1f}K training examples".format(
-            model.datasets.train.sample_count / 1000
+            model.train_dataset.sample_count / 1000
         )
     )
-    model.datasets.train.clear_tracks()
-    model.datasets.validation.clear_tracks()
-    model.datasets.test.clear_tracks()
+    for dataset in model.datasets.values():
+        dataset.clear_tracks()
 
     model.train_model(
         epochs=conf.train.epochs, run_name=run_name + "_" + "TEST", weights=weights

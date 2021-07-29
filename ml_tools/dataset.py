@@ -18,27 +18,24 @@ import time
 import dateutil
 import numpy as np
 import gc
-from ml_tools.datasetstructures import TrackHeader, SegmentHeader
+from ml_tools.datasetstructures import TrackHeader, SegmentHeader, NumpyMeta
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
 from ml_tools import imageprocessing
 
 # from ml_tools.kerasmodel import KerasModel
+from enum import Enum
 
 
-class TrackChannels:
-    """Indexes to channels in track."""
-
-    thermal = 0
-    filtered = 1
-    flow_h = 2
-    flow_v = 3
-    mask = 4
-    flow = 5
-
-
-def dataset_db_path(config):
-    return os.path.join(config.tracks_folder, "datasets.dat")
+class SegmentType(Enum):
+    IMPORTANT_RANDOM = 0
+    ALL_RANDOM = 1
+    IMPORTANT_SEQUENTIAL = 2
+    ALL_SEQUENTIAL = 3
+    TOP_SEQUENTIAL = 4
+    ALL_RANDOM_SECTIONS = 5
+    TOP_RANDOM = 6
+    ALL_RANDOM_NOMIN = 6
 
 
 class Dataset:
@@ -133,36 +130,32 @@ class Dataset:
             "no_data": 0,
         }
         self.lbl_p = None
-        self.numpy_file = None
+        self.numpy_data = None
+
+    # is much faster to read from numpy array when trianing
+    def saveto_numpy(self, path):
+        file = os.path.join(path, self.name)
+        self.numpy_data = NumpyMeta(f"{file}.npy")
+        self.numpy_data.save_tracks(self.db, self.tracks)
+        self.numpy_data.f = None
 
     def clear_tracks(self):
         del self.tracks
         del self.tracks_by_label
         del self.tracks_by_bin
         del self.tracks_by_id
-        # self.tracks = []
-        # self.tracks_by_label = {}
-        # self.tracks_by_bin = {}
-        # self.tracks_by_id = {}
 
     def load_db(self):
         self.db = TrackDatabase(self.db_file)
 
     def clear_unused(self):
         if self.use_segments:
-
             del self.frame_cdf
             del self.frame_label_cdf
 
             del self.frame_samples
             del self.frames_by_label
             del self.frames_by_id
-            # self.frame_cdf = []
-            # self.frame_label_cdf = {}
-            #
-            # self.frame_samples = []
-            # self.frames_by_label = {}
-            # self.frames_by_id = {}
         else:
             self.segment_cdf = []
             self.segment_label_cdf = {}
@@ -176,32 +169,16 @@ class Dataset:
         if self.db is not None:
             self.db.set_read_only(read_only)
 
-    def random_segments_only(self):
-        remove = [segment for segment in self.segments if segment.top_mass]
-        print("removing the tops", len(remove))
-        for segment in remove:
-            segment.track.segments.remove(segment)
-            self.segments_by_label[segment.label].remove(segment)
-            del self.segments_by_id[segment.id]
-
-        self.segments = [segment for segment in self.segments if not segment.top_mass]
-
-        self.rebuild_cdf()
-
-    def highest_mass_only(self, best_only=False):
-        if best_only:
-            remove = [segment for segment in self.segments if not segment.best_mass]
-        else:
-            remove = [segment for segment in self.segments if not segment.top_mass]
+    def highest_mass_only(self):
+        # top_frames for i3d generates all segments above a  min average mass
+        # use this to take only the best
+        remove = [segment for segment in self.segments if not segment.best_mass]
 
         for segment in remove:
             segment.track.segments.remove(segment)
             self.segments_by_label[segment.label].remove(segment)
             del self.segments_by_id[segment.id]
-        if best_only:
-            self.segments = [segment for segment in self.segments if segment.best_mass]
-        else:
-            self.segments = [segment for segment in self.segments if segment.top_mass]
+        self.segments = [segment for segment in self.segments if segment.best_mass]
 
         self.rebuild_cdf()
 
@@ -312,7 +289,7 @@ class Dataset:
                 counter += 1
         return [counter, len(track_ids)]
 
-    def add_tracks(self, tracks, max_segments_per_track=None):
+    def add_tracks(self, tracks):
         """
         Adds list of tracks to dataset
         :param tracks: list of TrackHeader
@@ -320,19 +297,13 @@ class Dataset:
         """
         result = 0
         for track in tracks:
-            if self.add_track_header(track, max_segments_per_track):
+            if self.add_track_header(track):
                 result += 1
         return result
 
-    def add_track_header(self, track_header, max_segments_per_track=None):
+    def add_track_header(self, track_header):
         if track_header.unique_id in self.tracks_by_id:
             return False
-
-        # gp test less segments more tracks
-        if max_segments_per_track is not None:
-            if len(track_header.segments) > max_segments_per_track:
-                segments = random.sample(track_header.segments, max_segments_per_track)
-                track_header.segments = segments
 
         self.tracks.append(track_header)
         self.add_track_to_mappings(track_header)
@@ -602,35 +573,6 @@ class Dataset:
             cap = min(cap, len(samples))
             return samples[:cap]
 
-    def balance_weights(self, weight_modifiers=None):
-        """
-        Adjusts weights so that every class is evenly represented.
-        :param weight_modifiers: if specified is a dictionary mapping from label to weight modifier,
-            where < 1 sampled less frequently, and > 1 is sampled more frequently.
-        :return:
-        """
-
-        label_weight = {}
-        mean_label_weight = 0
-
-        for label in self.labels:
-            label_weight[label] = self.get_label_weight(label)
-            mean_label_weight += label_weight[label] / len(self.labels)
-
-        scale_factor = {}
-        for label in self.labels:
-            modifier = (
-                1.0 if weight_modifiers is None else weight_modifiers.get(label, 1.0)
-            )
-            if label_weight[label] == 0:
-                scale_factor[label] = 1.0
-            else:
-                scale_factor[label] = mean_label_weight / label_weight[label] * modifier
-
-        for segment in self.segments:
-            segment.weight *= scale_factor.get(segment.label, 1.0)
-        self.rebuild_cdf()
-
     def balance_bins(self, max_bin_weight=None):
         """
         Adjusts weights so that bins with a number number of segments aren't sampled so frequently.
@@ -653,12 +595,6 @@ class Dataset:
                     segment.weight *= scale_factor
         self.rebuild_cdf()
 
-    def get_bin_segments_count(self, bin_id):
-        return sum(len(track.segments) for track in self.tracks_by_bin[bin_id])
-
-    def get_bin_max_track_duration(self, bin_id):
-        return max(track.duration for track in self.tracks_by_bin[bin_id])
-
     def remove_label(self, label_to_remove):
         """
         Removes all segments of given label from dataset. Label remains in dataset.labels however, so as to not
@@ -666,17 +602,11 @@ class Dataset:
         """
         if label_to_remove not in self.labels:
             return
-        self.segments = [
-            segment for segment in self.segments if segment.label != label_to_remove
-        ]
-        self._purge_track_segments()
-        self.rebuild_cdf()
+        tracks = self.tracks_by_label[label_to_remove]
+        for track in tracks:
+            self.remove_label()
 
-    def _purge_track_segments(self):
-        """Removes any segments from track_headers where the segment has been deleted"""
-        # remove segments from tracks
-        for track in self.tracks:
-            track.segments = []
+        self.rebuild_cdf()
 
     def mapped_label(self, label):
         if self.label_mapping:
@@ -791,10 +721,6 @@ class Dataset:
         tracks = self.tracks_by_label.get(label)
         return sum(track.weight for track in tracks) if tracks else 0
 
-    def get_label_segments(self, label):
-        """Returns all segments of given class."""
-        return self.segments_by_label.get(label, [])
-
     def regroup(
         self,
         groups,
@@ -867,37 +793,37 @@ class Dataset:
             top_frames = False
             random_sections = False
             segment_min_mass = self.segment_min_mass
-            if segment_type == 0:
+            if segment_type == SegmentType.IMPORTANT_RANDOM:
                 use_important = True
                 random_frames = True
                 segment_min_mass = self.segment_min_mass
-            elif segment_type == 1:
+            elif segment_type == SegmentType.ALL_RANDOM:
                 use_important = False
                 random_frames = True
                 segment_min_mass = self.segment_min_mass
-            elif segment_type == 2:
+            elif segment_type == SegmentType.IMPORTANT_SEQUENTIAL:
                 use_important = True
                 random_frames = False
-            elif segment_type == 3:
+            elif segment_type == SegmentType.ALL_SEQUENTIAL:
                 use_important = False
                 random_frames = False
                 segment_min_mass = self.segment_min_mass
-            elif segment_type == 4:
+            elif segment_type == SegmentType.TOP_SEQUENTIAL:
+                random_frames = False
                 top_frames = True
-            elif segment_type == 5:
+            elif segment_type == SegmentType.ALL_RANDOM_SECTIONS:
                 use_important = False
                 random_frames = True
                 segment_min_mass = self.segment_min_mass
                 random_sections = True
-            elif segment_type == 6:
+            elif segment_type == SegmentType.ALL_RANDOM_NOMIN:
                 use_important = False
                 random_frames = False
                 segment_min_mass = None
-            elif segment_type == 7:
+            elif segment_type == SegmentType.TOP_RANDOM:
                 use_important = False
                 random_frames = True
                 top_frames = True
-                segment_min_mass = None
             track.calculate_segments(
                 track.frame_mass,
                 segment_frame_spacing,
@@ -930,11 +856,6 @@ class Dataset:
             filtered_stats,
             time.time() - start,
         )
-        # print(self.name, "has", len(self.segments))
-        # for segment in self.segments:
-        #     print(
-        #         f"{segment.track.label} - {segment.track.clip_id}-{segment.track.track_id} -{segment.track.start_frame} segment {segment.id} {segment.start_frame} frame_indices {segment.frame_indices} best? { segment.best_mass} top {segment.top_mass}"
-        #     )
 
     def remove_track(self, track):
         self.tracks.remove(track)
@@ -942,31 +863,3 @@ class Dataset:
         if track.bin_id in self.tracks_by_bin:
             del self.tracks_by_bin[track.bin_id]
         self.tracks_by_label[track.label].remove(track)
-
-    def add_important(self):
-        for track_header in self.tracks:
-            frames = self.db.get_track(track_header.clip_id, track_header.track_id)
-            track_header.set_important_frames(self.min_frame_mass, frame_data=frames)
-            self.db.set_important_frames(
-                track_header.clip_id,
-                track_header.track_id,
-                [sample.frame_num for sample in track_header.important_frames],
-            )
-
-    def add_overlay(self):
-        for track in self.tracks:
-            if self.db.has_overlay(track.clip_id, track.track_id):
-                continue
-            print("no overlay for ", track.clip_id, track.track_id)
-            frames = self.db.get_track(track.clip_id, track.track_id)
-            regions = []
-            for region in track.track_bounds:
-                regions.append(tools.Rectangle.from_ltrb(*region))
-
-            _, overlay = imageprocessing.movement_images(
-                frames,
-                regions,
-                dim=(120, 160),
-                require_movement=True,
-            )
-            self.db.add_overlay(track.clip_id, track.track_id, overlay)

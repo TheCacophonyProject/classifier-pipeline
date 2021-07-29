@@ -14,13 +14,12 @@ import logging
 from ml_tools.logs import init_logging
 from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
-from ml_tools.dataset import Dataset, dataset_db_path
+from ml_tools.dataset import Dataset
 from ml_tools.datasetstructures import Camera
 from track.track import TrackChannels
 from ml_tools.kerasmodel import KerasModel
 import joblib
 import pytz
-import savenumpy
 
 LOW_DATA_LABELS = ["wallaby", "human", "dog", "vehicle"]
 MIN_TRACKS = 100
@@ -189,7 +188,8 @@ def split_label(dataset, label, existing_test_count=0):
     if label in ["vehicle", "human"]:
         min_t = 10
     num_validate_tracks = max(total * 0.15, min_t)
-    num_test_tracks = max(total * 0.05, min_t) - existing_test_count
+    # num_test_tracks = max(total * 0.05, min_t) - existing_test_count
+    # should have teest covered by test set
     num_test_tracks = 0
     cameras_to_remove = set()
     for i, track_bin in enumerate(track_bins):
@@ -281,7 +281,7 @@ def add_camera_tracks(
         for camera in cameras:
             tracks = camera.label_to_tracks.get(label, {}).values()
             all_tracks.extend(list(tracks))
-    dataset.add_tracks(all_tracks, None)
+    dataset.add_tracks(all_tracks)
     dataset.recalculate_segments(scale=1.0)
     dataset.balance_bins()
 
@@ -292,7 +292,6 @@ def main():
     config = load_config(args.config_file)
     test_clips = config.build.test_clips()
     logging.info("# of test clips are %s", len(test_clips))
-    datasets_filename = dataset_db_path(config)
     db_file = os.path.join(config.tracks_folder, "dataset.hdf5")
     dataset = Dataset(
         db_file, "dataset", config, consecutive_segments=args.consecutive_segments
@@ -320,23 +319,26 @@ def main():
 
     print("Splitting data set into train / validation")
     datasets = split_randomly(db_file, dataset, config, args, test_clips)
-    validate_datasets(datasets, test_clips)
+    validate_datasets(datasets, test_clips, args.date)
+
     print_counts(dataset, *datasets)
-    base_dir = os.path.dirname(datasets_filename)
+
+    base_dir = config.tracks_folder
     for dataset in datasets:
-        savenumpy.save_numpy(dataset, os.path.join(base_dir, dataset.name))
+        dataset.saveto_numpy(os.path.join(base_dir))
 
     dataset.clear_unused()
     for dataset in datasets:
         dataset.db = None
-
-    joblib.dump(datasets, open(datasets_filename, "wb"))
-    joblib.dump(datasets[0], open(f"{db_path}-train.dat", "wb"))
-    joblib.dump(datasets[1], open(f"{db_path}-validate.dat", "wb"))
-    joblib.dump(datasets[2], open(f"{db_path}-test.dat", "wb"))
+        logging.info("saving to %s", f"{os.path.join(base_dir, dataset.name)}.dat")
+        joblib.dump(dataset, open(f"{os.path.join(base_dir, dataset.name)}.dat", "wb"))
 
 
-def validate_datasets(datasets, test_clips):
+def validate_datasets(datasets, test_clips, before_date):
+    for dataset in datasets[:2]:
+        for track in dataset.tracks:
+            assert track.start_time < before_date
+
     for dataset in datasets:
         clips = set([track.clip_id for track in dataset.tracks])
         tracks = set([track.track_id for track in dataset.tracks])

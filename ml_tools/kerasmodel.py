@@ -412,7 +412,7 @@ class KerasModel:
         if weights is not None:
             self.model.load_weights(weights)
         self.train = DataGenerator(
-            self.datasets.train,
+            self.train_dataset,
             self.labels,
             self.params.output_dim,
             augment=True,
@@ -432,7 +432,7 @@ class KerasModel:
             keep_edge=self.params.keep_edge,
         )
         self.validate = DataGenerator(
-            self.datasets.validation,
+            self.validation_dataset,
             self.labels,
             self.params.output_dim,
             batch_size=self.params.batch_size,
@@ -482,10 +482,10 @@ class KerasModel:
         self.train.stop_load()
         self.validate.stop_load()
         test_accuracy = None
-        if self.datasets.test and self.datasets.test.has_data():
+        if self.test_dataset and self.test_dataset.has_data():
             self.test = DataGenerator(
-                self.datasets.test,
-                self.datasets.train.labels,
+                self.test_dataset,
+                self.train_dataset.labels,
                 self.params.output_dim,
                 batch_size=self.params.batch_size,
                 channel=self.params.channel,
@@ -574,8 +574,7 @@ class KerasModel:
         if not self.mapped_labels:
             logging.warn("Cant regroup without specifying mapped_labels")
             return
-        for fld in self.datasets._fields:
-            dataset = getattr(self.datasets, fld)
+        for dataset in self.datasets.values():
             dataset.regroup(self.mapped_labels, shuffle=shuffle)
             dataset.labels.sort()
         self.set_labels()
@@ -583,9 +582,9 @@ class KerasModel:
     def set_labels(self):
         # preserve label order if needed, this should be used when retraining
         # on a model already trained with our data
-        self.labels = self.datasets.train.labels.copy()
+        self.labels = self.train_dataset.labels.copy()
 
-    def import_dataset(self, dataset_filename, ignore_labels=None, lbl_p=None):
+    def import_dataset(self, base_dir, ignore_labels=None, lbl_p=None):
         """
         Import dataset.
         :param dataset_filename: path and filename of the dataset
@@ -593,40 +592,40 @@ class KerasModel:
         :return:
         """
         self.label_probabilities = lbl_p
-        self.datasets = namedtuple("Datasets", "train, validation, test")
-        datasets = joblib.load(open(dataset_filename, "rb"))
-        self.datasets.train, self.datasets.validation, self.datasets.test = datasets
-        print("names", datasets[0].name, datasets[1].name)
-        # self.datasets.train.name = "train"
-        for dataset in datasets:
-            print("dataset is", dataset.name)
+        datasets = ["train", "validation", "test"]
+        self.datasets = {}
+        for i, name in enumerate(datasets):
+            self.datasets[name] = joblib.load(
+                open(f"{os.path.join(base_dir, name)}.dat", "rb")
+            )
+        #
+
+        for dataset in self.datasets.values():
             dataset.labels.sort()
             dataset.set_read_only(True)
             dataset.lbl_p = lbl_p
             dataset.use_segments = self.params.use_segments
-            # dataset.random_segments_only()
             dataset.recalculate_segments(segment_type=self.params.segment_type)
-            # dataset.rebuild_cdf()
-            # dataset.load_db()
+
             if ignore_labels:
                 for label in ignore_labels:
                     dataset.remove_label(label)
-        self.labels = self.datasets.train.labels
+        self.labels = self.train_dataset.labels
 
         if self.mapped_labels:
             self.regroup()
-        logging.info(
-            "Training samples: {0:.1f}k".format(self.datasets.train.sample_count / 1000)
-        )
-        logging.info(
-            "Validation samples: {0:.1f}k".format(
-                self.datasets.validation.sample_count / 1000
-            )
-        )
-        logging.info(
-            "Test samples: {0:.1f}k".format(self.datasets.test.sample_count / 1000)
-        )
-        logging.info("Labels: {}".format(self.labels))
+
+    @property
+    def test_dataset(self):
+        return self.datasets["test"]
+
+    @property
+    def validation_dataset(self):
+        return self.datasets["validation"]
+
+    @property
+    def train_dataset(self):
+        return self.datasets["train"]
 
     # GRID SEARCH
     def train_test_model(self, hparams, log_dir, writer, epochs=15):
@@ -712,13 +711,13 @@ class KerasModel:
                                                 HP_DROPOUT: dropout,
                                                 HP_SEGMENT_TYPE: segment_type,
                                             }
-                                            self.datasets.train.recalculate_segments(
+                                            self.train_dataset.recalculate_segments(
                                                 segment_type=segment_type
                                             )
-                                            self.datasets.validation.recalculate_segments(
+                                            self.validation_dataset.recalculate_segments(
                                                 segment_type=segment_type
                                             )
-                                            self.datasets.test.recalculate_segments(
+                                            self.test_dataset.recalculate_segments(
                                                 segment_type=segment_type
                                             )
                                             dense_layers = []
@@ -736,8 +735,8 @@ class KerasModel:
                                             )
 
                                             self.train = DataGenerator(
-                                                self.datasets.train,
-                                                self.datasets.train.labels,
+                                                self.train_dataset,
+                                                self.train_dataset.labels,
                                                 self.params.output_dim,
                                                 batch_size=batch_size,
                                                 buffer_size=self.params.buffer_size,
@@ -753,8 +752,8 @@ class KerasModel:
                                                 segment_type=self.params.segment_type,
                                             )
                                             self.validate = DataGenerator(
-                                                self.datasets.validation,
-                                                self.datasets.train.labels,
+                                                self.validation_dataset,
+                                                self.train_dataset.labels,
                                                 self.params.output_dim,
                                                 batch_size=batch_size,
                                                 buffer_size=self.params.buffer_size,
@@ -769,8 +768,8 @@ class KerasModel:
                                                 segment_type=self.params.segment_type,
                                             )
                                             self.test = DataGenerator(
-                                                self.datasets.test,
-                                                self.datasets.train.labels,
+                                                self.test_dataset,
+                                                self.train_dataset.labels,
                                                 self.params.output_dim,
                                                 batch_size=batch_size,
                                                 buffer_size=self.params.buffer_size,

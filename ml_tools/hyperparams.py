@@ -1,4 +1,4 @@
-from ml_tools.dataset import TrackChannels
+from track.track import TrackChannels
 
 
 class HyperParams(dict):

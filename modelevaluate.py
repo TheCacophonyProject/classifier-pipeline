@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import cv2
 from multiprocessing import Process, Queue
-from ml_tools.dataset import dataset_db_path, Dataset
+from ml_tools.dataset import Dataset
 from ml_tools.kerasmodel import KerasModel
 from ml_tools.imageprocessing import normalize, detect_objects
 import matplotlib
@@ -337,9 +337,8 @@ def load_args():
     parser.add_argument(
         "-s",
         "--dataset",
-        type=int,
-        default=2,
-        help="Dataset to use 0 - Training, 1 - Validation, 2 - Train (Default)",
+        default="test.dat",
+        help="Dataset to use train.dat, validate.dat, test.dat ( Default)",
     )
     parser.add_argument("--confusion", help="Save confusion matrix image")
     parser.add_argument(
@@ -422,9 +421,9 @@ date = None
 if args.date:
     date = parse(args.date)
 print("loading")
-dataset_file = dataset_db_path(config)
-datasets = joblib.load(open(dataset_file, "rb"))
-dataset = datasets[args.dataset]
+base_dir = config.tracks_folder
+
+datasets = joblib.load(open(os.path.join(base_dir, args.dataset), "rb"))
 ev = ModelEvalute(config, model_file, args.weights)
 #
 ############################
