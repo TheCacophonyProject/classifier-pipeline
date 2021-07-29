@@ -111,13 +111,8 @@ class Track:
         return self._id
 
     def add_prediction_info(self, track_prediction):
-        self.predicted_tag = track_prediction.predicted_tag()
-        self.all_class_confidences = track_prediction.class_confidences()
-        self.predictions = np.int16(
-            np.around(100 * np.array(track_prediction.predictions))
-        )
-        self.predicted_confidence = int(round(100 * track_prediction.max_score))
-        self.prediction_classes = track_prediction.labels
+        logging.warn("TODO add prediction info needs to be implemented")
+        return
 
     def load_track_meta(
         self,
@@ -137,9 +132,6 @@ class Track:
         self.predicted_tag = data.get("tag")
         self.all_class_confidences = data.get("all_class_confidences", None)
         self.predictions = data.get("predictions")
-        if self.predictions:
-            self.predictions = np.int16(self.predictions)
-            self.predicted_confidence = np.amax(self.predictions)
 
         self.track_tags = track_meta.get("TrackTags")
         self.prediction_classes = data.get("classes")

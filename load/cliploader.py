@@ -99,6 +99,7 @@ def add_predictions(db, clip_id, classifier):
             regions,
             overlay,
         )
+        logging.warn("Not adding prediction data as code needs to be written")
         db.add_prediction(clip_id, track["id"], track_prediction)
 
 
@@ -324,7 +325,7 @@ class ClipLoader:
             return
 
         valid_tracks = self._filter_clip_tracks(metadata)
-        if not valid_tracks:
+        if not valid_tracks or len(valid_tracks) == 0:
             logging.error("No valid track data found for %s", filename)
             return
 
@@ -334,9 +335,28 @@ class ClipLoader:
             self.config.load.include_filtered_channel,
             self.config.load.tag_precedence,
         )
-        process_backgorund = metadata.get("tracker_version", 0) < 10
+        tracker_versions = set(
+            [
+                t.get("data", {}).get("tracker_version", 0)
+                for t in metadata.get("Tracks", [])
+            ]
+        )
+        if len(tracker_versions) > 1:
+            logginer.error(
+                "Tracks with different tracking versions cannot process %s versions %s",
+                filename,
+                tracker_versions,
+            )
+            return
+        tracker_version = tracker_versions.pop()
+        process_background = tracker_version < 10
+        logging.debug(
+            "Processing background? %s tracker_versions %s",
+            process_background,
+            tracker_version,
+        )
         if not self.track_extractor.parse_clip(
-            clip, process_background=process_backgorund
+            clip, process_background=process_background
         ):
             logging.error("No valid clip found for %s", filename)
             return
