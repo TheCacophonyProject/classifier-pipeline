@@ -464,8 +464,7 @@ class KerasModel:
                 class_weight[i] = 0.6
             else:
                 class_weight[i] = 1
-            print("weight for", label, " is", class_weight[i])
-        print(class_weight)
+        logging.info("loading with class wieghts %s", class_weight)
         time.sleep(1)
         history = self.model.fit(
             self.train,
