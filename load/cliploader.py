@@ -183,7 +183,7 @@ class ClipLoader:
                 if os.path.splitext(name)[1] == ".cptv":
                     full_path = os.path.join(folder_path, name)
                     file_paths.append(full_path)
-        # allows to know the order of processing
+        # allows us know the order of processing
         file_paths.sort()
         for file_path in file_paths:
             job_queue.put(file_path)
