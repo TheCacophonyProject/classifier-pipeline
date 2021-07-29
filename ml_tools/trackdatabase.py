@@ -445,7 +445,7 @@ class TrackDatabase:
                     original = original_thermal[frame_i]
                 channels = cropped.channels
                 # using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
-                if cropped.size > 0:
+                if cropped.thermal.size > 0:
                     height, width = cropped.shape
                     chunks = (1, height, width)
                     dims = (channels, height, width)
