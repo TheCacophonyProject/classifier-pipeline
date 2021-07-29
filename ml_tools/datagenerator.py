@@ -59,7 +59,6 @@ class DataGenerator(keras.utils.Sequence):
         self.cur_epoch = 0
         self.loaded_epochs = 0
         self.epoch_stats = []
-        self.epoch_labels = []
         if self.preload:
             self.load_queue = multiprocessing.Queue()
         if self.preload:
@@ -67,9 +66,9 @@ class DataGenerator(keras.utils.Sequence):
         self.segments = None
         self.segments = []
         # load epoch
+        self.epoch_labels = []
         self.load_next_epoch()
         self.epoch_data = []
-        self.epoch_labels = []
 
         self.preloader_threads = [
             multiprocessing.Process(
@@ -140,7 +139,7 @@ class DataGenerator(keras.utils.Sequence):
             )
             self.load_next_epoch()
 
-        if index == 0 and len(self.epoch_data) >= self.cur_epoch:
+        if index == 0 and len(self.epoch_data) > self.cur_epoch:
             # when tensorflow uses model.fit it requests index 0 twice
             X, y = self.epoch_data[self.cur_epoch]
         else:
@@ -152,11 +151,13 @@ class DataGenerator(keras.utils.Sequence):
                     self.dataset.name,
                     exc_info=True,
                 )
-                pass
 
             # always keep a copy of epoch data
             if index == 0:
                 self.epoch_data.append((X, y))
+            logging.info(
+                "accesing %s of len %s", self.cur_epoch, len(self.epoch_labels)
+            )
 
             self.epoch_labels[self.cur_epoch].extend(y)
         return X, y
@@ -413,27 +414,43 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
 def get_batch_frames(f, frames_by_track, tracks, channels, name):
     start = time.time()
     count = 0
+    data = [None] * len(channels)
+
     for track_info, frame_indices, u_id, regions_by_frames in tracks:
         # frames = track[1]
         frame_indices.sort()
         track_data = frames_by_track.setdefault(u_id, {})
-
+        f.seek(track_info["background"])
+        background = np.load(f)
         for frame_i in frame_indices:
             if frame_i in track_data:
                 continue
             count += 1
             frame_info = track_info[frame_i]
-            data = []
-            for channel in channels:
+            for i, channel in enumeate(channels):
                 f.seek(frame_info[channel])
                 channel_data = np.load(f)
-                data.append(channel_data)
+                data[i] = channel_data
 
             frame = Frame.from_channel(data, channels, frame_i, flow_clipped=True)
             track_data[frame_i] = frame
             frame.region = tools.Rectangle.from_ltrb(*regions_by_frames[frame_i])
+            frame.filtered = frame.thermal - frame.region.subimage(background)
     logging.info("%s time to load %s frames %s", name, count, time.time() - start)
     return frames_by_track
+
+
+def delete_stale_data(track_seg_count, track_frames):
+    to_delete = []
+    for id, count in track_seg_count.items():
+        if count < 0:
+            logging.error("%s id is less than 0 %s is count %s", name, id, count)
+        if count <= 0:
+            del track_frames[id]
+            to_delete.append(id)
+    for id in to_delete:
+        del track_seg_count[id]
+    gc.collect()
 
 
 def load_batch_frames(
@@ -448,16 +465,6 @@ def load_batch_frames(
 ):
     # loads frmaes from numpy file
     start = time.time()
-    to_delete = []
-    for id, count in track_seg_count.items():
-        if count < 0:
-            logging.error("%s id is less than 0 %s is count %s", name, id, count)
-        if count <= 0:
-            del track_frames[id]
-            to_delete.append(id)
-    for id in to_delete:
-        del track_seg_count[id]
-    gc.collect()
     all_batches = []
     with open(numpyfile, "rb") as f:
         data_by_track = {}
@@ -490,7 +497,7 @@ def load_batch_frames(
     return all_batches
 
 
-from queue import Queue
+from queue import Queue, Empty, Full
 import threading
 
 # continue to read examples until queue is full
@@ -504,18 +511,21 @@ def preloader(
         params.augment,
         numpyfile,
     )
-    channels = [TrackChannels.thermal, TrackChannels.filtered]
+    # filtered always loaded
+    channels = [TrackChannels.thermal]
     if params.type == 3:
         channels.append(TrackChannels.flow)
 
     track_data = {}
 
     epoch = 0
-    seg_data = []
+    # dictionary with keys track_uids and then dicitonary of frame_ids
     track_frames = {}
+    # keeps count of segments per track, when 0 can delete data for this track
     track_seg_count = {}
     batch_q = Queue()
 
+    # this thread does the data pre processing
     t = threading.Thread(
         target=process_batches,
         args=(
@@ -573,6 +583,7 @@ def preloader(
                         len(batches),
                         q.qsize(),
                     )
+                    delete_stale_data(track_seg_count, track_frames)
                     batch_data = load_batch_frames(
                         track_frames,
                         batch_q,
@@ -585,11 +596,11 @@ def preloader(
                     )
 
                     for data in batch_data:
-                        batch_q.put(batch)
+                        batch_q.put(data)
 
                     if loaded_up_to == 0:
-                        memory_batches = memory_batches // 2
-                        load_more_at = memory_batches
+                        memory_batches = memory_batches
+                        load_more_at = memory_batches // 2
                     loaded_up_to = loaded_up_to + len(next_load)
                     logging.info(
                         "%s loaded more data qsize is %s loaded up to %s",
@@ -618,32 +629,45 @@ def process_batches(
     batch_queue, q, labels, track_frames, track_seg_count, params, label_mapping, name
 ):
     while True:
+        segments = get_with_timeout(batch_queue, 30)
+        segments = batch_queue.get(block=True, timeout=30)
+        if segments == "STOP":
+            logging.info("%s process batch thread received stop")
+            return
+        batch_data = loadbatch(labels, track_frames, segments, params, label_mapping)
+        for seg in segments:
+            track_seg_count[seg.unique_track_id] -= 1
+            assert track_seg_count[seg.unique_track_id] >= 0
         try:
-            segments = batch_queue.get(block=True, timeout=30)
-            if segments == "STOP":
-                logging.info("%s process batch thread received stop")
-                return
-            batch_data = loadbatch(
-                labels, track_frames, segments, params, label_mapping
+            put_with_timeout(q, batch_data, 30)
+            break
+        except Exception as e:
+            logging.error(
+                "%s batch Put error",
+                name,
+                exc_info=True,
             )
-            for seg in segments:
-                track_seg_count[seg.unique_track_id] -= 1
-                assert track_seg_count[seg.unique_track_id] >= 0
-            while True:
-                try:
-                    q.put(batch_data, block=True, timeout=30)
-                    break
-                except (queue.Full):
-                    logging.debug("%s Batch Queue full", name)
-                except Exception as e:
-                    logging.error(
-                        "%s batch %s Put error %s",
-                        name,
-                        i,
-                        e,
-                        exc_info=True,
-                    )
-                    raise e
+            raise e
 
-        except (queue.Empty):
-            logging.debug("%s process_batches Queue empty epoch", name)
+
+def put_with_timeout(queue, data, timeout):
+    while True:
+        try:
+            queue.put(data, block=True, timeout=timeout)
+            break
+        except (Full):
+            pass
+        except Exception as e:
+            raise e
+
+
+def get_with_timeout(queue, timeout):
+    while True:
+        try:
+            queue_data = queue.get(block=True, timeout=timeout)
+            break
+        except (Empty):
+            pass
+        except Exception as inst:
+            raise inst
+    return queue_data
