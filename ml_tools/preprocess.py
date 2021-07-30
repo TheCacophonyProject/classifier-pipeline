@@ -82,10 +82,8 @@ def preprocess_segment(
             LEVEL_OFFSET = 4
 
             # apply level and contrast shift
-            level_adjust = 0.2
-            contrast_adjust = 0.2
-            # level_adjust = float(random.normalvariate(0, LEVEL_OFFSET))
-            # contrast_adjust = float(tools.random_log(0.9, (1 / 0.9)))
+            level_adjust = float(random.normalvariate(0, LEVEL_OFFSET))
+            contrast_adjust = float(tools.random_log(0.9, (1 / 0.9)))
         if chance <= 0.50:
             flip = True
     for i, frame in enumerate(frames):

@@ -372,7 +372,7 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
         y = keras.utils.to_categorical(y, num_classes=len(labels))
     total_time = time.time() - start
     logging.info(
-        "%s took %s to load db out of total %s",
+        %s,"%s took %s to load db out of total %s",
         params.augment,
         total_db_time,
         total_time,
@@ -493,7 +493,7 @@ def preloader(
 
     # this thread does the data pre processing
     process_threads = []
-    threads = 10 if name == "train" else 1
+    threads = 1 if name == "train" else 1
     for i in range(threads):
         t = threading.Thread(
             target=process_batches,
