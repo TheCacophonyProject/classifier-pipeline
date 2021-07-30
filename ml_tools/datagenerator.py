@@ -63,10 +63,14 @@ class DataGenerator(keras.utils.Sequence):
         self.cur_epoch = 0
         self.loaded_epochs = 0
         self.epoch_stats = []
-        if self.preload:
+        use_threads = True
+        if use_threads:
             self.load_queue = Queue()
-        if self.preload:
             self.preloader_queue = Queue(params.get("buffer_size", 128))
+        else:
+            self.load_queue = multiprocessing.Queue()
+            self.preloader_queue = multiprocessing.Queue(params.get("buffer_size", 128))
+
         self.segments = None
         self.segments = []
         # load epoch
@@ -74,24 +78,43 @@ class DataGenerator(keras.utils.Sequence):
         self.load_next_epoch()
         self.epoch_data = []
 
-        self.preloader_threads = [
+        if use_threads:
             # multiprocessing.Process
-            threading.Thread(
-                target=preloader,
-                args=(
-                    self.preloader_queue,
-                    self.load_queue,
-                    self.labels,
-                    self.dataset.name,
-                    self.dataset.db,
-                    self.dataset.segments_by_id,
-                    self.params,
-                    self.dataset.label_mapping,
-                    self.dataset.numpy_data,
-                ),
-            )
-            for _ in range(self.params.load_threads)
-        ]
+            self.preloader_threads = [
+                threading.Thread(
+                    target=preloader,
+                    args=(
+                        self.preloader_queue,
+                        self.load_queue,
+                        self.labels,
+                        self.dataset.name,
+                        self.dataset.db,
+                        self.dataset.segments_by_id,
+                        self.params,
+                        self.dataset.label_mapping,
+                        self.dataset.numpy_data,
+                    ),
+                )
+                for _ in range(self.params.load_threads)
+            ]
+        else:
+            self.preloader_threads = [
+                multiprocessing.Process(
+                    target=preloader,
+                    args=(
+                        self.preloader_queue,
+                        self.load_queue,
+                        self.labels,
+                        self.dataset.name,
+                        self.dataset.db,
+                        self.dataset.segments_by_id,
+                        self.params,
+                        self.dataset.label_mapping,
+                        self.dataset.numpy_data,
+                    ),
+                )
+                for _ in range(self.params.load_threads)
+            ]
         for thread in self.preloader_threads:
             thread.start()
         logging.info(

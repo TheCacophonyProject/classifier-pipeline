@@ -32,7 +32,7 @@ class NumpyMeta:
     def open(self, mode="rb"):
         if self.f is not None:
             return
-        self.f = open(f"{self.filename}", mode)
+        self.f = open(self.filename, mode)
 
     def close(self):
         if self.f is not None:
