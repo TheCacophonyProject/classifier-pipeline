@@ -32,6 +32,7 @@ class GeneartorParams:
         self.segment_type = params.get("segment_type", 1)
         self.load_threads = params.get("load_threads", 1)
         self.keep_edge = params.get("keep_edge", False)
+        self.process_threads = params.get("process_threads", 1)
 
 
 class DataGenerator(keras.utils.Sequence):
@@ -87,7 +88,6 @@ class DataGenerator(keras.utils.Sequence):
                     self.params,
                     self.dataset.label_mapping,
                     self.dataset.numpy_data,
-                    10 if self.dataset.name == "train" else 1,
                 ),
             )
             for _ in range(self.params.load_threads)
@@ -478,14 +478,14 @@ def preloader(
     params,
     label_mapping,
     numpy_meta,
-    num_threads,
 ):
     """add a segment into buffer"""
     logging.info(
-        " -started async fetcher for %s augment=%s numpyfile %s",
+        " -started async fetcher for %s augment=%s numpyfile %s process threads %s",
         name,
         params.augment,
         numpy_meta.filename,
+        params.process_threads,
     )
     # filtered always loaded
     channels = [TrackChannels.thermal]
@@ -503,7 +503,7 @@ def preloader(
 
     # this thread does the data pre processing
     process_threads = []
-    for i in range(num_threads):
+    for i in range(params.process_threads):
         t = threading.Thread(
             target=process_batches,
             args=(

@@ -384,6 +384,7 @@ class KerasModel:
             epochs=epochs,
             model_preprocess=self.preprocess_fn,
             load_threads=self.params.train_load_threads,
+            process_threads=self.params.train_process_threads,
             **self.params,
         )
         self.validate = DataGenerator(
@@ -409,7 +410,7 @@ class KerasModel:
                 class_weight[i] = 1
         logging.info("loading with class wieghts %s", class_weight)
         # give a bit of time for preloader to cache data
-        time.sleep(1)
+        time.sleep(100)
         checkpoints = self.checkpoints(run_name)
         history = self.model.fit(
             self.train,
