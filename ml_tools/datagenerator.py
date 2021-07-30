@@ -87,6 +87,7 @@ class DataGenerator(keras.utils.Sequence):
                     self.params,
                     self.dataset.label_mapping,
                     self.dataset.numpy_data,
+                    10 if self.dataset.name == "train" else 1,
                 ),
             )
             for _ in range(self.params.load_threads)
@@ -468,7 +469,16 @@ def load_batch_frames(
 
 # continue to read examples until queue is full
 def preloader(
-    q, load_queue, labels, name, db, segments_by_id, params, label_mapping, numpy_meta
+    q,
+    load_queue,
+    labels,
+    name,
+    db,
+    segments_by_id,
+    params,
+    label_mapping,
+    numpy_meta,
+    num_threads,
 ):
     """add a segment into buffer"""
     logging.info(
@@ -493,8 +503,7 @@ def preloader(
 
     # this thread does the data pre processing
     process_threads = []
-    threads = 10 if name == "train" else 1
-    for i in range(threads):
+    for i in range(num_threads):
         t = threading.Thread(
             target=process_batches,
             args=(
