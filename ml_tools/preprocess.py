@@ -72,18 +72,21 @@ def preprocess_segment(
     # first we scale to the standard size
     data = []
     flip = False
+    chance = random.random()
     if augment:
         contrast_adjust = None
         level_adjust = None
-        if random.random() <= 0.75:
+        if chance <= 0.75:
             # we will adjust contrast and levels, but only within these bounds.
             # that is a bright input may have brightness reduced, but not increased.
             LEVEL_OFFSET = 4
 
             # apply level and contrast shift
-            level_adjust = float(random.normalvariate(0, LEVEL_OFFSET))
-            contrast_adjust = float(tools.random_log(0.9, (1 / 0.9)))
-        if random.random() <= 0.50:
+            level_adjust = 0.2
+            contrast_adjust = 0.2
+            # level_adjust = float(random.normalvariate(0, LEVEL_OFFSET))
+            # contrast_adjust = float(tools.random_log(0.9, (1 / 0.9)))
+        if chance <= 0.50:
             flip = True
     for i, frame in enumerate(frames):
         frame.float_arrays()
@@ -92,21 +95,27 @@ def preprocess_segment(
         # gp changed to 0,1 maybe should be a percent of the frame size
         max_height_offset = int(np.clip(frame_height * 0.1, 1, 2))
         max_width_offset = int(np.clip(frame_width * 0.1, 1, 2))
-
-        top_offset = random.randint(0, max_height_offset) if augment else default_inset
-        bottom_offset = (
-            random.randint(0, max_height_offset) if augment else default_inset
+        top_offset = (
+            int(random.random() * max_height_offset) if augment else default_inset
         )
-        left_offset = random.randint(0, max_width_offset) if augment else default_inset
-        right_offset = random.randint(0, max_width_offset) if augment else default_inset
+        bottom_offset = (
+            int(random.random() * max_height_offset) if augment else default_inset
+        )
+        left_offset = (
+            int(random.random() * max_width_offset) if augment else default_inset
+        )
+        right_offset = (
+            int(random.random() * max_width_offset) if augment else default_inset
+        )
         if frame_height < MIN_SIZE or frame_width < MIN_SIZE:
             continue
 
         frame_bounds = tools.Rectangle(0, 0, frame_width, frame_height)
         # rotate then crop
-        if augment and random.random() <= 0.75:
+        if augment and chance <= 0.75:
+            # degress = 0
 
-            degrees = random.randint(0, 40) - 20
+            degrees = int(chance * 40) - 20
             frame.rotate(degrees)
 
         # set up a cropping frame
@@ -216,10 +225,8 @@ def preprocess_movement(
     channel,
     preprocess_fn=None,
     augment=False,
-    use_dots=False,
     reference_level=None,
     sample=None,
-    overlay=None,
     type=None,
     keep_edge=False,
 ):
@@ -258,26 +265,6 @@ def preprocess_movement(
         filtered_square, success = imageprocessing.square_clip(
             filtered_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
         )
-        # if overlay is None:
-        #     dots, overlay = imageprocessing.movement_images(
-        #         data,
-        #         regions,
-        #         dim=square.shape,
-        #         require_movement=True,
-        #     )
-        #     overlay, stats = imageprocessing.normalize(overlay, min=0)
-        #     if not stats[0]:
-        #         return None
-        # else:
-        #     overlay, stats = imageprocessing.normalize(overlay)
-        #     if stats[0] == False:
-        #         return None
-        #     overlay_full_size = np.zeros(square.shape)
-        #     overlay_full_size[: overlay.shape[0], : overlay.shape[1]] = overlay
-        #     overlay = overlay_full_size
-        # if flipped:
-        #     overlay = np.flip(overlay, axis=1)
-        # dots = np.flip(dots, axis=1)
 
         data = np.empty((square.shape[0], square.shape[1], 3))
 

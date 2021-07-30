@@ -20,20 +20,19 @@ class NumpyMeta:
         self.filename = filename
         self.track_info = {}
         self.f = None
-        self.mode = "r"
+        self.mode = "rb"
 
     def __enter__(self):
-        self.open()
+        self.open(self.mode)
         return self.f
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
     def open(self, mode="rb"):
-        print("opening", self.filename, mode)
         if self.f is not None:
             return
-        self.f = open(f"{self.filename}.npy", mode)
+        self.f = open(f"{self.filename}", mode)
 
     def close(self):
         if self.f is not None:
@@ -50,27 +49,28 @@ class NumpyMeta:
             logging.error("Error saving track info", exc_info=True)
         finally:
             self.close()
+        # self.read_tracks(tracks)
 
-    #
-    # def read_tracks(self, tracks):
-    #     self.open(mode="r")
-    #     for track in tracks:
-    #         for frame_i in range(len(track.track_bounds)):
-    #             frame_info = track.track_info[frame_i]
-    #             print("reading first at", track.track_id, frame_i, frame_info)
-    #             self.f.seek(frame_info[TrackChannels.thermal])
-    #             thermal = np.load(self.f)
-    #             break
-    #     self.close()
+    def read_tracks(self, tracks):
+        self.open(mode="rb")
+        for track in tracks:
+            self.f.seek(track.track_info["background"])
+            back = np.load(self.f)
+            for frame_i in range(len(track.track_bounds)):
+                frame_info = track.track_info[frame_i]
+                # print("reading first at", track.track_id, frame_i, frame_info)
+                self.f.seek(frame_info[TrackChannels.thermal])
+                thermal = np.load(self.f)
+
+        self.close()
 
     def add_track(self, db, track, save_flow=True):
         background = db.get_clip_background(track.clip_id)
 
         track_info = {}
         track_info["background"] = self.f.tell()
-        np.save(self.f, background)
+        np.save(self.f, background, allow_pickle=False)
         self.track_info[track.unique_id] = track_info
-
         frames = db.get_track(
             track.clip_id,
             track.track_id,
@@ -80,7 +80,7 @@ class NumpyMeta:
             frame_info = {}
             track_info[frame.frame_number] = frame_info
             frame_info[TrackChannels.thermal] = self.f.tell()
-            np.save(self.f, frame.thermal)
+            np.save(self.f, frame.thermal, allow_pickle=False)
             if save_flow:
                 frame.flow = np.float32(frame.flow)
                 if frame.flow is not None and frame.flow_clipped:
@@ -88,7 +88,7 @@ class NumpyMeta:
                     frame.flow_clipped = False
 
                 frame_info[TrackChannels.flow] = self.f.tell()
-                np.save(self.f, frame.flow)
+                np.save(self.f, frame.flow, allow_pickle=False)
         track.track_info = track_info
 
 

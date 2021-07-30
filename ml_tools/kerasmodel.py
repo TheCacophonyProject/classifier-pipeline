@@ -35,21 +35,6 @@ import gc
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 tf_device = "/gpu:1"
 
-#
-HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
-HP_TYPE = hp.HParam("type", hp.Discrete([1]))
-
-HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
-HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
-HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.01]))
-HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
-HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
-HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
-HP_SEGMENT_TYPE = hp.HParam("segment_type", hp.Discrete([0, 1, 2, 3, 4, 5, 6]))
-
-METRIC_ACCURACY = "accuracy"
-METRIC_LOSS = "loss"
-
 
 class KerasModel:
     """Defines a deep learning model"""
@@ -243,8 +228,8 @@ class KerasModel:
         self.model.summary()
 
         self.model.compile(
-            optimizer=self.optimizer(),
-            loss=self.loss(),
+            optimizer=optimizer(self.params),
+            loss=loss(self.params),
             metrics=[
                 "accuracy",
                 tf.keras.metrics.AUC(),
@@ -252,30 +237,6 @@ class KerasModel:
                 tf.keras.metrics.Precision(),
             ],
         )
-
-    def loss(self):
-        softmax = tf.keras.losses.CategoricalCrossentropy(
-            label_smoothing=self.params.label_smoothing,
-        )
-        return softmax
-
-    def optimizer(self):
-        if self.params.learning_rate_decay != 1.0:
-            learning_rate = tf.compat.v1.train.exponential_decay(
-                self.params.learning_rate,
-                self.global_step,
-                1000,
-                self.params["learning_rate_decay"],
-                staircase=True,
-            )
-            tf.compat.v1.summary.scalar("params/learning_rate", learning_rate)
-        else:
-            learning_rate = self.params.learning_rate  # setup optimizer
-        if learning_rate:
-            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-        else:
-            optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-        return optimizer
 
     def load_weights(self, model_path, meta=True, training=False):
         logging.info("loading weights %s", model_path)
@@ -400,6 +361,9 @@ class KerasModel:
         gc.collect()
 
     def train_model(self, epochs, run_name, weights=None):
+        logging.info(
+            "%s Training model for %s epochs with weights %s", run_name, epochs, weights
+        )
         self.log_dir = os.path.join(self.log_base, run_name)
         os.makedirs(self.log_base, exist_ok=True)
 
@@ -416,42 +380,21 @@ class KerasModel:
             self.labels,
             self.params.output_dim,
             augment=True,
-            buffer_size=self.params.buffer_size,
+            cap_at="bird",
             epochs=epochs,
-            batch_size=self.params.batch_size,
-            channel=self.params.channel,
-            shuffle=self.params.shuffle,
             model_preprocess=self.preprocess_fn,
             load_threads=self.params.train_load_threads,
-            use_movement=self.params.use_movement,
-            cap_at="bird",
-            square_width=self.params.square_width,
-            mvm=self.params.mvm,
-            type=self.params.type,
-            segment_type=self.params.segment_type,
-            keep_edge=self.params.keep_edge,
+            **self.params,
         )
         self.validate = DataGenerator(
             self.validation_dataset,
             self.labels,
             self.params.output_dim,
-            batch_size=self.params.batch_size,
-            buffer_size=self.params.buffer_size,
-            channel=self.params.channel,
-            shuffle=self.params.shuffle,
+            cap_at="bird",
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
-            load_threads=1,
-            use_movement=self.params.use_movement,
-            cap_at="bird",
-            square_width=self.params.square_width,
-            mvm=self.params.mvm,
-            type=self.params.type,
-            segment_type=self.params.segment_type,
-            keep_edge=self.params.keep_edge,
+            **self.params,
         )
-        checkpoints = self.checkpoints(run_name)
-
         self.save_metadata(run_name)
 
         weight_for_0 = 1
@@ -465,7 +408,9 @@ class KerasModel:
             else:
                 class_weight[i] = 1
         logging.info("loading with class wieghts %s", class_weight)
+        # give a bit of time for preloader to cache data
         time.sleep(1)
+        checkpoints = self.checkpoints(run_name)
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
@@ -487,19 +432,10 @@ class KerasModel:
                 self.test_dataset,
                 self.train_dataset.labels,
                 self.params.output_dim,
-                batch_size=self.params.batch_size,
-                channel=self.params.channel,
-                use_movement=self.params.use_movement,
-                shuffle=True,
                 model_preprocess=self.preprocess_fn,
                 epochs=1,
-                load_threads=self.params.train_load_threads,
                 cap_at="bird",
-                square_width=self.params.square_width,
-                mvm=self.params.mvm,
-                type=self.params.type,
-                segment_type=self.params.segment_type,
-                keep_edge=self.params.keep_edge,
+                **self.params,
             )
             logging.info("Evaluating test %s", len(self.test))
             test_accuracy = self.model.evaluate(self.test)
@@ -542,15 +478,15 @@ class KerasModel:
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=22, monitor="val_accuracy"
         )
-
-        file_writer_cm = tf.summary.create_file_writer(
-            self.log_base + "/{}/cm".format(run_name)
-        )
-        cm_callback = keras.callbacks.LambdaCallback(
-            on_epoch_end=lambda epoch, logs: log_confusion_matrix(
-                epoch, logs, self.model, self.test, file_writer_cm
-            )
-        )
+        # havent found muhc use in this just takes training time
+        # file_writer_cm = tf.summary.create_file_writer(
+        #     self.log_base + "/{}/cm".format(run_name)
+        # )
+        # cm_callback = keras.callbacks.LambdaCallback(
+        #     on_epoch_end=lambda epoch, logs: log_confusion_matrix(
+        #         epoch, logs, self.model, self.test, file_writer_cm
+        #     )
+        # )
         #         "lr_callback": {
         #   "monitor": "val_categorical_accuracy",
         #   "mode": "max",
@@ -562,26 +498,16 @@ class KerasModel:
         reduce_lr_callback = keras.callbacks.ReduceLROnPlateau(
             monitor="val_accuracy", verbose=1
         )
-        return [
-            earlyStopping,
-            checkpoint_acc,
-            checkpoint_loss,
-            reduce_lr_callback
-            # cm_callback,
-        ]
+        return [earlyStopping, checkpoint_acc, checkpoint_loss, reduce_lr_callback]
 
     def regroup(self, shuffle=True):
+        # can use this to put animals into groups i.e. wallaby vs not
         if not self.mapped_labels:
             logging.warn("Cant regroup without specifying mapped_labels")
             return
         for dataset in self.datasets.values():
             dataset.regroup(self.mapped_labels, shuffle=shuffle)
             dataset.labels.sort()
-        self.set_labels()
-
-    def set_labels(self):
-        # preserve label order if needed, this should be used when retraining
-        # on a model already trained with our data
         self.labels = self.train_dataset.labels.copy()
 
     def import_dataset(self, base_dir, ignore_labels=None, lbl_p=None):
@@ -589,6 +515,7 @@ class KerasModel:
         Import dataset.
         :param dataset_filename: path and filename of the dataset
         :param ignore_labels: (optional) these labels will be removed from the dataset.
+        :param lbl_p: (optional) probably for each label
         :return:
         """
         self.label_probabilities = lbl_p
@@ -626,196 +553,6 @@ class KerasModel:
     @property
     def train_dataset(self):
         return self.datasets["train"]
-
-    # GRID SEARCH
-    def train_test_model(self, hparams, log_dir, writer, epochs=15):
-        # if not self.model:
-
-        opt = None
-        learning_rate = hparams[HP_LEARNING_RATE]
-        epsilon = hparams[HP_EPSILON]
-
-        if hparams[HP_OPTIMIZER] == "adam":
-            opt = tf.keras.optimizers.Adam(learning_rate=learning_rate, epsilon=epsilon)
-        else:
-            opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, epsilon=epsilon)
-        self.model.compile(
-            optimizer=opt,
-            loss=self.loss(),
-            metrics=["accuracy"],
-        )
-        cm_callback = keras.callbacks.LambdaCallback(
-            on_epoch_end=lambda epoch, logs: log_confusion_matrix(
-                epoch, logs, self.model, self.test, writer
-            )
-        )
-        history = self.model.fit(
-            self.train,
-            epochs=epochs,
-            shuffle=False,
-            validation_data=self.validate,
-            callbacks=[cm_callback],
-            verbose=2,
-        )
-
-        # _, accuracy = self.model.evaluate(self.validate)
-        # self.train.stop_load()
-        # self.validate.stop_load()
-        return history
-
-    def test_hparams(self):
-
-        epochs = 15
-        batch_size = 32
-
-        dir = self.log_dir + "/hparam_tuning"
-        with tf.summary.create_file_writer(dir).as_default():
-            hp.hparams_config(
-                hparams=[
-                    HP_BATCH_SIZE,
-                    HP_DENSE_SIZES,
-                    HP_LEARNING_RATE,
-                    HP_OPTIMIZER,
-                    HP_EPSILON,
-                    HP_TYPE,
-                    HP_RETRAIN,
-                    HP_DROPOUT,
-                    HP_SEGMENT_TYPE,
-                ],
-                metrics=[
-                    hp.Metric(METRIC_ACCURACY, display_name="Accuracy"),
-                    hp.Metric(METRIC_LOSS, display_name="Loss"),
-                ],
-            )
-        session_num = 0
-        hparams = {}
-        for batch_size in HP_BATCH_SIZE.domain.values:
-            for dense_size in HP_DENSE_SIZES.domain.values:
-                for retrain_layer in HP_RETRAIN.domain.values:
-                    for learning_rate in HP_LEARNING_RATE.domain.values:
-                        for type in HP_TYPE.domain.values:
-                            for optimizer in HP_OPTIMIZER.domain.values:
-                                for epsilon in HP_EPSILON.domain.values:
-                                    for dropout in HP_DROPOUT.domain.values:
-                                        for (
-                                            segment_type
-                                        ) in HP_SEGMENT_TYPE.domain.values:
-                                            hparams = {
-                                                HP_DENSE_SIZES: dense_size,
-                                                HP_BATCH_SIZE: batch_size,
-                                                HP_LEARNING_RATE: learning_rate,
-                                                HP_OPTIMIZER: optimizer,
-                                                HP_EPSILON: epsilon,
-                                                HP_TYPE: type,
-                                                HP_RETRAIN: retrain_layer,
-                                                HP_DROPOUT: dropout,
-                                                HP_SEGMENT_TYPE: segment_type,
-                                            }
-                                            self.train_dataset.recalculate_segments(
-                                                segment_type=segment_type
-                                            )
-                                            self.validation_dataset.recalculate_segments(
-                                                segment_type=segment_type
-                                            )
-                                            self.test_dataset.recalculate_segments(
-                                                segment_type=segment_type
-                                            )
-                                            dense_layers = []
-                                            if dense_size != "":
-                                                for i, size in enumerate(dense_size):
-                                                    dense_layers[i] = int(size)
-                                            self.build_model(
-                                                dense_sizes=dense_layers,
-                                                retrain_from=None
-                                                if retrain_layer == -1
-                                                else retrain_layer,
-                                                dropout=None
-                                                if dropout == 0.0
-                                                else dropout,
-                                            )
-
-                                            self.train = DataGenerator(
-                                                self.train_dataset,
-                                                self.train_dataset.labels,
-                                                self.params.output_dim,
-                                                batch_size=batch_size,
-                                                buffer_size=self.params.buffer_size,
-                                                channel=self.params.channel,
-                                                model_preprocess=self.preprocess_fn,
-                                                epochs=epochs,
-                                                load_threads=self.params.train_load_threads,
-                                                use_movement=self.params.use_movement,
-                                                shuffle=True,
-                                                cap_at="bird",
-                                                square_width=self.params.square_width,
-                                                type=type,
-                                                segment_type=self.params.segment_type,
-                                            )
-                                            self.validate = DataGenerator(
-                                                self.validation_dataset,
-                                                self.train_dataset.labels,
-                                                self.params.output_dim,
-                                                batch_size=batch_size,
-                                                buffer_size=self.params.buffer_size,
-                                                channel=self.params.channel,
-                                                model_preprocess=self.preprocess_fn,
-                                                epochs=epochs,
-                                                use_movement=self.params.use_movement,
-                                                shuffle=True,
-                                                cap_at="bird",
-                                                square_width=self.params.square_width,
-                                                type=type,
-                                                segment_type=self.params.segment_type,
-                                            )
-                                            self.test = DataGenerator(
-                                                self.test_dataset,
-                                                self.train_dataset.labels,
-                                                self.params.output_dim,
-                                                batch_size=batch_size,
-                                                buffer_size=self.params.buffer_size,
-                                                channel=self.params.channel,
-                                                model_preprocess=self.preprocess_fn,
-                                                epochs=1,
-                                                use_movement=self.params.use_movement,
-                                                shuffle=True,
-                                                cap_at="bird",
-                                                square_width=self.params.square_width,
-                                                type=type,
-                                                segment_type=self.params.segment_type,
-                                            )
-                                            run_name = "run-%d" % session_num
-                                            print("--- Starting trial: %s" % run_name)
-                                            print({h.name: hparams[h] for h in hparams})
-                                            self.run(
-                                                dir + "/" + run_name, hparams, epochs
-                                            )
-                                            session_num += 1
-                                            self.train.stop_load()
-                                            self.validate.stop_load()
-                                            self.test.stop_load()
-                                            self.validate = None
-                                            self.test = None
-                                            self.train = None
-                                            K.clear_session()
-                                            gc.collect()
-                                            del self.model
-                                            del self.train
-                                            del self.validate
-                                            del self.test
-                                            gc.collect()
-
-    def run(self, log_dir, hparams, epochs):
-        with tf.summary.create_file_writer(log_dir).as_default() as w:
-            hp.hparams(hparams)  # record the values used in this trial
-            history = self.train_test_model(hparams, log_dir, w, epochs=epochs)
-            val_accuracy = history.history["val_accuracy"]
-            val_loss = history.history["val_loss"]
-            # log_confusion_matrix(epochs, None, self.model, self.validate, None)
-
-            for step, accuracy in enumerate(val_accuracy):
-                loss = val_loss[step]
-                tf.summary.scalar(METRIC_ACCURACY, accuracy, step=step)
-                tf.summary.scalar(METRIC_LOSS, loss, step=step)
 
     @property
     def hyperparams_string(self):
@@ -1348,3 +1085,220 @@ def plot_to_image(figure):
     # Add the batch dimension
     image = tf.expand_dims(image, 0)
     return image
+
+
+def loss(params):
+    softmax = tf.keras.losses.CategoricalCrossentropy(
+        label_smoothing=params.label_smoothing,
+    )
+    return softmax
+
+
+def optimizer(params):
+    if params.learning_rate_decay != 1.0:
+        learning_rate = tf.compat.v1.train.exponential_decay(
+            self.params.learning_rate,
+            self.global_step,
+            1000,
+            self.params["learning_rate_decay"],
+            staircase=True,
+        )
+        tf.compat.v1.summary.scalar("params/learning_rate", learning_rate)
+    else:
+        learning_rate = params.learning_rate  # setup optimizer
+    if learning_rate:
+        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+    else:
+        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+    return optimizer
+
+
+# HYPER PARAM TRAINING OF A MODEL
+#
+HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
+HP_TYPE = hp.HParam("type", hp.Discrete([1]))
+
+HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
+HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
+HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.01]))
+HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
+HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
+HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
+HP_SEGMENT_TYPE = hp.HParam("segment_type", hp.Discrete([0, 1, 2, 3, 4, 5, 6]))
+
+METRIC_ACCURACY = "accuracy"
+METRIC_LOSS = "loss"
+
+
+# GRID SEARCH
+def train_test_model(model, hparams, params, log_dir, writer, epochs=15):
+    # if not self.model:
+    learning_rate = hparams[HP_SEGMENT_TYPE]
+
+    keras_model.train_dataset.recalculate_segments(segment_type=segment_type)
+    keras_model.validation_dataset.recalculate_segments(segment_type=segment_type)
+    keras_model.test_dataset.recalculate_segments(segment_type=segment_type)
+    labels = keras_model.train_dataset.labels
+    train = DataGenerator(
+        keras_model.train_dataset,
+        labels,
+        params.output_dim,
+        batch_size=batch_size,
+        model_preprocess=preprocess_fn,
+        epochs=epochs,
+        shuffle=True,
+        cap_at="bird",
+        type=type,
+        **params,
+    )
+    validate = DataGenerator(
+        keras_model.validation_dataset,
+        labels,
+        params.output_dim,
+        batch_size=batch_size,
+        model_preprocess=preprocess_fn,
+        epochs=epochs,
+        shuffle=True,
+        cap_at="bird",
+        type=type,
+        **params,
+    )
+    test = DataGenerator(
+        keras_model.test_dataset,
+        labels,
+        params.output_dim,
+        batch_size=batch_size,
+        model_preprocess=preprocess_fn,
+        epochs=1,
+        shuffle=True,
+        cap_at="bird",
+        type=type,
+        **params,
+    )
+    opt = None
+    learning_rate = hparams[HP_LEARNING_RATE]
+    epsilon = hparams[HP_EPSILON]
+
+    if hparams[HP_OPTIMIZER] == "adam":
+        opt = tf.keras.optimizers.Adam(learning_rate=learning_rate, epsilon=epsilon)
+    else:
+        opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, epsilon=epsilon)
+    model.compile(
+        optimizer=opt,
+        loss=loss(params),
+        metrics=["accuracy"],
+    )
+    cm_callback = keras.callbacks.LambdaCallback(
+        on_epoch_end=lambda epoch, logs: log_confusion_matrix(
+            epoch, logs, model, test, writer
+        )
+    )
+    history = model.fit(
+        train,
+        epochs=epochs,
+        shuffle=False,
+        validation_data=validate,
+        callbacks=[cm_callback],
+        verbose=2,
+    )
+    train.stop_load()
+    validate.stop_load()
+    test.stop_load()
+    validate = None
+    test = None
+    train = None
+    K.clear_session()
+    gc.collect()
+    del model
+    del train
+    del validate
+    del test
+    gc.collect()
+    return history
+
+
+def test_hparams(keras_model, log_dir):
+
+    epochs = 15
+    batch_size = 32
+
+    dir = log_dir + "/hparam_tuning"
+    with tf.summary.create_file_writer(dir).as_default():
+        hp.hparams_config(
+            hparams=[
+                HP_BATCH_SIZE,
+                HP_DENSE_SIZES,
+                HP_LEARNING_RATE,
+                HP_OPTIMIZER,
+                HP_EPSILON,
+                HP_TYPE,
+                HP_RETRAIN,
+                HP_DROPOUT,
+                HP_SEGMENT_TYPE,
+            ],
+            metrics=[
+                hp.Metric(METRIC_ACCURACY, display_name="Accuracy"),
+                hp.Metric(METRIC_LOSS, display_name="Loss"),
+            ],
+        )
+    session_num = 0
+    hparams = {}
+    for batch_size in HP_BATCH_SIZE.domain.values:
+        for dense_size in HP_DENSE_SIZES.domain.values:
+            for retrain_layer in HP_RETRAIN.domain.values:
+                for learning_rate in HP_LEARNING_RATE.domain.values:
+                    for type in HP_TYPE.domain.values:
+                        for optimizer in HP_OPTIMIZER.domain.values:
+                            for epsilon in HP_EPSILON.domain.values:
+                                for dropout in HP_DROPOUT.domain.values:
+                                    for segment_type in HP_SEGMENT_TYPE.domain.values:
+                                        hparams = {
+                                            HP_DENSE_SIZES: dense_size,
+                                            HP_BATCH_SIZE: batch_size,
+                                            HP_LEARNING_RATE: learning_rate,
+                                            HP_OPTIMIZER: optimizer,
+                                            HP_EPSILON: epsilon,
+                                            HP_TYPE: type,
+                                            HP_RETRAIN: retrain_layer,
+                                            HP_DROPOUT: dropout,
+                                            HP_SEGMENT_TYPE: segment_type,
+                                        }
+
+                                        dense_layers = []
+                                        if dense_size != "":
+                                            for i, size in enumerate(dense_size):
+                                                dense_layers[i] = int(size)
+                                        keras_model.build_model(
+                                            dense_sizes=dense_layers,
+                                            retrain_from=None
+                                            if retrain_layer == -1
+                                            else retrain_layer,
+                                            dropout=None if dropout == 0.0 else dropout,
+                                        )
+
+                                        run_name = "run-%d" % session_num
+                                        print("--- Starting trial: %s" % run_name)
+                                        print({h.name: hparams[h] for h in hparams})
+                                        self.run(
+                                            keras_model,
+                                            dir + "/" + run_name,
+                                            hparams,
+                                            epochs,
+                                        )
+                                        session_num += 1
+
+
+def run(keras_model, log_dir, hparams, params, epochs):
+    with tf.summary.create_file_writer(log_dir).as_default() as w:
+        hp.hparams(hparams)  # record the values used in this trial
+        history = train_test_model(
+            keras_model, hparams, params, log_dir, w, epochs=epochs
+        )
+        val_accuracy = history.history["val_accuracy"]
+        val_loss = history.history["val_loss"]
+        # log_confusion_matrix(epochs, None, self.model, self.validate, None)
+
+        for step, accuracy in enumerate(val_accuracy):
+            loss = val_loss[step]
+            tf.summary.scalar(METRIC_ACCURACY, accuracy, step=step)
+            tf.summary.scalar(METRIC_LOSS, loss, step=step)

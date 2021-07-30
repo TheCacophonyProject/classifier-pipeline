@@ -22,7 +22,6 @@ FRAMES_PER_SECOND = 9
 class GeneartorParams:
     def __init__(self, output_dim, params):
         self.augment = params.get("augment", False)
-        self.use_dots = params.get("use_dots", False)
         self.use_movement = params.get("use_movement")
         self.model_preprocess = params.get("model_preprocess")
         self.channel = params.get("channel")
@@ -31,7 +30,7 @@ class GeneartorParams:
         self.mvm = params.get("mvm", False)
         self.type = params.get("type", 1)
         self.segment_type = params.get("segment_type", 1)
-        self.load_threads = params.get("load_threads", 2)
+        self.load_threads = params.get("load_threads", 1)
         self.keep_edge = params.get("keep_edge", False)
 
 
@@ -257,9 +256,7 @@ class DataGenerator(keras.utils.Sequence):
 
 
 def loadbatch(labels, db, samples, params, mapped_labels):
-    start = time.time()
     X, y, y_orig = _data(labels, db, samples, params, mapped_labels)
-    # logging.info("%s  Time to get data %s", "NULL", time.time() - start)
     return X, y, y_orig
 
 
@@ -268,22 +265,6 @@ def get_cached_frames(db, sample):
     frames = []
     for f_i in sample.frame_indices:
         frames.append(track_frames[f_i].copy())
-    return frames
-
-
-def get_frames(f, segment, channels):
-    frames = []
-    for frame_i in segment.frame_indices:
-        frame_info = segment.track_info[frame_i]
-        data = []
-        for channel in channels:
-            f.seek(frame_info[channel])
-            channel_data = np.load(f)
-            data.append(channel_data)
-
-        frame = Frame.from_channel(data, channels, frame_i, flow_clipped=True)
-        frame.region = tools.Rectangle.from_ltrb(*segment.track_bounds[frame_i])
-        frames.append(frame)
     return frames
 
 
@@ -313,14 +294,7 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
                 if params.type == 3:
                     channels.append(TrackChannels.flow)
                 frame_data = get_cached_frames(db, sample)
-                # frame_data = get_frames(db, sample, channels)
                 total_db_time += time.time() - data_time
-                # frame_data = dataset.fetch_random_sample(sample)
-                overlay = None
-                #
-                # overlay = dataset.db.get_overlay(
-                #     sample.track.clip_id, sample.track.track_id
-                # )
 
             except:
                 logging.error("Error fetching sample %s", sample, exc_info=True)
@@ -354,10 +328,8 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
                 params.channel,
                 preprocess_fn=params.model_preprocess,
                 augment=params.augment,
-                use_dots=params.use_dots,
                 reference_level=ref,
                 sample=sample,
-                overlay=overlay,
                 type=params.type,
                 keep_edge=params.keep_edge,
             )
@@ -399,7 +371,7 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
     total_time = time.time() - start
-    logging.debug(
+    logging.info(
         "%s took %s to load db out of total %s",
         params.augment,
         total_db_time,
@@ -415,11 +387,10 @@ def get_batch_frames(f, frames_by_track, tracks, channels, name):
     count = 0
     data = [None] * len(channels)
     for track_info, frame_indices, u_id, regions_by_frames in tracks:
-        # frames = track[1]
         frame_indices.sort()
         track_data = frames_by_track.setdefault(u_id, {})
         f.seek(track_info["background"])
-        background = np.load(f)
+        background = np.load(f, allow_pickle=True)
         for frame_i in frame_indices:
             if frame_i in track_data:
                 continue
@@ -427,7 +398,7 @@ def get_batch_frames(f, frames_by_track, tracks, channels, name):
             frame_info = track_info[frame_i]
             for i, channel in enumerate(channels):
                 f.seek(frame_info[channel])
-                channel_data = np.load(f)
+                channel_data = np.load(f, allow_pickle=True)
                 data[i] = channel_data
 
             frame = Frame.from_channel(data, channels, frame_i, flow_clipped=True)
@@ -522,7 +493,8 @@ def preloader(
 
     # this thread does the data pre processing
     process_threads = []
-    for i in range(2):
+    threads = 10 if name == "train" else 1
+    for i in range(threads):
         t = threading.Thread(
             target=process_batches,
             args=(
@@ -561,7 +533,7 @@ def preloader(
             )
             total = 0
 
-            memory_batches = 600
+            memory_batches = 1200
             load_more_at = memory_batches
             loaded_up_to = 0
             while loaded_up_to < len(batches):
@@ -590,7 +562,6 @@ def preloader(
 
                     for data in batch_data:
                         batch_q.put(data)
-
                     if loaded_up_to == 0:
                         memory_batches = memory_batches
                         load_more_at = max(1, memory_batches // 2)
@@ -614,7 +585,13 @@ def preloader(
 def process_batches(
     batch_queue, q, labels, track_frames, track_seg_count, params, label_mapping, name
 ):
+    total = 0
     while True:
+        total += 1
+        if total % 50 == 0:
+            logging.info(
+                "Loaded %s batches %s have %s", total, name, batch_queue.qsize()
+            )
         segments = get_with_timeout(batch_queue, 30)
         if segments == "STOP":
             logging.info("%s process batch thread received stop", name)
@@ -632,6 +609,9 @@ def process_batches(
                 exc_info=True,
             )
             raise e
+        if batch_queue.qsize() == 0:
+            logging.info(" %s loaded all the data", name)
+            time.sleep(10)
 
 
 def put_with_timeout(queue, data, timeout):
