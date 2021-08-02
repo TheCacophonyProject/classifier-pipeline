@@ -384,7 +384,8 @@ class KerasModel:
             epochs=epochs,
             model_preprocess=self.preprocess_fn,
             load_threads=self.params.train_load_threads,
-            process_threads=self.params.train_process_threads,
+            eager_load=True,
+            maximum_preload=self.params.maximum_preload,
             **self.params,
         )
         self.validate = DataGenerator(
@@ -394,6 +395,7 @@ class KerasModel:
             cap_at="bird",
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
+            maximum_preload=100,
             **self.params,
         )
         self.save_metadata(run_name)
@@ -436,6 +438,7 @@ class KerasModel:
                 model_preprocess=self.preprocess_fn,
                 epochs=1,
                 cap_at="bird",
+                maximum_preload=self.params.maximum_preload,
                 **self.params,
             )
             logging.info("Evaluating test %s", len(self.test))
@@ -479,7 +482,7 @@ class KerasModel:
         earlyStopping = tf.keras.callbacks.EarlyStopping(
             patience=22, monitor="val_accuracy"
         )
-        # havent found muhc use in this just takes training time
+        # havent found much use in this just takes training time
         # file_writer_cm = tf.summary.create_file_writer(
         #     self.log_base + "/{}/cm".format(run_name)
         # )

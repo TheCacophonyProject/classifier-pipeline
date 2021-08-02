@@ -132,9 +132,9 @@ class HyperParams(dict):
         return self.get("shuffle", True)
 
     @property
-    def train_process_threads(self):
-        return self.get("train_process_threads", 1)
-
-    @property
     def train_load_threads(self):
         return self.get("train_load_threads", 1)
+
+    @property
+    def maximum_preload(self):
+        return self.get("maximum_preload", 500)
