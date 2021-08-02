@@ -36,6 +36,12 @@ class GeneartorParams:
         self.maximum_preload = params.get("maximum_preload", 100)
 
 
+# Datagenerator consists of 3 processes
+# 1: Loads the raw batch data from numpy files (Batches are fed into a queue from process 3)
+# 2: Preprocess the raw batch data fed into a queue from process 1
+# 3 is managed by Keras and requests preprocess batches fed into a queue by process 2
+
+
 class DataGenerator(keras.utils.Sequence):
     "Generates data for Keras"
 

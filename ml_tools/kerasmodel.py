@@ -384,7 +384,6 @@ class KerasModel:
             model_preprocess=self.preprocess_fn,
             load_threads=self.params.train_load_threads,
             eager_load=True,
-            maximum_preload=self.params.maximum_preload,
             **self.params,
         )
         self.validate = DataGenerator(
