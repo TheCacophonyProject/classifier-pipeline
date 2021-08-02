@@ -49,13 +49,13 @@ def load_args():
         default="test.dat",
         help="Dataset to use train.dat, validate.dat, test.dat ( Default)",
     )
-    parser.add_argument("--confusion", help="Save confusion matrix image")
+    parser.add_argument(
+        "--confusion",
+        help="Confusion matrix filename, used if you want to save confusion matrix image",
+    )
     parser.add_argument(
         "--tracks", action="count", help="Evaluate whole track rather than samples"
     )
-    parser.add_argument("--type", type=int, help="training type")
-
-    parser.add_argument("-d", "--date", help="Use clips after this")
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
 
     parser.add_argument("--track-id", help="Track id")
@@ -133,10 +133,9 @@ for label in dataset.label_mapping.keys():
             "{}/{}/{}/{:.1f}".format(*dataset.get_counts(label)),
         ),
     )
-if args.confusion is not None:
-    if args.tracks:
-        model.track_confusion(dataset, output_file)
-    else:
-        model.confusion(dataset, args.confusion)
+if args.tracks:
+    model.track_accuracy(dataset, args.confusion)
+elif args.confusion:
+    model.confusion(dataset, args.confusion)
 else:
-    ev.evaluate_dataset(dataset, args.tracks)
+    ev.evaluate_dataset(dataset)

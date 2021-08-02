@@ -915,7 +915,7 @@ class KerasModel:
         test.stop_load()
         logging.info("Test accuracy is %s", test_accuracy)
 
-    def track_confusion(self, dataset, filename="confusion.png"):
+    def track_accuracy(self, dataset, confusion="confusion.png"):
         dataset.set_read_only(True)
         dataset.use_segments = self.params.use_segments
         predictions = []
@@ -959,30 +959,11 @@ class KerasModel:
                 )
                 total += 1
                 if track_prediction is None or len(track_prediction.predictions) == 0:
-                    # actual.append(self.labels.index(mapped_label))
-                    # predictions.append(self.labels.index("false-positives"))
-                    # raw_predictions.append(100)
                     logging.warn("No predictions for %s", track)
                     continue
                 avg = np.mean(track_prediction.predictions, axis=0)
 
-                # print(avg.shape, "mean preds are", np.round(100 * avg))
-                # for pred in track_prediction.predictions:
-                #     print("pred", np.round(pred * 100))
-                #
-                # print(
-                #     track.track_id,
-                #     track.clip_id,
-                #     mapped_label,
-                #     " predictied as ",
-                #     self.labels[np.argmax(avg)],
-                #     "with",
-                #     np.amax(avg) * 100,
-                #     "avg",
-                #     np.round(avg * 100),
-                # )
                 actual.append(self.labels.index(mapped_label))
-                # predictions.append(np.argmax(avg))
                 predictions.append(track_prediction.best_label_index)
 
                 raw_predictions.append(avg)
@@ -996,12 +977,16 @@ class KerasModel:
 
         logging.info("Predicted correctly %s", round(100 * correct / total))
         self.f1(one_hot, raw_predictions)
-        # test.epoch_data = None
-        cm = confusion_matrix(actual, predictions, labels=np.arange(len(self.labels)))
-        # Log the confusion matrix as an image summary.
-        # print("using ", self.labels, len(self.labels))
-        figure = plot_confusion_matrix(cm, class_names=self.labels)
-        plt.savefig(filename, format="png")
+
+        if confusion is not None:
+            # test.epoch_data = None
+            cm = confusion_matrix(
+                actual, predictions, labels=np.arange(len(self.labels))
+            )
+            # Log the confusion matrix as an image summary.
+            # print("using ", self.labels, len(self.labels))
+            figure = plot_confusion_matrix(cm, class_names=self.labels)
+            plt.savefig(confusion, format="png")
 
 
 # from tensorflow examples

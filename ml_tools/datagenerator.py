@@ -309,25 +309,11 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
     data_i = 0
     y_original = []
     mvm = []
-    total_db_time = 0
     for sample, frame_data in zip(samples, data):
         label = mapped_labels[sample.label]
         if label not in labels:
             continue
         if params.use_movement:
-            try:
-                data_time = 0
-                #  time.time()
-                # channels = [TrackChannels.thermal, TrackChannels.filtered]
-                # if params.type == 3:
-                #     channels.append(TrackChannels.flow)
-                # frame_data = get_cached_frames(db, sample)
-                # total_db_time += time.time() - data_time
-
-            except:
-                logging.error("Error fetching sample %s", sample, exc_info=True)
-                continue
-
             if len(frame_data) < 5:
                 logging.error(
                     "Not enough frame data for %s %s", sample, len(frame_data)
@@ -399,10 +385,9 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
     total_time = time.time() - start
-    logging.info(
-        "%s took %s to load db out of total %s",
+    logging.debug(
+        "augment? %s took to preprocess %s",
         params.augment,
-        total_db_time,
         total_time,
     )
     if params.mvm:
@@ -532,9 +517,9 @@ def preloader(
                 batch_q.appendleft("STOP")
             logging.info("%s received stop", name)
             break
+
         try:
             epoch, batches = pickle.loads(item)
-            # datagen.loaded_epochs = samples[0]
             logging.info(
                 "%s Preloader got %s batches for epoch %s",
                 name,
@@ -543,7 +528,7 @@ def preloader(
             )
             total = 0
 
-            memory_batches = 300
+            memory_batches = 500
             load_more_at = memory_batches
             loaded_up_to = 0
             while loaded_up_to < len(batches):
@@ -558,7 +543,6 @@ def preloader(
                         len(batches),
                         q.qsize(),
                     )
-                    # delete_stale_data(track_seg_count, track_frames)
                     batch_data = load_batch_frames(
                         track_frames,
                         numpy_meta,
@@ -567,18 +551,20 @@ def preloader(
                         channels,
                         name,
                     )
+                    loaded_batches = []
                     for segments in batch_data:
                         segment_data = []
                         for seg in segments:
                             frame_data = get_cached_frames(track_frames, seg)
                             segment_data.append(frame_data)
-                        batch_q.put((segments, segment_data))
+                        loaded_batches.append((segments, segment_data))
+                    batch_q.put(loaded_batches)
                     del track_frames
                     track_frames = {}
                     gc.collect()
                     if loaded_up_to == 0:
                         memory_batches = memory_batches
-                        load_more_at = max(1, memory_batches // 2)
+                        load_more_at = max(1, memory_batches * 2)
                     loaded_up_to = loaded_up_to + len(next_load)
                     logging.info(
                         "%s loaded more data qsize is %s loaded up to %s",
@@ -602,13 +588,13 @@ def process_batches(batch_queue, q, labels, params, label_mapping, name):
     g_total = 0
     p_total = 0
     while True:
-        total += 1
         if total % 50 == 0:
             logging.info(
-                "Loaded %s batches %s have %s b %s g %s p %s ",
+                "Loaded %s batches %s to load and %s waiting to be trained have %s b %s g %s p %s ",
                 total,
                 name,
                 batch_queue.qsize(),
+                q.qsize(),
                 b_total,
                 g_total,
                 p_total,
@@ -617,26 +603,28 @@ def process_batches(batch_queue, q, labels, params, label_mapping, name):
             g_toal = 0
             p_total = 0
         g_time = time.time()
-        segments = None
-        segments = get_with_timeout(batch_queue, 30)
-        if segments == "STOP":
+        batches = None
+        batches = get_with_timeout(batch_queue, 30)
+        if batches == "STOP":
             logging.info("%s process batch thread received stop", name)
             return
         g_total += time.time() - g_time
-        b_time = time.time()
-        batch_data = loadbatch(labels, segments[0], segments[1], params, label_mapping)
-        b_total += time.time() - b_time
-        p_time = time.time()
-        try:
-            put_with_timeout(q, batch_data, 30)
-        except Exception as e:
-            logging.error(
-                "%s batch Put error",
-                name,
-                exc_info=True,
-            )
-            raise e
-        p_total += time.time() - p_time
+        for segments, data in batches:
+            b_time = time.time()
+            batch_data = loadbatch(labels, segments, data, params, label_mapping)
+            b_total += time.time() - b_time
+            p_time = time.time()
+            try:
+                put_with_timeout(q, batch_data, 30)
+                total += 1
+            except Exception as e:
+                logging.error(
+                    "%s batch Put error",
+                    name,
+                    exc_info=True,
+                )
+                raise e
+            p_total += time.time() - p_time
         if batch_queue.qsize() == 0:
             logging.info(" %s loaded all the data", name)
             time.sleep(10)
