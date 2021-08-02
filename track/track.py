@@ -241,7 +241,6 @@ class Track:
         self.frames_since_target_seen += 1
         prediction = self.kalman_tracker.predict()
         self.predicted_mid = (prediction[0][0], prediction[1][0])
-        print("adding blank")
 
     def get_stats(self):
         """
