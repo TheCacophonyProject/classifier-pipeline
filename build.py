@@ -163,8 +163,8 @@ def print_counts(dataset, train, validation, test):
     print()
 
 
-# only have one wallaby camera so just take MIN_TRACKS from wallaby and make a validation camera
 def split_label(dataset, label, existing_test_count=0):
+    # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
     tracks = dataset.tracks_by_label.get(label, [])
     track_bins = [track.bin_id for track in tracks if len(track.segments) > 0]
 
@@ -189,7 +189,7 @@ def split_label(dataset, label, existing_test_count=0):
         min_t = 10
     num_validate_tracks = max(total * 0.15, min_t)
     # num_test_tracks = max(total * 0.05, min_t) - existing_test_count
-    # should have teest covered by test set
+    # should have test covered by test set
     num_test_tracks = 0
     cameras_to_remove = set()
     for i, track_bin in enumerate(track_bins):
@@ -227,6 +227,7 @@ def split_label(dataset, label, existing_test_count=0):
 
 
 def get_test_set_camera(dataset, test_clips, after_date):
+    # load test set camera from tst_clip ids and all clips after a date
     test_c = Camera("Test-Set-Camera")
 
     test_tracks = [
@@ -241,15 +242,15 @@ def get_test_set_camera(dataset, test_clips, after_date):
 
 
 def split_randomly(db_file, dataset, config, args, test_clips=[], balance_bins=True):
-
+    # split data randomly such that a clip is only in one dataset
+    # have tried many ways to split i.e. location and cameras found this is simplest
+    # and the results are the same
     train = Dataset(db_file, "train", config)
     train.enable_augmentation = True
     validation = Dataset(db_file, "validation", config)
     test = Dataset(db_file, "test", config)
     test_c = get_test_set_camera(dataset, test_clips, args.date)
     test_cameras = [test_c]
-    # add_camera_tracks(dataset.labels, test, [test_c], balance_bins)
-    # test_cameras.append(test_c)
     validate_cameras = []
     train_cameras = []
     for label in dataset.labels:
@@ -276,6 +277,7 @@ def add_camera_tracks(
     cameras,
     balance_bins=None,
 ):
+    # add camera tracks to the daaset and calculate segments and bins
     all_tracks = []
     for label in labels:
         for camera in cameras:
@@ -305,8 +307,7 @@ def main():
     for key, value in dataset.filtered_stats.items():
         if value != 0:
             print("  {} filtered {}".format(key, value))
-    # print()
-    # show_cameras_tracks(dataset)
+
     print()
     show_tracks_breakdown(dataset)
     print()
@@ -334,10 +335,13 @@ def main():
         joblib.dump(dataset, open(f"{os.path.join(base_dir, dataset.name)}.dat", "wb"))
 
 
-def validate_datasets(datasets, test_clips, before_date):
+def validate_datasets(datasets, test_clips, date):
+    # check that clips are only in one dataset
+    # that only test set has clips after date
+    # that test set is the only dataset with test_clips
     for dataset in datasets[:2]:
         for track in dataset.tracks:
-            assert track.start_time < before_date
+            assert track.start_time < date
 
     for dataset in datasets:
         clips = set([track.clip_id for track in dataset.tracks])

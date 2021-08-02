@@ -312,6 +312,21 @@ class TrackDatabase:
                         if "overlay" in clip[track]:
                             del clip[track]["overlay"]
 
+    def get_clip_tracks(self, clip_id):
+        """
+        Returns a list of clip_id, track_number pairs.
+        """
+        with HDF5Manager(self.database) as f:
+            clips = f["clips"]
+            tracks = []
+            clip = clips[clip_id]
+            if not clip.attrs.get("finished"):
+                continue
+            for track in clip:
+                if track not in special_datasets:
+                    tracks.append(track)
+        return tracks
+
     def get_all_track_ids(self, before_date=None, after_date=None):
         """
         Returns a list of clip_id, track_number pairs.

@@ -182,7 +182,7 @@ class KerasModel:
         weights = None if self.params.base_training else "imagenet"
         base_model, preprocess = self.base_model((width, width, 3), weights=weights)
         self.preprocess_fn = preprocess
-        x = base_model(inputs, training=self.params.base_training)  # IMPORTANT
+        x = base_model(inputs, training=self.params.base_training)
 
         if self.params.lstm:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
@@ -201,7 +201,6 @@ class KerasModel:
                 mvm_features = Flatten()(mvm_inputs)
                 x = Concatenate()([x, mvm_features])
                 x = tf.keras.layers.Dense(2048, activation="relu")(x)
-            # x = Flatten(x)
             for i in dense_sizes:
                 x = tf.keras.layers.Dense(i, activation="relu")(x)
                 if dropout:
@@ -407,12 +406,13 @@ class KerasModel:
             if label == "bird":
                 class_weight[i] = 1.4
             elif label == "wallaby":
+                # wallabies not so important better to predict birds
                 class_weight[i] = 0.6
             else:
                 class_weight[i] = 1
         logging.info("loading with class wieghts %s", class_weight)
         # give a bit of time for preloader to cache data
-        time.sleep(1)
+        time.sleep(100)
         checkpoints = self.checkpoints(run_name)
         history = self.model.fit(
             self.train,
@@ -647,10 +647,6 @@ class KerasModel:
     ):
 
         top_frames = False
-        # print(
-        #     "mass", mass_history, "ffc frames", ffc_frames, "top frames??", top_frames
-        # )
-        # print("frame numbers", [frame.frame_number for frame in data])
         if ffc_frames is None:
             ffc_frames = []
         predictions = []
@@ -696,7 +692,6 @@ class KerasModel:
             return predictions
         if top_frames:
             median_mass = np.median(mass_history)
-            print("median mass is", median_mass)
             valid_indices = np.arange(len(data))
             valid_indices = [
                 f_i
@@ -704,15 +699,6 @@ class KerasModel:
                 if mass_history[f_i] > median_mass
                 and data[f_i].frame_number not in ffc_frames
             ]
-            print("using", len(valid_indices), " out of", len(data))
-
-            # valid_indices = [
-            #     f_i for f_i in valid_indices if data[f_i].frame_number not in ffc_frames
-            # ]
-            # valid_indices = sorted(
-            #     valid_indices, key=lambda f_i: mass_history[f_i], reverse=True
-            # )
-            # valid_indices = valid_indices[:50]
             valid_indices.sort()
             valid_regions = np.array(regions)[valid_indices]
             filtered_data = np.array(data)[valid_indices]
@@ -736,16 +722,7 @@ class KerasModel:
             median = np.zeros((frames_per_classify))
         else:
             samples = max(1, len(valid_indices) // 9)
-            # samples -= 1
 
-        # print(
-        #     "segment type",
-        #     self.params.segment_type,
-        #     "frames",
-        #     frame_sample,
-        #     len(frame_sample),
-        #     samples,
-        # )
         for i in range(samples):
             square_data = filtered_data
             if self.params.segment_type >= 2:
@@ -787,24 +764,14 @@ class KerasModel:
             median = np.zeros((len(seg_frames)))
             masses = []
             seg_frames.sort()
-            # print(
-            #     track_id,
-            #     "Classify",
-            #     i,
-            #     " using",
-            #     seg_frames,
-            #     "segment type",
-            #     self.params.segment_type,
-            # )
+
             for index, frame_i in enumerate(seg_frames):
                 f = data[frame_i]
                 segment.append(f.copy())
                 median[index] = thermal_median[frame_i]
                 masses.append(mass_history[frame_i])
             avg_mass = np.mean(masses)
-            # if avg_mass < 16:
-            #     print("filtered cause less than 16")
-            #     continue
+
             frames = preprocess_movement(
                 square_data,
                 segment,
@@ -982,12 +949,9 @@ class KerasModel:
         self.f1(one_hot, raw_predictions)
 
         if confusion is not None:
-            # test.epoch_data = None
             cm = confusion_matrix(
                 actual, predictions, labels=np.arange(len(self.labels))
             )
-            # Log the confusion matrix as an image summary.
-            # print("using ", self.labels, len(self.labels))
             figure = plot_confusion_matrix(cm, class_names=self.labels)
             plt.savefig(confusion, format="png")
 
@@ -1002,10 +966,6 @@ def plot_confusion_matrix(cm, class_names):
       class_names (array, shape = [n]): String names of the integer classes
     """
 
-    # Normalize the confusion matrix.
-    # print(cm)
-    # cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
-    # cm = np.nan_to_num(cm)
     figure = plt.figure(figsize=(8, 8))
     plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
     plt.title("Confusion matrix")
@@ -1013,7 +973,8 @@ def plot_confusion_matrix(cm, class_names):
     tick_marks = np.arange(len(class_names))
     plt.xticks(tick_marks, class_names, rotation=45)
     plt.yticks(tick_marks, class_names)
-    #
+
+    # Normalize the confusion matrix.
     cm = np.around(cm.astype("float") / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     cm = np.nan_to_num(cm)
 

@@ -1,3 +1,12 @@
+"""
+
+Author Giampaolo Ferraro
+
+Date December 2020
+
+Some tools to evaluate a model
+
+"""
 import argparse
 import logging
 import pickle
@@ -19,19 +28,35 @@ import matplotlib
 import matplotlib.pyplot as plt
 from ml_tools import tools
 from ml_tools.datasetstructures import TrackHeader
+from ml_tools.trackdatabase import TrackDatabase
 
 
 def evaluate_dataset(model, dataset, tracks=False):
+    logging.info("Evaluating on %s", dataset.name)
     results = model.evaluate(dataset)
-    print("Dataset", dataset_file, "loss,acc", results)
 
 
-def evaluate_db_track(model, db, clip_id, track_id):
+def evaluate_db_clip(model, db, classifier, clip_id, track_id=None):
+    logging.info("Prediction tracks %s", track)
     clip_meta = db.get_clip_meta(clip_id)
-    track_meta = db.get_track_meta(clip_id, track_id)
-    predictions = db.get_track_predictions(clip_id, track_id)
-    track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta, predictions)
-    return evaluate_track(classifier, track_header), classifier.labels
+    if track_id is None:
+        tracks = db.get_clip_tracks(clip_id)
+    else:
+        tracks = [track_id]
+    for track_id in tracks:
+        track_meta = db.get_track_meta(clip_id, track_id)
+        track_data = db.get_track(clip_id, track_id)
+
+        regions = []
+        medians = clip_meta["frame_temp_median"][
+            track_meta["start_frame"] : track_meta["start_frame"] + track_meta["frames"]
+        ]
+        for region in track_meta.track_bounds:
+            regions.append(tools.Rectangle.from_ltrb(*region))
+        track_prediction = model.classify_track_data(
+            track_id, track_data, medians, regions=regions
+        )
+        logging.info("Predicted %s", track_prediction.predicted_tag(model.labels))
 
 
 def load_args():
@@ -58,9 +83,9 @@ def load_args():
     )
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
 
-    parser.add_argument("--track-id", help="Track id")
+    parser.add_argument("--track-id", help="Track id to evaluate from database")
 
-    parser.add_argument("--clip-id", help="Clip id")
+    parser.add_argument("--clip-id", help="Clip id to evaluate from database")
 
     args = parser.parse_args()
     return args
@@ -91,17 +116,22 @@ if args.model_file:
 else:
     model_file = config.classify.model
 
-date = None
-if args.date:
-    date = parse(args.date)
 base_dir = config.tracks_folder
+
+
+model = KerasModel(train_config=config.train)
+model.load_model(model_file, training=False, weights=args.weights)
+
+if args.track_id or args.clip_id:
+    if args.clip_id is None:
+        logging.error("Need clip id and track id")
+        sys.exit(0)
+    db = TrackDatabase(os.path.join(config.tracks_folder, "dataset.hdf5"))
+    evaluate_db_clip(model, db, args.clip_id, args.track_id)
+    sys.exit(0)
 
 dataset = joblib.load(open(os.path.join(base_dir, args.dataset), "rb"))
 logging.info("running on %s ", dataset.name)
-
-classifier = KerasModel(train_config=config.train)
-classifier.load_model(model_file, training=False, weights=args.weights)
-
 dataset.recalculate_segments(segment_type=1)
 
 dir = os.path.dirname(model_file)
