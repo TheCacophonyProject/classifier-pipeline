@@ -376,7 +376,7 @@ class TrackDatabase:
     #             )
     #         clip.attrs["has_prediction"] = True
 
-    def add_prediction_data(self, track, model_predicitons):
+    def add_prediction_data(self, track, model_predictions):
         """
         Add prediction data as a dataset to the track
         data should be  an array of int16 array
