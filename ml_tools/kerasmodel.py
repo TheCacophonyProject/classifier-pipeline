@@ -918,10 +918,6 @@ class KerasModel:
     def track_confusion(self, dataset, filename="confusion.png"):
         dataset.set_read_only(True)
         dataset.use_segments = self.params.use_segments
-        # label_tracks = dataset.tracks_by_label.get("bird", [])
-        # label_tracks = [track for track in label_tracks if len(track.segments) > 0]
-        # cap_at = len(label_tracks)
-        # cap_at = 1
         predictions = []
         actual = []
         raw_predictions = []
@@ -937,7 +933,7 @@ class KerasModel:
                 )
             else:
                 sample_tracks = label_tracks
-            print("taking", len(sample_tracks), " from ", label)
+            logging.info("taking %s from %s", len(sample_tracks), label)
             mapped_label = dataset.mapped_label(label)
             for track in sample_tracks:
 

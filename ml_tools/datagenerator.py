@@ -1,3 +1,4 @@
+from collections import deque
 import pickle
 import math
 import logging
@@ -448,7 +449,6 @@ def delete_stale_data(track_seg_count, track_frames):
 
 def load_batch_frames(
     track_frames,
-    batch_q,
     track_seg_count,
     numpy_meta,
     batches,
@@ -522,7 +522,7 @@ def preloader(
     track_frames = {}
     # keeps count of segments per track, when 0 can delete data for this track
     track_seg_count = {}
-    batch_q = Queue()
+    batch_q = deque()
 
     # this thread does the data pre processing
     process_threads = []
@@ -551,7 +551,7 @@ def preloader(
 
         if item == "STOP":
             for _ in process_threads:
-                batch_q.put("STOP")
+                batch_q.appendleft("STOP")
             logging.info("%s received stop", name)
             break
         try:
@@ -565,16 +565,16 @@ def preloader(
             )
             total = 0
 
-            memory_batches = 1200
+            memory_batches = 300
             load_more_at = memory_batches
             loaded_up_to = 0
             while loaded_up_to < len(batches):
-                if batch_q.qsize() < load_more_at and loaded_up_to < len(batches):
+                if len(batch_q) < load_more_at and loaded_up_to < len(batches):
                     next_load = batches[loaded_up_to : loaded_up_to + memory_batches]
                     logging.info(
                         "%s loading more data, have segments: %s  loading %s - %s of %s qsize %s ",
                         name,
-                        batch_q.qsize(),
+                        len(batch_q),
                         loaded_up_to,
                         loaded_up_to + len(next_load),
                         len(batches),
@@ -583,7 +583,6 @@ def preloader(
                     delete_stale_data(track_seg_count, track_frames)
                     batch_data = load_batch_frames(
                         track_frames,
-                        batch_q,
                         track_seg_count,
                         numpy_meta,
                         next_load,
@@ -591,9 +590,9 @@ def preloader(
                         channels,
                         name,
                     )
-
-                    for data in batch_data:
-                        batch_q.put(data)
+                    batch_q.extend(batch_data)
+                    # for data in batch_data:
+                    #     batch_q.put(data)
                     if loaded_up_to == 0:
                         memory_batches = memory_batches
                         load_more_at = max(1, memory_batches // 2)
@@ -601,7 +600,7 @@ def preloader(
                     logging.info(
                         "%s loaded more data qsize is %s loaded up to %s",
                         name,
-                        batch_q.qsize(),
+                        len(batch_q),
                         loaded_up_to,
                     )
                     total += 1
@@ -624,7 +623,14 @@ def process_batches(
             logging.info(
                 "Loaded %s batches %s have %s", total, name, batch_queue.qsize()
             )
-        segments = get_with_timeout(batch_queue, 30)
+        segments = None
+        while segments is None:
+            try:
+                segments = batch_queue.popleft()
+            except:
+                logging.info("%s No batches in pop left", name, exc_info=True)
+                time.sleep(1)
+        # segments = get_with_timeout(batch_queue, 30)
         if segments == "STOP":
             logging.info("%s process batch thread received stop", name)
             return
@@ -641,7 +647,7 @@ def process_batches(
                 exc_info=True,
             )
             raise e
-        if batch_queue.qsize() == 0:
+        if len(batch_queue) == 0:
             logging.info(" %s loaded all the data", name)
             time.sleep(10)
 
