@@ -321,7 +321,7 @@ class TrackDatabase:
             tracks = []
             clip = clips[clip_id]
             if not clip.attrs.get("finished"):
-                continue
+                return tracks
             for track in clip:
                 if track not in special_datasets:
                     tracks.append(track)

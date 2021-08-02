@@ -382,7 +382,7 @@ class KerasModel:
             cap_at="bird",
             epochs=epochs,
             model_preprocess=self.preprocess_fn,
-            load_threads=self.params.train_load_threads,
+            maximum_preload=self.maximum_train_preload,
             eager_load=True,
             **self.params,
         )
@@ -437,7 +437,6 @@ class KerasModel:
                 model_preprocess=self.preprocess_fn,
                 epochs=1,
                 cap_at="bird",
-                maximum_preload=self.params.maximum_preload,
                 **self.params,
             )
             logging.info("Evaluating test %s", len(self.test))

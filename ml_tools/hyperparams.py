@@ -136,5 +136,5 @@ class HyperParams(dict):
         return self.get("train_load_threads", 1)
 
     @property
-    def maximum_preload(self):
-        return self.get("maximum_preload", 500)
+    def maximum_train_preload(self):
+        return self.get("maximum_train_preload", 1000)

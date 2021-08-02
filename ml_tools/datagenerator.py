@@ -31,7 +31,6 @@ class GeneartorParams:
         self.mvm = params.get("mvm", False)
         self.type = params.get("type", 1)
         self.segment_type = params.get("segment_type", 1)
-        self.load_threads = params.get("load_threads", 1)
         self.keep_edge = params.get("keep_edge", False)
         self.maximum_preload = params.get("maximum_preload", 100)
 
@@ -56,7 +55,6 @@ class DataGenerator(keras.utils.Sequence):
         self.use_previous_epoch = None
         self.labels = labels
         self.dataset = dataset
-        self.preload = params.get("preload", True)
         self.epochs = params.get("epochs", 10)
         self.samples = None
         self.randomize_epoch = params.get("randomize_epoch", True)
@@ -89,43 +87,36 @@ class DataGenerator(keras.utils.Sequence):
         self.epoch_data = []
 
         if use_threads:
-            self.preloader_threads = [
-                threading.Thread(
-                    target=preloader,
-                    args=(
-                        self.preloader_queue,
-                        self.load_queue,
-                        self.labels,
-                        self.dataset.name,
-                        self.dataset.db,
-                        self.dataset.segments_by_id,
-                        self.params,
-                        self.dataset.label_mapping,
-                        self.dataset.numpy_data,
-                    ),
-                )
-                for _ in range(self.params.load_threads)
-            ]
+            self.preloader_thread = threading.Thread(
+                target=preloader,
+                args=(
+                    self.preloader_queue,
+                    self.load_queue,
+                    self.labels,
+                    self.dataset.name,
+                    self.dataset.db,
+                    self.dataset.segments_by_id,
+                    self.params,
+                    self.dataset.label_mapping,
+                    self.dataset.numpy_data,
+                ),
+            )
         else:
-            self.preloader_threads = [
-                multiprocessing.Process(
-                    target=preloader,
-                    args=(
-                        self.preloader_queue,
-                        self.load_queue,
-                        self.labels,
-                        self.dataset.name,
-                        self.dataset.db,
-                        self.dataset.segments_by_id,
-                        self.params,
-                        self.dataset.label_mapping,
-                        self.dataset.numpy_data,
-                    ),
-                )
-                for _ in range(self.params.load_threads)
-            ]
-        for thread in self.preloader_threads:
-            thread.start()
+            self.preloader_thread = multiprocessing.Process(
+                target=preloader,
+                args=(
+                    self.preloader_queue,
+                    self.load_queue,
+                    self.labels,
+                    self.dataset.name,
+                    self.dataset.db,
+                    self.dataset.segments_by_id,
+                    self.params,
+                    self.dataset.label_mapping,
+                    self.dataset.numpy_data,
+                ),
+            )
+        self.preloader_thread.start()
         logging.info(
             "datagen for %s shuffle %s cap %s type %s epochs %s preprocess %s keep_edge %s",
             self.dataset.name,
@@ -141,14 +132,12 @@ class DataGenerator(keras.utils.Sequence):
         if not self.load_queue:
             return
         logging.info("stopping %s", self.dataset.name)
-        for thread in self.preloader_threads:
-            self.load_queue.put("STOP")
+        self.load_queue.put("STOP")
         time.sleep(4)
-        for thread in self.preloader_threads:
-            if hasattr(thread, "terminate"):
-                thread.terminate()
+        if hasattr(self.preloader_thread, "terminate"):
+            self.preloader_thread.terminate()
         del self.preloader_queue
-        del self.preloader_threads
+        del self.preloader_thread
         del self.load_queue
         self.load_queue = None
         self.preloader_queue = None
@@ -215,30 +204,22 @@ class DataGenerator(keras.utils.Sequence):
         if self.cur_epoch == 0:
             self.sample_size = len(self.samples)
 
-        batches_per_process = int(math.ceil(len(self) / self.params.load_threads))
-        batches = []
-        index = 0
         logging.info(
-            "%s num of batches %s bathes per process %s",
+            "%s num of batches %s",
             self.dataset.name,
             len(self),
-            batches_per_process,
         )
-        for i in range(self.params.load_threads):
-            batches = []
-            for _ in range(batches_per_process):
-                if index >= len(self):
-                    break
-                samples = self.samples[
-                    index * self.batch_size : (index + 1) * self.batch_size
-                ]
-                index += 1
-                batches.append(samples)
+        batches = []
+        for index in range(len(self)):
+            samples = self.samples[
+                index * self.batch_size : (index + 1) * self.batch_size
+            ]
+            batches.append(samples)
 
-            logging.info("%s adding %s", self.dataset.name, len(batches))
-            if len(batches) > 0:
-                pickled_batches = pickle.dumps((self.loaded_epochs + 1, batches))
-                self.load_queue.put(pickled_batches)
+        logging.info("%s adding %s", self.dataset.name, len(batches))
+        if len(batches) > 0:
+            pickled_batches = pickle.dumps((self.loaded_epochs + 1, batches))
+            self.load_queue.put(pickled_batches)
 
         self.epoch_samples.append(len(self.samples))
         self.dataset.segments = []
@@ -249,16 +230,12 @@ class DataGenerator(keras.utils.Sequence):
         logging.info("%s reloading samples", self.dataset.name)
         if self.shuffle:
             np.random.shuffle(self.samples)
-        for i in range(self.params.load_threads):
             batches = []
-            for _ in range(batches_per_process):
-                if index >= len(self):
-                    break
-                samples = self.samples[
-                    index * self.batch_size : (index + 1) * self.batch_size
-                ]
-                index += 1
-                batches.append(samples)
+        for index in range(len(self)):
+            samples = self.samples[
+                index * self.batch_size : (index + 1) * self.batch_size
+            ]
+            batches.append(samples)
 
             logging.info(self.dataset.name, "adding", len(batches))
             if len(batches) > 0:
