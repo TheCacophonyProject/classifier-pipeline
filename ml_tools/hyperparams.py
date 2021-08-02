@@ -29,7 +29,6 @@ class HyperParams(dict):
         self["frame_size"] = self.frame_size
 
         self["shuffle"] = self.shuffle
-        self["train_load_threads"] = self.train_load_threads
         self["channel"] = self.channel
         self["type"] = self.type
         self["segment_type"] = self.segment_type
@@ -130,10 +129,6 @@ class HyperParams(dict):
     @property
     def shuffle(self):
         return self.get("shuffle", True)
-
-    @property
-    def train_load_threads(self):
-        return self.get("train_load_threads", 1)
 
     @property
     def maximum_train_preload(self):
