@@ -411,7 +411,7 @@ class KerasModel:
                 class_weight[i] = 1
         logging.info("loading with class wieghts %s", class_weight)
         # give a bit of time for preloader to cache data
-        time.sleep(100)
+        time.sleep(1)
         checkpoints = self.checkpoints(run_name)
         history = self.model.fit(
             self.train,

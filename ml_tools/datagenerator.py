@@ -154,7 +154,7 @@ class DataGenerator(keras.utils.Sequence):
         "Generate one batch of data"
         # Generate indexes of the batch
         start = time.time()
-        if index == len(self) - 1 and self.eager_load:
+        if index == len(self) // 2 and self.eager_load:
             logging.info(
                 "%s on epoch %s index % s loading next epoch data",
                 self.dataset.name,
@@ -467,19 +467,12 @@ def preloader(
     epoch = 0
     # dictionary with keys track_uids and then dicitonary of frame_ids
     track_frames = {}
-    batch_q = multiprocessing.Queue(params.maximum_preload)
+    batch_q = multiprocessing.Queue()
 
     # this thread does the data pre processing
     p_preprocess = multiprocessing.Process(
         target=process_batches,
-        args=(
-            batch_q,
-            q,
-            labels,
-            params,
-            label_mapping,
-            name,
-        ),
+        args=(batch_q, q, labels, params, label_mapping, name, params.maximum_preload),
     )
     p_preprocess.start()
     while True:
@@ -539,13 +532,14 @@ def preloader(
                     track_frames = {}
                     gc.collect()
                     if loaded_up_to == 0:
-                        load_until = max(1, params.maximum_preload)
+                        load_until = 2
                     loaded_up_to = loaded_up_to + len(next_load)
                     logging.info(
-                        "%s loaded more data qsize is %s loaded up to %s",
+                        "%s loaded more data qsize is %s loaded up to %s load until %s",
                         name,
                         batch_q.qsize(),
                         loaded_up_to,
+                        load_until,
                     )
                     total += 1
                 else:
@@ -557,13 +551,16 @@ def preloader(
             pass
 
 
-def process_batches(batch_queue, q, labels, params, label_mapping, name):
+def process_batches(batch_queue, q, labels, params, label_mapping, name, stop_at):
     # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
     total = 0
     b_total = 0
     g_total = 0
     p_total = 0
     while True:
+        while stop_at is not None and q.qsize() > stop_at:
+            logging.debug(" %s Q has maximum preload", name)
+            time.sleep(2)
         if total % 50 == 0:
             logging.info(
                 "Loaded %s batches %s to load and %s waiting to be trained have %s b %s g %s p %s ",
