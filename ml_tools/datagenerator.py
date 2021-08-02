@@ -600,7 +600,7 @@ def process_batches(batch_queue, q, labels, params, label_mapping, name):
                 p_total,
             )
             b_total = 0
-            g_toal = 0
+            g_total = 0
             p_total = 0
         g_time = time.time()
         batches = None
