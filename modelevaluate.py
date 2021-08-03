@@ -31,11 +31,6 @@ from ml_tools.datasetstructures import TrackHeader
 from ml_tools.trackdatabase import TrackDatabase
 
 
-def evaluate_dataset(model, dataset, tracks=False):
-    logging.info("Evaluating on %s", dataset.name)
-    results = model.evaluate(dataset)
-
-
 def evaluate_db_clip(model, db, classifier, clip_id, track_id=None):
     logging.info("Prediction tracks %s", track)
     clip_meta = db.get_clip_meta(clip_id)
@@ -72,7 +67,7 @@ def load_args():
         "-s",
         "--dataset",
         default="test.dat",
-        help="Dataset to use train.dat, validate.dat, test.dat ( Default)",
+        help="Dataset to use train.dat, validation.dat, test.dat ( Default)",
     )
     parser.add_argument(
         "--confusion",
@@ -141,6 +136,7 @@ label_probabilities = meta.get("label_probabilities")
 dataset.lbl_p = label_probabilities
 if mapped_labels:
     dataset.regroup(mapped_labels)
+print("dataset labels arenow ", dataset.labels)
 
 logging.info(
     "Dataset loaded %s, using labels %s, mapped labels %s",
@@ -168,4 +164,4 @@ if args.tracks:
 elif args.confusion:
     model.confusion(dataset, args.confusion)
 else:
-    ev.evaluate_dataset(dataset)
+    model.evaluate(dataset)

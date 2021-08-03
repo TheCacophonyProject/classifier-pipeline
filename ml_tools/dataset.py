@@ -277,7 +277,6 @@ class Dataset:
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
-        labels = self.db.get_labels()
         counter = 0
         track_ids = self.db.get_all_track_ids(
             before_date=before_date, after_date=after_date
@@ -285,7 +284,7 @@ class Dataset:
         if shuffle:
             np.random.shuffle(track_ids)
         for clip_id, track_id in track_ids:
-            if self.load_track(clip_id, track_id, labels):
+            if self.load_track(clip_id, track_id):
                 counter += 1
         return [counter, len(track_ids)]
 
@@ -310,7 +309,7 @@ class Dataset:
         self.segments.extend(track_header.segments)
         return True
 
-    def load_track(self, clip_id, track_id, labels):
+    def load_track(self, clip_id, track_id):
         """
         Creates segments for track and adds them to the dataset
         :param clip_id: id of tracks clip
@@ -746,6 +745,7 @@ class Dataset:
             counts.append(count)
 
         self.labels = list(groups.keys())
+        self.labels.sort()
         self.tracks_by_bin = tracks_by_bin
         self.set_samples(samples)
         if self.use_segments:

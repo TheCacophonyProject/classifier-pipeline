@@ -830,31 +830,29 @@ class KerasModel:
         test_pred = np.argmax(test_pred_raw, axis=1)
 
         batch_y = test.get_epoch_labels(0)
-        one_hot_y = []
-        for batch in batch_y:
-            one_hot_y.extend(np.int32(batch))
-        one_hot_y = np.array(one_hot_y)
-        self.f1(one_hot_y, test_pred_raw)
+        for i in range(len(batch_y)):
+            batch_y[i] = self.labels.index(batch_y[i])
+        batch_y = np.int32(batch_y)
+        self.f1(batch_y, test_pred_raw)
         # test.epoch_data = None
-        cm = confusion_matrix(
-            np.argmax(one_hot_y, axis=1), test_pred, labels=np.arange(len(self.labels))
-        )
+        cm = confusion_matrix(batch_y, test_pred, labels=np.arange(len(self.labels)))
         # Log the confusion matrix as an image summary.
         figure = plot_confusion_matrix(cm, class_names=self.labels)
         plt.savefig(filename, format="png")
 
-    def f1(self, one_hot_y, pred_raw):
+    def f1(self, batch_y, pred_raw):
+        one_hot_y = tf.keras.utils.to_categorical(batch_y, num_classes=len(self.labels))
         metric = tfa.metrics.F1Score(num_classes=len(self.labels))
         metric.update_state(one_hot_y, pred_raw)
         result = metric.result().numpy()
-        print("F1 score")
+        logging.info("F1 score")
         by_label = {}
         for i, label in enumerate(self.labels):
             by_label[label] = round(100 * result[i])
         sorted = self.labels.copy()
         sorted.sort()
         for label in sorted:
-            print("{} = {}".format(label, by_label[label]))
+            logging.info("%s = %s", label, by_label[label])
 
     def evaluate(self, dataset):
         dataset.set_read_only(True)
@@ -884,10 +882,10 @@ class KerasModel:
     def track_accuracy(self, dataset, confusion="confusion.png"):
         dataset.set_read_only(True)
         dataset.use_segments = self.params.use_segments
+        dataset.load_db()
         predictions = []
         actual = []
         raw_predictions = []
-        one_hot = []
         total = 0
         correct = 0
         for label in dataset.label_mapping.keys():
@@ -928,21 +926,17 @@ class KerasModel:
                     logging.warn("No predictions for %s", track)
                     continue
                 avg = np.mean(track_prediction.predictions, axis=0)
-
                 actual.append(self.labels.index(mapped_label))
                 predictions.append(track_prediction.best_label_index)
 
                 raw_predictions.append(avg)
                 if actual[-1] == predictions[-1]:
                     correct += 1
-                one_hot.append(
-                    keras.utils.to_categorical(actual[-1], num_classes=len(self.labels))
-                )
                 if total % 50 == 0:
                     logging.info("Processed %s", total)
 
         logging.info("Predicted correctly %s", round(100 * correct / total))
-        self.f1(one_hot, raw_predictions)
+        self.f1(actual, raw_predictions)
 
         if confusion is not None:
             cm = confusion_matrix(

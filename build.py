@@ -299,6 +299,8 @@ def main():
         db_file, "dataset", config, consecutive_segments=args.consecutive_segments
     )
     tracks_loaded, total_tracks = dataset.load_tracks()
+    dataset.labels.sort()
+
     print(
         "Loaded {}/{} tracks, found {:.1f}k segments".format(
             tracks_loaded, total_tracks, len(dataset.segments) / 1000
@@ -317,7 +319,6 @@ def main():
     print()
     show_cameras_breakdown(dataset)
     print()
-
     print("Splitting data set into train / validation")
     datasets = split_randomly(db_file, dataset, config, args, test_clips)
     validate_datasets(datasets, test_clips, args.date)
