@@ -393,7 +393,7 @@ class KerasModel:
             cap_at="bird",
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
-            maximum_preload=100,
+            maximum_preload=50,
             **self.params,
         )
         self.save_metadata(run_name)

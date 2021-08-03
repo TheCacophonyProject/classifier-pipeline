@@ -68,7 +68,6 @@ class DataGenerator(keras.utils.Sequence):
         self.loaded_epochs = 0
         self.epoch_stats = []
         self.eager_load = params.get("eager_load", False)
-        self.extend_time = 0
         use_threads = False
         if use_threads:
             # This will be slower, but use less memory
@@ -154,7 +153,7 @@ class DataGenerator(keras.utils.Sequence):
         "Generate one batch of data"
         # Generate indexes of the batch
         start = time.time()
-        if index == len(self) // 2 and self.eager_load:
+        if index == len(self) // 3 and self.eager_load:
             logging.info(
                 "%s on epoch %s index % s loading next epoch data",
                 self.dataset.name,
@@ -169,7 +168,7 @@ class DataGenerator(keras.utils.Sequence):
         else:
             try:
                 X, y, y_original = get_with_timeout(
-                    self.train_queue, 30, self.dataset.name
+                    self.train_queue, 30, f"train_queue get_item {self.dataset.name}"
                 )
             except:
                 logging.error(
@@ -181,9 +180,7 @@ class DataGenerator(keras.utils.Sequence):
             # always keep a copy of epoch data
             if index == 0:
                 self.epoch_data.append((X, y))
-            start = time.time()
             self.epoch_labels[self.cur_epoch].extend(y_original)
-            self.extend_time += time.time() - start
         return X, y
 
     def load_next_epoch(self):
@@ -263,12 +260,10 @@ class DataGenerator(keras.utils.Sequence):
         self.epoch_data[self.cur_epoch] = None
         last_stats = self.epoch_label_count()
         logging.info(
-            "epoch ended for %s %s extend time %s",
+            "epoch ended for %s %s",
             self.dataset.name,
             last_stats,
-            self.extend_time,
         )
-        self.extend_time = 0
 
         self.cur_epoch += 1
 
@@ -496,20 +491,20 @@ def preloader(
     p_preprocess.start()
     while True:
         try:
-            item = get_with_timeout(epoch_queue, 30, name)
+            item = get_with_timeout(epoch_queue, 30, f"epoch_queue preloader {name}")
         except:
-            logging.error("%s epoch %s error", name, epoch, exc_info=True)
+            logging.error("%s preloader epoch %s error", name, epoch, exc_info=True)
             return
 
         if item == "STOP":
             batch_q.put("STOP")
-            logging.info("%s received stop", name)
+            logging.info("%s preloader received stop", name)
             break
         try:
             epoch, batches = item
             batch_q.put(int(epoch))
             logging.info(
-                "%s Preloader got %s batches for epoch %s",
+                "%s preloader got %s batches for epoch %s",
                 name,
                 len(batches),
                 epoch,
@@ -523,7 +518,7 @@ def preloader(
                 if loaded_up_to < len(batches):
                     next_load = batches[loaded_up_to : loaded_up_to + preload_amount]
                     logging.info(
-                        "%s loading more data, have segments: %s  loading %s - %s of %s qsize %s ",
+                        "%s preloader loading more data, have segments: %s  loading %s - %s of %s qsize %s ",
                         name,
                         batch_q.qsize(),
                         loaded_up_to,
@@ -547,14 +542,16 @@ def preloader(
                             segment_data.append(frame_data)
                         loaded_batches.append((segments, segment_data))
                     # this will block if process batches isn't ready for more
-                    put_with_timeout(batch_q, loaded_batches, 30, name)
+                    put_with_timeout(
+                        batch_q, loaded_batches, 30, f"prealoder batch_q {name}"
+                    )
                     # put all at once save queue overheader
                     del track_frames
                     track_frames = {}
                     gc.collect()
                     loaded_up_to = loaded_up_to + len(next_load)
                     logging.info(
-                        "%s loaded more data qsize is %s loaded up to %s",
+                        "%s preloader loaded more data qsize is %s loaded up to %s",
                         name,
                         batch_q.qsize(),
                         loaded_up_to,
@@ -562,16 +559,18 @@ def preloader(
                     total += 1
                 else:
                     logging.info(
-                        "%s preloaded maximum frames batch qsize %s, loaded up to %s",
+                        "%s preloader preloaded maximum frames batch qsize %s, loaded up to %s",
                         name,
                         batch_q.qsize(),
                         loaded_up_to,
                     )
                     time.sleep(2)
 
-            logging.info("%s loaded epoch %s", name, epoch)
+            logging.info("%s preloader oaded epoch %s", name, epoch)
         except Exception as inst:
-            logging.error("%s epoch %s error %s", name, epoch, inst, exc_info=True)
+            logging.error(
+                "%s preloader epoch %s error %s", name, epoch, inst, exc_info=True
+            )
             pass
 
 
@@ -584,38 +583,45 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
     epoch = 0
     while True:
         batches = None
-        batches = get_with_timeout(batch_queue, 30, name)
+        batches = get_with_timeout(
+            batch_queue, 30, f"batch_queue process_batches {name}"
+        )
         if batches == "STOP":
-            logging.info("%s process batch thread received stop", name)
+            logging.info("%s process_batches thread received stop", name)
             return
         elif isinstance(batches, int):
-            logging.info("%s loading new epoch %s", name, epoch)
             epoch = batches
+            logging.info("%s process_batches loading new epoch %s", name, epoch)
             total = 0
             continue
         for segments, data in batches:
             batch_data = loadbatch(labels, segments, data, params, label_mapping)
             try:
-                put_with_timeout(train_queue, batch_data, 30, name)
-                total += 1
+                put_with_timeout(
+                    train_queue, batch_data, 30, f"train_queue-process_batches {name}"
+                )
                 if total % LOG_EVERY == 0:
                     logging.info(
-                        "%s - epoch %s Loaded %s batches %s to load and %s waiting to be trained",
+                        "%s process_batches - epoch %s Loaded %s batches %s to load and %s waiting to be trained",
                         name,
                         epoch,
                         total,
                         batch_queue.qsize(),
                         train_queue.qsize(),
                     )
+                total += 1
+
             except Exception as e:
                 logging.error(
-                    "%s batch Put error",
+                    "%s process_batches batch Put error",
                     name,
                     exc_info=True,
                 )
                 raise e
         while batch_queue.qsize() == 0:
-            logging.info(" %s loaded all the data epoch %s", name, epoch)
+            logging.info(
+                " %s process_batches loaded all the data epoch %s", name, epoch
+            )
             time.sleep(1)
 
 
