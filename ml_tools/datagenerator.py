@@ -581,6 +581,7 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
     # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
     total = 0
     epoch = 0
+    chunk_size = 10
     while True:
         batches = None
         batches = get_with_timeout(
@@ -594,33 +595,38 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
             logging.info("%s process_batches loading new epoch %s", name, epoch)
             total = 0
             continue
-        for i in range(len(batches)):
-            segments, data = batches[i]
-            batch_data = loadbatch(labels, segments, data, params, label_mapping)
-            batches[i] = batch_data
-        for batch_data in batches:
-            try:
-                put_with_timeout(
-                    train_queue, batch_data, 30, f"train_queue-process_batches {name}"
-                )
-                if total % LOG_EVERY == 0:
-                    logging.info(
-                        "%s process_batches - epoch %s Loaded %s batches %s to load and %s waiting to be trained",
-                        name,
-                        epoch,
-                        total,
-                        batch_queue.qsize(),
-                        train_queue.qsize(),
-                    )
-                total += 1
+        for batch_i in range(chunk_size):
+            start = batch_i * chunk_size
+            chunk = batches[start : start + chunk_size]
 
-            except Exception as e:
-                logging.error(
-                    "%s process_batches batch Put error",
-                    name,
-                    exc_info=True,
-                )
-                raise e
+            for i in range(len(chunk)):
+                segments, data = chunk[i]
+                batch_data = loadbatch(labels, segments, data, params, label_mapping)
+                chunk[i] = batch_data
+            logging.info(
+                "%s process_batches - epoch %s preprocessed %s range %s - %s",
+                name,
+                epoch,
+                len(chunk),
+                start,
+                start + chunk_size,
+            )
+            for batch_data in chunk:
+                try:
+                    put_with_timeout(
+                        train_queue,
+                        batch_data,
+                        30,
+                        f"train_queue-process_batches {name}",
+                    )
+
+                except Exception as e:
+                    logging.error(
+                        "%s process_batches batch Put error",
+                        name,
+                        exc_info=True,
+                    )
+                    raise e
         while batch_queue.qsize() == 0:
             logging.info(
                 " %s process_batches loaded all the data epoch %s", name, epoch
