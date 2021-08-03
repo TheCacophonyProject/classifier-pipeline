@@ -153,7 +153,7 @@ class DataGenerator(keras.utils.Sequence):
         "Generate one batch of data"
         # Generate indexes of the batch
         start = time.time()
-        if index == len(self) // 3 and self.eager_load:
+        if index == len(self) // 2 and self.eager_load:
             logging.info(
                 "%s on epoch %s index % s loading next epoch data",
                 self.dataset.name,
@@ -594,8 +594,11 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
             logging.info("%s process_batches loading new epoch %s", name, epoch)
             total = 0
             continue
-        for segments, data in batches:
+        for i in range(len(batches)):
+            segments, data = batches[i]
             batch_data = loadbatch(labels, segments, data, params, label_mapping)
+            batches[i] = batch_data
+        for batch_data in batches:
             try:
                 put_with_timeout(
                     train_queue, batch_data, 30, f"train_queue-process_batches {name}"
