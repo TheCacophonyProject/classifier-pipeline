@@ -187,7 +187,12 @@ class DataGenerator(keras.utils.Sequence):
         if self.loaded_epochs >= self.epochs:
             return
         self.epoch_labels.append([])
-        logging.info("%s loading epoch %s", self.dataset.name, self.loaded_epochs)
+        logging.info(
+            "%s loading epoch %s shuffling %s",
+            self.dataset.name,
+            self.loaded_epochs,
+            self.shuffle,
+        )
         self.samples = self.dataset.epoch_samples(
             cap_samples=self.cap_samples,
             replace=False,
