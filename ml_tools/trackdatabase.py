@@ -383,8 +383,8 @@ class TrackDatabase:
         """
         track_attrs = track.attrs
 
-        model_group = track.create_group("model_predicitons")
-        for prediction in model_predicitons:
+        model_group = track.create_group("model_predictions")
+        for prediction in model_predictions:
             pred_g = model_group.create_group(
                 f'{prediction.get("model_name", "unnamed")}-{prediction.get("id", 0)}'
             )
