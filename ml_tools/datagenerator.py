@@ -591,7 +591,7 @@ def process_batches(batch_queue, q, labels, params, label_mapping, name, stop_at
                 raise e
         while batch_queue.qsize() == 0:
             logging.info(" %s loaded all the data", name)
-            time.sleep(10)
+            time.sleep(1)
 
 
 # Found hanging problems with blocking forever so using this as workaround
