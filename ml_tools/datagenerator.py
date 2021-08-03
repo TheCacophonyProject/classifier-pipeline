@@ -595,7 +595,8 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
             logging.info("%s process_batches loading new epoch %s", name, epoch)
             total = 0
             continue
-        for batch_i in range(chunk_size):
+        chunks = math.ceil(chunk_size / len(batches))
+        for batch_i in range(chunks):
             start = batch_i * chunk_size
             chunk = batches[start : start + chunk_size]
 
