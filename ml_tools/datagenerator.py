@@ -363,7 +363,7 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
     y = y[:data_i]
     if len(X) == 0:
         logging.error("Empty length of x")
-
+    assert len(X) == len(y)
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
     total_time = time.time() - start
