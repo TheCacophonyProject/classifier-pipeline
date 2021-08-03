@@ -73,11 +73,11 @@ class DataGenerator(keras.utils.Sequence):
         if use_threads:
             # This will be slower, but use less memory
             # Queue is also extremely slow so should be change to deque
-            self.epoch_queue = Queue(self.params.maximum_preload)
-            self.train_queue = Queue(params.get("buffer_size", 128))
+            self.epoch_queue = Queue()
+            self.train_queue = Queue(self.params.maximum_preload)
         else:
-            self.epoch_queue = multiprocessing.Queue(self.params.maximum_preload)
-            self.train_queue = multiprocessing.Queue(params.get("buffer_size", 128))
+            self.epoch_queue = multiprocessing.Queue()
+            self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
 
         self.segments = None
         self.segments = []
@@ -168,7 +168,9 @@ class DataGenerator(keras.utils.Sequence):
             X, y = self.epoch_data[self.cur_epoch]
         else:
             try:
-                X, y, y_original = get_with_timeout(self.train_queue, 30)
+                X, y, y_original = get_with_timeout(
+                    self.train_queue, 30, self.dataset.name
+                )
             except:
                 logging.error(
                     "%s error getting preloaded data",
@@ -494,7 +496,7 @@ def preloader(
     p_preprocess.start()
     while True:
         try:
-            item = get_with_timeout(epoch_queue, 30)
+            item = get_with_timeout(epoch_queue, 30, name)
         except:
             logging.error("%s epoch %s error", name, epoch, exc_info=True)
             return
@@ -545,7 +547,7 @@ def preloader(
                             segment_data.append(frame_data)
                         loaded_batches.append((segments, segment_data))
                     # this will block if process batches isn't ready for more
-                    put_with_timeout(batch_q, loaded_batches, 30)
+                    put_with_timeout(batch_q, loaded_batches, 30, name)
                     # put all at once save queue overheader
                     del track_frames
                     track_frames = {}
@@ -582,7 +584,7 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
     epoch = 0
     while True:
         batches = None
-        batches = get_with_timeout(batch_queue, 30)
+        batches = get_with_timeout(batch_queue, 30, name)
         if batches == "STOP":
             logging.info("%s process batch thread received stop", name)
             return
@@ -594,7 +596,7 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
         for segments, data in batches:
             batch_data = loadbatch(labels, segments, data, params, label_mapping)
             try:
-                put_with_timeout(train_queue, batch_data, 30)
+                put_with_timeout(train_queue, batch_data, 30, name)
                 total += 1
                 if total % LOG_EVERY == 0:
                     logging.info(
@@ -619,24 +621,26 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
 
 # Found hanging problems with blocking forever so using this as workaround
 # keeps trying to put data in queue until complete
-def put_with_timeout(queue, data, timeout):
+def put_with_timeout(queue, data, timeout, name=None):
     while True:
         try:
             queue.put(data, block=True, timeout=timeout)
             break
         except (Full):
+            logging.info("%s cant put cause full", name)
             pass
         except Exception as e:
             raise e
 
 
 # keeps trying to get data in queue until complete
-def get_with_timeout(queue, timeout):
+def get_with_timeout(queue, timeout, name=None):
     while True:
         try:
             queue_data = queue.get(block=True, timeout=timeout)
             break
         except (Empty):
+            logging.info("%s cant get cause empty", name)
             pass
         except Exception as e:
             raise e
