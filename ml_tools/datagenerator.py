@@ -1,5 +1,4 @@
 from collections import deque
-import pickle
 import math
 import logging
 import tensorflow.keras as keras
@@ -69,15 +68,16 @@ class DataGenerator(keras.utils.Sequence):
         self.loaded_epochs = 0
         self.epoch_stats = []
         self.eager_load = params.get("eager_load", False)
+        self.extend_time = 0
         use_threads = False
         if use_threads:
             # This will be slower, but use less memory
             # Queue is also extremely slow so should be change to deque
-            self.load_queue = Queue()
-            self.preloader_queue = Queue(params.get("buffer_size", 128))
+            self.epoch_queue = Queue(self.params.maximum_preload)
+            self.train_queue = Queue(params.get("buffer_size", 128))
         else:
-            self.load_queue = multiprocessing.Queue()
-            self.preloader_queue = multiprocessing.Queue(params.get("buffer_size", 128))
+            self.epoch_queue = multiprocessing.Queue(self.params.maximum_preload)
+            self.train_queue = multiprocessing.Queue(params.get("buffer_size", 128))
 
         self.segments = None
         self.segments = []
@@ -90,8 +90,8 @@ class DataGenerator(keras.utils.Sequence):
             self.preloader_thread = threading.Thread(
                 target=preloader,
                 args=(
-                    self.preloader_queue,
-                    self.load_queue,
+                    self.train_queue,
+                    self.epoch_queue,
                     self.labels,
                     self.dataset.name,
                     self.dataset.db,
@@ -105,8 +105,8 @@ class DataGenerator(keras.utils.Sequence):
             self.preloader_thread = multiprocessing.Process(
                 target=preloader,
                 args=(
-                    self.preloader_queue,
-                    self.load_queue,
+                    self.train_queue,
+                    self.epoch_queue,
                     self.labels,
                     self.dataset.name,
                     self.dataset.db,
@@ -129,18 +129,18 @@ class DataGenerator(keras.utils.Sequence):
         )
 
     def stop_load(self):
-        if not self.load_queue:
+        if not self.epoch_queue:
             return
         logging.info("stopping %s", self.dataset.name)
-        self.load_queue.put("STOP")
+        self.epoch_queue.put("STOP")
         time.sleep(4)
         if hasattr(self.preloader_thread, "terminate"):
             self.preloader_thread.terminate()
-        del self.preloader_queue
+        del self.train_queue
         del self.preloader_thread
-        del self.load_queue
-        self.load_queue = None
-        self.preloader_queue = None
+        del self.epoch_queue
+        self.epoch_queue = None
+        self.train_queue = None
 
     def get_epoch_labels(self, epoch=-1):
         return self.epoch_labels[epoch]
@@ -162,13 +162,13 @@ class DataGenerator(keras.utils.Sequence):
                 index,
             )
             self.load_next_epoch()
-
+        # logging.info("%s requesting %s", self.dataset.name, index)
         if index == 0 and len(self.epoch_data) > self.cur_epoch:
             # when tensorflow uses model.fit it requests index 0 twice
             X, y = self.epoch_data[self.cur_epoch]
         else:
             try:
-                X, y, y_original = get_with_timeout(self.preloader_queue, 30)
+                X, y, y_original = get_with_timeout(self.train_queue, 30)
             except:
                 logging.error(
                     "%s error getting preloaded data",
@@ -179,8 +179,9 @@ class DataGenerator(keras.utils.Sequence):
             # always keep a copy of epoch data
             if index == 0:
                 self.epoch_data.append((X, y))
-
+            start = time.time()
             self.epoch_labels[self.cur_epoch].extend(y_original)
+            self.extend_time += time.time() - start
         return X, y
 
     def load_next_epoch(self):
@@ -223,8 +224,7 @@ class DataGenerator(keras.utils.Sequence):
 
         logging.info("%s adding %s", self.dataset.name, len(batches))
         if len(batches) > 0:
-            pickled_batches = pickle.dumps((self.loaded_epochs + 1, batches))
-            self.load_queue.put(pickled_batches)
+            self.epoch_queue.put((self.loaded_epochs + 1, batches))
 
         self.epoch_samples.append(len(self.samples))
         self.dataset.segments = []
@@ -244,8 +244,7 @@ class DataGenerator(keras.utils.Sequence):
 
             logging.info(self.dataset.name, "adding", len(batches))
             if len(batches) > 0:
-                pickled_batches = pickle.dumps((self.loaded_epochs + 1, batches))
-                self.load_queue.put(pickled_batches)
+                self.epoch_queue.put((self.loaded_epochs + 1, batches))
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
@@ -259,10 +258,16 @@ class DataGenerator(keras.utils.Sequence):
             self.cur_epoch,
         )
         batches = len(self)
-
         self.epoch_data[self.cur_epoch] = None
         last_stats = self.epoch_label_count()
-        logging.info("epoch ended for %s %s", self.dataset.name, last_stats)
+        logging.info(
+            "epoch ended for %s %s extend time %s",
+            self.dataset.name,
+            last_stats,
+            self.extend_time,
+        )
+        self.extend_time = 0
+
         self.cur_epoch += 1
 
     def epoch_label_count(self):
@@ -446,8 +451,8 @@ def load_batch_frames(
 
 
 def preloader(
-    q,
-    load_queue,
+    train_queue,
+    epoch_queue,
     labels,
     name,
     db,
@@ -472,17 +477,24 @@ def preloader(
     epoch = 0
     # dictionary with keys track_uids and then dicitonary of frame_ids
     track_frames = {}
-    batch_q = multiprocessing.Queue()
+    batch_q = multiprocessing.Queue(1)
 
     # this thread does the data pre processing
     p_preprocess = multiprocessing.Process(
         target=process_batches,
-        args=(batch_q, q, labels, params, label_mapping, name, params.maximum_preload),
+        args=(
+            batch_q,
+            train_queue,
+            labels,
+            params,
+            label_mapping,
+            name,
+        ),
     )
     p_preprocess.start()
     while True:
         try:
-            item = get_with_timeout(load_queue, 30)
+            item = get_with_timeout(epoch_queue, 30)
         except:
             logging.error("%s epoch %s error", name, epoch, exc_info=True)
             return
@@ -492,7 +504,8 @@ def preloader(
             logging.info("%s received stop", name)
             break
         try:
-            epoch, batches = pickle.loads(item)
+            epoch, batches = item
+            batch_q.put(int(epoch))
             logging.info(
                 "%s Preloader got %s batches for epoch %s",
                 name,
@@ -502,10 +515,10 @@ def preloader(
             total = 0
 
             preload_amount = max(1, params.maximum_preload // 2)
-            load_until = 1
+            # Once process_batch starts to back up
             loaded_up_to = 0
             while loaded_up_to < len(batches):
-                if batch_q.qsize() < load_until and loaded_up_to < len(batches):
+                if loaded_up_to < len(batches):
                     next_load = batches[loaded_up_to : loaded_up_to + preload_amount]
                     logging.info(
                         "%s loading more data, have segments: %s  loading %s - %s of %s qsize %s ",
@@ -514,7 +527,7 @@ def preloader(
                         loaded_up_to,
                         loaded_up_to + len(next_load),
                         len(batches),
-                        q.qsize(),
+                        train_queue.qsize(),
                     )
                     batch_data = load_batch_frames(
                         track_frames,
@@ -531,7 +544,8 @@ def preloader(
                             frame_data = get_cached_frames(track_frames, seg)
                             segment_data.append(frame_data)
                         loaded_batches.append((segments, segment_data))
-                    batch_q.put(loaded_batches)
+                    # this will block if process batches isn't ready for more
+                    put_with_timeout(batch_q, loaded_batches, 30)
                     # put all at once save queue overheader
                     del track_frames
                     track_frames = {}
@@ -545,6 +559,12 @@ def preloader(
                     )
                     total += 1
                 else:
+                    logging.info(
+                        "%s preloaded maximum frames batch qsize %s, loaded up to %s",
+                        name,
+                        batch_q.qsize(),
+                        loaded_up_to,
+                    )
                     time.sleep(2)
 
             logging.info("%s loaded epoch %s", name, epoch)
@@ -553,34 +573,37 @@ def preloader(
             pass
 
 
-def process_batches(batch_queue, q, labels, params, label_mapping, name, stop_at):
+LOG_EVERY = 50
+
+
+def process_batches(batch_queue, train_queue, labels, params, label_mapping, name):
     # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
     total = 0
-    b_total = 0
-    g_total = 0
-    p_total = 0
+    epoch = 0
     while True:
-        while stop_at is not None and q.qsize() > stop_at:
-            logging.debug("%s Q has maximum preload", name)
-            time.sleep(2)
-
         batches = None
         batches = get_with_timeout(batch_queue, 30)
         if batches == "STOP":
             logging.info("%s process batch thread received stop", name)
             return
+        elif isinstance(batches, int):
+            logging.info("%s loading new epoch %s", name, epoch)
+            epoch = batches
+            total = 0
+            continue
         for segments, data in batches:
             batch_data = loadbatch(labels, segments, data, params, label_mapping)
             try:
-                put_with_timeout(q, batch_data, 30)
+                put_with_timeout(train_queue, batch_data, 30)
                 total += 1
-                if total % 50 == 0:
-                    logging.debug(
-                        "%s Loaded %s batches %s to load and %s waiting to be trained",
+                if total % LOG_EVERY == 0:
+                    logging.info(
+                        "%s - epoch %s Loaded %s batches %s to load and %s waiting to be trained",
                         name,
+                        epoch,
                         total,
                         batch_queue.qsize(),
-                        q.qsize(),
+                        train_queue.qsize(),
                     )
             except Exception as e:
                 logging.error(
@@ -590,7 +613,7 @@ def process_batches(batch_queue, q, labels, params, label_mapping, name, stop_at
                 )
                 raise e
         while batch_queue.qsize() == 0:
-            logging.info(" %s loaded all the data", name)
+            logging.info(" %s loaded all the data epoch %s", name, epoch)
             time.sleep(1)
 
 
