@@ -502,7 +502,7 @@ def preloader(
             total = 0
 
             preload_amount = max(1, params.maximum_preload // 2)
-            load_until = preload_amount
+            load_until = 1
             loaded_up_to = 0
             while loaded_up_to < len(batches):
                 if batch_q.qsize() < load_until and loaded_up_to < len(batches):
@@ -536,15 +536,12 @@ def preloader(
                     del track_frames
                     track_frames = {}
                     gc.collect()
-                    if loaded_up_to == 0:
-                        load_until = 2
                     loaded_up_to = loaded_up_to + len(next_load)
                     logging.info(
-                        "%s loaded more data qsize is %s loaded up to %s load until %s",
+                        "%s loaded more data qsize is %s loaded up to %s",
                         name,
                         batch_q.qsize(),
                         loaded_up_to,
-                        load_until,
                     )
                     total += 1
                 else:
@@ -564,37 +561,27 @@ def process_batches(batch_queue, q, labels, params, label_mapping, name, stop_at
     p_total = 0
     while True:
         while stop_at is not None and q.qsize() > stop_at:
-            logging.debug(" %s Q has maximum preload", name)
+            logging.debug("%s Q has maximum preload", name)
             time.sleep(2)
-        if total % 50 == 0:
-            logging.info(
-                "Loaded %s batches %s to load and %s waiting to be trained have %s b %s g %s p %s ",
-                total,
-                name,
-                batch_queue.qsize(),
-                q.qsize(),
-                b_total,
-                g_total,
-                p_total,
-            )
-            b_total = 0
-            g_total = 0
-            p_total = 0
-        g_time = time.time()
+
         batches = None
         batches = get_with_timeout(batch_queue, 30)
         if batches == "STOP":
             logging.info("%s process batch thread received stop", name)
             return
-        g_total += time.time() - g_time
         for segments, data in batches:
-            b_time = time.time()
             batch_data = loadbatch(labels, segments, data, params, label_mapping)
-            b_total += time.time() - b_time
-            p_time = time.time()
             try:
                 put_with_timeout(q, batch_data, 30)
                 total += 1
+                if total % 50 == 0:
+                    logging.debug(
+                        "%s Loaded %s batches %s to load and %s waiting to be trained",
+                        name,
+                        total,
+                        batch_queue.qsize(),
+                        q.qsize(),
+                    )
             except Exception as e:
                 logging.error(
                     "%s batch Put error",
@@ -602,7 +589,6 @@ def process_batches(batch_queue, q, labels, params, label_mapping, name, stop_at
                     exc_info=True,
                 )
                 raise e
-            p_total += time.time() - p_time
         while batch_queue.qsize() == 0:
             logging.info(" %s loaded all the data", name)
             time.sleep(10)
