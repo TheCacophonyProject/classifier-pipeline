@@ -525,7 +525,7 @@ def preloader(
             total = 0
 
             preload_amount = min(
-                100, params.maximum_preload // 4
+                100, params.maximum_preload // 2
             )  # Once process_batch starts to back up
             loaded_up_to = 0
             while loaded_up_to < len(batches):
@@ -562,7 +562,7 @@ def preloader(
                     put_with_timeout(
                         batch_q,
                         (epoch, loaded_batches),
-                        30,
+                        1,
                         f"prealoder batch_q {name}",
                     )
                     # put all at once save queue overheader
@@ -647,16 +647,11 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
                         exc_info=True,
                     )
                     raise e
-        while batch_queue.qsize() == 0:
-            logging.info(
-                " %s process_batches loaded all the data epoch %s", name, epoch
-            )
-            time.sleep(1)
 
 
 # Found hanging problems with blocking forever so using this as workaround
 # keeps trying to put data in queue until complete
-def put_with_timeout(queue, data, timeout, name=None, sleep_time=30):
+def put_with_timeout(queue, data, timeout, name=None, sleep_time=10):
     while True:
         try:
             queue.put(data, block=True, timeout=timeout)
@@ -670,7 +665,7 @@ def put_with_timeout(queue, data, timeout, name=None, sleep_time=30):
 
 
 # keeps trying to get data in queue until complete
-def get_with_timeout(queue, timeout, name=None, sleep_time=30):
+def get_with_timeout(queue, timeout, name=None, sleep_time=10):
     while True:
         try:
             queue_data = queue.get(block=True, timeout=timeout)
