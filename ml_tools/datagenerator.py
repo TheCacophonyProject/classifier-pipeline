@@ -420,30 +420,32 @@ def load_batch_frames(
     # loads batches from numpy file, by increasing file location, into supplied track_frames dictionary
     # returns loaded batches as segments
     all_batches = []
-    with numpy_meta as f:
-        data_by_track = {}
-        for batch in batches_by_id:
-            batch_segments = []
-            for s_id in batch:
-                segment = segments_by_id[s_id]
-                batch_segments.append(segment)
-                track_segments = data_by_track.setdefault(
-                    segment.unique_track_id,
-                    (segment.track_info, [], segment.unique_track_id, {}),
-                )
-                regions_by_frames = track_segments[3]
-                regions_by_frames.update(segment.track_bounds)
-                track_segments[1].extend(segment.frame_indices)
-            all_batches.append(batch_segments)
-        # sort by position in file
+    data_by_track = {}
+    for batch in batches_by_id:
+        batch_segments = []
+        for s_id in batch:
+            segment = segments_by_id[s_id]
+            batch_segments.append(segment)
+            track_segments = data_by_track.setdefault(
+                segment.unique_track_id,
+                (segment.track_info, [], segment.unique_track_id, {}),
+            )
+            regions_by_frames = track_segments[3]
+            regions_by_frames.update(segment.track_bounds)
+            track_segments[1].extend(segment.frame_indices)
+        all_batches.append(batch_segments)
+    # sort by position in file
 
-        track_segments = sorted(
-            data_by_track.values(),
-            key=lambda track_segment: track_segment[0]["background"],
-        )
-
-        load_from_numpy(f, track_frames, track_segments, channels, name)
-
+    track_segments = sorted(
+        data_by_track.values(),
+        key=lambda track_segment: track_segment[0]["background"],
+    )
+    logging.info("%s loading tracks from numpy file", name)
+    try:
+        with numpy_meta as f:
+            load_from_numpy(f, track_frames, track_segments, channels, name)
+    except:
+        logging.error("%s error loading numpy file", name, exc_info=True)
     return all_batches
 
 
