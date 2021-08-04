@@ -530,9 +530,8 @@ def preloader(
             )
             total = 0
 
-            preload_amount = min(
-                100, params.maximum_preload // 2
-            )  # Once process_batch starts to back up
+            preload_amount = max(1, params.maximum_preload // 2)
+            # Once process_batch starts to back up
             loaded_up_to = 0
             while loaded_up_to < len(batches):
                 if loaded_up_to < len(batches):
