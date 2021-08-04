@@ -134,7 +134,7 @@ class DataGenerator(keras.utils.Sequence):
             return
         logging.info("stopping %s", self.dataset.name)
         self.epoch_queue.put("STOP")
-        time.sleep(4)
+        time.sleep(10)
         if hasattr(self.preloader_thread, "terminate"):
             self.preloader_thread.terminate()
         del self.train_queue
