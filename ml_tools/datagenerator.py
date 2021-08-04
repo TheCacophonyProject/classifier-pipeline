@@ -75,8 +75,10 @@ class DataGenerator(keras.utils.Sequence):
             self.epoch_queue = Queue()
             self.train_queue = Queue(self.params.maximum_preload)
         else:
-            self.epoch_queue = multiprocessing.Queue()
-            self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
+            self.epoch_queue = multiprocessing.Manager().Queue()
+            self.train_queue = multiprocessing.Manager().Queue(
+                self.params.maximum_preload
+            )
 
         self.segments = None
         self.segments = []
@@ -476,21 +478,27 @@ def preloader(
     epoch = 0
     # dictionary with keys track_uids and then dicitonary of frame_ids
     track_frames = {}
-    batch_q = multiprocessing.Queue(1)
+    batch_q = multiprocessing.Manager().Queue(1)
 
     # this thread does the data pre processing
-    p_preprocess = multiprocessing.Process(
-        target=process_batches,
-        args=(
-            batch_q,
-            train_queue,
-            labels,
-            params,
-            label_mapping,
-            name,
-        ),
-    )
-    p_preprocess.start()
+    p_list = []
+    processes = 1
+    if name == "train":
+        processes = 2
+    for i in range(processes):
+        p_preprocess = multiprocessing.Process(
+            target=process_batches,
+            args=(
+                batch_q,
+                train_queue,
+                labels,
+                params,
+                label_mapping,
+                name,
+            ),
+        )
+        p_list.append(p_preprocess)
+        p_preprocess.start()
     while True:
         try:
             item = get_with_timeout(epoch_queue, 30, f"epoch_queue preloader {name}")
@@ -499,12 +507,12 @@ def preloader(
             return
 
         if item == "STOP":
-            batch_q.put("STOP")
+            for i in range(processes):
+                batch_q.put("STOP")
             logging.info("%s preloader received stop", name)
             break
         try:
             epoch, batches = item
-            put_with_timeout(batch_q, int(epoch), 30, f"batch_q preloader {name}")
             logging.info(
                 "%s preloader got %s batches for epoch %s",
                 name,
@@ -549,7 +557,10 @@ def preloader(
                         loaded_batches.append((segments, segment_data))
                     # this will block if process batches isn't ready for more
                     put_with_timeout(
-                        batch_q, loaded_batches, 30, f"prealoder batch_q {name}"
+                        batch_q,
+                        (epoch, loaded_batches),
+                        30,
+                        f"prealoder batch_q {name}",
                     )
                     # put all at once save queue overheader
                     del track_frames
@@ -580,9 +591,6 @@ def preloader(
             pass
 
 
-LOG_EVERY = 50
-
-
 def process_batches(batch_queue, train_queue, labels, params, label_mapping, name):
     # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
     total = 0
@@ -596,11 +604,12 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
         if batches == "STOP":
             logging.info("%s process_batches thread received stop", name)
             return
-        elif isinstance(batches, int):
-            epoch = batches
+
+        if epoch != batches[0]:
+            epoch = batches[0]
             logging.info("%s process_batches loading new epoch %s", name, epoch)
             total = 0
-            continue
+        batches = batches[1]
         chunks = math.ceil(len(batches) / chunk_size)
         for batch_i in range(chunks):
             start = batch_i * chunk_size
@@ -647,10 +656,11 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
 def put_with_timeout(queue, data, timeout, name=None):
     while True:
         try:
-            queue.put(data, block=True, timeout=timeout)
+            queue.put(data, block=False)
             break
         except (Full):
             logging.info("%s cant put cause full", name)
+            time.sleep(timeout)
             pass
         except Exception as e:
             raise e
@@ -660,10 +670,11 @@ def put_with_timeout(queue, data, timeout, name=None):
 def get_with_timeout(queue, timeout, name=None):
     while True:
         try:
-            queue_data = queue.get(block=True, timeout=timeout)
+            queue_data = queue.get(block=False)
             break
         except (Empty):
             logging.info("%s cant get cause empty", name)
+            time.sleep(timeout)
             pass
         except Exception as e:
             raise e
