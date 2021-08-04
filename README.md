@@ -42,6 +42,24 @@ Trains a neural net using a provided test / train / validation dataset.
 
 ### classify.py
 Uses a pre-trained model to identifying and classifying any animals in a CPTV file.
+Classifier will produce a JSON output either to terminal or txt file.
+
+#### thumbnail algorithm
+A single region to be used as the thumbnail will be chosen per recording and saved in the JSON output
+
+If a recording has tracks
+- An overriding tag based on the number of occurrences of an animal is chosen, with any
+animal being favoured over false-positive
+e.g. rat, possum, possum, false-positive, false-positive, false-positive.... Will be a possum tag
+
+- All tracks will be scored on prediction confidence, standard deviation of mass and mass.
+- Choose highest scoring track and take the region with the 75th percentile mass as the thumbnail region
+
+If there are no tracks for a recording
+
+Choose the region with greatest mass if any regions exist (these are points of interest that never eventuated into tracks)
+
+Otherwise take the frame with the highest mean pixel value and find the highest mean pixel 64 x64 region
 
 ### evaluate.py
 Evaluates the performance of a classify.py run and generates reports.

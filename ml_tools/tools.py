@@ -1,7 +1,7 @@
 """
 Helper functions for classification of the tracks extracted from CPTV videos
 """
-
+import attr
 import os.path
 import numpy as np
 import random
@@ -28,20 +28,19 @@ LOCAL_RESOURCES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reso
 GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
 
 
+@attr.s(eq=False)
 class Rectangle:
     """Defines a rectangle by the topleft point and width / height."""
 
-    def __init__(self, topleft_x, topleft_y, width, height):
-        """Defines new rectangle."""
-        self.x = topleft_x
-        self.y = topleft_y
-        self.width = width
-        self.height = height
+    x = attr.ib()
+    y = attr.ib()
+    width = attr.ib()
+    height = attr.ib()
 
     @staticmethod
     def from_ltrb(left, top, right, bottom):
         """Construct a rectangle from left, top, right, bottom co-ords."""
-        return Rectangle(left, top, right - left, bottom - top)
+        return Rectangle(left, top, width=right - left, height=bottom - top)
 
     def copy(self):
         return Rectangle(self.x, self.y, self.width, self.height)
@@ -135,14 +134,31 @@ class Rectangle:
     def __str__(self):
         return "<({0},{1})-{2}x{3}>".format(self.x, self.y, self.width, self.height)
 
+    def meta_dictionary(self):
+        # Return object as dictionary without is_along_border,was_cropped and id for saving to json
+        region_info = attr.asdict(
+            self,
+            filter=lambda attr, value: attr.name
+            not in ["is_along_border", "was_cropped", "id"],
+        )
+        region_info["pixel_variance"] = round(region_info["pixel_variance"], 2)
+        return region_info
+
 
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, datetime.datetime):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, np.ndarray):
+            return list(obj)
+        elif isinstance(obj, datetime.datetime):
             return obj.isoformat()
-            # Let the base class default method raise the TypeError
-        if isinstance(obj, Rectangle):
-            return int(obj.left), int(obj.top), int(obj.right), int(obj.bottom)
+        elif isinstance(obj, Rectangle):
+            return obj.meta_dictionary()
         # Let the base class default method raise the TypeError
         return json.JSONEncoder.default(self, obj)
 

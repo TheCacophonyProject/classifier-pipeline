@@ -86,6 +86,7 @@ class ModelConfig:
     wallaby = attr.ib()
     tag_scores = attr.ib()
     ignored_tags = attr.ib()
+    thumbnail_model = attr.ib()
 
     @classmethod
     def load(cls, raw):
@@ -97,6 +98,7 @@ class ModelConfig:
             wallaby=raw.get("wallaby", False),
             tag_scores=load_scores(raw.get("tag_scores", {})),
             ignored_tags=raw.get("ignored_tags", []),
+            thumbnail_model=raw.get("thumbnail_model", False),
         )
         return model
 

@@ -13,7 +13,7 @@ class Predictions:
         self.labels = labels
         self.prediction_per_track = {}
         self.model = model
-        self.classify_time = None
+        self.model_load_time = None
 
     def get_or_create_prediction(self, track, keep_all=True):
         prediction = self.prediction_per_track.setdefault(
@@ -45,6 +45,15 @@ class Predictions:
     def prediction_description(self, track_id):
         return self.prediction_per_track.get(track_id).description()
 
+    @property
+    def classify_time(self):
+        classify_time = [
+            prediction.classify_time
+            for prediction in self.prediction_per_track.values()
+            if prediction.classify_time is not None
+        ]
+        return np.sum(classify_time)
+
 
 class TrackPrediction:
     """
@@ -70,6 +79,7 @@ class TrackPrediction:
         self.max_novelty = 0
         self.novelty_sum = 0
         self.labels = labels
+        self.classify_time = None
 
     def classified_clip(
         self,
@@ -331,6 +341,26 @@ class TrackPrediction:
             if self.score(i) and self.score(i) > 0.5
         ]
         return guesses
+
+    def get_metadata(self):
+        prediction_meta = {}
+        if self.classify_time is not None:
+            prediction_meta["classify_time"] = round(self.classify_time, 1)
+
+        prediction_meta["label"] = self.predicted_tag()
+        prediction_meta["confidence"] = round(self.max_score, 2)
+        prediction_meta["clarity"] = round(self.clarity, 3)
+        prediction_meta["average_novelty"] = float(round(self.average_novelty, 2))
+        prediction_meta["max_novelty"] = float(round(self.max_novelty, 2))
+        prediction_meta["all_class_confidences"] = {}
+
+        prediction_meta["predictions"] = np.uint16(
+            np.round(100 * self.smoothed_predictions)
+        )
+        for i, value in enumerate(self.class_best_score):
+            label = self.labels[i]
+            prediction_meta["all_class_confidences"][label] = round(value, 3)
+        return prediction_meta
 
 
 @attr.s(slots=True)

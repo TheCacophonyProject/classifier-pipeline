@@ -20,6 +20,8 @@ from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer
 from track.track import Track
 
+from classify.thumbnail import get_thumbnail
+
 
 class ClipClassifier(CPTVFileProcessor):
     """Classifies tracks within CPTV files."""
@@ -142,7 +144,6 @@ class ClipClassifier(CPTVFileProcessor):
         Returns a classifier object, which is created on demand.
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
         """
-        t0 = datetime.now()
         logging.info("classifier loading")
         classifier = None
         if is_keras_model(model.model_file):
@@ -155,7 +156,6 @@ class ClipClassifier(CPTVFileProcessor):
             )
             classifier.load(model.model_file)
 
-        logging.info("classifier loaded ({})".format(datetime.now() - t0))
         return classifier
 
     def get_meta_data(self, filename):
@@ -232,27 +232,26 @@ class ClipClassifier(CPTVFileProcessor):
             raise Exception("File {} not found.".format(filename))
         logging.info("Processing file '{}'".format(filename))
 
-        # prediction record for each track
-
         start = time.time()
         clip = Clip(self.tracker_config, filename)
         self.track_extractor.parse_clip(clip)
         predictions_per_model = {}
         if self.model:
             prediction = self.classify_clip(clip, self.model)
-            predictions_per_model[self.model.name] = prediction
+            predictions_per_model[self.model.id] = prediction
         else:
             for model in self.config.classify.models:
                 prediction = self.classify_clip(clip, model)
-                predictions_per_model[model.name] = prediction
+                predictions_per_model[model.id] = prediction
         return clip, predictions_per_model
 
     def classify_clip(self, clip, model):
-        start = time.time()
-
+        load_start = time.time()
         classifier = self.get_classifier(model)
-
+        load_time = time.time() - load_start
+        logging.info("classifier loaded (%s)", load_time)
         predictions = Predictions(classifier.labels, model)
+        predictions.model_load_time = load_time
         for i, track in enumerate(clip.tracks):
             prediction = self.identify_track(
                 classifier,
@@ -269,7 +268,6 @@ class ClipClassifier(CPTVFileProcessor):
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
             )
             logging.info("Took {:.1f}ms per frame".format(ms_per_frame))
-        predictions.classify_time = time.time() - start
         tools.clear_session()
         del classifier
         gc.collect()
@@ -309,62 +307,24 @@ class ClipClassifier(CPTVFileProcessor):
             save_file["cptv_meta"] = meta_data
             save_file["original_tag"] = meta_data["primary_tag"]
 
-        save_file["tracks"] = []
+        tracks = []
         for track in clip.tracks:
-            track_info = {}
-            start_s, end_s = clip.start_and_end_in_secs(track)
-            save_file["tracks"].append(track_info)
-            track_info["id"] = track.get_id()
-            track_info["start_s"] = round(start_s, 2)
-            track_info["end_s"] = round(end_s, 2)
-            track_info["num_frames"] = len(track)
-            track_info["frame_start"] = track.start_frame
-            track_info["frame_end"] = track.end_frame
+            track_info = track.get_metadata(predictions_per_model)
+            tracks.append(track_info)
+        save_file["tracks"] = tracks
 
-            positions = []
-            for region in track.bounds_history:
-                track_time = round(region.frame_number / clip.frames_per_second, 2)
-                positions.append([track_time, region])
-            track_info["positions"] = positions
-            prediction_info = []
-            for model, predictions in predictions_per_model.items():
-                model_info = {
-                    "id": predictions.model.id,
-                    "model_file": predictions.model.model_file,
-                    "model_name": predictions.model.name,
-                }
-                prediction = predictions.prediction_for(track.get_id())
-                model_info["label"] = prediction.predicted_tag()
-                model_info["confidence"] = round(prediction.max_score, 2)
-                model_info["clarity"] = round(prediction.clarity, 3)
-                model_info["average_novelty"] = float(
-                    round(prediction.average_novelty, 2)
-                )
-                model_info["max_novelty"] = float(round(prediction.max_novelty, 2))
-                model_info["all_class_confidences"] = {}
-                prediction_data = []
-                for pred in prediction.smoothed_predictions:
-                    pred_list = [int(round(p * 100)) for p in pred]
-                    prediction_data.append(pred_list)
-                model_info["predictions"] = prediction_data
-                for i, value in enumerate(prediction.class_best_score):
-                    label = prediction.labels[i]
-                    model_info["all_class_confidences"][label] = round(float(value), 3)
-                prediction_info.append(model_info)
-            track_info["predictions"] = prediction_info
         model_dictionaries = []
         for model in models:
             model_dic = model.as_dict()
-            model_time = [
-                predictions.classify_time
-                for predictions in predictions_per_model.values()
-                if predictions.model == model
-            ]
-            if len(model_time) > 0:
-                model_dic["classify_time"] = round(model_time[0], 1)
+            model_predictions = predictions_per_model[model.id]
+            model_dic["classify_time"] = round(
+                model_predictions.classify_time + model_predictions.model_load_time, 1
+            )
             model_dictionaries.append(model_dic)
 
         save_file["models"] = model_dictionaries
+        thumbnail_region = get_thumbnail(clip, predictions_per_model)
+        save_file["thumbnail_region"] = thumbnail_region
         if self.config.classify.meta_to_stdout:
             print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
         else:
