@@ -170,7 +170,10 @@ class DataGenerator(keras.utils.Sequence):
         else:
             try:
                 X, y, y_original = get_with_timeout(
-                    self.train_queue, 30, f"train_queue get_item {self.dataset.name}"
+                    self.train_queue,
+                    30,
+                    f"train_queue get_item {self.dataset.name}",
+                    sleep_time=1,
                 )
             except:
                 logging.error(
@@ -501,7 +504,7 @@ def preloader(
         p_preprocess.start()
     while True:
         try:
-            item = get_with_timeout(epoch_queue, 30, f"epoch_queue preloader {name}")
+            item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
         except:
             logging.error("%s preloader epoch %s error", name, epoch, exc_info=True)
             return
@@ -599,7 +602,7 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
     while True:
         batches = None
         batches = get_with_timeout(
-            batch_queue, 30, f"batch_queue process_batches {name}"
+            batch_queue, 1, f"batch_queue process_batches {name}"
         )
         if batches == "STOP":
             logging.info("%s process_batches thread received stop", name)
@@ -632,7 +635,7 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
                     put_with_timeout(
                         train_queue,
                         batch_data,
-                        30,
+                        1,
                         f"train_queue-process_batches {name}",
                     )
 
@@ -653,28 +656,28 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
 
 # Found hanging problems with blocking forever so using this as workaround
 # keeps trying to put data in queue until complete
-def put_with_timeout(queue, data, timeout, name=None):
+def put_with_timeout(queue, data, timeout, name=None, sleep_time=30):
     while True:
         try:
-            queue.put(data, block=False)
+            queue.put(data, block=True, timeout=timeout)
             break
         except (Full):
             logging.info("%s cant put cause full", name)
-            time.sleep(timeout)
+            time.sleep(sleep_time)
             pass
         except Exception as e:
             raise e
 
 
 # keeps trying to get data in queue until complete
-def get_with_timeout(queue, timeout, name=None):
+def get_with_timeout(queue, timeout, name=None, sleep_time=30):
     while True:
         try:
-            queue_data = queue.get(block=False)
+            queue_data = queue.get(block=True, timeout=timeout)
             break
         except (Empty):
             logging.info("%s cant get cause empty", name)
-            time.sleep(timeout)
+            time.sleep(sleep_time)
             pass
         except Exception as e:
             raise e
