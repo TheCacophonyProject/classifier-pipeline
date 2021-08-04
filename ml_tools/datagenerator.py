@@ -487,13 +487,13 @@ def preloader(
     epoch = 0
     # dictionary with keys track_uids and then dicitonary of frame_ids
     track_frames = {}
-    batch_q = multiprocessing.Manager().Queue(1)
 
     # this thread does the data pre processing
     p_list = []
     processes = 1
     if name == "train":
         processes = 2
+    batch_q = multiprocessing.Manager().Queue(processes)
     for i in range(processes):
         p_preprocess = multiprocessing.Process(
             target=process_batches,
@@ -617,7 +617,7 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
     # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
     total = 0
     epoch = 0
-    chunk_size = 40
+    chunk_size = 50
     while True:
         batches = None
         batches = get_with_timeout(
@@ -632,66 +632,66 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
             logging.info("%s process_batches loading new epoch %s", name, epoch)
             total = 0
         batches = batches[1]
-        for segments, data in batches:
-            batch_data = loadbatch(labels, segments, data, params, label_mapping)
-            try:
-                if total % LOG_EVERY == 0:
-                    logging.info(
-                        "%s process_batches - epoch %s preprocessed %s",
-                        name,
-                        epoch,
-                        total,
-                    )
-                put_with_timeout(
-                    train_queue,
-                    batch_data,
-                    1,
-                    f"train_queue-process_batches {name}",
-                )
-                total += 1
-
-            except Exception as e:
-                logging.error(
-                    "%s process_batches batch Put error",
-                    name,
-                    exc_info=True,
-                )
-                raise e
-        # batches = batches[1]
-        # chunks = math.ceil(len(batches) / chunk_size)
-        # for batch_i in range(chunks):
-        #     start = batch_i * chunk_size
-        #     chunk = batches[start : start + chunk_size]
-        #
-        #     for i in range(len(chunk)):
-        #         segments, data = chunk[i]
-        #         batch_data = loadbatch(labels, segments, data, params, label_mapping)
-        #         chunk[i] = batch_data
-        #     logging.info(
-        #         "%s process_batches - epoch %s preprocessed %s range %s - %s",
-        #         name,
-        #         epoch,
-        #         total,
-        #         start,
-        #         start + chunk_size,
-        #     )
-        #     for batch_data in chunk:
-        #         try:
-        #             put_with_timeout(
-        #                 train_queue,
-        #                 batch_data,
-        #                 1,
-        #                 f"train_queue-process_batches {name}",
-        #             )
-        #
-        #             total += 1
-        #         except Exception as e:
-        #             logging.error(
-        #                 "%s process_batches batch Put error",
+        # for segments, data in batches:
+        #     batch_data = loadbatch(labels, segments, data, params, label_mapping)
+        #     try:
+        #         if total % LOG_EVERY == 0:
+        #             logging.info(
+        #                 "%s process_batches - epoch %s preprocessed %s",
         #                 name,
-        #                 exc_info=True,
+        #                 epoch,
+        #                 total,
         #             )
-        #             raise e
+        #         put_with_timeout(
+        #             train_queue,
+        #             batch_data,
+        #             1,
+        #             f"train_queue-process_batches {name}",
+        #         )
+        #         total += 1
+        #
+        #     except Exception as e:
+        #         logging.error(
+        #             "%s process_batches batch Put error",
+        #             name,
+        #             exc_info=True,
+        #         )
+        #         raise e
+        # # batches = batches[1]
+        chunks = math.ceil(len(batches) / chunk_size)
+        for batch_i in range(chunks):
+            start = batch_i * chunk_size
+            chunk = batches[start : start + chunk_size]
+
+            for i in range(len(chunk)):
+                segments, data = chunk[i]
+                batch_data = loadbatch(labels, segments, data, params, label_mapping)
+                chunk[i] = batch_data
+            logging.info(
+                "%s process_batches - epoch %s preprocessed %s range %s - %s",
+                name,
+                epoch,
+                total,
+                start,
+                start + chunk_size,
+            )
+            for batch_data in chunk:
+                try:
+                    put_with_timeout(
+                        train_queue,
+                        batch_data,
+                        1,
+                        f"train_queue-process_batches {name}",
+                    )
+
+                    total += 1
+                except Exception as e:
+                    logging.error(
+                        "%s process_batches batch Put error",
+                        name,
+                        exc_info=True,
+                    )
+                    raise e
 
 
 # Found hanging problems with blocking forever so using this as workaround
