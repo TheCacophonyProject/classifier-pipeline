@@ -502,7 +502,7 @@ def preloader(
             break
         try:
             epoch, batches = item
-            put_with_timeout(batch_q, int(epoch), f"batch_q preloader {name}")
+            put_with_timeout(batch_q, int(epoch), 30, f"batch_q preloader {name}")
             logging.info(
                 "%s preloader got %s batches for epoch %s",
                 name,
@@ -600,7 +600,6 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
             total = 0
             continue
         chunks = math.ceil(len(batches) / chunk_size)
-        logging.info("chunks are %s %s %s", chunks)
         for batch_i in range(chunks):
             start = batch_i * chunk_size
             chunk = batches[start : start + chunk_size]
