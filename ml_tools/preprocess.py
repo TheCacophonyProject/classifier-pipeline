@@ -4,11 +4,10 @@ from ml_tools import tools
 from track.track import TrackChannels
 import logging
 from ml_tools import imageprocessing
-
+import enum
 import tensorflow as tf
 
 # size to scale each frame to when loaded.
-FRAME_SIZE = 32
 
 MIN_SIZE = 4
 EDGE = 1
@@ -22,12 +21,12 @@ def convert(image):
     return image
 
 
-def augement_frame(frame, dim):
+def augement_frame(frame, frame_size, dim):
     frame = imageprocessing.resize_cv(
         frame,
         dim,
-        extra_h=random.randint(0, int(FRAME_SIZE * 0.05)),
-        extra_v=random.randint(0, int(FRAME_SIZE * 0.05)),
+        extra_h=random.randint(0, int(frame_size * 0.05)),
+        extra_v=random.randint(0, int(frame_size * 0.05)),
     )
 
     image = convert(frame)
@@ -58,6 +57,7 @@ class FrameTypes(enum.Enum):
 
 def preprocess_segment(
     frames,
+    frame_size,
     reference_level=None,
     frame_velocity=None,
     augment=False,
@@ -153,7 +153,7 @@ def preprocess_segment(
 
         try:
             frame.resize_with_aspect(
-                (FRAME_SIZE, FRAME_SIZE), crop_rectangle, keep_edge=keep_edge
+                (frame_size, frame_size), crop_rectangle, keep_edge=keep_edge
             )
         except Exception as e:
             logging.error("Error resizing frame %s exception %s", frame, e)
@@ -244,6 +244,7 @@ def preprocess_movement(
 ):
     segment, flipped = preprocess_segment(
         segment,
+        frame_size,
         reference_level=reference_level,
         augment=augment,
         default_inset=0,

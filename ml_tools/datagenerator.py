@@ -30,6 +30,8 @@ class GeneartorParams:
         self.mvm = params.get("mvm", False)
         self.type = params.get("type", 1)
         self.segment_type = params.get("segment_type", 1)
+        self.frame_size = params.get("frame_size", 32)
+
         self.keep_edge = params.get("keep_edge", False)
         self.maximum_preload = params.get("maximum_preload", 100)
         self.red_type = params.get("red_type", FrameTypes.thermal_tiled.name)
@@ -327,6 +329,7 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
             data = preprocess_movement(
                 frame_data,
                 params.square_width,
+                params.frame_size,
                 red_type=params.red_type,
                 green_type=params.green_type,
                 blue_type=params.blue_type,

@@ -115,7 +115,7 @@ class TrackHeader:
         res_x=CPTV_FILE_WIDTH,
         res_y=CPTV_FILE_HEIGHT,
         ffc_frames=None,
-        important_frames=None,
+        sample_frames=None,
     ):
         self.res_x = res_x
         self.res_y = res_y
@@ -151,7 +151,7 @@ class TrackHeader:
         self.frame_crop = None
         self.num_frames = num_frames
         self.frames_per_second = frames_per_second
-        self.important_frames = None
+        self.sample_frames = None
         self.important_predicted = 0
         self.frame_mass = frame_mass
         self.lower_mass = np.percentile(frame_mass, q=25)
@@ -160,22 +160,22 @@ class TrackHeader:
         self.mean_mass = np.mean(frame_mass)
         self.ffc_frames = ffc_frames
 
-        if important_frames is not None:
-            self.important_frames = []
-            for frame_num in important_frames:
+        if sample_frames is not None:
+            self.sample_frames = []
+            for frame_num in sample_frames:
                 f = FrameSample(
                     self.clip_id, self.track_id, frame_num, self.label, None, None
                 )
-                self.important_frames.append(f)
+                self.sample_frames.append(f)
         else:
-            self.important_frames = []
+            self.sample_frames = []
             for frame_num, mass in enumerate(self.frame_mass):
                 if mass == 0:
                     continue
                 f = FrameSample(
                     self.clip_id, self.track_id, frame_num, self.label, None, None
                 )
-                self.important_frames.append(f)
+                self.sample_frames.append(f)
         self.track_info = None
 
     def toJSON(self, clip_meta):
@@ -228,13 +228,13 @@ class TrackHeader:
 
     @property
     def num_sample_frames(self):
-        return len(self.important_frames)
+        return len(self.sample_frames)
 
     # trying to get only clear frames, work in progrsss
-    def set_important_frames(self, min_mass=None, frame_data=None, model=None):
+    def set_sample_frames(self, min_mass=None, frame_data=None, model=None):
         # this needs more testing
         frames = []
-        self.important_frames = []
+        self.sample_frames = []
         for i, mass in enumerate(self.frame_mass):
             if self.ffc_frames is not None and i in self.ffc_frames:
                 continue
@@ -281,7 +281,7 @@ class TrackHeader:
                 self.frame_temp_median[frame],
                 self.frame_velocity[frame],
             )
-            self.important_frames.append(f)
+            self.sample_frames.append(f)
         return len(self.sample_frames)
 
     def calculate_frame_crop(self):
@@ -327,7 +327,7 @@ class TrackHeader:
         self.segments = []
         self.filtered_stats = {"segment_mass": 0}
         if use_important:
-            frame_indices = [frame.frame_num for frame in self.important_frames]
+            frame_indices = [frame.frame_num for frame in self.sample_frames]
         else:
             frame_indices = [
                 i
@@ -540,7 +540,7 @@ class TrackHeader:
 
         bounds_history = track_meta["bounds_history"]
         ffc_frames = clip_meta.get("ffc_frames", [])
-        important_frames = track_meta.get("important_frames")
+        sample_frames = track_meta.get("sample_frames")
 
         header = TrackHeader(
             clip_id=int(clip_id),
@@ -562,7 +562,7 @@ class TrackHeader:
             res_x=clip_meta.get("res_x", CPTV_FILE_WIDTH),
             res_y=clip_meta.get("res_y", CPTV_FILE_HEIGHT),
             ffc_frames=ffc_frames,
-            important_frames=important_frames,
+            sample_frames=sample_frames,
         )
         return header
 

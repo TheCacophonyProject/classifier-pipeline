@@ -72,6 +72,7 @@ class Frame:
 
         return f
 
+    @classmethod
     def from_array(
         cls,
         frame_arr,

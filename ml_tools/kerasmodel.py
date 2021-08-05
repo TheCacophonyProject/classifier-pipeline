@@ -1069,6 +1069,24 @@ def optimizer(params):
     return optimizer
 
 
+def is_keras_model(model_file):
+    path, ext = os.path.splitext(model_file)
+    if ext == ".pb":
+        return True
+    return False
+
+
+def validate_model(model_file):
+    path, ext = os.path.splitext(model_file)
+    if ext == ".pb":
+        if not os.path.exists(model_file):
+            return False
+    elif not os.path.exists(model_file + ".meta"):
+        logging.error("No model found named '{}'.".format(model_file + ".meta"))
+        return False
+    return True
+
+
 # HYPER PARAM TRAINING OF A MODEL
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))

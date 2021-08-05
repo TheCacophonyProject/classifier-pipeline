@@ -329,9 +329,7 @@ class Dataset:
         track_meta = self.db.get_track_meta(clip_id, track_id)
         if self.filter_track(clip_meta, track_meta):
             return False
-        track_header = TrackHeader.from_meta(
-            clip_id, clip_meta, track_meta, predictions
-        )
+        track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
         self.tracks.append(track_header)
 
         segment_frame_spacing = int(
