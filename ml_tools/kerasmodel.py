@@ -386,7 +386,7 @@ class KerasModel:
             eager_load=True,
             **self.params,
         )
-        time.sleep(100)
+        time.sleep(1)
         self.validate = DataGenerator(
             self.validation_dataset,
             self.labels,
@@ -404,13 +404,13 @@ class KerasModel:
         class_weight = {}
         for i, label in enumerate(self.labels):
             if label == "bird":
-                class_weight[i] = 1.4
+                class_weight[i] = 1.6
             elif label == "wallaby":
                 # wallabies not so important better to predict birds
                 class_weight[i] = 0.6
             else:
                 class_weight[i] = 1
-        logging.info("loading with class wieghts %s", class_weight)
+        logging.info("training with class wieghts %s", class_weight)
         # give a bit of time for preloader to cache data
         checkpoints = self.checkpoints(run_name)
         history = self.model.fit(

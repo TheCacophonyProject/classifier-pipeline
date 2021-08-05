@@ -134,14 +134,11 @@ class DataGenerator(keras.utils.Sequence):
             return
         logging.info("stopping %s", self.dataset.name)
         self.epoch_queue.put("STOP")
-        time.sleep(10)
-        if hasattr(self.preloader_thread, "terminate"):
-            self.preloader_thread.terminate()
         del self.train_queue
-        del self.preloader_thread
-        del self.epoch_queue
-        self.epoch_queue = None
         self.train_queue = None
+        self.preloader_thread.join(20)
+        if self.preloader_thread.is_alive():
+            self.preloader_thread.kill()
 
     def get_epoch_labels(self, epoch=-1):
         return self.epoch_labels[epoch]
@@ -156,8 +153,8 @@ class DataGenerator(keras.utils.Sequence):
         # Generate indexes of the batch
         start = time.time()
         if index == len(self) // 2 and self.eager_load:
-            logging.info(
-                "%s on epoch %s index % s loading next epoch data",
+            logging.debug(
+                "%s on epoch %s index % s eager loading next epoch data",
                 self.dataset.name,
                 self.loaded_epochs,
                 index,
@@ -214,8 +211,8 @@ class DataGenerator(keras.utils.Sequence):
         if self.cur_epoch == 0:
             self.sample_size = len(self.samples)
 
-        logging.info(
-            "%s num of batches %s",
+        logging.debug(
+            "%s setting number of batches %s",
             self.dataset.name,
             len(self),
         )
@@ -226,7 +223,6 @@ class DataGenerator(keras.utils.Sequence):
             ]
             batches.append(samples)
 
-        logging.info("%s adding %s", self.dataset.name, len(batches))
         if len(batches) > 0:
             self.epoch_queue.put((self.loaded_epochs + 1, batches))
 
@@ -236,36 +232,29 @@ class DataGenerator(keras.utils.Sequence):
         self.loaded_epochs += 1
 
     def reload_samples(self):
-        logging.info("%s reloading samples", self.dataset.name)
+        logging.debug("%s reloading samples", self.dataset.name)
         if self.shuffle:
             np.random.shuffle(self.samples)
-            batches = []
+        batches = []
         for index in range(len(self)):
             samples = self.samples[
                 index * self.batch_size : (index + 1) * self.batch_size
             ]
             batches.append(samples)
 
-            logging.info(self.dataset.name, "adding", len(batches))
-            if len(batches) > 0:
-                self.epoch_queue.put((self.loaded_epochs + 1, batches))
+        if len(batches) > 0:
+            self.epoch_queue.put((self.loaded_epochs + 1, batches))
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
         if not self.eager_load:
             self.load_next_epoch()
         self.sample_size = self.epoch_samples[self.cur_epoch]
-        logging.info(
-            "%s setting sample size from %s and last epoch was %s",
-            self.dataset.name,
-            len(self.epoch_samples),
-            self.cur_epoch,
-        )
         batches = len(self)
         self.epoch_data[self.cur_epoch] = None
         last_stats = self.epoch_label_count()
         logging.info(
-            "epoch ended for %s %s",
+            "%s epoch ended %s",
             self.dataset.name,
             last_stats,
         )
@@ -364,6 +353,16 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
                 sample,
             )
             continue
+        # just for testing
+        xnan = np.any(np.isnan(data))
+        if xnan:
+            logging.error(
+                "got  nan for x samples %s augment %s indices %s",
+                sample,
+                params.augment,
+                sample.frame_indices,
+            )
+
         y_original.append(sample.label)
         X[data_i] = data
         y[data_i] = labels.index(label)
@@ -372,15 +371,13 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
     X = X[:data_i]
     y = y[:data_i]
     if len(X) == 0:
-        logging.error("Empty length of x")
+        logging.warn("Empty length of x")
     assert len(X) == len(y)
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
     total_time = time.time() - start
     logging.debug(
-        "augment? %s took to preprocess %s",
-        params.augment,
-        total_time,
+        "augment? %s took to preprocess %s %s", params.augment, total_time, len(X)
     )
     if params.mvm:
         return [np.array(X), np.array(mvm)], y, y_original
@@ -416,7 +413,7 @@ def load_from_numpy(f, frames_by_track, tracks, channels, name):
                 frame.filtered = frame.thermal - frame.region.subimage(background)
             except:
                 logging.error("%s error loading track %s frame %s".u_id, frame_i)
-    logging.info("%s time to load %s frames %s", name, count, time.time() - start)
+    logging.debug("%s time to load %s frames %s", name, count, time.time() - start)
     return frames_by_track
 
 
@@ -446,12 +443,11 @@ def load_batch_frames(
             track_segments[1].extend(segment.frame_indices)
         all_batches.append(batch_segments)
     # sort by position in file
-
     track_segments = sorted(
         data_by_track.values(),
         key=lambda track_segment: track_segment[0]["background"],
     )
-    logging.info("%s loading tracks from numpy file", name)
+    logging.debug("%s loading tracks from numpy file", name)
     try:
         with numpy_meta as f:
             load_from_numpy(f, track_frames, track_segments, channels, name)
@@ -516,13 +512,18 @@ def preloader(
             return
 
         if item == "STOP":
+            logging.info("%s preloader received stop", name)
             for i in range(processes):
                 batch_q.put("STOP")
-            logging.info("%s preloader received stop", name)
+            # try shutdown nicely
+            for process in p_list:
+                process.join(20)
+                if process.is_alive():
+                    process.kill()
             break
         try:
             epoch, batches = item
-            logging.info(
+            logging.debug(
                 "%s preloader got %s batches for epoch %s",
                 name,
                 len(batches),
@@ -534,72 +535,52 @@ def preloader(
             # Once process_batch starts to back up
             loaded_up_to = 0
             while loaded_up_to < len(batches):
-                if loaded_up_to < len(batches):
-                    next_load = batches[loaded_up_to : loaded_up_to + preload_amount]
-                    logging.info(
-                        "%s preloader loading more data, have segments: %s  loading %s - %s of %s qsize %s ",
-                        name,
-                        batch_q.qsize(),
-                        loaded_up_to,
-                        loaded_up_to + len(next_load),
-                        len(batches),
-                        train_queue.qsize(),
-                    )
-                    batch_data = load_batch_frames(
-                        track_frames,
-                        numpy_meta,
-                        next_load,
-                        segments_by_id,
-                        channels,
-                        name,
-                    )
-                    logging.info(
-                        "%s preloader got batch frames %s", name, len(batch_data)
-                    )
-                    loaded_batches = []
-                    for segments in batch_data:
-                        segment_data = []
-                        for seg in segments:
-                            frame_data = get_cached_frames(track_frames, seg)
-                            segment_data.append(frame_data)
-                        loaded_batches.append((segments, segment_data))
-                    # this will block if process batches isn't ready for more
-                    chunk_size = math.ceil(len(loaded_batches) / processes)
-                    logging.info(
-                        "%s split into chunks %s from %s",
-                        name,
-                        chunk_size,
-                        len(loaded_batches),
-                    )
-                    while len(loaded_batches) > 0:
-                        put_with_timeout(
-                            batch_q,
-                            (epoch, loaded_batches[:chunk_size]),
-                            1,
-                            f"prealoder batch_q {name}",
-                        )
-                        loaded_batches = loaded_batches[chunk_size:]
+                next_load = batches[loaded_up_to : loaded_up_to + preload_amount]
+                logging.debug(
+                    "%s preloader loading %s - %s",
+                    name,
+                    loaded_up_to,
+                    loaded_up_to + len(next_load),
+                )
+                batch_data = load_batch_frames(
+                    track_frames,
+                    numpy_meta,
+                    next_load,
+                    segments_by_id,
+                    channels,
+                    name,
+                )
+                # TO DELETE JUST OFR TESTING
+                logging.debug("%s preloader got batch frames %s", name, len(batch_data))
+                loaded_batches = []
+                for segments in batch_data:
+                    segment_data = []
+                    for seg in segments:
+                        frame_data = get_cached_frames(track_frames, seg)
+                        segment_data.append(frame_data)
+                    loaded_batches.append((segments, segment_data))
 
-                    # put all at once save queue overheader
-                    del track_frames
-                    track_frames = {}
-                    gc.collect()
-                    loaded_up_to = loaded_up_to + len(next_load)
-                    logging.info(
-                        "%s preloader loaded more data qsize is %s loaded up to %s",
-                        name,
-                        batch_q.qsize(),
-                        loaded_up_to,
+                chunk_size = math.ceil(len(loaded_batches) / processes)
+                while len(loaded_batches) > 0:
+                    # this will block if process batches isn't ready for more
+                    put_with_timeout(
+                        batch_q,
+                        (epoch, loaded_batches[:chunk_size]),
+                        1,
+                        f"prealoder batch_q {name}",
                     )
-                    total += 1
-                else:
-                    logging.info(
-                        "%s preloader preloaded maximum frames batch qsize %s, loaded up to %s",
-                        name,
-                        batch_q.qsize(),
-                        loaded_up_to,
-                    )
-                    time.sleep(2)
+                    loaded_batches = loaded_batches[chunk_size:]
+
+                del track_frames
+                track_frames = {}
+                gc.collect()
+                loaded_up_to = loaded_up_to + len(next_load)
+                logging.debug(
+                    "%s preloader loaded  up to %s",
+                    name,
+                    loaded_up_to,
+                )
+                total += 1
 
             logging.info("%s preloader loaded epoch %s", name, epoch)
         except Exception as inst:
@@ -628,7 +609,7 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
 
         if epoch != batches[0]:
             epoch = batches[0]
-            logging.info("%s process_batches loading new epoch %s", name, epoch)
+            logging.debug("%s process_batches loading new epoch %s", name, epoch)
             total = 0
         batches = batches[1]
         # for segments, data in batches:
@@ -666,13 +647,15 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
                 segments, data = chunk[i]
                 batch_data = loadbatch(labels, segments, data, params, label_mapping)
                 chunk[i] = batch_data
+
+                # JUST FOR TESTING
                 ynan = np.any(np.isnan(batch_data[1]))
                 xnan = np.any(np.isnan(batch_data[0]))
                 if xnan or ynan:
                     logging.error("%s Got nan error on epoch %s", name, epoch)
                     logging.error("%s segments were %s", name, segments)
 
-            logging.info(
+            logging.debug(
                 "%s process_batches - epoch %s preprocessed %s range %s - %s",
                 name,
                 epoch,
@@ -707,7 +690,7 @@ def put_with_timeout(queue, data, timeout, name=None, sleep_time=10):
             queue.put(data, block=True, timeout=timeout)
             break
         except (Full):
-            logging.info("%s cant put cause full", name)
+            logging.debug("%s cant put cause full", name)
             time.sleep(sleep_time)
             pass
         except Exception as e:
@@ -721,7 +704,7 @@ def get_with_timeout(queue, timeout, name=None, sleep_time=10):
             queue_data = queue.get(block=True, timeout=timeout)
             break
         except (Empty):
-            logging.info("%s cant get cause empty", name)
+            logging.debug("%s cant get cause empty", name)
             time.sleep(sleep_time)
             pass
         except Exception as e:
