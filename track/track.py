@@ -99,6 +99,13 @@ class Track:
         self.predicted_mid = None
         self.crop_rectangle = None
 
+        self.predictions = None
+        self.predicted_tag = None
+        self.predicted_confidence = None
+
+        self.all_class_confidences = None
+        self.prediction_classes = None
+
     @classmethod
     def from_region(cls, clip, region):
         track = cls(clip.get_id(), fps=clip.frames_per_second)
@@ -110,6 +117,15 @@ class Track:
 
     def get_id(self):
         return self._id
+
+    def add_prediction_info(self, track_prediction):
+        self.predicted_tag = track_prediction.predicted_tag()
+        self.all_class_confidences = track_prediction.class_confidences()
+        self.predictions = np.int16(
+            np.around(100 * np.array(track_prediction.predictions))
+        )
+        self.predicted_confidence = int(round(100 * track_prediction.max_score))
+        self.prediction_classes = track_prediction.labels
 
     def load_track_meta(
         self,
@@ -126,8 +142,7 @@ class Track:
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
         self.fps = frames_per_second
-
-        self.predicted_class = data.get("tag")
+        self.predicted_tag = data.get("tag")
         self.all_class_confidences = data.get("all_class_confidences", None)
         self.predictions = data.get("predictions")
         if self.predictions:
@@ -136,8 +151,7 @@ class Track:
 
         self.track_tags = track_meta.get("TrackTags")
         self.prediction_classes = data.get("classes")
-
-        tag = Track.get_best_human_tag(track_meta, tag_precedence, min_confidence)
+        tag = Track.get_best_human_tag(self.track_tags, tag_precedence, min_confidence)
         if tag:
             self.tag = tag["what"]
             self.confidence = tag["confidence"]
@@ -427,43 +441,14 @@ class Track:
                 and other_index < len(other_track)
             ):
                 our_bounds = self.bounds_history[our_index]
+                if our_bounds.area == 0:
+                    continue
                 other_bounds = other_track.bounds_history[other_index]
                 overlap = our_bounds.overlap_area(other_bounds) / our_bounds.area
                 if overlap >= threshold:
                     frames_overlapped += 1
 
         return frames_overlapped / len(self)
-
-    def crop_by_region_at_trackframe(self, frame, track_frame_number, clip_flow=True):
-        bounds = self.bounds_history[track_frame_number]
-        return self.crop_by_region(frame, bounds)
-
-    def crop_by_region(self, frame, region, clip_flow=True, filter_mask_by_region=True):
-        thermal = region.subimage(frame.thermal)
-        filtered = region.subimage(frame.filtered)
-        if frame.flow is not None:
-            flow_h = region.subimage(frame.flow_h)
-            flow_v = region.subimage(frame.flow_v)
-            if clip_flow and not frame.flow_clipped:
-                flow_h = get_clipped_flow(flow_h)
-                flow_v = get_clipped_flow(flow_v)
-        else:
-            flow_h = None
-            flow_v = None
-
-        mask = region.subimage(frame.mask).copy()
-        # make sure only our pixels are included in the mask.
-        if filter_mask_by_region:
-            mask[mask != region.id] = 0
-        mask[mask > 0] = 1
-        # stack together into a numpy array.
-        # by using int16 we lose a little precision on the filtered frames, but not much (only 1 bit)
-        if flow_h is not None and flow_v is not None:
-            return np.int16(np.stack((thermal, filtered, flow_h, flow_v, mask), axis=0))
-        else:
-            empty = np.zeros(filtered.shape)
-            return np.int16(np.stack((thermal, filtered, empty, empty, mask), axis=0))
-        return frame
 
     def set_end_s(self, fps):
         self.end_s = (self.end_frame + 1) / fps
@@ -507,7 +492,6 @@ class Track:
     def get_best_human_tag(cls, track_meta, tag_precedence, min_confidence=-1):
         """returns highest precidence non AI tag from the metadata"""
 
-        track_tags = track_meta.get("TrackTags", [])
         track_tags = [
             tag
             for tag in track_tags

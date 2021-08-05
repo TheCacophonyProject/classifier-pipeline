@@ -7,8 +7,22 @@ from .clipclassifier import ClipClassifier
 from ml_tools.logs import init_logging
 from ml_tools import tools
 from config.config import Config
+from config.classifyconfig import ModelConfig
+
 from ml_tools.previewer import Previewer
+
 import absl.logging
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
 
 
 def main():
@@ -49,9 +63,15 @@ def main():
         "--model-file",
         help="Path to model file to use, will override config model",
     )
-
+    parser.add_argument(
+        "--cache",
+        type=str2bool,
+        nargs="?",
+        const=True,
+        default=None,
+        help="Dont keep video frames in memory for classification later, but cache them to disk (Best for large videos, but slower)",
+    )
     args = parser.parse_args()
-
     config = Config.load_from_file(args.config_file)
     config.validate()
     init_logging(args.timestamps)
@@ -69,24 +89,15 @@ def main():
         config.classify.classify_folder = args.processor_folder
         config.source_folder = args.processor_folder
 
-    model_file = config.classify.model
+    model = None
+    keras_model = None
     if args.model_file:
-        model_file = args.model_file
-
-    path, ext = os.path.splitext(model_file)
-    keras_model = False
-    if ext == ".pb":
-        keras_model = True
-        weights_path = os.path.dirname(model_file) + "/variables/variables.index"
-        if not os.path.exists(os.path.join(weights_path)):
-            logging.error("No weights found named '{}'.".format(weights_path))
-            exit(13)
-    elif not os.path.exists(model_file + ".meta"):
-        logging.error("No model found named '{}'.".format(model_file + ".meta"))
-        exit(13)
-
+        model = ModelConfig.load(
+            {"id": 1, "model_file": args.model_file, "name": args.model_file}
+        )
+        model.validate()
     clip_classifier = ClipClassifier(
-        config, config.classify_tracking, model_file, keras_model
+        config, config.classify_tracking, model, cache_to_disk=args.cache
     )
 
     # parse start and end dates
@@ -100,9 +111,6 @@ def main():
 
     if not config.use_gpu:
         logging.info("GPU mode disabled.")
-
-    # just fetch the classifier now so it doesn't impact the benchmarking on the first clip analysed.
-    _ = clip_classifier.classifier
 
     if os.path.splitext(args.source)[-1].lower() == ".cptv":
         source_file = tools.find_file_from_cmd_line(config.source_folder, args.source)

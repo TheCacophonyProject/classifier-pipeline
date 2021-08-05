@@ -42,6 +42,20 @@ def augement_frame(frame, dim):
     return image.numpy()
 
 
+class FrameTypes(enum.Enum):
+    """Types of frames"""
+
+    thermal_tiled = 0
+    filtered_tiled = 1
+    flow_tiled = 2
+    overlay = 3
+    flow_rgb = 4
+
+    @staticmethod
+    def is_valid(name):
+        return name in FrameTypes.__members__.keys()
+
+
 def preprocess_segment(
     frames,
     reference_level=None,
@@ -216,16 +230,16 @@ def preprocess_frame(
 
 
 def preprocess_movement(
-    data,
     segment,
     frames_per_row,
-    regions,
-    channel,
+    frame_size,
+    red_type,
+    green_type,
+    blue_type,
     preprocess_fn=None,
     augment=False,
     reference_level=None,
     sample=None,
-    type=None,
     keep_edge=False,
 ):
     segment, flipped = preprocess_segment(
@@ -235,65 +249,61 @@ def preprocess_movement(
         default_inset=0,
         keep_edge=keep_edge,
     )
-    if type == 2:
-        # just use flow
-        flow_segment = [frame.get_channel(TrackChannels.flow) for frame in segment]
-        flow_square, success = imageprocessing.square_clip_flow(
-            flow_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), use_rgb=True
-        )
-        if success is None:
-            return None
-        data = flow_square
-        # tools.saveclassify_rgb(
-        #     data,
-        #     f"samples/{type}-{sample.track.camera}-{sample.track.label}-{sample.track.clip_id}-{sample.track.track_id}-{flipped}",
-        # )
-        # print("RGB FLOW")
-    else:
-        thermal_segment = [frame.get_channel(channel) for frame in segment]
-        # as long as one frame it's fine
-        square, success = imageprocessing.square_clip(
-            thermal_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
-        )
-        if not success:
-            return None
-        filtered_segment = [
-            frame.get_channel(TrackChannels.filtered) for frame in segment
-        ]
-        filtered_square, success = imageprocessing.square_clip(
-            filtered_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), type
-        )
+    frame_types = {}
+    channel_types = set([green_type, blue_type, red_type])
+    for type in channel_types:
+        if type == FrameTypes.overlay:
+            if overlay is None:
+                overlay = imageprocessing.overlay_image(
+                    data,
+                    regions,
+                    dim=(frames_per_row * frame_size, frames_per_row * frame_size),
+                    require_movement=True,
+                )
+                channel_data, stats = imageprocessing.normalize(overlay, min=0)
+                if not stats[0]:
+                    return None
+            else:
+                channel_data = np.zeros((square.shape[0], square.shape[1]))
+                channel_data[: overlay.shape[0], : overlay.shape[1]] = overlay
 
-        data = np.empty((square.shape[0], square.shape[1], 3))
-
-        if type == 0:
-            data[:, :, 0] = filtered_square
-            red = "filtered"
-        else:
-            data[:, :, 0] = square
-            red = "thermal"
-        green = "filtered"
-        data[:, :, 1] = filtered_square
-        # data[:, :, 2] = np.zeros(filtered_square.shape)
-        if type == 3:
-            flow_segment = [frame.get_channel(TrackChannels.flow) for frame in segment]
-            flow_square, success = imageprocessing.square_clip_flow(
-                flow_segment, frames_per_row, (FRAME_SIZE, FRAME_SIZE), use_rgb=False
+            if flipped:
+                channel_data = np.flip(channel_data, axis=1)
+        elif type == FrameTypes.flow_tiled:
+            channel_segment = [
+                frame.get_channel(TrackChannels.flow) for frame in segment
+            ]
+            channel_data, success = imageprocessing.square_clip_flow(
+                channel_segment, frames_per_row, (frame_size, frame_size)
             )
-            if success is None:
+            if not success:
                 return None
-            data[:, :, 2] = flow_square
-            blue = "flow"
         else:
-            data[:, :, 2] = filtered_square
-            blue = "filtered"
-        # print("{}-{}-{}".format(red, green, blue))
-        # # for debugging
-        #
-        # tools.saveclassify_image(
-        #     data,
-        #     f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
-        # )
+            if type == FrameTypes.thermal_tiled:
+                channel = TrackChannels.thermal
+            else:
+                channel = TrackChannels.filtered
+
+            channel_segment = [frame.get_channel(channel) for frame in segment]
+            channel_data, success = imageprocessing.square_clip(
+                channel_segment, frames_per_row, (frame_size, frame_size)
+            )
+
+            if not success:
+                return None
+
+        frame_types[type] = channel_data
+
+    data = np.stack(
+        (frame_types[red_type], frame_types[green_type], frame_types[blue_type]), axis=2
+    )
+    # print("{}-{}-{}".format(red, green, blue))
+    # # for debugging
+    #
+    # tools.saveclassify_image(
+    #     data,
+    #     f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
+    # )
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)

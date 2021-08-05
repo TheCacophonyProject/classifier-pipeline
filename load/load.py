@@ -43,6 +43,16 @@ def parse_params():
         help="Re process clips that already exist in the database",
     )
     parser.add_argument(
+        "--add-missing-predictions",
+        action="count",
+        help="Add missing prediction info to already loaded data",
+    )
+    parser.add_argument(
+        "--calculate-predictions",
+        action="count",
+        help="Run model on loaded files to get prediction data",
+    )
+    parser.add_argument(
         "-i",
         "--show-build-information",
         action="count",
@@ -55,24 +65,26 @@ def parse_params():
         print(cv2.getBuildInformation())
         return None, None
 
-    init_logging()
-
     config = Config.load_from_file(args.config_file)
     if args.create_previews:
         config.loader.preview = "tracking"
     if args.verbose:
-        config.loader.verbose = True
+        config.tracking.verbose = True
 
     return config, args
 
 
 def load_clips(config, args):
-    loader = ClipLoader(config, args.reprocess)
+
+    loader = ClipLoader(config, args.reprocess, args.calculate_predictions)
     target = args.target
     if target is None:
         target = config.source_folder
-    if args.predictions:
+    if args.add_missing_predictions:
         loader.add_predictions()
+        return
+    if os.path.splitext(target)[1] == ".cptv":
+        loader.process_file(target)
     else:
         if os.path.splitext(target)[1] == ".cptv":
             loader.process_file(target)
@@ -91,6 +103,8 @@ def print_opencl_info():
 
 def main():
     config, args = parse_params()
+    init_logging()
+
     if config and args:
         load_clips(config, args)
 

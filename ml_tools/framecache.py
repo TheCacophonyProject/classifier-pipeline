@@ -32,14 +32,25 @@ class FrameCache:
         chunks = (1, height, width)
 
         dims = (5, height, width)
-        frame_node = frame_group.create_dataset("frame", dims, chunks=chunks)
-        scaled_flow = get_clipped_flow(frame.flow)
+        frame_node = frame_group.create_dataset(
+            "frame", dims, chunks=chunks, dtype=np.float32
+        )
+        scaled_flow_h = None
+        scaled_flow_v = None
+        if frame.flow is not None:
+            scaled_flow = get_clipped_flow(frame.flow)
+            scaled_flow_h = np.float32(scaled_flow[:, :, 0])
+            scaled_flow_v = np.float32(scaled_flow[:, :, 1])
+        else:
+            scaled_flow_h = np.zeros(frame.thermal.shape, dtype=np.float32)
+            scaled_flow_v = scaled_flow_h
+
         frame_val = (
-            np.int16(frame.thermal),
-            np.int16(frame.filtered),
-            np.float16(scaled_flow[:, :, 0]),
-            np.float16(scaled_flow[:, :, 1]),
-            np.int16(frame.mask),
+            np.float32(frame.thermal),
+            np.float32(frame.filtered),
+            scaled_flow_h,
+            scaled_flow_v,
+            np.float32(frame.mask),
         )
         frame_node[:, :, :] = frame_val
         if not self.keep_open:

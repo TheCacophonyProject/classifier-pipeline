@@ -3,7 +3,6 @@ Helper functions for classification of the tracks extracted from CPTV videos
 """
 
 import os.path
-import PIL as pillow
 import numpy as np
 import random
 import pickle
@@ -323,7 +322,7 @@ def convert_heat_to_img(frame, colormap, temp_min=2800, temp_max=4200):
     frame = np.float32(frame)
     frame = (frame - temp_min) / (temp_max - temp_min)
     colorized = np.uint8(255.0 * colormap(frame))
-    img = pillow.Image.fromarray(colorized[:, :, :3])  # ignore alpha
+    img = Image.fromarray(colorized[:, :, :3])  # ignore alpha
     return img
 
 
@@ -411,6 +410,12 @@ def get_session(disable_gpu=False):
         session = tf.compat.v1.Session(config=config)
 
     return session
+
+
+def clear_session():
+    import tensorflow as tf
+
+    tf.keras.backend.clear_session()
 
 
 def softmax(x):
@@ -804,6 +809,17 @@ def eucl_distance(first, second):
 
 def get_clipped_flow(flow):
     return np.clip(flow * 256, -16000, 16000)
+
+
+def saveclassify_image(data, filename):
+    # saves image channels side by side, expected data to be values in the range of 0->1
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
+    r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
+    g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
+    b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
+    concat = np.concatenate((r, g, b), axis=1)  # horizontally
+    img = Image.fromarray(np.uint8(concat))
+    img.save(filename + ".png")
 
 
 def get_timezone_str(lat, lng):

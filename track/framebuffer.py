@@ -19,7 +19,8 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 from ml_tools.framecache import FrameCache
 from ml_tools.frame import Frame
-from ml_tools.tools import get_optical_flow_function
+from track.track import TrackChannels
+from ml_tools.tools import get_optical_flow_function, get_clipped_flow
 
 
 class FrameBuffer:
@@ -36,7 +37,7 @@ class FrameBuffer:
         self.calc_flow = calc_flow
         self.keep_frames = keep_frames
         self.current_frame = 0
-        if cache_to_disk or calc_flow:
+        if calc_flow:
             self.set_optical_flow()
         self.reset()
 

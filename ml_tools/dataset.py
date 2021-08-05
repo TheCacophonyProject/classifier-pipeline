@@ -116,6 +116,7 @@ class Dataset:
             self.clip_before_date = config.build.clip_end_date
             self.segment_min_mass = config.build.train_min_mass
         else:
+            self.min_frame_mass = 16
             # number of seconds each segment should be
             self.segment_length = 3
             # number of seconds segments are spaced apart
@@ -277,6 +278,7 @@ class Dataset:
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
+        labels = self.db.get_labels()
         counter = 0
         track_ids = self.db.get_all_track_ids(
             before_date=before_date, after_date=after_date
@@ -326,10 +328,11 @@ class Dataset:
 
         clip_meta = self.db.get_clip_meta(clip_id)
         track_meta = self.db.get_track_meta(clip_id, track_id)
-        # predictions = self.db.get_track_predictions(clip_id, track_id)
         if self.filter_track(clip_meta, track_meta):
             return False
-        track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
+        track_header = TrackHeader.from_meta(
+            clip_id, clip_meta, track_meta, predictions
+        )
         self.tracks.append(track_header)
 
         segment_frame_spacing = int(
@@ -342,6 +345,15 @@ class Dataset:
             segment_width,
             self.segment_min_mass,
         )
+        segment_width = int(round(self.segment_length * track_header.frames_per_second))
+        if track_header.num_sample_frames > segment_width / 3.0:
+            track_header.calculate_segments(
+                track_meta["mass_history"],
+                segment_frame_spacing,
+                segment_width,
+                self.segment_min_mass,
+                use_important=not self.consecutive_segments,
+            )
 
         self.filtered_stats["segment_mass"] += track_header.filtered_stats[
             "segment_mass"

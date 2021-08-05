@@ -182,10 +182,7 @@ class TrackHeader:
     def toJSON(self, clip_meta):
         meta_dict = {}
         ffc_frames = clip_meta.get("ffc_frames", [])
-        json_safe = []
-        for i in ffc_frames:
-            json_safe.append(int(i))
-        meta_dict["ffc_frames"] = json_safe
+        meta_dict["ffc_frames"] = ffc_frames
         meta_dict["clip_id"] = int(self.clip_id)
         meta_dict["track_id"] = int(self.track_id)
         meta_dict["camera"] = self.camera
@@ -209,21 +206,21 @@ class TrackHeader:
         if use_segments:
             self.segments.append(sample)
         else:
-            self.important_frames.append(sample)
+            self.sample_frames.append(sample)
 
     def get_sample_frames(self):
-        return self.important_frames
+        return self.sample_frames
 
     def remove_sample_frame(self, f):
         self.important_frams.remove(f)
 
     def get_sample_frame(self, i=0, remove=False):
-        if len(self.important_frames) == 0:
+        if len(self.sample_frames) == 0:
             return None
-        f = self.important_frames[i]
+        f = self.sample_frames[i]
 
         if remove:
-            del self.important_frames[i]
+            del self.sample_frames[i]
         return f
 
     @property
@@ -286,6 +283,20 @@ class TrackHeader:
                 self.frame_velocity[frame],
             )
             self.important_frames.append(f)
+        return len(self.sample_frames)
+
+    def calculate_frame_crop(self):
+        # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
+        # bounded rect and check it against frame size.
+        self.frame_crop = []
+        for rect in self.track_bounds:
+            rect = tools.Rectangle.from_ltrb(*rect)
+            rx, ry = rect.mid_x, rect.mid_y
+            size = max(rect.width, rect.height)
+            adjusted_rect = tools.Rectangle(rx - size / 2, ry - size / 2, size, size)
+            self.frame_crop.append(
+                get_cropped_fraction(adjusted_rect, self.res_x, self.res_y)
+            )
 
     def calculate_velocity(self):
         frame_center = [
@@ -586,7 +597,7 @@ class Camera:
         bin_id = bins[self.bin_i]
         track = self.bins[bin_id][0]
         f = track.get_sample_frame()
-        if len(track.important_frames) == 0 or f is None:
+        if len(track.sample_frames) == 0 or f is None:
             del bins[self.bin_i]
             del self.bins[bin_id]
 
@@ -630,9 +641,9 @@ class Camera:
         frames = 0
         for track in tracks:
             if max_frames_per_track:
-                frames += max(len(track.important_frames), max_frames_per_track)
+                frames += max(len(track.sample_frames), max_frames_per_track)
             else:
-                frames += len(track.important_frames)
+                frames += len(track.sample_frames)
 
         return frames
 
@@ -652,7 +663,7 @@ class Camera:
         del self.label_to_tracks[track.label][track.unique_id]
         if track.bin_id in self.label_to_bins[track.label]:
             self.label_to_bins[track.label].remove(track.bin_id)
-        self.label_frames[track.label] -= len(track.important_frames)
+        self.label_frames[track.label] -= len(track.sample_frames)
 
     def add_track(self, track_header):
         tracks = self.label_to_tracks.setdefault(track_header.label, {})
@@ -668,7 +679,7 @@ class Camera:
             self.label_to_bins[track_header.label].append(track_header.bin_id)
 
         self.bins[track_header.bin_id].append(track_header)
-        self.label_frames[track_header.label] += len(track_header.important_frames)
+        self.label_frames[track_header.label] += len(track_header.sample_frames)
 
         segment_length = len(track_header.segments)
         self.segment_sum += segment_length
@@ -741,12 +752,6 @@ class SegmentHeader:
         # reference to clip this segment came from
         return "{}-{}".format(self.clip_id, self.track_id)
 
-    #
-    # @property
-    # def clip_id(self):
-    #     # reference to clip this segment came from
-    #     return self.track.clip_id
-
     @property
     def name(self):
         """Unique name of this segment."""
@@ -759,26 +764,17 @@ class SegmentHeader:
             self.start_frame : self.start_frame + self.frames
         ]
 
-    #
-    # @property
-    # def track_bounds(self):
-    #     # original location of this tracks bounds.
-    #     return self.track.track_bounds[
-    #         self.start_frame : self.start_frame + self.frames
-    #     ]
-
     @property
     def frame_crop(self):
         # how much each frame has been cropped.
         return self.track.frame_crop[self.start_frame : self.start_frame + self.frames]
 
-    #
-    # @property
-    # def frame_temp_median(self):
-    #     # thermal reference temperature for each frame (i.e. which temp is 0)
-    #     return self.track.frame_temp_median[
-    #         self.start_frame : self.start_frame + self.frames
-    #     ]
+    @property
+    def frame_temp_median(self):
+        # thermal reference temperature for each frame (i.e. which temp is 0)
+        return self.track.frame_temp_median[
+            self.start_frame : self.start_frame + self.frames
+        ]
 
     @property
     def end_frame(self):

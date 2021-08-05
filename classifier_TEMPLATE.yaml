@@ -85,12 +85,8 @@ tracking:
             track_max_delta: 150
           - camera_model: "lepton3.5"
             temp_thresh: 28000
-<<<<<<< HEAD
-            background_thresh: 100 # 1 degrees
-=======
             background_thresh: 90 # .9 degrees
             delta_thresh: 90 # .9 degrees
->>>>>>> origin/master
             max_temp_thresh: null
             min_temp_thresh: null
             # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
@@ -302,7 +298,7 @@ build:
 
     # clips after this date will be ignored.
     # note: this is based on the UTC date.
-    clip_end_date: None
+    clip_end_date: null
 
     # minimum average mass for test segment
     test_min_mass: 20

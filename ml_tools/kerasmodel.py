@@ -11,8 +11,9 @@ from ml_tools import tools
 from collections import namedtuple
 from ml_tools.datagenerator import DataGenerator
 from ml_tools.preprocess import (
-    preprocess_frame,
+    FrameTypes,
     preprocess_movement,
+    preprocess_frame,
 )
 import tensorflow.keras as keras
 from tensorflow.keras.layers import *
@@ -31,6 +32,7 @@ import os
 
 from keras import backend as K
 import gc
+from ml_tools import preprocessresnet
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 tf_device = "/gpu:1"
@@ -63,9 +65,10 @@ class KerasModel:
         self.mapped_labels = None
         self.label_probabilities = None
 
-    def base_model(self, input_shape, weights="imagenet"):
+    def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.params.model_name
         if pretrained_model == "resnet":
+
             return (
                 tf.keras.applications.ResNet50(
                     weights=weights,
@@ -262,6 +265,11 @@ class KerasModel:
         logging.info("Loading %s with weight %s", model_path, weights)
         dir = os.path.dirname(model_path)
         self.model = tf.keras.models.load_model(dir)
+        if not training:
+            self.model.trainable = False
+        if weights:
+            logging.info("loading weights %s", weights)
+            self.model.load_weights(weights).expect_partial()
         self.load_meta(dir)
         if not training:
             self.model.trainable = False
@@ -278,7 +286,30 @@ class KerasModel:
         self.mapped_labels = meta.get("mapped_labels")
         self.label_probabilities = meta.get("label_probabilities")
         self.preprocess_fn = self.get_preprocess_fn()
-        self.type = meta.get("type")
+        self.green_type = self.params.get("green_type", FrameTypes.filtered_tiled.name)
+        self.blue_type = self.params.get("blue_type", FrameTypes.overlay.name)
+        self.red_type = self.params.get("red_type", FrameTypes.thermal_tiled.name)
+        self.use_background_filtered = self.params.get("use_background_filtered", True)
+
+        # convert to enums and validate
+        if FrameTypes.is_valid(self.red_type):
+            self.red_type = FrameTypes[self.red_type]
+        else:
+            raise Exception(f"Red type {self.red_type} isnt a valid frame type")
+
+        if FrameTypes.is_valid(self.green_type):
+            self.green_type = FrameTypes[self.green_type]
+        else:
+            raise Exception(f"Green type {self.green_type} isnt a valid frame type")
+
+        if FrameTypes.is_valid(self.blue_type):
+            self.blue_type = FrameTypes[self.blue_type]
+        else:
+            raise Exception(f"Blue type {self.blue_type} isnt a valid frame type")
+        logging.debug(
+            "using types r %s g %s b %s", self.red_type, self.green_type, self.blue_type
+        )
+        self.keep_aspect = self.params.get("keep_aspect", False)
 
     def save(self, run_name=MODEL_NAME, history=None, test_results=None):
         # create a save point
@@ -614,23 +645,16 @@ class KerasModel:
         segments=None,
     ):
         track_prediction = TrackPrediction(track_id, 0, keep_all)
-        if self.params.use_movement:
-            predictions = self.classify_frames(
-                data,
-                thermal_median,
-                regions=regions,
-                track_id=track_id,
-                mass_history=mass_history,
-                ffc_frames=ffc_frames,
-                top_frames=False,
-                segments=segments,
-            )
-            for i, prediction in enumerate(predictions):
-                track_prediction.classified_frame(i, prediction, None)
-        else:
-            for i, frame in enumerate(data):
-                prediction = self.classify_frame(frame, thermal_median[i])
-                track_prediction.classified_frame(i, prediction, None)
+        predictions = self.classify_frames(
+            data,
+            thermal_median,
+            regions=regions,
+            track_id=track_id,
+            mass_history=mass_history,
+            ffc_frames=ffc_frames,
+            top_frames=False,
+            segments=segments,
+        )
 
         return track_prediction
 

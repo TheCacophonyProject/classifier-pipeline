@@ -18,7 +18,7 @@ class Frame:
     flow_clipped = attr.ib(default=False)
     scaled_thermal = attr.ib(default=None)
     ffc_affected = attr.ib(default=False)
-    region = attr.ib(default=False)
+    region = attr.ib(default=None)
 
     def get_channel(self, channel):
         if channel == TrackChannels.thermal:
@@ -33,7 +33,13 @@ class Frame:
 
     @classmethod
     def from_channel(
-        cls, frame, channels, frame_number, flow_clipped=True, ffc_affected=False
+        cls,
+        frame,
+        channels,
+        frame_number,
+        flow_clipped=True,
+        ffc_affected=False,
+        region=None,
     ):
         f = cls(
             None,
@@ -42,6 +48,7 @@ class Frame:
             frame_number,
             flow_clipped=flow_clipped,
             ffc_affected=ffc_affected,
+            region=region,
         )
         flow_h = None
         flow_v = None
@@ -65,13 +72,21 @@ class Frame:
 
         return f
 
-    @classmethod
     def from_array(
-        cls, frame_arr, frame_number, flow_clipped=False, ffc_affected=False
+        cls,
+        frame_arr,
+        frame_number,
+        flow_clipped=False,
+        ffc_affected=False,
+        region=None,
     ):
-        flow_h = frame_arr[TrackChannels.flow_h][:, :, np.newaxis]
-        flow_v = frame_arr[TrackChannels.flow_v][:, :, np.newaxis]
-        flow = np.concatenate((flow_h, flow_v), axis=2)
+        flow = None
+        if len(frame_arr) == 5:
+            flow = np.stack(
+                (frame_arr[TrackChannels.flow_h], frame_arr[TrackChannels.flow_v]),
+                axis=2,
+            )
+
         return cls(
             frame_arr[TrackChannels.thermal],
             frame_arr[TrackChannels.filtered],
@@ -79,10 +94,13 @@ class Frame:
             frame_number,
             flow=flow,
             flow_clipped=flow_clipped,
+            region=region,
             ffc_affected=ffc_affected,
         )
 
     def as_array(self, split_flow=True):
+        if self.flow is None:
+            return np.asarray([self.thermal, self.filtered, self.mask])
         if split_flow:
             return np.asarray(
                 [
@@ -119,6 +137,11 @@ class Frame:
         self.flow = flow
         if prev_frame:
             prev_frame.scaled_thermal = None
+
+    def unclip_flow(self):
+        if self.flow_clipped:
+            self.flow *= 1.0 / 256.0
+            self.flow_clipped = False
 
     def clip_flow(self):
         if self.flow is not None:
@@ -170,6 +193,7 @@ class Frame:
             out.filtered = filtered
             out.mask = mask
             out.flow = flow
+            out.regoin = region
             frame = out
         else:
             frame = Frame(
@@ -179,6 +203,7 @@ class Frame:
                 self.frame_number,
                 flow_clipped=self.flow_clipped,
                 ffc_affected=self.ffc_affected,
+                region=region,
             )
             frame.flow = flow
         return frame

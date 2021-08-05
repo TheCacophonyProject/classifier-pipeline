@@ -80,6 +80,9 @@ class Clip:
         self.track_min_delta = None
         self.track_max_delta = None
         self.background_thresh = None
+        self.ffc_frames = []
+        self.tags = None
+
         # sets defaults
         self.set_model(None)
         if background is not None:
@@ -153,7 +156,10 @@ class Clip:
 
         initial_frames = None
         initial_diff = None
+        first_frame = None
         for frame in frame_reader:
+            if first_frame is None:
+                first_frame = frame.pix
             ffc_affected = is_affected_by_ffc(frame)
             if ffc_affected:
                 continue
@@ -171,13 +177,22 @@ class Clip:
 
         if len(frames) > 0:
             frame_average = np.average(frames, axis=0)
+            if initial_frames is None:
+                initial_frames = frame_average
             self.update_background(frame_average)
             initial_diff = self.calculate_initial_diff(
                 frame_average, initial_frames, initial_diff
             )
+
             if initial_frames is None:
                 initial_frames = frame_average
         frames = []
+        if initial_diff is None:
+            if first_frame is not None:
+                # fall back if whole clip is ffc
+                self.update_background(frame.pix)
+                self._background_calculated()
+            return
         np.clip(initial_diff, 0, None, out=initial_diff)
         initial_frames = self.remove_background_animals(initial_frames, initial_diff)
 
@@ -215,7 +230,8 @@ class Clip:
             sub_components, sub_connected, sub_stats = detect_objects(
                 norm_back, otsus=True
             )
-            if len(sub_stats) <= 1:
+
+            if sub_components <= 1:
                 continue
             overlap_image = region.subimage(lower_mask) * 255
             overlap_pixels = np.sum(sub_connected[overlap_image > 0])
@@ -290,7 +306,7 @@ class Clip:
             self.device = os.path.splitext(os.path.basename(self.source_file))[0].split(
                 "-"
             )[-1]
-
+        self.tags = metadata.get("Tags")
         self.location = metadata.get("location")
         tracks = self.load_tracks_meta(
             metadata, include_filtered_channel, tag_precedence

@@ -32,6 +32,9 @@ class GeneartorParams:
         self.segment_type = params.get("segment_type", 1)
         self.keep_edge = params.get("keep_edge", False)
         self.maximum_preload = params.get("maximum_preload", 100)
+        self.red_type = params.get("red_type", FrameTypes.thermal_tiled.name)
+        self.green_type = params.get("green_type", FrameTypes.filtered_tiled.name)
+        self.blue_type = params.get("blue_type", FrameTypes.filtered_tiled.name)
 
 
 # Datagenerator consists of 3 processes
@@ -322,16 +325,15 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
             for frame in frame_data:
                 ref.append(sample.frame_temp_median[frame.frame_number])
             data = preprocess_movement(
-                None,
                 frame_data,
                 params.square_width,
-                None,
-                params.channel,
+                red_type=params.red_type,
+                green_type=params.green_type,
+                blue_type=params.blue_type,
                 preprocess_fn=params.model_preprocess,
                 augment=params.augment,
                 reference_level=ref,
                 sample=sample,
-                type=params.type,
                 keep_edge=params.keep_edge,
             )
             if data is not None:
