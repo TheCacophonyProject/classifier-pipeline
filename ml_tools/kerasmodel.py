@@ -64,7 +64,7 @@ class KerasModel:
         self.label_probabilities = None
 
     def base_model(self, input_shape, weights="imagenet"):
-        pretrained_model = self.params.model
+        pretrained_model = self.params.model_name
         if pretrained_model == "resnet":
             return (
                 tf.keras.applications.ResNet50(
@@ -171,6 +171,9 @@ class KerasModel:
             return tf.keras.applications.inception_resnet_v2.preprocess_input
         elif pretrained_model == "inceptionv3":
             return tf.keras.applications.inception_v3.preprocess_input
+        logging.warn(
+            "pretrained model %s has no preprocessing function", pretrained_model
+        )
         return None
 
     def build_model(self, dense_sizes=None, retrain_from=None, dropout=None):

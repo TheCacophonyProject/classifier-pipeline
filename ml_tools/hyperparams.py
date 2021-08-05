@@ -14,7 +14,7 @@ class HyperParams(dict):
         self.insert_defaults()
 
     def insert_defaults(self):
-        self["model"] = self.model
+        self["model_name"] = self.model_name
         self["dense_sizes"] = self.dense_sizes
         self["base_training"] = self.base_training
         self["retrain_layer"] = self.retrain_layer
@@ -22,7 +22,6 @@ class HyperParams(dict):
         self["learning_rate"] = self.learning_rate
         self["learning_rate_decay"] = self.learning_rate_decay
         self["use_movement"] = self.use_movement
-        self["model"] = self.model
         self["use_segments"] = self.use_segments
         self["square_width"] = self.square_width
         self["buffer_size"] = self.buffer_size
@@ -62,8 +61,8 @@ class HyperParams(dict):
         return self.get("mvm", False)
 
     @property
-    def model(self):
-        return self.get("model", "resnetv2")
+    def model_name(self):
+        return self.get("model_name", "resnetv2")
 
     @property
     def channel(self):
