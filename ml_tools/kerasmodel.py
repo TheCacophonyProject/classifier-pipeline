@@ -386,7 +386,7 @@ class KerasModel:
             eager_load=True,
             **self.params,
         )
-        time.sleep(1)
+        time.sleep(100)
         self.validate = DataGenerator(
             self.validation_dataset,
             self.labels,
