@@ -666,6 +666,12 @@ def process_batches(batch_queue, train_queue, labels, params, label_mapping, nam
                 segments, data = chunk[i]
                 batch_data = loadbatch(labels, segments, data, params, label_mapping)
                 chunk[i] = batch_data
+                ynan = np.any(np.isnan(batch_data[1]))
+                xnan = np.any(np.isnan(batch_data[0]))
+                if xnan or ynan:
+                    logging.error("%s Got nan error on epoch %s", name, epoch)
+                    logging.error("%s segments were %s", name, segments)
+
             logging.info(
                 "%s process_batches - epoch %s preprocessed %s range %s - %s",
                 name,
