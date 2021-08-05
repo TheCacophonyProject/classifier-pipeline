@@ -278,7 +278,6 @@ class Dataset:
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
-        labels = self.db.get_labels()
         counter = 0
         track_ids = self.db.get_all_track_ids(
             before_date=before_date, after_date=after_date
@@ -345,15 +344,6 @@ class Dataset:
             segment_width,
             self.segment_min_mass,
         )
-        segment_width = int(round(self.segment_length * track_header.frames_per_second))
-        if track_header.num_sample_frames > segment_width / 3.0:
-            track_header.calculate_segments(
-                track_meta["mass_history"],
-                segment_frame_spacing,
-                segment_width,
-                self.segment_min_mass,
-                use_important=not self.consecutive_segments,
-            )
 
         self.filtered_stats["segment_mass"] += track_header.filtered_stats[
             "segment_mass"
@@ -469,7 +459,7 @@ class Dataset:
         self,
         track: TrackHeader,
         original=False,
-        important_frames=False,
+        sample_frames=False,
     ):
         """
         Fetches data for an entire track
@@ -477,8 +467,8 @@ class Dataset:
         :return: segment data of shape [frames, channels, height, width]
         """
         frame_numbers = None
-        if important_frames:
-            frame_numbers = [frame.frame_num for frame in track.important_frames]
+        if sample_frames:
+            frame_numbers = [frame.frame_num for frame in track.sample_frames]
             frame_numbers.sort()
         frames = self.db.get_track(
             track.clip_id,
@@ -489,15 +479,15 @@ class Dataset:
         return frames
 
     def fetch_random_sample(self, sample, channel=None):
-        important_frames = sample.track.important_frames
-        np.random.shuffle(important_frames)
-        important_frames = important_frames[: sample.frames]
-        important_frames = [frame.frame_num for frame in important_frames]
-        important_frames.sort()
+        sample_frames = sample.track.sample_frames
+        np.random.shuffle(sample_frames)
+        sample_frames = sample_frames[: sample.frames]
+        sample_frames = [frame.frame_num for frame in sample_frames]
+        sample_frames.sort()
         frames = self.db.get_track(
             sample.track.clip_id,
             sample.track.track_id,
-            frame_numbers=important_frames,
+            frame_numbers=sample_frames,
             channels=channel,
         )
         return frames
@@ -640,7 +630,7 @@ class Dataset:
         self.frame_label_cdf = {}
 
         for track in self.tracks:
-            for frame in track.important_frames:
+            for frame in track.sample_frames:
                 frame_weight = track.frame_weight
                 if lbl_p and track.label in lbl_p:
                     frame_weight *= lbl_p[track.label]

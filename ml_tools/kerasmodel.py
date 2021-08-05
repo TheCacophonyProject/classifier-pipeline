@@ -22,7 +22,7 @@ import os
 import time
 import matplotlib.pyplot as plt
 import json
-from ml_tools.imageprocessing import filtered_is_valid
+from ml_tools.imageprocessing import clear_frame
 from classify.trackprediction import TrackPrediction
 from sklearn.metrics import confusion_matrix
 
@@ -186,7 +186,7 @@ class KerasModel:
             width = self.params.square_width * self.params.frame_size
         inputs = tf.keras.Input(shape=(width, width, 3), name="input")
         weights = None if self.params.base_training else "imagenet"
-        base_model, preprocess = self.base_model((width, width, 3), weights=weights)
+        base_model, preprocess = self.get_base_model((width, width, 3), weights=weights)
         self.preprocess_fn = preprocess
         x = base_model(inputs, training=self.params.base_training)
 
@@ -265,17 +265,12 @@ class KerasModel:
         logging.info("Loading %s with weight %s", model_path, weights)
         dir = os.path.dirname(model_path)
         self.model = tf.keras.models.load_model(dir)
-        if not training:
-            self.model.trainable = False
-        if weights:
-            logging.info("loading weights %s", weights)
-            self.model.load_weights(weights).expect_partial()
         self.load_meta(dir)
         if not training:
             self.model.trainable = False
         if weights is not None:
-            self.model.load_weights(weights)
-            logging.info("Loaded weight %s", weights)
+            self.model.load_weights(weights.expect_partial())
+        logging.info("Loaded weight %s", weights)
         self.model.summary()
 
     def load_meta(self, dir):
@@ -645,7 +640,7 @@ class KerasModel:
         segments=None,
     ):
         track_prediction = TrackPrediction(track_id, 0, keep_all)
-        predictions = self.classify_frames(
+        predictions, smoothed_predictions = self.classify_frames(
             data,
             thermal_median,
             regions=regions,
@@ -655,7 +650,7 @@ class KerasModel:
             top_frames=False,
             segments=segments,
         )
-
+        track_prediction.classified_clip(prediction, smoothed_predictionss)
         return track_prediction
 
     def classify_frames(
@@ -731,9 +726,7 @@ class KerasModel:
             for i, frame in enumerate(data):
                 if mass_history[i] == 0:
                     continue
-                if frame.frame_number not in ffc_frames and filtered_is_valid(
-                    frame, ""
-                ):
+                if frame.frame_number not in ffc_frames and clear_frame(frame):
                     filtered_data.append(frame)
                     valid_indices.append(i)
                     valid_regions.append(regions[i])
@@ -813,7 +806,7 @@ class KerasModel:
             output = self.model.predict(frames[np.newaxis, :])
             predictions.append(output[0])
             smoothed_predictions.append(output[0] ** 2 * np.sum(masses))
-        return predictions
+        return predictions, smoothed_predictions
 
     def classify_frame(self, frame, thermal_median, preprocess=True):
         if preprocess:

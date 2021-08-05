@@ -160,54 +160,6 @@ def resize_with_aspect(
     return resized
 
 
-def overlay_image(
-    frames,
-    regions,
-    dim,
-    require_movement=False,
-):
-    """Return an image describing the movement by creating a collage of all frames"""
-    channel = TrackChannels.filtered
-
-    i = 0
-    overlay = np.zeros(dim)
-
-    prev = None
-    prev_overlay = None
-
-    # draw movment lines and draw frame overlay
-    center_distance = 0
-    min_distance = 2
-    for i, frame in enumerate(frames):
-        region = regions[i]
-
-        x = int(region.mid_x)
-        y = int(region.mid_y)
-
-        prev = (x, y)
-        # writing overlay image
-        if require_movement and prev_overlay:
-            center_distance = eucl_distance(
-                prev_overlay,
-                (
-                    x,
-                    y,
-                ),
-            )
-
-        if (
-            prev_overlay is None or center_distance > min_distance
-        ) or not require_movement:
-            frame = frame.get_channel(channel)
-            subimage = region.subimage(overlay)
-            subimage[:, :] += np.float32(frame)
-            center_distance = 0
-            min_distance = pow(region.width / 2.0, 2)
-            prev_overlay = (x, y)
-
-    return overlay
-
-
 def square_clip(data, frames_per_row, tile_dim):
     # lay each frame out side by side in rows
     new_frame = np.zeros((frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]))
@@ -283,7 +235,7 @@ def normalize(data, min=None, max=None, new_max=1):
     Normalize an array so that the values range from 0 -> new_max
     Returns normalized array, stats tuple (Success, min used, max used)
     """
-    if data.shape[0] == 0 or data.shape[1] == 0:
+    if data.size == 0:
         return np.zeros((data.shape)), (False, None, None)
     if max is None:
         max = np.amax(data)

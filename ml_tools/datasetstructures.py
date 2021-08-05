@@ -3,7 +3,6 @@ import dateutil
 import numpy as np
 import logging
 import os
-from ml_tools.imageprocessing import filtered_is_valid
 from ml_tools import tools
 from ml_tools.frame import Frame
 from ml_tools.preprocess import MIN_SIZE
@@ -768,13 +767,6 @@ class SegmentHeader:
     def frame_crop(self):
         # how much each frame has been cropped.
         return self.track.frame_crop[self.start_frame : self.start_frame + self.frames]
-
-    @property
-    def frame_temp_median(self):
-        # thermal reference temperature for each frame (i.e. which temp is 0)
-        return self.track.frame_temp_median[
-            self.start_frame : self.start_frame + self.frames
-        ]
 
     @property
     def end_frame(self):
