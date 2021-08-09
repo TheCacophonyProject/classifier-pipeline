@@ -437,7 +437,7 @@ class TrackDatabase:
             track_node = clip_node.create_group(track_id)
             cropped_frame = track_node.create_group("cropped")
             thermal_frame = track_node.create_group("original")
-
+            skipped_frames = []
             # write each frame out individually, as they will probably be different sizes.
             original = None
             for frame_i, cropped in enumerate(cropped_data):
@@ -454,6 +454,8 @@ class TrackDatabase:
                     )
 
                     frame_node[:, :, :] = cropped.as_array()
+                else:
+                    skipped_frames.append(frame_i)
                 if original is not None:
                     thermal_node = thermal_frame.create_dataset(
                         str(frame_i),
@@ -473,6 +475,7 @@ class TrackDatabase:
 
                 node_attrs["tag"] = track.tag
                 node_attrs["frames"] = frames
+                node_attrs["skipped_frames"] = np.uint16(skipped_frames)
                 node_attrs["start_frame"] = track.start_frame
                 node_attrs["end_frame"] = track.end_frame
                 if track.predictions is not None:

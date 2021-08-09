@@ -19,7 +19,7 @@ import pytz
 
 LOW_DATA_LABELS = ["wallaby", "human", "dog"]
 # minimum number of tracks for each label in validation dataset
-MIN_TRACKS = 100
+MIN_TRACKS = 1
 MIN_VALIDATE_CAMERAS = 5
 
 
