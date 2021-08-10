@@ -26,14 +26,13 @@ special_datasets = ["background_frame", "predictions", "overlay"]
 class HDF5Manager:
     """Class to handle locking of HDF5 files."""
 
-    LOCK_FILE = "/var/lock/classifier-hdf5.lock"
     READ_ONLY = False
 
-    def __init__(self, db, mode="r"):
+    def __init__(self, db: str, mode="r"):
         self.mode = mode
         self.f = None
         self.db = db
-        self.lock = filelock.FileLock(HDF5Manager.LOCK_FILE, timeout=60 * 3)
+        self.lock = filelock.FileLock(db + ".lock", timeout=10)
         filelock.logger().setLevel(logging.ERROR)
 
     def __enter__(self):
