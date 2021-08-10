@@ -7,11 +7,32 @@ from ml_tools import tools
 from ml_tools.frame import Frame, TrackChannels
 from ml_tools.preprocess import MIN_SIZE
 from track.region import Region
+from abc import ABC, abstractmethod
 
 FRAMES_PER_SECOND = 9
 
 CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
+
+
+class Sample(ABC):
+    @property
+    @abstractmethod
+    def track_bounds(cls):
+        """Get all regions for this sample"""
+        ...
+
+    @property
+    @abstractmethod
+    def frame_indices(self):
+        """The function gets all frames indices for this sample."""
+        ...
+
+    @property
+    @abstractmethod
+    def unique_track_id(self):
+        """Represent the unique identifier for this track."""
+        ...
 
 
 class NumpyMeta:
@@ -86,17 +107,6 @@ class NumpyMeta:
 
                 frame_info[TrackChannels.flow] = self.f.tell()
                 np.save(self.f, frame.flow, allow_pickle=False)
-            try:
-                frame_sample = next(
-                    sample
-                    for sample in track.sample_frames
-                    if sample.frame_number == frame.frame_number
-                )
-                if frame_sample is not None:
-                    frame_sample.numpy_info = frame_info
-            except:
-                pass
-        track.numpy_info = track_info
 
 
 class TrackHeader:
@@ -197,7 +207,6 @@ class TrackHeader:
                     region,
                 )
                 self.sample_frames.append(f)
-        self.numpy_info = None
 
     def toJSON(self, clip_meta):
         meta_dict = {}
@@ -354,7 +363,6 @@ class TrackHeader:
             ffc_frames=self.ffc_frames,
             lower_mass=self.lower_mass,
             repeats=repeats,
-            numpy_info=self.numpy_info,
             min_frames=min_frames,
         )
 
@@ -553,7 +561,7 @@ class Camera:
         self.segments += 1
 
 
-class FrameSample:
+class FrameSample(Sample):
     _frame_id = 1
 
     def __init__(
@@ -568,7 +576,6 @@ class FrameSample:
         self.temp_median = temp_median
         self.velocity = velocity
         self.region = region
-        self.numpy_meta = None
 
     @property
     def unique_track_id(self):
@@ -583,7 +590,7 @@ class FrameSample:
         return [self.frame_number]
 
 
-class SegmentHeader:
+class SegmentHeader(Sample):
     """Header for segment."""
 
     _segment_id = 1
@@ -603,7 +610,6 @@ class SegmentHeader:
         movement_data=None,
         best_mass=False,
         top_mass=False,
-        numpy_info={},
     ):
         self.movement_data = movement_data
         self.top_mass = top_mass
@@ -613,14 +619,13 @@ class SegmentHeader:
         # reference to track this segment came from
         self.clip_id = clip_id
         self.track_id = track_id
-        self.frame_indices = frame_indices
+        self.frame_numbers = frame_indices
 
-        self.track_bounds = regions
+        self.regions = regions
         self.frame_temp_median = frame_temp_median
         # for i, frame in enumerate(frame_indices):
         #     self.track_bounds[frame] = regions[i]
         #     self.frame_temp_median[frame] = frame_temp_median[i]
-        self.numpy_info = numpy_info
         self.label = label
         # first frame of this segment referenced by start of track
         self.start_frame = start_frame
@@ -630,6 +635,14 @@ class SegmentHeader:
         self.weight = weight
 
         self.mass = mass
+
+    @property
+    def track_bounds(self):
+        return self.regions
+
+    @property
+    def frame_indices(self):
+        return self.frame_numbers
 
     @property
     def avg_mass(self):
@@ -707,7 +720,6 @@ def get_segments(
     ffc_frames=[],
     lower_mass=0,
     repeats=1,
-    numpy_info={},
     min_frames=None,
 ):
     if min_frames is None:
@@ -786,7 +798,6 @@ def get_segments(
                 movement_data=movement_data,
                 best_mass=best_mass,
                 top_mass=True,
-                numpy_info=numpy_info,
             )
             best_mass = False
             segments.append(segment)
@@ -885,7 +896,6 @@ def get_segments(
                 frame_temp_median=temp_slice,
                 frame_indices=frames,
                 movement_data=movement_data,
-                numpy_info=numpy_info,
             )
             segments.append(segment)
 
