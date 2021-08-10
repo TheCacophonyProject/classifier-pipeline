@@ -86,6 +86,16 @@ class NumpyMeta:
 
                 frame_info[TrackChannels.flow] = self.f.tell()
                 np.save(self.f, frame.flow, allow_pickle=False)
+            try:
+                frame_sample = next(
+                    sample
+                    for sample in track.sample_frames
+                    if sample.frame_number == frame.frame_number
+                )
+                if frame_sample is not None:
+                    frame_sample.numpy_info = frame_info
+            except:
+                pass
         track.numpy_info = track_info
 
 
@@ -542,10 +552,11 @@ class FrameSample:
         FrameSample._frame_id += 1
         self.clip_id = clip_id
         self.track_id = track_id
-        self.frame_num = frame_num
+        self.frame_number = frame_num
         self.label = label
         self.temp_median = temp_median
         self.velocity = velocity
+        self.numpy_meta = None
 
     @property
     def unique_track_id(self):
@@ -685,7 +696,7 @@ def get_segments(
     mass_history = np.uint16([region.mass for region in regions])
     filtered_stats = {"segment_mass": 0, "too short": 0}
     if sample_frames is not None:
-        frame_indices = [frame.frame_num for frame in sample_frames]
+        frame_indices = [frame.frame_number for frame in sample_frames]
     else:
         frame_indices = [
             region.frame_number

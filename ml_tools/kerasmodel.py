@@ -3,18 +3,10 @@ import io
 import math
 import tensorflow as tf
 import joblib
-import pickle
 import logging
 from tensorboard.plugins.hparams import api as hp
-from ml_tools import tools
-
-from collections import namedtuple
-from ml_tools.datagenerator import DataGenerator
-from ml_tools.preprocess import (
-    FrameTypes,
-    preprocess_movement,
-    preprocess_frame,
-)
+import tensorflow_addons as tfa
+import os
 import tensorflow.keras as keras
 from tensorflow.keras.layers import *
 import numpy as np
@@ -22,13 +14,21 @@ import os
 import time
 import matplotlib.pyplot as plt
 import json
-from ml_tools.imageprocessing import clear_frame
-from classify.trackprediction import TrackPrediction
 from sklearn.metrics import confusion_matrix
 
+from ml_tools import tools
+from ml_tools.datagenerator import DataGenerator
+from ml_tools.preprocess import (
+    FrameTypes,
+    preprocess_movement,
+    preprocess_frame,
+)
+
+from ml_tools.imageprocessing import clear_frame
+from classify.trackprediction import TrackPrediction
+
 from ml_tools.hyperparams import HyperParams
-import tensorflow_addons as tfa
-import os
+
 
 from keras import backend as K
 import gc
@@ -544,6 +544,7 @@ class KerasModel:
             dataset.set_read_only(True)
             dataset.lbl_p = lbl_p
             dataset.use_segments = self.params.use_segments
+            dataset.clear_unused()
             dataset.recalculate_segments(segment_type=self.params.segment_type)
 
             if ignore_labels:

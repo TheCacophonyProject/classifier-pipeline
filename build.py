@@ -22,7 +22,7 @@ import joblib
 import pytz
 
 LOW_DATA_LABELS = ["wallaby", "human", "dog", "vehicle"]
-MIN_TRACKS = 100
+MIN_TRACKS = 1
 MIN_SIZE = 4
 CAP_DATA = True
 MIN_VALIDATE_CAMERAS = 5
@@ -329,7 +329,6 @@ def main():
     for dataset in datasets:
         dataset.saveto_numpy(os.path.join(base_dir))
 
-    dataset.clear_unused()
     for dataset in datasets:
         dataset.db = None
         logging.info("saving to %s", f"{os.path.join(base_dir, dataset.name)}.dat")

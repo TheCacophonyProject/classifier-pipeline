@@ -22,7 +22,8 @@ FRAMES_PER_SECOND = 9
 class GeneartorParams:
     def __init__(self, output_dim, params):
         self.augment = params.get("augment", False)
-        self.use_movement = params.get("use_movement")
+        self.use_segments = params.get("use_segments", True)
+
         self.model_preprocess = params.get("model_preprocess")
         self.channel = params.get("channel")
         self.square_width = params.get("square_width", 5)
@@ -99,7 +100,9 @@ class DataGenerator(keras.utils.Sequence):
                     self.labels,
                     self.dataset.name,
                     self.dataset.db,
-                    self.dataset.segments_by_id,
+                    self.dataset.segments_by_id
+                    if self.params.use_segments
+                    else self.dataset.frames_by_id,
                     self.params,
                     self.dataset.label_mapping,
                     self.dataset.numpy_data,
@@ -114,7 +117,9 @@ class DataGenerator(keras.utils.Sequence):
                     self.labels,
                     self.dataset.name,
                     self.dataset.db,
-                    self.dataset.segments_by_id,
+                    self.dataset.segments_by_id
+                    if self.params.use_segments
+                    else self.dataset.frames_by_id,
                     self.params,
                     self.dataset.label_mapping,
                     self.dataset.numpy_data,
@@ -301,7 +306,7 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
         label = mapped_labels[sample.label]
         if label not in labels:
             continue
-        if params.use_movement:
+        if params.use_segments:
             data = preprocess_movement(
                 frame_data,
                 params.square_width,
