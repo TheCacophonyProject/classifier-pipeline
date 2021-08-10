@@ -73,7 +73,7 @@ class ClipTrackExtractor:
             size = self.config.dilation_pixels * 2 + 1
             self.dilate_kernel = np.ones((size, size), np.uint8)
 
-    def parse_clip(self, clip):
+    def parse_clip(self, clip, process_background=False):
         """
         Loads a cptv file, and prepares for track extraction.
         """
@@ -89,7 +89,9 @@ class ClipTrackExtractor:
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             clip.set_res(reader.x_resolution, reader.y_resolution)
-
+            if clip.from_metadata:
+                for track in clip.tracks:
+                    track.crop_regions()
             camera_model = None
             if reader.model:
                 camera_model = reader.model.decode()
@@ -114,7 +116,7 @@ class ClipTrackExtractor:
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             for frame in reader:
-                if frame.background_frame:
+                if not process_background and frame.background_frame:
                     continue
                 self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
 

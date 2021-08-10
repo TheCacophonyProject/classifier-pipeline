@@ -106,34 +106,6 @@ class TrackDatabase:
             return clip.attrs.get("has_prediction", False)
         return False
 
-    def add_overlay(self, clip_id, track_id, overlay):
-        with HDF5Manager(self.database, "a") as f:
-            clip = f["clips"][str(clip_id)]
-            track = clip[str(track_id)]
-            chunks = overlay.shape
-
-            dims = overlay.shape
-            if "overlay" not in track:
-                overlay_node = track.create_dataset(
-                    "overlay", dims, chunks=chunks, dtype=np.float32
-                )
-            else:
-                overlay_node = track["overlay"]
-            overlay_node[:, :] = overlay
-
-    def get_overlay(self, clip_id, track_id):
-        with HDF5Manager(self.database, "r") as f:
-            clip = f["clips"][str(clip_id)]
-            track = clip[str(track_id)]
-            return track["overlay"][:]
-
-    def has_overlay(self, clip_id, track_id):
-        with HDF5Manager(self.database, "r") as f:
-            clip = f["clips"][str(clip_id)]
-            track = clip[str(track_id)]
-            return "overlay" in track
-        return False
-
     def add_predictions(self, clip_id, model):
         logging.info("Add_prediction waiting")
         with HDF5Manager(self.database, "r") as f:
@@ -212,6 +184,11 @@ class TrackDatabase:
         if labels is not None:
             track_attrs["prediction_classes"] = labels
 
+    def finished_processing(self, clip_id):
+        with HDF5Manager(self.database, "a") as f:
+            clip_node = f["clips"][clip_id]
+            clip_node.attrs["finished"] = True
+
     def has_prediction(self, clip_id):
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
@@ -236,7 +213,7 @@ class TrackDatabase:
         :param tracker: if provided stats from tracker are used for the clip stats
         :param overwrite: Overwrites existing clip (if it exists).
         """
-        print("creating clip {}".format(clip.get_id()))
+        logging.info("creating clip {}".format(clip.get_id()))
         clip_id = str(clip.get_id())
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
@@ -300,7 +277,6 @@ class TrackDatabase:
                 group_attrs["ffc_frames"] = clip.ffc_frames
 
             f.flush()
-            group.attrs["finished"] = True
 
     def latest_date(self):
         start_time = None
@@ -560,49 +536,55 @@ class TrackDatabase:
             track_node.attrs["important_frames"] = np.uint16(important_frames)
 
     def add_prediction(self, clip_id, track_id, track_prediction):
-        with HDF5Manager(self.database, "a") as f:
-            clip = f["clips"][(str(clip_id))]
-            track_node = clip[str(track_id)]
-            predicted_tag = track_prediction.predicted_tag()
-            if track_prediction.num_frames_classified > 0:
-                self.all_class_confidences = track_prediction.class_confidences()
-                predictions = np.int16(
-                    np.around(100 * np.array(track_prediction.predictions))
-                )
-                predicted_confidence = int(round(100 * track_prediction.max_score))
+        logging.warn("Not adding prediction data as code needs to be written")
 
-                self.add_prediction_data(
-                    track_node,
-                    predictions,
-                    predicted_tag,
-                    predicted_confidence,
-                    labels=track_prediction.labels,
-                )
-            clip.attrs["has_prediction"] = True
+    # TODO IF NEEDED
+    #     with HDF5Manager(self.database, "a") as f:
+    #         clip = f["clips"][(str(clip_id))]
+    #         track_node = clip[str(track_id)]
+    #         predicted_tag = track_prediction.predicted_tag()
+    #         if track_prediction.num_frames_classified > 0:
+    #             self.all_class_confidences = track_prediction.class_confidences()
+    #             predictions = np.int16(
+    #                 np.around(100 * np.array(track_prediction.predictions))
+    #             )
+    #             predicted_confidence = int(round(100 * track_prediction.max_score))
+    #
+    #             self.add_prediction_data(
+    #                 track_node,
+    #                 predictions,
+    #             )
+    #         clip.attrs["has_prediction"] = True
 
-    def add_prediction_data(
-        self, track, predictions, predicted_tag, score, labels=None
-    ):
+    def add_prediction_data(self, track, model_predictions):
         """
         Add prediction data as a dataset to the track
         data should be  an array of int16 array
         """
         track_attrs = track.attrs
-        if predicted_tag is not None:
-            track_attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
-            track_attrs["predicted"] = predicted_tag
-        track_attrs["predicted_confidence"] = score
 
-        pred_data = track.create_dataset(
-            "predictions",
-            predictions.shape,
-            chunks=predictions.shape,
-            dtype=predictions.dtype,
-        )
-        pred_data[:, :] = predictions
-        if labels is not None:
-            track_attrs["prediction_classes"] = labels
-        track_attrs["has_prediction"] = True
+        model_group = track.create_group("model_predictions")
+        for prediction in model_predictions:
+            pred_g = model_group.create_group(
+                f'{prediction.get("model_name", "unnamed")}-{prediction.get("id", 0)}'
+            )
+            predicted_tag = prediction.get("label")
+            if predicted_tag is not None:
+                pred_g.attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
+                pred_g.attrs["predicted"] = predicted_tag
+            track_attrs["predicted_confidence"] = prediction.get("confidence", 0)
+            prediction_data = np.int16(prediction.get("predictions"))
+            raw_predictions = pred_g.create_dataset(
+                "predictions",
+                prediction_data.shape,
+                chunks=prediction_data.shape,
+                dtype=prediction_data.dtype,
+            )
+            raw_predictions[:, :] = prediction_data
+            labels = prediction.get("labels")
+            if labels is not None:
+                pred_g.attrs["prediction_classes"] = labels
+            track_attrs["has_prediction"] = True
 
     def add_track(
         self,
@@ -634,22 +616,25 @@ class TrackDatabase:
             track_node = clip_node.create_group(track_id)
             cropped_frame = track_node.create_group("cropped")
             thermal_frame = track_node.create_group("original")
-
+            skipped_frames = []
             # write each frame out individually, as they will probably be different sizes.
-
-            for frame_i, frame_data in enumerate(track_data):
-                cropped = frame_data[1]
-                original = frame_data[0]
-                channels, height, width = cropped.shape
-
+            original = None
+            for frame_i, cropped in enumerate(cropped_data):
+                if original_thermal is not None:
+                    original = original_thermal[frame_i]
+                channels = cropped.channels
                 # using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
-                chunks = (1, height, width)
-                dims = (channels, height, width)
+                if cropped.thermal.size > 0:
+                    height, width = cropped.shape
+                    chunks = (1, height, width)
+                    dims = (channels, height, width)
+                    frame_node = cropped_frame.create_dataset(
+                        str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
+                    )
 
-                frame_node = cropped_frame.create_dataset(
-                    str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
-                )
-                frame_node[:, :, :] = cropped.as_array()
+                    frame_node[:, :, :] = cropped.as_array()
+                else:
+                    skipped_frames.append(frame_i)
                 if original is not None:
                     thermal_node = thermal_frame.create_dataset(
                         str(frame_i),
@@ -669,15 +654,13 @@ class TrackDatabase:
 
                 node_attrs["tag"] = track.tag
                 node_attrs["frames"] = frames
+                node_attrs["skipped_frames"] = np.uint16(skipped_frames)
                 node_attrs["start_frame"] = track.start_frame
                 node_attrs["end_frame"] = track.end_frame
                 if track.predictions is not None:
                     self.add_prediction_data(
                         track_node,
                         track.predictions,
-                        track.predicted_tag,
-                        track.predicted_confidence,
-                        labels=track.prediction_classes,
                     )
                     has_prediction = True
                 if track.confidence:
@@ -706,7 +689,6 @@ class TrackDatabase:
 
             # mark the record as have been writen to.
             # this means if we are interupted part way through the track will be overwritten
-            clip_node.attrs["finished"] = True
             clip_node.attrs["has_prediction"] = has_prediction
 
 

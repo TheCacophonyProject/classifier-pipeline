@@ -40,7 +40,7 @@ class Track:
     # must change atleast 5 pixels to be considered for jitter
     MIN_JITTER_CHANGE = 5
 
-    def __init__(self, clip_id, id=None, fps=9):
+    def __init__(self, clip_id, id=None, fps=9, crop_rectangle=None):
         """
         Creates a new Track.
         :param id: id number for track, if not specified is provided by an auto-incrementer
@@ -87,7 +87,7 @@ class Track:
         self.prediction_classes = None
 
         self.predicted_mid = None
-        self.crop_rectangle = None
+        self.crop_rectangle = crop_rectangle
 
         self.predictions = None
         self.predicted_tag = None
@@ -132,13 +132,8 @@ class Track:
         return self._id
 
     def add_prediction_info(self, track_prediction):
-        self.predicted_tag = track_prediction.predicted_tag()
-        self.all_class_confidences = track_prediction.class_confidences()
-        self.predictions = np.int16(
-            np.around(100 * np.array(track_prediction.predictions))
-        )
-        self.predicted_confidence = int(round(100 * track_prediction.max_score))
-        self.prediction_classes = track_prediction.labels
+        logging.warn("TODO add prediction info needs to be implemented")
+        return
 
     def load_track_meta(
         self,
@@ -158,9 +153,6 @@ class Track:
         self.predicted_tag = data.get("tag")
         self.all_class_confidences = data.get("all_class_confidences", None)
         self.predictions = data.get("predictions")
-        if self.predictions:
-            self.predictions = np.int16(self.predictions)
-            self.predicted_confidence = np.amax(self.predictions)
 
         self.track_tags = track_meta.get("TrackTags")
         self.prediction_classes = data.get("classes")
@@ -215,6 +207,13 @@ class Track:
             self.vel_x.append(0)
             self.vel_y.append(0)
 
+    def crop_regions(self):
+        if self.crop_rectangle is None:
+            logging.info("No crop rectangle to crop with")
+            return
+        for region in self.bounds_history:
+            region.crop(self.crop_rectangle)
+
     def add_frame_for_existing_region(self, frame, mass_delta_threshold, prev_filtered):
         region = self.bounds_history[self.current_frame_num]
         if prev_filtered is not None:
@@ -222,13 +221,11 @@ class Track:
         filtered = region.subimage(frame.filtered)
         region.calculate_mass(filtered, mass_delta_threshold)
         region.calculate_variance(filtered, prev_filtered)
-
         if self.prev_frame_num and frame.frame_number:
             frame_diff = frame.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
         self.update_velocity()
-
         self.prev_frame_num = frame.frame_number
         self.current_frame_num += 1
         self.frames_since_target_seen = 0
@@ -520,9 +517,8 @@ class Track:
         best = None
         for track_tag in track_tags:
             ranking = cls.tag_ranking(track_tag, tag_precedence, default_prec)
-
             # if 2 track_tags have same confidence ignore both
-            if ranking == best and track_tag["what"] != tag["what"]:
+            if tag and ranking == best and track_tag["what"] != tag["what"]:
                 tag = None
             elif best is None or ranking < best:
                 best = ranking

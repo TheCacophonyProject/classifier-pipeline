@@ -102,6 +102,7 @@ def add_predictions(db, clip_id, classifier):
             overlay,
             crop_region,
         )
+        logging.warn("Not adding prediction data as code needs to be written")
         db.add_prediction(clip_id, track["id"], track_prediction)
 
 
@@ -174,12 +175,16 @@ class ClipLoader:
             p.start()
         if root is None:
             root = self.config.source_folder
-
+        file_paths = []
         for folder_path, _, files in os.walk(root):
             for name in files:
                 if os.path.splitext(name)[1] == ".cptv":
                     full_path = os.path.join(folder_path, name)
-                    job_queue.put(full_path)
+                    file_paths.append(full_path)
+        # allows us know the order of processing
+        file_paths.sort()
+        for file_path in file_paths:
+            job_queue.put(file_path)
 
         logging.info("Processing %d", job_queue.qsize())
         for i in range(len(processes)):
@@ -196,7 +201,7 @@ class ClipLoader:
     def _get_dest_folder(self, filename):
         return os.path.join(self.config.tracks_folder, get_distributed_folder(filename))
 
-    def _export_tracks(self, full_path, clip, classifier=None):
+    def _export_tracks(self, full_path, clip):
         """
         Writes tracks to a track database.
         :param database: database to write track to.
@@ -245,6 +250,7 @@ class ClipLoader:
                 start_time=start_time,
                 end_time=end_time,
             )
+        self.database.finished_processing(clip.get_id())
 
     def _filter_clip_tracks(self, clip_metadata):
         """
@@ -320,7 +326,7 @@ class ClipLoader:
             return
 
         valid_tracks = self._filter_clip_tracks(metadata)
-        if not valid_tracks:
+        if not valid_tracks or len(valid_tracks) == 0:
             logging.error("No valid track data found for %s", filename)
             return
 
@@ -330,8 +336,29 @@ class ClipLoader:
             self.config.load.include_filtered_channel,
             self.config.load.tag_precedence,
         )
-
-        if not self.track_extractor.parse_clip(clip):
+        tracker_versions = set(
+            [
+                t.get("data", {}).get("tracker_version", 0)
+                for t in metadata.get("Tracks", [])
+            ]
+        )
+        if len(tracker_versions) > 1:
+            logginer.error(
+                "Tracks with different tracking versions cannot process %s versions %s",
+                filename,
+                tracker_versions,
+            )
+            return
+        tracker_version = tracker_versions.pop()
+        process_background = tracker_version < 10
+        logging.debug(
+            "Processing background? %s tracker_versions %s",
+            process_background,
+            tracker_version,
+        )
+        if not self.track_extractor.parse_clip(
+            clip, process_background=process_background
+        ):
             logging.error("No valid clip found for %s", filename)
             return
 
