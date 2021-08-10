@@ -590,12 +590,14 @@ class TrackDatabase:
         self,
         clip_id,
         track,
-        track_data,
+        cropped_data,
+        sample_frames=None,
         opts=None,
         start_time=None,
         end_time=None,
         prediction=None,
         prediction_classes=None,
+        original_thermal=None,
     ):
         """
         Adds track to database.
@@ -608,7 +610,6 @@ class TrackDatabase:
         track_id = str(track.get_id())
         if opts is None:
             opts = {}
-        frames = len(cropped_data)
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
             clip_node = clips[clip_id]
@@ -622,12 +623,11 @@ class TrackDatabase:
             for frame_i, cropped in enumerate(cropped_data):
                 if original_thermal is not None:
                     original = original_thermal[frame_i]
-                channels = cropped.channels
                 # using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
                 if cropped.thermal.size > 0:
                     height, width = cropped.shape
                     chunks = (1, height, width)
-                    dims = (channels, height, width)
+                    dims = (5, height, width)
                     frame_node = cropped_frame.create_dataset(
                         str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
                     )
@@ -645,46 +645,43 @@ class TrackDatabase:
                     )
                     thermal_node[:, :] = original
             # write out attributes
-            if track:
-                track_stats = track.get_stats()
-                node_attrs = track_node.attrs
-                node_attrs["id"] = track_id
-                if track.track_tags:
-                    node_attrs["track_tags"] = json.dumps(track.track_tags)
-
-                node_attrs["tag"] = track.tag
-                node_attrs["frames"] = frames
-                node_attrs["skipped_frames"] = np.uint16(skipped_frames)
-                node_attrs["start_frame"] = track.start_frame
-                node_attrs["end_frame"] = track.end_frame
-                if track.predictions is not None:
-                    self.add_prediction_data(
-                        track_node,
-                        track.predictions,
-                    )
-                    has_prediction = True
-                if track.confidence:
-                    node_attrs["confidence"] = track.confidence
-                if start_time:
-                    node_attrs["start_time"] = start_time.isoformat()
-                if end_time:
-                    node_attrs["end_time"] = end_time.isoformat()
-
-                for name, value in track_stats._asdict().items():
-                    node_attrs[name] = value
-                # frame history
-                node_attrs["mass_history"] = np.int32(
-                    [bounds.mass for bounds in track.bounds_history]
+            track_stats = track.get_stats()
+            node_attrs = track_node.attrs
+            node_attrs["id"] = track_id
+            if track.track_tags:
+                node_attrs["track_tags"] = json.dumps(track.track_tags)
+            if sample_frames is not None:
+                node_attrs["sample_frames"] = np.uint16(sample_frames)
+            node_attrs["tag"] = track.tag
+            node_attrs["frames"] = len(cropped_data)
+            node_attrs["skipped_frames"] = np.uint16(skipped_frames)
+            node_attrs["start_frame"] = track.start_frame
+            node_attrs["end_frame"] = track.end_frame
+            if track.predictions is not None:
+                self.add_prediction_data(
+                    track_node,
+                    track.predictions,
                 )
-                node_attrs["bounds_history"] = np.int16(
-                    [
-                        [bounds.left, bounds.top, bounds.right, bounds.bottom]
-                        for bounds in track.bounds_history
-                    ]
-                )
+                has_prediction = True
+            if track.confidence:
+                node_attrs["confidence"] = track.confidence
+            if start_time:
+                node_attrs["start_time"] = start_time.isoformat()
+            if end_time:
+                node_attrs["end_time"] = end_time.isoformat()
 
-                # node_attrs["important_frames"] = np.uint16(important_frames)
-
+            for name, value in track_stats._asdict().items():
+                node_attrs[name] = value
+            # frame history
+            node_attrs["mass_history"] = np.int32(
+                [bounds.mass for bounds in track.bounds_history]
+            )
+            node_attrs["bounds_history"] = np.int16(
+                [
+                    [bounds.left, bounds.top, bounds.right, bounds.bottom]
+                    for bounds in track.bounds_history
+                ]
+            )
             f.flush()
 
             # mark the record as have been writen to.

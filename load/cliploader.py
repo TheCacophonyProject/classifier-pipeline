@@ -31,19 +31,15 @@ from ml_tools.previewer import Previewer
 from ml_tools.trackdatabase import TrackDatabase
 from .clip import Clip
 from .cliptrackextractor import ClipTrackExtractor
-from track.track import Track, TrackChannels
+from track.track import Track
 from classify.trackprediction import TrackPrediction
-from ml_tools.imageprocessing import overlay_image, clear_frame
+from ml_tools.imageprocessing import clear_frame
 
 import numpy as np
 
 
-def process_job(loader, queue, model_file=None):
+def process_job(loader, queue):
     i = 0
-    classifier = None
-    if model_file is not None:
-        classifier = KerasModel()
-        classifier.load_model(model_file)
     while True:
         i += 1
         clip_id = queue.get()
@@ -51,7 +47,7 @@ def process_job(loader, queue, model_file=None):
             if clip_id == "DONE":
                 break
             else:
-                loader.process_file(str(clip_id), classifier=classifier)
+                loader.process_file(str(clip_id))
             if i % 50 == 0:
                 logging.info("%s jobs left", queue.qsize())
         except Exception as e:
@@ -85,8 +81,6 @@ def add_predictions(db, clip_id, classifier):
     overlay = None
     for track in tracks:
         track_data = db.get_track(clip_id, track["id"])
-        if classifier.use_movement:
-            overlay = db.get_overlay(clip_id, track["id"])
         regions = []
         for i, rect in enumerate(track["bounds_history"]):
             region = Region.region_from_array(rect)
@@ -165,11 +159,7 @@ class ClipLoader:
         for i in range(max(1, self.workers_threads)):
             p = Process(
                 target=process_job,
-                args=(
-                    self,
-                    job_queue,
-                    self.config.classify.model if self.calculate_predictions else None,
-                ),
+                args=(self, job_queue),
             )
             processes.append(p)
             p.start()
@@ -226,14 +216,7 @@ class ClipLoader:
                     cropped.filtered = np.zeros(cropped.thermal.shape)
                 cropped_data.append(cropped)
 
-            overlay = overlay_image(
-                cropped_data,
-                track.bounds_history,
-                dim=(120, 160),
-                require_movement=True,
-            )
-
-            important_frames = get_important_frames(
+            sample_frames = get_sample_frames(
                 clip.ffc_frames,
                 [bounds.mass for bounds in track.bounds_history],
                 self.config.build.train_min_mass,
@@ -243,8 +226,7 @@ class ClipLoader:
                 clip.get_id(),
                 track,
                 cropped_data,
-                overlay,
-                important_frames,
+                sample_frames=sample_frames,
                 opts=self.compression,
                 original_thermal=original_thermal,
                 start_time=start_time,
@@ -364,7 +346,7 @@ class ClipLoader:
 
         # , self.config.load.cache_to_disk, self.config.use_opt_flow
         if self.track_config.enable_track_output:
-            self._export_tracks(filename, clip, classifier)
+            self._export_tracks(filename, clip)
 
         # write a preview
         if self.previewer:
@@ -400,7 +382,7 @@ def get_distributed_folder(name, num_folders=256, seed=31):
     return "{:02x}".format(hash_code % num_folders)
 
 
-def get_important_frames(ffc_frames, mass_history, min_mass=None, frame_data=None):
+def get_sample_frames(ffc_frames, mass_history, min_mass=None, frame_data=None):
     clear_frames = []
     lower_mass = np.percentile(mass_history, q=25)
     upper_mass = np.percentile(mass_history, q=75)

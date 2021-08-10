@@ -499,7 +499,7 @@ class Track:
         return len(self.bounds_history)
 
     @classmethod
-    def get_best_human_tag(cls, track_meta, tag_precedence, min_confidence=-1):
+    def get_best_human_tag(cls, track_tags, tag_precedence, min_confidence=-1):
         """returns highest precidence non AI tag from the metadata"""
 
         track_tags = [
