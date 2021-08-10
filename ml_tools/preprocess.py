@@ -184,6 +184,7 @@ def preprocess_segment(
 
 def preprocess_frame(
     frame,
+    frame_size,
     augment,
     thermal_median,
     velocity,
@@ -193,8 +194,8 @@ def preprocess_frame(
 ):
     processed_frame, flipped = preprocess_segment(
         [frame],
-        [thermal_median],
-        [velocity],
+        frame_size,
+        reference_level=[thermal_median],
         augment=augment,
         default_inset=0,
     )
@@ -209,13 +210,11 @@ def preprocess_frame(
     filtered, stats = imageprocessing.normalize(filtered, min=0)
     if not stats[0]:
         return None
-    np.clip(filtered, a_min=0, a_max=None, out=filtered)
-    np.clip(filtered, a_min=0, a_max=None, out=filtered)
 
     data = np.empty((*thermal.shape, 3))
     data[:, :, 0] = thermal
     data[:, :, 1] = filtered
-    data[:, :, 2] = thermal
+    data[:, :, 2] = filtered
     # tools.saveclassify_image(data, f"test-{frame.frame_number}")
     # tools.saveclassify_image(
     #     data,

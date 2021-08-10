@@ -169,14 +169,22 @@ class TrackHeader:
 
         if sample_frames is not None:
             self.sample_frames = []
-            for frame_num in sample_frames:
+            for region, frame_num, frame_temp in zip(
+                regions, sample_frames, self.frame_temp_median
+            ):
                 f = FrameSample(
-                    self.clip_id, self.track_id, frame_num, self.label, None, None
+                    self.clip_id,
+                    self.track_id,
+                    frame_num,
+                    self.label,
+                    frame_temp,
+                    None,
+                    region,
                 )
                 self.sample_frames.append(f)
         else:
             self.sample_frames = []
-            for region in regions:
+            for region, frame_temp in zip(regions, self.frame_temp_median):
                 if region.mass == 0:
                     continue
                 f = FrameSample(
@@ -184,8 +192,9 @@ class TrackHeader:
                     self.track_id,
                     region.frame_number,
                     self.label,
+                    frame_temp,
                     None,
-                    None,
+                    region,
                 )
                 self.sample_frames.append(f)
         self.numpy_info = None
@@ -547,7 +556,9 @@ class Camera:
 class FrameSample:
     _frame_id = 1
 
-    def __init__(self, clip_id, track_id, frame_num, label, temp_median, velocity):
+    def __init__(
+        self, clip_id, track_id, frame_num, label, temp_median, velocity, region
+    ):
         self.id = FrameSample._frame_id
         FrameSample._frame_id += 1
         self.clip_id = clip_id
@@ -556,11 +567,20 @@ class FrameSample:
         self.label = label
         self.temp_median = temp_median
         self.velocity = velocity
+        self.region = region
         self.numpy_meta = None
 
     @property
     def unique_track_id(self):
         return "{}-{}".format(self.clip_id, self.track_id)
+
+    @property
+    def track_bounds(self):
+        return [self.region]
+
+    @property
+    def frame_indices(self):
+        return [self.frame_number]
 
 
 class SegmentHeader:

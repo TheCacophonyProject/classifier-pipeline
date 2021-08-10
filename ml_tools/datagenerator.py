@@ -323,12 +323,12 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
             if data is not None:
                 mvm.append(sample.movement_data)
         else:
-
-            frame = preprocess_frame(
-                frame_data,
+            data = preprocess_frame(
+                frame_data[0],
+                params.frame_size,
                 params.augment,
-                frame_sample.temp_median,
-                frame_sample.velocity,
+                sample.temp_median,
+                sample.velocity,
                 params.output_dim,
                 preprocess_fn=params.model_preprocess,
                 sample=sample,
@@ -370,42 +370,56 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
     return np.array(X), y, y_original
 
 
-def load_from_numpy(f, frames_by_track, tracks, channels, name):
+def load_from_numpy(numpy_meta, frames_by_track, tracks, channels, name):
     start = time.time()
     count = 0
     data = [None] * len(channels)
-    for numpy_info, frame_indices, u_id, regions_by_frames in tracks:
-        frame_indices.sort()
-        track_data = frames_by_track.setdefault(u_id, {})
-        background = track_data.get("background")
-        if background is None:
-            f.seek(numpy_info["background"])
-            background = np.load(f, allow_pickle=True)
-            track_data["background"] = background
-        for frame_i in frame_indices:
-            try:
-                if frame_i in track_data:
-                    continue
-                count += 1
-                frame_info = numpy_info[frame_i]
-                for i, channel in enumerate(channels):
-                    f.seek(frame_info[channel])
-                    channel_data = np.load(f, allow_pickle=True)
-                    data[i] = channel_data
+    try:
+        with numpy_meta as f:
+            for _, frame_indices, u_id, regions_by_frames in tracks:
+                numpy_info = numpy_meta.track_info[u_id]
+                frame_indices.sort()
+                track_data = frames_by_track.setdefault(u_id, {})
+                background = track_data.get("background")
+                if background is None:
+                    f.seek(numpy_info["background"])
+                    background = np.load(f, allow_pickle=True)
+                    track_data["background"] = background
+                for frame_i in frame_indices:
+                    try:
+                        if frame_i in track_data:
+                            continue
+                        count += 1
+                        frame_info = numpy_info[frame_i]
+                        for i, channel in enumerate(channels):
+                            f.seek(frame_info[channel])
+                            channel_data = np.load(f, allow_pickle=True)
+                            data[i] = channel_data
 
-                frame = Frame.from_channel(data, channels, frame_i, flow_clipped=True)
-                track_data[frame_i] = frame
-                frame.region = regions_by_frames[frame_i]
-                frame.filtered = frame.thermal - frame.region.subimage(background)
-            except:
-                logging.error(
-                    "%s error loading track %s frame %s",
-                    name,
-                    u_id,
-                    frame_i,
-                    exc_info=True,
-                )
-    logging.debug("%s time to load %s frames %s", name, count, time.time() - start)
+                        frame = Frame.from_channels(
+                            data, channels, frame_i, flow_clipped=True
+                        )
+                        track_data[frame_i] = frame
+                        frame.region = regions_by_frames[frame_i]
+                        frame.filtered = frame.thermal - frame.region.subimage(
+                            background
+                        )
+                    except:
+                        logging.error(
+                            "%s error loading track %s frame %s",
+                            name,
+                            u_id,
+                            frame_i,
+                            exc_info=True,
+                        )
+                        logging.debug(
+                            "%s time to load %s frames %s",
+                            name,
+                            count,
+                            time.time() - start,
+                        )
+    except:
+        logging.error("%s error loading numpy file", name, exc_info=True)
     return frames_by_track
 
 
@@ -428,7 +442,12 @@ def load_batch_frames(
             batch_segments.append(segment)
             track_segments = data_by_track.setdefault(
                 segment.unique_track_id,
-                (segment.numpy_info, [], segment.unique_track_id, {}),
+                (
+                    numpy_meta.track_info[segment.unique_track_id]["background"],
+                    [],
+                    segment.unique_track_id,
+                    {},
+                ),
             )
             regions_by_frames = track_segments[3]
             for region in segment.track_bounds:
@@ -438,14 +457,11 @@ def load_batch_frames(
     # sort by position in file
     track_segments = sorted(
         data_by_track.values(),
-        key=lambda track_segment: track_segment[0]["background"],
+        key=lambda track_segment: track_segment[0],
     )
     logging.debug("%s loading tracks from numpy file", name)
-    try:
-        with numpy_meta as f:
-            load_from_numpy(f, track_frames, track_segments, channels, name)
-    except:
-        logging.error("%s error loading numpy file", name, exc_info=True)
+    load_from_numpy(numpy_meta, track_frames, track_segments, channels, name)
+
     return all_batches
 
 
