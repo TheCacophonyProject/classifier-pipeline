@@ -7,4 +7,5 @@ Script to classify animals within a CPTV video file.
 from classify.main import main
 
 
-main()
+if __name__ == "__main__":
+    main()

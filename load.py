@@ -6,4 +6,5 @@ Script to Load Tagged tracks into a h5py file.
 
 from load.load import main
 
-main()
+if __name__ == "__main__":
+    main()
