@@ -47,7 +47,6 @@ class Clip:
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
         Track._track_id = 1
-        self.ffc_frames = []
         self.tags = None
         self.disable_background_subtraction = False
         self.frame_on = 0

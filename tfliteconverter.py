@@ -105,7 +105,6 @@ def run_model(args):
     in_values = {}
     for detail in input_details:
         in_values[detail["name"]] = detail["index"]
-    # print(in_values)
     output_details = interpreter.get_output_details()
     input_shape = input_details[in_values["input_1"]]["shape"]
 

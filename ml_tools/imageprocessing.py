@@ -16,27 +16,6 @@ def resize_and_pad(
     frame,
     resize_dim,
     new_dim,
-    pad=None,
-    interpolation=cv2.INTER_LINEAR,
-    extra_h=0,
-    extra_v=0,
-):
-    if pad is None:
-        pad = np.min(frame)
-    resized = np.full(new_dim, pad, dtype=frame.dtype)
-    offset = np.int16((np.array(new_dim) - np.array(resize_dim)) / 2.0)
-    frame_resized = resize_cv(frame, resize_dim)
-    resized[
-        offset[1] : offset[1] + frame_resized.shape[0],
-        offset[0] : offset[0] + frame_resized.shape[1],
-    ] = frame_resized
-    return resized
-
-
-def resize_and_pad(
-    frame,
-    resize_dim,
-    new_dim,
     region,
     crop_region,
     keep_edge=False,
@@ -47,10 +26,12 @@ def resize_and_pad(
 ):
     if pad is None:
         pad = np.min(frame)
+    else:
+        pad = 0
     resized = np.full(new_dim, pad, dtype=frame.dtype)
     offset_x = 0
     offset_y = 0
-    frame_resized = resize_cv(frame, resize_dim)
+    frame_resized = resize_cv(frame, resize_dim, interpolation=interpolation)
     frame_height, frame_width = frame_resized.shape[:2]
     offset_x = (new_dim[1] - frame_width) // 2
     offset_y = (new_dim[0] - frame_height) // 2
@@ -67,7 +48,6 @@ def resize_and_pad(
         elif region.bottom == crop_region.bottom:
             offset_y = new_dim[0] - frame_height
     if len(resized.shape) == 3:
-        print("padding with", pad)
         resized[
             offset_y : offset_y + frame_height, offset_x : offset_x + frame_width, :
         ] = frame_resized
@@ -80,32 +60,16 @@ def resize_and_pad(
     return resized
 
 
+def rotate(image, degrees, mode="nearest", order=1):
+    return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
+
+
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
-    return cv2.resize(
-        image,
-        dsize=(dim[0] + extra_h, dim[1] + extra_v),
-        interpolation=interpolation,
-    )
-
-
-def rotate(image, degrees, mode="nearest", order=1):
-    # print("image is", image.dtype, np.amax(image), np.amin(image))
-    # image = Image.fromarray(image)
-    # rotated = Image.Image.rotate(image, degrees)
-    # return np.array(rotated)
-    return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
-
-
-def rotate(image, degrees, mode="nearest", order=1):
-    return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
-
-
-def resize_cv(image, dim, interpolation=None, extra_h=0, extra_v=0):
 
     return cv2.resize(
         np.float32(image),
         dsize=(dim[0] + extra_h, dim[1] + extra_v),
-        interpolation=interpolation if interpolation else cv2.INTER_LINEAR,
+        interpolation=interpolation,
     )
 
 

@@ -118,23 +118,11 @@ class ClipClassifier(CPTVFileProcessor):
                     # a little weight decay helps the model not lock into an initial impression.
                     # 0.98 represents a half life of around 3 seconds.
                     state *= 0.98
-
-                    # precondition on weight,  segments with small mass are weighted less as we can assume the error is
-                    # higher here.
-                    mass = region.mass
-
-                    # we use the square-root here as the mass is in units squared.
-                    # this effectively means we are giving weight based on the diameter
-                    # of the object rather than the mass.
-                    mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
-
-                    # cropped frames don't do so well so restrict their score
-                    cropped_weight = 0.7 if region.was_cropped else 1.0
                     track_prediction.classified_frame(
                         region.frame_number,
                         prediction,
-                        mass_scale=mass_weight * cropped_weight,
                         novelty=novelty,
+                        mass=mass,
                     )
         return track_prediction
 

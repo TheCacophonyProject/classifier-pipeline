@@ -538,7 +538,6 @@ class KerasModel:
             self.datasets[name] = joblib.load(
                 open(f"{os.path.join(base_dir, name)}.dat", "rb")
             )
-        #
 
         for dataset in self.datasets.values():
             dataset.labels.sort()

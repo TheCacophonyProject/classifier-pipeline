@@ -4,9 +4,8 @@ import numpy as np
 import logging
 import os
 from ml_tools import tools
-from ml_tools.frame import Frame
+from ml_tools.frame import Frame, TrackChannels
 from ml_tools.preprocess import MIN_SIZE
-from ml_tools.frame import TrackChannels
 from track.region import Region
 
 FRAMES_PER_SECOND = 9
@@ -189,10 +188,8 @@ class TrackHeader:
         meta_dict["track_id"] = int(self.track_id)
         meta_dict["camera"] = self.camera
         meta_dict["num_frames"] = int(self.num_frames)
-        positions = self.regions
-
         meta_dict["frames_per_second"] = int(self.frames_per_second)
-        meta_dict["track_bounds"] = positions
+        meta_dict["track_bounds"] = self.regions
         meta_dict["start_frame"] = int(self.start_frame)
         if self.location is not None:
             meta_dict["location_hash"] = "{}{}".format(
@@ -200,7 +197,7 @@ class TrackHeader:
             )
         meta_dict["label"] = self.label
 
-        return json.dumps(meta_dict, indent=3)
+        return json.dumps(meta_dict, indent=3, cls=tools.CustomJSONEncoder)
 
     def add_sample(self, sample, use_segments):
         if use_segments:

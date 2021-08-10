@@ -42,7 +42,7 @@ class Frame:
         return None
 
     @classmethod
-    def from_channel(
+    def from_channels(
         cls,
         frame,
         channels,
@@ -255,16 +255,6 @@ class Frame:
                 pad=0,
             )
         if self.flow is not None:
-            # flow = resize_and_pad(
-            #     self.flow,
-            #     (*resize_dim, 3),
-            #     (*dim, 3),
-            #     self.region,
-            #     crop_rectangle,
-            #     keep_edge=keep_edge,
-            #     pad=0,
-            # )
-            # self.flow = flow
             flow_h = resize_and_pad(
                 self.flow[:, :, 0],
                 resize_dim,

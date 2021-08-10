@@ -14,7 +14,7 @@ import filelock
 import numpy as np
 from classify.trackprediction import TrackPrediction
 from dateutil.parser import parse as parse_date
-from .frame import Frame
+from .frame import Frame, TrackChannels
 from ml_tools import tools
 import datetime
 import json
@@ -22,7 +22,6 @@ from dateutil.parser import parse as parse_date
 
 from multiprocessing import Lock
 import numpy as np
-from track.framebuffer import Frame
 from track.region import Region
 
 special_datasets = ["background_frame", "predictions", "overlay"]
@@ -485,8 +484,11 @@ class TrackDatabase:
 
                 if original:
                     frame = track_node[str(frame_number)][:, :]
-
-                    result.append(Frame.from_channel(frame, 0, frame_number))
+                    result.append(
+                        Frame.from_channels(
+                            [frame], [TrackChannels.thermal], frame_number
+                        )
+                    )
                 else:
                     if frame_number in bad_frames:
                         continue
@@ -515,7 +517,7 @@ class TrackDatabase:
                         try:
                             frame = track_node[str(frame_number)][channels, :, :]
                             result.append(
-                                Frame.from_channel(
+                                Frame.from_channels(
                                     frame,
                                     channels,
                                     frame_number + track_start,

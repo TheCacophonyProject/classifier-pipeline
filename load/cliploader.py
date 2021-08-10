@@ -108,19 +108,6 @@ def add_predictions(db, clip_id, classifier):
 class ClipLoader:
     def __init__(self, config, reprocess=False, calculate_predictions=False):
 
-        self.labels = [
-            "hedgehog",
-            "false-positive",
-            "rodent",
-            "possum",
-            "cat",
-            "bird",
-            "mustelid",
-            "insect",
-            "human",
-            "leporidae",
-            "wallaby",
-        ]
         self.config = config
         os.makedirs(self.config.tracks_folder, mode=0o775, exist_ok=True)
         self.database = TrackDatabase(
@@ -219,12 +206,7 @@ class ClipLoader:
         # that we have processed it.
         self.database.create_clip(clip)
         for track in clip.tracks:
-            if classifier:
-                track_prediction = TrackPrediction(
-                    track.get_id(), track.start_frame, True
-                )
-            else:
-                track_prediction = None
+
             start_time, end_time = clip.start_and_end_time_absolute(
                 track.start_s, track.end_s
             )
@@ -262,12 +244,7 @@ class ClipLoader:
                 original_thermal=original_thermal,
                 start_time=start_time,
                 end_time=end_time,
-                prediction=track_prediction,
-                prediction_classes=prediction_classes,
             )
-            if classifier:
-                track_prediction = classifier.classify_track(clip, track)
-                track.add_prediction_info(track_prediction)
 
     def _filter_clip_tracks(self, clip_metadata):
         """

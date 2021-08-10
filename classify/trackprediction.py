@@ -60,10 +60,8 @@ class TrackPrediction:
             fp_index = None
         self.track_id = track_id
         self.predictions = []
-        self.novelties = []
         self.fp_index = fp_index
         self.smoothed_predictions = []
-        self.smoothed_novelties = []
         self.class_best_score = None
         self.start_frame = start_frame
 
@@ -87,7 +85,7 @@ class TrackPrediction:
                 self.class_best_score
             )
 
-    def classified_frame(self, frame_number, prediction, mass_scale=1):
+    def classified_frame(self, frame_number, prediction):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
         smoothed_prediction = prediction ** 2 * mass
@@ -211,7 +209,7 @@ class TrackPrediction:
     def clarity(self):
         """The distance between our highest scoring class and second highest scoring class."""
         if self.class_best_score is None or len(self.class_best_score) < 2:
-            return 0
+            return None
         return self.max_score - self.score(2)
 
     def label_index(self, n=None):

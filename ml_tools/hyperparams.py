@@ -4,7 +4,7 @@ from ml_tools.dataset import SegmentType
 
 
 class HyperParams(dict):
-    """Defines hyper paramaters for model"""
+    """Helper wrapper for dictionary to make accessing hyper parameters easier"""
 
     def __init__(self, *args):
         super(HyperParams, self).__init__(*args)
