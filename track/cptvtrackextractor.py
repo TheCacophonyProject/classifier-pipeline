@@ -7,7 +7,7 @@ from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
 from ml_tools import trackdatabase
 
-from track.track import TrackChannels
+from ml_tools.frame import TrackChannels
 from ml_tools.tools import blosc_zstd
 from ml_tools.previewer import Previewer
 from track.trackextractor import TrackExtractor

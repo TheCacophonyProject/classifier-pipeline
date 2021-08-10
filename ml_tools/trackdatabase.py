@@ -467,7 +467,8 @@ class TrackDatabase:
                 start_frame = 0
             if end_frame is None:
                 end_frame = track_node.attrs["frames"]
-
+            track_start = track_node.attrs.get("start_frame")
+            bad_frames = track_node.attrs.get("skipepd_frames", [])
             result = []
             if original:
                 track_node = track_node["original"]
@@ -481,11 +482,14 @@ class TrackDatabase:
                 frame_iter = iter(frame_numbers)
 
             for frame_number in frame_iter:
+
                 if original:
                     frame = track_node[str(frame_number)][:, :]
 
                     result.append(Frame.from_channel(frame, 0, frame_number))
                 else:
+                    if frame_number in bad_frames:
+                        continue
                     region = Region.region_from_array(bounds[frame_number])
 
                     if channels is None:
@@ -494,7 +498,7 @@ class TrackDatabase:
                             result.append(
                                 Frame.from_array(
                                     frame,
-                                    frame_number,
+                                    frame_number + track_start,
                                     flow_clipped=True,
                                     region=region,
                                 )
@@ -504,7 +508,7 @@ class TrackDatabase:
                                 "trying to get clip %s track %s frame %s",
                                 clip_id,
                                 track_number,
-                                frame_number,
+                                frame_number + track_start,
                                 exc_info=True,
                             )
                     else:
@@ -512,7 +516,10 @@ class TrackDatabase:
                             frame = track_node[str(frame_number)][channels, :, :]
                             result.append(
                                 Frame.from_channel(
-                                    frame, channels, frame_number, region=region
+                                    frame,
+                                    channels,
+                                    frame_number + track_start,
+                                    region=region,
                                 )
                             )
                         except:
@@ -520,7 +527,7 @@ class TrackDatabase:
                                 "trying to get clip %s track %s frame %s",
                                 clip_id,
                                 track_number,
-                                frame_number,
+                                frame_number + track_start,
                                 exc_info=True,
                             )
 

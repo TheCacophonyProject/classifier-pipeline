@@ -43,6 +43,10 @@ class Rectangle:
         """Construct a rectangle from left, top, right, bottom co-ords."""
         return Rectangle(left, top, right - left, bottom - top)
 
+    def to_ltrb(self):
+        """Return rectangle as left, top, right, bottom co-ords."""
+        return [self.left, self.top, self.right, self.bottom]
+
     def copy(self):
         return Rectangle(self.x, self.y, self.width, self.height)
 

@@ -1,10 +1,20 @@
 import attr
 import cv2
 import numpy as np
-from track.track import TrackChannels
 from ml_tools.tools import get_clipped_flow
 from scipy import ndimage
 from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
+
+
+class TrackChannels:
+    """Indexes to channels in track."""
+
+    thermal = 0
+    filtered = 1
+    flow_h = 2
+    flow_v = 3
+    mask = 4
+    flow = 5
 
 
 @attr.s(slots=True)
@@ -194,7 +204,7 @@ class Frame:
             out.filtered = filtered
             out.mask = mask
             out.flow = flow
-            out.regoin = region
+            out.region = region
             frame = out
         else:
             frame = Frame(

@@ -7,7 +7,6 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 import math
 from ml_tools.tools import eucl_distance
-from track.track import TrackChannels
 from scipy import ndimage
 from matplotlib import pyplot as plt
 from PIL import Image

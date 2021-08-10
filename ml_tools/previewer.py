@@ -29,7 +29,7 @@ from ml_tools import tools
 import ml_tools.globals as globs
 from ml_tools.mpeg_creator import MPEGCreator
 from track.region import Region
-from track.track import TrackChannels
+from ml_tools.frame import TrackChannels
 from ml_tools.imageprocessing import normalize
 
 

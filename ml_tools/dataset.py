@@ -337,7 +337,6 @@ class Dataset:
         )
         segment_width = int(round(self.segment_length * track_header.frames_per_second))
         track_header.calculate_segments(
-            track_meta["mass_history"],
             segment_frame_spacing,
             segment_width,
             self.segment_min_mass,
@@ -768,7 +767,7 @@ class Dataset:
         else:
             return len(self.frame_samples) > 0
 
-    def recalculate_segments(self, scale=1.0, segment_type=1):
+    def recalculate_segments(self, segment_type=SegmentType.ALL_RANDOM):
         self.segments_by_id.clear()
         self.segments_by_label.clear()
         del self.segments[:]
@@ -776,9 +775,7 @@ class Dataset:
         self.segments = []
         self.segments_by_label = {}
         self.segments_by_id = {}
-        logging.info(
-            "%s generating segments scale %s type %s", self.name, scale, segment_type
-        )
+        logging.info("%s generating segments  type %s", self.name, segment_type)
         start = time.time()
         empty_tracks = []
         filtered_stats = 0
@@ -825,10 +822,8 @@ class Dataset:
                 random_frames = True
                 top_frames = True
             track.calculate_segments(
-                track.frame_mass,
                 segment_frame_spacing,
                 segment_width,
-                scale=scale,
                 random_frames=random_frames,
                 use_important=use_important,
                 top_frames=top_frames,

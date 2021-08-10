@@ -7,8 +7,8 @@ import multiprocessing
 import time
 import gc
 from ml_tools import tools
-from ml_tools.preprocess import preprocess_movement, preprocess_frame
-from track.track import TrackChannels
+from ml_tools.preprocess import preprocess_movement, preprocess_frame, FrameTypes
+from ml_tools.frame import TrackChannels
 from ml_tools.frame import Frame
 from collections import Counter
 
@@ -28,8 +28,6 @@ class GeneartorParams:
         self.square_width = params.get("square_width", 5)
         self.output_dim = output_dim
         self.mvm = params.get("mvm", False)
-        self.type = params.get("type", 1)
-        self.segment_type = params.get("segment_type", 1)
         self.frame_size = params.get("frame_size", 32)
 
         self.keep_edge = params.get("keep_edge", False)
@@ -124,14 +122,12 @@ class DataGenerator(keras.utils.Sequence):
             )
         self.preloader_thread.start()
         logging.info(
-            "datagen for %s shuffle %s cap %s type %s epochs %s preprocess %s keep_edge %s",
+            "datagen for %s shuffle %s cap %s epochs %s gen params %s",
             self.dataset.name,
             self.shuffle,
             self.cap_samples,
-            self.params.type,
             self.epochs,
-            self.params.model_preprocess,
-            self.params.keep_edge,
+            self.params.__dict__,
         )
 
     def stop_load(self):
@@ -306,26 +302,6 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
         if label not in labels:
             continue
         if params.use_movement:
-            if len(frame_data) < 5:
-                logging.error(
-                    "Not enough frame data for %s %s", sample, len(frame_data)
-                )
-                continue
-
-            # repeat some frames if need be
-            while len(frame_data) < params.square_width ** 2:
-                missing = params.square_width ** 2 - len(frame_data)
-                indices = np.arange(len(frame_data))
-                np.random.shuffle(indices)
-                for frame_i in indices[:missing]:
-                    frame_data.append(frame_data[frame_i].copy())
-            ref = []
-            frame_data = sorted(
-                frame_data, key=lambda frame_data: frame_data.frame_number
-            )
-
-            for frame in frame_data:
-                ref.append(sample.frame_temp_median[frame.frame_number])
             data = preprocess_movement(
                 frame_data,
                 params.square_width,
@@ -335,7 +311,7 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
                 blue_type=params.blue_type,
                 preprocess_fn=params.model_preprocess,
                 augment=params.augment,
-                reference_level=ref,
+                reference_level=sample.frame_temp_median,
                 sample=sample,
                 keep_edge=params.keep_edge,
             )
@@ -393,12 +369,12 @@ def load_from_numpy(f, frames_by_track, tracks, channels, name):
     start = time.time()
     count = 0
     data = [None] * len(channels)
-    for track_info, frame_indices, u_id, regions_by_frames in tracks:
+    for numpy_info, frame_indices, u_id, regions_by_frames in tracks:
         frame_indices.sort()
         track_data = frames_by_track.setdefault(u_id, {})
         background = track_data.get("background")
         if background is None:
-            f.seek(track_info["background"])
+            f.seek(numpy_info["background"])
             background = np.load(f, allow_pickle=True)
             track_data["background"] = background
         for frame_i in frame_indices:
@@ -406,7 +382,7 @@ def load_from_numpy(f, frames_by_track, tracks, channels, name):
                 if frame_i in track_data:
                     continue
                 count += 1
-                frame_info = track_info[frame_i]
+                frame_info = numpy_info[frame_i]
                 for i, channel in enumerate(channels):
                     f.seek(frame_info[channel])
                     channel_data = np.load(f, allow_pickle=True)
@@ -414,10 +390,16 @@ def load_from_numpy(f, frames_by_track, tracks, channels, name):
 
                 frame = Frame.from_channel(data, channels, frame_i, flow_clipped=True)
                 track_data[frame_i] = frame
-                frame.region = tools.Rectangle.from_ltrb(*regions_by_frames[frame_i])
+                frame.region = regions_by_frames[frame_i]
                 frame.filtered = frame.thermal - frame.region.subimage(background)
             except:
-                logging.error("%s error loading track %s frame %s".u_id, frame_i)
+                logging.error(
+                    "%s error loading track %s frame %s",
+                    name,
+                    u_id,
+                    frame_i,
+                    exc_info=True,
+                )
     logging.debug("%s time to load %s frames %s", name, count, time.time() - start)
     return frames_by_track
 
@@ -441,10 +423,11 @@ def load_batch_frames(
             batch_segments.append(segment)
             track_segments = data_by_track.setdefault(
                 segment.unique_track_id,
-                (segment.track_info, [], segment.unique_track_id, {}),
+                (segment.numpy_info, [], segment.unique_track_id, {}),
             )
             regions_by_frames = track_segments[3]
-            regions_by_frames.update(segment.track_bounds)
+            for region in segment.track_bounds:
+                regions_by_frames[region.frame_number] = region
             track_segments[1].extend(segment.frame_indices)
         all_batches.append(batch_segments)
     # sort by position in file
@@ -482,8 +465,6 @@ def preloader(
     )
     # filtered always loaded
     channels = [TrackChannels.thermal]
-    if params.type == 3:
-        channels.append(TrackChannels.flow)
 
     epoch = 0
     # dictionary with keys track_uids and then dicitonary of frame_ids

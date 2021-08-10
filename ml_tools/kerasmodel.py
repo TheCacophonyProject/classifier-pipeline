@@ -148,7 +148,7 @@ class KerasModel:
         raise Exception("Could not find model" + pretrained_model)
 
     def get_preprocess_fn(self):
-        pretrained_model = self.params.model
+        pretrained_model = self.params.model_name
         if pretrained_model == "resnet":
             return tf.keras.applications.resnet.preprocess_input
 
@@ -265,11 +265,10 @@ class KerasModel:
         logging.info("Loading %s with weight %s", model_path, weights)
         dir = os.path.dirname(model_path)
         self.model = tf.keras.models.load_model(dir)
+        self.model.trainable = training
         self.load_meta(dir)
-        if not training:
-            self.model.trainable = False
         if weights is not None:
-            self.model.load_weights(weights.expect_partial())
+            self.model.load_weights(weights).expect_partial()
         logging.info("Loaded weight %s", weights)
         self.model.summary()
 
@@ -281,30 +280,13 @@ class KerasModel:
         self.mapped_labels = meta.get("mapped_labels")
         self.label_probabilities = meta.get("label_probabilities")
         self.preprocess_fn = self.get_preprocess_fn()
-        self.green_type = self.params.get("green_type", FrameTypes.filtered_tiled.name)
-        self.blue_type = self.params.get("blue_type", FrameTypes.overlay.name)
-        self.red_type = self.params.get("red_type", FrameTypes.thermal_tiled.name)
-        self.use_background_filtered = self.params.get("use_background_filtered", True)
 
-        # convert to enums and validate
-        if FrameTypes.is_valid(self.red_type):
-            self.red_type = FrameTypes[self.red_type]
-        else:
-            raise Exception(f"Red type {self.red_type} isnt a valid frame type")
-
-        if FrameTypes.is_valid(self.green_type):
-            self.green_type = FrameTypes[self.green_type]
-        else:
-            raise Exception(f"Green type {self.green_type} isnt a valid frame type")
-
-        if FrameTypes.is_valid(self.blue_type):
-            self.blue_type = FrameTypes[self.blue_type]
-        else:
-            raise Exception(f"Blue type {self.blue_type} isnt a valid frame type")
         logging.debug(
-            "using types r %s g %s b %s", self.red_type, self.green_type, self.blue_type
+            "using types r %s g %s b %s",
+            self.params.red_type,
+            self.params.green_type,
+            self.params.blue_type,
         )
-        self.keep_aspect = self.params.get("keep_aspect", False)
 
     def save(self, run_name=MODEL_NAME, history=None, test_results=None):
         # create a save point
@@ -415,7 +397,7 @@ class KerasModel:
             eager_load=True,
             **self.params,
         )
-        time.sleep(100)
+        time.sleep(1)
         self.validate = DataGenerator(
             self.validation_dataset,
             self.labels,
@@ -613,200 +595,57 @@ class KerasModel:
 
     def classify_track(self, clip, track, keep_all=True):
         track_data = []
-        thermal_median = []
+        thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
             cropped_frame = frame.crop_by_region(region)
             track_data.append(cropped_frame)
-            thermal_median.append(np.median(frame.thermal))
+            thermal_median[i] = np.median(frame.thermal)
+        segments = track.get_segments(
+            clip.ffc_frames, thermal_median, self.params.square_width ** 2
+        )
         return self.classify_track_data(
             track.get_id(),
             track_data,
-            thermal_median,
-            regions=track.bounds_history,
-            mass_history=[region.mass for region in track.bounds_history],
-            ffc_frames=clip.ffc_frames,
+            segments,
         )
 
     def classify_track_data(
         self,
         track_id,
         data,
-        thermal_median,
-        keep_all=True,
-        regions=None,
-        mass_history=None,
-        ffc_frames=None,
-        segments=None,
+        segments,
     ):
-        track_prediction = TrackPrediction(track_id, 0, keep_all)
-        predictions, smoothed_predictions = self.classify_frames(
-            data,
-            thermal_median,
-            regions=regions,
-            track_id=track_id,
-            mass_history=mass_history,
-            ffc_frames=ffc_frames,
-            top_frames=False,
-            segments=segments,
-        )
-        track_prediction.classified_clip(prediction, smoothed_predictionss)
-        return track_prediction
-
-    def classify_frames(
-        self,
-        data,
-        thermal_median,
-        preprocess=True,
-        regions=None,
-        track_id=None,
-        top_frames=False,
-        mass_history=None,
-        ffc_frames=None,
-        segments=None,
-    ):
-
-        top_frames = False
-        if ffc_frames is None:
-            ffc_frames = []
+        track_prediction = TrackPrediction(track_id, self.labels)
         predictions = []
         smoothed_predictions = []
-        filtered_data = []
-        valid_indices = []
-        valid_regions = []
-        if segments is not None:
-            i = 0
-            for segment in segments:
-                i += 1
-                segment_frames = []
-                median = np.zeros((len(segment.frame_indices)))
-                masses = []
-                segment.frame_indices.sort()
-                for index, frame_i in enumerate(segment.frame_indices):
-                    f = data[frame_i]
-                    segment_frames.append(f.copy())
-                    median[index] = thermal_median[frame_i]
-                    masses.append(mass_history[frame_i])
-                avg_mass = np.mean(masses)
-                # if avg_mass < 16:
-                #     print("filtered cause less than 16")
-                #     continue
-                frames = preprocess_movement(
-                    None,
-                    segment_frames,
-                    self.params.square_width,
-                    None,
-                    self.params.channel,
-                    self.preprocess_fn,
-                    reference_level=median,
-                    sample="{}-{}".format(track_id, i),
-                    type=self.params.type,
-                    keep_edge=self.params.keep_edge,
-                )
-                if frames is None:
-                    continue
-                output = self.model.predict(frames[np.newaxis, :])
-                pred = output[0]
-                pred = pred ** 2 * np.sum(masses)
-                predictions.append(pred)
-            return predictions
-        if top_frames:
-            median_mass = np.median(mass_history)
-            valid_indices = np.arange(len(data))
-            valid_indices = [
-                f_i
-                for f_i in valid_indices
-                if mass_history[f_i] > median_mass
-                and data[f_i].frame_number not in ffc_frames
-            ]
-            valid_indices.sort()
-            valid_regions = np.array(regions)[valid_indices]
-            filtered_data = np.array(data)[valid_indices]
-        else:
-            for i, frame in enumerate(data):
-                if mass_history[i] == 0:
-                    continue
-                if frame.frame_number not in ffc_frames and clear_frame(frame):
-                    filtered_data.append(frame)
-                    valid_indices.append(i)
-                    valid_regions.append(regions[i])
-        frame_sample = valid_indices
-        frames_per_classify = self.params.square_width ** 2
-        if self.params.segment_type < 2:
-            frame_sample.extend(valid_indices)
-            np.random.shuffle(frame_sample)
-            frames = len(filtered_data)
-            samples = 3 * math.ceil(float(frames) / frames_per_classify)
-            median = np.zeros((frames_per_classify))
-        else:
-            samples = max(1, len(valid_indices) // 9)
-
-        for i in range(samples):
-            square_data = filtered_data
-            if self.params.segment_type >= 2:
-                start = i * 9
-                if self.params.segment_type == 5:
-                    seg_frames = frame_sample[start : start + frames_per_classify * 2]
-                    seg_frames = list(
-                        np.random.choice(
-                            seg_frames,
-                            min(frames_per_classify, len(seg_frames)),
-                            replace=False,
-                        )
-                    )
-
-                else:
-                    seg_frames = frame_sample[start : start + frames_per_classify]
-                if len(seg_frames) < frames_per_classify / 4.0 and i > 0:
-                    break
-                if len(seg_frames) < frames_per_classify:
-                    seg_frames.extend(
-                        list(
-                            np.random.choice(
-                                seg_frames,
-                                min(
-                                    frames_per_classify - len(seg_frames),
-                                    len(seg_frames),
-                                ),
-                                replace=False,
-                            )
-                        )
-                    )
-            else:
-                seg_frames = frame_sample[:frames_per_classify]
-                frame_sample = frame_sample[frames_per_classify:]
-
-            if len(seg_frames) == 0:
-                break
-            segment = []
-            median = np.zeros((len(seg_frames)))
-            masses = []
-            seg_frames.sort()
-
-            for index, frame_i in enumerate(seg_frames):
-                f = data[frame_i]
-                segment.append(f.copy())
-                median[index] = thermal_median[frame_i]
-                masses.append(mass_history[frame_i])
-            avg_mass = np.mean(masses)
-
+        for segment in segments:
+            segment_frames = []
+            median = np.zeros((len(segment.frame_indices)))
+            for frame_i in segment.frame_indices:
+                f = data[frame_i - segment.start_frame]
+                assert f.frame_number == frame_i
+                segment_frames.append(f.copy())
             frames = preprocess_movement(
-                square_data,
-                segment,
+                segment_frames,
                 self.params.square_width,
-                valid_regions,
-                self.params.channel,
+                self.params.frame_size,
+                self.params.red_type,
+                self.params.green_type,
+                self.params.blue_type,
                 self.preprocess_fn,
-                reference_level=median,
-                sample="{}-{}".format(track_id, i),
-                type=self.params.type,
+                reference_level=segment.frame_temp_median,
+                keep_edge=self.params.keep_edge,
             )
             if frames is None:
+                logging.warn("No frames to predict on")
                 continue
             output = self.model.predict(frames[np.newaxis, :])
-            predictions.append(output[0])
-            smoothed_predictions.append(output[0] ** 2 * np.sum(masses))
-        return predictions, smoothed_predictions
+            pred = output[0]
+            predictions.append(pred)
+            smoothed_predictions.append(pred ** 2 * segment.mass)
+        track_prediction.classified_clip(predictions, smoothed_predictions)
+        return track_prediction
 
     def classify_frame(self, frame, thermal_median, preprocess=True):
         if preprocess:

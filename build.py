@@ -16,7 +16,7 @@ from ml_tools.trackdatabase import TrackDatabase
 from config.config import Config
 from ml_tools.dataset import Dataset
 from ml_tools.datasetstructures import Camera
-from track.track import TrackChannels
+from ml_tools.frame import TrackChannels
 from ml_tools.kerasmodel import KerasModel
 import joblib
 import pytz
@@ -284,7 +284,7 @@ def add_camera_tracks(
             tracks = camera.label_to_tracks.get(label, {}).values()
             all_tracks.extend(list(tracks))
     dataset.add_tracks(all_tracks)
-    dataset.recalculate_segments(scale=1.0)
+    dataset.recalculate_segments()
     dataset.balance_bins()
 
 

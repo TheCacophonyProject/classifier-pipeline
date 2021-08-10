@@ -24,17 +24,7 @@ from ml_tools.tools import Rectangle, get_clipped_flow
 from track.region import Region
 from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance
-
-
-class TrackChannels:
-    """Indexes to channels in track."""
-
-    thermal = 0
-    filtered = 1
-    flow_h = 2
-    flow_v = 3
-    mask = 4
-    flow = 5
+from ml_tools.datasetstructures import get_segments
 
 
 class Track:
@@ -105,6 +95,29 @@ class Track:
 
         self.all_class_confidences = None
         self.prediction_classes = None
+
+    def get_segments(
+        self,
+        ffc_frames,
+        frame_temp_median,
+        segment_width,
+        segment_frame_spacing=9,
+        repeats=1,
+        min_frames=0,
+    ):
+        segments, _ = get_segments(
+            self.clip_id,
+            self._id,
+            self.start_frame,
+            segment_frame_spacing,
+            segment_width,
+            regions=np.array(self.bounds_history),
+            ffc_frames=ffc_frames,
+            repeats=repeats,
+            frame_temp_median=np.uint16(frame_temp_median),
+            min_frames=min_frames,
+        )
+        return segments
 
     @classmethod
     def from_region(cls, clip, region):

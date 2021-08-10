@@ -1,7 +1,7 @@
 import numpy as np
 import random
 from ml_tools import tools
-from track.track import TrackChannels
+from ml_tools.frame import TrackChannels
 import logging
 from ml_tools import imageprocessing
 import enum
@@ -303,7 +303,7 @@ def preprocess_movement(
     #
     # tools.saveclassify_image(
     #     data,
-    #     f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
+    #     f"samples/{sample}",
     # )
     if preprocess_fn:
         data = data * 255

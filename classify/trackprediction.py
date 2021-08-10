@@ -53,7 +53,7 @@ class TrackPrediction:
     track.
     """
 
-    def __init__(self, track_id, start_frame, labels, keep_all=True):
+    def __init__(self, track_id, labels, keep_all=True, start_frame=None):
         try:
             fp_index = labels.index("false-positive")
         except ValueError:
@@ -76,15 +76,16 @@ class TrackPrediction:
         self,
         predictions,
         smoothed_predictions,
-        last_frame,
     ):
-        self.last_frame_classified = last_frame
         self.num_frames_classified = len(predictions)
         self.smoothed_predictions = smoothed_predictions
         self.predictions = predictions
-        self.class_best_score = np.sum(self.smoothed_predictions, axis=0)
-        # normalize so it sums to 1
-        self.class_best_score = self.class_best_score / np.sum(self.class_best_score)
+        if self.num_frames_classified > 0:
+            self.class_best_score = np.sum(self.smoothed_predictions, axis=0)
+            # normalize so it sums to 1
+            self.class_best_score = self.class_best_score / np.sum(
+                self.class_best_score
+            )
 
     def classified_frame(self, frame_number, prediction, mass_scale=1):
         self.last_frame_classified = frame_number

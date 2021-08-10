@@ -149,7 +149,7 @@ class ClipClassifier(CPTVFileProcessor):
         classifier = None
         if is_keras_model(model.model_file):
             classifier = KerasModel(self.config.train)
-            classifier.load_model(model.model_file, model.model_weights)
+            classifier.load_model(model.model_file, weights=model.model_weights)
         else:
             classifier = Model(
                 train_config=self.config.train,
@@ -339,10 +339,6 @@ class ClipClassifier(CPTVFileProcessor):
                 model_info["label"] = prediction.predicted_tag()
                 model_info["confidence"] = round(prediction.max_score, 2)
                 model_info["clarity"] = round(prediction.clarity, 3)
-                model_info["average_novelty"] = float(
-                    round(prediction.average_novelty, 2)
-                )
-                model_info["max_novelty"] = float(round(prediction.max_novelty, 2))
                 model_info["all_class_confidences"] = {}
                 prediction_data = []
                 for pred in prediction.smoothed_predictions:

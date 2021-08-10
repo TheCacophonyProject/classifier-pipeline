@@ -1,4 +1,6 @@
-from track.track import TrackChannels
+from ml_tools.frame import TrackChannels
+from ml_tools.preprocess import FrameTypes
+from ml_tools.dataset import SegmentType
 
 
 class HyperParams(dict):
@@ -6,10 +8,6 @@ class HyperParams(dict):
 
     def __init__(self, *args):
         super(HyperParams, self).__init__(*args)
-
-        filtered = self.get("use_filtered")
-        if filtered:
-            self["channel"] = TrackChannels.filtered
 
         self.insert_defaults()
 
@@ -44,12 +42,20 @@ class HyperParams(dict):
         return output_dim
 
     @property
+    def keep_aspect(self):
+        return self.get("keep_aspect", False)
+
+    @property
+    def use_background_filtered(self):
+        return self.get("use_background_filtered", True)
+
+    @property
     def keep_edge(self):
         return self.get("keep_edge", False)
 
     @property
     def segment_type(self):
-        return self.get("segment_type", 1)
+        return self.get("segment_type", SegmentType.ALL_RANDOM.value)
 
     # Model hyper paramters
     @property
@@ -132,3 +138,18 @@ class HyperParams(dict):
     @property
     def maximum_train_preload(self):
         return self.get("maximum_train_preload", 1000)
+
+    @property
+    def red_type(self):
+        type = self.get("red_type", FrameTypes.thermal_tiled.value)
+        return FrameTypes[type]
+
+    @property
+    def green_type(self):
+        type = self.get("green_type", FrameTypes.filtered_tiled.value)
+        return FrameTypes[type]
+
+    @property
+    def blue_type(self):
+        type = self.get("blue_type", FrameTypes.filtered_tiled.value)
+        return FrameTypes[type]
