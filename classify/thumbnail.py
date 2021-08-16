@@ -1,4 +1,5 @@
 import numpy as np
+from track.region import Region
 
 
 def visit_tag(clip, predictions_per_model):
@@ -61,7 +62,8 @@ def best_trackless_region(clip):
 
     # take region with greatest filtered mean values, and
     # if zero take thermal mean values
-    best_frame = np.argmax(clip.stats.frame_stats_mean)
+    best_frame_i = np.argmax(clip.stats.frame_stats_mean)
+    best_frame = clip.frame_buffer.get_frame(best_frame_i).thermal
     frame_height, frame_width = best_frame.shape
     best_filtered = best_frame - clip.background
     best_region = None
@@ -85,7 +87,7 @@ def best_trackless_region(clip):
         best_region[0][1],
         THUMBNAIL_SIZE,
         THUMBNAIL_SIZE,
-        frame_number=best_frame,
+        frame_number=best_frame_i,
     )
 
 

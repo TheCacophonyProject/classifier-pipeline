@@ -283,8 +283,6 @@ class ClipClassifier(CPTVFileProcessor):
         models,
         tracking_time,
     ):
-        if self.cache_to_disk:
-            clip.frame_buffer.remove_cache()
 
         # read in original metadata
         meta_data = self.get_meta_data(filename)
@@ -330,3 +328,5 @@ class ClipClassifier(CPTVFileProcessor):
         else:
             with open(meta_filename, "w") as f:
                 json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
+        if self.cache_to_disk:
+            clip.frame_buffer.remove_cache()
