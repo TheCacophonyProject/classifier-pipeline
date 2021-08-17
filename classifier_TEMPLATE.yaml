@@ -75,7 +75,7 @@ tracking:
             background_thresh: 20 # 1 degrees
 
             # Minimum raw temperature difference between background and track
-            delta_thresh: 20
+            background_thresh: 20
             # Min/Max temperature threshold value to use if dynamic threshold is true
             max_temp_thresh: null
             min_temp_thresh: null

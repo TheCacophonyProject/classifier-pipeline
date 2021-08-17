@@ -8,9 +8,9 @@ def init_logging(timestamps=False):
     Logs will go to stderr.
     """
 
-    fmt = "%(levelname)7s %(message)s"
+    fmt = "%(process)d %(thread)s:%(levelname)7s %(message)s"
     if timestamps:
         fmt = "%(asctime)s " + fmt
     logging.basicConfig(
-        stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
+        stream=sys.stderr, level=logging.DEBUG, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
     )

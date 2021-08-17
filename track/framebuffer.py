@@ -17,12 +17,9 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-import attr
-import cv2
-import numpy as np
 from ml_tools.framecache import FrameCache
 from ml_tools.frame import Frame
-from track.track import TrackChannels
+from ml_tools.frame import TrackChannels
 from ml_tools.tools import get_optical_flow_function, get_clipped_flow
 
 

@@ -11,13 +11,17 @@ import h5py
 import os
 import logging
 import filelock
+import numpy as np
+from classify.trackprediction import TrackPrediction
+from dateutil.parser import parse as parse_date
+from .frame import Frame, TrackChannels
+from ml_tools import tools
 import datetime
 import json
 from dateutil.parser import parse as parse_date
 
 from multiprocessing import Lock
 import numpy as np
-from track.framebuffer import Frame
 from track.region import Region
 
 special_datasets = ["background_frame", "predictions", "overlay"]
@@ -27,6 +31,7 @@ class HDF5Manager:
     """Class to handle locking of HDF5 files."""
 
     LOCK_FILE = "/var/lock/classifier-hdf5.lock"
+    READ_ONLY = False
 
     def __init__(self, db, mode="r"):
         self.mode = mode
@@ -38,7 +43,10 @@ class HDF5Manager:
     def __enter__(self):
         # note: we might not have to lock when in read only mode?
         # this could improve performance
-        self.lock.acquire()
+        if HDF5Manager.READ_ONLY and self.mode != "r":
+            raise ValueError("Only read can be done in readonly mode")
+        if not HDF5Manager.READ_ONLY:
+            self.lock.acquire()
         self.f = h5py.File(self.db, self.mode)
         return self.f
 
@@ -46,23 +54,35 @@ class HDF5Manager:
         try:
             self.f.close()
         finally:
-            self.lock.release()
+            if not HDF5Manager.READ_ONLY:
+                self.lock.release()
 
 
 class TrackDatabase:
-    def __init__(self, database_filename):
+    def __init__(self, database_filename, read_only=False):
         """
         Initialises given database.  If database does not exist an empty one is created.
         :param database_filename: filename of database
         """
 
         self.database = database_filename
-
         if not os.path.exists(database_filename):
             logging.info("Creating new database %s", database_filename)
             f = h5py.File(database_filename, "w")
             f.create_group("clips")
             f.close()
+        HDF5Manager.READ_ONLY = read_only
+
+    def set_read_only(self, read_only):
+        HDF5Manager.READ_ONLY = read_only
+
+    def get_labels(self):
+        with HDF5Manager(self.database) as f:
+            return f.attrs.get("labels", None)
+
+    def set_labels(self, labels):
+        with HDF5Manager(self.database, "a") as f:
+            f.attrs["labels"] = labels
 
     def has_clip(self, clip_id):
         """
@@ -73,7 +93,101 @@ class TrackDatabase:
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             has_record = clip_id in clips and "finished" in clips[clip_id].attrs
-        return has_record
+            if has_record:
+                return True
+        return False
+
+    def has_prediction(self, clip_id):
+        with HDF5Manager(self.database, "a") as f:
+            clips = f["clips"]
+            # has_record = clip_id in clips and "finished" in clips[clip_id].attrs
+            clip = clips[clip_id]
+            # if has_record:
+            return clip.attrs.get("has_prediction", False)
+        return False
+
+    def add_predictions(self, clip_id, model):
+        logging.info("Add_prediction waiting")
+        with HDF5Manager(self.database, "r") as f:
+            clip = f["clips"][str(clip_id)]
+            logging.info("adding predictions for %s", clip_id)
+            tracks = {}
+            for track_id in clip:
+                if track_id in special_datasets:
+                    continue
+
+                track_node = clip[track_id]
+                track_tag = track_node.attrs.get("tag", "")
+                if track_tag not in model.labels:
+                    if track_tag != "":
+                        logging.info(
+                            "Tag not in model labels %s", track_node.get("tag")
+                        )
+                track_data = []
+                for frame_number in track_node:
+                    if frame_number in special_datasets:
+                        continue
+                    # we use [:,:,:] to force loading of all data.
+                    track_data.append(track_node[str(frame_number)][:, :, :])
+                tracks[track_id] = track_data
+        clip_predictions = []
+
+        for track_id, track_data in tracks.items():
+            logging.info("Predicting %s %d", track_id, len(track_data))
+
+            track_prediction = TrackPrediction(track_id, 0, True)
+            for frame in track_data:
+                prediction = model.classify_frame(np.copy(frame))
+                track_prediction.classified_frame(0, prediction)
+            clip_predictions.append(track_prediction)
+        logging.info("Saving %s", clip_id)
+
+        with HDF5Manager(self.database, "a") as f:
+            clip = f["clips"][str(clip_id)]
+            for track_prediction in clip_predictions:
+                track_node = clip[str(track_prediction.track_id)]
+                preds = np.int16(
+                    np.around(100 * np.array(track_prediction.predictions))
+                )
+
+                self.add_prediction_data(
+                    clip_id,
+                    track_node,
+                    preds,
+                    model.labels[track_prediction.best_label_index],
+                    track_prediction.max_score,
+                    model.labels,
+                )
+
+            clip.attrs["has_prediction"] = True
+
+    def add_prediction_data(
+        self, clip_id, track, predictions, predicted_tag, score, labels=None
+    ):
+        """
+        Add prediction data as a dataset to the track
+        data should be  an array of int16 array
+        """
+        track_attrs = track.attrs
+        if predicted_tag is not None:
+            track_attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
+            track_attrs["predicted"] = predicted_tag
+        track_attrs["predicted_confidence"] = int(round(100 * score))
+
+        pred_data = track.create_dataset(
+            "predictions",
+            predictions.shape,
+            chunks=predictions.shape,
+            dtype=predictions.dtype,
+        )
+        pred_data[:, :] = predictions
+        if labels is not None:
+            track_attrs["prediction_classes"] = labels
+
+    def finished_processing(self, clip_id):
+        with HDF5Manager(self.database, "a") as f:
+            clip_node = f["clips"][clip_id]
+            clip_node.attrs["finished"] = True
 
     def has_prediction(self, clip_id):
         with HDF5Manager(self.database, "a") as f:
@@ -99,7 +213,7 @@ class TrackDatabase:
         :param tracker: if provided stats from tracker are used for the clip stats
         :param overwrite: Overwrites existing clip (if it exists).
         """
-        print("creating clip {}".format(clip.get_id()))
+        logging.info("creating clip {}".format(clip.get_id()))
         clip_id = str(clip.get_id())
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
@@ -163,7 +277,6 @@ class TrackDatabase:
                 group_attrs["ffc_frames"] = clip.ffc_frames
 
             f.flush()
-            group.attrs["finished"] = True
 
     def latest_date(self):
         start_time = None
@@ -189,6 +302,21 @@ class TrackDatabase:
             for clip_id in clips:
                 results[clip_id] = [track_id for track_id in clips[clip_id]]
         return results
+
+    def get_clip_tracks_ids(self, clip_id):
+        """
+        Returns a list of clip_id, track_number pairs.
+        """
+        with HDF5Manager(self.database) as f:
+            clips = f["clips"]
+            tracks = []
+            clip = clips[clip_id]
+            if not clip.attrs.get("finished"):
+                return tracks
+            for track in clip:
+                if track not in special_datasets:
+                    tracks.append(track)
+        return tracks
 
     def get_all_track_ids(self, before_date=None, after_date=None):
         """
@@ -219,7 +347,7 @@ class TrackDatabase:
         :return:
         """
         with HDF5Manager(self.database) as f:
-            dataset = f["clips"][clip_id][str(track_number)]
+            dataset = f["clips"][str(clip_id)][str(track_number)]
             result = hdf5_attributes_dictionary(dataset)
             result["id"] = track_number
         return result
@@ -294,6 +422,7 @@ class TrackDatabase:
         end_frame=None,
         original=False,
         frame_numbers=None,
+        channels=None,
     ):
         """
         Fetches a track data from database with optional slicing.
@@ -303,15 +432,18 @@ class TrackDatabase:
         :param end_frame: last frame of slice to return (exclusive).
         :return: a list of numpy arrays of shape [channels, height, width] and of type np.int16
         """
+        # try:
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             track_node = clips[str(clip_id)][str(track_number)]
+
             bounds = track_node.attrs["bounds_history"]
             if start_frame is None:
                 start_frame = 0
             if end_frame is None:
                 end_frame = track_node.attrs["frames"]
-
+            track_start = track_node.attrs.get("start_frame")
+            bad_frames = track_node.attrs.get("skipepd_frames", [])
             result = []
             if original:
                 track_node = track_node["original"]
@@ -325,14 +457,57 @@ class TrackDatabase:
                 frame_iter = iter(frame_numbers)
 
             for frame_number in frame_iter:
-                frame = track_node[str(frame_number)][:, :, :]
 
-                region = Region.region_from_array(bounds[frame_number])
-                result.append(
-                    Frame.from_array(
-                        frame, frame_number, flow_clipped=True, region=region
+                if original:
+                    frame = track_node[str(frame_number)][:, :]
+                    result.append(
+                        Frame.from_channels(
+                            [frame], [TrackChannels.thermal], frame_number
+                        )
                     )
-                )
+                else:
+                    if frame_number in bad_frames:
+                        continue
+                    region = Region.region_from_array(bounds[frame_number])
+                    if channels is None:
+                        try:
+                            frame = track_node[str(frame_number)][:, :, :]
+                            result.append(
+                                Frame.from_array(
+                                    frame,
+                                    frame_number + track_start,
+                                    flow_clipped=True,
+                                    region=region,
+                                )
+                            )
+                        except:
+                            logging.error(
+                                "trying to get clip %s track %s frame %s",
+                                clip_id,
+                                track_number,
+                                frame_number + track_start,
+                                exc_info=True,
+                            )
+                    else:
+                        try:
+                            frame = track_node[str(frame_number)][channels, :, :]
+                            result.append(
+                                Frame.from_channels(
+                                    frame,
+                                    channels,
+                                    frame_number + track_start,
+                                    region=region,
+                                )
+                            )
+                        except:
+                            logging.error(
+                                "trying to get clip %s track %s frame %s",
+                                clip_id,
+                                track_number,
+                                frame_number + track_start,
+                                exc_info=True,
+                            )
+
         return result
 
     def remove_clip(self, clip_id):
@@ -351,62 +526,77 @@ class TrackDatabase:
             else:
                 return False
 
-    def add_prediction(self, clip_id, track_id, track_prediction):
+    def set_important_frames(self, clip_id, track_id, important_frames):
+        important_frames.sort()
         with HDF5Manager(self.database, "a") as f:
-            clip = f["clips"][(str(clip_id))]
-            track_node = clip[str(track_id)]
-            predicted_tag = track_prediction.predicted_tag()
-            if track_prediction.num_frames_classified > 0:
-                self.all_class_confidences = track_prediction.class_confidences()
-                predictions = np.int16(
-                    np.around(100 * np.array(track_prediction.predictions))
-                )
-                predicted_confidence = int(round(100 * track_prediction.max_score))
+            clips = f["clips"]
+            clip_node = clips[str(clip_id)]
+            track_node = clip_node[str(track_id)]
+            track_node.attrs["important_frames"] = np.uint16(important_frames)
 
-                self.add_prediction_data(
-                    track_node,
-                    predictions,
-                    predicted_tag,
-                    predicted_confidence,
-                    labels=track_prediction.labels,
-                )
-            clip.attrs["has_prediction"] = True
+    def add_prediction(self, clip_id, track_id, track_prediction):
+        logging.warn("Not adding prediction data as code needs to be written")
 
-    def add_prediction_data(
-        self, track, predictions, predicted_tag, score, labels=None
-    ):
+    # TODO IF NEEDED
+    #     with HDF5Manager(self.database, "a") as f:
+    #         clip = f["clips"][(str(clip_id))]
+    #         track_node = clip[str(track_id)]
+    #         predicted_tag = track_prediction.predicted_tag()
+    #         if track_prediction.num_frames_classified > 0:
+    #             self.all_class_confidences = track_prediction.class_confidences()
+    #             predictions = np.int16(
+    #                 np.around(100 * np.array(track_prediction.predictions))
+    #             )
+    #             predicted_confidence = int(round(100 * track_prediction.max_score))
+    #
+    #             self.add_prediction_data(
+    #                 track_node,
+    #                 predictions,
+    #             )
+    #         clip.attrs["has_prediction"] = True
+
+    def add_prediction_data(self, track, model_predictions):
         """
         Add prediction data as a dataset to the track
         data should be  an array of int16 array
         """
         track_attrs = track.attrs
-        if predicted_tag is not None:
-            track_attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
-            track_attrs["predicted"] = predicted_tag
-        track_attrs["predicted_confidence"] = score
 
-        pred_data = track.create_dataset(
-            "predictions",
-            predictions.shape,
-            chunks=predictions.shape,
-            dtype=predictions.dtype,
-        )
-        pred_data[:, :] = predictions
-        if labels is not None:
-            track_attrs["prediction_classes"] = labels
-        track_attrs["has_prediction"] = True
+        model_group = track.create_group("model_predictions")
+        for prediction in model_predictions:
+            pred_g = model_group.create_group(
+                f'{prediction.get("model_name", "unnamed")}-{prediction.get("id", 0)}'
+            )
+            predicted_tag = prediction.get("label")
+            if predicted_tag is not None:
+                pred_g.attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
+                pred_g.attrs["predicted"] = predicted_tag
+            track_attrs["predicted_confidence"] = prediction.get("confidence", 0)
+            prediction_data = np.int16(prediction.get("predictions"))
+            raw_predictions = pred_g.create_dataset(
+                "predictions",
+                prediction_data.shape,
+                chunks=prediction_data.shape,
+                dtype=prediction_data.dtype,
+            )
+            raw_predictions[:, :] = prediction_data
+            labels = prediction.get("labels")
+            if labels is not None:
+                pred_g.attrs["prediction_classes"] = labels
+            track_attrs["has_prediction"] = True
 
     def add_track(
         self,
         clip_id,
         track,
         cropped_data,
-        overlay,
-        important_frames,
+        sample_frames=None,
         opts=None,
-        original_thermal=None,
         start_time=None,
         end_time=None,
+        prediction=None,
+        prediction_classes=None,
+        original_thermal=None,
     ):
         """
         Adds track to database.
@@ -419,7 +609,6 @@ class TrackDatabase:
         track_id = str(track.get_id())
         if opts is None:
             opts = {}
-        frames = len(cropped_data)
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
             clip_node = clips[clip_id]
@@ -427,21 +616,24 @@ class TrackDatabase:
             track_node = clip_node.create_group(track_id)
             cropped_frame = track_node.create_group("cropped")
             thermal_frame = track_node.create_group("original")
-
+            skipped_frames = []
             # write each frame out individually, as they will probably be different sizes.
             original = None
             for frame_i, cropped in enumerate(cropped_data):
                 if original_thermal is not None:
                     original = original_thermal[frame_i]
-                channels = cropped.channels
-                height, width = cropped.shape
                 # using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
-                chunks = (1, height, width)
-                dims = (channels, height, width)
-                frame_node = cropped_frame.create_dataset(
-                    str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
-                )
-                frame_node[:, :, :] = cropped.as_array()
+                if cropped.thermal.size > 0:
+                    height, width = cropped.shape
+                    chunks = (1, height, width)
+                    dims = (5, height, width)
+                    frame_node = cropped_frame.create_dataset(
+                        str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
+                    )
+
+                    frame_node[:, :, :] = cropped.as_array()
+                else:
+                    skipped_frames.append(frame_i)
                 if original is not None:
                     thermal_node = thermal_frame.create_dataset(
                         str(frame_i),
@@ -452,67 +644,48 @@ class TrackDatabase:
                     )
                     thermal_node[:, :] = original
             # write out attributes
-            if track:
-                track_stats = track.get_stats()
-                node_attrs = track_node.attrs
-                node_attrs["id"] = track_id
-                if track.track_tags:
-                    node_attrs["track_tags"] = json.dumps(track.track_tags)
-
-                node_attrs["tag"] = track.tag
-                node_attrs["frames"] = frames
-                node_attrs["start_frame"] = track.start_frame
-                node_attrs["end_frame"] = track.end_frame
-                if track.predictions is not None:
-                    self.add_prediction_data(
-                        track_node,
-                        track.predictions,
-                        track.predicted_tag,
-                        track.predicted_confidence,
-                        labels=track.prediction_classes,
-                    )
-                    has_prediction = True
-                if track.confidence:
-                    node_attrs["confidence"] = track.confidence
-                if start_time:
-                    node_attrs["start_time"] = start_time.isoformat()
-                if end_time:
-                    node_attrs["end_time"] = end_time.isoformat()
-
-                for name, value in track_stats._asdict().items():
-                    node_attrs[name] = value
-                # frame history
-                node_attrs["mass_history"] = np.int32(
-                    [bounds.mass for bounds in track.bounds_history]
+            track_stats = track.get_stats()
+            node_attrs = track_node.attrs
+            node_attrs["id"] = track_id
+            if track.track_tags:
+                node_attrs["track_tags"] = json.dumps(track.track_tags)
+            if sample_frames is not None:
+                node_attrs["sample_frames"] = np.uint16(sample_frames)
+            node_attrs["tag"] = track.tag
+            node_attrs["frames"] = len(cropped_data)
+            node_attrs["skipped_frames"] = np.uint16(skipped_frames)
+            node_attrs["start_frame"] = track.start_frame
+            node_attrs["end_frame"] = track.end_frame
+            if track.predictions is not None:
+                self.add_prediction_data(
+                    track_node,
+                    track.predictions,
                 )
-                node_attrs["bounds_history"] = np.int16(
-                    [
-                        [bounds.left, bounds.top, bounds.right, bounds.bottom]
-                        for bounds in track.bounds_history
-                    ]
-                )
+                has_prediction = True
+            if track.confidence:
+                node_attrs["confidence"] = track.confidence
+            if start_time:
+                node_attrs["start_time"] = start_time.isoformat()
+            if end_time:
+                node_attrs["end_time"] = end_time.isoformat()
 
-                node_attrs["important_frames"] = np.uint16(important_frames)
-                if "overlay" not in track_node:
-                    overlay_node = track_node.create_dataset(
-                        "overlay", overlay.shape, chunks=overlay.shape, dtype=np.float32
-                    )
-                else:
-                    overlay_node = track_node["overlay"]
-                overlay_node[:, :] = overlay
-
+            for name, value in track_stats._asdict().items():
+                node_attrs[name] = value
+            # frame history
+            node_attrs["mass_history"] = np.int32(
+                [bounds.mass for bounds in track.bounds_history]
+            )
+            node_attrs["bounds_history"] = np.int16(
+                [
+                    [bounds.left, bounds.top, bounds.right, bounds.bottom]
+                    for bounds in track.bounds_history
+                ]
+            )
             f.flush()
 
             # mark the record as have been writen to.
             # this means if we are interupted part way through the track will be overwritten
-            clip_node.attrs["finished"] = True
             clip_node.attrs["has_prediction"] = has_prediction
-
-    def get_overlay(self, clip_id, track_id):
-        with HDF5Manager(self.database, "r") as f:
-            clip = f["clips"][str(clip_id)]
-            track = clip[str(track_id)]
-            return track["overlay"][:]
 
 
 def hdf5_attributes_dictionary(dataset):

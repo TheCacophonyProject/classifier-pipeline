@@ -157,7 +157,8 @@ class Model:
             if ignore_labels:
                 for label in ignore_labels:
                     dataset.remove_label(label)
-
+            if self.mapped_labels:
+                dataset.regroup(self.mapped_labels)
         self.labels = self.datasets.train.labels.copy()
 
         logging.info(

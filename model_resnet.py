@@ -37,9 +37,9 @@ from ml_tools import tools
 _BATCH_NORM_DECAY = 0.997
 _BATCH_NORM_EPSILON = 1e-5
 DEFAULT_VERSION = 1
-DEFAULT_DTYPE = tf.float32
-CASTABLE_TYPES = (tf.float16,)
-ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
+# DEFAULT_DTYPE = tf.float32
+# CASTABLE_TYPES = (tf.float16,)
+# ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 
 
 class ResnetModel(ConvModel):
@@ -136,6 +136,7 @@ class ResnetModel(ConvModel):
 
         self.params.update(ModelCRNN_LQ.DEFAULT_PARAMS)
         self.params.update(train_config.hyper_params)
+        self.params.update(train_config.resnet_params)
 
         self._build_model()
 

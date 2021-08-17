@@ -59,7 +59,6 @@ class ClipTrackExtractor:
         self.config = config
         self.use_opt_flow = use_opt_flow
         self.high_quality_optical_flow = high_quality_optical_flow
-
         self.stats = None
         self.cache_to_disk = cache_to_disk
         self.max_tracks = config.max_tracks
@@ -74,7 +73,7 @@ class ClipTrackExtractor:
             size = self.config.dilation_pixels * 2 + 1
             self.dilate_kernel = np.ones((size, size), np.uint8)
 
-    def parse_clip(self, clip):
+    def parse_clip(self, clip, process_background=False):
         """
         Loads a cptv file, and prepares for track extraction.
         """
@@ -90,7 +89,9 @@ class ClipTrackExtractor:
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             clip.set_res(reader.x_resolution, reader.y_resolution)
-
+            if clip.from_metadata:
+                for track in clip.tracks:
+                    track.crop_regions()
             camera_model = None
             if reader.model:
                 camera_model = reader.model.decode()
@@ -99,14 +100,15 @@ class ClipTrackExtractor:
             # if we have the triggered motion threshold should use that
             # maybe even override dynamic threshold with this value
             if reader.motion_config:
-                motion_config = yaml.safe_load(reader.motion_config)
-                temp_thresh = motion_config.get("triggeredthresh")
+                motion = yaml.safe_load(reader.motion_config)
+                temp_thresh = motion.get("triggeredthresh")
                 if temp_thresh:
                     clip.temp_thresh = temp_thresh
 
             video_start_time = reader.timestamp.astimezone(Clip.local_tz)
             clip.num_preview_frames = (
-                reader.preview_secs * clip.frames_per_second - self.config.ignore_frames
+                reader.preview_secs * clip.frames_per_second
+                - self.config.preview_ignore_frames
             )
             clip.set_video_stats(video_start_time)
             clip.calculate_background(reader)
@@ -114,7 +116,7 @@ class ClipTrackExtractor:
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             for frame in reader:
-                if frame.background_frame:
+                if not process_background and frame.background_frame:
                     continue
                 self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
 
@@ -341,6 +343,7 @@ class ClipTrackExtractor:
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)
             region.set_is_along_border(clip.crop_rectangle)
+
             if self.config.cropped_regions_strategy == "cautious":
                 crop_width_fraction = (
                     old_region.width - region.width
@@ -385,7 +388,6 @@ class ClipTrackExtractor:
 
         track_stats = [(track.get_stats(), track) for track in clip.tracks]
         track_stats.sort(reverse=True, key=lambda record: record[0].score)
-
         if self.config.verbose:
             for stats, track in track_stats:
                 start_s, end_s = clip.start_and_end_in_secs(track)
@@ -424,6 +426,11 @@ class ClipTrackExtractor:
                 [("Too many tracks", track) for track in clip.tracks[self.max_tracks :]]
             )
             clip.tracks = clip.tracks[: self.max_tracks]
+
+        for key in clip.filtered_tracks:
+            self.print_if_verbose(
+                "filtered track {} because {}".format(key[1].get_id(), key[0])
+            )
 
     def filter_track(self, clip, track, stats):
         # discard any tracks that are less min_duration

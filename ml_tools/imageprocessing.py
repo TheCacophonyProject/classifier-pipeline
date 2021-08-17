@@ -1,25 +1,75 @@
+import logging
 import cv2
 import numpy as np
 import math
 
 from pathlib import Path
 from PIL import Image, ImageDraw
-from scipy import ndimage
-
+import math
 from ml_tools.tools import eucl_distance
-from track.track import TrackChannels
+from scipy import ndimage
+from matplotlib import pyplot as plt
+from PIL import Image
+
+
+def resize_and_pad(
+    frame,
+    resize_dim,
+    new_dim,
+    region,
+    crop_region,
+    keep_edge=False,
+    pad=None,
+    interpolation=cv2.INTER_LINEAR,
+    extra_h=0,
+    extra_v=0,
+):
+    if pad is None:
+        pad = np.min(frame)
+    else:
+        pad = 0
+    resized = np.full(new_dim, pad, dtype=frame.dtype)
+    offset_x = 0
+    offset_y = 0
+    frame_resized = resize_cv(frame, resize_dim, interpolation=interpolation)
+    frame_height, frame_width = frame_resized.shape[:2]
+    offset_x = (new_dim[1] - frame_width) // 2
+    offset_y = (new_dim[0] - frame_height) // 2
+    if keep_edge:
+        if region.left == crop_region.left:
+            offset_x = 0
+
+        elif region.right == crop_region.right:
+            offset_x = new_dim[1] - frame_width
+
+        if region.top == crop_region.top:
+            offset_y = 0
+
+        elif region.bottom == crop_region.bottom:
+            offset_y = new_dim[0] - frame_height
+    if len(resized.shape) == 3:
+        resized[
+            offset_y : offset_y + frame_height, offset_x : offset_x + frame_width, :
+        ] = frame_resized
+    else:
+        resized[
+            offset_y : offset_y + frame_height,
+            offset_x : offset_x + frame_width,
+        ] = frame_resized
+
+    return resized
 
 
 def rotate(image, degrees, mode="nearest", order=1):
     return ndimage.rotate(image, degrees, reshape=False, mode=mode, order=order)
 
 
-def resize_cv(image, dim, interpolation=None, extra_h=0, extra_v=0):
+def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
 
     return cv2.resize(
         np.float32(image),
         dsize=(dim[0] + extra_h, dim[1] + extra_v),
-        interpolation=interpolation if interpolation else cv2.INTER_LINEAR,
+        interpolation=interpolation,
     )
 
 
@@ -73,54 +123,6 @@ def resize_with_aspect(
     return resized
 
 
-def overlay_image(
-    frames,
-    regions,
-    dim,
-    require_movement=False,
-):
-    """Return an image describing the movement by creating a collage of all frames"""
-    channel = TrackChannels.filtered
-
-    i = 0
-    overlay = np.zeros(dim)
-
-    prev = None
-    prev_overlay = None
-
-    # draw movment lines and draw frame overlay
-    center_distance = 0
-    min_distance = 2
-    for i, frame in enumerate(frames):
-        region = regions[i]
-
-        x = int(region.mid_x)
-        y = int(region.mid_y)
-
-        prev = (x, y)
-        # writing overlay image
-        if require_movement and prev_overlay:
-            center_distance = eucl_distance(
-                prev_overlay,
-                (
-                    x,
-                    y,
-                ),
-            )
-
-        if (
-            prev_overlay is None or center_distance > min_distance
-        ) or not require_movement:
-            frame = frame.get_channel(channel)
-            subimage = region.subimage(overlay)
-            subimage[:, :] += np.float32(frame)
-            center_distance = 0
-            min_distance = pow(region.width / 2.0, 2)
-            prev_overlay = (x, y)
-
-    return overlay
-
-
 def square_clip(data, frames_per_row, tile_dim):
     # lay each frame out side by side in rows
     new_frame = np.zeros((frames_per_row * tile_dim[0], frames_per_row * tile_dim[1]))
@@ -132,6 +134,7 @@ def square_clip(data, frames_per_row, tile_dim):
                 frame = data[-1]
             else:
                 frame = data[i]
+
             frame, stats = normalize(frame)
             if not stats[0]:
                 continue
@@ -146,6 +149,7 @@ def square_clip(data, frames_per_row, tile_dim):
 
 
 def square_clip_flow(data_flow, frames_per_row, tile_dim, use_rgb=False):
+
     if use_rgb:
         new_frame = np.zeros(
             (frames_per_row * tile_dim[0], frames_per_row * tile_dim[1], 3)
@@ -194,7 +198,7 @@ def normalize(data, min=None, max=None, new_max=1):
     Normalize an array so that the values range from 0 -> new_max
     Returns normalized array, stats tuple (Success, min used, max used)
     """
-    if data.shape[0] == 0 or data.shape[1] == 0:
+    if data.size == 0:
         return np.zeros((data.shape)), (False, None, None)
     if max is None:
         max = np.amax(data)
@@ -232,7 +236,6 @@ def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5)):
 
 
 def clear_frame(frame):
-    # try and remove bad frames by checking for noise
     filtered = frame.filtered
     thermal = frame.thermal
     if len(filtered) == 0 or len(thermal) == 0:

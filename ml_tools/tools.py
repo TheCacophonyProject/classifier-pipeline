@@ -19,7 +19,7 @@ import cv2
 import timezonefinder
 from matplotlib.colors import LinearSegmentedColormap
 import subprocess
-from PIL import ImageFont, ImageDraw, Image
+from PIL import Image, ImageFont, ImageDraw
 from pathlib import Path
 
 EPISON = 1e-5
@@ -41,6 +41,10 @@ class Rectangle:
     def from_ltrb(left, top, right, bottom):
         """Construct a rectangle from left, top, right, bottom co-ords."""
         return Rectangle(left, top, width=right - left, height=bottom - top)
+
+    def to_ltrb(self):
+        """Return rectangle as left, top, right, bottom co-ords."""
+        return [self.left, self.top, self.right, self.bottom]
 
     def copy(self):
         return Rectangle(self.x, self.y, self.width, self.height)
@@ -101,8 +105,8 @@ class Rectangle:
 
     def crop(self, bounds):
         """Crops this rectangle so that it fits within given bounds"""
-        self.left = max(self.left, bounds.left)
-        self.top = max(self.top, bounds.top)
+        self.left = min(bounds.right, max(self.left, bounds.left))
+        self.top = min(bounds.bottom, max(self.top, bounds.top))
         self.right = max(bounds.left, min(self.right, bounds.right))
         self.bottom = max(bounds.top, min(self.bottom, bounds.bottom))
 
@@ -129,10 +133,12 @@ class Rectangle:
         return self.width * self.height
 
     def __repr__(self):
-        return "({0},{1},{2},{3})".format(self.left, self.top, self.right, self.bottom)
+        return "(x{0},y{1},x2{2},y2{3})".format(
+            self.left, self.top, self.right, self.bottom
+        )
 
     def __str__(self):
-        return "<({0},{1})-{2}x{3}>".format(self.x, self.y, self.width, self.height)
+        return "<(x{0},y{1})-h{2}xw{3}>".format(self.x, self.y, self.height, self.width)
 
     def meta_dictionary(self):
         # Return object as dictionary without is_along_border,was_cropped and id for saving to json
@@ -736,8 +742,10 @@ cm_blue_red = LinearSegmentedColormap("BlueRed2", color_dict)
 
 def calculate_mass(filtered, threshold):
     """Calculates mass of filtered frame with threshold applied"""
+    if filtered.size == 0:
+        return 0
     _, mass = blur_and_return_as_mask(filtered, threshold=threshold)
-    return mass
+    return np.uint16(mass)
 
 
 def calculate_variance(filtered, prev_filtered):
@@ -777,6 +785,8 @@ def get_optical_flow_function(high_quality=False):
 def frame_to_jpg(
     frame, filename, colourmap_file=None, f_min=None, f_max=None, img_fmt="PNG"
 ):
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
+
     colourmap = _load_colourmap(colourmap_file)
     if f_min is None:
         f_min = np.amin(frame)
@@ -843,3 +853,19 @@ def get_timezone_str(lat, lng):
     if timezone_str is None:
         timezone_str = "Pacific/Auckland"
     return timezone_str
+
+
+def saveclassify_rgb(data, filename):
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
+    r = Image.fromarray(np.uint8(data * 255))
+    r.save(filename + ".png")
+
+
+def saveclassify_image(data, filename):
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
+    r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
+    g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
+    b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
+    concat = np.concatenate((r, g, b), axis=1)  # horizontally
+    img = Image.fromarray(np.uint8(concat))
+    img.save(filename + ".png")
