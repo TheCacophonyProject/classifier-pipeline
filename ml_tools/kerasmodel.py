@@ -305,16 +305,20 @@ class KerasModel:
         elif self.model_name == "resnet18":
             frames = []
             weights = []
+            raw_thermals = []
+            cropped_thermals = []
             for i, region in enumerate(track.bounds_history):
                 frame = clip.frame_buffer.get_frame(region.frame_number)
-                frame = frame.crop_by_region(region)
-                frame = preprocessresnet.preprocess_frame(
-                    frame, region, self.frame_size
-                )
-                if frame is not None:
-                    frames.append(frame)
-                    weights.append(region.mass)
-            predicts = self.model.predict(np.array(frames))
+                raw_thermals.append(frame.thermal)
+                cropped_thermals.append(frame.crop_by_region(region).thermal)
+            preprocessed = preprocessresnet.preprocess_frame(
+                clip.video_start_time,
+                track.bounds_history,
+                raw_thermals,
+                cropped_thermals,
+            )
+
+            predicts = self.model.predict(preprocessed)
             predicts_squared = predicts ** 2
             smoothed_predictions = preprocessresnet.sum_weighted(
                 weights, predicts_squared
