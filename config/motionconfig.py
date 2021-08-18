@@ -30,9 +30,8 @@ class MotionConfig(DefaultConfig):
     def load_camera_thresholds(raw):
         if raw is None:
             return None
-
         threholds = {}
-        for raw_threshold in raw:
+        for raw_threshold in raw.values():
             threshold = ThresholdConfig.load(raw_threshold)
             threholds[threshold.camera_model] = threshold
         return threholds
@@ -72,6 +71,7 @@ class ThresholdConfig(DefaultConfig):
     def load(cls, threshold):
         defaults = cls.get_defaults()
         deep_copy_map_if_key_not_exist(defaults.as_dict(), threshold)
+
         return cls(
             camera_model=threshold["camera_model"],
             temp_thresh=threshold["temp_thresh"],
@@ -89,7 +89,7 @@ class ThresholdConfig(DefaultConfig):
     @classmethod
     def get_defaults(cls):
         return cls(
-            camera_model="lepton3",
+            camera_model="default-model",
             temp_thresh=2900,
             background_thresh=20,
             default=False,
