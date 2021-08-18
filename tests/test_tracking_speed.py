@@ -21,8 +21,8 @@ class TestTrackingSpeed:
             config.tracking,
             config.use_opt_flow
             or config.classify.preview == Previewer.PREVIEW_TRACKING,
-            False,
-            config.verbose,
+            cache_to_disk=False,
+            verbose=config.verbose,
         )
         start = time.time()
         clip = Clip(config.tracking, file_name)
