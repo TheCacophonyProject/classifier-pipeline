@@ -484,9 +484,10 @@ class TrackDatabase:
 
         model_group = track.create_group("model_predictions")
         for prediction in model_predictions:
-            pred_g = model_group.create_group(
-                f'{prediction.get("model_id", "unnamed")}-{prediction.get("model_id", 0)}'
-            )
+            key = f'{prediction.get("model_id", "unnamed")}-{prediction.get("model_id", 0)}'
+            if key in pred_g:
+                continue
+            pred_g = model_group.create_group(key)
             predicted_tag = prediction.get("label")
             if predicted_tag is not None:
                 pred_g.attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag

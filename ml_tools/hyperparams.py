@@ -141,15 +141,15 @@ class HyperParams(dict):
 
     @property
     def red_type(self):
-        type = self.get("red_type", FrameTypes.thermal_tiled.value)
+        type = self.get("red_type", FrameTypes.thermal_tiled.name)
         return FrameTypes[type]
 
     @property
     def green_type(self):
-        type = self.get("green_type", FrameTypes.filtered_tiled.value)
+        type = self.get("green_type", FrameTypes.filtered_tiled.name)
         return FrameTypes[type]
 
     @property
     def blue_type(self):
-        type = self.get("blue_type", FrameTypes.filtered_tiled.value)
+        type = self.get("blue_type", FrameTypes.filtered_tiled.name)
         return FrameTypes[type]
