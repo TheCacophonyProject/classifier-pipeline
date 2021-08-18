@@ -2,9 +2,6 @@ import os
 import pickle
 import time
 import logging
-from model_crnn import ModelCRNN_HQ, ModelCRNN_LQ, Model_CNN
-
-# from model_resnet import ResnetModel
 from ml_tools.kerasmodel import KerasModel
 
 

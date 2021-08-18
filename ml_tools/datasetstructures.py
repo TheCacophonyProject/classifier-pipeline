@@ -37,6 +37,9 @@ class Sample(ABC):
 
 
 class NumpyMeta:
+    # Save track data to a numpy file this is much faster for trianing off than
+    #  the h5py file
+    # track_info contains the file read locations for each track
     def __init__(self, filename):
         self.filename = filename
         self.track_info = {}
@@ -75,39 +78,11 @@ class NumpyMeta:
             logging.error("Error saving track info", exc_info=True)
         finally:
             self.close()
-        # time.sleep(2)
-        # self.read_tracks(tracks)
-
-    def read_tracks(self, tracks):
-        start = time.time()
-        self.open(self.mode)
-        count = 0
-        for i in range(10):
-            for track in tracks:
-                track_info = self.track_info[track.unique_id]
-                self.f.seek(track_info["background"])
-                # print("seeking to ", track_info["background"])
-                # print(track_info)
-                back = np.load(self.f, allow_pickle=True)
-                self.f.seek(track_info[TrackChannels.thermal])
-                thermals = np.load(self.f, allow_pickle=True)
-                for seg in track.segments:
-                    count += 1
-                    for frame_i in seg.frame_numbers:
-                        index = track_info["frames"][frame_i]
-                        thermal = thermals[0]
-
-        end = time.time() - start
-        logging.info("%s took %s to load %s", self.filename, end, count)
-        self.close()
 
     def add_track(self, db, track, save_flow=True):
         try:
             background = db.get_clip_background(track.clip_id)
             track_info = {}
-            # track_info["background"] = self.f.tell()
-            # # print("saving back", self.f.tell())
-            # np.save(self.f, background, allow_pickle=False)
             self.track_info[track.unique_id] = track_info
             frames = db.get_track(
                 track.clip_id,
@@ -157,12 +132,10 @@ class TrackHeader:
         res_x=CPTV_FILE_WIDTH,
         res_y=CPTV_FILE_HEIGHT,
         ffc_frames=None,
-        sample_frames=None,
+        sample_frames_indices=None,
     ):
         self.res_x = np.uint8(res_x)
         self.res_y = np.uint8(res_y)
-        # self.predictions = predictions
-        # self.correct_prediction = correct_prediction
         self.filtered_stats = {"segment_mass": 0}
         # reference to clip this segment came from
         self.clip_id = clip_id
@@ -201,10 +174,10 @@ class TrackHeader:
         self.median_mass = np.uint16(np.median(mass_history))
         self.mean_mass = np.uint16(np.mean(mass_history))
         self.ffc_frames = np.uint16(ffc_frames)
-        if sample_frames is not None:
+        if sample_frames_indices is not None:
             self.sample_frames = []
             for region, frame_num, frame_temp in zip(
-                regions, sample_frames, self.frame_temp_median
+                regions, sample_frames_indices, self.frame_temp_median
             ):
                 f = FrameSample(
                     self.clip_id,
@@ -280,60 +253,6 @@ class TrackHeader:
     def num_sample_frames(self):
         return len(self.sample_frames)
 
-    # trying to get only clear frames, work in progrsss
-    def set_sample_frames(self, min_mass=None, frame_data=None, model=None):
-        # this needs more testing
-        frames = []
-        self.sample_frames = []
-        for i, mass in enumerate(self.frame_mass):
-            if self.ffc_frames is not None and i in self.ffc_frames:
-                continue
-            if (
-                min_mass is None
-                or (mass >= min_mass and mass >= self.lower_mass)
-                # and mass <= self.upper_mass
-            ):  # trying it out
-                if frame_data is not None:
-                    height, width = frame_data[i].shape
-                    if height < MIN_SIZE or width < MIN_SIZE:
-                        continue
-                    if model and (self.label not in ["false-positive", "insect"]):
-                        prediction = model.classify_frame(
-                            frame_data[i], self.frame_temp_median[i]
-                        )
-                        if prediction is None:
-                            logging.info(
-                                "Couldnt predict Frame %d for clip %s track %s region %s",
-                                i + self.start_frame,
-                                self.clip_id,
-                                self.track_id,
-                                self.label,
-                                self.regions[i],
-                            )
-                        predicted_label = model.labels[np.argmax(prediction)]
-                        if predicted_label == "false-positive":
-                            logging.debug(
-                                "Frame %d for clip %s track %s is suspected to be a FP instead of %s",
-                                i + self.start_frame,
-                                self.clip_id,
-                                self.track_id,
-                                self.label,
-                            )
-                            continue
-                frames.append(i)
-        np.random.shuffle(frames)
-        for frame in frames:
-            f = FrameSample(
-                self.clip_id,
-                self.track_id,
-                frame,
-                self.label,
-                self.frame_temp_median[frame],
-                self.frame_velocity[frame],
-            )
-            self.sample_frames.append(f)
-        return len(self.sample_frames)
-
     def calculate_frame_crop(self):
         # frames are always square, but bounding rect may not be, so to see how much we clipped I need to create a square
         # bounded rect and check it against frame size.
@@ -400,8 +319,6 @@ class TrackHeader:
         """Unique name of this track."""
         return "{}".format(self.clip_id)
 
-        # return "{}-{}".format(self.clip_id, self.track_id)
-
     @property
     def weight(self):
         """Returns total weight for all segments in this track"""
@@ -432,16 +349,15 @@ class TrackHeader:
 
         ffc_frames = clip_meta.get("ffc_frames", [])
         sample_frames = track_meta.get("sample_frames")
-        regions = [None] * len(track_meta["bounds_history"])
 
-        f_i = 0
-        for bounds, mass in zip(
-            track_meta["bounds_history"], track_meta["mass_history"]
+        regions = [None] * len(track_meta["bounds_history"])
+        for i, bounds, mass in enumerate(
+            zip(track_meta["bounds_history"], track_meta["mass_history"])
         ):
-            r = Region.region_from_array(bounds, np.uint16(f_i + track_start_frame))
+            r = Region.region_from_array(bounds, np.uint16(i + track_start_frame))
             r.mass = np.uint16(mass)
-            regions[f_i] = r
-            f_i += 1
+            regions[i] = r
+            i += 1
         header = TrackHeader(
             clip_id=int(clip_id),
             track_id=int(track_meta["id"]),
@@ -461,7 +377,7 @@ class TrackHeader:
             res_x=clip_meta.get("res_x", CPTV_FILE_WIDTH),
             res_y=clip_meta.get("res_y", CPTV_FILE_HEIGHT),
             ffc_frames=ffc_frames,
-            sample_frames=sample_frames,
+            sample_frames_indices=sample_frames,
         )
         return header
 

@@ -55,60 +55,14 @@ def process_job(loader, queue):
             traceback.print_exc()
 
 
-def prediction_job(queue, db, model_file):
-    classifier = KerasModel()
-    classifier.load_weights(model_file)
-    logging.info("Loaded model")
-    while True:
-        clip_id = queue.get()
-        if clip_id == "DONE":
-            break
-        else:
-            try:
-                add_predictions(db, clip_id, classifier)
-            except Exception as e:
-                logging.error("Process_job error %s %s", clip_id, e)
-                traceback.print_exc()
-
-
-def add_predictions(db, clip_id, classifier):
-    tracks = db.get_clip_tracks(clip_id)
-    clip_meta = db.get_clip_meta(clip_id)
-    crop_region = clip_meta.get("edge_pixels", 0)
-    res_x = clip_meta.get("res_x", 160)
-    res_y = clip_meta.get("res_y", 120)
-    crop_region = Rectangle(edge, edge, res_x - 2 * edge, res_y - 2 * edge)
-    overlay = None
-    for track in tracks:
-        track_data = db.get_track(clip_id, track["id"])
-        regions = []
-        for i, rect in enumerate(track["bounds_history"]):
-            region = Region.region_from_array(rect)
-            region.mass = track["mass_history"][i]
-            regions.append(region)
-
-        track_prediction = classifier.classify_cropped_data(
-            track["id"],
-            track["start_frame"],
-            track_data,
-            clip_meta["frame_temp_median"][track["start_frame"] : track["frames"]],
-            regions,
-            overlay,
-            crop_region,
-        )
-        logging.warn("Not adding prediction data as code needs to be written")
-        db.add_prediction(clip_id, track["id"], track_prediction)
-
-
 class ClipLoader:
-    def __init__(self, config, reprocess=False, calculate_predictions=False):
+    def __init__(self, config, reprocess=False):
 
         self.config = config
         os.makedirs(self.config.tracks_folder, mode=0o775, exist_ok=True)
         self.database = TrackDatabase(
             os.path.join(self.config.tracks_folder, "dataset.hdf5")
         )
-        self.calculate_predictions = calculate_predictions
         self.reprocess = reprocess
         self.compression = (
             tools.gzip_compression if self.config.load.enable_compression else None
@@ -124,34 +78,6 @@ class ClipLoader:
             self.config.load.cache_to_disk,
             high_quality_optical_flow=self.config.load.high_quality_optical_flow,
         )
-
-    def add_predictions(self):
-        # run the model on all clips that dont have predictions
-        job_queue = Queue()
-        processes = []
-        for i in range(max(1, self.workers_threads)):
-            p = Process(
-                target=prediction_job,
-                args=(job_queue, self.database, self.config.classify.model),
-            )
-            processes.append(p)
-            p.start()
-        clips = self.database.get_all_clip_ids()
-        for clip in clips:
-            if not self.database.has_prediction(clip):
-                job_queue.put(clip)
-        logging.info("Processing %d", job_queue.qsize())
-
-        for i in range(len(processes)):
-            job_queue.put("DONE")
-        for process in processes:
-            try:
-                process.join()
-            except KeyboardInterrupt:
-                logging.info("KeyboardInterrupt, terminating.")
-                for process in processes:
-                    process.terminate()
-                exit()
 
     def process_all(self, root):
         job_queue = Queue()
@@ -300,11 +226,7 @@ class ClipLoader:
 
         metadata = tools.load_clip_metadata(metadata_filename)
         if not self.reprocess and self.database.has_clip(str(metadata["id"])):
-            if not self.database.has_prediction(str(metadata["id"])) and classifier:
-                logging.info("Adding predictions to %s", filename)
-                add_predictions(self.database, str(metadata["id"]), classifier)
-            else:
-                logging.warning("Already loaded %s", filename)
+            logging.warning("Already loaded %s", filename)
             return
 
         valid_tracks = self._filter_clip_tracks(metadata)

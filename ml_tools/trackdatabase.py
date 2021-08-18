@@ -106,61 +106,6 @@ class TrackDatabase:
             return clip.attrs.get("has_prediction", False)
         return False
 
-    def add_predictions(self, clip_id, model):
-        logging.info("Add_prediction waiting")
-        with HDF5Manager(self.database, "r") as f:
-            clip = f["clips"][str(clip_id)]
-            logging.info("adding predictions for %s", clip_id)
-            tracks = {}
-            for track_id in clip:
-                if track_id in special_datasets:
-                    continue
-
-                track_node = clip[track_id]
-                track_tag = track_node.attrs.get("tag", "")
-                if track_tag not in model.labels:
-                    if track_tag != "":
-                        logging.info(
-                            "Tag not in model labels %s", track_node.get("tag")
-                        )
-                track_data = []
-                for frame_number in track_node:
-                    if frame_number in special_datasets:
-                        continue
-                    # we use [:,:,:] to force loading of all data.
-                    track_data.append(track_node[str(frame_number)][:, :, :])
-                tracks[track_id] = track_data
-        clip_predictions = []
-
-        for track_id, track_data in tracks.items():
-            logging.info("Predicting %s %d", track_id, len(track_data))
-
-            track_prediction = TrackPrediction(track_id, 0, True)
-            for frame in track_data:
-                prediction = model.classify_frame(np.copy(frame))
-                track_prediction.classified_frame(0, prediction)
-            clip_predictions.append(track_prediction)
-        logging.info("Saving %s", clip_id)
-
-        with HDF5Manager(self.database, "a") as f:
-            clip = f["clips"][str(clip_id)]
-            for track_prediction in clip_predictions:
-                track_node = clip[str(track_prediction.track_id)]
-                preds = np.int16(
-                    np.around(100 * np.array(track_prediction.predictions))
-                )
-
-                self.add_prediction_data(
-                    clip_id,
-                    track_node,
-                    preds,
-                    model.labels[track_prediction.best_label_index],
-                    track_prediction.max_score,
-                    model.labels,
-                )
-
-            clip.attrs["has_prediction"] = True
-
     def add_prediction_data(
         self, clip_id, track, predictions, predicted_tag, score, labels=None
     ):
@@ -526,13 +471,13 @@ class TrackDatabase:
             else:
                 return False
 
-    def set_important_frames(self, clip_id, track_id, important_frames):
-        important_frames.sort()
+    def set_sample_frames(self, clip_id, track_id, sample_frames):
+        sample_frames.sort()
         with HDF5Manager(self.database, "a") as f:
             clips = f["clips"]
             clip_node = clips[str(clip_id)]
             track_node = clip_node[str(track_id)]
-            track_node.attrs["important_frames"] = np.uint16(important_frames)
+            track_node.attrs["sample_frames"] = np.uint16(sample_frames)
 
     def add_prediction(self, clip_id, track_id, track_prediction):
         logging.warn("Not adding prediction data as code needs to be written")

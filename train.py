@@ -57,9 +57,6 @@ def load_config():
 
 
 def main():
-    import multiprocessing
-
-    multiprocessing.set_start_method("spawn", force=True)
     conf, args = load_config()
 
     init_logging()

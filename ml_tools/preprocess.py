@@ -161,13 +161,7 @@ def preprocess_segment(
         if reference_level is not None:
             frame.thermal -= reference_level[i]
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
-        # dont think we need to do this
-        # map optical flow down to right level,
-        # we pre-multiplied by 256 to fit into a 16bit int
-        # data[:, 2 : 3 + 1, :, :] *= 1.0 / 256.0
-        # if frame.flow is not None and frame.flow_clipped:
-        #     frame.flow *= 1.0 / 256.0
-        #     frame.flow_clipped = False
+
         frame.normalize()
 
         if augment:
@@ -215,7 +209,7 @@ def preprocess_frame(
     data[:, :, 0] = thermal
     data[:, :, 1] = filtered
     data[:, :, 2] = filtered
-    # tools.saveclassify_image(data, f"test-{frame.frame_number}")
+    # for testing
     # tools.saveclassify_image(
     #     data,
     #     f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
@@ -297,13 +291,11 @@ def preprocess_movement(
     data = np.stack(
         (frame_types[red_type], frame_types[green_type], frame_types[blue_type]), axis=2
     )
-    # print("{}-{}-{}".format(red, green, blue))
-    # # for debugging
-    #
-    tools.saveclassify_image(
-        data,
-        f"samples/{sample}",
-    )
+    # for testing
+    # tools.saveclassify_image(
+    #     data,
+    #     f"samples/{sample}",
+    # )
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)

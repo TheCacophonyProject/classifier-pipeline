@@ -54,21 +54,6 @@ class ClipClassifier(CPTVFileProcessor):
             high_quality_optical_flow=self.config.tracking.high_quality_optical_flow,
         )
 
-    def preprocess(self, frame, thermal_reference):
-        """
-        Applies preprocessing to frame required by the model.
-        :param frame: numpy array of shape [C, H, W]
-        :return: preprocessed numpy array
-        """
-
-        # note, would be much better if the model did this, as only the model knows how preprocessing occurred during
-        # training
-        frame = np.float32(frame)
-        frame[2 : 3 + 1] *= 1 / 256
-        frame[0] -= thermal_reference
-
-        return frame
-
     def identify_track(self, classifier, clip: Clip, track: Track):
         """
         Runs through track identifying segments, and then returns it's prediction of what kind of animal this is.

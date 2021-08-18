@@ -46,7 +46,6 @@ class Clip:
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
         Track._track_id = 1
-        self.tags = None
         self.disable_background_subtraction = False
         self.frame_on = 0
         self.ffc_affected = False
@@ -304,7 +303,6 @@ class Clip:
             self.device = os.path.splitext(os.path.basename(self.source_file))[0].split(
                 "-"
             )[-1]
-        self.tags = metadata.get("Tags")
         self.location = metadata.get("location")
         tracks = self.load_tracks_meta(
             metadata, include_filtered_channel, tag_precedence
