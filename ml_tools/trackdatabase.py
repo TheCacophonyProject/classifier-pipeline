@@ -485,7 +485,7 @@ class TrackDatabase:
         model_group = track.create_group("model_predictions")
         for prediction in model_predictions:
             key = f'{prediction.get("model_id", "unnamed")}-{prediction.get("model_id", 0)}'
-            if key in pred_g:
+            if key in model_group:
                 continue
             pred_g = model_group.create_group(key)
             predicted_tag = prediction.get("label")
