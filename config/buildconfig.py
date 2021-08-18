@@ -18,7 +18,6 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
 import attr
-import dateutil.parser
 import os
 import logging
 from os import path

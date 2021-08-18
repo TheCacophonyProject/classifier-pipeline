@@ -19,7 +19,6 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import attr
 
-from config import config
 from .defaultconfig import DefaultConfig
 from .motionconfig import MotionConfig
 from load.cliptrackextractor import ClipTrackExtractor

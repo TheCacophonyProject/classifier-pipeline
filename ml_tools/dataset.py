@@ -11,7 +11,6 @@ import logging
 import math
 import os
 import time
-import dateutil
 import numpy as np
 import gc
 from ml_tools.datasetstructures import NumpyMeta, TrackHeader
