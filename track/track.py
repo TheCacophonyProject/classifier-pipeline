@@ -176,13 +176,17 @@ class Track:
         self.bounds_history = []
         self.frame_list = []
         for position in positions:
-            frame_number = round(position[0] * frames_per_second)
+            if isinstance(position, list):
+                frame_number = round(position[0] * frames_per_second)
+                region = Region.region_from_array(position[1], frame_number)
+            else:
+                region = Region.region_from_json(position)
+
             if self.start_frame is None:
-                self.start_frame = frame_number
-            self.end_frame = frame_number
-            region = Region.region_from_array(position[1], frame_number)
+                self.start_frame = region.frame_number
+            self.end_frame = region.frame_number
             self.bounds_history.append(region)
-            self.frame_list.append(frame_number)
+            self.frame_list.append(region.frame_number)
         self.current_frame_num = 0
         return True
 

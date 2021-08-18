@@ -11,8 +11,7 @@ from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
 from ml_tools import tools
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
-from ml_tools.model import Model
-from ml_tools.kerasmodel import KerasModel, is_keras_model
+from ml_tools.kerasmodel import KerasModel
 
 from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer
@@ -117,16 +116,8 @@ class ClipClassifier(CPTVFileProcessor):
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
         """
         logging.info("classifier loading")
-        classifier = None
-        if is_keras_model(model.model_file):
-            classifier = KerasModel(self.config.train)
-            classifier.load_model(model.model_file, weights=model.model_weights)
-        else:
-            classifier = Model(
-                train_config=self.config.train,
-                session=tools.get_session(disable_gpu=not self.config.use_gpu),
-            )
-            classifier.load(model.model_file)
+        classifier = KerasModel(self.config.train)
+        classifier.load_model(model.model_file, weights=model.model_weights)
 
         return classifier
 

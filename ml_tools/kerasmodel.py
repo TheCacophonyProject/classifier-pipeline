@@ -596,7 +596,7 @@ class KerasModel:
             track_data.append(cropped_frame)
             thermal_median[i] = np.median(frame.thermal)
         segments = track.get_segments(
-            clip.ffc_frames, thermal_median, self.params.square_width ** 2
+            clip.ffc_frames, thermal_median, self.params.square_width ** 2, repeats=4
         )
         return self.classify_track_data(
             track.get_id(),
@@ -638,7 +638,7 @@ class KerasModel:
             output = self.model.predict(frames[np.newaxis, :])
             pred = output[0]
             predictions.append(pred)
-            smoothed_predictions.append(pred ** 2 * segment.mass)
+            smoothed_predictions.append(np.uint32(pred ** 2 * segment.mass))
         track_prediction.classified_clip(predictions, smoothed_predictions)
         track_prediction.classify_time = time.time() - start
 
@@ -903,13 +903,6 @@ def optimizer(params):
     else:
         optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
     return optimizer
-
-
-def is_keras_model(model_file):
-    path, ext = os.path.splitext(model_file)
-    if ext == ".pb":
-        return True
-    return False
 
 
 def validate_model(model_file):

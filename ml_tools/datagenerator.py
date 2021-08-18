@@ -582,7 +582,7 @@ def preloader(
                     loaded_up_to,
                 )
                 total += 1
-
+            del batches
             gc.collect()
             logging.info("%s preloader loaded epoch %s batches", name, epoch)
         except Exception as inst:

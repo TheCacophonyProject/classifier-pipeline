@@ -29,7 +29,7 @@ from ml_tools.trackdatabase import TrackDatabase
 from .clip import Clip
 from .cliptrackextractor import ClipTrackExtractor
 from ml_tools.imageprocessing import clear_frame
-
+from track.track import Track
 import numpy as np
 
 
