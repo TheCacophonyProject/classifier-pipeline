@@ -76,14 +76,6 @@ class TrackDatabase:
     def set_read_only(self, read_only):
         HDF5Manager.READ_ONLY = read_only
 
-    def get_labels(self):
-        with HDF5Manager(self.database) as f:
-            return f.attrs.get("labels", None)
-
-    def set_labels(self, labels):
-        with HDF5Manager(self.database, "a") as f:
-            f.attrs["labels"] = labels
-
     def has_clip(self, clip_id):
         """
         Returns if database contains track information for given clip
@@ -134,22 +126,9 @@ class TrackDatabase:
             clip_node = f["clips"][clip_id]
             clip_node.attrs["finished"] = True
 
-    def has_prediction(self, clip_id):
-        with HDF5Manager(self.database, "a") as f:
-            clips = f["clips"]
-            # has_record = clip_id in clips and "finished" in clips[clip_id].attrs
-            clip = clips[clip_id]
-            # if has_record:
-            return clip.attrs.get("has_prediction", False)
-        return False
-
     def get_labels(self):
         with HDF5Manager(self.database) as f:
             return f.attrs.get("labels", None)
-
-    def set_labels(self, labels):
-        with HDF5Manager(self.database, "a") as f:
-            f.attrs["labels"] = labels
 
     def create_clip(self, clip, overwrite=True):
         """

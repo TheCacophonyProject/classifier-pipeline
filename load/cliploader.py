@@ -31,7 +31,7 @@ from ml_tools.previewer import Previewer
 from ml_tools.trackdatabase import TrackDatabase
 from .clip import Clip
 from .cliptrackextractor import ClipTrackExtractor
-from track.track import Track
+from track.track import get_best_human_tag
 from classify.trackprediction import TrackPrediction
 from ml_tools.imageprocessing import clear_frame
 
