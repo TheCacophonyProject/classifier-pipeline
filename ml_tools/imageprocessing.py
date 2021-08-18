@@ -1,14 +1,9 @@
-import logging
 import cv2
 import numpy as np
-import math
 
 from pathlib import Path
-from PIL import Image, ImageDraw
-import math
-from ml_tools.tools import eucl_distance
+from PIL import Image
 from scipy import ndimage
-from matplotlib import pyplot as plt
 from PIL import Image
 
 

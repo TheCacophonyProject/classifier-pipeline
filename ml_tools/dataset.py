@@ -9,19 +9,14 @@ Tracks are broken into segments.  Filtered, and then passed to the trainer using
 """
 import logging
 import math
-import multiprocessing
 import os
-import queue
-import random
-import threading
 import time
 import dateutil
 import numpy as np
 import gc
-from ml_tools.datasetstructures import TrackHeader, SegmentHeader, NumpyMeta
+from ml_tools.datasetstructures import NumpyMeta, TrackHeader
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
-from ml_tools import imageprocessing
 
 # from ml_tools.kerasmodel import KerasModel
 from enum import Enum

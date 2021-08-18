@@ -1,12 +1,8 @@
-import time
 import json
 import dateutil
 import numpy as np
 import logging
-import os
 from ml_tools import tools
-from ml_tools.frame import Frame, TrackChannels
-from ml_tools.preprocess import MIN_SIZE
 from track.region import Region
 from abc import ABC, abstractmethod
 

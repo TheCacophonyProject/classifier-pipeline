@@ -2,7 +2,6 @@ import attr
 import cv2
 import numpy as np
 from ml_tools.tools import get_clipped_flow
-from scipy import ndimage
 from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
 
 

@@ -20,7 +20,7 @@ import math
 import numpy as np
 from collections import namedtuple
 
-from ml_tools.tools import Rectangle, get_clipped_flow
+from ml_tools.tools import Rectangle
 from track.region import Region
 from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance

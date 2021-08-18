@@ -4,7 +4,6 @@ import logging
 import os.path
 import time
 
-from datetime import datetime
 import numpy as np
 
 from classify.trackprediction import Predictions
@@ -12,7 +11,6 @@ from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
 from ml_tools import tools
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
-import ml_tools.globals as globs
 from ml_tools.model import Model
 from ml_tools.kerasmodel import KerasModel, is_keras_model
 

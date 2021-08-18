@@ -30,7 +30,6 @@ training run tensorboard from the log directory.
 import argparse
 import os
 
-import tensorflow as tf
 import matplotlib
 
 matplotlib.use("Agg")  # enable canvas drawing
@@ -38,7 +37,6 @@ matplotlib.use("Agg")  # enable canvas drawing
 from ml_tools.logs import init_logging
 from config.config import Config
 from train.train import train_model
-from train.search import axis_search
 
 
 def load_config():

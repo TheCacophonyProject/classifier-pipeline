@@ -9,7 +9,6 @@ import seaborn as sns
 
 from config.config import Config
 from ml_tools.logs import init_logging
-from ml_tools import tools
 from .evaluateresults import *
 
 

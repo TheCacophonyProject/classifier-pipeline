@@ -7,8 +7,7 @@ import tensorflow as tf
 from config.config import Config
 from ml_tools.dataset import dataset_db_path
 import pickle
-from ml_tools.model import Model
-from model_crnn import ModelCRNN_HQ, Model_CNN
+from model_crnn import ModelCRNN_HQ
 
 MODEL_DIR = "../cptv-download/train/checkpoints"
 MODEL_NAME = "training-most-recent.sav"

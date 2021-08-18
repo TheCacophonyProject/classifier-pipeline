@@ -2,8 +2,6 @@
 import argparse
 
 import socket
-import time
-import os
 from cptv import CPTVReader
 import sys
 import numpy as np

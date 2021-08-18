@@ -22,17 +22,12 @@ import logging
 import time
 from multiprocessing import Process, Queue
 import traceback
-import json
-from track.region import Region
 from ml_tools import tools
 
-from ml_tools.kerasmodel import KerasModel
 from ml_tools.previewer import Previewer
 from ml_tools.trackdatabase import TrackDatabase
 from .clip import Clip
 from .cliptrackextractor import ClipTrackExtractor
-from track.track import get_best_human_tag
-from classify.trackprediction import TrackPrediction
 from ml_tools.imageprocessing import clear_frame
 
 import numpy as np

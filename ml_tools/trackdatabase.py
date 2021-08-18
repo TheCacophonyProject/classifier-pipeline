@@ -12,15 +12,11 @@ import os
 import logging
 import filelock
 import numpy as np
-from classify.trackprediction import TrackPrediction
 from dateutil.parser import parse as parse_date
 from .frame import Frame, TrackChannels
-from ml_tools import tools
-import datetime
 import json
 from dateutil.parser import parse as parse_date
 
-from multiprocessing import Lock
 import numpy as np
 from track.region import Region
 

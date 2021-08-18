@@ -1,7 +1,6 @@
 import itertools
 import io
 import time
-import math
 import tensorflow as tf
 import pickle
 import logging
@@ -18,17 +17,14 @@ from sklearn.metrics import confusion_matrix
 from ml_tools import tools
 from ml_tools.datagenerator import DataGenerator
 from ml_tools.preprocess import (
-    FrameTypes,
     preprocess_movement,
     preprocess_frame,
 )
 
-from ml_tools.imageprocessing import clear_frame
 from classify.trackprediction import TrackPrediction
 
 from ml_tools.hyperparams import HyperParams
 import gc
-from ml_tools import preprocessresnet
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 tf_device = "/gpu:1"

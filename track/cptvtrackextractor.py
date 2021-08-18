@@ -5,7 +5,6 @@ import os
 from ml_tools.cptvfileprocessor import CPTVFileProcessor
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
-from ml_tools import trackdatabase
 
 from ml_tools.frame import TrackChannels
 from ml_tools.tools import blosc_zstd

@@ -21,7 +21,6 @@ from os import path
 
 import attr
 
-import config
 from .defaultconfig import DefaultConfig
 
 
