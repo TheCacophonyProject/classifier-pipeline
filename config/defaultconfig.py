@@ -36,6 +36,8 @@ class DefaultConfig(ABC):
 def deep_copy_map_if_key_not_exist(from_map, to_map):
     for key in from_map:
         if isinstance(from_map[key], dict):
+            if isinstance(to_map, list):
+                continue
             if key not in to_map:
                 to_map[key] = {}
             deep_copy_map_if_key_not_exist(from_map[key], to_map[key])
