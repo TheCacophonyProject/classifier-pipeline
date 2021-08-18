@@ -351,13 +351,14 @@ class TrackHeader:
         sample_frames = track_meta.get("sample_frames")
 
         regions = [None] * len(track_meta["bounds_history"])
-        for i, bounds, mass in enumerate(
-            zip(track_meta["bounds_history"], track_meta["mass_history"])
+        f_i = 0
+        for bounds, mass in zip(
+            track_meta["bounds_history"], track_meta["mass_history"]
         ):
-            r = Region.region_from_array(bounds, np.uint16(i + track_start_frame))
+            r = Region.region_from_array(bounds, np.uint16(f_i + track_start_frame))
             r.mass = np.uint16(mass)
-            regions[i] = r
-            i += 1
+            regions[f_i] = r
+            f_i += 1
         header = TrackHeader(
             clip_id=int(clip_id),
             track_id=int(track_meta["id"]),
