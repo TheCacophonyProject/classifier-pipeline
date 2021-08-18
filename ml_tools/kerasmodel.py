@@ -222,8 +222,6 @@ class KerasModel:
         else:
             base_model.trainable = self.params.base_training
 
-        # self.model.summary()
-
         self.model.compile(
             optimizer=optimizer(self.params),
             loss=loss(self.params),
@@ -262,7 +260,6 @@ class KerasModel:
         if weights is not None:
             self.model.load_weights(weights).expect_partial()
         logging.info("Loaded weight %s", weights)
-        # self.model.summary()
 
     def load_meta(self, dir):
         meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
@@ -907,11 +904,7 @@ def optimizer(params):
 
 def validate_model(model_file):
     path, ext = os.path.splitext(model_file)
-    if ext == ".pb":
-        if not os.path.exists(model_file):
-            return False
-    elif not os.path.exists(model_file + ".meta"):
-        logging.error("No model found named '{}'.".format(model_file + ".meta"))
+    if not os.path.exists(model_file):
         return False
     return True
 

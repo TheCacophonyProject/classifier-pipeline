@@ -285,6 +285,8 @@ def main():
     args = parse_args()
     config = load_config(args.config_file)
     test_clips = config.build.test_clips()
+    if test_clips is None:
+        test_clips = []
     logging.info("# of test clips are %s", len(test_clips))
     db_file = os.path.join(config.tracks_folder, "dataset.hdf5")
     dataset = Dataset(
