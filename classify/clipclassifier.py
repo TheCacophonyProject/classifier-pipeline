@@ -157,6 +157,13 @@ class ClipClassifier:
             )
         )[0]
 
+    def process_all(self, root):
+        for folder_path, _, files in os.walk(root):
+            for name in files:
+                if os.path.splitext(name)[1] == ".cptv":
+                    full_path = os.path.join(folder_path, name)
+                    self.process_file(full_path)
+
     def process_file(self, filename):
         """
         Process a file extracting tracks and identifying them.
