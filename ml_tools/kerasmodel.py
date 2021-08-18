@@ -399,7 +399,7 @@ class KerasModel:
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             maximum_preload=50,
-            preload=True,
+            preload=False,
             **self.params,
         )
         self.save_metadata(run_name)
