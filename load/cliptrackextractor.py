@@ -55,7 +55,9 @@ class ClipTrackExtractor:
         keep_frames=True,
         calc_stats=True,
         high_quality_optical_flow=False,
+        verbose=False,
     ):
+        self.verbose = verbose
         self.config = config
         self.use_opt_flow = use_opt_flow
         self.high_quality_optical_flow = high_quality_optical_flow
@@ -106,10 +108,6 @@ class ClipTrackExtractor:
                     clip.temp_thresh = temp_thresh
 
             video_start_time = reader.timestamp.astimezone(Clip.local_tz)
-            clip.num_preview_frames = (
-                reader.preview_secs * clip.frames_per_second
-                - self.config.preview_ignore_frames
-            )
             clip.set_video_stats(video_start_time)
             clip.calculate_background(reader)
 
@@ -388,7 +386,7 @@ class ClipTrackExtractor:
 
         track_stats = [(track.get_stats(), track) for track in clip.tracks]
         track_stats.sort(reverse=True, key=lambda record: record[0].score)
-        if self.config.verbose:
+        if self.verbose:
             for stats, track in track_stats:
                 start_s, end_s = clip.start_and_end_in_secs(track)
                 logging.info(
@@ -497,7 +495,7 @@ class ClipTrackExtractor:
 
     def print_if_verbose(self, info_string):
 
-        if self.config.verbose:
+        if self.verbose:
             logging.info(info_string)
 
 

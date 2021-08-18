@@ -45,7 +45,6 @@ class MotionConfig:
     frame_compare_gap = attr.ib()
     one_diff_only = attr.ib()
     trigger_frames = attr.ib()
-    verbose = attr.ib()
     edge_pixels = attr.ib()
     warmer_only = attr.ib()
     dynamic_thresh = attr.ib()
@@ -60,7 +59,6 @@ class MotionConfig:
             frame_compare_gap=motion.get("frame-compare-gap", 45),
             one_diff_only=motion.get("use-one-diff-only", False),
             trigger_frames=motion.get("trigger-frames", 1),
-            verbose=motion.get("verbose", True),
             edge_pixels=motion.get("edge-pixels", 3),
             warmer_only=motion.get("warmer-only", False),
             dynamic_thresh=motion.get("dynamic-thresh", True),

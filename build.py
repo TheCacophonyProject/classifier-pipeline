@@ -284,6 +284,11 @@ def main():
     init_logging()
     args = parse_args()
     config = load_config(args.config_file)
+    # return
+    # import yaml
+    #
+    # with open("defualtstest.yml", "w") as f:
+    #     yaml.dump(config.as_dict(), f)
     test_clips = config.build.test_clips()
     if test_clips is None:
         test_clips = []

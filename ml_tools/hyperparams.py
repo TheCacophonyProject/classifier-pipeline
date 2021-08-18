@@ -55,7 +55,8 @@ class HyperParams(dict):
 
     @property
     def segment_type(self):
-        return self.get("segment_type", SegmentType.ALL_RANDOM.value)
+        segment_type = self.get("segment_type", SegmentType.ALL_RANDOM.name)
+        return SegmentType[segment_type]
 
     # Model hyper paramters
     @property

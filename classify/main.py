@@ -96,9 +96,7 @@ def main():
             {"id": 1, "model_file": args.model_file, "name": args.model_file}
         )
         model.validate()
-    clip_classifier = ClipClassifier(
-        config, config.classify_tracking, model, cache_to_disk=args.cache
-    )
+    clip_classifier = ClipClassifier(config, model, cache_to_disk=args.cache)
 
     # parse start and end dates
     if args.start_date:
@@ -108,9 +106,6 @@ def main():
 
     if config.classify.preview != Previewer.PREVIEW_NONE:
         logging.info("Creating previews")
-
-    if not config.use_gpu:
-        logging.info("GPU mode disabled.")
 
     if os.path.splitext(args.source)[-1].lower() == ".cptv":
         source_file = tools.find_file_from_cmd_line(config.source_folder, args.source)

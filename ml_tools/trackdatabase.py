@@ -173,9 +173,6 @@ class TrackDatabase:
                 group_attrs["filtered_sum"] = clip.stats.filtered_sum
                 group_attrs["temp_thresh"] = clip.stats.temp_thresh
 
-                if not clip.background_is_preview:
-                    group_attrs["average_delta"] = clip.stats.average_delta
-                    group_attrs["is_static"] = clip.stats.is_static_background
                 group_attrs["frame_temp_min"] = clip.stats.frame_stats_min
                 group_attrs["frame_temp_max"] = clip.stats.frame_stats_max
                 group_attrs["frame_temp_median"] = clip.stats.frame_stats_median

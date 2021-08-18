@@ -31,7 +31,6 @@ class TrainConfig(DefaultConfig):
     epochs = attr.ib()
     resnet_params = attr.ib()
     use_gru = attr.ib()
-    model = attr.ib()
     label_probabilities = attr.ib()
 
     LABEL_PROBABILITIES = {
@@ -60,7 +59,6 @@ class TrainConfig(DefaultConfig):
             train_dir=path.join(base_data_folder, raw.get("train_dir", "train")),
             epochs=raw["epochs"],
             use_gru=raw["use_gru"],
-            model=raw["model"],
             label_probabilities=raw["label_probabilities"],
         )
 
@@ -72,7 +70,6 @@ class TrainConfig(DefaultConfig):
             train_dir="train",
             epochs=30,
             use_gru=True,
-            model="keras",
             label_probabilities=TrainConfig.LABEL_PROBABILITIES,
         )
 

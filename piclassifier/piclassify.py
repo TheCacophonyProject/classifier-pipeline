@@ -150,7 +150,7 @@ def get_full_classifier(config):
     logging.info("classifier loading")
     classifier = Model(
         train_config=config.train,
-        session=tools.get_session(disable_gpu=not config.use_gpu),
+        session=tools.get_session(),
     )
     classifier.load(config.classify.model)
     logging.info("classifier loaded ({})".format(datetime.now() - t0))

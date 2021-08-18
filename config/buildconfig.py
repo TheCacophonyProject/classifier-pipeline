@@ -27,64 +27,30 @@ from .defaultconfig import DefaultConfig
 
 @attr.s
 class BuildConfig(DefaultConfig):
-    banned_clips_file = attr.ib()
-    banned_clips = attr.ib()
     test_clips_folder = attr.ib()
-    clip_end_date = attr.ib()
-    cap_bin_weight = attr.ib()
-    use_previous_split = attr.ib()
-    excluded_trap = attr.ib()
-    label_weights = attr.ib()
-    test_min_mass = attr.ib()
-    train_min_mass = attr.ib()
-    max_validation_set_track_duration = attr.ib()
-    test_set_count = attr.ib()
-    test_set_bins = attr.ib()
+    banned_clips = attr.ib()
     segment_length = attr.ib()
     segment_spacing = attr.ib()
+    segment_min_avg_mass = attr.ib()
 
     @classmethod
     def load(cls, build):
         return cls(
-            banned_clips_file=build["banned_clips_file"],
             test_clips_folder=build["test_clips_folder"],
-            clip_end_date=dateutil.parser.parse(build["clip_end_date"])
-            if build["clip_end_date"]
-            else None,
-            cap_bin_weight=build["cap_bin_weight"],
-            use_previous_split=build["use_previous_split"],
-            banned_clips=load_banned_clips_file(build["banned_clips_file"]),
-            excluded_trap=build["excluded_trap"],
-            label_weights=build["label_weights"],
-            test_min_mass=build["test_min_mass"],
-            train_min_mass=build["train_min_mass"],
-            max_validation_set_track_duration=build[
-                "max_validation_set_track_duration"
-            ],
-            test_set_count=build["test_set_count"],
-            test_set_bins=build["test_set_bins"],
+            banned_clips=load_banned_clips_file(build["banned_clips"]),
             segment_length=build["segment_length"],
             segment_spacing=build["segment_spacing"],
+            segment_min_avg_mass=build["segment_min_avg_mass"],
         )
 
     @classmethod
     def get_defaults(cls):
         return cls(
             test_clips_folder=None,
-            banned_clips_file=None,
-            clip_end_date=None,
-            cap_bin_weight=1.5,
-            use_previous_split=True,
             banned_clips=None,
-            excluded_trap=True,
-            label_weights=None,
-            test_min_mass=30,
-            train_min_mass=20,
-            max_validation_set_track_duration=3 * 60,
-            test_set_count=300,
-            test_set_bins=10,
-            segment_length=3,
+            segment_length=25,
             segment_spacing=1,
+            segment_min_avg_mass=10,
         )
 
     def validate(self):

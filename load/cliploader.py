@@ -72,6 +72,7 @@ class ClipLoader:
             or config.load.preview == Previewer.PREVIEW_TRACKING,
             self.config.load.cache_to_disk,
             high_quality_optical_flow=self.config.load.high_quality_optical_flow,
+            verbose=config.verbose,
         )
 
     def process_all(self, root):
@@ -140,7 +141,7 @@ class ClipLoader:
             sample_frames = get_sample_frames(
                 clip.ffc_frames,
                 [bounds.mass for bounds in track.bounds_history],
-                self.config.build.train_min_mass,
+                self.config.build.segment_min_avg_mass,
                 cropped_data,
             )
             self.database.add_track(
@@ -185,7 +186,7 @@ class ClipLoader:
         excluded_tags = [
             tag
             for tag in track_tags
-            if not tag.get("automatic", False) and tag in self.config.excluded_tags
+            if not tag.get("automatic", False) and tag in self.config.load.excluded_tags
         ]
 
         if len(excluded_tags) > 0:
@@ -274,7 +275,7 @@ class ClipLoader:
             self.previewer.create_individual_track_previews(preview_filename, clip)
             self.previewer.export_clip_preview(preview_filename, clip)
 
-        if self.track_config.verbose:
+        if self.config.verbose:
             num_frames = len(clip.frame_buffer.frames)
             ms_per_frame = (time.time() - start) * 1000 / max(1, num_frames)
             self._log_message(

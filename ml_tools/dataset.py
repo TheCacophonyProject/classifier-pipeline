@@ -102,20 +102,18 @@ class Dataset:
         self.label_caps = {}
 
         if config:
-            self.min_frame_mass = config.build.train_min_mass
             self.segment_length = config.build.segment_length
             # number of seconds segments are spaced apart
             self.segment_spacing = config.build.segment_spacing
             self.banned_clips = config.build.banned_clips
             self.included_labels = config.labels
-            self.clip_before_date = config.build.clip_end_date
-            self.segment_min_mass = config.build.train_min_mass
+            self.segment_min_avg_mass = config.build.segment_min_avg_mass
         else:
-            self.min_frame_mass = 16
             # number of seconds each segment should be
-            self.segment_length = 3
+            self.segment_length = 25
             # number of seconds segments are spaced apart
             self.segment_spacing = 1
+            self.segment_min_avg_mass = None
         self.filtered_stats = {
             "confidence": 0,
             "trap": 0,
@@ -354,12 +352,12 @@ class Dataset:
         segment_frame_spacing = int(
             round(self.segment_spacing * track_header.frames_per_second)
         )
-        segment_width = int(round(self.segment_length * track_header.frames_per_second))
+        segment_width = self.segment_length
 
         track_header.calculate_segments(
             segment_frame_spacing,
             segment_width,
-            self.segment_min_mass,
+            self.segment_min_avg_mass,
         )
         self.filtered_stats["segment_mass"] += track_header.filtered_stats[
             "segment_mass"
@@ -381,15 +379,6 @@ class Dataset:
             return True
         if track_meta["tag"] not in self.included_labels:
             self.filtered_stats["tags"] += 1
-            return True
-
-        # filter by date
-        if (
-            self.clip_before_date
-            and dateutil.parser.parse(clip_meta["start_time"]).date()
-            > self.clip_before_date.date()
-        ):
-            self.filtered_stats["date"] += 1
             return True
 
         # always let the false-positives through as we need them even though they would normally
@@ -806,34 +795,34 @@ class Dataset:
             segment_frame_spacing = int(
                 round(self.segment_spacing * track.frames_per_second)
             )
-            segment_width = int(round(self.segment_length * track.frames_per_second))
+            segment_width = self.segment_length
             use_important = True
             random_frames = True
             top_frames = False
             random_sections = False
-            segment_min_mass = self.segment_min_mass
+            segment_min_mass = self.segment_min_avg_mass
             if segment_type == SegmentType.IMPORTANT_RANDOM:
                 use_important = True
                 random_frames = True
-                segment_min_mass = self.segment_min_mass
+                segment_min_mass = self.segment_min_avg_mass
             elif segment_type == SegmentType.ALL_RANDOM:
                 use_important = False
                 random_frames = True
-                segment_min_mass = self.segment_min_mass
+                segment_min_mass = self.segment_min_avg_mass
             elif segment_type == SegmentType.IMPORTANT_SEQUENTIAL:
                 use_important = True
                 random_frames = False
             elif segment_type == SegmentType.ALL_SEQUENTIAL:
                 use_important = False
                 random_frames = False
-                segment_min_mass = self.segment_min_mass
+                segment_min_mass = self.segment_min_avg_mass
             elif segment_type == SegmentType.TOP_SEQUENTIAL:
                 random_frames = False
                 top_frames = True
             elif segment_type == SegmentType.ALL_RANDOM_SECTIONS:
                 use_important = False
                 random_frames = True
-                segment_min_mass = self.segment_min_mass
+                segment_min_mass = self.segment_min_avg_mass
                 random_sections = True
             elif segment_type == SegmentType.ALL_RANDOM_NOMIN:
                 use_important = False

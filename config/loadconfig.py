@@ -24,6 +24,8 @@ from config.defaultconfig import DefaultConfig
 
 @attr.s
 class LoadConfig(DefaultConfig):
+    EXCLUDED_TAGS = ["untagged", "unidentified"]
+
     DEFAULT_GROUPS = {
         0: [
             "bird",
@@ -51,6 +53,7 @@ class LoadConfig(DefaultConfig):
     tag_precedence = attr.ib()
     cache_to_disk = attr.ib()
     high_quality_optical_flow = attr.ib()
+    excluded_tags = attr.ib()
 
     @classmethod
     def load(cls, config):
@@ -58,9 +61,10 @@ class LoadConfig(DefaultConfig):
             enable_compression=config["enable_compression"],
             include_filtered_channel=config["include_filtered_channel"],
             preview=config["preview"],
-            tag_precedence=LoadConfig.get_tag_precedence(config),
+            tag_precedence=config["tag_precedence"],
             cache_to_disk=config["cache_to_disk"],
             high_quality_optical_flow=config["high_quality_optical_flow"],
+            excluded_tags=config["excluded_tags"],
         )
 
     @classmethod
@@ -72,18 +76,8 @@ class LoadConfig(DefaultConfig):
             tag_precedence=LoadConfig.DEFAULT_GROUPS,
             cache_to_disk=False,
             high_quality_optical_flow=True,
+            excluded_tags=LoadConfig.EXCLUDED_TAGS,
         )
-
-    def get_tag_precedence(config):
-        config_prec = config.get("tag_precedence")
-        tag_rec = {}
-        for order, tags in config_prec.items():
-            for tag in tags:
-                tag_rec[tag] = order
-
-        if tag_rec.get("default") is None:
-            tag_rec["default"] = max(config) + 1
-        return tag_rec
 
     def validate(self):
         return True

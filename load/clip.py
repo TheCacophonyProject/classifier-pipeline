@@ -50,7 +50,6 @@ class Clip:
         self.frame_on = 0
         self.ffc_affected = False
         self.crop_rectangle = None
-        self.num_preview_frames = 0
         self.region_history = []
         self.active_tracks = set()
         self.tracks = []
@@ -65,7 +64,6 @@ class Clip:
         self.res_x = None
         self.res_y = None
         self.background_frames = 0
-        self.background_is_preview = trackconfig.background_calc == Clip.PREVIEW
         self.config = trackconfig
         self.frames_per_second = Clip.FRAMES_PER_SECOND
 

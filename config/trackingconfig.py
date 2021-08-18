@@ -27,14 +27,8 @@ from load.cliptrackextractor import ClipTrackExtractor
 
 @attr.s
 class TrackingConfig(DefaultConfig):
-
-    background_calc = attr.ib()
     motion = attr.ib()
-    preview_ignore_frames = attr.ib()
     threshold_percentile = attr.ib()
-    static_background_threshold = attr.ib()
-    max_mean_temperature_threshold = attr.ib()
-    max_temperature_range_threshold = attr.ib()
     edge_pixels = attr.ib()
     dilation_pixels = attr.ib()
     frame_padding = attr.ib()
@@ -52,7 +46,6 @@ class TrackingConfig(DefaultConfig):
     aoi_min_mass = attr.ib()
     aoi_pixel_variance = attr.ib()
     cropped_regions_strategy = attr.ib()
-    verbose = attr.ib()
     enable_track_output = attr.ib()
     min_tag_confidence = attr.ib()
     moving_vel_thresh = attr.ib()
@@ -69,19 +62,10 @@ class TrackingConfig(DefaultConfig):
     @classmethod
     def load(cls, tracking):
         return cls(
-            background_calc=config.parse_options_param(
-                "background_calc",
-                tracking["background_calc"],
-                [ClipTrackExtractor.PREVIEW, "stats"],
-            ),
             motion=MotionConfig.load(tracking.get("motion")),
-            preview_ignore_frames=tracking["preview_ignore_frames"],
             threshold_percentile=tracking["stats"]["threshold_percentile"],
             min_threshold=tracking["stats"]["min_threshold"],
             max_threshold=tracking["stats"]["max_threshold"],
-            static_background_threshold=tracking["static_background_threshold"],
-            max_mean_temperature_threshold=tracking["max_mean_temperature_threshold"],
-            max_temperature_range_threshold=tracking["max_temperature_range_threshold"],
             edge_pixels=tracking["edge_pixels"],
             dilation_pixels=tracking["dilation_pixels"],
             frame_padding=tracking["frame_padding"],
@@ -100,32 +84,26 @@ class TrackingConfig(DefaultConfig):
             ],
             aoi_min_mass=tracking["areas_of_interest"]["min_mass"],
             aoi_pixel_variance=tracking["areas_of_interest"]["pixel_variance"],
-            verbose=tracking["verbose"],
             enable_track_output=tracking["enable_track_output"],
             min_tag_confidence=tracking["min_tag_confidence"],
             min_moving_frames=tracking["min_moving_frames"],
             max_blank_percent=tracking["max_blank_percent"],
-            max_mass_std_percent=tracking["max_mass_std_percent"],
             max_jitter=tracking["max_jitter"],
-            stats=None,
-            filters=None,
-            areas_of_interest=None,
+            stats=tracking["stats"],
+            filters=tracking["filters"],
+            areas_of_interest=tracking["areas_of_interest"],
+            max_mass_std_percent=tracking["max_mass_std_percent"],
         )
 
     @classmethod
     def get_defaults(cls):
         return cls(
-            background_calc=ClipTrackExtractor.PREVIEW,
             motion=MotionConfig.get_defaults(),
             stats={
                 "threshold_percentile": 99.9,
                 "min_threshold": 30,
                 "max_threshold": 50,
             },
-            preview_ignore_frames=2,
-            max_mean_temperature_threshold=10000,
-            max_temperature_range_threshold=10000,
-            static_background_threshold=4.0,
             edge_pixels=1,
             frame_padding=4,
             dilation_pixels=2,
@@ -139,13 +117,13 @@ class TrackingConfig(DefaultConfig):
                 "min_duration_secs": 3.0,
                 "track_min_offset": 4.0,
                 "track_min_mass": 2.0,
+                "moving_vel_thresh": 4,
             },
             areas_of_interest={
                 "min_mass": 4.0,
                 "pixel_variance": 2.0,
                 "cropped_regions_strategy": "cautious",
             },
-            verbose=False,
             # defaults provided in dictionaries, placesholders to stop init complaining
             aoi_min_mass=4.0,
             aoi_pixel_variance=2.0,

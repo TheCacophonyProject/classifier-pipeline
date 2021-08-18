@@ -22,9 +22,10 @@ class TestTrackingSpeed:
             config.use_opt_flow
             or config.classify.preview == Previewer.PREVIEW_TRACKING,
             False,
+            config.verbose,
         )
         start = time.time()
-        clip = Clip(config.classify_tracking, file_name)
+        clip = Clip(config.tracking, file_name)
         track_extractor.parse_clip(clip)
         ms_per_frame = (
             (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
@@ -35,7 +36,7 @@ class TestTrackingSpeed:
         file_name = os.path.join(dir_name, TestTrackingSpeed.CPTV_FILE_BACKGROUND)
         print("Tracking cptv with background ", file_name)
         start = time.time()
-        clip = Clip(config.classify_tracking, file_name)
+        clip = Clip(config.tracking, file_name)
         track_extractor.parse_clip(clip)
         ms_per_frame = (
             (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))

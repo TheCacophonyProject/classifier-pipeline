@@ -33,10 +33,6 @@ tf_device = "/gpu:1"
 class KerasModel:
     """Defines a deep learning model"""
 
-    MODEL_NAME = "keras model"
-    MODEL_DESCRIPTION = "Using pre trained keras application models"
-    VERSION = "0.3.0"
-
     def __init__(self, train_config=None, labels=None):
         self.model = None
         self.datasets = None
@@ -277,17 +273,17 @@ class KerasModel:
             self.params.blue_type,
         )
 
-    def save(self, run_name=MODEL_NAME, history=None, test_results=None):
+    def save(self, run_name=None, history=None, test_results=None):
         # create a save point
-        self.model.save(
-            os.path.join(self.checkpoint_folder, run_name), save_format="tf"
-        )
+        if run_name is None:
+            run_name = self.params.model_name
+        self.model.save(os.path.join(self.checkpoint_folder, run_name))
         self.save_metadata(run_name, history, test_results)
 
-    def save_metadata(self, run_name=MODEL_NAME, history=None, test_results=None):
+    def save_metadata(self, history=None, test_results=None):
         #  save metadata
         model_stats = {}
-        model_stats["name"] = self.MODEL_NAME
+        model_stats["name"] = self.params.model_name
         model_stats["description"] = self.MODEL_DESCRIPTION
         model_stats["labels"] = self.labels
         model_stats["hyperparams"] = self.params
