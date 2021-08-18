@@ -51,7 +51,7 @@ class MotionConfig(DefaultConfig):
                 if model_thresh.default:
                     return model_thresh
 
-            return self.camera_thresholds["default-model"]
+            return self.camera_thresholds["default"]
         return threshold
 
 
