@@ -41,7 +41,6 @@ class KerasModel:
         if train_config:
             self.log_base = os.path.join(train_config.train_dir, "logs")
             self.log_dir = self.log_base
-            os.makedirs(self.log_base, exist_ok=True)
             self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
             self.params.update(train_config.hyper_params)
         self.labels = labels
@@ -359,6 +358,7 @@ class KerasModel:
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
+        os.makedirs(self.log_base, exist_ok=True)
         self.log_dir = os.path.join(self.log_base, run_name)
         os.makedirs(self.log_base, exist_ok=True)
 
