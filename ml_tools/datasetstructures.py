@@ -91,6 +91,10 @@ class NumpyMeta:
                 track_info["frames"][frame.frame_number] = index
                 index += 1
 
+            track_frames = np.arange(track.num_frames) + track.start_frame
+            data_frames = track_info["frames"].keys()
+            skipped = [f_i for f_i in track_frames if f_i not in data_frames]
+            track.skipped_frames = np.uint16(skipped)
             track_info["data"] = self.f.tell()
             thermals = np.empty(len(frames), dtype=object)
             filtered = np.empty(len(frames), dtype=object)
@@ -129,6 +133,7 @@ class TrackHeader:
         res_y=CPTV_FILE_HEIGHT,
         ffc_frames=None,
         sample_frames_indices=None,
+        skipped_frames=None,
     ):
         self.res_x = np.uint8(res_x)
         self.res_y = np.uint8(res_y)
@@ -170,6 +175,7 @@ class TrackHeader:
         self.median_mass = np.uint16(np.median(mass_history))
         self.mean_mass = np.uint16(np.mean(mass_history))
         self.ffc_frames = np.uint16(ffc_frames)
+        self.skipped_frames = skipped_frames
         if sample_frames_indices is not None:
             self.sample_frames = []
             for region, frame_num, frame_temp in zip(
@@ -345,7 +351,7 @@ class TrackHeader:
 
         ffc_frames = clip_meta.get("ffc_frames", [])
         sample_frames = track_meta.get("sample_frames")
-
+        skipped_frames = track_meta.get("skipped_frames")
         regions = [None] * len(track_meta["bounds_history"])
         f_i = 0
         for bounds, mass in zip(
@@ -375,6 +381,7 @@ class TrackHeader:
             res_y=clip_meta.get("res_y", CPTV_FILE_HEIGHT),
             ffc_frames=ffc_frames,
             sample_frames_indices=sample_frames,
+            skipped_frames=skipped_frames,
         )
         return header
 
@@ -657,6 +664,7 @@ def get_segments(
     lower_mass=0,
     repeats=1,
     min_frames=None,
+    skipped_frames=None,
 ):
     if min_frames is None:
         min_frames = 25
@@ -669,7 +677,9 @@ def get_segments(
         frame_indices = [
             region.frame_number
             for region in regions
-            if region.mass > 0 and region.frame_number not in ffc_frames
+            if region.mass > 0
+            and region.frame_number not in ffc_frames
+            and (skipped_frames is None or region.frame_number not in skipped_frames)
         ]
         if segment_min_mass is not None:
             if len(frame_indices) > 0:

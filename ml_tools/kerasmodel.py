@@ -33,6 +33,8 @@ tf_device = "/gpu:1"
 class KerasModel:
     """Defines a deep learning model"""
 
+    VERSION = 1
+
     def __init__(self, train_config=None, labels=None):
         self.model = None
         self.datasets = None
@@ -279,11 +281,12 @@ class KerasModel:
         self.model.save(os.path.join(self.checkpoint_folder, run_name))
         self.save_metadata(run_name, history, test_results)
 
-    def save_metadata(self, history=None, test_results=None):
+    def save_metadata(self, run_name=None, history=None, test_results=None):
         #  save metadata
+        if run_name is None:
+            run_name = self.params.model_name
         model_stats = {}
         model_stats["name"] = self.params.model_name
-        model_stats["description"] = self.MODEL_DESCRIPTION
         model_stats["labels"] = self.labels
         model_stats["hyperparams"] = self.params
         model_stats["training_date"] = str(time.time())
@@ -379,7 +382,7 @@ class KerasModel:
             epochs=epochs,
             model_preprocess=self.preprocess_fn,
             maximum_preload=self.params.maximum_train_preload,
-            eager_load=True,
+            eager_load=False,
             preload=True,
             **self.params,
         )
@@ -391,8 +394,9 @@ class KerasModel:
             cap_at="bird",
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
-            maximum_preload=50,
-            preload=False,
+            maximum_preload=200,
+            preload=True,
+            lazy_load=True,
             **self.params,
         )
         self.save_metadata(run_name)

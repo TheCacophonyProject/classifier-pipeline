@@ -71,6 +71,7 @@ class DataGenerator(keras.utils.Sequence):
         self.loaded_epochs = 0
         self.epoch_stats = []
         self.eager_load = params.get("eager_load", False)
+        self.lazy_load = params.get("lazy_load", False)
         self.preload = params.get("preload", False)
 
         use_threads = False
@@ -163,10 +164,13 @@ class DataGenerator(keras.utils.Sequence):
                 index,
             )
             self.load_next_epoch()
+
         if index == 0 and len(self.epoch_data) > self.cur_epoch:
             # when tensorflow uses model.fit it requests index 0 twice
             X, y = self.epoch_data[self.cur_epoch]
         else:
+            if index == 0 and self.preload and self.lazy_load:
+                self.preload_samples()
             try:
 
                 X, y, y_original = self.get_item(index)
@@ -221,7 +225,7 @@ class DataGenerator(keras.utils.Sequence):
         logging.info(
             "%s loading epoch %s shuffling %s",
             self.dataset.name,
-            self.loaded_epochs,
+            (self.loaded_epochs + 1),
             self.shuffle,
         )
         self.samples = self.dataset.epoch_samples(
@@ -240,20 +244,22 @@ class DataGenerator(keras.utils.Sequence):
         if self.cur_epoch == 0:
             self.sample_size = len(self.samples)
 
-        if self.preload:
-            batches = []
-            for index in range(len(self)):
-                samples = self.samples[
-                    index * self.batch_size : (index + 1) * self.batch_size
-                ]
-                batches.append(samples)
-            if len(batches) > 0:
-                self.epoch_queue.put((self.loaded_epochs + 1, batches))
+        if self.preload and not self.lazy_load:
+            self.preload_samples()
+        if not self.preload:
+            self.loaded_epochs += 1
 
-            self.dataset.segments = []
-            # lower memory since these are already in processes
-            gc.collect()
         self.epoch_samples.append(len(self.samples))
+
+    def preload_samples(self):
+        batches = []
+        for index in range(len(self)):
+            samples = self.samples[
+                index * self.batch_size : (index + 1) * self.batch_size
+            ]
+            batches.append(samples)
+        if len(batches) > 0:
+            self.epoch_queue.put((self.loaded_epochs + 1, batches))
         self.loaded_epochs += 1
 
     def reload_samples(self):
@@ -297,12 +303,13 @@ def loadbatch(labels, segments, data, params, mapped_labels):
 
 
 def get_cached_frames(db, sample):
+    frames = []
     if sample.unique_track_id not in db:
         logging.warn("Cannot find %s in db", sample.unique_track_id)
         return Frames
 
     track_frames = db[sample.unique_track_id]
-    for f_i in enumeate(sample.frame_indices):
+    for f_i in sample.frame_indices:
         if f_i not in track_frames:
             logging.warn("Caanot not load %s frame %s", sample, f_i)
             # THIS SHOULDNT HAPPEN
