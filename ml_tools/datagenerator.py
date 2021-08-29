@@ -297,12 +297,16 @@ def loadbatch(labels, segments, data, params, mapped_labels):
 
 
 def get_cached_frames(db, sample):
+    if sample.unique_track_id not in db:
+        logging.warn("Cannot find %s in db", sample.unique_track_id)
+        return Frames
+
     track_frames = db[sample.unique_track_id]
-    frames = []
-    for f_i in sample.frame_indices:
+    for f_i in enumeate(sample.frame_indices):
         if f_i not in track_frames:
             logging.warn("Caanot not load %s frame %s", sample, f_i)
-            continue
+            # THIS SHOULDNT HAPPEN
+            return []
         frames.append(track_frames[f_i].copy())
     return frames
 
@@ -326,6 +330,14 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
         if label not in labels:
             continue
         if params.use_segments:
+            if len(frame_data) != len(sample.frame_temp_median):
+                logging.warn(
+                    "Missing data for sample %s has %s frames while %s frame temps",
+                    sample,
+                    len(frame_data),
+                    len(sample.frame_temp_median),
+                )
+                continue
             data = preprocess_movement(
                 frame_data,
                 params.square_width,
@@ -354,16 +366,6 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
             )
         if data is None:
             continue
-        # just for testing
-        xnan = np.any(np.isnan(data))
-        if xnan:
-            logging.error(
-                "got  nan for x samples %s augment %s indices %s",
-                sample,
-                params.augment,
-                sample.frame_indices,
-            )
-
         y_original.append(sample.label)
         X[data_i] = data
         y[data_i] = labels.index(label)
@@ -497,98 +499,94 @@ def preloader(
     if name == "train":
         processes = 4
 
-    pool = multiprocessing.Pool(
-        processes,
-        init_process,
-        (labels, params, label_mapping),
-        maxtasksperchild=100,
-    )
-    chunk_size = 50
     preload_amount = max(1, params.maximum_preload)
     while True:
-        try:
+        with multiprocessing.Pool(
+            processes,
+            init_process,
+            (labels, params, label_mapping),
+            maxtasksperchild=30,
+        ) as pool:
             item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
-        except:
-            logging.error("%s preloader epoch %s error", name, epoch, exc_info=True)
-            return
+            if item == "STOP":
+                logging.info("%s preloader received stop", name)
+                pool.terminate()
+                return
+            try:
+                epoch, batches = item
+                count = 0
 
-        if item == "STOP":
-            logging.info("%s preloader received stop", name)
-            pool.terminate()
-            return
-        try:
-            epoch, batches = item
-            count = 0
-
-            logging.debug(
-                "%s preloader got %s batches for epoch %s mem %s",
-                name,
-                len(batches),
-                epoch,
-                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-            )
-            total = 0
-
-            # Once process_batch starts to back up
-            loaded_up_to = 0
-            while len(batches) > 0:
                 logging.debug(
-                    "%s preloader memory %s",
+                    "%s preloader got %s batches for epoch %s mem %s",
                     name,
+                    len(batches),
+                    epoch,
                     psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
                 )
+                total = 0
 
-                while jobs > (params.maximum_preload - preload_amount // 2):
-                    logging.debug("%s waiting for jobs to complete %s", name, jobs)
-                    time.sleep(5)
-                next_load = batches[:preload_amount]
+                # Once process_batch starts to back up
+                loaded_up_to = 0
+                while len(batches) > 0:
+                    logging.debug(
+                        "%s preloader memory %s",
+                        name,
+                        psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+                    )
 
-                logging.debug(
-                    "%s preloader loading %s - %s ",
-                    name,
-                    loaded_up_to,
-                    loaded_up_to + len(next_load),
-                )
-                loaded_up_to = loaded_up_to + len(next_load)
+                    while jobs > (params.maximum_preload - preload_amount // 2):
+                        logging.debug("%s waiting for jobs to complete %s", name, jobs)
+                        time.sleep(5)
+                    next_load = batches[:preload_amount]
 
-                batch_data, track_frames = load_batch_frames(
-                    numpy_meta,
-                    next_load,
-                    segments_by_id,
-                    name,
-                )
+                    logging.debug(
+                        "%s preloader loading %s - %s ",
+                        name,
+                        loaded_up_to,
+                        loaded_up_to + len(next_load),
+                    )
+                    loaded_up_to = loaded_up_to + len(next_load)
 
-                data = []
-                for batch_i, segments in enumerate(batch_data):
-                    start = time.time()
-                    segment_data = [None] * len(segments)
-                    for i, seg in enumerate(segments):
-                        frame_data = get_cached_frames(track_frames, seg)
-                        segment_data[i] = frame_data
-                    data.append((segments, segment_data))
-                    batch_data[batch_i] = None
-                    if len(data) > chunk_size or batch_i == (len(batch_data) - 1):
-                        pool.map_async(process_batch, data, callback=processed_data)
-                        jobs += len(data)
-                        del data
-                        data = []
-                del batch_data
-                del track_frames
-                del batches[:preload_amount]
+                    batch_data, track_frames = load_batch_frames(
+                        numpy_meta,
+                        next_load,
+                        segments_by_id,
+                        name,
+                    )
+                    chunk_size = len(batch_data) // processes
+                    data = []
+                    for batch_i, segments in enumerate(batch_data):
+                        start = time.time()
+                        segment_data = [None] * len(segments)
+                        for i, seg in enumerate(segments):
+                            frame_data = get_cached_frames(track_frames, seg)
+                            segment_data[i] = frame_data
+                        data.append((segments, segment_data))
+                        batch_data[batch_i] = None
+                        if len(data) > chunk_size or batch_i == (len(batch_data) - 1):
+                            pool.map_async(process_batch, data, callback=processed_data)
+                            jobs += len(data)
+                            del data
+                            data = []
+                    del batch_data
+                    del track_frames
+                    del batches[:preload_amount]
+                    gc.collect()
+                    logging.debug(
+                        "%s preloader loaded  up to %s",
+                        name,
+                        loaded_up_to,
+                    )
+                    total += 1
+                del batches
                 gc.collect()
-                logging.debug(
-                    "%s preloader loaded  up to %s",
-                    name,
-                    loaded_up_to,
+                logging.info("%s preloader loaded epoch %s batches", name, epoch)
+                pool.close()
+                pool.join()
+            except Exception as inst:
+                logging.error(
+                    "%s preloader epoch %s error %s", name, epoch, inst, exc_info=True
                 )
-                total += 1
-            del batches
-            gc.collect()
-            logging.info("%s preloader loaded epoch %s batches", name, epoch)
-        except Exception as inst:
-            logging.error(
-                "%s preloader epoch %s error %s", name, epoch, inst, exc_info=True
-            )
 
 
 def processed_data(results):

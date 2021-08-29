@@ -799,34 +799,34 @@ class Dataset:
             random_frames = True
             top_frames = False
             random_sections = False
-            segment_min_mass = self.segment_min_avg_mass
+            segment_min_avg_mass = self.segment_min_avg_mass
             if segment_type == SegmentType.IMPORTANT_RANDOM:
                 use_important = True
                 random_frames = True
-                segment_min_mass = self.segment_min_avg_mass
+                segment_min_avg_mass = self.segment_min_avg_mass
             elif segment_type == SegmentType.ALL_RANDOM:
                 use_important = False
                 random_frames = True
-                segment_min_mass = self.segment_min_avg_mass
+                segment_min_avg_mass = self.segment_min_avg_mass
             elif segment_type == SegmentType.IMPORTANT_SEQUENTIAL:
                 use_important = True
                 random_frames = False
             elif segment_type == SegmentType.ALL_SEQUENTIAL:
                 use_important = False
                 random_frames = False
-                segment_min_mass = self.segment_min_avg_mass
+                segment_min_avg_mass = self.segment_min_avg_mass
             elif segment_type == SegmentType.TOP_SEQUENTIAL:
                 random_frames = False
                 top_frames = True
             elif segment_type == SegmentType.ALL_RANDOM_SECTIONS:
                 use_important = False
                 random_frames = True
-                segment_min_mass = self.segment_min_avg_mass
+                segment_min_avg_mass = self.segment_min_avg_mass
                 random_sections = True
             elif segment_type == SegmentType.ALL_RANDOM_NOMIN:
                 use_important = False
                 random_frames = False
-                segment_min_mass = None
+                segment_min_avg_mass = None
             elif segment_type == SegmentType.TOP_RANDOM:
                 use_important = False
                 random_frames = True
@@ -837,7 +837,7 @@ class Dataset:
                 random_frames=random_frames,
                 use_important=use_important,
                 top_frames=top_frames,
-                segment_min_mass=segment_min_mass,
+                segment_min_mass=segment_min_avg_mass,
                 random_sections=random_sections,
             )
             filtered_stats = filtered_stats + track.filtered_stats["segment_mass"]
