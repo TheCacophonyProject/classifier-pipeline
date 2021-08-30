@@ -89,14 +89,12 @@ class LiteInterpreter:
         print("out values", self.out_values)
         self.prediction = self.out_values["Identity"]
 
-    def run(self, input_x):
+    def classify_frame(self, input_x):
+        input_x = np.float32(input_x)
         input_x = input_x[np.newaxis, :]
-        # print(input_x.shape)
+
         self.interpreter.set_tensor(self.in_values["input"], input_x)
         self.interpreter.invoke()
-
-    def classify_frame(self, input_x):
-        self.run(np.float32(input_x))
         pred = self.interpreter.get_tensor(self.out_values["Identity"])[0]
         return pred
 

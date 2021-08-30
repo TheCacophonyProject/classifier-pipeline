@@ -305,7 +305,7 @@ class PiClassifier(Processor):
                         )
                     )
             # self.save_metadata()
-            self.create_mp4()
+            # self.create_mp4()
             self.predictions.clear_predictions()
             self.clip = None
             self.tracking = False
