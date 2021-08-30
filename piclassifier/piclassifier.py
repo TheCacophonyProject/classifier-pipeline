@@ -269,9 +269,10 @@ class PiClassifier(Processor):
             and self.frame_num % PiClassifier.DEBUG_EVERY == 0
         ):
             logging.info(
-                "tracking {} process {} identify {} fps {}/sec time to process {}ms cpu % {} memory % {}".format(
+                "tracking {} process {} rec {} identify {} fps {}/sec time to process {}ms cpu % {} memory % {}".format(
                     round(self.tracking_time, 3),
                     round(self.process_time, 3),
+                    round(self.motion_detector.rec_time, 3),
                     round(self.identify_time, 3),
                     round(1 / timetaken, 2),
                     round(timetaken * 1000, 2),
@@ -282,6 +283,7 @@ class PiClassifier(Processor):
             self.tracking_time = 0
             self.process_time = 0
             self.identify_time = 0
+            self.motion_detector.rec_time = 0
 
     def create_mp4(self):
         previewer = Previewer(self.config, "classified")

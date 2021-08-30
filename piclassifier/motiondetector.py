@@ -82,6 +82,7 @@ class MotionDetector(Processor):
     BACKGROUND_WEIGHT_EVERY = 3
 
     def __init__(self, thermal_config, dynamic_thresh, recorder, headers):
+        self.rec_time = 0
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
         self.config = thermal_config.motion
@@ -284,6 +285,7 @@ class MotionDetector(Processor):
                 self.movement_detected = self.detect(clipped_frame)
             self.processed += 1
             if self.recorder and self.processed > 100:
+                start_rec = time.time()
                 if self.recorder.recording:
                     self.recorder.process_frame(self.movement_detected, cptv_frame)
                 elif self.movement_detected:
@@ -292,6 +294,7 @@ class MotionDetector(Processor):
                         self.thermal_window.get_frames(),
                         self.temp_thresh,
                     )
+                self.rec_time += time.time() - start_rec
         else:
             self.thermal_window.update_current_frame(cptv_frame)
             self.movement_detected = False
