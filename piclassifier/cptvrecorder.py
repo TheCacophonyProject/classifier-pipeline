@@ -101,8 +101,8 @@ class CPTVRecorder:
         self.recording = False
         logging.info(
             "recording ended %s %s per frame",
-            time.time() - rec_time,
-            (time.time() - rec_time) / self.frames,
+            time.time() - self.rec_time,
+            (time.time() - self.rec_time) / self.frames,
         )
         self.write_until = 0
         if self.writer is None:

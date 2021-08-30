@@ -73,8 +73,7 @@ class LiteInterpreter:
         self.interpreter = tf.lite.Interpreter(model_path=model_name + ".tflite")
 
         self.interpreter.allocate_tensors()
-        input_details = self.interpreter.get_input_details()
-        tensors = self.interpreter.get_tensor_details()
+        input_details = self.interpreter.get_tensor_details()
 
         self.in_values = {}
         for detail in input_details:
@@ -87,25 +86,19 @@ class LiteInterpreter:
             self.out_values[detail["name"]] = detail["index"]
 
         self.load_json(model_name)
+        print("out values", self.out_values)
+        self.prediction = self.out_values["Identity"]
 
-        self.state_out = self.out_values["state_out"]
-        self.novelty = self.out_values["novelty"]
-        self.prediction = self.out_values["prediction"]
-
-    def run(self, input_x, state_in=None):
-        input_x = input_x[np.newaxis, np.newaxis, :]
-        self.interpreter.set_tensor(self.in_values["X"], input_x)
-        if state_in is not None:
-            self.interpreter.set_tensor(self.in_values["state_in"], state_in)
-
+    def run(self, input_x):
+        input_x = input_x[np.newaxis, :]
+        # print(input_x.shape)
+        self.interpreter.set_tensor(self.in_values["input"], input_x)
         self.interpreter.invoke()
 
-    def classify_frame(self, input_x, state_in=None):
-        self.run(input_x, state_in)
-        pred = self.interpreter.get_tensor(self.out_values["prediction"])[0]
-        nov = self.interpreter.get_tensor(self.out_values["novelty"])
-        state = self.interpreter.get_tensor(self.out_values["state_out"])
-        return pred, nov, state
+    def classify_frame(self, input_x):
+        self.run(np.float32(input_x))
+        pred = self.interpreter.get_tensor(self.out_values["Identity"])[0]
+        return pred
 
     def load_json(self, filename):
         stats = json.load(open(filename + ".txt", "r"))
@@ -113,7 +106,7 @@ class LiteInterpreter:
         self.MODEL_NAME = stats["name"]
         self.MODEL_DESCRIPTION = stats["description"]
         self.labels = stats["labels"]
-        self.eval_score = stats["score"]
+        # self.eval_score = stats["score"]
         self.params = stats["hyperparams"]
 
 
@@ -150,7 +143,7 @@ def get_classifier(config):
 
 
 def get_full_classifier(config):
-    from ml_tools.model import Model
+    from ml_tools.kerasmodel import KerasModel
 
     """
     Returns a classifier object, which is created on demand.
@@ -158,14 +151,16 @@ def get_full_classifier(config):
     """
     t0 = datetime.now()
     logging.info("classifier loading")
-    classifier = Model(
-        train_config=config.train,
-        session=tools.get_session(disable_gpu=not config.use_gpu),
-    )
-    classifier.load(config.classify.model)
+    model = KerasModel()
+    model.load_model(config.classify.model)
+    # classifier = Model(
+    #     train_config=config.train,
+    #     session=tools.get_session(disable_gpu=not config.use_gpu),
+    # )
+    # classifier.load(config.classify.model)
     logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
-    return classifier
+    return model3
 
 
 # Links to socket and continuously waits for 1 connection
@@ -224,6 +219,7 @@ def parse_cptv(cptv_file, config, thermal_config):
 
 
 def get_processor(config, thermal_config, headers):
+    print("classify??", thermal_config.motion)
     if thermal_config.motion.run_classifier:
         classifier = get_classifier(config)
         return PiClassifier(config, thermal_config, classifier, headers)

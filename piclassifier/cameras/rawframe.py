@@ -19,7 +19,6 @@ class RawFrame(ABC):
         thermal_frame = np.frombuffer(
             data, dtype=self.img_dtype, offset=self.get_telemetry_size()
         ).reshape(self.res_y, self.res_x)
-
         return Frame(
             thermal_frame.byteswap(),
             telemetry.time_on,
@@ -38,7 +37,7 @@ class RawFrame(ABC):
 
 
 def get_uint16(raw, offset):
-    return unpack_from(">I", raw, offset)[0]
+    return unpack_from(">H", raw, offset)[0]
 
 
 def get_uint32(raw, offset):

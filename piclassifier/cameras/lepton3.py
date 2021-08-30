@@ -21,17 +21,20 @@ class Lepton3(RawFrame):
         time_counter = get_uint32(raw_bytes, 2)
         status_bits = get_uint32(raw_bytes, 6)
 
-        offset = 2 * (1 + 2 + 2 + 8)
+        offset = 2 + 4 + 4 + 16
         software_revision = get_uint64(raw_bytes, offset)  # /26
-        offset += 2 * (4 + 3)
+        offset += 8 + 6
         frame_counter = get_uint32(raw_bytes, offset)
         offset += 4
+        frame_mean = get_uint16(raw_bytes, offset)
+        fpa_temp_counts = get_uint16(raw_bytes, offset + 2)
+        fpa_temp = get_uint16(raw_bytes, offset + 4)
         frame_mean, fpa_temp_counts, fpa_temp = unpack_from(
             ">HHH", raw_bytes, offset=offset
         )
-
         offset += 2 * (1 + 1 + 1 + 4)
         fpa_temp_last_ffc = get_uint16(raw_bytes, offset)
+
         offset += 2
         time_counter_last_ffc = get_uint32(raw_bytes, offset)
         # 60th byte
@@ -43,7 +46,7 @@ class Lepton3(RawFrame):
         t.frame_counter = frame_counter
         t.frame_mean = frame_mean
         t.fpa_temp_counts = fpa_temp_counts
-        t.fpa_temp = fpa_temp
-        t.fpa_temp_last_ffc = fpa_temp_last_ffc
+        t.fpa_temp = (fpa_temp - 27315.0) / 100
+        t.fpa_temp_last_ffc = (fpa_temp_last_ffc - 27315.0) / 100
         t.last_ffc_time = timedelta(milliseconds=time_counter_last_ffc)
         return t

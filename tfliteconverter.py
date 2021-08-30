@@ -163,6 +163,7 @@ def convert_model(args):
     print("converting to tflite: ", os.path.join(args.model_dir, SAVED_DIR))
 
     model = tf.keras.models.load_model(args.model_dir)
+    model.load_weights(os.path.join(args.model_dir, "val_acc"))
     model.trainable = False
     model.summary()
     model.save(os.path.join(args.model_dir, "inference"), save_format="tf")

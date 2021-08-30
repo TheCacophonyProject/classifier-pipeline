@@ -295,6 +295,7 @@ class PiClassifier(Processor):
 
     def end_clip(self):
         if self.clip:
+            self.track_extractor.filter_tracks(self.clip)
             for _, prediction in self.predictions.prediction_per_track.items():
                 if prediction.max_score:
                     logging.info(
@@ -304,6 +305,7 @@ class PiClassifier(Processor):
                         )
                     )
             # self.save_metadata()
+            self.create_mp4()
             self.predictions.clear_predictions()
             self.clip = None
             self.tracking = False

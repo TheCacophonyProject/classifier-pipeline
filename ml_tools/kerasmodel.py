@@ -28,7 +28,6 @@ from ml_tools.hyperparams import HyperParams
 import tensorflow_addons as tfa
 import os
 
-from keras import backend as K
 import gc
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -301,7 +300,8 @@ class KerasModel:
         self.load_meta(dir)
         if not training:
             self.model.trainable = False
-        self.model.load_weights(weights)
+        if weights is not None:
+            self.model.load_weights(os.path.join(dir, "val_acc"))
         self.model.summary()
 
     def load_meta(self, dir):
@@ -1048,7 +1048,7 @@ class KerasModel:
             predictions.append(output[0])
         return predictions
 
-    def classify_frame(self, frame, thermal_median, preprocess=True):
+    def classify_frame(self, frame, thermal_median=None, preprocess=False):
         if preprocess:
             frame = preprocess_frame(
                 frame,
