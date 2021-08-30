@@ -6,6 +6,7 @@ from load.cliptrackextractor import ClipTrackExtractor
 from cptv import CPTVWriter
 from cptv import Frame
 from datetime import timedelta
+import time
 
 CPTV_TEMP_EXT = ".cptv.temp"
 
@@ -26,6 +27,7 @@ class CPTVRecorder:
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.write_until = 0
         self.clip = None
+        self.rec_time = 0
 
     def force_stop(self):
         if not self.recording:
@@ -56,6 +58,7 @@ class CPTVRecorder:
         if self.recording:
             logging.warn("Already recording, stop recording first")
             return
+        self.rec_time = time.time()
         self.frames = 0
         self.filename = new_temp_name()
         self.filename = os.path.join(self.output_dir, self.filename)
@@ -96,7 +99,11 @@ class CPTVRecorder:
 
     def stop_recording(self):
         self.recording = False
-        logging.debug("recording ended")
+        logging.info(
+            "recording ended %s %s per frame",
+            time.time() - rec_time,
+            (time.time() - rec_time) / self.frames,
+        )
         self.write_until = 0
         if self.writer is None:
             return
