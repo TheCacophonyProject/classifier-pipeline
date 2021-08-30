@@ -209,6 +209,8 @@ class PiClassifier(Processor):
                 sample="Test-{}".format(self.clip.frame_on),
                 type=1,
             )
+            if preprocessed is None:
+                continue
             prediction = self.classifier.classify_frame(preprocessed)
             # print("prediction is", np.round(100 * prediction))
             track_prediction.classified_frame(self.clip.frame_on, prediction, None)
