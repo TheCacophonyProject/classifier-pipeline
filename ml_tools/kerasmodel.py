@@ -361,6 +361,7 @@ class KerasModel:
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
+
         os.makedirs(self.log_base, exist_ok=True)
         self.log_dir = os.path.join(self.log_base, run_name)
         os.makedirs(self.log_base, exist_ok=True)
@@ -371,6 +372,7 @@ class KerasModel:
                 retrain_from=self.params.retrain_layer,
                 dropout=self.params.dropout,
             )
+        self.model.summary()
         if weights is not None:
             self.model.load_weights(weights)
         self.train = DataGenerator(

@@ -507,6 +507,7 @@ def preloader(
         processes = 4
 
     preload_amount = max(1, params.maximum_preload)
+    max_jobs = max(1, 2 * preload_amount // 3)
     while True:
         with multiprocessing.Pool(
             processes,
@@ -541,7 +542,7 @@ def preloader(
                         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
                     )
 
-                    while jobs > (params.maximum_preload - preload_amount // 2):
+                    while jobs > max_jobs:
                         logging.debug("%s waiting for jobs to complete %s", name, jobs)
                         time.sleep(5)
                     next_load = batches[:preload_amount]
@@ -573,7 +574,6 @@ def preloader(
                         if len(data) > chunk_size or batch_i == (len(batch_data) - 1):
                             pool.map_async(process_batch, data, callback=processed_data)
                             jobs += len(data)
-                            del data
                             data = []
                     del batch_data
                     del track_frames
