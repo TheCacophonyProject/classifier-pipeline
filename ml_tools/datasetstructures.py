@@ -219,9 +219,12 @@ class TrackHeader:
         meta_dict["track_bounds"] = self.regions
         meta_dict["start_frame"] = int(self.start_frame)
         if self.location is not None:
-            meta_dict["location_hash"] = "{}{}".format(
-                hash(self.location[0]), hash(self.location[1])
-            )
+            try:
+                meta_dict["location_hash"] = "{}{}".format(
+                    hash(self.location[0]), hash(self.location[1])
+                )
+            except:
+                pass
         meta_dict["label"] = self.label
 
         return json.dumps(meta_dict, indent=3, cls=tools.CustomJSONEncoder)
