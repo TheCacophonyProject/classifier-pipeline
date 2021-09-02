@@ -8,7 +8,7 @@ import numpy as np
 
 from classify.trackprediction import Predictions
 from load.clip import Clip
-from load.cliptrackextractor import ClipTrackExtractor
+from load.cliptrackextractor import is_affected_by_ffc
 from ml_tools import tools
 from ml_tools.kerasmodel import KerasModel
 
@@ -17,6 +17,7 @@ from ml_tools.previewer import Previewer
 from track.track import Track
 
 from classify.thumbnail import get_thumbnail
+from cptv import CPTVReader
 
 
 class ClipClassifier:
@@ -35,81 +36,11 @@ class ClipClassifier:
 
         self.previewer = Previewer.create_if_required(config, config.classify.preview)
 
-        self.start_date = None
-        self.end_date = None
         if cache_to_disk is None:
             self.cache_to_disk = self.config.classify.cache_to_disk
         else:
             self.cache_to_disk = cache_to_disk
-        # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
-        self.enable_per_track_information = False
-        self.track_extractor = ClipTrackExtractor(
-            self.config.tracking,
-            self.config.use_opt_flow
-            or config.classify.preview == Previewer.PREVIEW_TRACKING,
-            self.cache_to_disk,
-            high_quality_optical_flow=self.config.tracking.high_quality_optical_flow,
-            verbose=self.config.verbose,
-        )
-
-    def identify_track(self, classifier, clip: Clip, track: Track):
-        """
-        Runs through track identifying segments, and then returns it's prediction of what kind of animal this is.
-        One prediction will be made for every frame.
-        :param track: the track to identify.
-        :return: TrackPrediction object
-        """
-        # go through making classifications at each frame
-        # note: we should probably be doing this every 9 frames or so.
-        state = None
-        if isinstance(classifier, KerasModel):
-            track_prediction = classifier.classify_track(clip, track)
-        else:
-            track_prediction = TrackPrediction(
-                track.get_id(), track.start_frame, classifier.labels
-            )
-
-            for i, region in enumerate(track.bounds_history):
-                frame = clip.frame_buffer.get_frame(region.frame_number)
-
-                cropped = frame.crop_by_region(region)
-
-                # note: would be much better for the tracker to store the thermal references as it goes.
-                # frame = clip.frame_buffer.get_frame(frame_number)
-                thermal_reference = np.median(frame.thermal)
-                if i % self.FRAME_SKIP == 0:
-
-                    # we use a tighter cropping here so we disable the default 2 pixel inset
-                    frames, _ = preprocess_segment(
-                        [cropped], [thermal_reference], default_inset=0
-                    )
-
-                    if frames is None or len(frames) == 0:
-                        logging.info(
-                            "Frame {} of track could not be classified.".format(
-                                region.frame_number
-                            )
-                        )
-                        continue
-                    frame = frames[0]
-                    (
-                        prediction,
-                        novelty,
-                        state,
-                    ) = classifier.classify_frame_with_novelty(frame.as_array(), state)
-                    # make false-positive prediction less strong so if track has dead footage it won't dominate a strong
-                    # score
-
-                    # a little weight decay helps the model not lock into an initial impression.
-                    # 0.98 represents a half life of around 3 seconds.
-                    state *= 0.98
-                    track_prediction.classified_frame(
-                        region.frame_number,
-                        prediction,
-                        novelty=novelty,
-                        mass=mass,
-                    )
-        return track_prediction
+        self.high_quality_optical_flow = self.config.tracking.high_quality_optical_flow
 
     def get_classifier(self, model):
         """
@@ -170,42 +101,41 @@ class ClipClassifier:
         :param filename: filename to process
         :param enable_preview: if true an MPEG preview file is created.
         """
-
-        clip, model_predictions = self.classify_file(filename)
-
-        classify_name = self.get_classify_filename(filename)
-        destination_folder = os.path.dirname(classify_name)
-        if not os.path.exists(destination_folder):
-            logging.info("Creating folder {}".format(destination_folder))
-            os.makedirs(destination_folder)
-        mpeg_filename = classify_name + ".mp4"
-        meta_filename = classify_name + ".txt"
-
-        if self.previewer:
-            logging.info("Exporting preview to '{}'".format(mpeg_filename))
-
-            self.previewer.export_clip_preview(
-                mpeg_filename, clip, list(model_predictions.values())[0]
-            )
-        logging.info("saving meta data")
-        models = [self.model] if self.model else self.config.classify.models
-        self.save_metadata(
-            filename,
-            meta_filename,
-            clip,
-            model_predictions,
-            models,
-            self.track_extractor.tracking_time,
-        )
-
-    def classify_file(self, filename):
+        base_filename = os.path.splitext(os.path.basename(filename))[0]
+        meta_file = os.path.join(os.path.dirname(filename), base_filename + ".txt")
         if not os.path.exists(filename):
             raise Exception("File {} not found.".format(filename))
+        if not os.path.exists(meta_file):
+            raise Exception("File {} not found.".format(meta_file))
+        meta_data = tools.load_clip_metadata(meta_file)
         logging.info("Processing file '{}'".format(filename))
 
         start = time.time()
         clip = Clip(self.config.tracking, filename)
-        self.track_extractor.parse_clip(clip)
+        clip.set_frame_buffer(
+            self.high_quality_optical_flow,
+            self.cache_to_disk,
+            self.config.use_opt_flow,
+            True,
+        )
+        clip.load_metadata(
+            meta_data,
+            self.config.load.tag_precedence,
+        )
+        frames = []
+        with open(clip.source_file, "rb") as f:
+            reader = CPTVReader(f)
+            clip.calculate_background(reader)
+            f.seek(0)
+            for frame in reader:
+                if frame.background_frame:
+                    continue
+                clip.set_res(reader.x_resolution, reader.y_resolution)
+                clip.add_frame(
+                    frame.pix,
+                    frame.pix - clip.background,
+                    ffc_affected=is_affected_by_ffc(frame),
+                )
         predictions_per_model = {}
         if self.model:
             prediction = self.classify_clip(clip, self.model)
@@ -214,7 +144,72 @@ class ClipClassifier:
             for model in self.config.classify.models:
                 prediction = self.classify_clip(clip, model)
                 predictions_per_model[model.id] = prediction
-        return clip, predictions_per_model
+
+        if self.previewer:
+            mpeg_filename = os.path.join(
+                os.path.dirname(filename), base_filename + ".mp4"
+            )
+            logging.info("Exporting preview to '{}'".format(mpeg_filename))
+
+            self.previewer.export_clip_preview(
+                mpeg_filename, clip, list(predictions_per_model.values())[0]
+            )
+        logging.info("saving meta data %s", meta_file)
+        models = [self.model] if self.model else self.config.classify.models
+        self.save_metadata(
+            meta_data,
+            f"{meta_file}-2.txt",
+            clip,
+            predictions_per_model,
+            models,
+        )
+
+    #
+    # def classify_file(self, filename):
+    #     base_filename = os.path.splitext(os.path.basename(filename))[0]
+    #     meta_file = os.path.join(os.path.dirname(filename), base_filename + ".txt")
+    #     if not os.path.exists(filename):
+    #         raise Exception("File {} not found.".format(filename))
+    #     if not os.path.exists(meta_file):
+    #         raise Exception("File {} not found.".format(meta_file))
+    #     meta_data = tools.load_clip_metadata(meta_file)
+    #     logging.info("Processing file '{}'".format(filename))
+    #
+    #     start = time.time()
+    #     clip = Clip(self.config.tracking, filename)
+    #     clip.set_frame_buffer(
+    #         self.high_quality_optical_flow,
+    #         self.cache_to_disk,
+    #         self.config.use_opt_flow,
+    #         True,
+    #     )
+    #     clip.load_metadata(
+    #         meta_data,
+    #         self.config.load.tag_precedence,
+    #     )
+    #     frames = []
+    #     with open(clip.source_file, "rb") as f:
+    #         reader = CPTVReader(f)
+    #         clip.calculate_background(reader)
+    #         f.seek(0)
+    #         for frame in reader:
+    #             if frame.background_frame:
+    #                 continue
+    #             clip.set_res(reader.x_resolution, reader.y_resolution)
+    #             clip.add_frame(
+    #                 frame.pix,
+    #                 frame.pix - clip.background,
+    #                 ffc_affected=is_affected_by_ffc(frame),
+    #             )
+    #     predictions_per_model = {}
+    #     if self.model:
+    #         prediction = self.classify_clip(clip, self.model)
+    #         predictions_per_model[self.model.id] = prediction
+    #     else:
+    #         for model in self.config.classify.models:
+    #             prediction = self.classify_clip(clip, model)
+    #             predictions_per_model[model.id] = prediction
+    #     return clip, predictions_per_model, metadata
 
     def classify_clip(self, clip, model):
         load_start = time.time()
@@ -224,11 +219,8 @@ class ClipClassifier:
         predictions = Predictions(classifier.labels, model)
         predictions.model_load_time = load_time
         for i, track in enumerate(clip.tracks):
-            prediction = self.identify_track(
-                classifier,
-                clip,
-                track,
-            )
+            prediction = classifier.classify_track(clip, track)
+
             predictions.prediction_per_track[track.get_id()] = prediction
             description = prediction.description()
             logging.info(
@@ -247,40 +239,23 @@ class ClipClassifier:
 
     def save_metadata(
         self,
-        filename,
+        meta_data,
         meta_filename,
         clip,
         predictions_per_model,
         models,
-        tracking_time,
     ):
 
-        # read in original metadata
-        meta_data = self.get_meta_data(filename)
-
-        # record results in text file.
-        save_file = {}
-        save_file["source"] = filename
-        if clip.camera_model:
-            save_file["camera_model"] = clip.camera_model
-        save_file["background_thresh"] = clip.background_thresh
-        start, end = clip.start_and_end_time_absolute()
-        save_file["start_time"] = start.isoformat()
-        save_file["end_time"] = end.isoformat()
-        save_file["tracking_time"] = round(tracking_time, 1)
-        save_file["algorithm"] = {}
-        save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
-        save_file["algorithm"]["tracker_config"] = self.config.tracking.as_dict()
-        if meta_data:
-            save_file["camera"] = meta_data["Device"]["devicename"]
-            save_file["cptv_meta"] = meta_data
-            save_file["original_tag"] = meta_data["primary_tag"]
-
-        tracks = []
+        tracks = meta_data.get("tracks")
         for track in clip.tracks:
-            track_info = track.get_metadata(predictions_per_model)
-            tracks.append(track_info)
-        save_file["tracks"] = tracks
+            meta_track = next(x for x in tracks if x["id"] == track.get_id())
+            prediction_info = []
+            for model_id, predictions in predictions_per_model.items():
+                prediction = predictions.prediction_for(track.get_id())
+                prediciont_meta = prediction.get_metadata()
+                prediciont_meta["model_id"] = model_id
+                prediction_info.append(prediciont_meta)
+            meta_track["predictions"] = prediction_info
 
         model_dictionaries = []
         for model in models:
@@ -291,13 +266,13 @@ class ClipClassifier:
             )
             model_dictionaries.append(model_dic)
 
-        save_file["models"] = model_dictionaries
+        meta_data["models"] = model_dictionaries
         thumbnail_region = get_thumbnail(clip, predictions_per_model)
-        save_file["thumbnail_region"] = thumbnail_region
+        meta_data["thumbnail_region"] = thumbnail_region
         if self.config.classify.meta_to_stdout:
-            print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
+            print(json.dumps(meta_data, cls=tools.CustomJSONEncoder))
         else:
             with open(meta_filename, "w") as f:
-                json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
+                json.dump(meta_data, f, indent=4, cls=tools.CustomJSONEncoder)
         if self.cache_to_disk:
             clip.frame_buffer.remove_cache()

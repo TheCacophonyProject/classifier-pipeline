@@ -73,7 +73,6 @@ class Track:
         # the tag for this track
         self.tag = "unknown"
         self.prev_frame_num = None
-        self.include_filtered_channel = True
         self.confidence = None
         self.max_novelty = None
         self.avg_novelty = None
@@ -146,31 +145,30 @@ class Track:
         self,
         track_meta,
         frames_per_second,
-        include_filtered_channel,
         tag_precedence,
         min_confidence,
     ):
         self.from_metadata = True
         self._id = track_meta["id"]
-        self.include_filtered_channel = include_filtered_channel
-        data = track_meta["data"]
-        self.start_s = data["start_s"]
-        self.end_s = data["end_s"]
+        extra_info = track_meta
+        if "data" in track_meta:
+            extra_info = track_meta["data"]
+
+        self.start_s = extra_info["start_s"]
+        self.end_s = extra_info["end_s"]
         self.fps = frames_per_second
-        self.predicted_tag = data.get("tag")
-        self.all_class_confidences = data.get("all_class_confidences", None)
-        self.predictions = data.get("predictions")
+        self.predicted_tag = extra_info.get("tag")
+        self.all_class_confidences = extra_info.get("all_class_confidences", None)
+        self.predictions = extra_info.get("predictions")
 
         self.track_tags = track_meta.get("TrackTags")
-        self.prediction_classes = data.get("classes")
+        self.prediction_classes = extra_info.get("classes")
         tag = Track.get_best_human_tag(self.track_tags, tag_precedence, min_confidence)
         if tag:
             self.tag = tag["what"]
             self.confidence = tag["confidence"]
-        else:
-            return False
 
-        positions = data.get("positions")
+        positions = extra_info.get("positions")
         if not positions:
             return False
         self.bounds_history = []
@@ -515,7 +513,7 @@ class Track:
 
         return (self.start_s, self.end_s)
 
-    def get_metadata(self, predictions_per_model=None):
+    def get_metadata(self):
         track_info = {}
         start_s, end_s = self.start_and_end_in_secs()
 
@@ -527,19 +525,14 @@ class Track:
         track_info["frame_start"] = self.start_frame
         track_info["frame_end"] = self.end_frame
         track_info["positions"] = self.bounds_history
-        prediction_info = []
-        for model_id, predictions in predictions_per_model.items():
-            prediction = predictions.prediction_for(self.get_id())
-            prediciont_meta = prediction.get_metadata()
-            prediciont_meta["model_id"] = model_id
-            prediction_info.append(prediciont_meta)
-        track_info["predictions"] = prediction_info
+
         return track_info
 
     @classmethod
     def get_best_human_tag(cls, track_tags, tag_precedence, min_confidence=-1):
         """returns highest precidence non AI tag from the metadata"""
-
+        if track_tags is None:
+            return None
         track_tags = [
             tag
             for tag in track_tags

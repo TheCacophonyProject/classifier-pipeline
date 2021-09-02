@@ -387,9 +387,10 @@ def load_clip_metadata(filename):
     with open(filename, "r") as t:
         # add in some metadata stats
         meta = json.load(t)
-
-    meta["recordingDateTime"] = dateutil.parser.parse(meta["recordingDateTime"])
-
+    if meta.get("recordingDateTime"):
+        meta["recordingDateTime"] = dateutil.parser.parse(meta["recordingDateTime"])
+    if meta.get("tracks") is None and meta.get("Tracks"):
+        meta["tracks"] = meta["Tracks"]
     return meta
 
 

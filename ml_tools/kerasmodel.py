@@ -594,6 +594,7 @@ class KerasModel:
             cropped_frame = frame.crop_by_region(region)
             track_data.append(cropped_frame)
             thermal_median[i] = np.median(frame.thermal)
+
         segments = track.get_segments(
             clip.ffc_frames, thermal_median, self.params.square_width ** 2, repeats=4
         )
