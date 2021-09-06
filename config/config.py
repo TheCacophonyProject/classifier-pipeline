@@ -126,10 +126,14 @@ def find_config():
 
 
 def parse_options_param(name, value, options):
-    if value.lower() not in options:
+    if value is None:
+        lower_value = value
+    else:
+        lower_value = value.lower()
+    if lower_value not in options:
         raise Exception(
             "Cannot parse {} as '{}'.  Valid options are {}.".format(
                 name, value, options
             )
         )
-    return value.lower()
+    return lower_value

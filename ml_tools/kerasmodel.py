@@ -636,12 +636,11 @@ class KerasModel:
                 logging.warn("No frames to predict on")
                 continue
             output = self.model.predict(frames[np.newaxis, :])
-            pred = output[0]
-            predictions.append(pred)
-            smoothed_predictions.append(np.uint32(pred ** 2 * segment.mass))
-        track_prediction.classified_clip(predictions, smoothed_predictions)
+            track_prediction.classified_frames(
+                segment.frame_indices, output[0], segment.mass
+            )
         track_prediction.classify_time = time.time() - start
-
+        track_prediction.normalize_score()
         return track_prediction
 
     def classify_frame(self, frame, thermal_median, preprocess=True):

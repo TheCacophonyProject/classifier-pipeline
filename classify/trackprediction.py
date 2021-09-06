@@ -69,6 +69,7 @@ class TrackPrediction:
             fp_index = None
         self.track_id = track_id
         self.predictions = []
+        self.prediction_frames = []
         self.fp_index = fp_index
         self.smoothed_predictions = []
         self.class_best_score = None
@@ -84,10 +85,12 @@ class TrackPrediction:
         self,
         predictions,
         smoothed_predictions,
+        prediction_frames,
     ):
         self.num_frames_classified = len(predictions)
         self.smoothed_predictions = smoothed_predictions
         self.predictions = predictions
+        self.prediction_frames = prediction_frames
         if self.num_frames_classified > 0:
             self.class_best_score = np.sum(self.smoothed_predictions, axis=0)
             # normalize so it sums to 1
@@ -95,7 +98,30 @@ class TrackPrediction:
                 self.class_best_score
             )
 
+    def normalize_score(self):
+        # normalize so it sums to 1
+        self.class_best_score = self.class_best_score / np.sum(self.class_best_score)
+
+    def classified_frames(self, frame_numbers, prediction, mass):
+        self.num_frames_classified += len(frame_numbers)
+        smoothed_prediction = prediction ** 2 * mass
+        if self.keep_all:
+            self.prediction_frames.append(frame_numbers)
+            self.predictions.append(prediction)
+            self.smoothed_predictions.append(smoothed_prediction)
+
+        else:
+            self.prediction_frames = [frame_numbers]
+            self.predictions = [prediction]
+            self.smoothed_predictions = [smoothed_prediction]
+
+        if self.class_best_score is None:
+            self.class_best_score = smoothed_prediction
+        else:
+            self.class_best_score += smoothed_prediction
+
     def classified_frame(self, frame_number, prediction):
+        self.prediction_frames.append([frame_number])
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
         smoothed_prediction = prediction ** 2 * mass
@@ -273,6 +299,7 @@ class TrackPrediction:
         return guesses
 
     def get_metadata(self):
+        print("getting predicion meta")
         prediction_meta = {}
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
@@ -281,7 +308,7 @@ class TrackPrediction:
         prediction_meta["confidence"] = round(self.max_score, 2)
         prediction_meta["clarity"] = round(self.clarity, 3)
         prediction_meta["all_class_confidences"] = {}
-
+        prediction_meta["prediction_frames"] = np.uint16(self.prediction_frames)
         prediction_meta["predictions"] = np.uint32(np.round(self.smoothed_predictions))
         for i, value in enumerate(self.class_best_score):
             label = self.labels[i]

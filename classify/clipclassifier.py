@@ -158,7 +158,7 @@ class ClipClassifier:
         models = [self.model] if self.model else self.config.classify.models
         self.save_metadata(
             meta_data,
-            f"{meta_file}-2.txt",
+            meta_file,
             clip,
             predictions_per_model,
             models,

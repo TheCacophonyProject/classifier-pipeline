@@ -45,6 +45,7 @@ class Previewer:
     PREVIEW_BOXES = "boxes"
 
     PREVIEW_OPTIONS = [
+        None,
         PREVIEW_NONE,
         PREVIEW_RAW,
         PREVIEW_CLASSIFIED,
@@ -69,7 +70,10 @@ class Previewer:
 
     @classmethod
     def create_if_required(self, config, preview_type):
-        if not preview_type.lower() == Previewer.PREVIEW_NONE:
+        if (
+            preview_type is not None
+            and not preview_type.lower() == Previewer.PREVIEW_NONE
+        ):
             return Previewer(config, preview_type)
 
     def _load_colourmap(self):

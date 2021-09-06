@@ -71,11 +71,7 @@ class TrackExtractor:
             return None
 
     def get_output_file(self, input_filename):
-        return os.path.splitext(
-            os.path.join(
-                self.config.classify.classify_folder, os.path.basename(input_filename)
-            )
-        )[0]
+        return os.path.splitext(input_filename)[0]
 
     def extract(self, base):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
@@ -108,7 +104,7 @@ class TrackExtractor:
             mpeg_filename = out_file + ".mp4"
             logging.info("Exporting preview to '{}'".format(mpeg_filename))
             self.previewer.export_clip_preview(mpeg_filename, clip)
-        logging.info("saving meta data")
+        logging.info("saving meta data %s", meta_filename)
         self.save_metadata(
             filename,
             meta_filename,
