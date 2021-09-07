@@ -304,14 +304,17 @@ class TrackPrediction:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
 
         prediction_meta["label"] = self.predicted_tag()
-        prediction_meta["confidence"] = round(self.max_score, 2)
-        prediction_meta["clarity"] = round(self.clarity, 3)
+        prediction_meta["confidence"] = (
+            round(self.max_score, 2) if self.max_score else 0
+        )
+        prediction_meta["clarity"] = round(self.clarity, 3) if self.clarity else 0
         prediction_meta["all_class_confidences"] = {}
-        prediction_meta["prediction_frames"] = np.uint16(self.prediction_frames)
+
         prediction_meta["predictions"] = np.uint32(np.round(self.smoothed_predictions))
-        for i, value in enumerate(self.class_best_score):
-            label = self.labels[i]
-            prediction_meta["all_class_confidences"][label] = round(value, 3)
+        if self.class_best_score is not None:
+            for i, value in enumerate(self.class_best_score):
+                label = self.labels[i]
+                prediction_meta["all_class_confidences"][label] = round(value, 3)
         return prediction_meta
 
 
