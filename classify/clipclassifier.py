@@ -81,8 +81,12 @@ class ClipClassifier:
         else:
             return None
 
-    def process_all(self, root):
-        for folder_path, _, files in os.walk(root):
+    def process(self, source):
+        # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
+        if os.path.splitext(source)[1] == ".cptv":
+            self.process_file(source)
+            return
+        for folder_path, _, files in os.walk(source):
             for name in files:
                 if os.path.splitext(name)[1] == ".cptv":
                     full_path = os.path.join(folder_path, name)

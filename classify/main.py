@@ -42,14 +42,6 @@ def main():
     parser.add_argument(
         "-v", "--verbose", action="count", help="Display additional information."
     )
-    parser.add_argument(
-        "--start-date",
-        help="Only clips on or after this day will be processed (format YYYY-MM-DD)",
-    )
-    parser.add_argument(
-        "--end-date",
-        help="Only clips on or before this day will be processed (format YYYY-MM-DD)",
-    )
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument(
         "-o",
@@ -95,26 +87,7 @@ def main():
         )
         model.validate()
     clip_classifier = ClipClassifier(config, model, cache_to_disk=args.cache)
-
-    # parse start and end dates
-    if args.start_date:
-        clip_classifier.start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
-    if args.end_date:
-        clip_classifier.end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
-
-    if config.classify.preview != Previewer.PREVIEW_NONE:
-        logging.info("Creating previews")
-
-    if os.path.splitext(args.source)[-1].lower() == ".cptv":
-        source_file = tools.find_file_from_cmd_line(config.source_folder, args.source)
-        if source_file is None:
-            return
-        clip_classifier.process_file(source_file)
-    else:
-        folder = config.source_folder
-        if args.source != "all":
-            os.path.join(config.source_folder, folder)
-        clip_classifier.process_all(folder)
+    clip_classifier.process(args.source)
 
 
 if __name__ == "__main__":

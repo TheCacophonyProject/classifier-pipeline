@@ -75,7 +75,7 @@ def main():
         config.classify.meta_to_stdout = True
     extractor = TrackExtractor(config, cache_to_disk=args.cache)
 
-    extractor.extract(os.path.join(args.source))
+    extractor.extract(args.source)
 
 
 if __name__ == "__main__":
