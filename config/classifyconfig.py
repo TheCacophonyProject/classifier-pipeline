@@ -65,7 +65,7 @@ class ClassifyConfig(DefaultConfig):
             meta_to_stdout=False,
             preview="none",
             classify_folder="classify",
-            cache_to_disk=True,
+            cache_to_disk=False,
         )
 
     def validate(self):

@@ -21,6 +21,8 @@ import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
 import attr
 
+import numpy as np
+
 
 @attr.s(eq=False)
 class Region(Rectangle):
@@ -42,8 +44,30 @@ class Region(Rectangle):
         width = region_bounds[2] - region_bounds[0]
         height = region_bounds[3] - region_bounds[1]
         return cls(
-            region_bounds[0], region_bounds[1], width, height, frame_number=frame_number
+            region_bounds[0],
+            region_bounds[1],
+            width,
+            height,
+            frame_number=np.uint16(frame_number),
         )
+
+    @classmethod
+    def region_from_json(cls, region_json):
+        return cls(
+            region_json["x"],
+            region_json["y"],
+            region_json["width"],
+            region_json["height"],
+            frame_number=region_json["frame_number"],
+            mass=region_json.get("mass", 0),
+            blank=region_json.get("blank", False),
+            pixel_variance=region_json.get("pixel_variance", 0),
+        )
+
+    @staticmethod
+    def from_ltrb(left, top, right, bottom):
+        """Construct a rectangle from left, top, right, bottom co-ords."""
+        return Region(left, top, width=right - left, height=bottom - top)
 
     def has_moved(self, region):
         """Determines if the region has shifted horizontally or veritcally

@@ -7,8 +7,7 @@ import tensorflow as tf
 from config.config import Config
 from ml_tools.dataset import dataset_db_path
 import pickle
-from ml_tools.model import Model
-from model_crnn import ModelCRNN_HQ, Model_CNN
+from model_crnn import ModelCRNN_HQ
 
 MODEL_DIR = "../cptv-download/train/checkpoints"
 MODEL_NAME = "training-most-recent.sav"
@@ -105,19 +104,20 @@ def run_model(args):
     in_values = {}
     for detail in input_details:
         in_values[detail["name"]] = detail["index"]
-
     output_details = interpreter.get_output_details()
-    input_shape = input_details[in_values["X"]]["shape"]
+    input_shape = input_details[in_values["input_1"]]["shape"]
+
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
-    interpreter.set_tensor(in_values["X"], input_data)
+    interpreter.set_tensor(in_values["input_1"], input_data)
     interpreter.invoke()
     print("model pass 1")
     out_values = {}
     for detail in output_details:
         out_values[detail["name"]] = interpreter.get_tensor(detail["index"])
-    print("pred", out_values["prediction"])
+    print(out_values)
+    print("pred", out_values["Identity"])
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
-    interpreter.set_tensor(in_values["X"], input_data)
+    interpreter.set_tensor(in_values["input_1"], input_data)
     interpreter.set_tensor(in_values["state_in"], out_values["state_out"])
     interpreter.invoke()
     print("model pass 2")
@@ -158,6 +158,11 @@ def get_feed_dict(X, state_in=None):
 def convert_model(args):
     print("converting to tflite: ", os.path.join(args.model_dir, SAVED_DIR))
 
+    model = tf.keras.models.load_model(args.model_dir)
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    tflite_model = converter.convert()
+    open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
+    return
     model = tf.saved_model.load(
         export_dir=os.path.join(args.model_dir, SAVED_DIR), tags=None
     )

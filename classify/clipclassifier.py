@@ -4,17 +4,13 @@ import logging
 import os.path
 import time
 
-from datetime import datetime
 import numpy as np
 
-from classify.trackprediction import Predictions, TrackPrediction
+from classify.trackprediction import Predictions
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
 from ml_tools import tools
-from ml_tools.cptvfileprocessor import CPTVFileProcessor
-import ml_tools.globals as globs
-from ml_tools.model import Model
-from ml_tools.kerasmodel import KerasModel, is_keras_model
+from ml_tools.kerasmodel import KerasModel
 
 from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer
@@ -23,16 +19,17 @@ from track.track import Track
 from classify.thumbnail import get_thumbnail
 
 
-class ClipClassifier(CPTVFileProcessor):
+class ClipClassifier:
     """Classifies tracks within CPTV files."""
 
     # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
     FRAME_SKIP = 1
 
-    def __init__(self, config, tracking_config, model=None, cache_to_disk=None):
+    def __init__(self, config, model=None, cache_to_disk=None):
         """Create an instance of a clip classifier"""
 
-        super(ClipClassifier, self).__init__(config, tracking_config)
+        self.config = config
+        # super(ClipClassifier, self).__init__(config, tracking_config)
         self.model = model
         # prediction record for each track
 
@@ -51,22 +48,9 @@ class ClipClassifier(CPTVFileProcessor):
             self.config.use_opt_flow
             or config.classify.preview == Previewer.PREVIEW_TRACKING,
             self.cache_to_disk,
+            high_quality_optical_flow=self.config.tracking.high_quality_optical_flow,
+            verbose=self.config.verbose,
         )
-
-    def preprocess(self, frame, thermal_reference):
-        """
-        Applies preprocessing to frame required by the model.
-        :param frame: numpy array of shape [C, H, W]
-        :return: preprocessed numpy array
-        """
-
-        # note, would be much better if the model did this, as only the model knows how preprocessing occurred during
-        # training
-        frame = np.float32(frame)
-        frame[2 : 3 + 1] *= 1 / 256
-        frame[0] -= thermal_reference
-
-        return frame
 
     def identify_track(self, classifier, clip: Clip, track: Track):
         """
@@ -119,23 +103,11 @@ class ClipClassifier(CPTVFileProcessor):
                     # a little weight decay helps the model not lock into an initial impression.
                     # 0.98 represents a half life of around 3 seconds.
                     state *= 0.98
-
-                    # precondition on weight,  segments with small mass are weighted less as we can assume the error is
-                    # higher here.
-                    mass = region.mass
-
-                    # we use the square-root here as the mass is in units squared.
-                    # this effectively means we are giving weight based on the diameter
-                    # of the object rather than the mass.
-                    mass_weight = np.clip(mass / 20, 0.02, 1.0) ** 0.5
-
-                    # cropped frames don't do so well so restrict their score
-                    cropped_weight = 0.7 if region.was_cropped else 1.0
                     track_prediction.classified_frame(
                         region.frame_number,
                         prediction,
-                        mass_scale=mass_weight * cropped_weight,
                         novelty=novelty,
+                        mass=mass,
                     )
         return track_prediction
 
@@ -145,16 +117,8 @@ class ClipClassifier(CPTVFileProcessor):
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
         """
         logging.info("classifier loading")
-        classifier = None
-        if is_keras_model(model.model_file):
-            classifier = KerasModel(self.config.train)
-            classifier.load_model(model.model_file, model.model_weights)
-        else:
-            classifier = Model(
-                train_config=self.config.train,
-                session=tools.get_session(disable_gpu=not self.config.use_gpu),
-            )
-            classifier.load(model.model_file)
+        classifier = KerasModel(self.config.train)
+        classifier.load_model(model.model_file, weights=model.model_weights)
 
         return classifier
 
@@ -192,6 +156,13 @@ class ClipClassifier(CPTVFileProcessor):
                 self.config.classify.classify_folder, os.path.basename(input_filename)
             )
         )[0]
+
+    def process_all(self, root):
+        for folder_path, _, files in os.walk(root):
+            for name in files:
+                if os.path.splitext(name)[1] == ".cptv":
+                    full_path = os.path.join(folder_path, name)
+                    self.process_file(full_path)
 
     def process_file(self, filename):
         """
@@ -233,7 +204,7 @@ class ClipClassifier(CPTVFileProcessor):
         logging.info("Processing file '{}'".format(filename))
 
         start = time.time()
-        clip = Clip(self.tracker_config, filename)
+        clip = Clip(self.config.tracking, filename)
         self.track_extractor.parse_clip(clip)
         predictions_per_model = {}
         if self.model:
@@ -263,7 +234,7 @@ class ClipClassifier(CPTVFileProcessor):
             logging.info(
                 " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
             )
-        if self.tracker_config.verbose:
+        if self.config.verbose:
             ms_per_frame = (
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
             )
@@ -299,7 +270,7 @@ class ClipClassifier(CPTVFileProcessor):
         save_file["tracking_time"] = round(tracking_time, 1)
         save_file["algorithm"] = {}
         save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
-        save_file["algorithm"]["tracker_config"] = self.tracker_config.as_dict()
+        save_file["algorithm"]["tracker_config"] = self.config.tracking.as_dict()
         if meta_data:
             save_file["camera"] = meta_data["Device"]["devicename"]
             save_file["cptv_meta"] = meta_data

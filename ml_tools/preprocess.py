@@ -1,15 +1,44 @@
-import cv2
-import enum
 import numpy as np
 import random
 from ml_tools import tools
-from track.track import TrackChannels
+from ml_tools.frame import TrackChannels
+import logging
 from ml_tools import imageprocessing
-
+import enum
+import tensorflow as tf
 
 # size to scale each frame to when loaded.
 
 MIN_SIZE = 4
+EDGE = 1
+
+res_x = 120
+res_y = 160
+
+
+def convert(image):
+    image = tf.image.convert_image_dtype(image, tf.float32)
+    return image
+
+
+def augement_frame(frame, frame_size, dim):
+    frame = imageprocessing.resize_cv(
+        frame,
+        dim,
+        extra_h=random.randint(0, int(frame_size * 0.05)),
+        extra_v=random.randint(0, int(frame_size * 0.05)),
+    )
+
+    image = convert(frame)
+    image = tf.image.random_crop(image, size=[dim[0], dim[1], 3])
+    if random.random() > 0.50:
+        image = tf.image.flip_left_right(image)
+
+    if random.random() > 0.20:
+        image = tf.image.random_contrast(image, 0.8, 1.2)
+    image = tf.minimum(image, 1.0)
+    image = tf.maximum(image, 0.0)
+    return image.numpy()
 
 
 class FrameTypes(enum.Enum):
@@ -28,13 +57,11 @@ class FrameTypes(enum.Enum):
 
 def preprocess_segment(
     frames,
+    frame_size,
     reference_level=None,
     frame_velocity=None,
     augment=False,
-    default_inset=2,
-    keep_aspect=False,
-    frame_size=48,
-    crop_rectangle=None,
+    default_inset=0,
     keep_edge=False,
 ):
     """
@@ -45,7 +72,6 @@ def preprocess_segment(
     :param augment: if true applies a slightly random crop / scale
     :param default_inset: the default number of pixels to inset when no augmentation is applied.
     """
-
     if reference_level is not None:
         # -------------------------------------------
         # next adjust temperature and flow levels
@@ -54,14 +80,17 @@ def preprocess_segment(
             reference_level
         ), "Reference level shape and data shape not match."
 
+    crop_rectangle = tools.Rectangle(EDGE, EDGE, res_x - 2 * EDGE, res_y - 2 * EDGE)
+
     # -------------------------------------------
     # first we scale to the standard size
     data = []
     flip = False
+    chance = random.random()
     if augment:
         contrast_adjust = None
         level_adjust = None
-        if random.random() <= 0.75:
+        if chance <= 0.75:
             # we will adjust contrast and levels, but only within these bounds.
             # that is a bright input may have brightness reduced, but not increased.
             LEVEL_OFFSET = 4
@@ -69,7 +98,7 @@ def preprocess_segment(
             # apply level and contrast shift
             level_adjust = float(random.normalvariate(0, LEVEL_OFFSET))
             contrast_adjust = float(tools.random_log(0.9, (1 / 0.9)))
-        if random.random() <= 0.50:
+        if chance <= 0.50:
             flip = True
     for i, frame in enumerate(frames):
         frame.float_arrays()
@@ -78,21 +107,27 @@ def preprocess_segment(
         # gp changed to 0,1 maybe should be a percent of the frame size
         max_height_offset = int(np.clip(frame_height * 0.1, 1, 2))
         max_width_offset = int(np.clip(frame_width * 0.1, 1, 2))
-
-        top_offset = random.randint(0, max_height_offset) if augment else default_inset
-        bottom_offset = (
-            random.randint(0, max_height_offset) if augment else default_inset
+        top_offset = (
+            int(random.random() * max_height_offset) if augment else default_inset
         )
-        left_offset = random.randint(0, max_width_offset) if augment else default_inset
-        right_offset = random.randint(0, max_width_offset) if augment else default_inset
+        bottom_offset = (
+            int(random.random() * max_height_offset) if augment else default_inset
+        )
+        left_offset = (
+            int(random.random() * max_width_offset) if augment else default_inset
+        )
+        right_offset = (
+            int(random.random() * max_width_offset) if augment else default_inset
+        )
         if frame_height < MIN_SIZE or frame_width < MIN_SIZE:
             continue
 
         frame_bounds = tools.Rectangle(0, 0, frame_width, frame_height)
         # rotate then crop
-        if augment and random.random() <= 0.75:
+        if augment and chance <= 0.75:
+            # degress = 0
 
-            degrees = random.randint(0, 40) - 20
+            degrees = int(chance * 40) - 20
             frame.rotate(degrees)
 
         # set up a cropping frame
@@ -113,23 +148,27 @@ def preprocess_segment(
             crop_region.bottom += 1
             crop_region.crop(frame_bounds)
         frame.crop_by_region(crop_region, out=frame)
-        frame.resize(
-            (frame_size, frame_size),
-            keep_aspect=keep_aspect,
-            keep_edge=keep_edge,
-            crop_rectangle=crop_rectangle,
-        )
+        # if frame.mask is not None:
+        #     assert np.all(np.mod(frame.mask, 1) == 0), "Mask isn't integer"
+
+        try:
+            frame.resize_with_aspect(
+                (frame_size, frame_size), crop_rectangle, keep_edge=keep_edge
+            )
+        except Exception as e:
+            logging.error("Error resizing frame %s exception %s", frame, e)
+            continue
         if reference_level is not None:
             frame.thermal -= reference_level[i]
             np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
-        frame.unclip_flow()
+
         frame.normalize()
+
         if augment:
             if level_adjust is not None:
-                frame.thermal += level_adjust
+                frame.brightness_adjust(level_adjust)
             if contrast_adjust is not None:
-                frame.thermal *= contrast_adjust
-                frame.filtered *= contrast_adjust
+                frame.contrast_adjust(contrast_adjust)
             if flip:
                 frame.flip()
         data.append(frame)
@@ -138,21 +177,43 @@ def preprocess_segment(
 
 
 def preprocess_frame(
-    data, output_dim, use_thermal=True, augment=False, preprocess_fn=None
+    frame,
+    frame_size,
+    augment,
+    thermal_median,
+    velocity,
+    output_dim,
+    preprocess_fn=None,
+    sample=None,
 ):
-    if use_thermal:
-        channel = TrackChannels.thermal
-    else:
-        channel = TrackChannels.filtered
-    data = data.get_channel(channel)
-    data, stats = imageprocessing.normalize(data)
+    processed_frame, flipped = preprocess_segment(
+        [frame],
+        frame_size,
+        reference_level=[thermal_median],
+        augment=augment,
+        default_inset=0,
+    )
+    if len(processed_frame) == 0:
+        return
+    processed_frame = processed_frame[0]
+    thermal = processed_frame.get_channel(TrackChannels.thermal)
+    filtered = processed_frame.get_channel(TrackChannels.filtered)
+    thermal, stats = imageprocessing.normalize(thermal, min=0)
+    if not stats[0]:
+        return None
+    filtered, stats = imageprocessing.normalize(filtered, min=0)
     if not stats[0]:
         return None
 
-    data = data[np.newaxis, :]
-    data = np.transpose(data, (1, 2, 0))
-    data = np.repeat(data, output_dim[2], axis=2)
-    data = imageprocessing.resize_cv(data, output_dim, channel)
+    data = np.empty((*thermal.shape, 3))
+    data[:, :, 0] = thermal
+    data[:, :, 1] = filtered
+    data[:, :, 2] = filtered
+    # for testing
+    # tools.saveclassify_image(
+    #     data,
+    #     f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
+    # )
 
     # preprocess expects values in range 0-255
     if preprocess_fn:
@@ -162,30 +223,24 @@ def preprocess_frame(
 
 
 def preprocess_movement(
-    data,
     segment,
     frames_per_row,
     frame_size,
-    regions,
     red_type,
     green_type,
     blue_type,
     preprocess_fn=None,
     augment=False,
-    keep_aspect=False,
     reference_level=None,
-    overlay=None,
-    crop_rectangle=None,
+    sample=None,
     keep_edge=False,
 ):
     segment, flipped = preprocess_segment(
         segment,
+        frame_size,
         reference_level=reference_level,
         augment=augment,
         default_inset=0,
-        keep_aspect=keep_aspect,
-        frame_size=frame_size,
-        crop_rectangle=crop_rectangle,
         keep_edge=keep_edge,
     )
     frame_types = {}
@@ -236,7 +291,11 @@ def preprocess_movement(
     data = np.stack(
         (frame_types[red_type], frame_types[green_type], frame_types[blue_type]), axis=2
     )
-
+    # for testing
+    # tools.saveclassify_image(
+    #     data,
+    #     f"samples/{sample}",
+    # )
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)

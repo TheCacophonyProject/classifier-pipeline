@@ -60,7 +60,7 @@ class PiClassifier(Processor):
             keep_frames=False,
             calc_stats=False,
         )
-        self.motion_config = thermal_config.motion
+        self.motion = thermal_config.motion
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.motion_detector = MotionDetector(
@@ -79,8 +79,6 @@ class PiClassifier(Processor):
     def new_clip(self):
         self.clip = Clip(self.config.tracking, "stream")
         self.clip.video_start_time = datetime.now()
-        self.clip.num_preview_frames = self.preview_frames
-
         self.clip.set_res(self.res_x, self.res_y)
         self.clip.set_frame_buffer(
             self.config.classify_tracking.high_quality_optical_flow,

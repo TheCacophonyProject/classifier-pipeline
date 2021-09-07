@@ -33,6 +33,7 @@ class NeuralInterpreter:
     def __init__(self, model_name):
         from openvino.inference_engine import IENetwork, IECore
 
+        # device = "CPU"
         device = "MYRIAD"
         model_xml = model_name + ".xml"
         model_bin = os.path.splitext(model_xml)[0] + ".bin"
@@ -149,7 +150,7 @@ def get_full_classifier(config):
     logging.info("classifier loading")
     classifier = Model(
         train_config=config.train,
-        session=tools.get_session(disable_gpu=not config.use_gpu),
+        session=tools.get_session(),
     )
     classifier.load(config.classify.model)
     logging.info("classifier loaded ({})".format(datetime.now() - t0))
@@ -217,7 +218,7 @@ def get_processor(config, thermal_config, headers):
 
     return MotionDetector(
         thermal_config,
-        config.tracking.motion_config.dynamic_thresh,
+        config.tracking.motion.dynamic_thresh,
         CPTVRecorder(thermal_config, headers),
         headers,
     )

@@ -1,7 +1,6 @@
 import h5py
 import os
 import numpy as np
-from multiprocessing import Lock
 
 
 from ml_tools.tools import get_clipped_flow

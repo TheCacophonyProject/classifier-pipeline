@@ -50,7 +50,6 @@ class Clip:
         self.frame_on = 0
         self.ffc_affected = False
         self.crop_rectangle = None
-        self.num_preview_frames = 0
         self.region_history = []
         self.active_tracks = set()
         self.tracks = []
@@ -65,7 +64,6 @@ class Clip:
         self.res_x = None
         self.res_y = None
         self.background_frames = 0
-        self.background_is_preview = trackconfig.background_calc == Clip.PREVIEW
         self.config = trackconfig
         self.frames_per_second = Clip.FRAMES_PER_SECOND
 
@@ -88,7 +86,7 @@ class Clip:
 
     def set_model(self, camera_model):
         self.camera_model = camera_model
-        threshold = self.config.motion_config.threshold_for_model(camera_model)
+        threshold = self.config.motion.threshold_for_model(camera_model)
         if threshold:
             self.threshold_config = threshold
             self.set_motion_thresholds(threshold)
@@ -230,7 +228,6 @@ class Clip:
 
             if sub_components <= 1:
                 continue
-
             overlap_image = region.subimage(lower_mask) * 255
             overlap_pixels = np.sum(sub_connected[overlap_image > 0])
             overlap_pixels = overlap_pixels / float(component[4])
@@ -270,7 +267,7 @@ class Clip:
         return str(self._id)
 
     def set_temp_thresh(self):
-        if self.config.motion_config.dynamic_thresh:
+        if self.config.motion.dynamic_thresh:
             min_temp = self.threshold_config.min_temp_thresh
             max_temp = self.threshold_config.max_temp_thresh
             if max_temp:
@@ -281,7 +278,7 @@ class Clip:
                 self.temp_thresh = max(min_temp, self.temp_thresh)
             self.stats.temp_thresh = self.temp_thresh
         else:
-            self.temp_thresh = self.config.motion_config.temp_thresh
+            self.temp_thresh = self.config.motion.temp_thresh
 
     def set_video_stats(self, video_start_time):
         """
@@ -296,13 +293,14 @@ class Clip:
     def load_metadata(self, metadata, include_filtered_channel, tag_precedence):
         self._id = metadata["id"]
         device_meta = metadata.get("Device")
+        self.tags = metadata.get("Tags")
+
         if device_meta:
             self.device = device_meta.get("devicename")
         else:
             self.device = os.path.splitext(os.path.basename(self.source_file))[0].split(
                 "-"
             )[-1]
-        self.tags = metadata.get("Tags")
         self.location = metadata.get("location")
         tracks = self.load_tracks_meta(
             metadata, include_filtered_channel, tag_precedence
@@ -366,6 +364,7 @@ class Clip:
     def add_frame(self, thermal, filtered, mask, ffc_affected=False):
         if ffc_affected:
             self.ffc_frames.append(self.frame_on)
+
         self.frame_buffer.add_frame(
             thermal, filtered, mask, self.frame_on, ffc_affected
         )

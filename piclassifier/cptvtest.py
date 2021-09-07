@@ -2,8 +2,6 @@
 import argparse
 
 import socket
-import time
-import os
 from cptv import CPTVReader
 import sys
 import numpy as np
@@ -64,7 +62,7 @@ def send_clip(clip, socket):
 
 def main():
     args = parse_args()
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 
     try:
         sock.connect(SOCKET_NAME)
