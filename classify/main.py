@@ -52,8 +52,10 @@ def main():
     )
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument(
-        "--processor-folder",
-        help="When running from thermal-processing use this to specify the folder for both the source cptv and output mp4. With this option the metadata will be sent to stdout.",
+        "-o",
+        "--meta-to-stdout",
+        action="count",
+        help="Print metadata to stdout instead of saving to file.",
     )
     parser.add_argument(
         "-T", "--timestamps", action="store_true", help="Emit log timestamps"
@@ -83,12 +85,8 @@ def main():
     if args.verbose:
         config.classify_tracking.verbose = True
 
-    if args.processor_folder:
+    if args.meta_to_stdout:
         config.classify.meta_to_stdout = True
-        config.base_data_folder = args.processor_folder
-        config.classify.classify_folder = args.processor_folder
-        config.source_folder = args.processor_folder
-
     model = None
     keras_model = None
     if args.model_file:

@@ -299,7 +299,6 @@ class TrackPrediction:
         return guesses
 
     def get_metadata(self):
-        print("getting predicion meta")
         prediction_meta = {}
         if self.classify_time is not None:
             prediction_meta["classify_time"] = round(self.classify_time, 1)

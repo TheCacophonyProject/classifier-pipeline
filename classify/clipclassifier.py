@@ -81,13 +81,6 @@ class ClipClassifier:
         else:
             return None
 
-    def get_classify_filename(self, input_filename):
-        return os.path.splitext(
-            os.path.join(
-                self.config.classify.classify_folder, os.path.basename(input_filename)
-            )
-        )[0]
-
     def process_all(self, root):
         for folder_path, _, files in os.walk(root):
             for name in files:
