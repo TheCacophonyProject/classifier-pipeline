@@ -63,15 +63,7 @@ class FrameBuffer:
         if self.prev_frame and self.prev_frame.frame_number == frame_number:
             return self.prev_frame
         elif self.cache:
-            cache_frame, ffc_affected = self.cache.get_frame(frame_number)
-            if cache_frame:
-                return Frame.from_array(
-                    cache_frame,
-                    frame_number,
-                    flow_clipped=True,
-                    ffc_affected=ffc_affected,
-                )
-            return None
+            return self.cache.get_frame(frame_number)
         if len(self.frames) > frame_number:
             return self.frames[frame_number]
         return None
