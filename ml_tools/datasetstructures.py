@@ -167,7 +167,6 @@ class TrackHeader:
         self.frame_crop = None
         self.num_frames = num_frames
         self.frames_per_second = frames_per_second
-        self.sample_frames = None
         self.important_predicted = 0
         mass_history = [region.mass for region in self.regions]
         self.lower_mass = np.uint16(np.percentile(mass_history, q=25))
@@ -176,8 +175,8 @@ class TrackHeader:
         self.mean_mass = np.uint16(np.mean(mass_history))
         self.ffc_frames = np.uint16(ffc_frames)
         self.skipped_frames = skipped_frames
+        self.sample_frames = []
         if sample_frames_indices is not None:
-            self.sample_frames = []
             for region, frame_num, frame_temp in zip(
                 regions, sample_frames_indices, self.frame_temp_median
             ):
@@ -192,7 +191,6 @@ class TrackHeader:
                 )
                 self.sample_frames.append(f)
         else:
-            self.sample_frames = []
             for region, frame_temp in zip(regions, self.frame_temp_median):
                 if region.mass == 0:
                     continue
@@ -239,7 +237,7 @@ class TrackHeader:
         return self.sample_frames
 
     def remove_sample_frame(self, f):
-        self.important_frams.remove(f)
+        self.sample_frames.remove(f)
 
     def get_sample_frame(self, i=0, remove=False):
         if len(self.sample_frames) == 0:
