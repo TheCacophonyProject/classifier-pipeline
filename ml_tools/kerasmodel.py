@@ -660,7 +660,6 @@ class KerasModel:
         return output[0]
 
     def confusion(self, dataset, filename="confusion.png"):
-        dataset.recalculate_segments(segment_type=self.params.segment_type)
         dataset.set_read_only(True)
         dataset.use_segments = self.params.use_segments
         test = DataGenerator(
@@ -687,7 +686,8 @@ class KerasModel:
 
         batch_y = test.get_epoch_labels(0)
         for i in range(len(batch_y)):
-            batch_y[i] = self.labels.index(batch_y[i])
+            mapped_label = dataset.mapped_label(batch_y[i])
+            batch_y[i] = self.labels.index(mapped_label)
         batch_y = np.int32(batch_y)
         self.f1(batch_y, test_pred_raw)
         # test.epoch_data = None

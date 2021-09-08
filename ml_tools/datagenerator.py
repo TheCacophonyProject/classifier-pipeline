@@ -101,7 +101,6 @@ class DataGenerator(keras.utils.Sequence):
                     ),
                 )
             else:
-                multiprocessing.set_start_method("spawn", force=True)
                 self.epoch_queue = multiprocessing.Queue()
                 # m = multiprocessing.Manager()
                 self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
@@ -504,12 +503,12 @@ def preloader(
     p_list = []
     processes = 1
     if name == "train":
-        processes = 4
+        processes = 2
 
     preload_amount = max(1, params.maximum_preload)
-    max_jobs = max(1, 2 * preload_amount // 3)
+    max_jobs = max(1, 4 * preload_amount // 5)
     while True:
-        with multiprocessing.Pool(
+        with multiprocessing.get_context("spawn").Pool(
             processes,
             init_process,
             (labels, params, label_mapping),
@@ -561,7 +560,7 @@ def preloader(
                         segments_by_id,
                         name,
                     )
-                    chunk_size = len(batch_data) // processes
+                    chunk_size = max(100, len(batch_data) // (2 * processes))
                     data = []
                     for batch_i, segments in enumerate(batch_data):
                         start = time.time()
