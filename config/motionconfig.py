@@ -36,7 +36,7 @@ class MotionConfig(DefaultConfig):
         thresholds["lepton3.5"] = ThresholdConfig(
             camera_model="lepton3.5",
             temp_thresh=28000,
-            background_thresh=90,
+            background_thresh=50,
             default=False,
             min_temp_thresh=None,
             max_temp_thresh=None,
