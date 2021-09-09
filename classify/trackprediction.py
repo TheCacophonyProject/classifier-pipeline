@@ -309,6 +309,8 @@ class TrackPrediction:
         )
         prediction_meta["clarity"] = round(self.clarity, 3) if self.clarity else 0
         prediction_meta["all_class_confidences"] = {}
+        if self.prediction_frames is not None:
+            prediction_meta["prediction_frames"] = self.prediction_frames
 
         prediction_meta["predictions"] = np.uint32(np.round(self.smoothed_predictions))
         if self.class_best_score is not None:

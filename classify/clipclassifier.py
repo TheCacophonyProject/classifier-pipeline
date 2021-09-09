@@ -26,7 +26,7 @@ class ClipClassifier:
     # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
     FRAME_SKIP = 1
 
-    def __init__(self, config, model=None, cache_to_disk=None):
+    def __init__(self, config, model=None, cache_to_disk=None, resuse_frames=False):
         """Create an instance of a clip classifier"""
 
         self.config = config
@@ -41,6 +41,7 @@ class ClipClassifier:
         else:
             self.cache_to_disk = cache_to_disk
         self.high_quality_optical_flow = self.config.tracking.high_quality_optical_flow
+        self.resuse_frames = resuse_frames
 
     def get_classifier(self, model):
         """
@@ -135,11 +136,11 @@ class ClipClassifier:
                 )
         predictions_per_model = {}
         if self.model:
-            prediction = self.classify_clip(clip, self.model)
+            prediction = self.classify_clip(clip, self.model, meta_data)
             predictions_per_model[self.model.id] = prediction
         else:
             for model in self.config.classify.models:
-                prediction = self.classify_clip(clip, model)
+                prediction = self.classify_clip(clip, model, meta_data)
                 predictions_per_model[model.id] = prediction
 
         if self.previewer:
@@ -208,7 +209,7 @@ class ClipClassifier:
     #             predictions_per_model[model.id] = prediction
     #     return clip, predictions_per_model, metadata
 
-    def classify_clip(self, clip, model):
+    def classify_clip(self, clip, model, meta_data):
         load_start = time.time()
         classifier = self.get_classifier(model)
         load_time = time.time() - load_start
@@ -216,7 +217,25 @@ class ClipClassifier:
         predictions = Predictions(classifier.labels, model)
         predictions.model_load_time = load_time
         for i, track in enumerate(clip.tracks):
-            prediction = classifier.classify_track(clip, track)
+            segment_frames = None
+            if self.resuse_frames:
+                tracks = meta_data.get("tracks")
+                meta_track = next(
+                    (x for x in tracks if x["id"] == track.get_id()), None
+                )
+                previous_predictions = meta_track.get("predictions")
+                if previous_predictions is not None:
+                    previous_prediction = next(
+                        (x for x in previous_predictions if x["model_id"] == model.id),
+                        None,
+                    )
+                    if previous_prediction is not None:
+                        segment_frames = previous_prediction.get("prediction_frames")
+                        if segment_frames is not None:
+                            segment_frames = np.uint16(segment_frames)
+            prediction = classifier.classify_track(
+                clip, track, segment_frames=segment_frames
+            )
 
             predictions.prediction_per_track[track.get_id()] = prediction
             description = prediction.description()
@@ -245,7 +264,12 @@ class ClipClassifier:
 
         tracks = meta_data.get("tracks")
         for track in clip.tracks:
-            meta_track = next(x for x in tracks if x["id"] == track.get_id())
+            meta_track = next((x for x in tracks if x["id"] == track.get_id()), None)
+            if meta_track is None:
+                logging.error(
+                    "Got prediction for track which doesn't exist in metadata"
+                )
+                continue
             prediction_info = []
             for model_id, predictions in predictions_per_model.items():
                 prediction = predictions.prediction_for(track.get_id())

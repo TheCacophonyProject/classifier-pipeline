@@ -59,6 +59,7 @@ def main():
     )
     parser.add_argument(
         "--reuse-prediction-frames",
+        action="count",
         help="Use supplied prediction frames from metadata.txt",
     )
     parser.add_argument(
@@ -90,7 +91,12 @@ def main():
             {"id": 1, "model_file": args.model_file, "name": args.model_file}
         )
         model.validate()
-    clip_classifier = ClipClassifier(config, model, cache_to_disk=args.cache)
+    clip_classifier = ClipClassifier(
+        config,
+        model,
+        cache_to_disk=args.cache,
+        resuse_frames=args.reuse_prediction_frames,
+    )
     clip_classifier.process(args.source)
 
 

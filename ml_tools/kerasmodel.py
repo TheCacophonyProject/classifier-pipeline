@@ -586,7 +586,7 @@ class KerasModel:
         model = tf.keras.models.Model(input_layer, preds)
         return model
 
-    def classify_track(self, clip, track, keep_all=True):
+    def classify_track(self, clip, track, keep_all=True, segment_frames=None):
         track_data = []
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         for i, region in enumerate(track.bounds_history):
@@ -596,7 +596,11 @@ class KerasModel:
             thermal_median[i] = np.median(frame.thermal)
 
         segments = track.get_segments(
-            clip.ffc_frames, thermal_median, self.params.square_width ** 2, repeats=4
+            clip.ffc_frames,
+            thermal_median,
+            self.params.square_width ** 2,
+            repeats=4,
+            segment_frames=segment_frames,
         )
         return self.classify_track_data(
             track.get_id(),

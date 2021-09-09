@@ -24,7 +24,7 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance
-from ml_tools.datasetstructures import get_segments
+from ml_tools.datasetstructures import get_segments, SegmentHeader
 
 
 class Track:
@@ -106,19 +106,45 @@ class Track:
         segment_frame_spacing=9,
         repeats=1,
         min_frames=0,
+        segment_frames=None,
     ):
-        segments, _ = get_segments(
-            self.clip_id,
-            self._id,
-            self.start_frame,
-            segment_frame_spacing,
-            segment_width,
-            regions=np.array(self.bounds_history),
-            ffc_frames=ffc_frames,
-            repeats=repeats,
-            frame_temp_median=np.uint16(frame_temp_median),
-            min_frames=min_frames,
-        )
+
+        regions = np.array(self.bounds_history)
+        frame_temp_median = np.uint16(frame_temp_median)
+        segments = []
+        if segment_frames is not None:
+            mass_history = np.uint16([region.mass for region in regions])
+            for frames in segment_frames:
+                relative_frames = frames - self.start_frame
+                mass_slice = mass_history[relative_frames]
+                segment_mass = np.sum(mass_slice)
+                segment = SegmentHeader(
+                    self.clip_id,
+                    self._id,
+                    start_frame=self.start_frame,
+                    frames=len(frames),
+                    weight=1,
+                    mass=segment_mass,
+                    label=None,
+                    regions=regions[relative_frames],
+                    frame_temp_median=frame_temp_median[relative_frames],
+                    frame_indices=frames,
+                )
+                segments.append(segment)
+        else:
+            segments, _ = get_segments(
+                self.clip_id,
+                self._id,
+                self.start_frame,
+                segment_frame_spacing,
+                segment_width,
+                regions=regions,
+                ffc_frames=ffc_frames,
+                repeats=repeats,
+                frame_temp_median=frame_temp_median,
+                min_frames=min_frames,
+                segment_frames=None,
+            )
         return segments
 
     @classmethod

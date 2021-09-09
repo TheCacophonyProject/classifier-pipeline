@@ -666,6 +666,7 @@ def get_segments(
     repeats=1,
     min_frames=None,
     skipped_frames=None,
+    segment_frames=None,
 ):
     if min_frames is None:
         min_frames = 25
