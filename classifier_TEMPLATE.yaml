@@ -26,9 +26,6 @@ build:
 classify:
   #cache buffer frame to disk reducing memory usage
   cache_to_disk: false
-
-  # folder is where classifier output and mp4s will be created.  It is specified relative to the base_data_folder
-  classify_folder: classify
   # Writes metadata to standard out instead of a file with extension .txt
   meta_to_stdout: false
   models:
@@ -58,7 +55,7 @@ load:
   excluded_tags: [untagged, dog, unidentified, hard, multi, moving, bird-kiwi, for_grant,
     missclassified, other, part, poor tracking]
 tracking:
-  areas_of_interest: {cropped_regions_strategy: cautious, min_mass: 9.0, pixel_variance: 2.0}
+  areas_of_interest: {cropped_regions_strategy: cautious, min_mass: 4.0, pixel_variance: 2.0}
   dilation_pixels: 2
   edge_pixels: 1
   enable_track_output: true
@@ -74,20 +71,32 @@ tracking:
   min_moving_frames: 2
   min_tag_confidence: 0.6
   motion:
-    camera_thresholds:
-      default-model: {background_thresh: 20, camera_model: default-model, default: false,
-        max_temp_thresh: null, min_temp_thresh: null, temp_thresh: 2900, track_max_delta: 150,
-        track_min_delta: 1.0}
-      lepton3: {background_thresh: 20, camera_model: lepton3, default: true, max_temp_thresh: null,
-        min_temp_thresh: null, temp_thresh: 2900, track_max_delta: 150, track_min_delta: 1.0}
-      lepton3.5: {background_thresh: 50, camera_model: lepton3.5, default: false,
-        max_temp_thresh: null, min_temp_thresh: null, temp_thresh: 28000, track_max_delta: 1500,
-        track_min_delta: 50}
-    dynamic_thresh: true
-  remove_track_after_frames: 18
-  stats: {max_threshold: 50, min_threshold: 30, threshold_percentile: 99.9}
-  threshold_percentile: 99.9
-  track_smoothing: false
+      #if set to True Temp_thresh is calculated based on the minimum background temperature
+      #of the preview, or whole clip depending on cptv type
+      dynamic_thresh: True
+      camera_thresholds:
+        lepton3:
+          camera_model: "lepton3"
+          # Default temperature threshold require for tracking
+          temp_thresh: 2900
+          # Minimum raw temperature difference between background and track
+          background_thresh: 20
+          # Min/Max temperature threshold value to use if dynamic threshold is true
+          max_temp_thresh: null
+          min_temp_thresh: null
+          default: True
+        # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
+          track_min_delta: 1.0
+          track_max_delta: 150
+        lepton35:
+          camera_model: "lepton3.5"
+          temp_thresh: 28000
+          background_thresh: 90
+          max_temp_thresh: null
+          min_temp_thresh: null
+          # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
+          track_min_delta: 1.0
+          track_max_delta: 150
 train:
   epochs: 3
   hyper_params:
