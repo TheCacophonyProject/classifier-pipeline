@@ -55,10 +55,10 @@ class CPTVRecorder:
         return self.frames > self.write_until
 
     def start_recording(self, background_frame, preview_frames, temp_thresh):
+        start = time.time()
         if self.recording:
             logging.warn("Already recording, stop recording first")
             return
-        self.rec_time = time.time()
         self.frames = 0
         self.filename = new_temp_name()
         self.filename = os.path.join(self.output_dir, self.filename)
@@ -92,18 +92,24 @@ class CPTVRecorder:
         self.write_until = self.frames + self.min_frames
 
         logging.info("recording %s started temp_thresh: %d", self.filename, temp_thresh)
+        self.rec_time += time.time() - start
 
     def write_frame(self, cptv_frame):
+        start = time.time()
+
         self.writer.write_frame(cptv_frame)
         self.frames += 1
+        self.rec_time += time.time() - start
 
     def stop_recording(self):
         self.recording = False
         logging.info(
             "recording ended %s %s per frame",
-            time.time() - self.rec_time,
-            (time.time() - self.rec_time) / self.frames,
+            self.rec_time,
+            self.rec_time / self.frames,
         )
+        self.rec_time = 0
+
         self.write_until = 0
         if self.writer is None:
             return
