@@ -10,6 +10,8 @@ import time
 
 CPTV_TEMP_EXT = ".cptv.temp"
 
+CACHE_COUNT = 20
+
 
 class CPTVRecorder:
     def __init__(self, thermal_config, headers):
@@ -28,6 +30,7 @@ class CPTVRecorder:
         self.write_until = 0
         self.clip = None
         self.rec_time = 0
+        self.cache_frames = []
 
     def force_stop(self):
         if not self.recording:
@@ -96,12 +99,20 @@ class CPTVRecorder:
 
     def write_frame(self, cptv_frame):
         start = time.time()
-
-        self.writer.write_frame(cptv_frame)
+        self.cache_frames.append(cptv_frame)
+        if len(self.cache_frames) == CACHE_COUNT:
+            for frame in self.cache_frames:
+                self.writer.write_frame(frame)
+            self.cache_frames = []
         self.frames += 1
         self.rec_time += time.time() - start
 
     def stop_recording(self):
+        start = time.time()
+        for frame in self.cache_frames:
+            self.writer.write_frame(frame)
+        self.cache_frames = []
+        self.rec_time += time.time() - start
         self.recording = False
         logging.info(
             "recording ended %s %s per frame",
