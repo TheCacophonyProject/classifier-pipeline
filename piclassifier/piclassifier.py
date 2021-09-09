@@ -22,6 +22,139 @@ from ml_tools.preprocess import (
     preprocess_frame,
     preprocess_movement,
 )
+import logging
+from ml_tools.logs import init_logging
+
+STOP_SIGNAL = "stop"
+
+SKIP_SIGNAL = "skip"
+
+
+class NeuralInterpreter:
+    def __init__(self, model_name):
+        from openvino.inference_engine import IENetwork, IECore
+
+        # device = "CPU"
+        device = "MYRIAD"
+        model_xml = model_name + ".xml"
+        model_bin = os.path.splitext(model_xml)[0] + ".bin"
+        ie = IECore()
+        net = IENetwork(model=model_xml, weights=model_bin)
+        self.input_blob = next(iter(net.inputs))
+        self.out_blob = next(iter(net.outputs))
+        net.batch_size = 1
+        self.exec_net = ie.load_network(network=net, device_name=device)
+        self.load_json(model_name)
+
+    def classify_frame(self, input_x):
+        if input_x is None:
+            return None
+        logging.info("classify with shape %s", input_x.shape)
+        rearranged_arr = np.transpose(input_x, axes=[2, 0, 1])
+        input_x = np.array([[rearranged_arr]])
+        res = self.exec_net.infer(inputs={self.input_blob: input_x})
+        res = res[self.out_blob]
+        return res[0]
+
+    def load_json(self, filename):
+        """Loads model and parameters from file."""
+        stats = json.load(open(filename + ".txt", "r"))
+
+        self.MODEL_NAME = stats["name"]
+        self.MODEL_DESCRIPTION = stats["description"]
+        self.labels = stats["labels"]
+        # self.eval_score = stats["score"]
+        self.params = stats["hyperparams"]
+
+
+class LiteInterpreter:
+    def __init__(self, model_name):
+        import tensorflow as tf
+
+        self.interpreter = tf.lite.Interpreter(model_path=model_name + ".tflite")
+
+        self.interpreter.allocate_tensors()
+        input_details = self.interpreter.get_tensor_details()
+
+        self.in_values = {}
+        for detail in input_details:
+            self.in_values[detail["name"]] = detail["index"]
+
+        output_details = self.interpreter.get_output_details()
+        self.out_values = {}
+        for detail in output_details:
+
+            self.out_values[detail["name"]] = detail["index"]
+
+        self.load_json(model_name)
+        print("out values", self.out_values)
+        self.prediction = self.out_values["Identity"]
+
+    def classify_frame(self, input_x):
+        input_x = np.float32(input_x)
+        input_x = input_x[np.newaxis, :]
+
+        self.interpreter.set_tensor(self.in_values["input"], input_x)
+        self.interpreter.invoke()
+        pred = self.interpreter.get_tensor(self.out_values["Identity"])[0]
+        return pred
+
+    def load_json(self, filename):
+        stats = json.load(open(filename + ".txt", "r"))
+
+        self.MODEL_NAME = stats["name"]
+        self.MODEL_DESCRIPTION = stats["description"]
+        self.labels = stats["labels"]
+        # self.eval_score = stats["score"]
+        self.params = stats["hyperparams"]
+
+
+def get_full_classifier(config):
+    from ml_tools.kerasmodel import KerasModel
+
+    """
+    Returns a classifier object, which is created on demand.
+    This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
+    """
+    t0 = datetime.now()
+    logging.info("classifier loading")
+    model = KerasModel()
+    model.load_model(config.classify.model)
+    # classifier = Model(
+    #     train_config=config.train,
+    #     session=tools.get_session(disable_gpu=not config.use_gpu),
+    # )
+    # classifier.load(config.classify.model)
+    logging.info("classifier loaded ({})".format(datetime.now() - t0))
+
+    return model3
+
+
+def get_classifier(config):
+    model_name, model_type = os.path.splitext(config.classify.model)
+    if model_type == ".tflite":
+        classifier = LiteInterpreter(model_name)
+    elif model_type == ".xml":
+        classifier = NeuralInterpreter(model_name)
+    else:
+        classifier = get_full_classifier(config)
+    return classifier
+
+
+def run(frame_queue, config, thermal_config, headers):
+    init_logging()
+    pi_classifier = PiClassifier(config, thermal_config, headers)
+    while True:
+        frame = frame_queue.get()
+        if isinstance(frame, str):
+            if frame == STOP_SIGNAL:
+                logging.info("PiClassifier received stop signal")
+                pi_classifier.disconnected()
+                return
+            if frame == "skip":
+                pi_classifier.skip_frame()
+        else:
+            pi_classifier.process_frame(frame)
 
 
 class PiClassifier(Processor):
@@ -34,7 +167,7 @@ class PiClassifier(Processor):
     # this gives the cpu a break
     SKIP_FRAMES = 10
 
-    def __init__(self, config, thermal_config, classifier, headers):
+    def __init__(self, config, thermal_config, headers):
         self.headers = headers
         self.frame_num = 0
         self.clip = None
@@ -44,12 +177,13 @@ class PiClassifier(Processor):
         self.skip_classifying = 0
         self.classified_consec = 0
         self.config = config
-        self.classifier = classifier
-        self.num_labels = len(classifier.labels)
+        self.classifier = get_classifier(config)
+
+        self.num_labels = len(self.classifier.labels)
         self.process_time = 0
         self.tracking_time = 0
         self.identify_time = 0
-        self.predictions = Predictions(classifier.labels)
+        self.predictions = Predictions(self.classifier.labels)
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
         self.crop_rectangle = tools.Rectangle(

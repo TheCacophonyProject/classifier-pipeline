@@ -6,6 +6,7 @@ import logging
 import os
 import psutil
 import socket
+import time
 
 # fixes logging not showing up in tensorflow
 
@@ -20,92 +21,17 @@ from .headerinfo import HeaderInfo
 from ml_tools.logs import init_logging
 from ml_tools import tools
 from .motiondetector import MotionDetector
-from .piclassifier import PiClassifier
+from .piclassifier import PiClassifier, run
 from service import SnapshotService
 from .cameras import lepton3
+import multiprocessing
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
 TELEMETRY_PACKET_COUNT = 4
+STOP_SIGNAL = "stop"
 
-
-class NeuralInterpreter:
-    def __init__(self, model_name):
-        from openvino.inference_engine import IENetwork, IECore
-
-        # device = "CPU"
-        device = "MYRIAD"
-        model_xml = model_name + ".xml"
-        model_bin = os.path.splitext(model_xml)[0] + ".bin"
-        ie = IECore()
-        net = IENetwork(model=model_xml, weights=model_bin)
-        self.input_blob = next(iter(net.inputs))
-        self.out_blob = next(iter(net.outputs))
-        net.batch_size = 1
-        self.exec_net = ie.load_network(network=net, device_name=device)
-        self.load_json(model_name)
-
-    def classify_frame(self, input_x):
-        if input_x is None:
-            return None
-        logging.info("classify with shape %s", input_x.shape)
-        rearranged_arr = np.transpose(input_x, axes=[2, 0, 1])
-        input_x = np.array([[rearranged_arr]])
-        res = self.exec_net.infer(inputs={self.input_blob: input_x})
-        res = res[self.out_blob]
-        return res[0]
-
-    def load_json(self, filename):
-        """Loads model and parameters from file."""
-        stats = json.load(open(filename + ".txt", "r"))
-
-        self.MODEL_NAME = stats["name"]
-        self.MODEL_DESCRIPTION = stats["description"]
-        self.labels = stats["labels"]
-        # self.eval_score = stats["score"]
-        self.params = stats["hyperparams"]
-
-
-class LiteInterpreter:
-    def __init__(self, model_name):
-        import tensorflow as tf
-
-        self.interpreter = tf.lite.Interpreter(model_path=model_name + ".tflite")
-
-        self.interpreter.allocate_tensors()
-        input_details = self.interpreter.get_tensor_details()
-
-        self.in_values = {}
-        for detail in input_details:
-            self.in_values[detail["name"]] = detail["index"]
-
-        output_details = self.interpreter.get_output_details()
-        self.out_values = {}
-        for detail in output_details:
-
-            self.out_values[detail["name"]] = detail["index"]
-
-        self.load_json(model_name)
-        print("out values", self.out_values)
-        self.prediction = self.out_values["Identity"]
-
-    def classify_frame(self, input_x):
-        input_x = np.float32(input_x)
-        input_x = input_x[np.newaxis, :]
-
-        self.interpreter.set_tensor(self.in_values["input"], input_x)
-        self.interpreter.invoke()
-        pred = self.interpreter.get_tensor(self.out_values["Identity"])[0]
-        return pred
-
-    def load_json(self, filename):
-        stats = json.load(open(filename + ".txt", "r"))
-
-        self.MODEL_NAME = stats["name"]
-        self.MODEL_DESCRIPTION = stats["description"]
-        self.labels = stats["labels"]
-        # self.eval_score = stats["score"]
-        self.params = stats["hyperparams"]
+SKIP_SIGNAL = "skip"
 
 
 # TODO abstract interpreter class
@@ -121,44 +47,6 @@ def parse_args():
 
     args = parser.parse_args()
     return args
-
-
-classifier = None
-
-
-def get_classifier(config):
-    global classifier
-    if classifier is not None:
-        return classifier
-    model_name, model_type = os.path.splitext(config.classify.model)
-    if model_type == ".tflite":
-        classifier = LiteInterpreter(model_name)
-    elif model_type == ".xml":
-        classifier = NeuralInterpreter(model_name)
-    else:
-        classifier = get_full_classifier(config)
-    return classifier
-
-
-def get_full_classifier(config):
-    from ml_tools.kerasmodel import KerasModel
-
-    """
-    Returns a classifier object, which is created on demand.
-    This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
-    """
-    t0 = datetime.now()
-    logging.info("classifier loading")
-    model = KerasModel()
-    model.load_model(config.classify.model)
-    # classifier = Model(
-    #     train_config=config.train,
-    #     session=tools.get_session(disable_gpu=not config.use_gpu),
-    # )
-    # classifier.load(config.classify.model)
-    logging.info("classifier loaded ({})".format(datetime.now() - t0))
-
-    return model3
 
 
 # Links to socket and continuously waits for 1 connection
@@ -216,11 +104,14 @@ def parse_cptv(cptv_file, config, thermal_config):
         processor.disconnected()
 
 
-def get_processor(config, thermal_config, headers):
-    print("classify??", thermal_config.motion)
+def get_processor(process_queue, config, thermal_config, headers):
     if thermal_config.motion.run_classifier:
-        classifier = get_classifier(config)
-        return PiClassifier(config, thermal_config, classifier, headers)
+        p_processor = multiprocessing.Process(
+            target=run,
+            args=(process_queue, config, thermal_config, headers),
+        )
+        return p_processor
+        # return PiClassifier(config, thermal_config, classifier, headers)
 
     return MotionDetector(
         thermal_config,
@@ -246,33 +137,45 @@ def handle_headers(connection):
     return HeaderInfo.parse_header(headers)
 
 
+last_frame = None
+
+
 def handle_connection(connection, config, thermal_config):
     headers = handle_headers(connection)
     logging.info("parsed camera headers %s", headers)
-    processor = get_processor(config, thermal_config, headers)
-    service = SnapshotService(processor)
+    process_queue = multiprocessing.Queue()
 
+    processor = get_processor(process_queue, config, thermal_config, headers)
+    processor.start()
+
+    service = SnapshotService(get_recent_frame, thermal_config.recorder.output_dir)
+
+    edge = config.tracking.edge_pixels
+    crop_rectangle = tools.Rectangle(
+        edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
+    )
     raw_frame = lepton3.Lepton3(headers)
     read = 0
+    global last_frame
     while True:
         data = connection.recv(headers.frame_size, socket.MSG_WAITALL)
         if not data:
             logging.info("disconnected from camera")
-            processor.disconnected()
+            process_queue.put(STOP_SIGNAL)
             service.quit()
-            return
+            break
         try:
             message = data[:5].decode("utf-8")
             if message == "clear":
                 logging.info("processign error from camera")
-                processor.disconnected()
+                process_queue.put(STOP_SIGNAL)
                 service.quit()
-                return
+                break
         except:
             pass
         read += 1
         frame = raw_frame.parse(data)
-        cropped_frame = processor.crop_rectangle.subimage(frame.pix)
+        cropped_frame = crop_rectangle.subimage(frame.pix)
         t_max = np.amax(cropped_frame)
         t_min = np.amin(cropped_frame)
         # logging.info("Cropped frame max %s and min %s", t_max, t_min)
@@ -282,10 +185,20 @@ def handle_connection(connection, config, thermal_config):
                     t_max, t_min, psutil.cpu_percent(), psutil.virtual_memory()[2]
                 )
             )
+            process_queue.put(SKIP_SIGNAL)
             # this frame has bad data probably from lack of CPU
-            processor.skip_frame()
-            continue
-        if read < 10:
-            processor.skip_frame()
-            continue
-        processor.process_frame(frame)
+            # processor.skip_frame()
+        elif read < 10:
+            process_queue.put(SKIP_SIGNAL)
+            # processor.skip_frame()
+        else:
+            # print("ADDED FRAME")
+            last_frame = frame.pix
+            process_queue.put(frame)
+    time.sleep(5)
+    # give it a moment to close down properly
+    processor.terminate()
+
+
+def get_recent_frame():
+    return last_frame
