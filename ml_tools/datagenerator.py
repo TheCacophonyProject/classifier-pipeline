@@ -305,7 +305,7 @@ def get_cached_frames(db, sample):
     frames = []
     if sample.unique_track_id not in db:
         logging.warn("Cannot find %s in db", sample.unique_track_id)
-        return Frames
+        return frames
 
     track_frames = db[sample.unique_track_id]
     for f_i in sample.frame_indices:
