@@ -32,7 +32,7 @@ class PiClassifier(Processor):
     MAX_CONSEC = 1
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
-    SKIP_FRAMES = 25
+    SKIP_FRAMES = 10
 
     def __init__(self, config, thermal_config, classifier, headers):
         self.headers = headers
@@ -102,19 +102,7 @@ class PiClassifier(Processor):
         # process preview_frames
         frames = self.motion_detector.thermal_window.get_frames()
         edge_pixels = self.config.tracking.edge_pixels
-        for i in range(edge_pixels):
-            self.motion_detector.background[i] = self.motion_detector.background[
-                edge_pixels
-            ]
-            self.motion_detector.background[-i - 1] = self.motion_detector.background[
-                -edge_pixels - 1
-            ]
-            self.motion_detector.background[:, i] = self.motion_detector.background[
-                :, edge_pixels
-            ]
-            self.motion_detector.background[
-                :, -i - 1
-            ] = self.motion_detector.background[:, -1 - edge_pixels]
+
         self.clip.update_background(self.motion_detector.background)
         self.clip._background_calculated()
         for frame in frames:

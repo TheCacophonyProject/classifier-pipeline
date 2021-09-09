@@ -289,6 +289,7 @@ class MotionDetector(Processor):
                 if self.recorder.recording:
                     self.recorder.process_frame(self.movement_detected, cptv_frame)
                 elif self.movement_detected:
+                    self.set_background_edges()
                     self.recorder.start_recording(
                         self.background,
                         self.thermal_window.get_frames(),
@@ -300,6 +301,14 @@ class MotionDetector(Processor):
             self.movement_detected = False
 
         self.num_frames += 1
+
+    def set_background_edges(self):
+        edge_pixels = self.config.edge_pixels
+        for i in range(edge_pixels):
+            self.background[i] = self.background[edge_pixels]
+            self.background[-i - 1] = self.background[-edge_pixels - 1]
+            self.background[:, i] = self.background[:, edge_pixels]
+            self.background[:, -i - 1] = self.background[:, -1 - edge_pixels]
 
     def skip_frame(self):
         return
