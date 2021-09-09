@@ -1,0 +1,284 @@
+!TestConfig
+clip_dir: lepton35Missed
+recording_tests:
+- !TestRecording
+  device: Stoat Hunter 2
+  device_id: 1567
+  filename: 932645.cptv
+  group: Shakespear Park
+  group_id: 207
+  rec_id: 932645
+  tracks:
+  - !TestTrack
+    confidence: 0.85
+    end: 9
+    end_pos:
+    - 9
+    - - 116
+      - 9
+      - 123
+      - 16
+    expected: true
+    opt_end: 9
+    opt_start: 3
+    start: 3
+    start_pos:
+    - 3
+    - - 116
+      - 9
+      - 123
+      - 16
+    tag: rodent
+- !TestRecording
+  device: Stoat Hunter 2
+  device_id: 1567
+  filename: 932644.cptv
+  group: Shakespear Park
+  group_id: 207
+  rec_id: 932644
+  tracks:
+    - !TestTrack
+      confidence: 0.85
+      end: 6.33
+      end_pos:
+      - 6.33
+      - - 50
+        - 32
+        - 57
+        - 40
+      expected: true
+      opt_end: 6.33
+      opt_start: 0.11
+      start: 0.11
+      start_pos:
+      - 0.0
+      - - 54
+        - 16
+        - 60
+        - 22
+      tag: mustelid
+- !TestRecording
+  device: Stoat Hunter 2
+  device_id: 1567
+  filename: 932592.cptv
+  group: Shakespear Park
+  group_id: 207
+  rec_id: 932592
+  tracks:
+  - !TestTrack
+    confidence: 0.85
+    end: 8
+    end_pos:
+    - 8
+    - - 116
+      - 9
+      - 123
+      - 16
+    expected: true
+    opt_end: 8
+    opt_start: 3
+    start: 3
+    start_pos:
+    - 3
+    - - 116
+      - 9
+      - 123
+      - 16
+    tag: rodent
+- !TestRecording
+  device: Stoat Hunter 3
+  device_id: 1568
+  filename: 932577.cptv
+  group: Shakespear Park
+  group_id: 207
+  rec_id: 932577
+  tracks:
+  - !TestTrack
+    confidence: 0.85
+    end: 19.67
+    end_pos:
+    - 19.67
+    - - 50
+      - 31
+      - 58
+      - 39
+    expected: true
+    opt_end: 19.67
+    opt_start: 4.67
+    start: 4.67
+    start_pos:
+    - 4.67
+    - - 50
+      - 34
+      - 56
+      - 40
+    tag: possum
+- !TestRecording
+  device: Stoat Hunter 2
+  device_id: 1567
+  filename: 932573.cptv
+  group: Shakespear Park
+  group_id: 207
+  rec_id: 932573
+  tracks:
+  - !TestTrack
+    confidence: 0.85
+    end: 5.67
+    end_pos:
+    - 5.67
+    - - 106
+      - 18
+      - 114
+      - 27
+    expected: true
+    opt_end: 5.67
+    opt_start: 4
+    start: 4.56
+    start_pos:
+    - 4.56
+    - - 115
+      - 9
+      - 122
+      - 16
+    tag: mustelid
+- !TestRecording
+  device: Stoat Hunter 3
+  device_id: 1568
+  filename: 932574.cptv
+  group: Shakespear Park
+  group_id: 207
+  rec_id: 932574
+  tracks:
+  - !TestTrack
+    confidence: 0.85
+    end: 13.44
+    end_pos:
+    - 13.44
+    - - 46
+      - 17
+      - 52
+      - 23
+    expected: true
+    opt_end: 13.44
+    opt_start: 3.56
+    start: 3.56
+    start_pos:
+    - 3.56
+    - - 46
+      - 20
+      - 53
+      - 27
+    tag: rat
+- !TestRecording
+  device: Stoat Hunter 2
+  device_id: 1567
+  filename: 932569.cptv
+  group: Shakespear Park
+  group_id: 207
+  rec_id: 932569
+  tracks:
+  - !TestTrack
+    confidence: 0.85
+    end: 7
+    end_pos:
+    - 7
+    - - 106
+      - 19
+      - 112
+      - 26
+    expected: true
+    opt_end: 7
+    opt_start: 4
+    start: 4
+    start_pos:
+    - 4
+    - - 116
+      - 9
+      - 123
+      - 16
+    tag: possum
+- !TestRecording
+  device: Stoat Hunter 2
+  device_id: 1567
+  filename: 932568.cptv
+  group: Shakespear Park
+  group_id: 207
+  rec_id: 932568
+  tracks:
+  - !TestTrack
+    confidence: 0.85
+    end: 5.89
+    end_pos:
+    - 5.89
+    - - 106
+      - 19
+      - 112
+      - 26
+    expected: true
+    opt_end: 5.89
+    opt_start: 4
+    start: 4.56
+    start_pos:
+    - 4.56
+    - - 116
+      - 9
+      - 123
+      - 16
+    tag: mustelid
+- !TestRecording
+  device: Stoat Hunter 2
+  device_id: 1567
+  filename: 932563.cptv
+  group: Shakespear Park
+  group_id: 207
+  rec_id: 932563
+  tracks:
+  - !TestTrack
+    confidence: 0.85
+    end: 5.89
+    end_pos:
+    - 5.89
+    - - 106
+      - 19
+      - 112
+      - 26
+    expected: true
+    opt_end: 5.89
+    opt_start: 4
+    start: 4.56
+    start_pos:
+    - 4.56
+    - - 116
+      - 9
+      - 123
+      - 16
+    tag: mustelid
+- !TestRecording
+  device: Stoat Hunter 3
+  device_id: 1568
+  filename: 932556.cptv
+  group: Shakespear Park
+  group_id: 207
+  rec_id: 932556
+  tracks:
+  - !TestTrack
+    confidence: 0.85
+    end: 6.33
+    end_pos:
+    - 6.33
+    - - 50
+      - 32
+      - 57
+      - 40
+    expected: true
+    opt_end: 6.33
+    opt_start: 0.11
+    start: 0.11
+    start_pos:
+    - 0.0
+    - - 54
+      - 16
+      - 60
+      - 22
+    tag: mustelid
+server: https://api.cacophony.org.nz

@@ -12,7 +12,7 @@ from cacophonyapi.user import UserAPI
 from ml_tools import tools
 from config.config import Config
 
-from classify.clipclassifier import ClipClassifier
+from track.trackextractor import TrackExtractor
 from .testconfig import TestConfig
 
 MATCH_ERROR = 1
@@ -121,30 +121,27 @@ class RecordingMatch:
         self.id = id_
         self.summary = Summary()
 
-    def match(self, test, tracks, predictions):
+    def match(self, test, tracks, predictions=None):
         self.summary.total_tests += len(test.tracks)
         gen_tracks = sorted(tracks, key=lambda x: x.get_id())
         gen_tracks = sorted(gen_tracks, key=lambda x: x.start_s)
 
         self.unmatched_tests = set(test.tracks)
-
+        predicted_tag = None
         for i, track in enumerate(gen_tracks):
-            prediction = predictions.prediction_for(track.get_id())
+            if predictions is not None:
+                prediction = predictions.prediction_for(track.get_id())
+                predicted_tag = prediction.predicted_tag()
             test_track = match_track(track, self.unmatched_tests)
             if test_track is not None:
                 self.unmatched_tests.remove(test_track)
-                match = Match(
-                    test_track, track, prediction.predicted_tag(predictions.labels)
-                )
+                match = Match(test_track, track, predicted_tag)
                 self.new_match(match)
             else:
-                self.unmatched_tracks.append(
-                    (prediction.predicted_tag(predictions.labels), track)
-                )
+                self.unmatched_tracks.append((predicted_tag, track))
                 self.summary.unmatched_tracks += 1
                 print(
-                    "Unmatched track tag {} start {} end {}".format(
-                        prediction.predicted_tag(predictions.labels),
+                    "Unmatched track start {} end {}".format(
                         track.start_s,
                         track.end_s,
                     )
@@ -221,7 +218,7 @@ class RecordingMatch:
 
 
 class Match:
-    def __init__(self, test_track, track, tag):
+    def __init__(self, test_track, track, tag=None):
         expected_length = test_track.opt_end - test_track.opt_start
         self.length_diff = round(expected_length - (track.end_s - track.start_s), 2)
         self.start_diff_s = round(test_track.start - track.start_s, 2)
@@ -288,20 +285,9 @@ class TestClassify:
     def __init__(self, args):
         self.test_config = TestConfig.load_from_file(args.tests)
         self.classifier_config = Config.load_from_file(args.classify_config)
-        model_file = self.classifier_config.classify.model
         if args.model_file:
             model_file = args.model_file
-
-        path, ext = os.path.splitext(model_file)
-        keras_model = False
-        if ext == ".pb":
-            keras_model = True
-        self.clip_classifier = ClipClassifier(
-            self.classifier_config,
-            self.classifier_config.classify_tracking,
-            model_file,
-            keras_model,
-        )
+        self.track_extractor = TrackExtractor(self.classifier_config)
         # try download missing tests
         if args.user and args.password:
             api = UserAPI(args.server, args.user, args.password)
@@ -329,12 +315,16 @@ class TestClassify:
                 )
                 continue
             logging.info("testing %s ", test.filename)
-            clip, predictions = self.clip_classifier.classify_file(filepath)
+            clip = self.track_extractor.extract_tracks(filepath)
+            meta_filename = filepath.with_suffix(".txt")
+            self.track_extractor.save_metadata(str(filepath), meta_filename, clip, 0)
+
+            predictions = None
             rec_match = self.compare_output(clip, predictions, test)
-            if self.clip_classifier.previewer:
+            if self.track_extractor.previewer:
                 mpeg_filename = filepath.with_suffix(".mp4")
                 logging.info("Exporting preview to '%s'", mpeg_filename)
-                self.clip_classifier.previewer.export_clip_preview(
+                self.track_extractor.previewer.export_clip_preview(
                     mpeg_filename, clip, predictions
                 )
             self.results.append(rec_match)

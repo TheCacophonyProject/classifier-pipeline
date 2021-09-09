@@ -58,6 +58,10 @@ def main():
         help="Path to model file to use, will override config model",
     )
     parser.add_argument(
+        "--reuse-prediction-frames",
+        help="Use supplied prediction frames from metadata.txt",
+    )
+    parser.add_argument(
         "--cache",
         type=str2bool,
         nargs="?",
