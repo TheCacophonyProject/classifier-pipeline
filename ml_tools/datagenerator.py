@@ -74,53 +74,16 @@ class DataGenerator(keras.utils.Sequence):
         self.lazy_load = params.get("lazy_load", False)
         self.preload = params.get("preload", False)
 
-        use_threads = False
-
         self.segments = []
         # load epoch
         self.epoch_labels = []
         self.epoch_data = []
         if self.preload:
-            if use_threads:
-                # This will be slower, but use less memory
-                # Queue is also extremely slow so should be change to deque
-                self.epoch_queue = multiprocessing.Queue()
-                self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
-                self.preloader_thread = threading.Thread(
-                    target=preloader,
-                    args=(
-                        self.train_queue,
-                        self.epoch_queue,
-                        self.labels,
-                        self.dataset.name,
-                        self.dataset.db,
-                        self.dataset.segments_by_id,
-                        self.params,
-                        self.dataset.label_mapping,
-                        self.dataset.numpy_data,
-                    ),
-                )
-            else:
-                self.epoch_queue = multiprocessing.Queue()
-                # m = multiprocessing.Manager()
-                self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
-                # self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
-                self.preloader_thread = multiprocessing.Process(
-                    target=preloader,
-                    args=(
-                        self.train_queue,
-                        self.epoch_queue,
-                        self.labels,
-                        self.dataset.name,
-                        self.dataset.db,
-                        self.dataset.segments_by_id,
-                        self.params,
-                        self.dataset.label_mapping,
-                        self.dataset.numpy_data,
-                    ),
-                )
-            self.preloader_thread.start()
-
+            self.epoch_queue = multiprocessing.Queue()
+            # m = multiprocessing.Manager()
+            self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
+            # self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
+            self.preloader_thread = None
         self.load_next_epoch()
         logging.info(
             "datagen for %s shuffle %s cap %s epochs %s gen params %s memory %s",
@@ -250,7 +213,31 @@ class DataGenerator(keras.utils.Sequence):
 
         self.epoch_samples.append(len(self.samples))
 
+    def stop_preload(self):
+        if self.preloader_thread.is_alive():
+            self.preloader_thread.join(30)
+            logging.warn("Still alive after join terminating %s", self.dataset.name)
+            if self.preloader_thread.is_alive():
+                self.preloader_thread.terminate()
+
     def preload_samples(self):
+        if self.preloader_thread is not None:
+            self.stop_preload()
+        self.preloader_thread = multiprocessing.Process(
+            target=preloader,
+            args=(
+                self.train_queue,
+                self.epoch_queue,
+                self.labels,
+                self.dataset.name,
+                self.dataset.db,
+                self.dataset.segments_by_id,
+                self.params,
+                self.dataset.label_mapping,
+                self.dataset.numpy_data,
+            ),
+        )
+        self.preloader_thread.start()
         batches = []
         for index in range(len(self)):
             samples = self.samples[
@@ -260,6 +247,7 @@ class DataGenerator(keras.utils.Sequence):
         if len(batches) > 0:
             self.epoch_queue.put((self.loaded_epochs + 1, batches))
         self.loaded_epochs += 1
+        self.epoch_queue.put("STOP")
 
     def reload_samples(self):
         logging.debug("%s reloading samples", self.dataset.name)
