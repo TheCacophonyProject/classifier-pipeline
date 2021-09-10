@@ -70,7 +70,6 @@ class DataGenerator(keras.utils.Sequence):
         self.cur_epoch = 0
         self.loaded_epochs = 0
         self.epoch_stats = []
-        self.eager_load = params.get("eager_load", False)
         self.lazy_load = params.get("lazy_load", False)
         self.preload = params.get("preload", False)
 
@@ -118,15 +117,6 @@ class DataGenerator(keras.utils.Sequence):
         "Generate one batch of data"
         # Generate indexes of the batch
         start = time.time()
-        if index == len(self) // 2 and self.eager_load:
-            logging.debug(
-                "%s on epoch %s index % s eager loading next epoch data",
-                self.dataset.name,
-                self.loaded_epochs,
-                index,
-            )
-            self.load_next_epoch()
-
         if index == 0 and len(self.epoch_data) > self.cur_epoch:
             # when tensorflow uses model.fit it requests index 0 twice
             X, y = self.epoch_data[self.cur_epoch]
@@ -265,8 +255,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
-        if not self.eager_load:
-            self.load_next_epoch()
+        self.load_next_epoch()
         self.sample_size = self.epoch_samples[self.cur_epoch]
         batches = len(self)
         self.epoch_data[self.cur_epoch] = None
@@ -291,10 +280,6 @@ def loadbatch(labels, segments, data, params, mapped_labels):
 
 def get_cached_frames(db, sample):
     frames = []
-    if sample.unique_track_id not in db:
-        logging.warn("Cannot find %s in db", sample.unique_track_id)
-        return frames
-
     track_frames = db[sample.unique_track_id]
     for f_i in sample.frame_indices:
         if f_i not in track_frames:
@@ -382,12 +367,17 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
 def load_from_numpy(numpy_meta, frames_by_track, tracks, name):
     start = time.time()
     count = 0
+    track_is = 0
+    prev = 0
+    seek = 0
     try:
         with numpy_meta as f:
             for _, frame_indices, u_id, regions_by_frames in tracks:
                 numpy_info = numpy_meta.track_info[u_id]
                 frames_to_i = numpy_info["frames"]
                 track_data = frames_by_track.setdefault(u_id, {})
+                track_is = u_id
+                seek = numpy_info["data"]
                 f.seek(numpy_info["data"])
                 frames = np.load(f, allow_pickle=True)
                 thermals = frames[0]
@@ -404,7 +394,7 @@ def load_from_numpy(numpy_meta, frames_by_track, tracks, name):
                     )
                     track_data[frame_i] = frame
                     frame.region = regions_by_frames[frame_i]
-
+                prev = u_id
             logging.debug(
                 "%s time to load %s frames %s",
                 name,
@@ -412,7 +402,14 @@ def load_from_numpy(numpy_meta, frames_by_track, tracks, name):
                 time.time() - start,
             )
     except:
-        logging.error("%s error loading numpy file", name, exc_info=True)
+        logging.error(
+            "%s error loading numpy file seek %s cur %s prev %s",
+            name,
+            seek,
+            track_is,
+            prev,
+            exc_info=True,
+        )
     return frames_by_track
 
 

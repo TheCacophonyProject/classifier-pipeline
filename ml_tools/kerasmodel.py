@@ -384,7 +384,6 @@ class KerasModel:
             epochs=epochs,
             model_preprocess=self.preprocess_fn,
             maximum_preload=self.params.maximum_train_preload,
-            eager_load=False,
             preload=True,
             **self.params,
         )
