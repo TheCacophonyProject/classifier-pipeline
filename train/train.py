@@ -71,8 +71,12 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     )
     for dataset in model.datasets.values():
         dataset.clear_tracks()
-
-    model.train_model(
-        epochs=conf.train.epochs, run_name=run_name + "_" + "TEST", weights=weights
-    )
+    try:
+        model.train_model(
+            epochs=conf.train.epochs, run_name=run_name + "_" + "TEST", weights=weights
+        )
+    except KeyboardInterrupt:
+        pass
+    except:
+        logging.error("Exited with error ", exc_info=True)
     model.close()

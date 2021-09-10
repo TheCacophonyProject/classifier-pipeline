@@ -102,9 +102,10 @@ class DataGenerator(keras.utils.Sequence):
             self.epoch_queue.put("STOP")
             del self.train_queue
             self.train_queue = None
-            self.preloader_thread.join(20)
-            if self.preloader_thread.is_alive():
-                self.preloader_thread.kill()
+            if self.preloader_thread:
+                self.preloader_thread.join(20)
+                if self.preloader_thread.is_alive():
+                    self.preloader_thread.kill()
 
     def get_epoch_labels(self, epoch=-1):
         return self.epoch_labels[epoch]
@@ -485,10 +486,7 @@ def preloader(
     epoch = 0
 
     # this does the data pre processing
-    p_list = []
-    processes = 1
-    if name == "train":
-        processes = 2
+    processes = 8
 
     preload_amount = max(1, params.maximum_preload)
     max_jobs = max(1, 4 * preload_amount // 5)
@@ -610,10 +608,14 @@ def init_process(l, p, map):
 def process_batch(arguments):
     # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
     # try:
-
+    init_logging()
     global labels, params, label_mapping
     segments, segment_data = arguments
-    preprocessed = loadbatch(labels, segments, segment_data, params, label_mapping)
+    try:
+        preprocessed = loadbatch(labels, segments, segment_data, params, label_mapping)
+    except:
+        logging.error("Error processing batch ", exc_info=True)
+        return None
     return preprocessed
 
 

@@ -26,7 +26,7 @@ from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
 import gc
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 tf_device = "/gpu:1"
 
 
@@ -395,7 +395,7 @@ class KerasModel:
             cap_at="bird",
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
-            maximum_preload=200,
+            maximum_preload=self.params.maximum_train_preload,
             preload=True,
             lazy_load=True,
             **self.params,
