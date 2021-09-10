@@ -572,6 +572,8 @@ def preloader(
                 logging.info("%s preloader loaded epoch %s batches", name, epoch)
                 pool.close()
                 pool.join()
+                logging.info("%s preloader processed epoch %s batches", name, epoch)
+
             except Exception as inst:
                 logging.error(
                     "%s preloader epoch %s error %s", name, epoch, inst, exc_info=True
