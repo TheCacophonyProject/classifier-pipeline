@@ -486,10 +486,11 @@ def preloader(
     epoch = 0
 
     # this does the data pre processing
-    processes = 8
+    processes = 16
 
-    preload_amount = max(1, params.maximum_preload)
-    max_jobs = max(1, 4 * preload_amount // 5)
+    preload_amount = max(1, params.maximum_preload // 2)
+    max_jobs = max(1, preload_amount)
+
     while True:
         with multiprocessing.get_context("spawn").Pool(
             processes,
@@ -545,6 +546,8 @@ def preloader(
                     )
                     chunk_size = max(100, len(batch_data) // (2 * processes))
                     data = []
+                    assert len(next_load) == len(batch_data)
+                    new_jobs = 0
                     for batch_i, segments in enumerate(batch_data):
                         start = time.time()
                         segment_data = [None] * len(segments)
@@ -556,20 +559,24 @@ def preloader(
                         if len(data) > chunk_size or batch_i == (len(batch_data) - 1):
                             pool.map_async(process_batch, data, callback=processed_data)
                             jobs += len(data)
+                            new_jobs += len(data)
                             data = []
                     del batch_data
                     del track_frames
                     del batches[:preload_amount]
                     gc.collect()
                     logging.debug(
-                        "%s preloader loaded  up to %s",
+                        "%s preloader loaded up to %s new jobs %s",
                         name,
                         loaded_up_to,
+                        new_jobs,
                     )
                     total += 1
                 del batches
                 gc.collect()
-                logging.info("%s preloader loaded epoch %s batches", name, epoch)
+                logging.info(
+                    "%s preloader loaded epoch %s batches %s", name, epoch, jobs
+                )
                 pool.close()
                 pool.join()
                 logging.info("%s preloader processed epoch %s batches", name, epoch)
@@ -589,9 +596,9 @@ def processed_data(results):
             1,
             f"train_queue-process_batches",
         )
-        del result
+        # del result
     jobs -= len(results)
-    del results
+    # del results
 
 
 LOG_EVERY = 25
