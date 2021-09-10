@@ -100,7 +100,10 @@ class TrackPrediction:
 
     def normalize_score(self):
         # normalize so it sums to 1
-        self.class_best_score = self.class_best_score / np.sum(self.class_best_score)
+        if self.class_best_score is not None:
+            self.class_best_score = self.class_best_score / np.sum(
+                self.class_best_score
+            )
 
     def classified_frames(self, frame_numbers, prediction, mass):
         self.num_frames_classified += len(frame_numbers)
