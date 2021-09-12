@@ -28,6 +28,7 @@ class Frame:
     scaled_thermal = attr.ib(default=None)
     ffc_affected = attr.ib(default=False)
     region = attr.ib(default=None)
+    frame_temp_median = attr.ib(default=None)
 
     def get_channel(self, channel):
         if channel == TrackChannels.thermal:

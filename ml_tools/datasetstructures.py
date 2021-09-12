@@ -86,23 +86,25 @@ class NumpyMeta:
                 original=False,
             )
             index = 0
-            track_info["frames"] = {}
-            for frame in frames:
-                track_info["frames"][frame.frame_number] = index
-                index += 1
+            track_info["start_frame"] = track.start_frame
 
             track_frames = np.arange(track.num_frames) + track.start_frame
-            data_frames = track_info["frames"].keys()
+            data_frames = [frame.frame_number for frame in frames]
             skipped = [f_i for f_i in track_frames if f_i not in data_frames]
             track.skipped_frames = np.uint16(skipped)
             track_info["data"] = self.f.tell()
-            thermals = np.empty(len(frames), dtype=object)
-            filtered = np.empty(len(frames), dtype=object)
+            thermals = np.empty(track.num_frames, dtype=object)
+            filtered = np.empty(track.num_frames, dtype=object)
 
-            for i, frame in enumerate(frames):
-                thermals[i] = frame.thermal
-                filtered[i] = frame.thermal - frame.region.subimage(background)
+            for frame in frames:
+                thermals[frame.frame_number - track.start_frame] = frame.thermal
+                filtered[
+                    frame.frame_number - track.start_frame
+                ] = frame.thermal - frame.region.subimage(background)
+
             data = np.stack((thermals, filtered))
+            np.save(self.f, data, allow_pickle=True)
+            data = np.stack((track.regions, track.frame_temp_median))
             np.save(self.f, data, allow_pickle=True)
 
         except:

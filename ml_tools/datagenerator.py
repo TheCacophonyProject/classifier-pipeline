@@ -188,7 +188,11 @@ class DataGenerator(keras.utils.Sequence):
             cap_at=self.cap_at,
             label_cap=self.label_cap,
         )
-        self.samples = np.uint32([sample.id for sample in self.samples])
+        # self.samples = np.uint32([sample.id for sample in self.samples])
+        self.samples = [
+            (sample.id, sample.label, sample.unique_track_id, sample.frame_indices)
+            for sample in self.samples
+        ]
 
         if self.shuffle:
             np.random.shuffle(self.samples)
@@ -221,8 +225,6 @@ class DataGenerator(keras.utils.Sequence):
                 self.epoch_queue,
                 self.labels,
                 self.dataset.name,
-                self.dataset.db,
-                self.dataset.segments_by_id,
                 self.params,
                 self.dataset.label_mapping,
                 self.dataset.numpy_data,
@@ -274,8 +276,8 @@ class DataGenerator(keras.utils.Sequence):
         return Counter(labels)
 
 
-def loadbatch(labels, segments, data, params, mapped_labels):
-    X, y, y_orig = _data(labels, segments, data, params, mapped_labels)
+def loadbatch(labels, data, params, mapped_labels):
+    X, y, y_orig = _data(labels, data, params, mapped_labels)
     return X, y, y_orig
 
 
@@ -291,33 +293,26 @@ def get_cached_frames(db, sample):
     return frames
 
 
-def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
+def _data(labels, data, params, mapped_labels, to_categorical=True):
     "Generates data containing batch_size samples"
     # Initialization
     start = time.time()
     X = np.empty(
         (
-            len(samples),
+            len(data),
             *params.output_dim,
         )
     )
-    y = np.empty((len(samples)), dtype=int)
+    y = np.empty((len(data)), dtype=int)
     data_i = 0
     y_original = []
     mvm = []
-    for sample, frame_data in zip(samples, data):
-        label = mapped_labels[sample.label]
+    for label_original, frame_data in data:
+        label = mapped_labels[label_original]
         if label not in labels:
             continue
         if params.use_segments:
-            if len(frame_data) != len(sample.frame_temp_median):
-                logging.warn(
-                    "Missing data for sample %s has %s frames while %s frame temps",
-                    sample,
-                    len(frame_data),
-                    len(sample.frame_temp_median),
-                )
-                continue
+            temps = [frame.frame_temp_median for frame in frame_data]
             data = preprocess_movement(
                 frame_data,
                 params.square_width,
@@ -327,12 +322,10 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
                 blue_type=params.blue_type,
                 preprocess_fn=params.model_preprocess,
                 augment=params.augment,
-                reference_level=sample.frame_temp_median,
-                sample=sample,
+                reference_level=temps,
+                sample="test",
                 keep_edge=params.keep_edge,
             )
-            if data is not None:
-                mvm.append(sample.movement_data)
         else:
             data = preprocess_frame(
                 frame_data[0],
@@ -346,7 +339,7 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
             )
         if data is None:
             continue
-        y_original.append(sample.label)
+        y_original.append(label_original)
         X[data_i] = data
         y[data_i] = labels.index(label)
         data_i += 1
@@ -365,37 +358,45 @@ def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
     return np.array(X), y, y_original
 
 
-def load_from_numpy(numpy_meta, frames_by_track, tracks, name):
+def load_from_numpy(numpy_meta, tracks, name):
     start = time.time()
     count = 0
     track_is = 0
     prev = 0
     seek = 0
+    segment_db = {}
     try:
         with numpy_meta as f:
-            for _, frame_indices, u_id, regions_by_frames in tracks:
+            for _, segments, u_id in tracks:
                 numpy_info = numpy_meta.track_info[u_id]
-                frames_to_i = numpy_info["frames"]
-                track_data = frames_by_track.setdefault(u_id, {})
                 track_is = u_id
+                start_frame = numpy_info["start_frame"]
+
                 seek = numpy_info["data"]
                 f.seek(numpy_info["data"])
                 frames = np.load(f, allow_pickle=True)
+                meta = np.load(f, allow_pickle=True)
                 thermals = frames[0]
                 filtered = frames[1]
-                for frame_i in frame_indices:
-                    count += 1
-                    thermal = thermals[frames_to_i[frame_i]]
-                    filter = filtered[frames_to_i[frame_i]]
-                    frame = Frame.from_channels(
-                        [thermal, filter],
-                        [TrackChannels.thermal, TrackChannels.filtered],
-                        frame_i,
-                        flow_clipped=True,
-                    )
-                    track_data[frame_i] = frame
-                    frame.region = regions_by_frames[frame_i]
-                prev = u_id
+                for id, segment_frames in segments:
+                    segment_data = np.empty(len(segment_frames), dtype=object)
+                    segment_db[id] = segment_data
+
+                    for i, frame_i in enumerate(segment_frames):
+                        relative_f = frame_i - start_frame
+                        count += 1
+                        thermal = thermals[relative_f]
+                        filter = filtered[relative_f]
+                        frame = Frame.from_channels(
+                            [thermal, filter],
+                            [TrackChannels.thermal, TrackChannels.filtered],
+                            frame_i,
+                            flow_clipped=True,
+                        )
+                        frame.region = meta[0][relative_f]
+                        frame.frame_temp_median = meta[1][relative_f]
+                        segment_data[i] = frame
+
             logging.debug(
                 "%s time to load %s frames %s",
                 name,
@@ -411,13 +412,12 @@ def load_from_numpy(numpy_meta, frames_by_track, tracks, name):
             prev,
             exc_info=True,
         )
-    return frames_by_track
+    return segment_db
 
 
 def load_batch_frames(
     numpy_meta,
-    batches_by_id,
-    segments_by_id,
+    batches,
     name,
 ):
     track_frames = {}
@@ -425,34 +425,26 @@ def load_batch_frames(
     # returns loaded batches as segments
     all_batches = []
     data_by_track = {}
-    for batch in batches_by_id:
-        batch_segments = []
-        for s_id in batch:
-            segment = segments_by_id[s_id]
-            batch_segments.append(segment)
+    for batch in batches:
+        for s_id, label, track_id, frames in batch:
             track_segments = data_by_track.setdefault(
-                segment.unique_track_id,
+                track_id,
                 (
-                    numpy_meta.track_info[segment.unique_track_id]["data"],
+                    numpy_meta.track_info[track_id]["data"],
                     [],
-                    segment.unique_track_id,
-                    {},
+                    track_id,
                 ),
             )
-            regions_by_frames = track_segments[3]
-            for region in segment.track_bounds:
-                regions_by_frames[region.frame_number] = region
-            track_segments[1].extend(segment.frame_indices)
-        all_batches.append(batch_segments)
+            track_segments[1].append((s_id, frames))
     # sort by position in file
     track_segments = sorted(
         data_by_track.values(),
         key=lambda track_segment: track_segment[0],
     )
     logging.debug("%s loading tracks from numpy file", name)
-    load_from_numpy(numpy_meta, track_frames, track_segments, name)
+    segment_db = load_from_numpy(numpy_meta, track_segments, name)
 
-    return all_batches, track_frames
+    return segment_db
 
 
 train_queue = None
@@ -465,8 +457,6 @@ def preloader(
     epoch_queue,
     labels,
     name,
-    db,
-    segments_by_id,
     params,
     label_mapping,
     numpy_meta,
@@ -486,7 +476,7 @@ def preloader(
     epoch = 0
 
     # this does the data pre processing
-    processes = 16
+    processes = 8
 
     preload_amount = max(1, params.maximum_preload // 2)
     max_jobs = max(1, preload_amount)
@@ -538,31 +528,25 @@ def preloader(
                     )
                     loaded_up_to = loaded_up_to + len(next_load)
 
-                    batch_data, track_frames = load_batch_frames(
+                    segment_db = load_batch_frames(
                         numpy_meta,
                         next_load,
-                        segments_by_id,
                         name,
                     )
-                    chunk_size = max(100, len(batch_data) // (2 * processes))
+                    # chunk_size = max(100, len(next_load) // (2 * processes))
                     data = []
-                    assert len(next_load) == len(batch_data)
                     new_jobs = 0
-                    for batch_i, segments in enumerate(batch_data):
+                    for batch_i, segments in enumerate(next_load):
                         start = time.time()
                         segment_data = [None] * len(segments)
                         for i, seg in enumerate(segments):
-                            frame_data = get_cached_frames(track_frames, seg)
-                            segment_data[i] = frame_data
-                        data.append((segments, segment_data))
-                        batch_data[batch_i] = None
-                        if len(data) > chunk_size or batch_i == (len(batch_data) - 1):
-                            pool.map_async(process_batch, data, callback=processed_data)
-                            jobs += len(data)
-                            new_jobs += len(data)
-                            data = []
-                    del batch_data
-                    del track_frames
+                            segment_data[i] = (seg[1], segment_db[seg[0]])
+                        data.append(segment_data)
+                        # if len(data) > chunk_size or batch_i == (len(next_load) - 1):
+                    pool.map_async(process_batch, data, callback=processed_data)
+                    jobs += len(data)
+                    new_jobs += len(data)
+                    data = []
                     del batches[:preload_amount]
                     gc.collect()
                     logging.debug(
@@ -573,14 +557,14 @@ def preloader(
                     )
                     total += 1
                 del batches
-                gc.collect()
+                # gc.collect()
                 logging.info(
                     "%s preloader loaded epoch %s batches %s", name, epoch, jobs
                 )
                 pool.close()
                 pool.join()
                 logging.info("%s preloader processed epoch %s batches", name, epoch)
-
+                # break
             except Exception as inst:
                 logging.error(
                     "%s preloader epoch %s error %s", name, epoch, inst, exc_info=True
@@ -614,14 +598,13 @@ def init_process(l, p, map):
     label_mapping = map
 
 
-def process_batch(arguments):
+def process_batch(segment_data):
     # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
     # try:
     init_logging()
     global labels, params, label_mapping
-    segments, segment_data = arguments
     try:
-        preprocessed = loadbatch(labels, segments, segment_data, params, label_mapping)
+        preprocessed = loadbatch(labels, segment_data, params, label_mapping)
     except:
         logging.error("Error processing batch ", exc_info=True)
         return None

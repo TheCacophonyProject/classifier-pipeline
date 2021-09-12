@@ -210,16 +210,19 @@ def preprocess_frame(
     data[:, :, 1] = filtered
     data[:, :, 2] = filtered
     # for testing
-    # tools.saveclassify_image(
-    #     data,
-    #     f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
-    # )
+    tools.saveclassify_image(
+        data,
+        f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
+    )
 
     # preprocess expects values in range 0-255
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)
     return data
+
+
+# index = 1
 
 
 def preprocess_movement(
@@ -291,10 +294,12 @@ def preprocess_movement(
     data = np.stack(
         (frame_types[red_type], frame_types[green_type], frame_types[blue_type]), axis=2
     )
-    # for testing
+    # global index
+    # index += 1
+    # # for testing
     # tools.saveclassify_image(
     #     data,
-    #     f"samples/{sample}",
+    #     f"samples/{index}",
     # )
     if preprocess_fn:
         data = data * 255
