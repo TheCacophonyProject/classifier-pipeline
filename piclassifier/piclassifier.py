@@ -417,7 +417,7 @@ class PiClassifier(Processor):
 
     def end_clip(self):
         if self.clip:
-            self.track_extractor.filter_tracks(self.clip)
+            self.track_extractor.apply_track_filtering(self.clip)
             for _, prediction in self.predictions.prediction_per_track.items():
                 if prediction.max_score:
                     logging.info(

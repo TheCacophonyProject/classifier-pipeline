@@ -78,8 +78,8 @@ class SlidingWindow:
 
 class MotionDetector(Processor):
     FFC_PERIOD = timedelta(seconds=9.9)
-    BACKGROUND_WEIGHTING_PER_FRAME = 0.99
-    BACKGROUND_WEIGHT_EVERY = 3
+    BACKGROUND_WEIGHT_EVERY = 100
+    BACKGROUND_WEIGHT_ADD = 0.1
 
     def __init__(self, thermal_config, dynamic_thresh, recorder, headers):
         self.rec_time = 0
@@ -112,7 +112,7 @@ class MotionDetector(Processor):
         self.background_weight = np.zeros(
             (headers.res_y - edge * 2, headers.res_x - edge * 2)
         )
-        self.background_weight[:, :] = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
+        self.background_weight[:, :] = 0
         self.movement_detected = False
         self.dynamic_thresh = dynamic_thresh
         self.temp_thresh = self.config.temp_thresh
@@ -142,32 +142,22 @@ class MotionDetector(Processor):
         if self.dynamic_thresh:
             temp_changed = False
             new_background = np.where(
-                edgeless_back < cropped_thermal * self.background_weight,
+                edgeless_back < cropped_thermal - self.background_weight,
                 edgeless_back,
                 cropped_thermal,
             )
-            multiply = 1
-            if self.processed % MotionDetector.BACKGROUND_WEIGHT_EVERY == 0:
-                multiply = MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME
+
             self.background_weight = np.where(
-                edgeless_back < cropped_thermal * self.background_weight,
-                self.background_weight * multiply,
-                MotionDetector.BACKGROUND_WEIGHTING_PER_FRAME,
+                edgeless_back < cropped_thermal - self.background_weight,
+                self.background_weight + MotionDetector.BACKGROUND_WEIGHT_ADD,
+                0,
             )
 
             back_changed = new_background != edgeless_back
             back_changed = np.any(back_changed == True)
-            # np.amax(self.background != new_background)
-            # logging.info(
-            #     "back change %s  the same as cropped themal %s out of %s",
-            #     len(back_changed),
-            #     len(new_background == cropped_thermal),
-            #     edgeless_back.size,
-            # )
             if back_changed:
                 self.last_background_change = self.processed
                 edgeless_back[:, :] = new_background
-
                 old_temp = self.temp_thresh
                 self.temp_thresh = int(round(np.average(edgeless_back)))
                 if self.temp_thresh != old_temp:
@@ -179,26 +169,6 @@ class MotionDetector(Processor):
                         )
                     )
                     temp_changed = True
-                # import matplotlib.pyplot as plt
-                #
-                # diff = cropped_thermal - edgeless_back
-                # diff = 255 * (diff - np.amin(diff)) / (np.amax(diff) - np.amin(diff))
-                # f, axarr = plt.subplots(2, 2)
-                # axarr[0, 0].imshow(edgeless_back)
-                # axarr[0, 1].imshow(cropped_thermal)
-                # axarr[1, 0].imshow(diff)
-                # plt.savefig(
-                #     "backgroundupdate{}-{}.png".format(time.time(), self.processed)
-                # )
-                # plt.clf()
-                # logging.debug(
-                #     "cropped less max %s min %s back max, %s min %s",
-                #     np.amax(cropped_thermal),
-                #     np.amin(cropped_thermal),
-                #     np.amax(edgeless_back),
-                #     np.amin(edgeless_back),
-                # )
-
         else:
             self.temp_thresh = self.config.temp_thresh
 
@@ -260,7 +230,6 @@ class MotionDetector(Processor):
 
     def process_frame(self, cptv_frame):
         if self.can_record() or (self.recorder and self.recorder.recording):
-
             cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
             test_crop = cropped_frame.copy()
             prev_ffc = self.ffc_affected
@@ -273,7 +242,6 @@ class MotionDetector(Processor):
                     self.last_background_change = self.processed
                 else:
                     self.calc_temp_thresh(cropped_frame)
-
             clipped_frame = np.clip(cropped_frame, a_min=self.temp_thresh, a_max=None)
             self.clipped_window.add(clipped_frame)
 

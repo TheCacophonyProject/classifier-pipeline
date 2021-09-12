@@ -97,11 +97,14 @@ def parse_cptv(cptv_file, config, thermal_config):
             frame_size=reader.x_resolution * reader.y_resolution * 2,
             pixel_bits=16,
         )
-        processor = get_processor(config, thermal_config, headers)
-        for frame in reader:
-            processor.process_frame(frame)
+        process_queue = multiprocessing.Queue()
 
-        processor.disconnected()
+        p = get_processor(process_queue, config, thermal_config, headers)
+        p.start()
+        for frame in reader:
+            process_queue.put(frame)
+        process_queue.put(STOP_SIGNAL)
+        p.join()
 
 
 def get_processor(process_queue, config, thermal_config, headers):
