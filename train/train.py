@@ -74,6 +74,9 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
         for segment in dataset.segments:
             segment.frame_temp_median = None
             segment.regions = None
+    import gc
+
+    gc.collect()
     try:
         model.train_model(
             epochs=conf.train.epochs, run_name=run_name + "_" + "TEST", weights=weights
