@@ -78,13 +78,14 @@ class SlidingWindow:
 
 class MotionDetector(Processor):
     FFC_PERIOD = timedelta(seconds=9.9)
-    BACKGROUND_WEIGHT_EVERY = 100
     BACKGROUND_WEIGHT_ADD = 0.1
 
     def __init__(self, thermal_config, dynamic_thresh, recorder, headers):
         self.rec_time = 0
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
+        if headers.model.lower() == "lepton3.5":
+            MotionDetector.BACKGROUND_WEIGHT_ADD = 1
         self.config = thermal_config.motion
         self.location_config = thermal_config.location
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
