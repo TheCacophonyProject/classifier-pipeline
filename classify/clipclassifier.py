@@ -26,7 +26,7 @@ class ClipClassifier:
     # skips every nth frame.  Speeds things up a little, but reduces prediction quality.
     FRAME_SKIP = 1
 
-    def __init__(self, config, model=None, cache_to_disk=None, resuse_frames=False):
+    def __init__(self, config, model=None):
         """Create an instance of a clip classifier"""
 
         self.config = config
@@ -36,18 +36,21 @@ class ClipClassifier:
 
         self.previewer = Previewer.create_if_required(config, config.classify.preview)
 
-        if cache_to_disk is None:
-            self.cache_to_disk = self.config.classify.cache_to_disk
-        else:
-            self.cache_to_disk = cache_to_disk
         self.high_quality_optical_flow = self.config.tracking.high_quality_optical_flow
-        self.resuse_frames = resuse_frames
+        self.models = {}
+
+    def load_models(self):
+        for model in self.config.classify.models:
+            classifier = self.get_classifier(model)
+            self.models[model.id] = classifier
 
     def get_classifier(self, model):
         """
         Returns a classifier object, which is created on demand.
         This means if the ClipClassifier is copied to a new process a new Classifier instance will be created.
         """
+        if model.id in self.models:
+            return self.models[model.id]
         logging.info("classifier loading")
         classifier = KerasModel(self.config.train)
         classifier.load_model(model.model_file, weights=model.model_weights)
@@ -82,23 +85,26 @@ class ClipClassifier:
         else:
             return None
 
-    def process(self, source):
+    def process(self, source, cache=None, resuse_frames=None):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
         if os.path.splitext(source)[1] == ".cptv":
-            self.process_file(source)
+            self.process_file(source, cache=cache, resuse_frames=resuse_frames)
             return
         for folder_path, _, files in os.walk(source):
             for name in files:
                 if os.path.splitext(name)[1] == ".cptv":
                     full_path = os.path.join(folder_path, name)
-                    self.process_file(full_path)
+                    self.process_file(
+                        full_path, cache=cache, resuse_frames=resuse_frames
+                    )
 
-    def process_file(self, filename):
+    def process_file(self, filename, cache=None, resuse_frames=None):
         """
         Process a file extracting tracks and identifying them.
         :param filename: filename to process
         :param enable_preview: if true an MPEG preview file is created.
         """
+
         base_filename = os.path.splitext(os.path.basename(filename))[0]
         meta_file = os.path.join(os.path.dirname(filename), base_filename + ".txt")
         if not os.path.exists(filename):
@@ -107,12 +113,14 @@ class ClipClassifier:
             raise Exception("File {} not found.".format(meta_file))
         meta_data = tools.load_clip_metadata(meta_file)
         logging.info("Processing file '{}'".format(filename))
-
+        cache_to_disk = (
+            cache if cache is not None else self.config.classify.cache_to_disk
+        )
         start = time.time()
         clip = Clip(self.config.tracking, filename)
         clip.set_frame_buffer(
             self.high_quality_optical_flow,
-            self.cache_to_disk,
+            cache_to_disk,
             self.config.use_opt_flow,
             True,
         )
@@ -136,11 +144,15 @@ class ClipClassifier:
                 )
         predictions_per_model = {}
         if self.model:
-            prediction = self.classify_clip(clip, self.model, meta_data)
+            prediction = self.classify_clip(
+                clip, self.model, meta_data, resuse_frames=resuse_frames
+            )
             predictions_per_model[self.model.id] = prediction
         else:
             for model in self.config.classify.models:
-                prediction = self.classify_clip(clip, model, meta_data)
+                prediction = self.classify_clip(
+                    clip, model, meta_data, resuse_frames=resuse_frames
+                )
                 predictions_per_model[model.id] = prediction
 
         if self.previewer:
@@ -154,13 +166,16 @@ class ClipClassifier:
             )
         logging.info("saving meta data %s", meta_file)
         models = [self.model] if self.model else self.config.classify.models
-        self.save_metadata(
+        meta_data = self.save_metadata(
             meta_data,
             meta_file,
             clip,
             predictions_per_model,
             models,
         )
+        if cache_to_disk:
+            clip.frame_buffer.remove_cache()
+        return meta_data
 
     #
     # def classify_file(self, filename):
@@ -209,7 +224,8 @@ class ClipClassifier:
     #             predictions_per_model[model.id] = prediction
     #     return clip, predictions_per_model, metadata
 
-    def classify_clip(self, clip, model, meta_data):
+    def classify_clip(self, clip, model, meta_data, resuse_frames=None):
+        start = time.time()
         load_start = time.time()
         classifier = self.get_classifier(model)
         load_time = time.time() - load_start
@@ -218,7 +234,7 @@ class ClipClassifier:
         predictions.model_load_time = load_time
         for i, track in enumerate(clip.tracks):
             segment_frames = None
-            if self.resuse_frames:
+            if resuse_frames:
                 tracks = meta_data.get("tracks")
                 meta_track = next(
                     (x for x in tracks if x["id"] == track.get_id()), None
@@ -295,5 +311,4 @@ class ClipClassifier:
         else:
             with open(meta_filename, "w") as f:
                 json.dump(meta_data, f, indent=4, cls=tools.CustomJSONEncoder)
-        if self.cache_to_disk:
-            clip.frame_buffer.remove_cache()
+        return meta_data

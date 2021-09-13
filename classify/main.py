@@ -94,10 +94,12 @@ def main():
     clip_classifier = ClipClassifier(
         config,
         model,
+    )
+    clip_classifier.process(
+        args.source,
         cache_to_disk=args.cache,
         resuse_frames=args.reuse_prediction_frames,
     )
-    clip_classifier.process(args.source)
 
 
 if __name__ == "__main__":
