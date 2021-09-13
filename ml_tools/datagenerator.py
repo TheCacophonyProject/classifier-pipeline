@@ -447,13 +447,8 @@ def load_batch_frames(
     return segment_db
 
 
-train_queue = None
-
-jobs = 0
-
-
 def preloader(
-    q,
+    train_queue,
     epoch_queue,
     labels,
     name,
@@ -461,8 +456,6 @@ def preloader(
     label_mapping,
     numpy_meta,
 ):
-    global train_queue, jobs
-    train_queue = q
     init_logging()
     """add a segment into buffer"""
     logging.info(
@@ -541,16 +534,17 @@ def preloader(
                     maxtasksperchild=30,
                 ) as pool:
                     results = pool.map(process_batch, data)
-                processed_data(results)
-                results = []
-                data = []
                 del data
+                del segment_db
                 del batches[:preload_amount]
+                del next_load
+                del segment_data
+                processed_data(train_queue, results)
+                results = None
                 logging.debug(
-                    "%s preloader loaded up to %s new jobs %s",
+                    "%s preloader loaded up to %s",
                     name,
                     loaded_up_to,
-                    new_jobs,
                 )
                 total += 1
             del batches
@@ -565,8 +559,7 @@ def preloader(
             )
 
 
-def processed_data(results):
-    global jobs
+def processed_data(train_queue, results):
     for result in results:
         put_with_timeout(
             train_queue,
