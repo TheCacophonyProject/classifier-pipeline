@@ -514,10 +514,6 @@ def preloader(
                         name,
                         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
                     )
-
-                    while jobs > max_jobs:
-                        logging.debug("%s waiting for jobs to complete %s", name, jobs)
-                        time.sleep(5)
                     next_load = batches[:preload_amount]
 
                     logging.debug(
@@ -543,12 +539,11 @@ def preloader(
                             segment_data[i] = (seg[1], segment_db[seg[0]])
                         data.append(segment_data)
                         # if len(data) > chunk_size or batch_i == (len(next_load) - 1):
-                    pool.map_async(process_batch, data, callback=processed_data)
-                    jobs += len(data)
-                    new_jobs += len(data)
+                    results = pool.map(process_batch, data)
+                    processed_data(results)
                     data = []
+                    del data
                     del batches[:preload_amount]
-                    gc.collect()
                     logging.debug(
                         "%s preloader loaded up to %s new jobs %s",
                         name,
@@ -581,7 +576,7 @@ def processed_data(results):
             f"train_queue-process_batches",
         )
         # del result
-    jobs -= len(results)
+    # jobs -= len(results)
     # del results
 
 
