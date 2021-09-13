@@ -152,20 +152,18 @@ class DataGenerator(keras.utils.Sequence):
             batch_segments = [
                 self.samples[index * self.batch_size : (index + 1) * self.batch_size]
             ]
-            segments, track_frames = load_batch_frames(
+            segment_db = load_batch_frames(
                 self.dataset.numpy_data,
                 batch_segments,
-                self.dataset.segments_by_id,
                 self.dataset.name,
             )
-            segments = segments[0]
-            segment_data = []
-            for seg in segments:
-                frame_data = get_cached_frames(track_frames, seg)
-                segment_data.append(frame_data)
+            batch_segments = batch_segments[0]
+            segment_data = [None] * len(batch_segments)
+            for i, seg in enumerate(batch_segments):
+                segment_data[i] = (seg[1], segment_db[seg[0]])
+
             return loadbatch(
                 self.labels,
-                segments,
                 segment_data,
                 self.params,
                 self.dataset.label_mapping,
