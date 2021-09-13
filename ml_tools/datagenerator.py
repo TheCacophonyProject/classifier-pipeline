@@ -138,6 +138,9 @@ class DataGenerator(keras.utils.Sequence):
             if index == 0:
                 self.epoch_data.append((X, y))
             self.epoch_labels[self.cur_epoch].extend(y_original)
+        if np.isnan(np.sum(X)) or np.isnan(np.sum(y)):
+            logging.error("Got nan in batch %s", index)
+            return [[]], [[]]
         return X, y
 
     def get_item(self, index):
@@ -160,7 +163,7 @@ class DataGenerator(keras.utils.Sequence):
             batch_segments = batch_segments[0]
             segment_data = [None] * len(batch_segments)
             for i, seg in enumerate(batch_segments):
-                segment_data[i] = (seg[1], segment_db[seg[0]])
+                segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
 
             return loadbatch(
                 self.labels,
@@ -305,7 +308,7 @@ def _data(labels, data, params, mapped_labels, to_categorical=True):
     data_i = 0
     y_original = []
     mvm = []
-    for label_original, frame_data in data:
+    for label_original, u_id, frame_data in data:
         label = mapped_labels[label_original]
         if label not in labels:
             continue
@@ -340,6 +343,18 @@ def _data(labels, data, params, mapped_labels, to_categorical=True):
         y_original.append(label_original)
         X[data_i] = data
         y[data_i] = labels.index(label)
+        if np.isnan(np.sum(data)) or labels.index(label) is None:
+            logging.warn(
+                "Nan in data for %s", u_id, [frame.frame_number for frame in frame_data]
+            )
+            continue
+        if np.amin(data) < -1 or np.amax(data) > 1:
+            logging.warn(
+                "Data out of bounds for %s %s",
+                u_id,
+                [frame.frame_number for frame in frame_data],
+            )
+            continue
         data_i += 1
     # remove data that was null
     X = X[:data_i]
