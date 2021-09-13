@@ -482,88 +482,87 @@ def preloader(
     max_jobs = max(1, int(preload_amount * 4 / 5))
 
     while True:
-        with multiprocessing.get_context("spawn").Pool(
-            processes,
-            init_process,
-            (labels, params, label_mapping),
-            maxtasksperchild=30,
-        ) as pool:
-            item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
-            if item == "STOP":
-                logging.info("%s preloader received stop", name)
-                pool.terminate()
-                return
-            try:
-                epoch, batches = item
-                count = 0
 
+        item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
+        if item == "STOP":
+            logging.info("%s preloader received stop", name)
+            pool.terminate()
+            return
+        try:
+            epoch, batches = item
+            count = 0
+
+            logging.debug(
+                "%s preloader got %s batches for epoch %s mem %s",
+                name,
+                len(batches),
+                epoch,
+                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            )
+            total = 0
+
+            # Once process_batch starts to back up
+            loaded_up_to = 0
+            while len(batches) > 0:
                 logging.debug(
-                    "%s preloader got %s batches for epoch %s mem %s",
+                    "%s preloader memory %s",
                     name,
-                    len(batches),
-                    epoch,
                     psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
                 )
-                total = 0
+                next_load = batches[:preload_amount]
 
-                # Once process_batch starts to back up
-                loaded_up_to = 0
-                while len(batches) > 0:
-                    logging.debug(
-                        "%s preloader memory %s",
-                        name,
-                        psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-                    )
-                    next_load = batches[:preload_amount]
+                logging.debug(
+                    "%s preloader loading %s - %s ",
+                    name,
+                    loaded_up_to,
+                    loaded_up_to + len(next_load),
+                )
+                loaded_up_to = loaded_up_to + len(next_load)
 
-                    logging.debug(
-                        "%s preloader loading %s - %s ",
-                        name,
-                        loaded_up_to,
-                        loaded_up_to + len(next_load),
-                    )
-                    loaded_up_to = loaded_up_to + len(next_load)
-
-                    segment_db = load_batch_frames(
-                        numpy_meta,
-                        next_load,
-                        name,
-                    )
-                    # chunk_size = max(100, len(next_load) // (2 * processes))
-                    data = []
-                    new_jobs = 0
-                    for batch_i, segments in enumerate(next_load):
-                        start = time.time()
-                        segment_data = [None] * len(segments)
-                        for i, seg in enumerate(segments):
-                            segment_data[i] = (seg[1], segment_db[seg[0]])
-                        data.append(segment_data)
-                        # if len(data) > chunk_size or batch_i == (len(next_load) - 1):
+                segment_db = load_batch_frames(
+                    numpy_meta,
+                    next_load,
+                    name,
+                )
+                # chunk_size = max(100, len(next_load) // (2 * processes))
+                data = []
+                new_jobs = 0
+                for batch_i, segments in enumerate(next_load):
+                    start = time.time()
+                    segment_data = [None] * len(segments)
+                    for i, seg in enumerate(segments):
+                        segment_data[i] = (seg[1], segment_db[seg[0]])
+                    data.append(segment_data)
+                    # if len(data) > chunk_size or batch_i == (len(next_load) - 1):
+                with multiprocessing.get_context("spawn").Pool(
+                    processes,
+                    init_process,
+                    (labels, params, label_mapping),
+                    maxtasksperchild=30,
+                ) as pool:
                     results = pool.map(process_batch, data)
-                    processed_data(results)
-                    data = []
-                    del data
-                    del batches[:preload_amount]
-                    logging.debug(
-                        "%s preloader loaded up to %s new jobs %s",
-                        name,
-                        loaded_up_to,
-                        new_jobs,
-                    )
-                    total += 1
-                del batches
-                # gc.collect()
-                logging.info(
-                    "%s preloader loaded epoch %s batches %s", name, epoch, jobs
+                processed_data(results)
+                results = []
+                data = []
+                del data
+                del batches[:preload_amount]
+                logging.debug(
+                    "%s preloader loaded up to %s new jobs %s",
+                    name,
+                    loaded_up_to,
+                    new_jobs,
                 )
-                pool.close()
-                pool.join()
-                logging.info("%s preloader processed epoch %s batches", name, epoch)
-                # break
-            except Exception as inst:
-                logging.error(
-                    "%s preloader epoch %s error %s", name, epoch, inst, exc_info=True
-                )
+                total += 1
+            del batches
+            # gc.collect()
+            logging.info("%s preloader loaded epoch %s batches %s", name, epoch, jobs)
+
+            logging.info("%s preloader processed epoch %s batches", name, epoch)
+            # break
+        except Exception as inst:
+            logging.error(
+                "%s preloader epoch %s error %s", name, epoch, inst, exc_info=True
+            )
 
 
 def processed_data(results):
