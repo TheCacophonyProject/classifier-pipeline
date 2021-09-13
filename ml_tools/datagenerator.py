@@ -478,8 +478,8 @@ def preloader(
     # this does the data pre processing
     processes = 8
 
-    preload_amount = max(1, params.maximum_preload // 2)
-    max_jobs = max(1, preload_amount)
+    preload_amount = max(1, params.maximum_preload)
+    max_jobs = max(1, int(preload_amount * 4 / 5))
 
     while True:
         with multiprocessing.get_context("spawn").Pool(
