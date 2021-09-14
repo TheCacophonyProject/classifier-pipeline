@@ -97,8 +97,8 @@ def main():
     )
     clip_classifier.process(
         args.source,
-        cache_to_disk=args.cache,
-        resuse_frames=args.reuse_prediction_frames,
+        cache=args.cache,
+        reuse_frames=args.reuse_prediction_frames,
     )
 
 
