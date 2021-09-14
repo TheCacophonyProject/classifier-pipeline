@@ -24,6 +24,8 @@ build:
   #  in test set
   test_clips_folder: testset
 classify:
+  # socket used for classifier service
+  service_socket: "/etc/cacophony/classifier"
   #cache buffer frame to disk reducing memory usage
   cache_to_disk: false
   # Writes metadata to standard out instead of a file with extension .txt

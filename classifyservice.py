@@ -1,13 +1,13 @@
-SOCKET_NAME = "/var/run/classifier"
 import threading
 import socket
 from config.config import Config
 from ml_tools.logs import init_logging
 from classify.clipclassifier import ClipClassifier
-import pickle
 import logging
 import os
 import argparse
+import json
+from ml_tools.tools import CustomJSONEncoder
 
 
 def parse_args():
@@ -30,6 +30,9 @@ def main():
         except KeyboardInterrupt:
             logging.info("Keyboard interupt closing down")
             break
+        except PermissionError:
+            logging.error("Error with permissions", exc_info=True)
+            break
         except:
             logging.error("Error with service restarting", exc_info=True)
 
@@ -41,21 +44,24 @@ class ClassifyService:
         self.clip_classifier = ClipClassifier(
             config,
         )
-        self.clip_classifier.load_models()
 
     def run(self):
+        logging.info("Running on %s", self.config.classify.service_socket)
         max_jobs = 2
         try:
-            os.unlink(SOCKET_NAME)
+            os.unlink(self.config.classify.service_socket)
         except OSError:
-            if os.path.exists(SOCKET_NAME):
+            if os.path.exists(self.config.classify.service_socket):
                 raise
 
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.bind(SOCKET_NAME)
+        sock.bind(self.config.classify.service_socket)
         sock.listen(1)
+        self.clip_classifier.models = {}
+        self.clip_classifier.load_models()
+
         while True:
-            logging.info("waiting for a connection")
+            logging.info("waiting for jobs")
             connection, client_address = sock.accept()
             t = threading.Thread(
                 target=classify_job,
@@ -66,26 +72,36 @@ class ClassifyService:
 
 def classify_job(clip_classifier, clientsocket, addr):
     try:
-        job = read_all(clientsocket)
-        args = pickle.loads(job)
+        job = read_all(clientsocket).decode()
+        args = json.loads(job)
         if "file" not in args:
             logging.error("File name must be specified in argument dictionary")
+            clientsocket.send(
+                json.dumps(
+                    "File name must be specified in argument dictionary"
+                ).encode()
+            )
+            return
         logging.info("Classifying %s with cache? %s", args["file"], args)
         meta_data = clip_classifier.process_file(
             args["file"],
             cache=args.get("cache"),
-            resuse_frames=args.get("resuse_frames"),
+            reuse_frames=args.get("reuse_frames"),
         )
-        clientsocket.send(pickle.dumps(meta_data))
+        clientsocket.send(json.dumps(meta_data, cls=CustomJSONEncoder).encode())
 
-    except:
+    except BrokenPipeError:
         logging.error(
-            "Error sending metadata for job %s too %s", args[0], addr, exc_info=True
+            "Error sending metadata for job %s too %s",
+            args["file"],
+            addr,
+            exc_info=True,
         )
-    try:
-        clientsocket.close()
-    except:
-        pass
+    finally:
+        try:
+            clientsocket.close()
+        except:
+            pass
 
 
 def read_all(socket):

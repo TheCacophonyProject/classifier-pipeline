@@ -1,20 +1,22 @@
 SOCKET_NAME = "/var/run/classifier"
-import pickle
+import json
 import sys
 import socket
+from config.config import Config
 
 
 def main(cptv_file):
     print("clasisfying", cptv_file)
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    config = Config.load_from_file()
 
     try:
-        sock.connect(SOCKET_NAME)
-        data = {"file": cptv_file}
-        sock.send(pickle.dumps(data))
+        sock.connect(config.classify.service_socket)
+        data = {"file": cptv_file, "cache": True, "reuse_frames": False}
+        sock.send(json.dumps(data).encode())
 
-        results = read_all(sock)
-        meta_data = pickle.loads(results)
+        results = read_all(sock).decode()
+        meta_data = json.loads(str(results))
     except socket.error as msg:
         print(msg)
         sys.exit(1)

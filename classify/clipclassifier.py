@@ -85,20 +85,18 @@ class ClipClassifier:
         else:
             return None
 
-    def process(self, source, cache=None, resuse_frames=None):
+    def process(self, source, cache=None, reuse_frames=None):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
         if os.path.splitext(source)[1] == ".cptv":
-            self.process_file(source, cache=cache, resuse_frames=resuse_frames)
+            self.process_file(source, cache=cache, reuse_frames=reuse_frames)
             return
         for folder_path, _, files in os.walk(source):
             for name in files:
                 if os.path.splitext(name)[1] == ".cptv":
                     full_path = os.path.join(folder_path, name)
-                    self.process_file(
-                        full_path, cache=cache, resuse_frames=resuse_frames
-                    )
+                    self.process_file(full_path, cache=cache, reuse_frames=reuse_frames)
 
-    def process_file(self, filename, cache=None, resuse_frames=None):
+    def process_file(self, filename, cache=None, reuse_frames=None):
         """
         Process a file extracting tracks and identifying them.
         :param filename: filename to process
@@ -145,13 +143,13 @@ class ClipClassifier:
         predictions_per_model = {}
         if self.model:
             prediction = self.classify_clip(
-                clip, self.model, meta_data, resuse_frames=resuse_frames
+                clip, self.model, meta_data, reuse_frames=reuse_frames
             )
             predictions_per_model[self.model.id] = prediction
         else:
             for model in self.config.classify.models:
                 prediction = self.classify_clip(
-                    clip, model, meta_data, resuse_frames=resuse_frames
+                    clip, model, meta_data, reuse_frames=reuse_frames
                 )
                 predictions_per_model[model.id] = prediction
 
@@ -177,54 +175,7 @@ class ClipClassifier:
             clip.frame_buffer.remove_cache()
         return meta_data
 
-    #
-    # def classify_file(self, filename):
-    #     base_filename = os.path.splitext(os.path.basename(filename))[0]
-    #     meta_file = os.path.join(os.path.dirname(filename), base_filename + ".txt")
-    #     if not os.path.exists(filename):
-    #         raise Exception("File {} not found.".format(filename))
-    #     if not os.path.exists(meta_file):
-    #         raise Exception("File {} not found.".format(meta_file))
-    #     meta_data = tools.load_clip_metadata(meta_file)
-    #     logging.info("Processing file '{}'".format(filename))
-    #
-    #     start = time.time()
-    #     clip = Clip(self.config.tracking, filename)
-    #     clip.set_frame_buffer(
-    #         self.high_quality_optical_flow,
-    #         self.cache_to_disk,
-    #         self.config.use_opt_flow,
-    #         True,
-    #     )
-    #     clip.load_metadata(
-    #         meta_data,
-    #         self.config.load.tag_precedence,
-    #     )
-    #     frames = []
-    #     with open(clip.source_file, "rb") as f:
-    #         reader = CPTVReader(f)
-    #         clip.calculate_background(reader)
-    #         f.seek(0)
-    #         for frame in reader:
-    #             if frame.background_frame:
-    #                 continue
-    #             clip.set_res(reader.x_resolution, reader.y_resolution)
-    #             clip.add_frame(
-    #                 frame.pix,
-    #                 frame.pix - clip.background,
-    #                 ffc_affected=is_affected_by_ffc(frame),
-    #             )
-    #     predictions_per_model = {}
-    #     if self.model:
-    #         prediction = self.classify_clip(clip, self.model)
-    #         predictions_per_model[self.model.id] = prediction
-    #     else:
-    #         for model in self.config.classify.models:
-    #             prediction = self.classify_clip(clip, model)
-    #             predictions_per_model[model.id] = prediction
-    #     return clip, predictions_per_model, metadata
-
-    def classify_clip(self, clip, model, meta_data, resuse_frames=None):
+    def classify_clip(self, clip, model, meta_data, reuse_frames=None):
         start = time.time()
         load_start = time.time()
         classifier = self.get_classifier(model)
@@ -234,7 +185,7 @@ class ClipClassifier:
         predictions.model_load_time = load_time
         for i, track in enumerate(clip.tracks):
             segment_frames = None
-            if resuse_frames:
+            if reuse_frames:
                 tracks = meta_data.get("tracks")
                 meta_track = next(
                     (x for x in tracks if x["id"] == track.get_id()), None
@@ -246,6 +197,8 @@ class ClipClassifier:
                         None,
                     )
                     if previous_prediction is not None:
+                        logging.info("Reusing previous prediction frames %s", model)
+
                         segment_frames = previous_prediction.get("prediction_frames")
                         if segment_frames is not None:
                             segment_frames = np.uint16(segment_frames)
