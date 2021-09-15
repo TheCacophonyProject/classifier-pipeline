@@ -492,7 +492,6 @@ def preloader(
         item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
         if item == "STOP":
             logging.info("%s preloader received stop", name)
-            pool.terminate()
             return
         try:
             epoch, batches = item
@@ -537,7 +536,7 @@ def preloader(
                     start = time.time()
                     segment_data = [None] * len(segments)
                     for i, seg in enumerate(segments):
-                        segment_data[i] = (seg[1], segment_db[seg[0]])
+                        segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
                     data.append(segment_data)
                     # if len(data) > chunk_size or batch_i == (len(next_load) - 1):
                 with multiprocessing.get_context("spawn").Pool(
@@ -562,7 +561,7 @@ def preloader(
                 total += 1
             del batches
             # gc.collect()
-            logging.info("%s preloader loaded epoch %s batches %s", name, epoch, jobs)
+            logging.info("%s preloader loaded epoch %s batches", name, epoch)
 
             logging.info("%s preloader processed epoch %s batches", name, epoch)
             # break
