@@ -640,8 +640,9 @@ class KerasModel:
                 logging.warn("No frames to predict on")
                 continue
             output = self.model.predict(frames[np.newaxis, :])
+
             track_prediction.classified_frames(
-                segment.frame_indices, output[0], segment.mass
+                segment.frame_indices, output[0], max(1, segment.mass)
             )
         track_prediction.classify_time = time.time() - start
         track_prediction.normalize_score()

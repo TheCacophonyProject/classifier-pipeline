@@ -360,6 +360,8 @@ class TrackHeader:
         ):
             r = Region.region_from_array(bounds, np.uint16(f_i + track_start_frame))
             r.mass = np.uint16(mass)
+            if r.mass == 0:
+                r.blank = True
             regions[f_i] = r
             f_i += 1
         header = TrackHeader(
@@ -667,6 +669,7 @@ def get_segments(
     min_frames=None,
     skipped_frames=None,
     segment_frames=None,
+    ignore_mass=False,
 ):
     if min_frames is None:
         min_frames = 25
@@ -679,10 +682,11 @@ def get_segments(
         frame_indices = [
             region.frame_number
             for region in regions
-            if region.mass > 0
+            if (ignore_mass or region.mass > 0)
             and region.frame_number not in ffc_frames
             and (skipped_frames is None or region.frame_number not in skipped_frames)
         ]
+
         if segment_min_mass is not None:
             if len(frame_indices) > 0:
                 segment_min_mass = min(
@@ -729,7 +733,9 @@ def get_segments(
             segment_info = sorted_mass[0]
             index = segment_info[0]
             avg_mass = segment_info[1] / segment_width
-            if not best_mass and (avg_mass < lower_mass or avg_mass < segment_min_mass):
+            if not best_mass and (
+                ignore_mass or (avg_mass < lower_mass or avg_mass < segment_min_mass)
+            ):
                 break
             movement_data = get_movement_data(regions[index : index + segment_width])
             frames = np.arange(segment_width) + index
@@ -818,7 +824,11 @@ def get_segments(
             segment_mass = np.sum(mass_slice)
 
             segment_avg_mass = segment_mass / len(mass_slice)
-            if segment_min_mass and segment_avg_mass < segment_min_mass:
+            if (
+                not ignore_mass
+                and segment_min_mass
+                and segment_avg_mass < segment_min_mass
+            ):
                 filtered_stats["segment_mass"] += 1
                 continue
             if segment_avg_mass < 50:
