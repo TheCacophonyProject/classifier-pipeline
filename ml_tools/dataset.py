@@ -29,7 +29,7 @@ class SegmentType(Enum):
     TOP_SEQUENTIAL = 4
     ALL_RANDOM_SECTIONS = 5
     TOP_RANDOM = 6
-    ALL_RANDOM_NOMIN = 6
+    ALL_RANDOM_NOMIN = 7
 
 
 class Dataset:

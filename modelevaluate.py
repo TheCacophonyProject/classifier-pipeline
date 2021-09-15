@@ -18,6 +18,7 @@ from config.config import Config
 from ml_tools.kerasmodel import KerasModel
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
+from ml_tools.dataset import SegmentType
 
 
 def evaluate_db_clip(model, db, classifier, clip_id, track_id=None):
@@ -117,7 +118,7 @@ if args.track_id or args.clip_id:
 
 dataset = pickle.load(open(os.path.join(base_dir, args.dataset), "rb"))
 logging.info("running on %s ", dataset.name)
-dataset.recalculate_segments(segment_type=1)
+dataset.recalculate_segments(segment_type=5)
 
 dir = os.path.dirname(model_file)
 meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
@@ -150,7 +151,11 @@ for label in dataset.label_mapping.keys():
         ),
     )
 if args.tracks:
-    model.track_accuracy(dataset, args.confusion)
+    for i in range(8):
+        print("EVAL FOR ", i)
+        dataset.recalculate_segments(segment_type=i)
+
+        model.track_accuracy(dataset, args.confusion)
 elif args.confusion:
     model.confusion(dataset, args.confusion)
 else:

@@ -743,9 +743,9 @@ class KerasModel:
         total = 0
         correct = 0
         for label in dataset.label_mapping.keys():
-            if label != "bird":
-                continue
-            label_tracks = dataset.tracks_by_label.get(label, [])[:100]
+            # if label != "bird":
+            # continue
+            label_tracks = dataset.tracks_by_label.get(label, [])
             label_tracks = [track for track in label_tracks if len(track.segments) > 0]
             if label == "insect" or label == "false-positive":
                 sample_tracks = np.random.choice(
