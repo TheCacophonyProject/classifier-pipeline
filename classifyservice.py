@@ -79,7 +79,7 @@ def classify_job(clip_classifier, clientsocket, addr):
             logging.error("File name must be specified in argument dictionary")
             clientsocket.send(
                 json.dumps(
-                    {"message": "File name must be specified in argument dictionary"}
+                    {"error": "File name must be specified in argument dictionary"}
                 ).encode()
             )
             return
@@ -104,7 +104,7 @@ def classify_job(clip_classifier, clientsocket, addr):
         logging.error("Error classifying job %s", args["file"], exc_info=True)
         clientsocket.send(
             json.dumps(
-                {"message": f"Error classifying {traceback.format_exc()}"}
+                {"error": f"Error classifying {traceback.format_exc()}"}
             ).encode()
         )
         raise e
