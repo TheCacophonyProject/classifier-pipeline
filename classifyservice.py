@@ -7,6 +7,7 @@ import logging
 import os
 import argparse
 import json
+import traceback
 from ml_tools.tools import CustomJSONEncoder
 
 
@@ -78,16 +79,18 @@ def classify_job(clip_classifier, clientsocket, addr):
             logging.error("File name must be specified in argument dictionary")
             clientsocket.send(
                 json.dumps(
-                    "File name must be specified in argument dictionary"
+                    {"message": "File name must be specified in argument dictionary"}
                 ).encode()
             )
             return
-        logging.info("Classifying %s with cache? %s", args["file"], args)
+        logging.info("Classifying %s with args %s", args["file"], args)
+
         meta_data = clip_classifier.process_file(
             args["file"],
             cache=args.get("cache"),
             reuse_frames=args.get("reuse_frames"),
         )
+
         clientsocket.send(json.dumps(meta_data, cls=CustomJSONEncoder).encode())
 
     except BrokenPipeError:
@@ -97,6 +100,14 @@ def classify_job(clip_classifier, clientsocket, addr):
             addr,
             exc_info=True,
         )
+    except Exception as e:
+        logging.error("Error classifying job %s", args["file"], exc_info=True)
+        clientsocket.send(
+            json.dumps(
+                {"message": f"Error classifying {traceback.format_exc()}"}
+            ).encode()
+        )
+        raise e
     finally:
         try:
             clientsocket.close()

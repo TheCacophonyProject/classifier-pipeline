@@ -17,6 +17,7 @@ def main(cptv_file):
 
         results = read_all(sock).decode()
         meta_data = json.loads(str(results))
+        print("results are", meta_data)
     except socket.error as msg:
         print(msg)
         sys.exit(1)
