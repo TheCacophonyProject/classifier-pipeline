@@ -76,13 +76,12 @@ class SlidingWindow:
             self.oldest_index = None
 
 
-class MotionDetector(Processor):
+class MotionDetector:
     FFC_PERIOD = timedelta(seconds=9.9)
     BACKGROUND_WEIGHT_ADD = 0.1
 
-    def __init__(self, thermal_config, dynamic_thresh, recorder, headers):
+    def __init__(self, thermal_config, dynamic_thresh, headers):
         self.rec_time = 0
-        self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
         if headers.model.lower() == "lepton3.5":
             MotionDetector.BACKGROUND_WEIGHT_ADD = 1
@@ -134,7 +133,6 @@ class MotionDetector(Processor):
                 self.location_config.altitude,
             )
 
-        self.recorder = recorder
         self.ffc_affected = False
 
     def calc_temp_thresh(self, cropped_thermal):
@@ -227,10 +225,9 @@ class MotionDetector(Processor):
         self.thermal_window.reset()
         self.diff_window.reset()
         self.processed = 0
-        self.recorder.force_stop()
 
-    def process_frame(self, cptv_frame):
-        if self.can_record() or (self.recorder and self.recorder.recording):
+    def process_frame(self, cptv_frame, force_process=False):
+        if self.can_record() or forece_process:
             cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
             test_crop = cropped_frame.copy()
             prev_ffc = self.ffc_affected
@@ -253,18 +250,6 @@ class MotionDetector(Processor):
             elif self.processed != 0:
                 self.movement_detected = self.detect(clipped_frame)
             self.processed += 1
-            if self.recorder and self.processed > 100:
-                start_rec = time.time()
-                if self.recorder.recording:
-                    self.recorder.process_frame(self.movement_detected, cptv_frame)
-                elif self.movement_detected:
-                    self.set_background_edges()
-                    self.recorder.start_recording(
-                        self.background,
-                        self.thermal_window.get_frames(),
-                        self.temp_thresh,
-                    )
-                self.rec_time += time.time() - start_rec
         else:
             self.thermal_window.update_current_frame(cptv_frame)
             self.movement_detected = False
@@ -281,10 +266,6 @@ class MotionDetector(Processor):
 
     def skip_frame(self):
         return
-
-    @property
-    def output_dir(self):
-        return self._output_dir
 
     @property
     def res_x(self):

@@ -28,6 +28,8 @@ from ml_tools.logs import init_logging
 STOP_SIGNAL = "stop"
 
 SKIP_SIGNAL = "skip"
+track_extractor = None
+clip = None
 
 
 class NeuralInterpreter:
@@ -201,13 +203,15 @@ class PiClassifier(Processor):
             keep_frames=False,
             calc_stats=False,
         )
+        global track_extractor
+        track_extractor = self.track_extractor
         self.motion = thermal_config.motion
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
+        self.recorder = CPTVRecorder(thermal_config, headers, on_recording_stopping)
         self.motion_detector = MotionDetector(
             thermal_config,
             self.config.tracking.motion.dynamic_thresh,
-            CPTVRecorder(thermal_config, headers),
             headers,
         )
         self.startup_classifier()
@@ -223,6 +227,8 @@ class PiClassifier(Processor):
             "stream",
             tracking_version=self.track_extractor.VERSION,
         )
+        global clip
+        clip = self.clip
         self.clip.video_start_time = datetime.now()
         self.clip.num_preview_frames = self.preview_frames
         self.clip.set_res(self.res_x, self.res_y)
@@ -343,6 +349,7 @@ class PiClassifier(Processor):
     def disconnected(self):
         self.end_clip()
         self.motion_detector.disconnected()
+        self.recorder.force_stop()
 
     def skip_frame(self):
         self.skip_classifying -= 1
@@ -354,15 +361,28 @@ class PiClassifier(Processor):
         start = time.time()
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
-        if self.motion_detector.recorder.recording:
-            if self.clip is None:
-                self.new_clip()
-                self.motion_detector.recorder.clip = self.clip
 
-            t_start = time.time()
+        if (
+            not self.recorder.recording
+            and self.motion_detector.movement_detected
+            and self.motion_detector.processed > 100
+        ):
+            background = self.motion_detector.set_background_edges()
+            self.recorder.start_recording(
+                self.motion_detector.background,
+                self.motion_detector.thermal_window.get_frames(),
+                self.motion_detector.temp_thresh,
+            )
+            self.new_clip()
+        if self.recorder.recording:
             self.track_extractor.process_frame(
                 self.clip, lepton_frame.pix, self.motion_detector.ffc_affected
             )
+            self.recorder.process_frame(
+                self.motion_detector.movement_detected, lepton_frame
+            )
+            t_start = time.time()
+
             self.tracking_time += time.time() - t_start
             if self.motion_detector.ffc_affected or self.clip.on_preview():
                 self.skip_classifying = PiClassifier.SKIP_FRAMES
@@ -417,7 +437,6 @@ class PiClassifier(Processor):
 
     def end_clip(self):
         if self.clip:
-            self.track_extractor.apply_track_filtering(self.clip)
             for _, prediction in self.predictions.prediction_per_track.items():
                 if prediction.max_score:
                     logging.info(
@@ -426,11 +445,11 @@ class PiClassifier(Processor):
                             prediction.description(self.predictions.labels),
                         )
                     )
-            # self.save_metadata()
-            # self.create_mp4()
             self.predictions.clear_predictions()
             self.clip = None
             self.tracking = False
+        global clip
+        clip = None
 
     @property
     def res_x(self):
@@ -443,3 +462,12 @@ class PiClassifier(Processor):
     @property
     def output_dir(self):
         return self._output_dir
+
+
+def on_recording_stopping(filename):
+    global clip, track_extractor
+    if clip and track_extractor:
+        track_extractor.apply_track_filtering(clip)
+        meta_name = os.path.splitext(filename)[0]
+        logging.debug("saving meta to %s", "{}.{}".format(meta_name, "txt"))
+        clip.save_metadata("{}.{}".format(meta_name, "txt"))

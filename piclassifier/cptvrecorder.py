@@ -14,7 +14,7 @@ CACHE_COUNT = 20
 
 
 class CPTVRecorder:
-    def __init__(self, thermal_config, headers):
+    def __init__(self, thermal_config, headers, on_recording_stopping=None):
         self.location_config = thermal_config.location
         self.device_config = thermal_config.device
         self.output_dir = thermal_config.recorder.output_dir
@@ -28,9 +28,9 @@ class CPTVRecorder:
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.write_until = 0
-        self.clip = None
         self.rec_time = 0
         self.cache_frames = []
+        self.on_recording_stopping = on_recording_stopping
 
     def force_stop(self):
         if not self.recording:
@@ -125,10 +125,8 @@ class CPTVRecorder:
         if self.writer is None:
             return
         final_name = os.path.splitext(self.filename)[0]
-        if self.clip is not None:
-            meta_name = os.path.splitext(final_name)[0]
-            logging.debug("saving meta to %s", "{}.{}".format(meta_name, "txt"))
-            self.clip.save_metadata("{}.{}".format(meta_name, "txt"))
+        if self.on_recording_stopping is not None:
+            self.on_recording_stopping(final_name)
         self.writer.close()
         os.rename(self.filename, final_name)
         self.writer = None
