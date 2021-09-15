@@ -586,13 +586,13 @@ class KerasModel:
         return model
 
     def classify_track(self, clip, track, keep_all=True):
-        track_data = []
+        track_data = {}
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
             frame.filtered = frame.thermal - clip.background
             cropped_frame = frame.crop_by_region(region)
-            track_data.append(cropped_frame)
+            track_data[frame.frame_number] = cropped_frame
             thermal_median[i] = np.median(frame.thermal)
         segments = track.get_segments(
             clip.ffc_frames, thermal_median, self.params.square_width ** 2, repeats=4
@@ -617,8 +617,7 @@ class KerasModel:
             segment_frames = []
             median = np.zeros((len(segment.frame_indices)))
             for frame_i in segment.frame_indices:
-                f = data[frame_i - segment.start_frame]
-                assert f.frame_number == frame_i
+                f = data[frame_i]
                 segment_frames.append(f.copy())
             frames = preprocess_movement(
                 segment_frames,
@@ -758,22 +757,16 @@ class KerasModel:
 
                 track_data = dataset.db.get_track(track.clip_id, track.track_id)
                 background = dataset.db.get_clip_background(track.clip_id)
+                data = {}
                 for frame in track_data:
-                    region = track.track_bounds[frame.frame_number]
-                    region = tools.Rectangle.from_ltrb(*region)
+                    region = track.regions[frame.frame_number - track.start_frame]
                     cropped = region.subimage(background)
                     frame.filtered = frame.thermal - cropped
                     frame.region = region
-                regions = []
-                for region in track.track_bounds:
-                    regions.append(tools.Rectangle.from_ltrb(*region))
+                    data[frame.frame_number] = frame
                 track_prediction = self.classify_track_data(
                     track.track_id,
-                    track_data,
-                    track.frame_temp_median,
-                    regions=regions,
-                    mass_history=track.frame_mass,
-                    ffc_frames=track.ffc_frames,
+                    data,
                     segments=track.segments,
                 )
                 total += 1

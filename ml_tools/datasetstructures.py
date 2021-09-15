@@ -314,6 +314,7 @@ class TrackHeader:
             lower_mass=self.lower_mass,
             repeats=repeats,
             min_frames=min_frames,
+            skipped_frames=self.skipped_frames,
         )
 
     @property
