@@ -20,7 +20,9 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import logging
 import numpy as np
+import time
 import yaml
+
 from cptv import CPTVReader
 import cv2
 
@@ -43,7 +45,7 @@ class ClipTrackExtractor:
 
     MAX_DISTANCE = 2000
     PREVIEW = "preview"
-    VERSION = 9
+    VERSION = 10
 
     def __init__(
         self,
@@ -53,7 +55,9 @@ class ClipTrackExtractor:
         keep_frames=True,
         calc_stats=True,
         high_quality_optical_flow=False,
+        verbose=False,
     ):
+        self.verbose = verbose
         self.config = config
         self.use_opt_flow = use_opt_flow
         self.high_quality_optical_flow = high_quality_optical_flow
@@ -66,15 +70,17 @@ class ClipTrackExtractor:
         self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
         self.keep_frames = keep_frames
         self.calc_stats = calc_stats
-
+        self.tracking_time = None
         if self.config.dilation_pixels > 0:
             size = self.config.dilation_pixels * 2 + 1
             self.dilate_kernel = np.ones((size, size), np.uint8)
 
-    def parse_clip(self, clip):
+    def parse_clip(self, clip, process_background=False):
         """
         Loads a cptv file, and prepares for track extraction.
         """
+        self.tracking_time = None
+        start = time.time()
         clip.set_frame_buffer(
             self.high_quality_optical_flow,
             self.cache_to_disk,
@@ -85,7 +91,9 @@ class ClipTrackExtractor:
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             clip.set_res(reader.x_resolution, reader.y_resolution)
-
+            if clip.from_metadata:
+                for track in clip.tracks:
+                    track.crop_regions()
             camera_model = None
             if reader.model:
                 camera_model = reader.model.decode()
@@ -100,16 +108,14 @@ class ClipTrackExtractor:
                     clip.temp_thresh = temp_thresh
 
             video_start_time = reader.timestamp.astimezone(Clip.local_tz)
-            clip.num_preview_frames = (
-                reader.preview_secs * clip.frames_per_second
-                - self.config.preview_ignore_frames
-            )
             clip.set_video_stats(video_start_time)
             clip.calculate_background(reader)
 
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             for frame in reader:
+                if not process_background and frame.background_frame:
+                    continue
                 self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
 
         if not clip.from_metadata:
@@ -117,7 +123,7 @@ class ClipTrackExtractor:
 
         if self.calc_stats:
             clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
-
+        self.tracking_time = time.time() - start
         return True
 
     def process_frame(self, clip, frame, ffc_affected=False):
@@ -148,7 +154,7 @@ class ClipTrackExtractor:
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
 
         filtered, stats = normalize(filtered, new_max=255)
-        # filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
+        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
         if stats[1] == stats[2]:
             mapped_thresh = clip.background_thresh
         else:
@@ -194,11 +200,6 @@ class ClipTrackExtractor:
         """
         unmatched_regions, matched_tracks = self._match_existing_tracks(clip, regions)
         new_tracks = self._create_new_tracks(clip, unmatched_regions)
-        # logging.info(
-        #     "Creating new trakcs %s at frame %si from regions %s",
-        #     len(new_tracks, clip.frame_on),
-        #     unmatched_regions,
-        # )
         self._filter_inactive_tracks(clip, new_tracks, matched_tracks)
 
     def _match_existing_tracks(self, clip, regions):
@@ -272,7 +273,7 @@ class ClipTrackExtractor:
             if len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
                 continue
 
-            track = Track.from_region(clip, region)
+            track = Track.from_region(clip, region, ClipTrackExtractor.VERSION)
             new_tracks.add(track)
             clip._add_active_track(track)
             self.print_if_verbose(
@@ -385,7 +386,7 @@ class ClipTrackExtractor:
 
         track_stats = [(track.get_stats(), track) for track in clip.tracks]
         track_stats.sort(reverse=True, key=lambda record: record[0].score)
-        if self.config.verbose:
+        if self.verbose:
             for stats, track in track_stats:
                 start_s, end_s = clip.start_and_end_in_secs(track)
                 logging.info(
@@ -494,7 +495,7 @@ class ClipTrackExtractor:
 
     def print_if_verbose(self, info_string):
 
-        if self.config.verbose:
+        if self.verbose:
             logging.info(info_string)
 
 

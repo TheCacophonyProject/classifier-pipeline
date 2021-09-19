@@ -1,5 +1,4 @@
 import threading
-import os
 
 from ml_tools.tools import frame_to_jpg
 

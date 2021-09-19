@@ -34,7 +34,6 @@ def parse_params():
     parser.add_argument(
         "-v", "--verbose", action="count", help="Display additional information."
     )
-    parser.add_argument("--predictions", action="count", help="Add prediction info")
 
     parser.add_argument(
         "-r",
@@ -42,6 +41,7 @@ def parse_params():
         action="count",
         help="Re process clips that already exist in the database",
     )
+
     parser.add_argument(
         "-i",
         "--show-build-information",
@@ -55,24 +55,23 @@ def parse_params():
         print(cv2.getBuildInformation())
         return None, None
 
-    init_logging()
-
     config = Config.load_from_file(args.config_file)
     if args.create_previews:
         config.loader.preview = "tracking"
     if args.verbose:
-        config.loader.verbose = True
+        config.tracking.verbose = True
 
     return config, args
 
 
 def load_clips(config, args):
+
     loader = ClipLoader(config, args.reprocess)
     target = args.target
     if target is None:
         target = config.source_folder
-    if args.predictions:
-        loader.add_predictions()
+    if os.path.splitext(target)[1] == ".cptv":
+        loader.process_file(target)
     else:
         if os.path.splitext(target)[1] == ".cptv":
             loader.process_file(target)
@@ -91,6 +90,8 @@ def print_opencl_info():
 
 def main():
     config, args = parse_params()
+    init_logging()
+
     if config and args:
         load_clips(config, args)
 

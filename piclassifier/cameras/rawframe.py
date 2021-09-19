@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from struct import unpack_from
-from datetime import timedelta
 import numpy as np
 from cptv import Frame
 

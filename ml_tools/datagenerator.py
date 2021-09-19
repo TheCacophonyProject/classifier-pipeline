@@ -1,4 +1,3 @@
-import pickle
 import math
 import logging
 import tensorflow.keras as keras
@@ -6,8 +5,15 @@ import numpy as np
 import multiprocessing
 import time
 import gc
-from ml_tools import tools
-from ml_tools.preprocess import preprocess_movement, preprocess_frame
+from ml_tools.preprocess import preprocess_movement, preprocess_frame, FrameTypes
+from ml_tools.frame import TrackChannels
+from ml_tools.frame import Frame
+from collections import Counter
+from queue import Empty, Full
+import threading
+from ml_tools.logs import init_logging
+import psutil
+import os
 
 FRAMES_PER_SECOND = 9
 
@@ -15,16 +21,26 @@ FRAMES_PER_SECOND = 9
 class GeneartorParams:
     def __init__(self, output_dim, params):
         self.augment = params.get("augment", False)
-        self.use_dots = params.get("use_dots", False)
-        self.use_movement = params.get("use_movement")
+        self.use_segments = params.get("use_segments", True)
+
         self.model_preprocess = params.get("model_preprocess")
         self.channel = params.get("channel")
         self.square_width = params.get("square_width", 5)
         self.output_dim = output_dim
         self.mvm = params.get("mvm", False)
-        self.type = params.get("type", 1)
-        self.segment_type = params.get("segment_type", 1)
-        self.load_threads = params.get("load_threads", 2)
+        self.frame_size = params.get("frame_size", 32)
+
+        self.keep_edge = params.get("keep_edge", False)
+        self.maximum_preload = params.get("maximum_preload", 100)
+        self.red_type = params.get("red_type", FrameTypes.thermal_tiled.name)
+        self.green_type = params.get("green_type", FrameTypes.filtered_tiled.name)
+        self.blue_type = params.get("blue_type", FrameTypes.filtered_tiled.name)
+
+
+# Datagenerator consists of 3 processes
+# 1: Loads the raw batch data from numpy files (Batches are fed into a queue from process 3)
+# 2: Preprocess the raw batch data fed into a queue from process 1
+# 3 is managed by Keras and requests preprocess batches fed into a queue by process 2
 
 
 class DataGenerator(keras.utils.Sequence):
@@ -41,285 +57,271 @@ class DataGenerator(keras.utils.Sequence):
         self.use_previous_epoch = None
         self.labels = labels
         self.dataset = dataset
-        self.preload = params.get("preload", True)
         self.epochs = params.get("epochs", 10)
         self.samples = None
-        self.keep_epoch = params.get("keep_epoch")
         self.randomize_epoch = params.get("randomize_epoch", True)
         self.cap_at = params.get("cap_at")
         self.cap_samples = params.get("cap_samples", True)
         self.label_cap = params.get("label_cap")
         self.shuffle = params.get("shuffle", True)
         self.batch_size = params.get("batch_size", 16)
-
+        self.epoch_samples = []
+        self.sample_size = None
         self.cur_epoch = 0
         self.loaded_epochs = 0
-        self.epoch_data = []
         self.epoch_stats = []
-        self.epoch_labels = []
-        if self.preload:
-            self.load_queue = multiprocessing.Queue()
-        if self.preload:
-            self.preloader_queue = multiprocessing.Queue(params.get("buffer_size", 128))
-        self.segments = None
+        self.eager_load = params.get("eager_load", False)
+        self.lazy_load = params.get("lazy_load", False)
+        self.preload = params.get("preload", False)
+
+        use_threads = False
+
         self.segments = []
         # load epoch
-        self.load_next_epoch()
-        self.epoch_stats.append({})
-        self.epoch_data.append(([None] * len(self), [None] * len(self)))
-        self.epoch_labels.append([None] * len(self))
-        self.preloader_threads = []
+        self.epoch_labels = []
+        self.epoch_data = []
         if self.preload:
-
-            self.preloader_threads = [
-                multiprocessing.Process(
+            if use_threads:
+                # This will be slower, but use less memory
+                # Queue is also extremely slow so should be change to deque
+                self.epoch_queue = multiprocessing.Queue()
+                self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
+                self.preloader_thread = threading.Thread(
                     target=preloader,
                     args=(
-                        self.preloader_queue,
-                        self.load_queue,
+                        self.train_queue,
+                        self.epoch_queue,
                         self.labels,
                         self.dataset.name,
                         self.dataset.db,
+                        self.dataset.segments_by_id,
                         self.params,
                         self.dataset.label_mapping,
+                        self.dataset.numpy_data,
                     ),
                 )
-                for _ in range(self.params.load_threads)
-            ]
-            for thread in self.preloader_threads:
-                thread.start()
+            else:
+                multiprocessing.set_start_method("spawn", force=True)
+                self.epoch_queue = multiprocessing.Queue()
+                # m = multiprocessing.Manager()
+                self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
+                # self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
+                self.preloader_thread = multiprocessing.Process(
+                    target=preloader,
+                    args=(
+                        self.train_queue,
+                        self.epoch_queue,
+                        self.labels,
+                        self.dataset.name,
+                        self.dataset.db,
+                        self.dataset.segments_by_id,
+                        self.params,
+                        self.dataset.label_mapping,
+                        self.dataset.numpy_data,
+                    ),
+                )
+            self.preloader_thread.start()
+
+        self.load_next_epoch()
         logging.info(
-            "datagen for %s shuffle %s cap %s type %s epochs %s preprocess %s",
+            "datagen for %s shuffle %s cap %s epochs %s gen params %s memory %s",
             self.dataset.name,
             self.shuffle,
             self.cap_samples,
-            self.params.type,
             self.epochs,
-            self.params.model_preprocess,
+            self.params.__dict__,
+            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
         )
 
     def stop_load(self):
-        if not self.preload or not self.load_queue:
-            return
-        print("stopping ", self.dataset.name)
-        for thread in self.preloader_threads:
-            if hasattr(thread, "terminate"):
-                thread.terminate()
-            else:
-                thread.exit()
-        del self.preloader_queue
-        del self.preloader_threads
-        del self.load_queue
-        self.load_queue = None
-        self.preloader_queue = None
+        if self.preload:
+            if not self.epoch_queue:
+                return
+            logging.info("stopping %s", self.dataset.name)
+            self.epoch_queue.put("STOP")
+            del self.train_queue
+            self.train_queue = None
+            self.preloader_thread.join(20)
+            if self.preloader_thread.is_alive():
+                self.preloader_thread.kill()
 
     def get_epoch_labels(self, epoch=-1):
         return self.epoch_labels[epoch]
 
-    def get_epoch_predictions(self, epoch=-1):
-        if self.epoch_data is not None:
-            return self.epoch_data[epoch](0)
-        return None
-
     def __len__(self):
         "Denotes the number of batches per epoch"
-
-        return int(math.ceil(len(self.samples) / self.batch_size))
+        return int(math.ceil(self.sample_size / self.batch_size))
 
     def __getitem__(self, index):
         "Generate one batch of data"
         # Generate indexes of the batch
-        logging.debug("%s requsting index %s", self.dataset.name, index)
-        if self.keep_epoch and self.use_previous_epoch is not None:
-            X = self.epoch_data[self.use_previous_epoch][0][
-                index * self.batch_size : (index + 1) * self.batch_size
-            ]
+        start = time.time()
+        if index == len(self) // 2 and self.eager_load:
+            logging.debug(
+                "%s on epoch %s index % s eager loading next epoch data",
+                self.dataset.name,
+                self.loaded_epochs,
+                index,
+            )
+            self.load_next_epoch()
 
-            y = self.epoch_data[self.use_previous_epoch][1][
-                index * self.batch_size : (index + 1) * self.batch_size
-            ]
+        if index == 0 and len(self.epoch_data) > self.cur_epoch:
+            # when tensorflow uses model.fit it requests index 0 twice
+            X, y = self.epoch_data[self.cur_epoch]
         else:
-            if index == 0 and self.epoch_data[self.cur_epoch][0][0] is not None:
-                # when tensorflow uses model.fit it requests index 0 twice
-                X = self.epoch_data[self.cur_epoch][0][index]
-                y = self.epoch_data[self.cur_epoch][1][index]
-            elif self.preload:
-                X, y, y_original = self.preloader_queue.get()
-            else:
-                X, y, y_original = self.loadbatch(index)
+            if index == 0 and self.preload and self.lazy_load:
+                self.preload_samples()
+            try:
 
-            if self.epoch_data[self.cur_epoch][0][index] is None:
-                epoch_stats = self.epoch_stats[self.cur_epoch]
-                out_y = np.argmax(y, axis=1)
-                indices, counts = np.unique(out_y, return_counts=True)
-                for lbl in y_original:
-                    epoch_stats.setdefault(lbl, 0)
-                    epoch_stats[lbl] += 1
-                # for i, label_index in enumerate(indices):
-                #     label = self.labels[label_index]
-                #     count = counts[i]
-                #     epoch_stats.setdefault(label, 0)
-                #     epoch_stats[label] += count
-        # always keep a copy of epoch data
-        if index == 0 or (self.keep_epoch and self.use_previous_epoch is None):
-            self.epoch_data[self.cur_epoch][0][index] = X
-            self.epoch_data[self.cur_epoch][1][index] = y
-        self.epoch_labels[self.cur_epoch][index] = y
-        # can start loading next epoch of training before validation
-        # if (index + 1) == len(self):
-        #     self.load_next_epoch(True)
+                X, y, y_original = self.get_item(index)
+            except:
+                logging.error(
+                    "%s error getting preloaded data",
+                    self.dataset.name,
+                    exc_info=True,
+                )
+
+            # always keep a copy of epoch data
+            if index == 0:
+                self.epoch_data.append((X, y))
+            self.epoch_labels[self.cur_epoch].extend(y_original)
         return X, y
 
-    def resuse_previous_epoch(self):
-        """
-        This is used in hyper training to speeed it up just load one epoch into memory
-        and shuffle each time
-        """
-        if self.use_previous_epoch is None:
-            # [batch, segment, height, width, rgb]
-            X = [item for batch in self.epoch_data[self.cur_epoch][0] for item in batch]
-            y = [item for batch in self.epoch_data[self.cur_epoch][1] for item in batch]
+    def get_item(self, index):
+        if self.preload:
+            return get_with_timeout(
+                self.train_queue,
+                30,
+                f"train_queue get_item {self.dataset.name}",
+                sleep_time=1,
+            )
         else:
-            # [segment, height, width, rgb]
+            batch_segments = [
+                self.samples[index * self.batch_size : (index + 1) * self.batch_size]
+            ]
+            segments, track_frames = load_batch_frames(
+                self.dataset.numpy_data,
+                batch_segments,
+                self.dataset.segments_by_id,
+                self.dataset.name,
+            )
+            segments = segments[0]
+            segment_data = []
+            for seg in segments:
+                frame_data = get_cached_frames(track_frames, seg)
+                segment_data.append(frame_data)
+            return loadbatch(
+                self.labels,
+                segments,
+                segment_data,
+                self.params,
+                self.dataset.label_mapping,
+            )
 
-            X = self.epoch_data[self.use_previous_epoch][0]
-            y = self.epoch_data[self.use_previous_epoch][1]
-        if self.shuffle:
-            X = np.asarray(X)
-            y = np.asarray(y)
-            indices = np.arange(len(X))
-            np.random.shuffle(indices)
-            X = X[indices]
-            y = y[indices]
-        self.epoch_data[self.cur_epoch] = None
-        self.epoch_data[0] = (X, y)
-        self.use_previous_epoch = 0
-        logging.info("Reusing previous epoch data for epoch %s", self.cur_epoch)
-        self.stop_load()
-
-    def load_next_epoch(self, reuse=False):
+    def load_next_epoch(self):
         if self.loaded_epochs >= self.epochs:
             return
-        if self.randomize_epoch is False and reuse:
-            return self.resuse_previous_epoch()
-
-        else:
-            self.dataset.recalculate_segments(segment_type=self.params.segment_type)
-            self.samples = self.dataset.epoch_samples(
-                cap_samples=self.cap_samples,
-                replace=False,
-                random=self.randomize_epoch,
-                cap_at=self.cap_at,
-                label_cap=self.label_cap,
-            )
-            holdout_cameras = []
-            # holdout_cameras = [
-            #     "TrapCam01-None",
-            #     "ospri11-None",
-            #     "TrapCam03-[-43.65495 172.63125]",
-            #     "TrapCam01-[-43.65495 172.63125]",
-            #     "A_S4_C1-[-43.65315 172.63215]",
-            #     "TrapCam01-[-43.65585 172.63125]",
-            #     "TrapCam03-[-43.65585 172.63125]",
-            #     "A_S4_C3-[-43.65405 172.62765]",
-            #     "A_S4_C2-[-43.65405 172.62945]",
-            #     "Wallaby2-[-44.76285 170.56f395]",
-            # ]
-            # self.samples = [
-            #     sample.id
-            #     for sample in self.samples
-            #     if sample.track.camera_id in holdout_cameras
-            # ]
-            # if self.shuffle:
-            #     np.random.shuffle(self.samples)
-            # for sample in self.samples:
-            #     sample.track = None
-
-            # self.samples = [sample.id for sample in self.samples]
-            if self.shuffle:
-                np.random.shuffle(self.samples)
-
-        if self.preload:
-            batches_per_process = int(math.ceil(len(self) / self.params.load_threads))
-            batches = []
-            index = 0
-            print(
-                self.dataset.name,
-                "num of batches",
-                len(self),
-                "batches per process",
-                batches_per_process,
-            )
-            for i in range(self.params.load_threads):
-                batches = []
-                for _ in range(batches_per_process):
-                    if index >= len(self):
-                        break
-                    samples = self.samples[
-                        index * self.batch_size : (index + 1) * self.batch_size
-                    ]
-                    index += 1
-                    batches.append(samples)
-                    if self.params.load_threads == 1 and len(batches) > 60:
-                        pickled_batches = pickle.dumps(
-                            (self.loaded_epochs + 1, batches)
-                        )
-                        self.load_queue.put(pickled_batches)
-                        print(self.dataset.name, "adding", len(batches))
-                        batches = []
-
-                print(self.dataset.name, "adding", len(batches))
-                if len(batches) > 0:
-                    pickled_batches = pickle.dumps((self.loaded_epochs + 1, batches))
-                    self.load_queue.put(pickled_batches)
-            # del self.samples[:]
-            self.dataset.segments = []
-            self.samples = np.empty(len(self.samples))
-            gc.collect()
-        self.loaded_epochs += 1
-
-    def reload_samples(self):
+        self.epoch_labels.append([])
+        logging.info(
+            "%s loading epoch %s shuffling %s",
+            self.dataset.name,
+            (self.loaded_epochs + 1),
+            self.shuffle,
+        )
+        self.samples = self.dataset.epoch_samples(
+            cap_samples=self.cap_samples,
+            replace=False,
+            random=self.randomize_epoch,
+            cap_at=self.cap_at,
+            label_cap=self.label_cap,
+        )
+        self.samples = np.uint32([sample.id for sample in self.samples])
 
         if self.shuffle:
             np.random.shuffle(self.samples)
-        if self.preload:
-            for index in range(len(self)):
-                samples = self.samples[
-                    index * self.batch_size : (index + 1) * self.batch_size
-                ]
-                pickled_samples = pickle.dumps((self.loaded_epochs + 1, samples))
-                self.load_queue.put(pickled_samples)
+
+        # first epoch needs sample size set, others set at epoch end
+        if self.cur_epoch == 0:
+            self.sample_size = len(self.samples)
+
+        if self.preload and not self.lazy_load:
+            self.preload_samples()
+        if not self.preload:
+            self.loaded_epochs += 1
+
+        self.epoch_samples.append(len(self.samples))
+
+    def preload_samples(self):
+        batches = []
+        for index in range(len(self)):
+            samples = self.samples[
+                index * self.batch_size : (index + 1) * self.batch_size
+            ]
+            batches.append(samples)
+        if len(batches) > 0:
+            self.epoch_queue.put((self.loaded_epochs + 1, batches))
+        self.loaded_epochs += 1
+
+    def reload_samples(self):
+        logging.debug("%s reloading samples", self.dataset.name)
+        if self.shuffle:
+            np.random.shuffle(self.samples)
+        batches = []
+        for index in range(len(self)):
+            samples = self.samples[
+                index * self.batch_size : (index + 1) * self.batch_size
+            ]
+            batches.append(samples)
+
+        if len(batches) > 0:
+            self.epoch_queue.put((self.loaded_epochs + 1, batches))
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
-        self.load_next_epoch(reuse=True)
+        if not self.eager_load:
+            self.load_next_epoch()
+        self.sample_size = self.epoch_samples[self.cur_epoch]
         batches = len(self)
-        if not self.keep_epoch:
-            # zero last epoch
-            self.epoch_data[-1] = ([None] * batches, [None] * batches)
+        self.epoch_data[self.cur_epoch] = None
+        last_stats = self.epoch_label_count()
+        logging.info(
+            "%s epoch ended %s",
+            self.dataset.name,
+            last_stats,
+        )
 
-        last_stats = self.epoch_stats[self.cur_epoch]
-        if len(self.epoch_stats) < self.epochs:
-            self.epoch_stats.append({})
-            self.epoch_data.append(([None] * batches, [None] * batches))
-            self.epoch_labels.append([None] * batches)
-
-        logging.info("epoch ended for %s %s", self.dataset.name, last_stats)
         self.cur_epoch += 1
 
+    def epoch_label_count(self):
+        labels = self.epoch_labels[self.cur_epoch]
+        return Counter(labels)
 
-def loadbatch(labels, db, samples, params, mapped_labels):
-    start = time.time()
-    # samples = self.samples[index * self.batch_size : (index + 1) * self.batch_size]
-    X, y, y_orig = _data(labels, db, samples, params, mapped_labels)
 
-    logging.debug("%s  Time to get data %s", "NULL", time.time() - start)
+def loadbatch(labels, segments, data, params, mapped_labels):
+    X, y, y_orig = _data(labels, segments, data, params, mapped_labels)
     return X, y, y_orig
 
 
-def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
+def get_cached_frames(db, sample):
+    frames = []
+    if sample.unique_track_id not in db:
+        logging.warn("Cannot find %s in db", sample.unique_track_id)
+        return Frames
+
+    track_frames = db[sample.unique_track_id]
+    for f_i in sample.frame_indices:
+        if f_i not in track_frames:
+            logging.warn("Caanot not load %s frame %s", sample, f_i)
+            # THIS SHOULDNT HAPPEN
+            return []
+        frames.append(track_frames[f_i].copy())
+    return frames
+
+
+def _data(labels, samples, data, params, mapped_labels, to_categorical=True):
     "Generates data containing batch_size samples"
     # Initialization
+    start = time.time()
     X = np.empty(
         (
             len(samples),
@@ -330,86 +332,46 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
     data_i = 0
     y_original = []
     mvm = []
-    for sample in samples:
+    for sample, frame_data in zip(samples, data):
         label = mapped_labels[sample.label]
         if label not in labels:
             continue
-        if params.use_movement:
-            try:
-                frame_data = db.fetch_segment_data(sample)
-                # frame_data = dataset.fetch_random_sample(sample)
-                overlay = None
-                #
-                # overlay = dataset.db.get_overlay(
-                #     sample.track.clip_id, sample.track.track_id
-                # )
-
-            except Exception as inst:
-                logging.error("Error fetching sample %s %s", sample, inst)
-                raise inst
-                continue
-
-            if len(frame_data) < 5:
-                logging.error(
-                    "Important frames filtered for %s %s / %s",
+        if params.use_segments:
+            if len(frame_data) != len(sample.frame_temp_median):
+                logging.warn(
+                    "Missing data for sample %s has %s frames while %s frame temps",
                     sample,
                     len(frame_data),
-                    len(sample.track.important_frames),
+                    len(sample.frame_temp_median),
                 )
                 continue
-
-            # repeat some frames if need be
-            while len(frame_data) < params.square_width ** 2:
-                missing = params.square_width ** 2 - len(frame_data)
-                indices = np.arange(len(frame_data))
-                np.random.shuffle(indices)
-                for frame_i in indices[:missing]:
-                    frame_data.append(frame_data[frame_i].copy())
-            ref = []
-            frame_data = sorted(
-                frame_data, key=lambda frame_data: frame_data.frame_number
-            )
-
-            for frame in frame_data:
-                ref.append(sample.frame_temp_median[frame.frame_number])
             data = preprocess_movement(
-                None,
                 frame_data,
                 params.square_width,
-                None,
-                params.channel,
+                params.frame_size,
+                red_type=params.red_type,
+                green_type=params.green_type,
+                blue_type=params.blue_type,
                 preprocess_fn=params.model_preprocess,
                 augment=params.augment,
-                use_dots=params.use_dots,
-                reference_level=ref,
+                reference_level=sample.frame_temp_median,
                 sample=sample,
-                overlay=overlay,
-                type=params.type,
+                keep_edge=params.keep_edge,
             )
             if data is not None:
                 mvm.append(sample.movement_data)
         else:
-            try:
-                frame = dataset.fetch_sample(sample)
-
-            except Exception as inst:
-                logging.error("Error fetching samples %s %s", sample, inst)
-                continue
-
-            frame = preprocess_frame(
-                frame,
+            data = preprocess_frame(
+                frame_data[0],
+                params.frame_size,
                 params.augment,
-                frame_sample.temp_median,
-                frame_sample.velocity,
+                sample.temp_median,
+                sample.velocity,
                 params.output_dim,
                 preprocess_fn=params.model_preprocess,
                 sample=sample,
             )
         if data is None:
-            logging.debug(
-                "error pre processing frame (i.e.max and min are the same)sample %s",
-                sample,
-            )
             continue
         y_original.append(sample.label)
         X[data_i] = data
@@ -419,83 +381,297 @@ def _data(labels, db, samples, params, mapped_labels, to_categorical=True):
     X = X[:data_i]
     y = y[:data_i]
     if len(X) == 0:
-        logging.error("Empty length of x")
-
+        logging.warn("Empty length of x")
+    assert len(X) == len(y)
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
+    total_time = time.time() - start
+
     if params.mvm:
         return [np.array(X), np.array(mvm)], y, y_original
     return np.array(X), y, y_original
 
 
-#
-# # continue to read examples until queue is full
-# def preloader(q, load_queue, labels, name, db, params, label_mapping):
-#     """add a segment into buffer"""
-#     logging.info(
-#         " -started async fetcher for %s augment=%s",
-#         name,
-#         params.augment,
-#     )
-#     while True:
-#         try:
-#             if not q.full():
-#                 samples = pickle.loads(load_queue.get())
-#                 # if not isinstance(samples, tuple):
-#                 #     dataset = samples
-#                 #     logging.info(
-#                 #         " -Updated dataset %s augment=%s",
-#                 #         dataset.name,
-#                 #         params.augment,
-#                 #     )
-#                 #     time.sleep(3)  # hack to make sure others get dataset
-#                 #     samples = pickle.loads(load_queue.get())
-#                 if not isinstance(samples, tuple):
-#                     raise Exception("Samples isn't a list", samples)
-#                 # datagen.loaded_epochs = samples[0]
-#                 data = []
-#                 for segment in samples[1]:
-#                     if params.use_movement:
-#
-#                         data.append(segment)
-#                         logging.debug(
-#                             "adding sample %s %s %s",
-#                             segment.id,
-#                             data[-1].label,
-#                             data[-1].frame_indices,
-#                         )
-#                     else:
-#                         data.append(dataset.frames_by_id[sample_id])
-#
-#                 q.put(loadbatch(labels, db, data, params, label_mapping))
-#
-#             else:
-#                 logging.debug("Quue is full for %s", name)
-#                 time.sleep(0.1)
-#         except Exception as e:
-#             logging.info("Queue %s error %s ", name, e)
-#             raise e
+def load_from_numpy(numpy_meta, frames_by_track, tracks, name):
+    start = time.time()
+    count = 0
+    try:
+        with numpy_meta as f:
+            for _, frame_indices, u_id, regions_by_frames in tracks:
+                numpy_info = numpy_meta.track_info[u_id]
+                frames_to_i = numpy_info["frames"]
+                track_data = frames_by_track.setdefault(u_id, {})
+                f.seek(numpy_info["data"])
+                frames = np.load(f, allow_pickle=True)
+                thermals = frames[0]
+                filtered = frames[1]
+                for frame_i in frame_indices:
+                    count += 1
+                    thermal = thermals[frames_to_i[frame_i]]
+                    filter = filtered[frames_to_i[frame_i]]
+                    frame = Frame.from_channels(
+                        [thermal, filter],
+                        [TrackChannels.thermal, TrackChannels.filtered],
+                        frame_i,
+                        flow_clipped=True,
+                    )
+                    track_data[frame_i] = frame
+                    frame.region = regions_by_frames[frame_i]
+
+            logging.debug(
+                "%s time to load %s frames %s",
+                name,
+                count,
+                time.time() - start,
+            )
+    except:
+        logging.error("%s error loading numpy file", name, exc_info=True)
+    return frames_by_track
 
 
-# continue to read examples until queue is full
-def preloader(q, load_queue, labels, name, db, params, label_mapping):
+def load_batch_frames(
+    numpy_meta,
+    batches_by_id,
+    segments_by_id,
+    name,
+):
+    track_frames = {}
+    # loads batches from numpy file, by increasing file location, into supplied track_frames dictionary
+    # returns loaded batches as segments
+    all_batches = []
+    data_by_track = {}
+    for batch in batches_by_id:
+        batch_segments = []
+        for s_id in batch:
+            segment = segments_by_id[s_id]
+            batch_segments.append(segment)
+            track_segments = data_by_track.setdefault(
+                segment.unique_track_id,
+                (
+                    numpy_meta.track_info[segment.unique_track_id]["data"],
+                    [],
+                    segment.unique_track_id,
+                    {},
+                ),
+            )
+            regions_by_frames = track_segments[3]
+            for region in segment.track_bounds:
+                regions_by_frames[region.frame_number] = region
+            track_segments[1].extend(segment.frame_indices)
+        all_batches.append(batch_segments)
+    # sort by position in file
+    track_segments = sorted(
+        data_by_track.values(),
+        key=lambda track_segment: track_segment[0],
+    )
+    logging.debug("%s loading tracks from numpy file", name)
+    load_from_numpy(numpy_meta, track_frames, track_segments, name)
+
+    return all_batches, track_frames
+
+
+train_queue = None
+
+jobs = 0
+
+
+def preloader(
+    q,
+    epoch_queue,
+    labels,
+    name,
+    db,
+    segments_by_id,
+    params,
+    label_mapping,
+    numpy_meta,
+):
+    global train_queue, jobs
+    train_queue = q
+    init_logging()
     """add a segment into buffer"""
     logging.info(
-        " -started async fetcher for %s augment=%s",
+        " -started async fetcher for %s augment=%s numpyfile %s preload amount %s mem %s",
         name,
         params.augment,
+        numpy_meta.filename,
+        params.maximum_preload,
+        psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
     )
+    epoch = 0
+
+    # this does the data pre processing
+    p_list = []
+    processes = 1
+    if name == "train":
+        processes = 4
+
+    preload_amount = max(1, params.maximum_preload)
+    max_jobs = max(1, 2 * preload_amount // 3)
     while True:
-        if not q.full():
-            batches = pickle.loads(load_queue.get())
-            # datagen.loaded_epochs = samples[0]
-            for i, batch in enumerate(batches[1]):
-                data = []
-                q.put(loadbatch(labels, db, batch, params, label_mapping))
-                batches[1][i] = None
-            del batches
-            batches = None
-            gc.collect()
-        else:
-            logging.debug("Quue is full for %s", name)
-            time.sleep(0.1)
+        with multiprocessing.Pool(
+            processes,
+            init_process,
+            (labels, params, label_mapping),
+            maxtasksperchild=30,
+        ) as pool:
+            item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
+            if item == "STOP":
+                logging.info("%s preloader received stop", name)
+                pool.terminate()
+                return
+            try:
+                epoch, batches = item
+                count = 0
+
+                logging.debug(
+                    "%s preloader got %s batches for epoch %s mem %s",
+                    name,
+                    len(batches),
+                    epoch,
+                    psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+                )
+                total = 0
+
+                # Once process_batch starts to back up
+                loaded_up_to = 0
+                while len(batches) > 0:
+                    logging.debug(
+                        "%s preloader memory %s",
+                        name,
+                        psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+                    )
+
+                    while jobs > max_jobs:
+                        logging.debug("%s waiting for jobs to complete %s", name, jobs)
+                        time.sleep(5)
+                    next_load = batches[:preload_amount]
+
+                    logging.debug(
+                        "%s preloader loading %s - %s ",
+                        name,
+                        loaded_up_to,
+                        loaded_up_to + len(next_load),
+                    )
+                    loaded_up_to = loaded_up_to + len(next_load)
+
+                    batch_data, track_frames = load_batch_frames(
+                        numpy_meta,
+                        next_load,
+                        segments_by_id,
+                        name,
+                    )
+                    chunk_size = len(batch_data) // processes
+                    data = []
+                    for batch_i, segments in enumerate(batch_data):
+                        start = time.time()
+                        segment_data = [None] * len(segments)
+                        for i, seg in enumerate(segments):
+                            frame_data = get_cached_frames(track_frames, seg)
+                            segment_data[i] = frame_data
+                        data.append((segments, segment_data))
+                        batch_data[batch_i] = None
+                        if len(data) > chunk_size or batch_i == (len(batch_data) - 1):
+                            pool.map_async(process_batch, data, callback=processed_data)
+                            jobs += len(data)
+                            data = []
+                    del batch_data
+                    del track_frames
+                    del batches[:preload_amount]
+                    gc.collect()
+                    logging.debug(
+                        "%s preloader loaded  up to %s",
+                        name,
+                        loaded_up_to,
+                    )
+                    total += 1
+                del batches
+                gc.collect()
+                logging.info("%s preloader loaded epoch %s batches", name, epoch)
+                pool.close()
+                pool.join()
+            except Exception as inst:
+                logging.error(
+                    "%s preloader epoch %s error %s", name, epoch, inst, exc_info=True
+                )
+
+
+def processed_data(results):
+    global jobs
+    for result in results:
+        put_with_timeout(
+            train_queue,
+            result,
+            1,
+            f"train_queue-process_batches",
+        )
+        del result
+    jobs -= len(results)
+    del results
+
+
+LOG_EVERY = 25
+labels = None
+params = None
+label_mapping = None
+
+
+def init_process(l, p, map):
+    global labels, params, label_mapping
+    labels = l
+    params = p
+    label_mapping = map
+
+
+def process_batch(arguments):
+    # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
+    # try:
+
+    global labels, params, label_mapping
+    segments, segment_data = arguments
+    preprocessed = loadbatch(labels, segments, segment_data, params, label_mapping)
+    return preprocessed
+
+
+# Found hanging problems with blocking forever so using this as workaround
+# keeps trying to put data in queue until complete
+def put_with_timeout(queue, data, timeout, name=None, sleep_time=10):
+    while True:
+        try:
+            queue.put(data, block=True, timeout=timeout)
+            break
+        except (Full):
+            logging.debug("%s cant put cause full", name)
+            time.sleep(sleep_time)
+        except Exception as e:
+            logging.error(
+                "%s put error %s t/o %s sleep %s",
+                name,
+                e,
+                timeout,
+                sleep_time,
+                exc_info=True,
+            )
+            raise e
+
+
+# keeps trying to get data in queue until complete
+def get_with_timeout(queue, timeout, name=None, sleep_time=10):
+    while True:
+        try:
+            queue_data = queue.get(block=True, timeout=timeout)
+            # queue.task_done()
+            return queue_data
+        except (Empty):
+            logging.debug("%s cant get cause empty", name)
+            time.sleep(sleep_time)
+        except Exception as e:
+            logging.error(
+                "%s get error %s t/o %s sleep %s",
+                name,
+                e,
+                timeout,
+                sleep_time,
+                exc_info=True,
+            )
+            raise e

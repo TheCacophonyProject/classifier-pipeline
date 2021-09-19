@@ -20,21 +20,11 @@ import math
 import numpy as np
 from collections import namedtuple
 
-from ml_tools.tools import Rectangle, get_clipped_flow
+from ml_tools.tools import Rectangle
 from track.region import Region
 from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance
-
-
-class TrackChannels:
-    """Indexes to channels in track."""
-
-    thermal = 0
-    filtered = 1
-    flow_h = 2
-    flow_v = 3
-    mask = 4
-    flow = 5
+from ml_tools.datasetstructures import get_segments
 
 
 class Track:
@@ -50,7 +40,9 @@ class Track:
     # must change atleast 5 pixels to be considered for jitter
     MIN_JITTER_CHANGE = 5
 
-    def __init__(self, clip_id, id=None, fps=9):
+    def __init__(
+        self, clip_id, id=None, fps=9, crop_rectangle=None, tracker_version=None
+    ):
         """
         Creates a new Track.
         :param id: id number for track, if not specified is provided by an auto-incrementer
@@ -97,19 +89,58 @@ class Track:
         self.prediction_classes = None
 
         self.predicted_mid = None
-        self.crop_rectangle = None
+        self.crop_rectangle = crop_rectangle
+
+        self.predictions = None
+        self.predicted_tag = None
+        self.predicted_confidence = None
+
+        self.all_class_confidences = None
+        self.prediction_classes = None
+        self.tracker_version = tracker_version
+
+    def get_segments(
+        self,
+        ffc_frames,
+        frame_temp_median,
+        segment_width,
+        segment_frame_spacing=9,
+        repeats=1,
+        min_frames=0,
+    ):
+        segments, _ = get_segments(
+            self.clip_id,
+            self._id,
+            self.start_frame,
+            segment_frame_spacing,
+            segment_width,
+            regions=np.array(self.bounds_history),
+            ffc_frames=ffc_frames,
+            repeats=repeats,
+            frame_temp_median=np.uint16(frame_temp_median),
+            min_frames=min_frames,
+        )
+        return segments
 
     @classmethod
-    def from_region(cls, clip, region):
-        track = cls(clip.get_id(), fps=clip.frames_per_second)
+    def from_region(cls, clip, region, tracker_version=None):
+        track = cls(
+            clip.get_id(),
+            fps=clip.frames_per_second,
+            tracker_version=tracker_version,
+            crop_rectangle=clip.crop_rectangle,
+        )
         track.start_frame = region.frame_number
         track.start_s = region.frame_number / float(clip.frames_per_second)
-        track.crop_rectangle = clip.crop_rectangle
         track.add_region(region)
         return track
 
     def get_id(self):
         return self._id
+
+    def add_prediction_info(self, track_prediction):
+        logging.warn("TODO add prediction info needs to be implemented")
+        return
 
     def load_track_meta(
         self,
@@ -126,18 +157,13 @@ class Track:
         self.start_s = data["start_s"]
         self.end_s = data["end_s"]
         self.fps = frames_per_second
-
-        self.predicted_class = data.get("tag")
+        self.predicted_tag = data.get("tag")
         self.all_class_confidences = data.get("all_class_confidences", None)
         self.predictions = data.get("predictions")
-        if self.predictions:
-            self.predictions = np.int16(self.predictions)
-            self.predicted_confidence = np.amax(self.predictions)
 
         self.track_tags = track_meta.get("TrackTags")
         self.prediction_classes = data.get("classes")
-
-        tag = Track.get_best_human_tag(track_meta, tag_precedence, min_confidence)
+        tag = Track.get_best_human_tag(self.track_tags, tag_precedence, min_confidence)
         if tag:
             self.tag = tag["what"]
             self.confidence = tag["confidence"]
@@ -150,13 +176,17 @@ class Track:
         self.bounds_history = []
         self.frame_list = []
         for position in positions:
-            frame_number = round(position[0] * frames_per_second)
+            if isinstance(position, list):
+                frame_number = round(position[0] * frames_per_second)
+                region = Region.region_from_array(position[1], frame_number)
+            else:
+                region = Region.region_from_json(position)
+
             if self.start_frame is None:
-                self.start_frame = frame_number
-            self.end_frame = frame_number
-            region = Region.region_from_array(position[1], frame_number)
+                self.start_frame = region.frame_number
+            self.end_frame = region.frame_number
             self.bounds_history.append(region)
-            self.frame_list.append(frame_number)
+            self.frame_list.append(region.frame_number)
         self.current_frame_num = 0
         return True
 
@@ -188,6 +218,13 @@ class Track:
             self.vel_x.append(0)
             self.vel_y.append(0)
 
+    def crop_regions(self):
+        if self.crop_rectangle is None:
+            logging.info("No crop rectangle to crop with")
+            return
+        for region in self.bounds_history:
+            region.crop(self.crop_rectangle)
+
     def add_frame_for_existing_region(self, frame, mass_delta_threshold, prev_filtered):
         region = self.bounds_history[self.current_frame_num]
         if prev_filtered is not None:
@@ -195,13 +232,11 @@ class Track:
         filtered = region.subimage(frame.filtered)
         region.calculate_mass(filtered, mass_delta_threshold)
         region.calculate_variance(filtered, prev_filtered)
-
         if self.prev_frame_num and frame.frame_number:
             frame_diff = frame.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
         self.update_velocity()
-
         self.prev_frame_num = frame.frame_number
         self.current_frame_num += 1
         self.frames_since_target_seen = 0
@@ -427,43 +462,14 @@ class Track:
                 and other_index < len(other_track)
             ):
                 our_bounds = self.bounds_history[our_index]
+                if our_bounds.area == 0:
+                    continue
                 other_bounds = other_track.bounds_history[other_index]
                 overlap = our_bounds.overlap_area(other_bounds) / our_bounds.area
                 if overlap >= threshold:
                     frames_overlapped += 1
 
         return frames_overlapped / len(self)
-
-    def crop_by_region_at_trackframe(self, frame, track_frame_number, clip_flow=True):
-        bounds = self.bounds_history[track_frame_number]
-        return self.crop_by_region(frame, bounds)
-
-    def crop_by_region(self, frame, region, clip_flow=True, filter_mask_by_region=True):
-        thermal = region.subimage(frame.thermal)
-        filtered = region.subimage(frame.filtered)
-        if frame.flow is not None:
-            flow_h = region.subimage(frame.flow_h)
-            flow_v = region.subimage(frame.flow_v)
-            if clip_flow and not frame.flow_clipped:
-                flow_h = get_clipped_flow(flow_h)
-                flow_v = get_clipped_flow(flow_v)
-        else:
-            flow_h = None
-            flow_v = None
-
-        mask = region.subimage(frame.mask).copy()
-        # make sure only our pixels are included in the mask.
-        if filter_mask_by_region:
-            mask[mask != region.id] = 0
-        mask[mask > 0] = 1
-        # stack together into a numpy array.
-        # by using int16 we lose a little precision on the filtered frames, but not much (only 1 bit)
-        if flow_h is not None and flow_v is not None:
-            return np.int16(np.stack((thermal, filtered, flow_h, flow_v, mask), axis=0))
-        else:
-            empty = np.zeros(filtered.shape)
-            return np.int16(np.stack((thermal, filtered, empty, empty, mask), axis=0))
-        return frame
 
     def set_end_s(self, fps):
         self.end_s = (self.end_frame + 1) / fps
@@ -503,11 +509,37 @@ class Track:
     def __len__(self):
         return len(self.bounds_history)
 
+    def start_and_end_in_secs(self):
+        if self.end_s is None:
+            self.end_s = (self.end_frame + 1) / self.frames_per_second
+
+        return (self.start_s, self.end_s)
+
+    def get_metadata(self, predictions_per_model=None):
+        track_info = {}
+        start_s, end_s = self.start_and_end_in_secs()
+
+        track_info["id"] = self.get_id()
+        track_info["tracker_version"] = self.tracker_version
+        track_info["start_s"] = round(start_s, 2)
+        track_info["end_s"] = round(end_s, 2)
+        track_info["num_frames"] = len(self)
+        track_info["frame_start"] = self.start_frame
+        track_info["frame_end"] = self.end_frame
+        track_info["positions"] = self.bounds_history
+        prediction_info = []
+        for model_id, predictions in predictions_per_model.items():
+            prediction = predictions.prediction_for(self.get_id())
+            prediciont_meta = prediction.get_metadata()
+            prediciont_meta["model_id"] = model_id
+            prediction_info.append(prediciont_meta)
+        track_info["predictions"] = prediction_info
+        return track_info
+
     @classmethod
-    def get_best_human_tag(cls, track_meta, tag_precedence, min_confidence=-1):
+    def get_best_human_tag(cls, track_tags, tag_precedence, min_confidence=-1):
         """returns highest precidence non AI tag from the metadata"""
 
-        track_tags = track_meta.get("TrackTags", [])
         track_tags = [
             tag
             for tag in track_tags
@@ -523,9 +555,8 @@ class Track:
         best = None
         for track_tag in track_tags:
             ranking = cls.tag_ranking(track_tag, tag_precedence, default_prec)
-
             # if 2 track_tags have same confidence ignore both
-            if ranking == best and track_tag["what"] != tag["what"]:
+            if tag and ranking == best and track_tag["what"] != tag["what"]:
                 tag = None
             elif best is None or ranking < best:
                 best = ranking

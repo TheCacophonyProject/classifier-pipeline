@@ -9,7 +9,6 @@ from .trackingconfig import TrackingConfig
 from .trainconfig import TrainConfig
 from .classifyconfig import ClassifyConfig
 from .buildconfig import BuildConfig
-from .evaluateconfig import EvaluateConfig
 from .defaultconfig import DefaultConfig, deep_copy_map_if_key_not_exist
 
 CONFIG_FILENAME = "classifier.yaml"
@@ -18,10 +17,18 @@ CONFIG_DIRS = [Path(__file__).parent.parent, Path("/etc/cacophony")]
 
 @attr.s
 class Config(DefaultConfig):
-
-    DEFAULT_LABELS = ["bird", "false-positive", "hedgehog", "possum", "rat", "stoat"]
-    EXCLUDED_TAGS = ["untagged", "unidentified"]
-
+    DEFAULT_LABELS = [
+        "bird",
+        "cat",
+        "false-positive",
+        "hedgehog",
+        "insect",
+        "leporidae",
+        "mustelid",
+        "possum",
+        "rodent",
+        "wallaby",
+    ]
     source_folder = attr.ib()
     load = attr.ib()
     tracks_folder = attr.ib()
@@ -29,16 +36,13 @@ class Config(DefaultConfig):
     build = attr.ib()
     tracking = attr.ib()
     train = attr.ib()
-    classify_tracking = attr.ib()
     classify = attr.ib()
-    evaluate = attr.ib()
-    excluded_tags = attr.ib()
     reprocess = attr.ib()
     previews_colour_map = attr.ib()
-    use_gpu = attr.ib()
     worker_threads = attr.ib()
     debug = attr.ib()
     use_opt_flow = attr.ib()
+    verbose = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename=None):
@@ -55,7 +59,6 @@ class Config(DefaultConfig):
             raw = {}
         # Configuration from "tracking" section is used in
         # "classify_tracking" when not specified.
-        deep_copy_map_if_key_not_exist(raw["tracking"], raw["classify_tracking"])
         deep_copy_map_if_key_not_exist(default.as_dict(), raw)
         base_folder = raw.get("base_data_folder")
         if base_folder is None:
@@ -68,18 +71,15 @@ class Config(DefaultConfig):
             tracking=TrackingConfig.load(raw["tracking"]),
             load=LoadConfig.load(raw["load"]),
             train=TrainConfig.load(raw["train"], base_folder),
-            classify_tracking=TrackingConfig.load(raw["classify_tracking"]),
             classify=ClassifyConfig.load(raw["classify"], base_folder),
-            evaluate=EvaluateConfig.load(raw["evaluate"]),
-            excluded_tags=raw["excluded_tags"],
             reprocess=raw["reprocess"],
             previews_colour_map=raw["previews_colour_map"],
-            use_gpu=raw["use_gpu"],
             worker_threads=raw["worker_threads"],
             labels=raw["labels"],
             build=BuildConfig.load(raw["build"]),
             debug=raw["debug"],
             use_opt_flow=raw["use_opt_flow"],
+            verbose=raw["verbose"],
         )
 
     @classmethod
@@ -88,20 +88,17 @@ class Config(DefaultConfig):
             source_folder="",
             tracks_folder="tracks",
             labels=Config.DEFAULT_LABELS,
-            excluded_tags=Config.EXCLUDED_TAGS,
             reprocess=True,
             previews_colour_map="custom_colormap.dat",
-            use_gpu=False,
             worker_threads=0,
             build=BuildConfig.get_defaults(),
             tracking=TrackingConfig.get_defaults(),
             load=LoadConfig.get_defaults(),
             train=TrainConfig.get_defaults(),
-            classify_tracking=TrackingConfig.get_defaults(),
             classify=ClassifyConfig.get_defaults(),
-            evaluate=EvaluateConfig.get_defaults(),
             debug=False,
             use_opt_flow=False,
+            verbose=False,
         )
 
     def validate(self):
@@ -110,7 +107,6 @@ class Config(DefaultConfig):
         self.load.validate()
         self.train.validate()
         self.classify.validate()
-        self.evaluate.validate()
         return True
 
     def as_dict(self):

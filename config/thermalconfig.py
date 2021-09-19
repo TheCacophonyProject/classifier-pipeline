@@ -45,7 +45,6 @@ class MotionConfig:
     frame_compare_gap = attr.ib()
     one_diff_only = attr.ib()
     trigger_frames = attr.ib()
-    verbose = attr.ib()
     edge_pixels = attr.ib()
     warmer_only = attr.ib()
     dynamic_thresh = attr.ib()
@@ -54,21 +53,17 @@ class MotionConfig:
     @classmethod
     def load(cls, motion):
         return cls(
-            temp_thresh=motion.get("temp-thresh", 2900),
-            delta_thresh=motion.get("delta-thresh", 50),
-            count_thresh=motion.get("count-thresh", 3),
+            temp_thresh=motion.get("temp-thresh", 2750),
+            delta_thresh=motion.get("delta-thresh", 20),
+            count_thresh=motion.get("count-thresh", 1),
             frame_compare_gap=motion.get("frame-compare-gap", 45),
-            one_diff_only=motion.get("use-one-diff-only", True),
-            trigger_frames=motion.get("trigger-frames", 2),
-            verbose=motion.get("verbose", True),
-            edge_pixels=motion.get("edge-pixels", 1),
-            warmer_only=motion.get("warmer-only", True),
+            one_diff_only=motion.get("use-one-diff-only", False),
+            trigger_frames=motion.get("trigger-frames", 1),
+            edge_pixels=motion.get("edge-pixels", 3),
+            warmer_only=motion.get("warmer-only", False),
             dynamic_thresh=motion.get("dynamic-thresh", True),
             run_classifier=motion.get("run-classifier", False),
         )
-
-    def as_dict(self):
-        return attr.asdict(self)
 
 
 @attr.s
@@ -89,7 +84,7 @@ class RecorderConfig:
                 RelAbsTime(window.get("start-recording"), default_offset=30 * 60),
                 RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
             ),
-            output_dir=recorder.get("output-dir", "."),
+            output_dir=recorder["output-dir"],
         )
 
 

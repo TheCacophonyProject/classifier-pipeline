@@ -1,16 +1,16 @@
+# Script to extra images from datasets with meta_data #
+# This can be used to give to people who dont want to work with the h5py db
 from multiprocessing import Process, Queue
-
 from PIL import Image
 import numpy as np
 import pickle
-from dateutil.parser import parse
 import argparse
 import logging
 import os
 import sys
 from config.config import Config
-from datetime import datetime
-from ml_tools.trackdatabase import TrackDatabase
+from ml_tools.imageprocessing import normalize
+import pickle
 
 
 def save_job(queue, dataset, folder, labels_dir):
@@ -27,16 +27,8 @@ def save_job(queue, dataset, folder, labels_dir):
             logging.info("%s jobs left", queue.qsize())
 
 
-def normalize(data, new_max=1):
-    max = np.amax(data)
-    min = np.amin(data[data > 0])
-    data -= min
-    data = data / (max - min) * new_max
-    return data
-
-
 def save_track(dataset, track, folder, labels_dir, ext="png"):
-    track_data = dataset.fetch_track(track, original=True, preprocess=False)
+    track_data = dataset.fetch_track(track, original=True)
     clip_meta = dataset.db.get_clip_meta(track.clip_id)
 
     clip_dir = os.path.join(folder, str(track.clip_id))
@@ -46,7 +38,8 @@ def save_track(dataset, track, folder, labels_dir, ext="png"):
 
     background = dataset.db.get_clip_background(track.clip_id)
     if background is not None:
-        background = normalize(background, new_max=255)
+        background, _ = normalize(background, new_max=255)
+
         img = Image.fromarray(np.uint8(background))
         filename = "{}-background.{}".format(track.clip_id, ext)
         logging.debug("Saving %s", os.path.join(clip_dir, filename))
@@ -54,7 +47,7 @@ def save_track(dataset, track, folder, labels_dir, ext="png"):
 
     for i, frame in enumerate(track_data):
         thermal = frame.thermal
-        normed = normalize(thermal, new_max=255)
+        normed, _ = normalize(thermal, new_max=255)
         img = Image.fromarray(np.uint8(normed))
         filename = "{}-{}.{}".format(track.clip_id, i + track.start_frame, ext)
         logging.debug("Saving %s", os.path.join(clip_dir, filename))
@@ -84,7 +77,7 @@ def save_all(dataset, worker_threads, folder):
         os.mkdir(labels_dir)
     job_queue = Queue()
     processes = []
-    for i in range(max(1, 1)):
+    for i in range(max(1, 4)):
         p = Process(
             target=save_job,
             args=(job_queue, dataset, folder, labels_dir),
@@ -100,11 +93,6 @@ def save_all(dataset, worker_threads, folder):
         job_queue.put("DONE")
     for process in processes:
         process.join()
-
-
-def load_dataset(dataset_file):
-    datasets = pickle.load(open(dataset_file, "rb"))
-    return datasets
 
 
 def load_args():
@@ -135,13 +123,15 @@ def init_logging(timestamps=False):
 args = load_args()
 init_logging()
 config = Config.load_from_file(args.config_file)
-datasets_filename = os.path.join(config.tracks_folder, "datasets.dat")
-datasets = load_dataset(datasets_filename)
+datasets = ["train", "validation", "test"]
+
 base_dir = "."
 if args.base_folder:
     base_dir = args.base_folder
 if not os.path.isdir(base_dir):
     logging.debug("Creating %s", base_dir)
     os.mkdir(base_dir)
-for dataset in datasets:
+for i, name in enumerate(datasets):
+    dataset = pickle.load(open(f"{os.path.join(config.tracks_folder, name)}.dat", "rb"))
+    dataset.load_db()
     save_all(dataset, config.worker_threads, os.path.join(base_dir, dataset.name))

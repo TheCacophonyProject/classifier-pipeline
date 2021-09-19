@@ -9,32 +9,27 @@ Tracks are broken into segments.  Filtered, and then passed to the trainer using
 """
 import logging
 import math
-import multiprocessing
 import os
-import queue
-import random
-import threading
 import time
-import dateutil
 import numpy as np
-
-from ml_tools.datasetstructures import TrackHeader, SegmentHeader, Camera
+import gc
+from ml_tools.datasetstructures import NumpyMeta, TrackHeader
 from ml_tools.trackdatabase import TrackDatabase
-from ml_tools.preprocess import preprocess_segment
 from ml_tools import tools
-from ml_tools import imageprocessing
 
 # from ml_tools.kerasmodel import KerasModel
+from enum import Enum
 
 
-class TrackChannels:
-    """Indexes to channels in track."""
-
-    thermal = 0
-    filtered = 1
-    flow_h = 2
-    flow_v = 3
-    mask = 4
+class SegmentType(Enum):
+    IMPORTANT_RANDOM = 0
+    ALL_RANDOM = 1
+    IMPORTANT_SEQUENTIAL = 2
+    ALL_SEQUENTIAL = 3
+    TOP_SEQUENTIAL = 4
+    ALL_RANDOM_SECTIONS = 5
+    TOP_RANDOM = 6
+    ALL_RANDOM_NOMIN = 6
 
 
 class Dataset:
@@ -57,7 +52,7 @@ class Dataset:
 
     def __init__(
         self,
-        track_db: TrackDatabase,
+        db_file,
         name="Dataset",
         config=None,
         use_segments=True,
@@ -66,25 +61,22 @@ class Dataset:
         labels=[],
     ):
         self.consecutive_segments = consecutive_segments
-        self.camera_bins = {}
+        # self.camera_bins = {}
         self.use_segments = use_segments
         # database holding track data
-        self.db = track_db
+        self.db_file = db_file
+        self.db = None
+        self.load_db()
         self.label_mapping = None
         # name of this dataset
         self.name = name
-        self.use_predictions = use_predictions
-        self.original_samples = None
         # list of our tracks
         self.tracks = []
         self.tracks_by_label = {}
         self.tracks_by_bin = {}
         self.tracks_by_id = {}
         self.camera_names = set()
-        self.cameras_by_id = {}
-
-        # writes the frame motion into the center of the optical flow channels
-        self.encode_frame_offsets_in_flow = False
+        # self.cameras_by_id = {}
 
         # cumulative distribution function for segments.  Allows for super fast weighted random sampling.
         self.segment_cdf = []
@@ -98,45 +90,29 @@ class Dataset:
         self.frame_label_cdf = {}
 
         self.frame_samples = []
-        self.clips_to_samples = {}
         self.frames_by_label = {}
         self.frames_by_id = {}
 
         # list of label names
         self.labels = labels
-
-        # minimum mass of a segment frame for it to be included
-
-        # dictionary used to apply label remapping during track load
         self.label_mapping = None
 
-        # this allows manipulation of data (such as scaling) during the sampling stage.
         self.enable_augmentation = False
-        # how often to scale during augmentation
-        self.scale_frequency = 0.50
-
-        self.preloader_queue = None
-        self.preloader_threads = None
-        self.preloader_stop_flag = False
         self.label_caps = {}
-        # a copy of our entire dataset, if loaded.
-        self.X = None
-        self.y = None
 
         if config:
-            self.min_frame_mass = config.build.train_min_mass
             self.segment_length = config.build.segment_length
             # number of seconds segments are spaced apart
             self.segment_spacing = config.build.segment_spacing
             self.banned_clips = config.build.banned_clips
             self.included_labels = config.labels
-            self.clip_before_date = config.build.clip_end_date
-            self.segment_min_mass = config.build.train_min_mass
+            self.segment_min_avg_mass = config.build.segment_min_avg_mass
         else:
             # number of seconds each segment should be
-            self.segment_length = 3
+            self.segment_length = 25
             # number of seconds segments are spaced apart
             self.segment_spacing = 1
+            self.segment_min_avg_mass = None
         self.filtered_stats = {
             "confidence": 0,
             "trap": 0,
@@ -147,38 +123,73 @@ class Dataset:
             "no_data": 0,
         }
         self.lbl_p = None
-        self.frame_model = None
+        self.numpy_data = None
+
+    # is much faster to read from numpy array when trianing
+    def saveto_numpy(self, path):
+        file = os.path.join(path, self.name)
+        self.numpy_data = NumpyMeta(f"{file}.npy")
+        self.numpy_data.save_tracks(self.db, self.tracks)
+        self.numpy_data.f = None
+
+    def clear_tracks(self):
+        del self.tracks
+        del self.tracks_by_label
+        del self.tracks_by_bin
+        del self.tracks_by_id
+
+    def load_db(self):
+        self.db = TrackDatabase(self.db_file)
+
+    def clear_samples(self):
+        self.frame_cdf = []
+        self.frame_label_cdf = {}
+
+        self.frame_samples = []
+        self.frames_by_label = {}
+        self.frames_by_id = {}
+        self.segment_cdf = []
+        self.segment_label_cdf = {}
+        # segments list
+        self.segments = []
+        self.segments_by_label = {}
+        self.segments_by_id = {}
+        for track in self.tracks:
+            track.segments = None
+            track.sample_frames = None
+        gc.collect()
+
+    def clear_unused(self):
+        if self.use_segments:
+            self.frame_cdf = []
+            self.frame_label_cdf = {}
+
+            self.frame_samples = []
+            self.frames_by_label = {}
+            self.frames_by_id = {}
+        else:
+            self.segment_cdf = []
+            self.segment_label_cdf = {}
+            # segments list
+            self.segments = []
+            self.segments_by_label = {}
+            self.segments_by_id = {}
+        gc.collect()
 
     def set_read_only(self, read_only):
-        self.db.set_read_only(read_only)
+        if self.db is not None:
+            self.db.set_read_only(read_only)
 
-    def random_segments_only(self):
-
-        remove = [segment for segment in self.segments if segment.top_mass]
-        print("removing the tops", len(remove))
-        for segment in remove:
-            segment.track.segments.remove(segment)
-            self.segments_by_label[segment.label].remove(segment)
-            del self.segments_by_id[segment.id]
-
-        self.segments = [segment for segment in self.segments if not segment.top_mass]
-
-        self.rebuild_cdf()
-
-    def highest_mass_only(self, best_only=False):
-        if best_only:
-            remove = [segment for segment in self.segments if not segment.best_mass]
-        else:
-            remove = [segment for segment in self.segments if not segment.top_mass]
+    def highest_mass_only(self):
+        # top_frames for i3d generates all segments above a  min average mass
+        # use this to take only the best
+        remove = [segment for segment in self.segments if not segment.best_mass]
 
         for segment in remove:
             segment.track.segments.remove(segment)
             self.segments_by_label[segment.label].remove(segment)
             del self.segments_by_id[segment.id]
-        if best_only:
-            self.segments = [segment for segment in self.segments if segment.best_mass]
-        else:
-            self.segments = [segment for segment in self.segments if segment.top_mass]
+        self.segments = [segment for segment in self.segments if segment.best_mass]
 
         self.rebuild_cdf()
 
@@ -254,7 +265,9 @@ class Dataset:
                     tracks += len(label_tracks)
                     segments += sum(len(track.segments) for track in label_tracks)
                     frames += sum(
-                        len(track.get_sample_frames()) for track in label_tracks
+                        len(track.get_sample_frames())
+                        for track in label_tracks
+                        if track.sample_frames is not None
                     )
 
         else:
@@ -262,7 +275,11 @@ class Dataset:
             segments = sum(len(track.segments) for track in label_tracks)
             weight = self.get_label_weight(label)
             tracks = len(label_tracks)
-            frames = sum(len(track.get_sample_frames()) for track in label_tracks)
+            frames = sum(
+                len(track.get_sample_frames())
+                for track in label_tracks
+                if track.sample_frames is not None
+            )
             bins = len(
                 [
                     tracks
@@ -277,7 +294,6 @@ class Dataset:
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
-        labels = self.db.get_labels()
         counter = 0
         track_ids = self.db.get_all_track_ids(
             before_date=before_date, after_date=after_date
@@ -285,11 +301,13 @@ class Dataset:
         if shuffle:
             np.random.shuffle(track_ids)
         for clip_id, track_id in track_ids:
-            if self.load_track(clip_id, track_id, labels):
+            if self.load_track(clip_id, track_id):
                 counter += 1
+            if counter % 50 == 0:
+                logging.debug("Dataset loaded %s / %s", counter, len(track_ids))
         return [counter, len(track_ids)]
 
-    def add_tracks(self, tracks, max_segments_per_track=None):
+    def add_tracks(self, tracks):
         """
         Adds list of tracks to dataset
         :param tracks: list of TrackHeader
@@ -297,26 +315,20 @@ class Dataset:
         """
         result = 0
         for track in tracks:
-            if self.add_track_header(track, max_segments_per_track):
+            if self.add_track_header(track):
                 result += 1
         return result
 
-    def add_track_header(self, track_header, max_segments_per_track=None):
+    def add_track_header(self, track_header):
         if track_header.unique_id in self.tracks_by_id:
             return False
-
-        # gp test less segments more tracks
-        if max_segments_per_track is not None:
-            if len(track_header.segments) > max_segments_per_track:
-                segments = random.sample(track_header.segments, max_segments_per_track)
-                track_header.segments = segments
 
         self.tracks.append(track_header)
         self.add_track_to_mappings(track_header)
         self.segments.extend(track_header.segments)
         return True
 
-    def load_track(self, clip_id, track_id, labels):
+    def load_track(self, clip_id, track_id):
         """
         Creates segments for track and adds them to the dataset
         :param clip_id: id of tracks clip
@@ -326,46 +338,30 @@ class Dataset:
         :return: True if track was added, false if it was filtered out.
         :return:
         """
-
         # make sure we don't already have this track
         if "{}-{}".format(clip_id, track_id) in self.tracks_by_bin:
             return False
-
         clip_meta = self.db.get_clip_meta(clip_id)
         track_meta = self.db.get_track_meta(clip_id, track_id)
-        predictions = self.db.get_track_predictions(clip_id, track_id)
         if self.filter_track(clip_meta, track_meta):
             return False
-        track_header = TrackHeader.from_meta(
-            clip_id, clip_meta, track_meta, predictions
-        )
+        track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
         self.tracks.append(track_header)
-        # if track_header.important_frames is None:
-        #     frames = self.db.get_track(clip_id, track_id)
-        #     track_header.set_important_frames(
-        #         self.min_frame_mass, frame_data=frames, model=self.frame_model
-        #     )
-        #     self.db.set_important_frames(
-        #         clip_id,
-        #         track_id,
-        #         [sample.frame_num for sample in track_header.important_frames],
-        #     )
 
         segment_frame_spacing = int(
             round(self.segment_spacing * track_header.frames_per_second)
         )
-        segment_width = int(round(self.segment_length * track_header.frames_per_second))
+        segment_width = self.segment_length
+
         track_header.calculate_segments(
-            track_meta["mass_history"],
             segment_frame_spacing,
             segment_width,
-            self.segment_min_mass,
-            scale=1.5 if self.name == "train" else 1.0,
+            self.segment_min_avg_mass,
         )
-
         self.filtered_stats["segment_mass"] += track_header.filtered_stats[
             "segment_mass"
         ]
+
         self.segments.extend(track_header.segments)
         self.add_track_to_mappings(track_header)
 
@@ -382,15 +378,6 @@ class Dataset:
             return True
         if track_meta["tag"] not in self.included_labels:
             self.filtered_stats["tags"] += 1
-            return True
-
-        # filter by date
-        if (
-            self.clip_before_date
-            and dateutil.parser.parse(clip_meta["start_time"]).date()
-            > self.clip_before_date.date()
-        ):
-            self.filtered_stats["date"] += 1
             return True
 
         # always let the false-positives through as we need them even though they would normally
@@ -440,11 +427,11 @@ class Dataset:
             self.frames_by_id[sample.id] = sample
         self.frame_samples.extend(samples)
         frames.extend(samples)
-        camera = self.cameras_by_id.setdefault(
-            track_header.camera_id, Camera(track_header.camera_id)
-        )
+        # camera = self.cameras_by_id.setdefault(
+        #     track_header.camera_id, Camera(track_header.camera_id)
+        # )
         self.camera_names.add(track_header.camera_id)
-        camera.add_track(track_header)
+        # camera.add_track(track_header)
 
     def filter_segments(self, avg_mass, ignore_labels=None):
         """
@@ -477,8 +464,7 @@ class Dataset:
         self,
         track: TrackHeader,
         original=False,
-        preprocess=True,
-        important_frames=False,
+        sample_frames=False,
     ):
         """
         Fetches data for an entire track
@@ -486,8 +472,8 @@ class Dataset:
         :return: segment data of shape [frames, channels, height, width]
         """
         frame_numbers = None
-        if important_frames:
-            frame_numbers = [frame.frame_num for frame in track.important_frames]
+        if sample_frames:
+            frame_numbers = [frame.frame_num for frame in track.sample_frames]
             frame_numbers.sort()
         frames = self.db.get_track(
             track.clip_id,
@@ -495,31 +481,18 @@ class Dataset:
             original=original,
             frame_numbers=frame_numbers,
         )
-
-        if preprocess:
-
-            frames = preprocess_segment(
-                frames,
-                reference_level=track.frame_temp_median[frame_numbers]
-                if frame_numbers
-                else track.frame_temp_median,
-                frame_velocity=track.frame_velocity[frame_numbers]
-                if frame_numbers
-                else track.frame_velocity,
-                default_inset=self.DEFAULT_INSET,
-            )
         return frames
 
     def fetch_random_sample(self, sample, channel=None):
-        important_frames = sample.track.important_frames
-        np.random.shuffle(important_frames)
-        important_frames = important_frames[: sample.frames]
-        important_frames = [frame.frame_num for frame in important_frames]
-        important_frames.sort()
+        sample_frames = sample.track.sample_frames
+        np.random.shuffle(sample_frames)
+        sample_frames = sample_frames[: sample.frames]
+        sample_frames = [frame.frame_num for frame in sample_frames]
+        sample_frames.sort()
         frames = self.db.get_track(
             sample.track.clip_id,
             sample.track.track_id,
-            frame_numbers=important_frames,
+            frame_numbers=sample_frames,
             channels=channel,
         )
         return frames
@@ -548,83 +521,6 @@ class Dataset:
         )
 
         return data
-
-    def fetch_sample(self, sample, channels=None):
-        if isinstance(sample, SegmentHeader):
-            label = sample.label
-            if self.label_mapping:
-                label = self.mapped_label(sample.label)
-            return self.fetch_segment(sample), label
-        return self.fetch_frame(sample, channels=channels)
-
-    def fetch_segment(
-        self, segment: SegmentHeader, augment=False, frames=None, preprocess=True
-    ):
-        """
-        Fetches data for segment.
-        :param segment: The segment header to fetch
-        :param augment: if true applies data augmentation
-        :return: segment data of shape [frames, channels, height, width]
-        """
-        segment_width = round(self.segment_length * segment.track.frames_per_second)
-
-        # if we are requesting a segment smaller than the default segment size take it from the middle.
-        unused_frames = segment.frames - segment_width
-        if unused_frames < 0:
-            raise Exception(
-                "Maximum segment size for the dataset is {} frames, but requested {}".format(
-                    segment.frames, segment_width
-                )
-            )
-        first_frame = segment.start_frame + (unused_frames // 2)
-        last_frame = segment.start_frame + (unused_frames // 2) + segment_width
-        if unused_frames != 0:
-            raise "Unused frame"
-        if augment and unused_frames > 0:
-            # jitter first frame
-            prev_frames = first_frame
-            post_frames = segment.track.frames - 1 - last_frame
-            max_jitter = max(5, unused_frames)
-            jitter = np.clip(
-                np.random.randint(-max_jitter, max_jitter), -prev_frames, post_frames
-            )
-        else:
-            jitter = 0
-        first_frame += jitter
-        last_frame += jitter
-        if frames:
-            data = frames[first_frame:last_frame]
-        else:
-            data = self.db.get_track(
-                segment.clip_id, segment.track.track_id, first_frame, last_frame
-            )
-
-        if len(data) != segment_width:
-            logging.error(
-                "invalid segment length %d, expected %d", len(data), len(segment_width)
-            )
-        if preprocess:
-            data = preprocess_segment(
-                data,
-                segment.track.frame_temp_median[first_frame:last_frame],
-                segment.track.frame_velocity[first_frame:last_frame],
-                augment=augment,
-                default_inset=self.DEFAULT_INSET,
-            )
-            return data
-        else:
-            return data
-
-    def reduce_samples(self, cap_at=None, label_cap=None):
-        samples = self.epoch_samples(
-            cap_at=cap_at, cap_samples=True, label_cap=label_cap
-        )
-        self.segments_by_label = {}
-        for seg in samples:
-            segs = self.segments_by_label.setdefault(seg.track.label, [])
-            segs.append(seg)
-        self.segments = samples
-        self.rebuild_cdf()
 
     def epoch_samples(
         self, cap_samples=None, replace=True, random=True, cap_at=None, label_cap=None
@@ -683,40 +579,6 @@ class Dataset:
             cap = min(cap, len(samples))
             return samples[:cap]
 
-    def load_all(self, force=False):
-        """Loads all X and y into dataset if required."""
-        if self.X is None or force:
-            self.X, self.y = self.fetch_all()
-
-    def balance_weights(self, weight_modifiers=None):
-        """
-        Adjusts weights so that every class is evenly represented.
-        :param weight_modifiers: if specified is a dictionary mapping from label to weight modifier,
-            where < 1 sampled less frequently, and > 1 is sampled more frequently.
-        :return:
-        """
-
-        label_weight = {}
-        mean_label_weight = 0
-
-        for label in self.labels:
-            label_weight[label] = self.get_label_weight(label)
-            mean_label_weight += label_weight[label] / len(self.labels)
-
-        scale_factor = {}
-        for label in self.labels:
-            modifier = (
-                1.0 if weight_modifiers is None else weight_modifiers.get(label, 1.0)
-            )
-            if label_weight[label] == 0:
-                scale_factor[label] = 1.0
-            else:
-                scale_factor[label] = mean_label_weight / label_weight[label] * modifier
-
-        for segment in self.segments:
-            segment.weight *= scale_factor.get(segment.label, 1.0)
-        self.rebuild_cdf()
-
     def balance_bins(self, max_bin_weight=None):
         """
         Adjusts weights so that bins with a number number of segments aren't sampled so frequently.
@@ -736,66 +598,7 @@ class Dataset:
                 scale_factor = 1
             for track in tracks:
                 for segment in track.segments:
-                    segment.weight *= scale_factor
-        self.rebuild_cdf()
-
-    def get_bin_segments_count(self, bin_id):
-        return sum(len(track.segments) for track in self.tracks_by_bin[bin_id])
-
-    def get_bin_max_track_duration(self, bin_id):
-        return max(track.duration for track in self.tracks_by_bin[bin_id])
-
-    def is_heavy_bin(self, bin_id, max_bin_segments, max_validation_set_track_duration):
-        """
-        heavy bins are bins with more tracks which exceed track duration or max bin_segments
-        """
-        bin_segments = self.get_bin_segments_count(bin_id)
-        max_track_duration = self.get_bin_max_track_duration(bin_id)
-        return (
-            bin_segments > max_bin_segments
-            or max_track_duration > max_validation_set_track_duration
-        )
-
-    def split_heavy_bins(
-        self, bins, max_bin_segments, max_validation_set_track_duration
-    ):
-        """
-        heavy bins are bins with more tracks which exceed track duration or max bin_segments
-        """
-        heavy_bins, normal_bins = [], []
-        for bin_id in bins:
-            if bin_id in self.tracks_by_bin:
-                if self.is_heavy_bin(
-                    bin_id, max_bin_segments, max_validation_set_track_duration
-                ):
-                    heavy_bins.append(bin_id)
-                else:
-                    normal_bins.append(bin_id)
-        return normal_bins, heavy_bins
-
-    def balance_resample(self, required_samples, weight_modifiers=None):
-        """Removes segments until all classes have given number of samples (or less)"""
-
-        new_segments = []
-
-        for label in self.labels:
-            segments = self.get_label_segments(label)
-            required_label_samples = required_samples
-            if weight_modifiers:
-                required_label_samples = int(
-                    math.ceil(required_label_samples * weight_modifiers.get(label, 1.0))
-                )
-            if len(segments) > required_label_samples:
-                # resample down
-                segments = np.random.choice(
-                    segments, required_label_samples, replace=False
-                ).tolist()
-            new_segments += segments
-
-        self.segments = new_segments
-
-        self._purge_track_segments()
-
+                    segment.weight = np.float16(segment.weight * scale_factor)
         self.rebuild_cdf()
 
     def remove_label(self, label_to_remove):
@@ -805,71 +608,11 @@ class Dataset:
         """
         if label_to_remove not in self.labels:
             return
-        self.segments = [
-            segment for segment in self.segments if segment.label != label_to_remove
-        ]
-        self._purge_track_segments()
+        tracks = self.tracks_by_label[label_to_remove]
+        for track in tracks:
+            self.remove_label()
+
         self.rebuild_cdf()
-
-    def _purge_track_segments(self):
-        """Removes any segments from track_headers where the segment has been deleted"""
-        segment_set = set(self.segments)
-
-        # remove segments from tracks
-        for track in self.tracks:
-            segments = track.segments
-            segments = [segment for segment in segments if (segment in segment_set)]
-            track.segments = segments
-
-    def get_normalisation_constants(self, n=None):
-        """
-        Gets constants required for normalisation from dataset.  If n is specified uses a random sample of n segments.
-        Segment weight is not taken into account during this sampling.  Otherrwise the entire dataset is used.
-        :param n: If specified calculates constants from n samples
-        :return: normalisation constants
-        """
-
-        # note:
-        # we calculate the standard deviation and mean using the moments as this allows the calculation to be
-        # done piece at a time.  Otherwise we'd need to load the entire dataset into memory, which might not be
-        # possiable.
-
-        if len(self.segments) == 0:
-            raise Exception("No segments in dataset.")
-
-        sample = (
-            self.segments
-            if n is None or n >= len(self.segments)
-            else random.sample(self.segments, n)
-        )
-
-        # fetch a sample to see what the dims are
-        example = self.fetch_segment(self.segments[0])
-        _, channels, height, width = example.shape
-
-        # we use float64 as this accumulator will get very large!
-        first_moment = np.zeros((channels, height, width), dtype=np.float64)
-        second_moment = np.zeros((channels, height, width), dtype=np.float64)
-
-        for segment in sample:
-            data = np.float64(self.fetch_segment(segment))
-            first_moment += np.mean(data, axis=0)
-            second_moment += np.mean(np.square(data), axis=0)
-
-        # reduce down to channel only moments, in the future per pixel normalisation would be a good idea.
-        first_moment = np.sum(first_moment, axis=(1, 2)) / (
-            len(sample) * width * height
-        )
-        second_moment = np.sum(second_moment, axis=(1, 2)) / (
-            len(sample) * width * height
-        )
-
-        mu = first_moment
-        var = second_moment + (mu ** 2) - (2 * mu * first_moment)
-
-        normalisation_constants = [(mu[i], math.sqrt(var[i])) for i in range(channels)]
-
-        return normalisation_constants
 
     def mapped_label(self, label):
         if self.label_mapping:
@@ -892,7 +635,9 @@ class Dataset:
         self.frame_label_cdf = {}
 
         for track in self.tracks:
-            for frame in track.important_frames:
+            if track.sample_frames is None:
+                continue
+            for frame in track.sample_frames:
                 frame_weight = track.frame_weight
                 if lbl_p and track.label in lbl_p:
                     frame_weight *= lbl_p[track.label]
@@ -984,92 +729,6 @@ class Dataset:
         tracks = self.tracks_by_label.get(label)
         return sum(track.weight for track in tracks) if tracks else 0
 
-    def get_label_segments_count(self, label):
-        """Returns the total weight for all segments of given class."""
-        tracks = self.tracks_by_label.get(label, [])
-        result = sum([len(track.segments) for track in tracks])
-        return result
-
-    def get_label_segments(self, label):
-        """Returns the total weight for all segments of given class."""
-        result = []
-        for track in self.tracks_by_label.get(label, []):
-            result.extend(track.segments)
-        return result
-
-    def add_important(self):
-        for track_header in self.tracks:
-            frames = self.db.get_track(track_header.clip_id, track_header.track_id)
-            track_header.set_important_frames(
-                self.min_frame_mass, frame_data=frames, model=self.frame_model
-            )
-            self.db.set_important_frames(
-                track_header.clip_id,
-                track_header.track_id,
-                [sample.frame_num for sample in track_header.important_frames],
-            )
-
-    def add_overlay(self):
-        for track in self.tracks:
-            if self.db.has_overlay(track.clip_id, track.track_id):
-                continue
-            print("no overlay for ", track.clip_id, track.track_id)
-            frames = self.db.get_track(track.clip_id, track.track_id)
-            regions = []
-            for region in track.track_bounds:
-                regions.append(tools.Rectangle.from_ltrb(*region))
-
-            _, overlay = imageprocessing.movement_images(
-                frames,
-                regions,
-                dim=(120, 160),
-                require_movement=True,
-            )
-            self.db.add_overlay(track.clip_id, track.track_id, overlay)
-
-    def start_async_load(self, buffer_size=128):
-        """
-        Starts async load process.
-        """
-
-        # threading has limitations due to global lock
-        # but processor ends up slow on windows as the numpy array needs to be pickled across processes which is
-        # 2ms per process..
-        # this could be solved either by using linux (with forking, which is copy on write) or with a shared ctype
-        # array.
-
-        if self.PROCESS_BASED:
-            self.preloader_queue = multiprocessing.Queue(buffer_size)
-            self.preloader_threads = [
-                multiprocessing.Process(
-                    target=preloader, args=(self.preloader_queue, self)
-                )
-                for _ in range(self.WORKER_THREADS)
-            ]
-        else:
-            self.preloader_queue = queue.Queue(buffer_size)
-            self.preloader_threads = [
-                threading.Thread(target=preloader, args=(self.preloader_queue, self))
-                for _ in range(self.WORKER_THREADS)
-            ]
-
-        self.preloader_stop_flag = False
-        for thread in self.preloader_threads:
-            thread.start()
-
-    def stop_async_load(self):
-        """
-        Stops async worker thread.
-        """
-        if self.preloader_threads is not None:
-            for thread in self.preloader_threads:
-                if hasattr(thread, "terminate"):
-                    # note this will corrupt the queue, so reset it
-                    thread.terminate()
-                    self.preloader_queue = None
-                else:
-                    thread.exit()
-
     def regroup(
         self,
         groups,
@@ -1095,6 +754,7 @@ class Dataset:
             counts.append(count)
 
         self.labels = list(groups.keys())
+        self.labels.sort()
         self.tracks_by_bin = tracks_by_bin
         self.set_samples(samples)
         if self.use_segments:
@@ -1111,67 +771,13 @@ class Dataset:
             np.random.shuffle(self.frame_samples)
         self.rebuild_cdf()
 
-    def rebalance(
-        self,
-        label_cap=None,
-        cap_percent=None,
-        labels=None,
-        update=False,
-        shuffle=True,
-    ):
-        """
-        Can be used to rebalance a set of labels by a percentage or maximum number
-        """
-        new_samples = []
-        tracks_by_id = {}
-        if labels is None:
-            labels = self.labels.copy()
-
-        for label in labels:
-            samples = self.samples_for(label)
-            if len(samples) == 0:
-                continue
-            label_samples = []
-            self.set_samples_for(label, label_samples)
-
-            track_ids = set()
-            if shuffle:
-                np.random.shuffle(samples)
-            if label_cap:
-                samples = samples[:label_cap]
-            if cap_percent:
-                new_length = int(len(samples) * cap_percent)
-                samples = samples[:new_length]
-            label_tracks = self.tracks_by_label.get(label, [])
-            for track in label_tracks:
-                if self.use_segments:
-                    track.segments = []
-                else:
-                    track.important_frames = []
-            for sample in samples:
-                track = self.tracks_by_id[sample.unique_track_id]
-                track_ids.add(track)
-                track.add_sample(sample, self.use_segments)
-                tracks_by_id[track.bin_id] = track
-                label_samples.append(sample)
-            self.tracks_by_label[label] = list(track_ids)
-            new_samples.extend(label_samples)
-
-        if update:
-            self.tracks_by_bin = tracks_by_id
-            if self.use_segments:
-                self.segments = new_samples
-            else:
-                self.frame_samples = new_samples
-        return tracks_by_id, new_samples
-
     def has_data(self):
         if self.use_segments:
             return len(self.segments) > 0
         else:
             return len(self.frame_samples) > 0
 
-    def recalculate_segments(self, scale=1.0, segment_type=1):
+    def recalculate_segments(self, segment_type=SegmentType.ALL_RANDOM):
         self.segments_by_id.clear()
         self.segments_by_label.clear()
         del self.segments[:]
@@ -1179,9 +785,7 @@ class Dataset:
         self.segments = []
         self.segments_by_label = {}
         self.segments_by_id = {}
-        logging.info(
-            "%s generating segments scale %s type %s", self.name, scale, segment_type
-        )
+        logging.info("%s generating segments  type %s", self.name, segment_type)
         start = time.time()
         empty_tracks = []
         filtered_stats = 0
@@ -1190,52 +794,50 @@ class Dataset:
             segment_frame_spacing = int(
                 round(self.segment_spacing * track.frames_per_second)
             )
-            segment_width = int(round(self.segment_length * track.frames_per_second))
+            segment_width = self.segment_length
             use_important = True
             random_frames = True
             top_frames = False
             random_sections = False
-            segment_min_mass = self.segment_min_mass
-            if segment_type == 0:
+            segment_min_avg_mass = self.segment_min_avg_mass
+            if segment_type == SegmentType.IMPORTANT_RANDOM:
                 use_important = True
                 random_frames = True
-                segment_min_mass = self.segment_min_mass
-            elif segment_type == 1:
+                segment_min_avg_mass = self.segment_min_avg_mass
+            elif segment_type == SegmentType.ALL_RANDOM:
                 use_important = False
                 random_frames = True
-                segment_min_mass = self.segment_min_mass
-            elif segment_type == 2:
+                segment_min_avg_mass = self.segment_min_avg_mass
+            elif segment_type == SegmentType.IMPORTANT_SEQUENTIAL:
                 use_important = True
                 random_frames = False
-            elif segment_type == 3:
+            elif segment_type == SegmentType.ALL_SEQUENTIAL:
                 use_important = False
                 random_frames = False
-                segment_min_mass = self.segment_min_mass
-            elif segment_type == 4:
+                segment_min_avg_mass = self.segment_min_avg_mass
+            elif segment_type == SegmentType.TOP_SEQUENTIAL:
+                random_frames = False
                 top_frames = True
-            elif segment_type == 5:
+            elif segment_type == SegmentType.ALL_RANDOM_SECTIONS:
                 use_important = False
                 random_frames = True
-                segment_min_mass = self.segment_min_mass
+                segment_min_avg_mass = self.segment_min_avg_mass
                 random_sections = True
-            elif segment_type == 6:
+            elif segment_type == SegmentType.ALL_RANDOM_NOMIN:
                 use_important = False
                 random_frames = False
-                segment_min_mass = None
-            elif segment_type == 7:
+                segment_min_avg_mass = None
+            elif segment_type == SegmentType.TOP_RANDOM:
                 use_important = False
                 random_frames = True
                 top_frames = True
-                segment_min_mass = None
             track.calculate_segments(
-                track.frame_mass,
                 segment_frame_spacing,
                 segment_width,
-                scale=scale,
                 random_frames=random_frames,
                 use_important=use_important,
                 top_frames=top_frames,
-                segment_min_mass=segment_min_mass,
+                segment_min_mass=segment_min_avg_mass,
                 random_sections=random_sections,
             )
             filtered_stats = filtered_stats + track.filtered_stats["segment_mass"]
@@ -1259,11 +861,6 @@ class Dataset:
             filtered_stats,
             time.time() - start,
         )
-        # print(self.name, "has", len(self.segments))
-        # for segment in self.segments:
-        #     print(
-        #         f"{segment.track.label} - {segment.track.clip_id}-{segment.track.track_id} -{segment.track.start_frame} segment {segment.id} {segment.start_frame} frame_indices {segment.frame_indices} best? { segment.best_mass} top {segment.top_mass}"
-        #     )
 
     def remove_track(self, track):
         self.tracks.remove(track)
@@ -1271,90 +868,3 @@ class Dataset:
         if track.bin_id in self.tracks_by_bin:
             del self.tracks_by_bin[track.bin_id]
         self.tracks_by_label[track.label].remove(track)
-
-    # HISTORICAL
-    def next_batch(self, n, disable_async=False, force_no_augmentation=False):
-        """
-        Returns a batch of n segments (X, y) from dataset.
-        Applies augmentation and preprocessing automatically.
-        :param n: number of segments
-        :param disable_async: forces fetching of segment in this thread / process rather than collecting from
-            an aync reader queue (if one exists)
-        :param force_no_augmentation: forces augmentation off, may disable asyc loading.
-        :return: X of shape [n, channels, height, width], y (labels) of shape [n]
-        """
-
-        # if async is enabled use it.
-        if (
-            not disable_async
-            and self.preloader_queue is not None
-            and not force_no_augmentation
-        ):
-            # get samples from queue
-            batch_X = []
-            batch_y = []
-            for _ in range(n):
-                X, y = self.preloader_queue.get()
-                batch_X.append(X[0])
-                batch_y.append(y[0])
-
-            return np.asarray(batch_X), np.asarray(batch_y)
-
-        segments = self.sample_segments(n)
-
-        batch_X = []
-        batch_y = []
-
-        for segment in segments:
-            data = self.fetch_segment(
-                segment, augment=self.enable_augmentation and not force_no_augmentation
-            )
-            batch_X.append(data)
-            batch_y.append(self.labels.index(segment.label))
-
-            if np.isnan(data).any():
-                logging.warning("NaN found in data from source: %r", segment.clip_id)
-
-        # Half float should be fine here.  When using process based async loading we have to pickle the batch between
-        # processes, so having it half the size helps a lot.  Also it reduces the memory required for the read buffers
-        batch_X = np.float16(batch_X)
-        batch_y = np.int32(batch_y)
-
-        return batch_X, batch_y
-
-
-def dataset_db_path(config):
-    return os.path.join(config.tracks_folder, "datasets.dat")
-
-
-# HISTORICAL
-def fetch_all(self):
-    """
-    Fetches all segments
-    :return: X of shape [n,f,channels,height,width], y of shape [n]
-    """
-    X = np.float32([self.fetch_segment(segment) for segment in self.segments])
-    y = np.int32([self.labels.index(segment.label) for segment in self.segments])
-    return X, y
-
-
-# continue to read examples until queue is full
-def preloader(q, dataset):
-    """add a segment into buffer"""
-    logging.info(
-        " -started async fetcher for %s with augment=%s segment_width=%s",
-        dataset.name,
-        dataset.enable_augmentation,
-        dataset.segment_width,
-    )
-    loads = 0
-    timer = time.time()
-    while not dataset.preloader_stop_flag:
-        if not q.full():
-            q.put(dataset.next_batch(1, disable_async=True))
-            loads += 1
-            if (time.time() - timer) > 1.0:
-                # logging.debug("{} segments per seconds {:.1f}".format(dataset.name, loads / (time.time() - timer)))
-                loads = 0
-        else:
-            time.sleep(0.1)

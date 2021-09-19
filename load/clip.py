@@ -24,14 +24,13 @@ import numpy as np
 import os
 import pytz
 import cv2
-import json
+
 from ml_tools.imageprocessing import normalize, detect_objects
 from ml_tools.tools import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
 from track.region import Region
 from piclassifier.motiondetector import is_affected_by_ffc
-from ml_tools import tools
 
 
 class Clip:
@@ -43,24 +42,14 @@ class Clip:
     # and background object must overlap i.e. they are a valid object
     MIN_ORIGIN_OVERLAP = 0.80
 
-    def __init__(
-        self,
-        trackconfig,
-        sourcefile,
-        background=None,
-        calc_stats=True,
-        tracking_version=None,
-    ):
+    def __init__(self, trackconfig, sourcefile, background=None, calc_stats=True):
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
         Track._track_id = 1
-        self.ffc_frames = []
-        self.tags = None
         self.disable_background_subtraction = False
         self.frame_on = 0
         self.ffc_affected = False
         self.crop_rectangle = None
-        self.num_preview_frames = 0
         self.region_history = []
         self.active_tracks = set()
         self.tracks = []
@@ -75,7 +64,6 @@ class Clip:
         self.res_x = None
         self.res_y = None
         self.background_frames = 0
-        self.background_is_preview = trackconfig.background_calc == Clip.PREVIEW
         self.config = trackconfig
         self.frames_per_second = Clip.FRAMES_PER_SECOND
 
@@ -87,59 +75,14 @@ class Clip:
         self.track_min_delta = None
         self.track_max_delta = None
         self.background_thresh = None
-        self.predictions = None
-        self.tracking_version = tracking_version
+        self.ffc_frames = []
+        self.tags = None
+
         # sets defaults
         self.set_model(None)
         if background is not None:
             self.background = background
             self._background_calculated()
-
-    def save_metadata(self, filename):
-        # filename = datetime.now().strftime("%Y%m%d.%H%M%S.%f.txt")
-
-        # record results in text file.
-        save_file = {}
-        start, end = self.start_and_end_time_absolute()
-        save_file["start_time"] = start.isoformat()
-        save_file["end_time"] = end.isoformat()
-        save_file["temp_thresh"] = self.temp_thresh
-        save_file["algorithm"] = {}
-        save_file["algorithm"]["model_name"] = "PI-INC3"
-        save_file["algorithm"]["tracker_version"] = self.tracking_version
-        save_file["tracks"] = []
-        for track in self.tracks:
-            track_info = {}
-            prediction = self.predictions.prediction_for(track.get_id())
-            start_s, end_s = self.start_and_end_in_secs(track)
-            save_file["tracks"].append(track_info)
-            track_info["start_s"] = round(start_s, 2)
-            track_info["end_s"] = round(end_s, 2)
-            track_info["num_frames"] = track.frames
-            track_info["frame_start"] = track.start_frame
-            track_info["frame_end"] = track.end_frame
-            if prediction and prediction.best_label_index is not None:
-                track_info["label"] = self.predictions.labels[
-                    prediction.best_label_index
-                ]
-                track_info["confident_tag"] = track_info["label"]
-                track_info["confidence"] = round(prediction.score(), 2)
-                track_info["clarity"] = round(prediction.clarity, 3)
-                track_info["average_novelty"] = round(prediction.average_novelty, 2)
-                track_info["max_novelty"] = round(prediction.max_novelty, 2)
-                track_info["all_class_confidences"] = {}
-                for i, value in enumerate(prediction.class_best_score):
-                    label = self.predictions.labels[i]
-                    track_info["all_class_confidences"][label] = round(float(value), 3)
-
-            positions = []
-            for region in track.bounds_history:
-                track_time = round(region.frame_number / self.frames_per_second, 2)
-                positions.append([track_time, region])
-            track_info["positions"] = positions
-
-        with open(os.path.join(filename), "w") as f:
-            json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
 
     def set_model(self, camera_model):
         self.camera_model = camera_model
@@ -208,7 +151,10 @@ class Clip:
 
         initial_frames = None
         initial_diff = None
+        first_frame = None
         for frame in frame_reader:
+            if first_frame is None:
+                first_frame = frame.pix
             ffc_affected = is_affected_by_ffc(frame)
             if ffc_affected:
                 continue
@@ -226,13 +172,22 @@ class Clip:
 
         if len(frames) > 0:
             frame_average = np.average(frames, axis=0)
+            if initial_frames is None:
+                initial_frames = frame_average
             self.update_background(frame_average)
             initial_diff = self.calculate_initial_diff(
                 frame_average, initial_frames, initial_diff
             )
+
             if initial_frames is None:
                 initial_frames = frame_average
         frames = []
+        if initial_diff is None:
+            if first_frame is not None:
+                # fall back if whole clip is ffc
+                self.update_background(frame.pix)
+                self._background_calculated()
+            return
         np.clip(initial_diff, 0, None, out=initial_diff)
         initial_frames = self.remove_background_animals(initial_frames, initial_diff)
 
@@ -270,7 +225,8 @@ class Clip:
             sub_components, sub_connected, sub_stats = detect_objects(
                 norm_back, otsus=True
             )
-            if len(sub_stats) <= 1:
+
+            if sub_components <= 1:
                 continue
             overlap_image = region.subimage(lower_mask) * 255
             overlap_pixels = np.sum(sub_connected[overlap_image > 0])
@@ -345,7 +301,6 @@ class Clip:
             self.device = os.path.splitext(os.path.basename(self.source_file))[0].split(
                 "-"
             )[-1]
-
         self.location = metadata.get("location")
         tracks = self.load_tracks_meta(
             metadata, include_filtered_channel, tag_precedence

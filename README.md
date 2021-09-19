@@ -1,36 +1,74 @@
-# Please note
-We are in the process of changing how we classify videos.   We are moving away from video based tagging, to tagging parts of the videos where we have recognised there may be an animal.  These consist of smaller rectangles of video that are linked together through frames and we call them tracks.  
-
-As part of this change, the projects *extract.py* and *classify.py* has been updated to use our new python package structure and config files but the rest of the projects have not.   At this stage we are not sure whether *build.py*, *train.py* and *evaluate.py* run as we are still refactoring them.   (Please use code commited last year (2018) if you want to run these scripts)
-
-
 # Overview
 
 These scripts handle the data pre-processing, training, and execution of a Convolutional Neural Network based classifier
 for thermal vision.
 
-The output is a TensorFlow model that can identify 48x48 video clips centered on the object of interest.
+The output is a TensorFlow model that can identify thermal video clips of animals
 
 # Scripts
 
-### extract.py
-Processes tagged CPTV files extracting targets of interest into track files used for training.
+### load.py
+Processes CPTV clips and metadata, extracts the tagged frames (supplied by the metadata) and adds them to the hdf5 database.
+
+The tracking algorithm tries to distinguish between animal tracks and false positives, but is not 100% reliable.  For this reason the output of the tracking algorithm should be checked by hand.
+
 
 ### build.py
-Builds a data set from extracted track files.
+Creates training, validation and testing datasets from database of clips & tracks.
+Datasets contain frames and segments ( e.g. 45 frames).
+
+Frames (important frames) are calculated by choosing frames with a mass ( the count of pixels that have been deemed an object by track extraction) between the lower and upper quartiles of a tracks mass distribution.
+
+Frames are also checked to see if they are noisy frames.
+This attempts to remove the following types of noisy frames:
+- Frames where it has bad tracking e.g. in the middle of an animal
+- Frames where only part of the animal is shown (maybe leaving the cameras field of vision)
+- Frames where nothing is there but noise
+
+Segments are calculated either by (depending on config):
+
+Choosing random permutations of the important frames.
+- Number of Segments (# of important frames - segment duration) // 9 segments are selected
+
+or by choosing segment duration consecutive frames whose mass is above a certain amount        
+- Number of Segments up to (# of frames - segment duration) // segment-frame-spacing
+
+Datasets are split by camera and location ( to try and remove any bias that may occur from using a camera in multiple sets).
+
+Some labels have low amounts of data so a single camera is split into 2 cameras e.g. Wallabies and Leoparidaes
 
 ### train.py
 Trains a neural net using a provided test / train / validation dataset.
 
 ### classify.py
 Uses a pre-trained model to identifying and classifying any animals in a CPTV file.
+Classifier will produce a JSON output either to terminal or txt file.
+
+#### thumbnail algorithm
+A single region to be used as the thumbnail will be chosen per recording and saved in the JSON output
+
+If a recording has tracks
+- An overriding tag based on the number of occurrences of an animal is chosen, with any
+animal being favoured over false-positive
+e.g. rat, possum, possum, false-positive, false-positive, false-positive.... Will be a possum tag
+
+- All tracks will be scored on prediction confidence, standard deviation of mass and mass.
+- Choose highest scoring track and take the region with the 75th percentile mass as the thumbnail region
+
+If there are no tracks for a recording
+
+Choose the region with greatest mass if any regions exist (these are points of interest that never eventuated into tracks)
+
+Otherwise take the frame with the highest mean pixel value and find the highest mean pixel 64 x64 region
 
 ### evaluate.py
 Evaluates the performance of a classify.py run and generates reports.
 
 # Setup
 
-1. Create a virtual environment and install the necessary prerequisites </br>
+Install the following prerequisites (tested with Ubuntu 18.0 and Python Python 3.6.9)
+`apt-get install -y tzdata git python3 python3-dev python3-venv libcairo2-dev build-essential libgirepository1.0-dev libjpeg-dev python-cairo libhdf5-dev`
+1. Create a virtual environment in python3 and install the necessary prerequisites </br>
 `pip install -r requirements.txt`
 
 2. Copy the classifier_Template.yaml to classifier.yaml and then edit this file with your own settings.   You will need to set up the paths for it work on your system. (Note: Currently these settings only apply to classify.py and extract.py)
@@ -39,7 +77,12 @@ Evaluates the performance of a classify.py run and generates reports.
 https://www.tensorflow.org/install/gpu))</br>
 `pip install tensorflow-gpu`
 
-4. MPEG4 output requires FFMPEG to be installed which can be found [here](https://www.ffmpeg.org/).  On windows the installation path will need to be added to the system path.
+4. MPEG4 output requires FFMPEG to be installed which can be found [here](https://www.ffmpeg.org/) On linux `apt-get install ffmpeg`.  On windows the installation path will need to be added to the system path.
+
+
+5. Create a classifier configuration
+
+Copy `classifier_TEMPLATE.yaml` to `classifier.yaml`. Edit.
 
 # Usage
 
@@ -53,23 +96,28 @@ First download the CPTV files by running
 
 `python cptv-download.py --user x --password x`
 
-Next extract the track files.  This can take some time
+Next load the track files.  This can take some time
 
-`python extract.py all -v -p`
+`python load.py all -v -p`
 
 Now we can build the data set
 
-`python build.py data`
+`python build.py`
 
 And finally train the model
 
-`python train.py -dataset=data -model-name=model --epochs=10`
+`python train.py <build name>`
+
+## Database format
+
+Load.py will create a hdf5 file (dataset.hdf5) The format of this is described here:
+https://docs.google.com/document/d/1iPsp-LWRva8YTQHwXRq8R1vjJKT58wRNCn_8bi6BoW8/
 
 ## Classifying animals within a CPTV File
 
 A pre-trained model can be used to classify objects within a CPTV video
 
-`python classify.py [cptv filename] -p`
+`python classify.py [cptv filename]`
 
 This will generate a text file listing the animals identified, and create an MPEG preview file.
 

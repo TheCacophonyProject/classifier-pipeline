@@ -1,20 +1,18 @@
-from ml_tools.dataset import TrackChannels
+from ml_tools.frame import TrackChannels
+from ml_tools.dataset import SegmentType
+from ml_tools.preprocess import FrameTypes
 
 
 class HyperParams(dict):
-    """Defines hyper paramaters for model"""
+    """Helper wrapper for dictionary to make accessing hyper parameters easier"""
 
     def __init__(self, *args):
         super(HyperParams, self).__init__(*args)
 
-        filtered = self.get("use_filtered")
-        if filtered:
-            self["channel"] = TrackChannels.filtered
-
         self.insert_defaults()
 
     def insert_defaults(self):
-        self["model"] = self.model
+        self["model_name"] = self.model_name
         self["dense_sizes"] = self.dense_sizes
         self["base_training"] = self.base_training
         self["retrain_layer"] = self.retrain_layer
@@ -22,14 +20,12 @@ class HyperParams(dict):
         self["learning_rate"] = self.learning_rate
         self["learning_rate_decay"] = self.learning_rate_decay
         self["use_movement"] = self.use_movement
-        self["model"] = self.model
         self["use_segments"] = self.use_segments
         self["square_width"] = self.square_width
         self["buffer_size"] = self.buffer_size
         self["frame_size"] = self.frame_size
 
         self["shuffle"] = self.shuffle
-        self["train_load_threads"] = self.train_load_threads
         self["channel"] = self.channel
         self["type"] = self.type
         self["segment_type"] = self.segment_type
@@ -46,8 +42,21 @@ class HyperParams(dict):
         return output_dim
 
     @property
+    def keep_aspect(self):
+        return self.get("keep_aspect", False)
+
+    @property
+    def use_background_filtered(self):
+        return self.get("use_background_filtered", True)
+
+    @property
+    def keep_edge(self):
+        return self.get("keep_edge", False)
+
+    @property
     def segment_type(self):
-        return self.get("segment_type", 1)
+        segment_type = self.get("segment_type", SegmentType.ALL_RANDOM.name)
+        return SegmentType[segment_type]
 
     # Model hyper paramters
     @property
@@ -59,8 +68,8 @@ class HyperParams(dict):
         return self.get("mvm", False)
 
     @property
-    def model(self):
-        return self.get("model", "resnetv2")
+    def model_name(self):
+        return self.get("model_name", "resnetv2")
 
     @property
     def channel(self):
@@ -128,5 +137,20 @@ class HyperParams(dict):
         return self.get("shuffle", True)
 
     @property
-    def train_load_threads(self):
-        return self.get("train_load_threads", 2)
+    def maximum_train_preload(self):
+        return self.get("maximum_train_preload", 1000)
+
+    @property
+    def red_type(self):
+        type = self.get("red_type", FrameTypes.thermal_tiled.name)
+        return FrameTypes[type]
+
+    @property
+    def green_type(self):
+        type = self.get("green_type", FrameTypes.filtered_tiled.name)
+        return FrameTypes[type]
+
+    @property
+    def blue_type(self):
+        type = self.get("blue_type", FrameTypes.filtered_tiled.name)
+        return FrameTypes[type]

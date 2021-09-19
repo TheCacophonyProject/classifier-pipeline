@@ -1,13 +1,22 @@
 import attr
 import cv2
 import numpy as np
-from track.track import TrackChannels
 from ml_tools.tools import get_clipped_flow
-from scipy import ndimage
 from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
 
 
-@attr.s(slots=True)
+class TrackChannels:
+    """Indexes to channels in track."""
+
+    thermal = 0
+    filtered = 1
+    flow_h = 2
+    flow_v = 3
+    mask = 4
+    flow = 5
+
+
+@attr.s(slots=True, eq=False)
 class Frame:
 
     thermal = attr.ib()
@@ -18,6 +27,7 @@ class Frame:
     flow_clipped = attr.ib(default=False)
     scaled_thermal = attr.ib(default=None)
     ffc_affected = attr.ib(default=False)
+    region = attr.ib(default=None)
 
     def get_channel(self, channel):
         if channel == TrackChannels.thermal:
@@ -31,40 +41,62 @@ class Frame:
         return None
 
     @classmethod
-    def from_channel(
-        cls, frame, channel, frame_number, flow_clipped=False, ffc_affected=False
+    def from_channels(
+        cls,
+        frame,
+        channels,
+        frame_number,
+        flow_clipped=True,
+        ffc_affected=False,
+        region=None,
     ):
-        flow = None
-        if TrackChannels.thermal == channel:
-            thermal = frame
-        else:
-            thermal = None
-        if TrackChannels.filtered == channel:
-            filtered = frame
-        else:
-            filtered = None
-
-        if TrackChannels.mask == channel:
-            mask = frame
-        else:
-            mask = None
-        return cls(
-            thermal,
-            filtered,
-            mask,
+        f = cls(
+            None,
+            None,
+            None,
             frame_number,
-            flow=flow,
             flow_clipped=flow_clipped,
             ffc_affected=ffc_affected,
+            region=region,
         )
+        flow_h = None
+        flow_v = None
+        for channel, data in zip(channels, frame):
+            if TrackChannels.thermal == channel:
+                f.thermal = data
+            if TrackChannels.filtered == channel:
+                f.filtered = data
+
+            if TrackChannels.mask == channel:
+                f.mask = data
+            if TrackChannels.flow_h == channel:
+                flow_h = data
+            if TrackChannels.flow_v == channel:
+                flow_v = data
+            if TrackChannels.flow == channel:
+                f.flow = data
+        if flow_h is not None and flow_v is not None:
+            flow = np.stack((flow_h, flow_v), axis=2)
+            f.flow = flow
+
+        return f
 
     @classmethod
     def from_array(
-        cls, frame_arr, frame_number, flow_clipped=False, ffc_affected=False
+        cls,
+        frame_arr,
+        frame_number,
+        flow_clipped=False,
+        ffc_affected=False,
+        region=None,
     ):
-        flow_h = frame_arr[TrackChannels.flow_h][:, :, np.newaxis]
-        flow_v = frame_arr[TrackChannels.flow_v][:, :, np.newaxis]
-        flow = np.concatenate((flow_h, flow_v), axis=2)
+        flow = None
+        if len(frame_arr) == 5:
+            flow = np.stack(
+                (frame_arr[TrackChannels.flow_h], frame_arr[TrackChannels.flow_v]),
+                axis=2,
+            )
+
         return cls(
             frame_arr[TrackChannels.thermal],
             frame_arr[TrackChannels.filtered],
@@ -72,10 +104,13 @@ class Frame:
             frame_number,
             flow=flow,
             flow_clipped=flow_clipped,
+            region=region,
             ffc_affected=ffc_affected,
         )
 
     def as_array(self, split_flow=True):
+        if self.flow is None:
+            return np.asarray([self.thermal, self.filtered, self.mask])
         if split_flow:
             return np.asarray(
                 [
@@ -112,6 +147,11 @@ class Frame:
         self.flow = flow
         if prev_frame:
             prev_frame.scaled_thermal = None
+
+    def unclip_flow(self):
+        if self.flow_clipped:
+            self.flow *= 1.0 / 256.0
+            self.flow_clipped = False
 
     def clip_flow(self):
         if self.flow is not None:
@@ -163,6 +203,7 @@ class Frame:
             out.filtered = filtered
             out.mask = mask
             out.flow = flow
+            out.region = region
             frame = out
         else:
             frame = Frame(
@@ -172,26 +213,65 @@ class Frame:
                 self.frame_number,
                 flow_clipped=self.flow_clipped,
                 ffc_affected=self.ffc_affected,
+                region=region,
             )
             frame.flow = flow
         return frame
 
-    def resize_with_aspect(self, dim):
+    def resize_with_aspect(self, dim, crop_rectangle, keep_edge=False):
         scale_percent = (dim / np.array(self.thermal.shape)).min()
         width = int(self.thermal.shape[1] * scale_percent)
         height = int(self.thermal.shape[0] * scale_percent)
         resize_dim = (width, height)
         if self.thermal is not None:
-            self.thermal = resize_and_pad(self.thermal, resize_dim, dim)
+            self.thermal = resize_and_pad(
+                self.thermal,
+                resize_dim,
+                dim,
+                self.region,
+                crop_rectangle,
+                keep_edge=keep_edge,
+            )
         if self.mask is not None:
             self.mask = resize_and_pad(
-                self.mask, resize_dim, dim, pad=0, interpolation=cv2.INTER_NEAREST
+                self.mask,
+                resize_dim,
+                dim,
+                self.region,
+                crop_rectangle,
+                keep_edge=keep_edge,
+                pad=0,
+                interpolation=cv2.INTER_NEAREST,
             )
         if self.filtered is not None:
-            self.filtered = resize_and_pad(self.filtered, resize_dim, dim, pad=0)
+            self.filtered = resize_and_pad(
+                self.filtered,
+                resize_dim,
+                dim,
+                self.region,
+                crop_rectangle,
+                keep_edge=keep_edge,
+                pad=0,
+            )
         if self.flow is not None:
-            flow_h = resize_and_pad(self.flow[:, :, 0], resize_dim, dim, pad=0)
-            flow_v = resize_and_pad(self.flow[:, :, 1], resize_dim, dim, pad=0)
+            flow_h = resize_and_pad(
+                self.flow[:, :, 0],
+                resize_dim,
+                dim,
+                self.region,
+                crop_rectangle,
+                keep_edge=keep_edge,
+                pad=0,
+            )
+            flow_v = resize_and_pad(
+                self.flow[:, :, 1],
+                resize_dim,
+                dim,
+                self.region,
+                crop_rectangle,
+                keep_edge=keep_edge,
+                pad=0,
+            )
             self.flow = np.stack((flow_h, flow_v), axis=2)
 
     def resize(self, dim):
@@ -230,6 +310,7 @@ class Frame:
             flow=self.flow,
             flow_clipped=self.flow_clipped,
             ffc_affected=self.ffc_affected,
+            region=self.region,
         )
 
     def flip(self):

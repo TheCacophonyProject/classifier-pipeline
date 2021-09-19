@@ -29,7 +29,6 @@ from ml_tools import tools
 import ml_tools.globals as globs
 from ml_tools.mpeg_creator import MPEGCreator
 from track.region import Region
-from track.track import TrackChannels
 from ml_tools.imageprocessing import normalize
 
 
@@ -112,9 +111,8 @@ class Previewer:
 
         if self.debug:
             footer = Previewer.stats_footer(clip.stats)
-        if (
-            predictions
-            and self.preview_type == self.PREVIEW_CLASSIFIED
+        if predictions and (
+            self.preview_type == self.PREVIEW_CLASSIFIED
             or self.preview_type == self.PREVIEW_TRACKING
         ):
             self.create_track_descriptions(clip, predictions)
@@ -185,12 +183,14 @@ class Previewer:
             video_frames = []
             for region in track.bounds_history:
                 frame = clip.frame_buffer.get_frame(region.frame_number)
-                frame = track.crop_by_region(frame, region)
+                cropped = frame.crop_by_region(region)
+                if cropped.thermal.size == 0:
+                    continue
                 img = tools.convert_heat_to_img(
-                    frame[TrackChannels.thermal],
+                    cropped.thermal,
                     self.colourmap,
-                    np.amin(frame),
-                    np.amax(frame),
+                    np.amin(cropped.thermal),
+                    np.amax(cropped.thermal),
                 )
                 img = img.resize((frame_width, frame_height), Image.NEAREST)
                 video_frames.append(np.asarray(img))
@@ -198,7 +198,7 @@ class Previewer:
             logging.info("creating preview %s", filename_format.format(id + 1))
             tools.write_mpeg(filename_format.format(id + 1), video_frames)
 
-    def convert_and_resize(self, frame, h_min, h_max, mode=Image.BILINEAR):
+    def convert_and_resize(self, frame, h_min, h_max, size=None, mode=Image.BILINEAR):
         """Converts the image to colour using colour map and resize"""
         thermal = frame[:120, :160].copy()
         image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
@@ -329,9 +329,7 @@ class Previewer:
         if prediction is None:
             return
 
-        current_prediction_string = prediction.get_classified_footer(
-            track_predictions.labels, frame_offset
-        )
+        current_prediction_string = prediction.get_classified_footer(frame_offset)
         self.add_text_to_track(
             draw,
             rect,

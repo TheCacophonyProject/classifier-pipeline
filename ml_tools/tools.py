@@ -1,9 +1,8 @@
 """
 Helper functions for classification of the tracks extracted from CPTV videos
 """
-
+import attr
 import os.path
-import PIL as pillow
 import numpy as np
 import random
 import pickle
@@ -29,20 +28,23 @@ LOCAL_RESOURCES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reso
 GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
 
 
+@attr.s(eq=False)
 class Rectangle:
     """Defines a rectangle by the topleft point and width / height."""
 
-    def __init__(self, topleft_x, topleft_y, width, height):
-        """Defines new rectangle."""
-        self.x = topleft_x
-        self.y = topleft_y
-        self.width = width
-        self.height = height
+    x = attr.ib()
+    y = attr.ib()
+    width = attr.ib()
+    height = attr.ib()
 
     @staticmethod
     def from_ltrb(left, top, right, bottom):
         """Construct a rectangle from left, top, right, bottom co-ords."""
-        return Rectangle(left, top, right - left, bottom - top)
+        return Rectangle(left, top, width=right - left, height=bottom - top)
+
+    def to_ltrb(self):
+        """Return rectangle as left, top, right, bottom co-ords."""
+        return [self.left, self.top, self.right, self.bottom]
 
     def copy(self):
         return Rectangle(self.x, self.y, self.width, self.height)
@@ -103,8 +105,8 @@ class Rectangle:
 
     def crop(self, bounds):
         """Crops this rectangle so that it fits within given bounds"""
-        self.left = max(self.left, bounds.left)
-        self.top = max(self.top, bounds.top)
+        self.left = min(bounds.right, max(self.left, bounds.left))
+        self.top = min(bounds.bottom, max(self.top, bounds.top))
         self.right = max(bounds.left, min(self.right, bounds.right))
         self.bottom = max(bounds.top, min(self.bottom, bounds.bottom))
 
@@ -131,19 +133,38 @@ class Rectangle:
         return self.width * self.height
 
     def __repr__(self):
-        return "({0},{1},{2},{3})".format(self.left, self.top, self.right, self.bottom)
+        return "(x{0},y{1},x2{2},y2{3})".format(
+            self.left, self.top, self.right, self.bottom
+        )
 
     def __str__(self):
-        return "<({0},{1})-{2}x{3}>".format(self.x, self.y, self.width, self.height)
+        return "<(x{0},y{1})-h{2}xw{3}>".format(self.x, self.y, self.height, self.width)
+
+    def meta_dictionary(self):
+        # Return object as dictionary without is_along_border,was_cropped and id for saving to json
+        region_info = attr.asdict(
+            self,
+            filter=lambda attr, value: attr.name
+            not in ["is_along_border", "was_cropped", "id"],
+        )
+        region_info["pixel_variance"] = round(region_info["pixel_variance"], 2)
+        return region_info
 
 
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, datetime.datetime):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, np.ndarray):
+            return list(obj)
+        elif isinstance(obj, datetime.datetime):
             return obj.isoformat()
-            # Let the base class default method raise the TypeError
-        if isinstance(obj, Rectangle):
-            return int(obj.left), int(obj.top), int(obj.right), int(obj.bottom)
+        elif isinstance(obj, Rectangle):
+            return obj.meta_dictionary()
         # Let the base class default method raise the TypeError
         return json.JSONEncoder.default(self, obj)
 
@@ -323,7 +344,7 @@ def convert_heat_to_img(frame, colormap, temp_min=2800, temp_max=4200):
     frame = np.float32(frame)
     frame = (frame - temp_min) / (temp_max - temp_min)
     colorized = np.uint8(255.0 * colormap(frame))
-    img = pillow.Image.fromarray(colorized[:, :, :3])  # ignore alpha
+    img = Image.fromarray(colorized[:, :, :3])  # ignore alpha
     return img
 
 
@@ -411,6 +432,12 @@ def get_session(disable_gpu=False):
         session = tf.compat.v1.Session(config=config)
 
     return session
+
+
+def clear_session():
+    import tensorflow as tf
+
+    tf.keras.backend.clear_session()
 
 
 def softmax(x):
@@ -715,8 +742,10 @@ cm_blue_red = LinearSegmentedColormap("BlueRed2", color_dict)
 
 def calculate_mass(filtered, threshold):
     """Calculates mass of filtered frame with threshold applied"""
+    if filtered.size == 0:
+        return 0
     _, mass = blur_and_return_as_mask(filtered, threshold=threshold)
-    return mass
+    return np.uint16(mass)
 
 
 def calculate_variance(filtered, prev_filtered):
@@ -804,6 +833,17 @@ def eucl_distance(first, second):
 
 def get_clipped_flow(flow):
     return np.clip(flow * 256, -16000, 16000)
+
+
+def saveclassify_image(data, filename):
+    # saves image channels side by side, expected data to be values in the range of 0->1
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
+    r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
+    g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
+    b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
+    concat = np.concatenate((r, g, b), axis=1)  # horizontally
+    img = Image.fromarray(np.uint8(concat))
+    img.save(filename + ".png")
 
 
 def get_timezone_str(lat, lng):
