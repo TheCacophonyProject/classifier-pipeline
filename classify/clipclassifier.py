@@ -256,31 +256,17 @@ class ClipClassifier:
     ):
 
         # read in original metadata
-        meta_data = self.get_meta_data(filename)
-
-        # record results in text file.
-        save_file = {}
-        save_file["source"] = filename
-        if clip.camera_model:
-            save_file["camera_model"] = clip.camera_model
-        save_file["background_thresh"] = clip.background_thresh
-        start, end = clip.start_and_end_time_absolute()
-        save_file["start_time"] = start.isoformat()
-        save_file["end_time"] = end.isoformat()
-        save_file["tracking_time"] = round(tracking_time, 1)
-        save_file["algorithm"] = {}
-        save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
-        save_file["algorithm"]["tracker_config"] = self.config.tracking.as_dict()
-        if meta_data:
-            save_file["camera"] = meta_data["Device"]["devicename"]
-            save_file["cptv_meta"] = meta_data
-            save_file["original_tag"] = meta_data["primary_tag"]
-
-        tracks = []
-        for track in clip.tracks:
-            track_info = track.get_metadata(predictions_per_model)
-            tracks.append(track_info)
-        save_file["tracks"] = tracks
+        existing_meta = self.get_meta_data(filename)
+        meta_data = clip.get_metadata(predictions_per_model)
+        meta_data["source"] = filename
+        meta_data["tracking_time"] = round(tracking_time, 1)
+        meta_data["algorithm"] = {}
+        meta_data["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
+        meta_data["algorithm"]["tracker_config"] = self.config.tracking.as_dict()
+        if existing_meta:
+            meta_data["camera"] = existing_meta["Device"]["devicename"]
+            meta_data["cptv_meta"] = existing_meta
+            meta_data["original_tag"] = existing_meta["primary_tag"]
 
         model_dictionaries = []
         for model in models:
@@ -291,13 +277,13 @@ class ClipClassifier:
             )
             model_dictionaries.append(model_dic)
 
-        save_file["models"] = model_dictionaries
+        meta_data["models"] = model_dictionaries
         thumbnail_region = get_thumbnail(clip, predictions_per_model)
-        save_file["thumbnail_region"] = thumbnail_region
+        meta_data["thumbnail_region"] = thumbnail_region
         if self.config.classify.meta_to_stdout:
-            print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
+            print(json.dumps(meta_data, cls=tools.CustomJSONEncoder))
         else:
             with open(meta_filename, "w") as f:
-                json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
+                json.dump(meta_data, f, indent=4, cls=tools.CustomJSONEncoder)
         if self.cache_to_disk:
             clip.frame_buffer.remove_cache()

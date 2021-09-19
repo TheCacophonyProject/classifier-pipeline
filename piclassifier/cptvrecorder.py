@@ -35,7 +35,8 @@ class CPTVRecorder:
     def force_stop(self):
         if not self.recording:
             return
-
+        self.stop_recording()
+        return
         if self.has_minimum():
             self.stop_recording()
         else:

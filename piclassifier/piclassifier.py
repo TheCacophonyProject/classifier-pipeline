@@ -24,6 +24,8 @@ from ml_tools.preprocess import (
 )
 import logging
 from ml_tools.logs import init_logging
+from ml_tools.hyperparams import HyperParams
+from ml_tools.tools import CustomJSONEncoder
 
 STOP_SIGNAL = "stop"
 
@@ -65,8 +67,8 @@ class NeuralInterpreter:
         self.MODEL_NAME = stats["name"]
         self.MODEL_DESCRIPTION = stats["description"]
         self.labels = stats["labels"]
-        # self.eval_score = stats["score"]
-        self.params = stats["hyperparams"]
+        self.params = HyperParams()
+        self.params.update(stats["hyperparams"])
 
 
 class LiteInterpreter:
@@ -108,7 +110,8 @@ class LiteInterpreter:
         self.MODEL_DESCRIPTION = stats["description"]
         self.labels = stats["labels"]
         # self.eval_score = stats["score"]
-        self.params = stats["hyperparams"]
+        self.params = HyperParams()
+        self.params.update(stats["hyperparams"])
 
 
 def get_full_classifier(model):
@@ -165,6 +168,7 @@ class PiClassifier(Processor):
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
     SKIP_FRAMES = 10
+    predictions = None
 
     def __init__(self, config, thermal_config, headers):
         self.headers = headers
@@ -184,6 +188,8 @@ class PiClassifier(Processor):
         self.tracking_time = 0
         self.identify_time = 0
         self.predictions = Predictions(self.classifier.labels, model)
+        global predictions
+        predictions = self.predictions
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
         self.crop_rectangle = tools.Rectangle(
@@ -230,12 +236,12 @@ class PiClassifier(Processor):
         self.clip.num_preview_frames = self.preview_frames
         self.clip.set_res(self.res_x, self.res_y)
         self.clip.set_frame_buffer(
-            self.config.classify_tracking.high_quality_optical_flow,
+            self.config.tracking.high_quality_optical_flow,
             self.config.classify.cache_to_disk,
             self.config.use_opt_flow,
             True,
         )
-        self.clip.predictions = self.predictions
+        # self.clip.predictions = self.predictions
         # process preview_frames
         frames = self.motion_detector.thermal_window.get_frames()
         edge_pixels = self.config.tracking.edge_pixels
@@ -316,37 +322,51 @@ class PiClassifier(Processor):
             regions = np.array(regions)[indices]
 
             refs = []
-            for frame in frames:
+            segment_data = []
+            mass = 0
+            for frame, region in zip(frames, regions):
                 refs.append(np.median(frame.thermal))
                 thermal_reference = np.median(frame.thermal)
-            segment_data = []
-            for i, frame in enumerate(frames):
-                segment_data.append(frame.crop_by_region(regions[i]))
-
+                segment_data.append(frame.crop_by_region(region))
+                mass += region.mass
+            # preprocessed = preprocess_movement(
+            #     segment_data,
+            #     5,
+            #     None,
+            #     0,
+            #     inc3preprocess,
+            #     reference_level=refs,
+            #     sample="Test-{}".format(self.clip.frame_on),
+            #     type=1,
+            # )
+            params = self.classifier.params
             preprocessed = preprocess_movement(
-                None,
                 segment_data,
-                5,
-                None,
-                0,
-                inc3preprocess,
+                params.square_width,
+                params.frame_size,
+                red_type=params.red_type,
+                green_type=params.green_type,
+                blue_type=params.blue_type,
+                preprocess_fn=inc3preprocess,
                 reference_level=refs,
-                sample="Test-{}".format(self.clip.frame_on),
-                type=1,
+                keep_edge=params.keep_edge,
             )
+
             if preprocessed is None:
                 continue
             prediction = self.classifier.predict(preprocessed)
             # print("prediction is", np.round(100 * prediction))
-            track_prediction.classified_frame(self.clip.frame_on, prediction, None)
+            track_prediction.classified_frame(self.clip.frame_on, prediction, mass)
+        track_prediction.normalize()
 
     def get_recent_frame(self):
         return self.motion_detector.get_recent_frame()
 
     def disconnected(self):
-        self.end_clip()
+        print("disconnected")
         self.motion_detector.disconnected()
         self.recorder.force_stop()
+        self.end_clip()
 
     def skip_frame(self):
         self.skip_classifying -= 1
@@ -433,13 +453,14 @@ class PiClassifier(Processor):
         )
 
     def end_clip(self):
+        print("EDING CLIP")
         if self.clip:
             for _, prediction in self.predictions.prediction_per_track.items():
                 if prediction.max_score:
                     logging.info(
                         "Clip {} {}".format(
                             self.clip.get_id(),
-                            prediction.description(self.predictions.labels),
+                            prediction.description(),
                         )
                     )
             self.predictions.clear_predictions()
@@ -462,9 +483,11 @@ class PiClassifier(Processor):
 
 
 def on_recording_stopping(filename):
-    global clip, track_extractor
+    global clip, track_extractor, predictions
     if clip and track_extractor:
         track_extractor.apply_track_filtering(clip)
         meta_name = os.path.splitext(filename)[0]
         logging.debug("saving meta to %s", "{}.{}".format(meta_name, "txt"))
-        clip.save_metadata("{}.{}".format(meta_name, "txt"))
+        meta_data = clip.get_metadata({predictions.model.id: predictions})
+        with open(meta_name, "w") as f:
+            json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)

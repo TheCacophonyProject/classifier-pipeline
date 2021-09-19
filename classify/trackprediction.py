@@ -20,9 +20,9 @@ class Predictions:
             track.get_id(),
             TrackPrediction(
                 track.get_id(),
-                track.start_frame,
                 self.labels,
                 keep_all=keep_all,
+                start_frame=track.start_frame,
             ),
         )
         return prediction
@@ -95,7 +95,13 @@ class TrackPrediction:
                 self.class_best_score
             )
 
-    def classified_frame(self, frame_number, prediction):
+    def normalize(self):
+        if self.num_frames_classified > 0:
+            self.class_best_score = self.class_best_score / np.sum(
+                self.class_best_score
+            )
+
+    def classified_frame(self, frame_number, prediction, mass):
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
         smoothed_prediction = prediction ** 2 * mass

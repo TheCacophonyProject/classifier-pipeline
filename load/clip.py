@@ -371,6 +371,23 @@ class Clip:
         if self.calc_stats:
             self.stats.add_frame(thermal, filtered)
 
+    def get_metadata(self, predictions_per_model=None):
+        meta_data = {}
+        if self.camera_model:
+            meta_data["camera_model"] = self.camera_model
+        meta_data["background_thresh"] = self.background_thresh
+        start, end = self.start_and_end_time_absolute()
+        meta_data["start_time"] = start.isoformat()
+        meta_data["end_time"] = end.isoformat()
+
+        tracks = []
+        for track in self.tracks:
+            track_info = track.get_metadata(predictions_per_model)
+            tracks.append(track_info)
+        meta_data["tracks"] = tracks
+
+        return meta_data
+
 
 class ClipStats:
     """Stores background analysis statistics."""
