@@ -223,7 +223,6 @@ class PiClassifier(Processor):
         self.clip = Clip(
             self.config.tracking,
             "stream",
-            tracking_version=self.track_extractor.VERSION,
         )
         global clip
         clip = self.clip
