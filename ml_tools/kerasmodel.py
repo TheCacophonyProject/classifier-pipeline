@@ -644,6 +644,9 @@ class KerasModel:
 
         return track_prediction
 
+    def predict(self, frame):
+        return self.model.predict(frame[np.newaxis, :])
+
     def classify_frame(self, frame, thermal_median, preprocess=True):
         if preprocess:
             frame = preprocess_frame(

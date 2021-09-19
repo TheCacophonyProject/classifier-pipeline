@@ -84,7 +84,7 @@ class RecorderConfig:
                 RelAbsTime(window.get("start-recording"), default_offset=30 * 60),
                 RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
             ),
-            output_dir=recorder["output-dir"],
+            output_dir=recorder.get("output-dir", "."),
         )
 
 

@@ -48,7 +48,7 @@ class NeuralInterpreter:
         self.exec_net = ie.load_network(network=net, device_name=device)
         self.load_json(model_name)
 
-    def classify_frame(self, input_x):
+    def predict(self, input_x):
         if input_x is None:
             return None
         logging.info("classify with shape %s", input_x.shape)
@@ -92,7 +92,7 @@ class LiteInterpreter:
         print("out values", self.out_values)
         self.prediction = self.out_values["Identity"]
 
-    def classify_frame(self, input_x):
+    def predict(self, input_x):
         input_x = np.float32(input_x)
         input_x = input_x[np.newaxis, :]
 
@@ -111,7 +111,7 @@ class LiteInterpreter:
         self.params = stats["hyperparams"]
 
 
-def get_full_classifier(config):
+def get_full_classifier(model):
     from ml_tools.kerasmodel import KerasModel
 
     """
@@ -120,26 +120,23 @@ def get_full_classifier(config):
     """
     t0 = datetime.now()
     logging.info("classifier loading")
-    model = KerasModel()
-    model.load_model(config.classify.model)
-    # classifier = Model(
-    #     train_config=config.train,
-    #     session=tools.get_session(disable_gpu=not config.use_gpu),
-    # )
-    # classifier.load(config.classify.model)
+    classifier = KerasModel()
+    classifier.load_model(model.model_file, weights=model.model_weights)
     logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
-    return model3
+    return classifier
 
 
-def get_classifier(config):
-    model_name, model_type = os.path.splitext(config.classify.model)
+def get_classifier(model):
+    model_name, model_type = os.path.splitext(model.model_file)
     if model_type == ".tflite":
         classifier = LiteInterpreter(model_name)
     elif model_type == ".xml":
         classifier = NeuralInterpreter(model_name)
     else:
-        classifier = get_full_classifier(config)
+        classifier = get_full_classifier(
+            model,
+        )
     return classifier
 
 
@@ -179,13 +176,14 @@ class PiClassifier(Processor):
         self.skip_classifying = 0
         self.classified_consec = 0
         self.config = config
-        self.classifier = get_classifier(config)
+        model = config.classify.models[0]
+        self.classifier = get_classifier(model)
 
         self.num_labels = len(self.classifier.labels)
         self.process_time = 0
         self.tracking_time = 0
         self.identify_time = 0
-        self.predictions = Predictions(self.classifier.labels)
+        self.predictions = Predictions(self.classifier.labels, model)
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
         self.crop_rectangle = tools.Rectangle(
@@ -252,7 +250,7 @@ class PiClassifier(Processor):
         # classifies an empty frame to force loading of the model into memory
 
         p_frame = np.zeros((160, 160, 3), np.float32)
-        self.classifier.classify_frame(p_frame)
+        self.classifier.predict(p_frame)
 
     def get_active_tracks(self):
         """
@@ -339,7 +337,7 @@ class PiClassifier(Processor):
             )
             if preprocessed is None:
                 continue
-            prediction = self.classifier.classify_frame(preprocessed)
+            prediction = self.classifier.predict(preprocessed)
             # print("prediction is", np.round(100 * prediction))
             track_prediction.classified_frame(self.clip.frame_on, prediction, None)
 

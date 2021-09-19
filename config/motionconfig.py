@@ -27,15 +27,6 @@ class MotionConfig(DefaultConfig):
             dynamic_thresh=True,
         )
 
-    def load_camera_thresholds(raw):
-        if raw is None:
-            return None
-        threholds = {}
-        for raw_threshold in raw.values():
-            threshold = ThresholdConfig.load(raw_threshold)
-            threholds[threshold.camera_model] = threshold
-        return threholds
-
     def validate(self):
         return True
 
@@ -53,6 +44,15 @@ class MotionConfig(DefaultConfig):
 
             return self.camera_thresholds["default-model"]
         return threshold
+
+    def load_camera_thresholds(raw):
+        if raw is None:
+            return None
+        threholds = {}
+        for raw_threshold in raw.values():
+            threshold = ThresholdConfig.load(raw_threshold)
+            threholds[threshold.camera_model] = threshold
+        return threholds
 
 
 @attr.s
