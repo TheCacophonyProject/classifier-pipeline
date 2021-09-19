@@ -91,7 +91,6 @@ class LiteInterpreter:
             self.out_values[detail["name"]] = detail["index"]
 
         self.load_json(model_name)
-        print("out values", self.out_values)
         self.prediction = self.out_values["Identity"]
 
     def predict(self, input_x):
@@ -355,15 +354,13 @@ class PiClassifier(Processor):
             if preprocessed is None:
                 continue
             prediction = self.classifier.predict(preprocessed)
-            # print("prediction is", np.round(100 * prediction))
             track_prediction.classified_frame(self.clip.frame_on, prediction, mass)
-        track_prediction.normalize()
+            track_prediction.normalize()
 
     def get_recent_frame(self):
         return self.motion_detector.get_recent_frame()
 
     def disconnected(self):
-        print("disconnected")
         self.motion_detector.disconnected()
         self.recorder.force_stop()
         self.end_clip()
@@ -453,7 +450,6 @@ class PiClassifier(Processor):
         )
 
     def end_clip(self):
-        print("EDING CLIP")
         if self.clip:
             for _, prediction in self.predictions.prediction_per_track.items():
                 if prediction.max_score:
@@ -486,8 +482,8 @@ def on_recording_stopping(filename):
     global clip, track_extractor, predictions
     if clip and track_extractor:
         track_extractor.apply_track_filtering(clip)
-        meta_name = os.path.splitext(filename)[0]
-        logging.debug("saving meta to %s", "{}.{}".format(meta_name, "txt"))
+        meta_name = os.path.splitext(filename)[0] + ".txt"
+        logging.debug("saving meta to %s", meta_name)
         meta_data = clip.get_metadata({predictions.model.id: predictions})
         with open(meta_name, "w") as f:
             json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)

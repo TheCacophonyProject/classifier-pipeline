@@ -284,6 +284,9 @@ class TrackPrediction:
             prediction_meta["classify_time"] = round(self.classify_time, 1)
 
         prediction_meta["label"] = self.predicted_tag()
+        # GP makes api pick up the label this will change when logic is moved to API
+        prediction_meta["confident_tag"] = self.predicted_tag()
+
         prediction_meta["confidence"] = (
             round(self.max_score, 2) if self.max_score else 0
         )
