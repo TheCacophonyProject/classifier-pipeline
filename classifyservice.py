@@ -77,7 +77,7 @@ def classify_job(clip_classifier, clientsocket, addr):
         args = json.loads(job)
         if "file" not in args:
             logging.error("File name must be specified in argument dictionary")
-            clientsocket.send(
+            clientsocket.sendall(
                 json.dumps(
                     {"error": "File name must be specified in argument dictionary"}
                 ).encode()
@@ -91,7 +91,7 @@ def classify_job(clip_classifier, clientsocket, addr):
             reuse_frames=args.get("reuse_frames"),
         )
 
-        clientsocket.send(json.dumps(meta_data, cls=CustomJSONEncoder).encode())
+        clientsocket.sendall(json.dumps(meta_data, cls=CustomJSONEncoder).encode())
 
     except BrokenPipeError:
         logging.error(
@@ -102,7 +102,7 @@ def classify_job(clip_classifier, clientsocket, addr):
         )
     except Exception as e:
         logging.error("Error classifying job %s", args["file"], exc_info=True)
-        clientsocket.send(
+        clientsocket.sendall(
             json.dumps(
                 {"error": f"Error classifying {traceback.format_exc()}"}
             ).encode()
