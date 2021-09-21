@@ -129,12 +129,12 @@ class ClipClassifier:
         frames = []
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
+            clip.set_res(reader.x_resolution, reader.y_resolution)
             clip.calculate_background(reader)
             f.seek(0)
             for frame in reader:
                 if frame.background_frame:
                     continue
-                clip.set_res(reader.x_resolution, reader.y_resolution)
                 clip.add_frame(
                     frame.pix,
                     frame.pix - clip.background,
