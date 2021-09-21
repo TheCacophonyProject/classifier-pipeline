@@ -32,6 +32,9 @@ from track.track import Track
 from track.region import Region
 from piclassifier.motiondetector import is_affected_by_ffc
 
+RES_X = 160
+RES_Y = 120
+
 
 class Clip:
     PREVIEW = "preview"
@@ -333,8 +336,14 @@ class Clip:
         )
 
     def set_res(self, res_x, res_y):
-        self.res_x = res_x
-        self.res_y = res_y
+        if res_x == 0 or res_x == None:
+            self.res_x = RES_X
+        else:
+            self.res_x = res_x
+        if res_y == 0 or res_y == None:
+            self.res_y = RES_Y
+        else:
+            self.res_y = res_y
         self._set_crop_rectangle()
         for track in self.tracks:
             track.crop_rectangle = self.crop_rectangle
