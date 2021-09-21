@@ -18,6 +18,8 @@ def main(cptv_file):
         results = read_all(sock).decode()
         meta_data = json.loads(str(results))
         if "error" in meta_data:
+            raise Exception(meta_data["error"])
+
             print("ERRR", meta_data["error"])
     except socket.error as msg:
         print(msg)

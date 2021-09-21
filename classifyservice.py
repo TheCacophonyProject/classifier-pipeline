@@ -91,8 +91,11 @@ def classify_job(clip_classifier, clientsocket, addr):
             reuse_frames=args.get("reuse_frames"),
         )
 
-        clientsocket.sendall(json.dumps(meta_data, cls=CustomJSONEncoder).encode())
-
+        response = clientsocket.sendall(
+            json.dumps(meta_data, cls=CustomJSONEncoder).encode()
+        )
+        if response:
+            logging.error("Error sending data to socket %s", response)
     except BrokenPipeError:
         logging.error(
             "Error sending metadata for job %s too %s",
