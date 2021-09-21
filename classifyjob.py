@@ -6,7 +6,7 @@ from config.config import Config
 
 
 def main(cptv_file):
-    print("clasisfying", cptv_file)
+    print("Classifying", cptv_file)
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     config = Config.load_from_file()
 
@@ -31,10 +31,11 @@ def read_all(socket):
     size = 4096
     data = bytearray()
 
-    while size > 0:
+    while True:
         packet = socket.recv(size)
-        data.extend(packet)
-        if len(packet) < size:
+        if packet:
+            data.extend(packet)
+        else:
             break
     return data
 
