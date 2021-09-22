@@ -54,13 +54,13 @@ class MotionConfig:
     def load(cls, motion):
         return cls(
             temp_thresh=motion.get("temp-thresh", 2750),
-            delta_thresh=motion.get("delta-thresh", 20),
-            count_thresh=motion.get("count-thresh", 1),
+            delta_thresh=motion.get("delta-thresh", 50),
+            count_thresh=motion.get("count-thresh", 3),
             frame_compare_gap=motion.get("frame-compare-gap", 45),
-            one_diff_only=motion.get("use-one-diff-only", False),
-            trigger_frames=motion.get("trigger-frames", 1),
-            edge_pixels=motion.get("edge-pixels", 3),
-            warmer_only=motion.get("warmer-only", False),
+            one_diff_only=motion.get("use-one-diff-only", True),
+            trigger_frames=motion.get("trigger-frames", 2),
+            edge_pixels=motion.get("edge-pixels", 1),
+            warmer_only=motion.get("warmer-only", True),
             dynamic_thresh=motion.get("dynamic-thresh", True),
             run_classifier=motion.get("run-classifier", False),
         )
