@@ -227,7 +227,7 @@ class MotionDetector:
         self.processed = 0
 
     def process_frame(self, cptv_frame, force_process=False):
-        if self.can_record() or forece_process:
+        if self.can_record() or force_process:
             cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
             test_crop = cropped_frame.copy()
             prev_ffc = self.ffc_affected
