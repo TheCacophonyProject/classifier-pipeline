@@ -170,7 +170,7 @@ def handle_connection(connection, config, thermal_config):
         try:
             message = data[:5].decode("utf-8")
             if message == "clear":
-                logging.info("processign error from camera")
+                logging.info("processing error from camera")
                 process_queue.put(STOP_SIGNAL)
                 service.quit()
                 break
