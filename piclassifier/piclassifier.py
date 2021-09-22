@@ -484,5 +484,8 @@ def on_recording_stopping(filename):
         meta_name = os.path.splitext(filename)[0] + ".txt"
         logging.debug("saving meta to %s", meta_name)
         meta_data = clip.get_metadata({predictions.model.id: predictions})
+        meta_data["algorithm"] = {}
+        meta_data["algorithm"]["model_name"] = "PI-INC3"
+        meta_data["algorithm"]["tracker_version"] = track_extractor.tracking_version
         with open(meta_name, "w") as f:
             json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)
