@@ -26,6 +26,7 @@ import logging
 from ml_tools.logs import init_logging
 from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
+from track.region import Region
 
 STOP_SIGNAL = "stop"
 
@@ -169,6 +170,8 @@ class PiClassifier(Processor):
     predictions = None
 
     def __init__(self, config, thermal_config, headers):
+        self._output_dir = thermal_config.recorder.output_dir
+        super().__init__()
         self.headers = headers
         self.frame_num = 0
         self.clip = None
@@ -218,7 +221,6 @@ class PiClassifier(Processor):
         )
         self.startup_classifier()
 
-        self._output_dir = thermal_config.recorder.output_dir
         self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)
@@ -357,12 +359,44 @@ class PiClassifier(Processor):
             track_prediction.normalize()
 
     def get_recent_frame(self):
-        return self.motion_detector.get_recent_frame()
+
+        last_frame = self.clip.frame_buffer.get_last_frame()
+        if last_frame is None:
+            return None
+        bounds = Region(0, 0, clip.res_x, clip.res_y)
+
+        img = add_last_frame_tracking(
+            last_frame, clip.active_tracks, self.predictions, screen_bounds=bounds
+        )
+        return img
+        # draw = ImageDraw.Draw(last_frame.thermal)
+        # for track in clip.active_tracks:
+        #     region = track.bounds_history[-1]
+        #     if region.frame_number != last_frame.frame_number:
+        #         continue
+        #     draw.rectangle(
+        #         region.to_ltrb().enlarge(1, max=bounds),
+        #         outline=TRACK_COLOURS[track.get_id() % len(TRACK_COLOURS)],
+        #     )
+        #     track_prediction = self.predictions.prediction_for(track)
+        #     if track_prediction:
+        #         current_prediction_string = prediction.get_classified_footer(
+        #             frame_offset
+        #         )
+        #         footer_center = region.mid_x
+        #         footer_rect = Region(
+        #             region.left + footer_center,
+        #             (v_offset + rect.bottom) * self.frame_scale,
+        #             footer_size[0],
+        #             footer_size[1],
+        #         )
+        # return self.motion_detector.get_recent_frame()
 
     def disconnected(self):
         self.motion_detector.disconnected()
         self.recorder.force_stop()
         self.end_clip()
+        self.service.quit()
 
     def skip_frame(self):
         self.skip_classifying -= 1
@@ -486,6 +520,6 @@ def on_recording_stopping(filename):
         meta_data = clip.get_metadata({predictions.model.id: predictions})
         meta_data["algorithm"] = {}
         meta_data["algorithm"]["model_name"] = "PI-INC3"
-        meta_data["algorithm"]["tracker_version"] = track_extractor.tracking_version
+        meta_data["algorithm"]["tracker_version"] = track_extractor.VERSION
         with open(meta_name, "w") as f:
             json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)

@@ -61,10 +61,7 @@ class Previewer:
 
         # make sure all the required files are there
         self.track_descs = {}
-        self.font
-        self.font_title
         self.preview_type = preview_type
-        self.frame_scale = 1
         self.debug = config.debug
 
     @classmethod
@@ -77,24 +74,6 @@ class Previewer:
         if not path.exists(colourmap_path):
             colourmap_path = tools.resource_path("colourmap.dat")
         return tools.load_colourmap(colourmap_path)
-
-    @property
-    def font(self):
-        """gets default font."""
-        if not globs._previewer_font:
-            globs._previewer_font = ImageFont.truetype(
-                tools.resource_path("Ubuntu-R.ttf"), 12
-            )
-        return globs._previewer_font
-
-    @property
-    def font_title(self):
-        """gets default title font."""
-        if not globs._previewer_font_title:
-            globs._previewer_font_title = ImageFont.truetype(
-                tools.resource_path("Ubuntu-B.ttf"), 14
-            )
-        return globs._previewer_font_title
 
     def export_clip_preview(self, filename, clip: Clip, predictions=None):
         """
@@ -122,7 +101,7 @@ class Previewer:
             clip.stats.min_temp = np.amin(thermals)
             clip.stats.max_temp = np.amax(thermals)
         mpeg = MPEGCreator(filename)
-        self.frame_scale = 4.0
+        frame_scale = 4.0
         for frame_number, frame in enumerate(clip.frame_buffer):
             if self.preview_type == self.PREVIEW_RAW:
                 image = self.convert_and_resize(
@@ -136,7 +115,7 @@ class Previewer:
                     clip.stats.max_temp,
                 )
                 draw = ImageDraw.Draw(image)
-                self.add_tracks(draw, clip.tracks, frame_number, predictions)
+                self.add_tracks(draw, clip.tracks, frame_number, predictions, scale=4.0)
 
             elif self.preview_type == self.PREVIEW_BOXES:
                 image = self.convert_and_resize(
@@ -224,9 +203,11 @@ class Previewer:
             track_description.strip()
             self.track_descs[track] = track_description
 
-    def add_regions(self, draw, regions, v_offset=0):
+    def add_regions(draw, regions, v_offset=0, scale=1):
         for rect in regions:
-            draw.rectangle(self.rect_points(rect, v_offset), outline=(128, 128, 128))
+            draw.rectangle(
+                rect_points(rect, v_offset, scale=scale), outline=(128, 128, 128)
+            )
 
     def add_tracks(
         self,
@@ -238,6 +219,7 @@ class Previewer:
         colours=TRACK_COLOURS,
         tracks_text=None,
         v_offset=0,
+        scale=1,
     ):
 
         # look for any tracks that occur on this frame
@@ -245,33 +227,22 @@ class Previewer:
             frame_offset = frame_number - track.start_frame
             if frame_offset >= 0 and frame_offset < len(track.bounds_history):
                 region = track.bounds_history[frame_offset]
-                draw.rectangle(
-                    self.rect_points(region, v_offset),
-                    outline=colours[index % len(colours)],
+                prediction = None
+                prediction = track_predictions.prediction_for(track.get_id())
+                add_track(
+                    draw,
+                    track,
+                    self.track_descs[track],
+                    region,
+                    frame_offset,
+                    colours[index % len(colours)],
+                    prediction,
+                    screen_bounds,
+                    tracks_text,
+                    v_offset=v_offset,
+                    debug=self.debug,
+                    scale=scale,
                 )
-                if track_predictions:
-                    self.add_class_results(
-                        draw,
-                        track,
-                        frame_offset,
-                        region,
-                        track_predictions,
-                        screen_bounds,
-                        v_offset=v_offset,
-                    )
-                if self.debug:
-                    text = None
-                    if tracks_text and len(tracks_text) > index:
-                        text = tracks_text[index]
-                    self.add_debug_text(
-                        draw,
-                        track,
-                        region,
-                        screen_bounds,
-                        text=text,
-                        v_offset=v_offset,
-                        frame_offset=frame_offset,
-                    )
 
     def add_header(
         self,
@@ -280,19 +251,28 @@ class Previewer:
         height,
         text,
     ):
-        footer_size = self.font.getsize(text)
+        font = get_font()
+        footer_size = font.getsize(text)
         center = (width / 2 - footer_size[0] / 2.0, 5)
-        draw.text((center[0], center[1]), text, font=self.font)
+        draw.text((center[0], center[1]), text, font=font)
 
     def add_footer(self, draw, width, height, text, ffc_affected):
         footer_text = "FFC {} {}".format(ffc_affected, text)
-        footer_size = self.font.getsize(footer_text)
+        footer_size = font.getsize(footer_text)
         center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
-        draw.text((center[0], center[1]), footer_text, font=self.font)
+        draw.text((center[0], center[1]), footer_text, font=font)
 
     def add_debug_text(
-        self, draw, track, region, screen_bounds, text=None, v_offset=0, frame_offset=0
+        draw,
+        track,
+        region,
+        screen_bounds,
+        text=None,
+        v_offset=0,
+        frame_offset=0,
+        scale=1,
     ):
+        font = get_font()
         if text is None:
             text = "id {}".format(track.get_id())
             if region.pixel_variance:
@@ -302,117 +282,45 @@ class Previewer:
                     track.vel_x[frame_offset],
                     track.vel_y[frame_offset],
                 )
-        footer_size = self.font.getsize(text)
+        footer_size = font.getsize(text)
         footer_center = ((region.width * self.frame_scale) - footer_size[0]) / 2
 
         footer_rect = Region(
-            region.right * self.frame_scale - footer_center / 2.0,
+            region.right * scale - footer_center / 2.0,
             (v_offset + region.bottom) * self.frame_scale,
             footer_size[0],
             footer_size[1],
         )
-        self.fit_to_image(footer_rect, screen_bounds)
+        fit_to_image(footer_rect, screen_bounds)
 
-        draw.text((footer_rect.x, footer_rect.y), text, font=self.font)
-
-    def add_class_results(
-        self,
-        draw,
-        track,
-        frame_offset,
-        rect,
-        track_predictions,
-        screen_bounds,
-        v_offset=0,
-    ):
-        prediction = track_predictions.prediction_for(track.get_id())
-        if prediction is None:
-            return
-
-        current_prediction_string = prediction.get_classified_footer(frame_offset)
-        self.add_text_to_track(
-            draw,
-            rect,
-            self.track_descs[track],
-            current_prediction_string,
-            screen_bounds,
-            v_offset,
-        )
-
-    def add_text_to_track(
-        self, draw, rect, header_text, footer_text, screen_bounds, v_offset=0
-    ):
-        header_size = self.font_title.getsize(header_text)
-        footer_size = self.font.getsize(footer_text)
-        # figure out where to draw everything
-        header_rect = Region(
-            rect.left * self.frame_scale,
-            (v_offset + rect.top) * self.frame_scale - header_size[1],
-            header_size[0],
-            header_size[1],
-        )
-        footer_center = ((rect.width * self.frame_scale) - footer_size[0]) / 2
-        footer_rect = Region(
-            rect.left * self.frame_scale + footer_center,
-            (v_offset + rect.bottom) * self.frame_scale,
-            footer_size[0],
-            footer_size[1],
-        )
-
-        self.fit_to_image(header_rect, screen_bounds)
-        self.fit_to_image(footer_rect, screen_bounds)
-
-        draw.text((header_rect.x, header_rect.y), header_text, font=self.font_title)
-        draw.text((footer_rect.x, footer_rect.y), footer_text, font=self.font)
-
-    def fit_to_image(self, rect: Region, screen_bounds: Region):
-        """Modifies rect so that rect is visible within bounds."""
-        if screen_bounds is None:
-            return
-        if rect.left < screen_bounds.left:
-            rect.x = screen_bounds.left
-        if rect.top < screen_bounds.top:
-            rect.y = screen_bounds.top
-
-        if rect.right > screen_bounds.right:
-            rect.x = screen_bounds.right - rect.width
-
-        if rect.bottom > screen_bounds.bottom:
-            rect.y = screen_bounds.bottom - rect.height
-
-    def rect_points(self, rect, v_offset=0, h_offset=0):
-        s = self.frame_scale
-        return [
-            s * (rect.left + h_offset),
-            s * (rect.top + v_offset),
-            s * (rect.right + h_offset) - 1,
-            s * (rect.bottom + v_offset) - 1,
-        ]
-        return
+        draw.text((footer_rect.x, footer_rect.y), text, font=font)
 
     def add_last_frame_tracking(
-        self,
-        img,
+        frame,
         tracks,
-        labels,
         track_predictions=None,
         screen_bounds=None,
         colours=TRACK_COLOURS,
         tracks_text=None,
         v_offset=0,
+        scale=1,
+        debug=False,
     ):
-        draw = ImageDraw.Draw(img)
+        draw = ImageDraw.Draw(frame.thermal)
 
         # look for any tracks that occur on this frame
         for index, track in enumerate(tracks):
             region = track.bounds_history[-1]
+            if region.frame_number != frame.frame_number:
+                continue
             draw.rectangle(
-                self.rect_points(region, v_offset),
+                rect_points(region, v_offset, scale=scale),
                 outline=colours[index % len(colours)],
             )
-            if track_predictions:
-                footer_text = track_predictions.get_classified_footer(labels)
-                self.add_text_to_track(
+            track_prediction = track_predictions.prediction_for(track)
+            if track_prediction:
+                footer_text = track_prediction.get_classified_footer(labels)
+                add_text_to_track(
                     draw,
                     region,
                     str(track.get_id()),
@@ -421,11 +329,11 @@ class Previewer:
                     v_offset,
                 )
 
-            if self.debug:
+            if debug:
                 text = None
                 if tracks_text and len(tracks_text) > index:
                     text = tracks_text[index]
-                self.add_debug_text(
+                add_debug_text(
                     draw, track, region, screen_bounds, text=text, v_offset=v_offset
                 )
 
@@ -465,8 +373,8 @@ class Previewer:
 
         image = image.resize(
             (
-                int(image.width * self.frame_scale),
-                int(image.height * self.frame_scale),
+                int(image.width * 4),
+                int(image.height * 4),
             ),
             Image.BILINEAR,
         )
@@ -489,3 +397,146 @@ def none_or_round(value, decimals=0):
         return round(value, decimals)
     else:
         return value
+
+
+def add_class_results(
+    draw,
+    track,
+    track_desc,
+    frame_offset,
+    rect,
+    track_prediction,
+    screen_bounds,
+    v_offset=0,
+    scale=1,
+):
+
+    if track_prediction is None:
+        return
+
+    current_prediction_string = track_prediction.get_classified_footer(frame_offset)
+    add_text_to_track(
+        draw,
+        rect,
+        track_desc,
+        current_prediction_string,
+        screen_bounds,
+        v_offset,
+        scale=scale,
+    )
+
+
+def add_text_to_track(
+    draw, rect, header_text, footer_text, screen_bounds, v_offset=0, scale=1
+):
+    font = get_font()
+    font_title = get_title_font()
+    header_size = font_title.getsize(header_text)
+    footer_size = font.getsize(footer_text)
+    # figure out where to draw everything
+    header_rect = Region(
+        rect.left * scale,
+        (v_offset + rect.top) * scale - header_size[1],
+        header_size[0],
+        header_size[1],
+    )
+    footer_center = ((rect.width * scale) - footer_size[0]) / 2
+    footer_rect = Region(
+        rect.left * scale + footer_center,
+        (v_offset + rect.bottom) * scale,
+        footer_size[0],
+        footer_size[1],
+    )
+
+    fit_to_image(header_rect, screen_bounds)
+    fit_to_image(footer_rect, screen_bounds)
+
+    draw.text((header_rect.x, header_rect.y), header_text, font=font_title)
+    draw.text((footer_rect.x, footer_rect.y), footer_text, font=font)
+
+
+def fit_to_image(rect: Region, screen_bounds: Region):
+    """Modifies rect so that rect is visible within bounds."""
+    if screen_bounds is None:
+        return
+    if rect.left < screen_bounds.left:
+        rect.x = screen_bounds.left
+    if rect.top < screen_bounds.top:
+        rect.y = screen_bounds.top
+
+    if rect.right > screen_bounds.right:
+        rect.x = screen_bounds.right - rect.width
+
+    if rect.bottom > screen_bounds.bottom:
+        rect.y = screen_bounds.bottom - rect.height
+
+
+def add_track(
+    draw,
+    track,
+    track_desc,
+    region,
+    frame_offset,
+    colour,
+    track_prediction=None,
+    screen_bounds=None,
+    tracks_text=None,
+    v_offset=0,
+    scale=1,
+    debug=False,
+):
+    draw.rectangle(rect_points(region, v_offset, scale=scale), outline=colour)
+    if track_prediction:
+        add_class_results(
+            draw,
+            track,
+            track_desc,
+            frame_offset,
+            region,
+            track_prediction,
+            screen_bounds,
+            v_offset=v_offset,
+            scale=scale,
+        )
+    if debug:
+        text = None
+        if tracks_text and len(tracks_text) > index:
+            text = tracks_text[index]
+        add_debug_text(
+            draw,
+            track,
+            region,
+            screen_bounds,
+            text=text,
+            v_offset=v_offset,
+            frame_offset=frame_offset,
+            scale=scale,
+        )
+
+
+def get_font():
+    """gets default font."""
+    if not globs._previewer_font:
+        globs._previewer_font = ImageFont.truetype(
+            tools.resource_path("Ubuntu-R.ttf"), 12
+        )
+    return globs._previewer_font
+
+
+def get_title_font():
+    """gets default title font."""
+    if not globs._previewer_font_title:
+        globs._previewer_font_title = ImageFont.truetype(
+            tools.resource_path("Ubuntu-B.ttf"), 14
+        )
+    return globs._previewer_font_title
+
+
+def rect_points(rect, v_offset=0, h_offset=0, scale=1):
+    return [
+        scale * (rect.left + h_offset),
+        scale * (rect.top + v_offset),
+        scale * (rect.right + h_offset) - 1,
+        scale * (rect.bottom + v_offset) - 1,
+    ]
+    return

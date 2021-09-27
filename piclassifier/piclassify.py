@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-import absl.logging
 import argparse
 from datetime import datetime
 import logging
@@ -22,7 +21,6 @@ from ml_tools.logs import init_logging
 from ml_tools import tools
 from .motiondetector import MotionDetector
 from .piclassifier import PiClassifier, run
-from service import SnapshotService
 from .cameras import lepton3
 import multiprocessing
 
@@ -51,8 +49,6 @@ def parse_args():
 
 # Links to socket and continuously waits for 1 connection
 def main():
-    logging.root.removeHandler(absl.logging._absl_handler)
-    absl.logging._warn_preinit_stderr = False
     init_logging()
     args = parse_args()
 
@@ -140,9 +136,6 @@ def handle_headers(connection):
     return HeaderInfo.parse_header(headers)
 
 
-last_frame = None
-
-
 def handle_connection(connection, config, thermal_config):
     headers = handle_headers(connection)
     logging.info("parsed camera headers %s", headers)
@@ -151,15 +144,12 @@ def handle_connection(connection, config, thermal_config):
     processor = get_processor(process_queue, config, thermal_config, headers)
     processor.start()
 
-    service = SnapshotService(get_recent_frame, thermal_config.recorder.output_dir)
-
     edge = config.tracking.edge_pixels
     crop_rectangle = tools.Rectangle(
         edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
     )
     raw_frame = lepton3.Lepton3(headers)
     read = 0
-    global last_frame
     while True:
         data = connection.recv(headers.frame_size, socket.MSG_WAITALL)
         if not data:
@@ -172,7 +162,6 @@ def handle_connection(connection, config, thermal_config):
             if message == "clear":
                 logging.info("processing error from camera")
                 process_queue.put(STOP_SIGNAL)
-                service.quit()
                 break
         except:
             pass
@@ -196,12 +185,7 @@ def handle_connection(connection, config, thermal_config):
             # processor.skip_frame()
         else:
             # print("ADDED FRAME")
-            last_frame = frame.pix
             process_queue.put(frame)
     time.sleep(5)
     # give it a moment to close down properly
     processor.terminate()
-
-
-def get_recent_frame():
-    return last_frame
