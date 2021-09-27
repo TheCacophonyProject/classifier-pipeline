@@ -25,7 +25,6 @@ import attr
 from config import config
 from .defaultconfig import DefaultConfig
 from ml_tools.previewer import Previewer
-from ml_tools.kerasmodel import validate_model
 
 
 @attr.s
@@ -103,8 +102,8 @@ class ModelConfig:
         return model
 
     def validate(self):
-        if not validate_model(self.model_file):
-            raise ValueError(f"{self.model_file}is not valid")
+        if not path.exists(self.model_file):
+            raise ValueError(f"{self.model_file} does not exist")
 
     def as_dict(self):
         return attr.asdict(self)
