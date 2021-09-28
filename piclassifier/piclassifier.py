@@ -26,6 +26,9 @@ from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
 from track.region import Region
 from PIL import ImageDraw
+from tensorflow.keras.applications.inception_v3 import (
+    preprocess_input as inc3preprocess,
+)
 
 STOP_SIGNAL = "stop"
 
@@ -217,10 +220,6 @@ class PiClassifier(Processor):
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)
         if self.classify:
-            from tensorflow.keras.applications.inception_v3 import (
-                preprocess_input as inc3preprocess,
-            )
-
             model = config.classify.models[0]
             self.classifier = get_classifier(model)
             self.predictions = Predictions(self.classifier.labels, model)
