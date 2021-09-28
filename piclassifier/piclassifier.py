@@ -438,15 +438,14 @@ class PiClassifier(Processor):
             )
             self.new_clip()
         if self.recorder.recording:
+            t_start = time.time()
             self.track_extractor.process_frame(
                 self.clip, lepton_frame.pix, self.motion_detector.ffc_affected
             )
+            self.tracking_time += time.time() - t_start
             self.recorder.process_frame(
                 self.motion_detector.movement_detected, lepton_frame
             )
-            t_start = time.time()
-
-            self.tracking_time += time.time() - t_start
             if self.motion_detector.ffc_affected or self.clip.on_preview():
                 self.skip_classifying = PiClassifier.SKIP_FRAMES
                 self.classified_consec = 0

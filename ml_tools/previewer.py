@@ -511,7 +511,7 @@ def add_last_frame_tracking(
     scale=1,
     debug=False,
 ):
-    image = tools.convert_heat_to_img(frame.pix)
+    image = tools.convert_heat_to_img(frame.thermal)
 
     draw = ImageDraw.Draw(image)
 
@@ -524,17 +524,18 @@ def add_last_frame_tracking(
             rect_points(region, v_offset, scale=scale),
             outline=colours[index % len(colours)],
         )
-        track_prediction = track_predictions.prediction_for(track)
-        if track_prediction:
-            footer_text = track_prediction.get_classified_footer(labels)
-            add_text_to_track(
-                draw,
-                region,
-                str(track.get_id()),
-                footer_text,
-                screen_bounds,
-                v_offset,
-            )
+        if track_predictions is not None:
+            track_prediction = track_predictions.prediction_for(track)
+            if track_prediction:
+                footer_text = track_prediction.get_classified_footer(labels)
+                add_text_to_track(
+                    draw,
+                    region,
+                    str(track.get_id()),
+                    footer_text,
+                    screen_bounds,
+                    v_offset,
+                )
 
         if debug:
             text = None
@@ -543,3 +544,4 @@ def add_last_frame_tracking(
             add_debug_text(
                 draw, track, region, screen_bounds, text=text, v_offset=v_offset
             )
+    return image

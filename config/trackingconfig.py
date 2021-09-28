@@ -32,6 +32,8 @@ class TrackingConfig(DefaultConfig):
     dilation_pixels = attr.ib()
     frame_padding = attr.ib()
     track_smoothing = attr.ib()
+    denoise = attr.ib()
+
     remove_track_after_frames = attr.ib()
     high_quality_optical_flow = attr.ib()
     min_threshold = attr.ib()
@@ -69,6 +71,7 @@ class TrackingConfig(DefaultConfig):
             dilation_pixels=tracking["dilation_pixels"],
             frame_padding=tracking["frame_padding"],
             track_smoothing=tracking["track_smoothing"],
+            denoise=tracking["denoise"],
             remove_track_after_frames=tracking["remove_track_after_frames"],
             high_quality_optical_flow=tracking["high_quality_optical_flow"],
             flow_threshold=tracking["flow_threshold"],
@@ -108,6 +111,7 @@ class TrackingConfig(DefaultConfig):
             dilation_pixels=2,
             remove_track_after_frames=18,
             track_smoothing=False,
+            denoise=True,
             high_quality_optical_flow=False,
             flow_threshold=40,
             max_tracks=10,

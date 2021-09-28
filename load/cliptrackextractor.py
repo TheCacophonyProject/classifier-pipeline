@@ -154,7 +154,8 @@ class ClipTrackExtractor:
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
 
         filtered, stats = normalize(filtered, new_max=255)
-        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
+        if self.config.denoise:
+            filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
         if stats[1] == stats[2]:
             mapped_thresh = clip.background_thresh
         else:
