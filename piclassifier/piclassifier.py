@@ -25,7 +25,7 @@ from ml_tools.logs import init_logging
 from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
 from track.region import Region
-from PIL import Image
+from PIL import ImageDraw
 from ml_tools.previewer import add_last_frame_tracking
 
 STOP_SIGNAL = "stop"
