@@ -121,12 +121,12 @@ def handle_headers(connection):
     headers = ""
     left_over = None
     while True:
-        data = connection.recv(100).decode()
+        data = connection.recv(4096).decode()
         headers += data
         done = headers.find("\n\n")
         if done > -1:
-            headers += headers[: done - 1]
-            left_over = headers[done:].encode()
+            headers = headers[:done]
+            left_over = headers[done + 2 :].encode()
             break
     return HeaderInfo.parse_header(headers), left_over
 

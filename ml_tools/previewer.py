@@ -295,48 +295,6 @@ class Previewer:
 
         draw.text((footer_rect.x, footer_rect.y), text, font=font)
 
-    def add_last_frame_tracking(
-        frame,
-        tracks,
-        track_predictions=None,
-        screen_bounds=None,
-        colours=TRACK_COLOURS,
-        tracks_text=None,
-        v_offset=0,
-        scale=1,
-        debug=False,
-    ):
-        draw = ImageDraw.Draw(frame.thermal)
-
-        # look for any tracks that occur on this frame
-        for index, track in enumerate(tracks):
-            region = track.bounds_history[-1]
-            if region.frame_number != frame.frame_number:
-                continue
-            draw.rectangle(
-                rect_points(region, v_offset, scale=scale),
-                outline=colours[index % len(colours)],
-            )
-            track_prediction = track_predictions.prediction_for(track)
-            if track_prediction:
-                footer_text = track_prediction.get_classified_footer(labels)
-                add_text_to_track(
-                    draw,
-                    region,
-                    str(track.get_id()),
-                    footer_text,
-                    screen_bounds,
-                    v_offset,
-                )
-
-            if debug:
-                text = None
-                if tracks_text and len(tracks_text) > index:
-                    text = tracks_text[index]
-                add_debug_text(
-                    draw, track, region, screen_bounds, text=text, v_offset=v_offset
-                )
-
     def create_four_tracking_image(self, frame, min_temp, max_temp):
 
         thermal = frame.thermal
@@ -540,3 +498,46 @@ def rect_points(rect, v_offset=0, h_offset=0, scale=1):
         scale * (rect.bottom + v_offset) - 1,
     ]
     return
+
+
+def add_last_frame_tracking(
+    frame,
+    tracks,
+    track_predictions=None,
+    screen_bounds=None,
+    colours=Previewer.TRACK_COLOURS,
+    tracks_text=None,
+    v_offset=0,
+    scale=1,
+    debug=False,
+):
+    draw = ImageDraw.Draw(frame)
+
+    # look for any tracks that occur on this frame
+    for index, track in enumerate(tracks):
+        region = track.bounds_history[-1]
+        if region.frame_number != frame.frame_number:
+            continue
+        draw.rectangle(
+            rect_points(region, v_offset, scale=scale),
+            outline=colours[index % len(colours)],
+        )
+        track_prediction = track_predictions.prediction_for(track)
+        if track_prediction:
+            footer_text = track_prediction.get_classified_footer(labels)
+            add_text_to_track(
+                draw,
+                region,
+                str(track.get_id()),
+                footer_text,
+                screen_bounds,
+                v_offset,
+            )
+
+        if debug:
+            text = None
+            if tracks_text and len(tracks_text) > index:
+                text = tracks_text[index]
+            add_debug_text(
+                draw, track, region, screen_bounds, text=text, v_offset=v_offset
+            )

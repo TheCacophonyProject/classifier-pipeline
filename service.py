@@ -29,8 +29,8 @@ class Service(object):
         last_frame = self.get_frame()
         if last_frame is None:
             return "Reading from camera has not start yet."
-
-        frame_to_jpg(last_frame, self.output_dir + "/" + SNPASHOT_NAME)
+        last_frame.save(self.output_dir + "/" + SNPASHOT_NAME)
+        # frame_to_jpg(last_frame, self.output_dir + "/" + SNPASHOT_NAME)
         return "Success"
 
 
