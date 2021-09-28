@@ -119,21 +119,15 @@ def get_processor(process_queue, config, thermal_config, headers):
 
 def handle_headers(connection):
     headers = ""
-    line = ""
     left_over = None
     while True:
         data = connection.recv(100).decode()
-        done = data.find("\n")
+        headers += data
+        done = headers.find("\n\n")
         if done > -1:
-            line += data[: done - 1]
-            left_over = data[done:], encode()
-            if line.strip() == "":
-                break
-
-            headers += line
-            line = ""
-        line += data
-
+            headers += headers[: done - 1]
+            left_over = headers[done:].encode()
+            break
     return HeaderInfo.parse_header(headers), left_over
 
 
