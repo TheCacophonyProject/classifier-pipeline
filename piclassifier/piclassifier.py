@@ -11,7 +11,7 @@ from classify.trackprediction import Predictions
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
 from ml_tools.preprocess import preprocess_segment
-from ml_tools.previewer import Previewer
+from ml_tools.previewer import Previewer, add_last_frame_tracking
 from ml_tools import tools
 from .cptvrecorder import CPTVRecorder
 from .motiondetector import MotionDetector

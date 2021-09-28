@@ -5,7 +5,7 @@ from ml_tools.tools import frame_to_jpg
 from pydbus import SystemBus
 from gi.repository import GLib
 
-SNPASHOT_NAME = "still.png"
+SNAPSHOT_NAME = "still.png"
 DBUS_NAME = "org.cacophony.thermalrecorder"
 DBUS_PATH = "/org/cacophony/thermalrecorder"
 
@@ -29,7 +29,7 @@ class Service(object):
         last_frame = self.get_frame()
         if last_frame is None:
             return "Reading from camera has not start yet."
-        last_frame.save(self.output_dir + "/" + SNPASHOT_NAME)
+        last_frame.save(self.output_dir + "/" + SNAPSHOT_NAME)
         # frame_to_jpg(last_frame, self.output_dir + "/" + SNPASHOT_NAME)
         return "Success"
 
