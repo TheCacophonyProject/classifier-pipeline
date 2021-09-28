@@ -120,21 +120,25 @@ def get_processor(process_queue, config, thermal_config, headers):
 def handle_headers(connection):
     headers = ""
     line = ""
+    left_over = None
     while True:
-        data = connection.recv(1).decode()
-
-        line += data
-        if data == "\n":
+        data = connection.recv(100).decode()
+        done = data.find("\n")
+        if done > -1:
+            line += data[: done - 1]
+            left_over = data[done:], encode()
             if line.strip() == "":
                 break
 
             headers += line
             line = ""
-    return HeaderInfo.parse_header(headers)
+        line += data
+
+    return HeaderInfo.parse_header(headers), left_over
 
 
 def handle_connection(connection, config, thermal_config):
-    headers = handle_headers(connection)
+    headers, extra_b = handle_headers(connection)
     logging.info("parsed camera headers %s", headers)
     process_queue = multiprocessing.Queue()
 
@@ -148,7 +152,15 @@ def handle_connection(connection, config, thermal_config):
     raw_frame = lepton3.Lepton3(headers)
     read = 0
     while True:
-        data = connection.recv(headers.frame_size, socket.MSG_WAITALL)
+        if extra_b is not None:
+            data = extra_b + connection.recv(
+                headers.frame_size - len(extra_b), socket.MSG_WAITALL
+            )
+        else:
+            data = connection.recv(
+                headers.frame_size - len(extra_b), socket.MSG_WAITALL
+            )
+
         if not data:
             logging.info("disconnected from camera")
             process_queue.put(STOP_SIGNAL)
