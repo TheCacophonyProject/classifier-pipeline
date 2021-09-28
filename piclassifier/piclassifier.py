@@ -6,9 +6,7 @@ import time
 
 import psutil
 import numpy as np
-from tensorflow.keras.applications.inception_v3 import (
-    preprocess_input as inc3preprocess,
-)
+
 from classify.trackprediction import Predictions
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
@@ -142,9 +140,9 @@ def get_classifier(model):
     return classifier
 
 
-def run(frame_queue, config, thermal_config, headers):
+def run(frame_queue, config, thermal_config, headers, classify=True):
     init_logging()
-    pi_classifier = PiClassifier(config, thermal_config, headers)
+    pi_classifier = PiClassifier(config, thermal_config, headers, classify)
     while True:
         frame = frame_queue.get()
         if isinstance(frame, str):
@@ -158,6 +156,9 @@ def run(frame_queue, config, thermal_config, headers):
             pi_classifier.process_frame(frame)
 
 
+predictions = None
+
+
 class PiClassifier(Processor):
     """Classifies frames from leptond"""
 
@@ -167,9 +168,8 @@ class PiClassifier(Processor):
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
     SKIP_FRAMES = 10
-    predictions = None
 
-    def __init__(self, config, thermal_config, headers):
+    def __init__(self, config, thermal_config, headers, classify):
         self._output_dir = thermal_config.recorder.output_dir
         super().__init__()
         self.headers = headers
@@ -180,27 +180,19 @@ class PiClassifier(Processor):
         self.rolling_track_classify = {}
         self.skip_classifying = 0
         self.classified_consec = 0
+        self.classify = classify
         self.config = config
-        model = config.classify.models[0]
-        self.classifier = get_classifier(model)
 
-        self.num_labels = len(self.classifier.labels)
         self.process_time = 0
         self.tracking_time = 0
         self.identify_time = 0
-        self.predictions = Predictions(self.classifier.labels, model)
-        global predictions
-        predictions = self.predictions
+
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
         self.crop_rectangle = tools.Rectangle(
             edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
         )
 
-        try:
-            self.fp_index = self.classifier.labels.index("false-positive")
-        except ValueError:
-            self.fp_index = None
         self.track_extractor = ClipTrackExtractor(
             self.config.tracking,
             self.config.use_opt_flow,
@@ -219,11 +211,26 @@ class PiClassifier(Processor):
             self.config.tracking.motion.dynamic_thresh,
             headers,
         )
-        self.startup_classifier()
 
         self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)
+        if self.classify:
+            from tensorflow.keras.applications.inception_v3 import (
+                preprocess_input as inc3preprocess,
+            )
+
+            model = config.classify.models[0]
+            self.classifier = get_classifier(model)
+            self.predictions = Predictions(self.classifier.labels, model)
+            self.num_labels = len(self.classifier.labels)
+            global predictions
+            predictions = self.predictions
+            try:
+                self.fp_index = self.classifier.labels.index("false-positive")
+            except ValueError:
+                self.fp_index = None
+            self.startup_classifier()
 
     def new_clip(self):
         self.clip = Clip(
@@ -366,7 +373,10 @@ class PiClassifier(Processor):
         bounds = Region(0, 0, clip.res_x, clip.res_y)
 
         img = add_last_frame_tracking(
-            last_frame, clip.active_tracks, self.predictions, screen_bounds=bounds
+            last_frame,
+            clip.active_tracks,
+            self.predictions if self.classify else None,
+            screen_bounds=bounds,
         )
         return img
         # draw = ImageDraw.Draw(last_frame.thermal)
@@ -435,7 +445,8 @@ class PiClassifier(Processor):
                 self.skip_classifying = PiClassifier.SKIP_FRAMES
                 self.classified_consec = 0
             elif (
-                self.motion_detector.ffc_affected is False
+                self.classify
+                and self.motion_detector.ffc_affected is False
                 and self.clip.active_tracks
                 and self.skip_classifying <= 0
                 and not self.clip.on_preview()
@@ -479,20 +490,23 @@ class PiClassifier(Processor):
     def create_mp4(self):
         previewer = Previewer(self.config, "classified")
         previewer.export_clip_preview(
-            self.clip.get_id() + ".mp4", self.clip, self.predictions
+            self.clip.get_id() + ".mp4",
+            self.clip,
+            self.predictions if self.classify else None,
         )
 
     def end_clip(self):
         if self.clip:
-            for _, prediction in self.predictions.prediction_per_track.items():
-                if prediction.max_score:
-                    logging.info(
-                        "Clip {} {}".format(
-                            self.clip.get_id(),
-                            prediction.description(),
+            if self.classify:
+                for _, prediction in self.predictions.prediction_per_track.items():
+                    if prediction.max_score:
+                        logging.info(
+                            "Clip {} {}".format(
+                                self.clip.get_id(),
+                                prediction.description(),
+                            )
                         )
-                    )
-            self.predictions.clear_predictions()
+                self.predictions.clear_predictions()
             self.clip = None
             self.tracking = False
         global clip
@@ -517,7 +531,10 @@ def on_recording_stopping(filename):
         track_extractor.apply_track_filtering(clip)
         meta_name = os.path.splitext(filename)[0] + ".txt"
         logging.debug("saving meta to %s", meta_name)
-        meta_data = clip.get_metadata({predictions.model.id: predictions})
+        predictions_per_model = None
+        if predictions is not None:
+            predictions_per_model = {predictions.model.id: predictions}
+        meta_data = clip.get_metadata(predictions_per_model)
         meta_data["algorithm"] = {}
         meta_data["algorithm"]["model_name"] = "PI-INC3"
         meta_data["algorithm"]["tracker_version"] = track_extractor.VERSION

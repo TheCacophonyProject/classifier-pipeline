@@ -104,20 +104,17 @@ def parse_cptv(cptv_file, config, thermal_config):
 
 
 def get_processor(process_queue, config, thermal_config, headers):
-    if thermal_config.motion.run_classifier:
-        p_processor = multiprocessing.Process(
-            target=run,
-            args=(process_queue, config, thermal_config, headers),
-        )
-        return p_processor
-        # return PiClassifier(config, thermal_config, classifier, headers)
-
-    return MotionDetector(
-        thermal_config,
-        config.tracking.motion.dynamic_thresh,
-        CPTVRecorder(thermal_config, headers),
-        headers,
+    p_processor = multiprocessing.Process(
+        target=run,
+        args=(
+            process_queue,
+            config,
+            thermal_config,
+            headers,
+            thermal_config.motion.run_classifier,
+        ),
     )
+    return p_processor
 
 
 def handle_headers(connection):
