@@ -368,7 +368,7 @@ class PiClassifier(Processor):
 
     def get_recent_frame(self):
         if self.clip:
-            last_frame = self.motion_detector.get_recent_frame()
+            last_frame = clip.frame_buffer.get_last_frame()
             if last_frame is None:
                 return None
             bounds = Region(0, 0, clip.res_x, clip.res_y)

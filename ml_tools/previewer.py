@@ -511,7 +511,9 @@ def add_last_frame_tracking(
     scale=1,
     debug=False,
 ):
-    draw = ImageDraw.Draw(frame)
+    image = tools.convert_heat_to_img(frame.pix)
+
+    draw = ImageDraw.Draw(image)
 
     # look for any tracks that occur on this frame
     for index, track in enumerate(tracks):
