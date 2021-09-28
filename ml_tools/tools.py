@@ -330,7 +330,7 @@ def load_colourmap(filename):
         return pickle.load(f)
 
 
-def convert_heat_to_img(frame, colormap, temp_min=2800, temp_max=4200):
+def convert_heat_to_img(frame, colormap=None, temp_min=None, temp_max=None):
     """
     Converts a frame in float32 format to a PIL image in in uint8 format.
     :param frame: the numpy frame contining heat values to convert
@@ -340,7 +340,10 @@ def convert_heat_to_img(frame, colormap, temp_min=2800, temp_max=4200):
     # normalise
     if colormap is None:
         colormap = _load_colourmap(None)
-
+    if temp_min is None:
+        temp_min = np.amin(frame)
+    if temp_max is None:
+        temp_max = np.amax(frame)
     frame = np.float32(frame)
     frame = (frame - temp_min) / (temp_max - temp_min)
     colorized = np.uint8(255.0 * colormap(frame))

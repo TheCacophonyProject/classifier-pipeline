@@ -26,7 +26,6 @@ from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
 from track.region import Region
 from PIL import ImageDraw
-from ml_tools.previewer import add_last_frame_tracking
 
 STOP_SIGNAL = "stop"
 
@@ -382,8 +381,10 @@ class PiClassifier(Processor):
             )
             return img
         else:
-            img = ImageDraw.Draw(frame)
-            return img
+            frame = self.motion_detector.get_recent_frame()
+            if frame is None:
+                return None
+            return tools.convert_heat_to_img(frame)
         # draw = ImageDraw.Draw(last_frame.thermal)
         # for track in clip.active_tracks:
         #     region = track.bounds_history[-1]
