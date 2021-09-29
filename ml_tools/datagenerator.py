@@ -313,7 +313,7 @@ def _data(labels, data, params, mapped_labels, to_categorical=True):
         if label not in labels:
             continue
         if params.use_segments:
-            temps = [frame.frame_temp_median for frame in frame_data]
+            # temps = [frame.frame_temp_median for frame in frame_data]
             data = preprocess_movement(
                 frame_data,
                 params.square_width,
@@ -323,7 +323,7 @@ def _data(labels, data, params, mapped_labels, to_categorical=True):
                 blue_type=params.blue_type,
                 preprocess_fn=params.model_preprocess,
                 augment=params.augment,
-                reference_level=temps,
+                reference_level=None,
                 sample="test",
                 keep_edge=params.keep_edge,
             )
@@ -387,10 +387,10 @@ def load_from_numpy(numpy_meta, tracks, name):
 
                 seek = numpy_info["data"]
                 f.seek(numpy_info["data"])
-                frames = np.load(f, allow_pickle=True)
-                meta = np.load(f, allow_pickle=True)
-                thermals = frames[0]
-                filtered = frames[1]
+                thermals = np.load(f, allow_pickle=False)
+                filtered = np.load(f, allow_pickle=False)
+                # regions = np.load(f, allow_pickle=False)
+
                 for id, segment_frames in segments:
                     segment_data = np.empty(len(segment_frames), dtype=object)
                     segment_db[id] = segment_data
@@ -406,8 +406,9 @@ def load_from_numpy(numpy_meta, tracks, name):
                             frame_i,
                             flow_clipped=True,
                         )
-                        frame.region = meta[0][relative_f]
-                        frame.frame_temp_median = meta[1][relative_f]
+                        # frame.region = regions[i]
+                        # meta[0][relative_f]
+                        # frame.frame_temp_median = meta[1][relative_f]
                         segment_data[i] = frame
 
             logging.debug(

@@ -145,3 +145,13 @@ class Region(Rectangle):
         )
         distance /= 3.0
         return distance
+
+    def on_height_edge(self, crop_region):
+        if self.top == crop_region.top or self.bottom == crop_region.bottom:
+            return True
+        return False
+
+    def on_width_edge(self, crop_region):
+        if self.left == crop_region.left or self.right == crop_region.right:
+            return True
+        return False

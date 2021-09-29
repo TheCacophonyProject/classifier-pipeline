@@ -5,11 +5,14 @@ import logging
 from ml_tools import tools
 from track.region import Region
 from abc import ABC, abstractmethod
+from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
 
 FRAMES_PER_SECOND = 9
 
 CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
+FRAME_SIZE = 32
+MIN_SIZE = 4
 
 
 class Sample(ABC):
@@ -32,15 +35,33 @@ class Sample(ABC):
         ...
 
 
+EDGE = 1
+
+res_x = 120
+res_y = 160
+
+
 class NumpyMeta:
     # Save track data to a numpy file this is much faster for trianing off than
     #  the h5py file
     # track_info contains the file read locations for each track
-    def __init__(self, filename):
+    def __init__(
+        self,
+        filename,
+        augment,
+        frame_size,
+    ):
         self.filename = filename
         self.track_info = {}
         self.f = None
         self.mode = "rb"
+        self.augment = augment
+        if frame_size is None:
+            frame_size = FRAME_SIZE
+        self.dim = (frame_size, frame_size)
+        self.crop_rectangle = tools.Rectangle(
+            EDGE, EDGE, res_x - 2 * EDGE, res_y - 2 * EDGE
+        )
 
     def __enter__(self):
         self.open(self.mode)
@@ -71,6 +92,7 @@ class NumpyMeta:
             logging.debug("%s saved %s", self.filename, count)
 
         except:
+            raise "EX"
             logging.error("Error saving track info", exc_info=True)
         finally:
             self.close()
@@ -91,24 +113,85 @@ class NumpyMeta:
             track_frames = np.arange(track.num_frames) + track.start_frame
             data_frames = [frame.frame_number for frame in frames]
             skipped = [f_i for f_i in track_frames if f_i not in data_frames]
-            track.skipped_frames = np.uint16(skipped)
             track_info["data"] = self.f.tell()
-            thermals = np.empty(track.num_frames, dtype=object)
-            filtered = np.empty(track.num_frames, dtype=object)
+            dim = self.dim
+            if self.augment:
+                dim = (
+                    self.dim[0] + 4,
+                    self.dim[1] + 4,
+                )
+            thermals = np.empty((track.num_frames, *dim), dtype=np.uint16)
+            filtered = np.empty((track.num_frames, *dim), dtype=np.float32)
 
             for frame in frames:
-                thermals[frame.frame_number - track.start_frame] = frame.thermal
-                filtered[
+                if frame.region.height < MIN_SIZE or frame.region.width < MIN_SIZE:
+                    skipped.append(frame.frame_number)
+                    continue
+                frame.thermal -= track.frame_temp_median[
                     frame.frame_number - track.start_frame
-                ] = frame.thermal - frame.region.subimage(background)
+                ]
+                np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
+                frame.filtered = frame.thermal - frame.region.subimage(background)
+                self.resize(frame)
+                thermals[frame.frame_number - track.start_frame] = np.uint16(
+                    frame.thermal
+                )
+                filtered[frame.frame_number - track.start_frame] = np.float32(
+                    frame.filtered
+                )
+            track.skipped_frames = np.uint16(skipped)
 
-            data = np.stack((thermals, filtered))
-            np.save(self.f, data, allow_pickle=True)
-            data = np.stack((track.regions, track.frame_temp_median))
-            np.save(self.f, data, allow_pickle=True)
+            np.save(self.f, thermals, allow_pickle=False)
+            np.save(self.f, filtered, allow_pickle=False)
+
+            # regions = np.uint8([np.uint8(region.to_ltrb()) for region in track.regions])
+            # np.save(self.f, regions, allow_pickle=False)
 
         except:
             logging.error("Error saving %s", track, exc_info=True)
+
+    def resize(self, frame):
+        dim = self.dim
+        frame_height, frame_width = frame.thermal.shape
+
+        if self.augment:
+            max_height_offset = int(np.clip(frame_height * 0.1, 1, 2))
+            w_x = 1 if frame.region.on_width_edge(self.crop_rectangle) else 2
+            h_x = 1 if frame.region.on_height_edge(self.crop_rectangle) else 2
+            max_width_offset = int(np.clip(frame_width * 0.1, 1, 2))
+            resize_dim = (
+                self.dim[0] + max_height_offset * h_x,
+                self.dim[1] + max_width_offset * w_x,
+            )
+            dim = (
+                self.dim[0] + 4,
+                self.dim[1] + 4,
+            )
+
+        else:
+            resize_dim = self.dim
+
+        scale_percent = (resize_dim / np.array(frame.thermal.shape)).min()
+        width = int(frame.thermal.shape[1] * scale_percent)
+        height = int(frame.thermal.shape[0] * scale_percent)
+        resize_dim = (width, height)
+        frame.thermal = resize_and_pad(
+            frame.thermal,
+            resize_dim,
+            dim,
+            frame.region,
+            self.crop_rectangle,
+            True,
+        )
+        frame_height, frame_width = frame.thermal.shape
+        frame.filtered = resize_and_pad(
+            frame.filtered,
+            resize_dim,
+            dim,
+            frame.region,
+            self.crop_rectangle,
+            True,
+        )
 
 
 class TrackHeader:

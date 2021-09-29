@@ -126,9 +126,13 @@ class Dataset:
         self.numpy_data = None
 
     # is much faster to read from numpy array when trianing
-    def saveto_numpy(self, path):
+    def saveto_numpy(self, path, frame_size):
         file = os.path.join(path, self.name)
-        self.numpy_data = NumpyMeta(f"{file}.npy")
+        self.numpy_data = NumpyMeta(
+            f"{file}.npy",
+            self.enable_augmentation,
+            frame_size,
+        )
         self.numpy_data.save_tracks(self.db, self.tracks)
         self.numpy_data.f = None
 

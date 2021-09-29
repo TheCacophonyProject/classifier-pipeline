@@ -326,7 +326,10 @@ def main():
 
     base_dir = config.tracks_folder
     for dataset in datasets:
-        dataset.saveto_numpy(os.path.join(base_dir))
+        dataset.saveto_numpy(
+            os.path.join(base_dir), config.train.hyper_params.get("frame_size")
+        )
+        # raise "DONE"
 
     for dataset in datasets:
         dataset.clear_samples()
