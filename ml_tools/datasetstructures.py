@@ -127,12 +127,13 @@ class NumpyMeta:
                 if frame.region.height < MIN_SIZE or frame.region.width < MIN_SIZE:
                     skipped.append(frame.frame_number)
                     continue
+                frame.filtered = frame.thermal - frame.region.subimage(background)
                 frame.thermal -= track.frame_temp_median[
                     frame.frame_number - track.start_frame
                 ]
                 np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
-                frame.filtered = frame.thermal - frame.region.subimage(background)
                 self.resize(frame)
+
                 thermals[frame.frame_number - track.start_frame] = np.uint16(
                     frame.thermal
                 )
