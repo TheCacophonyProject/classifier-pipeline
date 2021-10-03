@@ -257,7 +257,7 @@ class Dataset:
         :label: label to check
         :return: (segments, tracks, bins, weight)
         """
-        segments = 0
+        segments_count = 0
         tracks = 0
         bins = 0
         weight = 0
@@ -266,33 +266,21 @@ class Dataset:
             for key, value in self.label_mapping.items():
                 if key == label or value == label:
                     label_tracks = []
-                    # self.tracks_by_label.get(key, [])
-                    tracks += len(label_tracks)
-                    segments += sum(len(track.segments) for track in label_tracks)
-                    frames += sum(
-                        len(track.get_sample_frames())
-                        for track in label_tracks
-                        if track.sample_frames is not None
-                    )
+                    segments = self.segments_by_label.get(key, [])
+                    tracks += len(set([segment.track_id for segment in self.segments]))
+                    segments_count += len(segments)
+                    frames += sum([segment.frames for segment in self.segments])
 
         else:
-            label_tracks = self.tracks_by_label.get(label, [])
-            segments = sum(len(track.segments) for track in label_tracks)
+            label_tracks = []
+            segments = self.segments_by_label.get(key, [])
+            segments_count += len(segments)
             weight = self.get_label_weight(label)
-            tracks = len(label_tracks)
-            frames = sum(
-                len(track.get_sample_frames())
-                for track in label_tracks
-                if track.sample_frames is not None
-            )
-            bins = len(
-                [
-                    tracks
-                    for bin_name, tracks in self.tracks_by_bin.items()
-                    if len(tracks) > 0 and tracks[0].label == label
-                ]
-            )
-        return segments, frames, tracks, bins, weight
+            tracks += len(set([segment.track_id for segment in self.segments]))
+            frames += sum([segment.frames for segment in self.segments])
+
+            bins = 0
+        return segments_count, frames, tracks, bins, weight
 
     def load_tracks(self, shuffle=False, before_date=None, after_date=None):
         """
@@ -731,8 +719,8 @@ class Dataset:
 
     def get_label_weight(self, label):
         """Returns the total weight for all segments of given label."""
-        tracks = self.tracks_by_label.get(label)
-        return sum(track.weight for track in tracks) if tracks else 0
+        segments = self.segments_by_label.get(label)
+        return sum(segment.weight for segment in segments)
 
     def regroup(
         self,
