@@ -273,7 +273,7 @@ class Dataset:
 
         else:
             label_tracks = []
-            segments = self.segments_by_label.get(key, [])
+            segments = self.segments_by_label.get(label, [])
             segments_count += len(segments)
             weight = self.get_label_weight(label)
             tracks += len(set([segment.track_id for segment in self.segments]))
@@ -719,7 +719,7 @@ class Dataset:
 
     def get_label_weight(self, label):
         """Returns the total weight for all segments of given label."""
-        segments = self.segments_by_label.get(label)
+        segments = self.segments_by_label.get(label, [])
         return sum(segment.weight for segment in segments)
 
     def regroup(
