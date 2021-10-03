@@ -384,7 +384,7 @@ class KerasModel:
             epochs=epochs,
             model_preprocess=self.preprocess_fn,
             maximum_preload=self.params.maximum_train_preload,
-            preload=False,
+            preload=True,
             **self.params,
         )
         time.sleep(1)
@@ -396,7 +396,7 @@ class KerasModel:
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
             maximum_preload=self.params.maximum_train_preload,
-            preload=False,
+            preload=True,
             lazy_load=True,
             **self.params,
         )
