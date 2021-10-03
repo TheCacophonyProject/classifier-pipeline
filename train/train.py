@@ -1,5 +1,7 @@
 import logging
 from ml_tools.kerasmodel import KerasModel
+import pickle
+import os
 
 
 def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
@@ -70,10 +72,18 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
         )
     )
     for dataset in model.datasets.values():
-        dataset.clear_tracks()
+        # dataset.clear_tracks()
         for segment in dataset.segments:
             segment.frame_temp_median = None
             segment.regions = None
+        # logging.info("SAVING %s", dataset.name)
+        # pickle.dump(
+        #     dataset,
+        #     open(f"{os.path.join(conf.tracks_folder, dataset.name)}-small.dat", "wb"),
+        # )
+    # import sys
+    #
+    # sys.exit(0)
     import gc
 
     gc.collect()

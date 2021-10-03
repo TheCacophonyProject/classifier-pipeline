@@ -334,6 +334,12 @@ def main():
     for dataset in datasets:
         dataset.clear_samples()
         dataset.db = None
+        dataset.recalculate_segments()
+        dataset.clear_tracks()
+
+        for segment in dataset.segments:
+            segment.frame_temp_median = None
+            segment.regions = None
         logging.info("saving to %s", f"{os.path.join(base_dir, dataset.name)}.dat")
         pickle.dump(dataset, open(f"{os.path.join(base_dir, dataset.name)}.dat", "wb"))
 
