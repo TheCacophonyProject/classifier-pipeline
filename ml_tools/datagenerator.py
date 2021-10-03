@@ -241,7 +241,7 @@ class DataGenerator(keras.utils.Sequence):
         if len(batches) > 0:
             self.epoch_queue.put((self.loaded_epochs + 1, batches))
         self.loaded_epochs += 1
-        self.epoch_queue.put("STOP")
+        # self.epoch_queue.put("STOP")
 
     def reload_samples(self):
         logging.debug("%s reloading samples", self.dataset.name)
@@ -461,8 +461,13 @@ def load_batch_frames(
     return segment_db
 
 
+train_queue = None
+
+jobs = 0
+
+
 def preloader(
-    train_queue,
+    t_q,
     epoch_queue,
     labels,
     name,
@@ -481,19 +486,23 @@ def preloader(
         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
     )
     epoch = 0
-
+    global train_queue
+    global jobs
+    train_queue = t_q
     # this does the data pre processing
     processes = 4
 
     preload_amount = max(1, params.maximum_preload)
-    max_jobs = max(1, int(preload_amount * 4 / 5))
+    max_jobs = max(1, params.maximum_preload)
     chunk_size = processes * 30
-    while True:
+    with multiprocessing.get_context("spawn").Pool(
+        processes,
+        init_process,
+        (labels, params, label_mapping),
+        maxtasksperchild=30,
+    ) as pool:
 
         item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
-        if item == "STOP":
-            logging.info("%s preloader received stop", name)
-            return
         try:
             epoch, batches = item
             count = 0
@@ -506,7 +515,9 @@ def preloader(
                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
             )
             total = 0
-
+            while jobs > max_jobs:
+                logging.debug("%s waiting for jobs to complete %s", name, jobs)
+                time.sleep(5)
             # Once process_batch starts to back up
             loaded_up_to = 0
             while len(batches) > 0:
@@ -540,16 +551,11 @@ def preloader(
                         segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
                     data.append(segment_data)
                     # if len(data) > chunk_size or batch_i == (len(next_load) - 1):
-                with multiprocessing.get_context("spawn").Pool(
-                    processes,
-                    init_process,
-                    (labels, params, label_mapping),
-                    maxtasksperchild=30,
-                ) as pool:
-                    while len(data) > 0:
-                        result = pool.map(process_batch, data[:chunk_size])
-                        processed_data(train_queue, result)
-                        del data[:chunk_size]
+
+                pool.map_async(process_batch, data, callback=processed_data)
+                jobs += len(data)
+
+                # result = None
                 del data
                 del segment_db
                 del batches[:preload_amount]
@@ -568,6 +574,9 @@ def preloader(
             logging.info("%s preloader loaded epoch %s batches", name, epoch)
 
             logging.info("%s preloader processed epoch %s batches", name, epoch)
+            pool.close()
+            pool.join()
+
             # break
         except Exception as inst:
             logging.error(
@@ -575,7 +584,10 @@ def preloader(
             )
 
 
-def processed_data(train_queue, results):
+def processed_data(results):
+    global jobs
+    global train_queue
+    print("processed", len(results))
     for result in results:
         put_with_timeout(
             train_queue,
@@ -584,7 +596,8 @@ def processed_data(train_queue, results):
             f"train_queue-process_batches",
         )
         # del result
-    # jobs -= len(results)
+    jobs -= len(results)
+    results = None
     # del results
 
 
