@@ -483,11 +483,11 @@ def preloader(
     epoch = 0
 
     # this does the data pre processing
-    processes = 8
+    processes = 4
 
     preload_amount = max(1, params.maximum_preload)
     max_jobs = max(1, int(preload_amount * 4 / 5))
-
+    chunk_size = processes * 30
     while True:
 
         item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
@@ -546,14 +546,17 @@ def preloader(
                     (labels, params, label_mapping),
                     maxtasksperchild=30,
                 ) as pool:
-                    results = pool.map(process_batch, data)
+                    while len(data) > 0:
+                        result = pool.map(process_batch, data[:chunk_size])
+                        processed_data(train_queue, result)
+                        del data[:chunk_size]
                 del data
                 del segment_db
                 del batches[:preload_amount]
                 del next_load
                 del segment_data
-                processed_data(train_queue, results)
-                results = None
+                # processed_data(train_queue, results)
+                # results = None
                 logging.debug(
                     "%s preloader loaded up to %s",
                     name,
