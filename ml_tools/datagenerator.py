@@ -398,8 +398,8 @@ def load_from_numpy(numpy_meta, tracks, name):
                     for i, frame_i in enumerate(segment_frames):
                         relative_f = frame_i - start_frame
                         count += 1
-                        thermal = thermals[relative_f]
-                        filter = filtered[relative_f]
+                        thermal = np.copy(thermals[relative_f])
+                        filter = np.copy(filtered[relative_f])
                         frame = Frame.from_channels(
                             [thermal, filter],
                             [TrackChannels.thermal, TrackChannels.filtered],
@@ -499,7 +499,7 @@ def preloader(
         processes,
         init_process,
         (labels, params, label_mapping),
-        maxtasksperchild=30,
+        # maxtasksperchild=30,
     ) as pool:
 
         item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
@@ -541,6 +541,7 @@ def preloader(
                     next_load,
                     name,
                 )
+                logging.info("size of db %s", get_size(segment_db) * 1e-6)
                 # chunk_size = max(100, len(next_load) // (2 * processes))
                 data = []
                 new_jobs = 0
@@ -551,16 +552,18 @@ def preloader(
                         segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
                     data.append(segment_data)
                     # if len(data) > chunk_size or batch_i == (len(next_load) - 1):
+                logging.info("size of data %s", get_size(data) * 1e-6)
+                logging.info("size of data+db %s", get_size([data, segment_db]) * 1e-6)
 
                 pool.map_async(process_batch, data, callback=processed_data)
                 jobs += len(data)
 
                 # result = None
-                del data
-                del segment_db
+                segment_db = None
+                data = None
                 del batches[:preload_amount]
-                del next_load
-                del segment_data
+                next_load = None
+                segment_data = None
                 # processed_data(train_queue, results)
                 # results = None
                 logging.debug(
@@ -669,3 +672,41 @@ def get_with_timeout(queue, timeout, name=None, sleep_time=10):
                 exc_info=True,
             )
             raise e
+
+
+import sys
+import attr
+
+
+def get_size(obj, name="base", seen=None, depth=0):
+    """Recursively finds size of objects"""
+    size = sys.getsizeof(obj)
+    if seen is None:
+        seen = set()
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+    # Important mark as seen *before* entering recursion to gracefully handle
+    # self-referential objects
+    seen.add(obj_id)
+    if attr.has(obj):
+        obj = attr.asdict(obj)
+        size += sum(
+            [get_size(v, f"{name}.{k}", seen, depth + 1) for k, v in obj.items()]
+        )
+        size += sum([get_size(k, f"{name}.{k}", seen, depth + 1) for k in obj.keys()])
+    if isinstance(obj, dict):
+        size += sum(
+            [get_size(v, f"{name}.{k}", seen, depth + 1) for k, v in obj.items()]
+        )
+        size += sum([get_size(k, f"{name}.{k}", seen, depth + 1) for k in obj.keys()])
+    elif hasattr(obj, "__dict__"):
+
+        size += get_size(obj.__dict__, f"{name}.dict", seen)
+    elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes, bytearray)):
+        # print("iter??")
+
+        size += sum([get_size(i, f"{name}.iter", seen, depth + 1) for i in obj])
+    # if size * 1e-6 > 0.1 and depth <= 1:
+    #     print(name, " size ", round(size * 1e-6, 2), "MB")
+    return size
