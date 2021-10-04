@@ -541,8 +541,13 @@ def preloader(
                     data.append(segment_data)
 
                 # same as shuffling again order dont matter
-                results = pool.imap_unordered(process_batch, data)
+                logging.debug("processing %s", len(data))
+                results = pool.imap_unordered(process_batch, data, chunksize=30)
+                done = 0
                 for res in results:
+                    done += 1
+                    logging.debug("processed %s", done)
+
                     put_with_timeout(
                         train_queue,
                         res,
