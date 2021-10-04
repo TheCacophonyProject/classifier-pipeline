@@ -515,9 +515,6 @@ def preloader(
                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
             )
             total = 0
-            while jobs > max_jobs:
-                logging.debug("%s waiting for jobs to complete %s", name, jobs)
-                time.sleep(5)
             # Once process_batch starts to back up
             loaded_up_to = 0
             while len(batches) > 0:
@@ -541,8 +538,6 @@ def preloader(
                     next_load,
                     name,
                 )
-                logging.info("size of db %s", get_size(segment_db) * 1e-6)
-                # chunk_size = max(100, len(next_load) // (2 * processes))
                 data = []
                 new_jobs = 0
                 for batch_i, segments in enumerate(next_load):
@@ -550,22 +545,30 @@ def preloader(
                     segment_data = [None] * len(segments)
                     for i, seg in enumerate(segments):
                         segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
-                    data.append(segment_data)
-                    # if len(data) > chunk_size or batch_i == (len(next_load) - 1):
-                logging.info("size of data %s", get_size(data) * 1e-6)
-                logging.info("size of data+db %s", get_size([data, segment_db]) * 1e-6)
+                    # data.append(segment_data)
+                    res = loadbatch(labels, segment_data, params, label_mapping)
+                    put_with_timeout(
+                        train_queue,
+                        res,
+                        1,
+                        f"train_queue-process_batches",
+                    )
+                # same as shuffling again order dont matter
+                # results = pool.imap_unordered(process_batch, data)
+                # for res in results:
+                #     put_with_timeout(
+                #         train_queue,
+                #         res,
+                #         1,
+                #         f"train_queue-process_batches",
+                #     )
 
-                pool.map_async(process_batch, data, callback=processed_data)
-                jobs += len(data)
-
-                # result = None
+                results = None
                 segment_db = None
                 data = None
                 del batches[:preload_amount]
                 next_load = None
                 segment_data = None
-                # processed_data(train_queue, results)
-                # results = None
                 logging.debug(
                     "%s preloader loaded up to %s",
                     name,
@@ -585,23 +588,6 @@ def preloader(
             logging.error(
                 "%s preloader epoch %s error %s", name, epoch, inst, exc_info=True
             )
-
-
-def processed_data(results):
-    global jobs
-    global train_queue
-    print("processed", len(results))
-    for result in results:
-        put_with_timeout(
-            train_queue,
-            result,
-            1,
-            f"train_queue-process_batches",
-        )
-        # del result
-    jobs -= len(results)
-    results = None
-    # del results
 
 
 LOG_EVERY = 25
