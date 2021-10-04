@@ -461,13 +461,8 @@ def load_batch_frames(
     return segment_db
 
 
-train_queue = None
-
-jobs = 0
-
-
 def preloader(
-    t_q,
+    train_queue,
     epoch_queue,
     labels,
     name,
@@ -486,11 +481,8 @@ def preloader(
         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
     )
     epoch = 0
-    global train_queue
-    global jobs
-    train_queue = t_q
     # this does the data pre processing
-    processes = 4
+    processes = 8
 
     preload_amount = max(1, params.maximum_preload)
     max_jobs = max(1, params.maximum_preload)
@@ -518,6 +510,7 @@ def preloader(
             # Once process_batch starts to back up
             loaded_up_to = 0
             while len(batches) > 0:
+                start = time.time()
                 logging.debug(
                     "%s preloader memory %s",
                     name,
@@ -545,23 +538,17 @@ def preloader(
                     segment_data = [None] * len(segments)
                     for i, seg in enumerate(segments):
                         segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
-                    # data.append(segment_data)
-                    res = loadbatch(labels, segment_data, params, label_mapping)
+                    data.append(segment_data)
+
+                # same as shuffling again order dont matter
+                results = pool.imap_unordered(process_batch, data)
+                for res in results:
                     put_with_timeout(
                         train_queue,
                         res,
                         1,
                         f"train_queue-process_batches",
                     )
-                # same as shuffling again order dont matter
-                # results = pool.imap_unordered(process_batch, data)
-                # for res in results:
-                #     put_with_timeout(
-                #         train_queue,
-                #         res,
-                #         1,
-                #         f"train_queue-process_batches",
-                #     )
 
                 results = None
                 segment_db = None
@@ -569,10 +556,11 @@ def preloader(
                 del batches[:preload_amount]
                 next_load = None
                 segment_data = None
-                logging.debug(
-                    "%s preloader loaded up to %s",
+                logging.info(
+                    "%s preloader loaded up to %s time per batch %s",
                     name,
                     loaded_up_to,
+                    time.time() - start,
                 )
                 total += 1
             del batches
