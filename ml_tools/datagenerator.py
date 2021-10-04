@@ -282,18 +282,6 @@ def loadbatch(labels, data, params, mapped_labels):
     return X, y, y_orig
 
 
-def get_cached_frames(db, sample):
-    frames = []
-    track_frames = db[sample.unique_track_id]
-    for f_i in sample.frame_indices:
-        if f_i not in track_frames:
-            logging.warn("Caanot not load %s frame %s", sample, f_i)
-            # THIS SHOULDNT HAPPEN
-            return []
-        frames.append(track_frames[f_i].copy())
-    return frames
-
-
 def _data(labels, data, params, mapped_labels, to_categorical=True):
     "Generates data containing batch_size samples"
     # Initialization
@@ -344,12 +332,12 @@ def _data(labels, data, params, mapped_labels, to_categorical=True):
         X[data_i] = data
         y[data_i] = labels.index(label)
         if np.isnan(np.sum(data)) or labels.index(label) is None:
-            logging.warn(
+            print(
                 "Nan in data for %s", u_id, [frame.frame_number for frame in frame_data]
             )
             continue
         if np.amin(data) < -1 or np.amax(data) > 1:
-            logging.warn(
+            print(
                 "Data out of bounds for %s %s",
                 u_id,
                 [frame.frame_number for frame in frame_data],
@@ -360,7 +348,7 @@ def _data(labels, data, params, mapped_labels, to_categorical=True):
     X = X[:data_i]
     y = y[:data_i]
     if len(X) == 0:
-        logging.warn("Empty length of x")
+        print("Empty length of x")
     assert len(X) == len(y)
     if to_categorical:
         y = keras.utils.to_categorical(y, num_classes=len(labels))
@@ -411,14 +399,14 @@ def load_from_numpy(numpy_meta, tracks, name):
                         # frame.frame_temp_median = meta[1][relative_f]
                         segment_data[i] = frame
 
-            logging.debug(
+            print(
                 "%s time to load %s frames %s",
                 name,
                 count,
                 time.time() - start,
             )
     except:
-        logging.error(
+        print(
             "%s error loading numpy file seek %s cur %s prev %s",
             name,
             seek,
@@ -455,7 +443,7 @@ def load_batch_frames(
         data_by_track.values(),
         key=lambda track_segment: track_segment[0],
     )
-    logging.debug("%s loading tracks from numpy file", name)
+    print("%s loading tracks from numpy file", name)
     segment_db = load_from_numpy(numpy_meta, track_segments, name)
 
     return segment_db
@@ -470,9 +458,9 @@ def preloader(
     label_mapping,
     numpy_meta,
 ):
-    init_logging()
+    # init_logging()
     """add a segment into buffer"""
-    logging.info(
+    print(
         " -started async fetcher for %s augment=%s numpyfile %s preload amount %s mem %s",
         name,
         params.augment,
@@ -499,7 +487,7 @@ def preloader(
             epoch, batches = item
             count = 0
 
-            logging.debug(
+            print(
                 "%s preloader got %s batches for epoch %s mem %s",
                 name,
                 len(batches),
@@ -511,14 +499,14 @@ def preloader(
             loaded_up_to = 0
             while len(batches) > 0:
                 start = time.time()
-                logging.debug(
+                print(
                     "%s preloader memory %s",
                     name,
                     psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
                 )
                 next_load = batches[:preload_amount]
 
-                logging.debug(
+                print(
                     "%s preloader loading %s - %s ",
                     name,
                     loaded_up_to,
@@ -541,12 +529,12 @@ def preloader(
                     data.append(segment_data)
 
                 # same as shuffling again order dont matter
-                logging.debug("processing %s", len(data))
+                print("processing %s", len(data))
                 results = pool.imap_unordered(process_batch, data, chunksize=30)
                 done = 0
                 for res in results:
                     done += 1
-                    logging.debug("processed %s", done)
+                    print("processed %s", done)
 
                     put_with_timeout(
                         train_queue,
@@ -561,7 +549,7 @@ def preloader(
                 del batches[:preload_amount]
                 next_load = None
                 segment_data = None
-                logging.info(
+                print(
                     "%s preloader loaded up to %s time per batch %s",
                     name,
                     loaded_up_to,
@@ -570,17 +558,14 @@ def preloader(
                 total += 1
             del batches
             # gc.collect()
-            logging.info("%s preloader loaded epoch %s batches", name, epoch)
+            print("%s preloader loaded epoch %s batches", name, epoch)
 
-            logging.info("%s preloader processed epoch %s batches", name, epoch)
             pool.close()
             pool.join()
 
             # break
         except Exception as inst:
-            logging.error(
-                "%s preloader epoch %s error %s", name, epoch, inst, exc_info=True
-            )
+            printr("%s preloader epoch %s error %s", name, epoch, inst, exc_info=True)
 
 
 LOG_EVERY = 25
@@ -599,12 +584,13 @@ def init_process(l, p, map):
 def process_batch(segment_data):
     # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
     # try:
-    init_logging()
+    # init_logging()
     global labels, params, label_mapping
     try:
         preprocessed = loadbatch(labels, segment_data, params, label_mapping)
-    except:
-        logging.error("Error processing batch ", exc_info=True)
+    except Exception as e:
+        print("Error processing batch", e)
+        # logging.error("Error processing batch ", exc_info=True)
         return None
     return preprocessed
 
@@ -617,10 +603,10 @@ def put_with_timeout(queue, data, timeout, name=None, sleep_time=10):
             queue.put(data, block=True, timeout=timeout)
             break
         except (Full):
-            logging.debug("%s cant put cause full", name)
+            print("%s cant put cause full", name)
             time.sleep(sleep_time)
         except Exception as e:
-            logging.error(
+            print(
                 "%s put error %s t/o %s sleep %s",
                 name,
                 e,
@@ -639,10 +625,10 @@ def get_with_timeout(queue, timeout, name=None, sleep_time=10):
             # queue.task_done()
             return queue_data
         except (Empty):
-            logging.debug("%s cant get cause empty", name)
+            print("%s cant get cause empty", name)
             time.sleep(sleep_time)
         except Exception as e:
-            logging.error(
+            print(
                 "%s get error %s t/o %s sleep %s",
                 name,
                 e,
