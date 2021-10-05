@@ -372,7 +372,8 @@ def load_from_numpy(numpy_meta, tracks, name):
                 numpy_info = numpy_meta.track_info[u_id]
                 track_is = u_id
                 start_frame = numpy_info["start_frame"]
-
+                if "data" not in numpy_info:
+                    print("No data for", u_id)
                 seek = numpy_info["data"]
                 f.seek(numpy_info["data"])
                 thermals = np.load(f, allow_pickle=False)
@@ -565,7 +566,7 @@ def preloader(
 
             # break
         except Exception as inst:
-            printr("%s preloader epoch %s error %s", name, epoch, inst, exc_info=True)
+            print("%s preloader epoch %s error %s", name, epoch, inst, exc_info=True)
 
 
 LOG_EVERY = 25
