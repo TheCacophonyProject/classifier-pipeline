@@ -3,7 +3,6 @@ import io
 import time
 import tensorflow as tf
 import pickle
-import logging
 from tensorboard.plugins.hparams import api as hp
 import tensorflow_addons as tfa
 import os
@@ -25,6 +24,7 @@ from classify.trackprediction import TrackPrediction
 
 from ml_tools.hyperparams import HyperParams
 import gc
+import logging
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 tf_device = "/gpu:1"
@@ -35,7 +35,9 @@ class KerasModel:
 
     VERSION = 1
 
-    def __init__(self, train_config=None, labels=None):
+    def __init__(self, train_config=None, labels=None, log_q=None):
+        self.log_q = log_q
+        self.logger = logging.getLogger()
         self.model = None
         self.datasets = None
         # dictionary containing current hyper parameters
@@ -163,7 +165,7 @@ class KerasModel:
             return tf.keras.applications.inception_resnet_v2.preprocess_input
         elif pretrained_model == "inceptionv3":
             return tf.keras.applications.inception_v3.preprocess_input
-        logging.warn(
+        self.logger.warn(
             "pretrained model %s has no preprocessing function", pretrained_model
         )
         return None
@@ -213,7 +215,7 @@ class KerasModel:
                 if isinstance(layer, tf.keras.layers.BatchNormalization):
                     # apparently this shouldn't matter as we set base_training = False
                     layer.trainable = False
-                    logging.info("dont train %s %s", i, layer.name)
+                    self.logger.info("dont train %s %s", i, layer.name)
                 else:
                     layer.trainable = i >= retrain_from
         else:
@@ -231,7 +233,7 @@ class KerasModel:
         )
 
     def load_weights(self, model_path, meta=True, training=False):
-        logging.info("loading weights %s", model_path)
+        self.logger.info("loading weights %s", model_path)
         dir = os.path.dirname(model_path)
 
         if meta:
@@ -249,14 +251,14 @@ class KerasModel:
         # self.model.load_weights(dir + "/variables/variables")
 
     def load_model(self, model_path, training=False, weights=None):
-        logging.info("Loading %s with weight %s", model_path, weights)
+        self.logger.info("Loading %s with weight %s", model_path, weights)
         dir = os.path.dirname(model_path)
         self.model = tf.keras.models.load_model(dir)
         self.model.trainable = training
         self.load_meta(dir)
         if weights is not None:
             self.model.load_weights(weights).expect_partial()
-        logging.info("Loaded weight %s", weights)
+        self.logger.info("Loaded weight %s", weights)
 
     def load_meta(self, dir):
         meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
@@ -267,7 +269,7 @@ class KerasModel:
         self.label_probabilities = meta.get("label_probabilities")
         self.preprocess_fn = self.get_preprocess_fn()
 
-        logging.debug(
+        self.logger.debug(
             "using types r %s g %s b %s",
             self.params.red_type,
             self.params.green_type,
@@ -358,7 +360,7 @@ class KerasModel:
         gc.collect()
 
     def train_model(self, epochs, run_name, weights=None):
-        logging.info(
+        self.logger.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
 
@@ -379,6 +381,7 @@ class KerasModel:
             self.train_dataset,
             self.labels,
             self.params.output_dim,
+            self.log_q,
             augment=True,
             cap_at="bird",
             epochs=epochs,
@@ -392,6 +395,7 @@ class KerasModel:
             self.validation_dataset,
             self.labels,
             self.params.output_dim,
+            self.log_q,
             cap_at="bird",
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
@@ -413,7 +417,7 @@ class KerasModel:
                 class_weight[i] = 0.6
             else:
                 class_weight[i] = 1
-        logging.info("training with class wieghts %s", class_weight)
+        self.logger.info("training with class wieghts %s", class_weight)
         # give a bit of time for preloader to cache data
         checkpoints = self.checkpoints(run_name)
         history = self.model.fit(
@@ -437,15 +441,16 @@ class KerasModel:
                 self.test_dataset,
                 self.train_dataset.labels,
                 self.params.output_dim,
+                self.log_q,
                 model_preprocess=self.preprocess_fn,
                 epochs=1,
                 cap_at="bird",
                 preload=True,
                 **self.params,
             )
-            logging.info("Evaluating test %s", len(self.test))
+            self.logger.info("Evaluating test %s", len(self.test))
             test_accuracy = self.model.evaluate(self.test)
-            logging.info("Test accuracy is %s", test_accuracy)
+            self.logger.info("Test accuracy is %s", test_accuracy)
             self.test.stop_load()
         self.save(run_name, history=history, test_results=test_accuracy)
 
@@ -509,7 +514,7 @@ class KerasModel:
     def regroup(self, shuffle=True):
         # can use this to put animals into groups i.e. wallaby vs not
         if not self.mapped_labels:
-            logging.warn("Cant regroup without specifying mapped_labels")
+            self.logger.warn("Cant regroup without specifying mapped_labels")
             return
         for dataset in self.datasets.values():
             dataset.regroup(self.mapped_labels, shuffle=shuffle)
@@ -631,7 +636,7 @@ class KerasModel:
                 keep_edge=self.params.keep_edge,
             )
             if frames is None:
-                logging.warn("No frames to predict on")
+                self.logger.warn("No frames to predict on")
                 continue
             output = self.model.predict(frames[np.newaxis, :])
             pred = output[0]
@@ -699,14 +704,14 @@ class KerasModel:
         metric = tfa.metrics.F1Score(num_classes=len(self.labels))
         metric.update_state(one_hot_y, pred_raw)
         result = metric.result().numpy()
-        logging.info("F1 score")
+        self.logger.info("F1 score")
         by_label = {}
         for i, label in enumerate(self.labels):
             by_label[label] = round(100 * result[i])
         sorted = self.labels.copy()
         sorted.sort()
         for label in sorted:
-            logging.info("%s = %s", label, by_label[label])
+            self.logger.info("%s = %s", label, by_label[label])
 
     def evaluate(self, dataset):
         dataset.set_read_only(True)
@@ -731,7 +736,7 @@ class KerasModel:
         )
         test_accuracy = self.model.evaluate(test)
         test.stop_load()
-        logging.info("Test accuracy is %s", test_accuracy)
+        self.logger.info("Test accuracy is %s", test_accuracy)
 
     def track_accuracy(self, dataset, confusion="confusion.png"):
         dataset.set_read_only(True)
@@ -753,7 +758,7 @@ class KerasModel:
                 )
             else:
                 sample_tracks = label_tracks
-            logging.info("taking %s from %s", len(sample_tracks), label)
+            self.logger.info("taking %s from %s", len(sample_tracks), label)
             mapped_label = dataset.mapped_label(label)
             for track in sample_tracks:
 
@@ -773,7 +778,7 @@ class KerasModel:
                 )
                 total += 1
                 if track_prediction is None or len(track_prediction.predictions) == 0:
-                    logging.warn("No predictions for %s", track)
+                    self.logger.warn("No predictions for %s", track)
                     continue
                 avg = np.mean(track_prediction.predictions, axis=0)
                 actual.append(self.labels.index(mapped_label))
@@ -783,9 +788,9 @@ class KerasModel:
                 if actual[-1] == predictions[-1]:
                     correct += 1
                 if total % 50 == 0:
-                    logging.info("Processed %s", total)
+                    self.logger.info("Processed %s", total)
 
-        logging.info("Predicted correctly %s", round(100 * correct / total))
+        self.logger.info("Predicted correctly %s", round(100 * correct / total))
         self.f1(actual, raw_predictions)
 
         if confusion is not None:

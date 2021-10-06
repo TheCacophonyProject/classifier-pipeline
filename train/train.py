@@ -2,12 +2,16 @@ import logging
 from ml_tools.kerasmodel import KerasModel
 import pickle
 import os
+from ml_tools.mplogs import init_logging, worker_configurer
 
 
 def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     """Trains a model with the given hyper parameters."""
-
-    model = KerasModel(train_config=conf.train, labels=conf.labels)
+    log_q, listener = init_logging()
+    worker_configurer(log_q)
+    logger = logging.getLogger()
+    logger.warn("STUPID PYTHON")
+    model = KerasModel(train_config=conf.train, labels=conf.labels, log_q=log_q)
 
     logging.info("Importing datasets from %s ", conf.tracks_folder)
     model.import_dataset(conf.tracks_folder, lbl_p=conf.train.label_probabilities)
@@ -95,4 +99,6 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
         pass
     except:
         logging.error("Exited with error ", exc_info=True)
+    log_q.put_nowait(None)
+    listener.join()
     model.close()

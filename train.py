@@ -34,7 +34,6 @@ import matplotlib
 
 matplotlib.use("Agg")  # enable canvas drawing
 
-from ml_tools.logs import init_logging
 from config.config import Config
 from train.train import train_model
 
@@ -57,7 +56,6 @@ def load_config():
 def main():
     conf, args = load_config()
 
-    init_logging()
     # tf.logging.set_verbosity(3)
 
     os.makedirs(conf.train.train_dir, exist_ok=True)
