@@ -478,107 +478,81 @@ def preloader(
     preload_amount = max(1, params.maximum_preload)
     max_jobs = max(1, params.maximum_preload)
     chunk_size = processes * 30
-    with multiprocessing.get_context("spawn").Pool(
-        processes,
-        init_process,
-        (labels, params, label_mapping),
-        # maxtasksperchild=30,
-    ) as pool:
 
-        item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
-        try:
-            epoch, batches = item
-            count = 0
+    item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
+    try:
+        epoch, batches = item
+        count = 0
 
+        print(
+            "%s preloader got %s batches for epoch %s mem %s",
+            name,
+            len(batches),
+            epoch,
+            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+        )
+        total = 0
+        # Once process_batch starts to back up
+        loaded_up_to = 0
+        while len(batches) > 0:
+            start = time.time()
             print(
-                "%s preloader got %s batches for epoch %s mem %s",
+                "%s preloader memory %s",
                 name,
-                len(batches),
-                epoch,
                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
             )
-            total = 0
-            # Once process_batch starts to back up
-            loaded_up_to = 0
-            while len(batches) > 0:
+            next_load = batches[:preload_amount]
+
+            print(
+                "%s preloader loading %s - %s ",
+                name,
+                loaded_up_to,
+                loaded_up_to + len(next_load),
+            )
+            loaded_up_to = loaded_up_to + len(next_load)
+
+            segment_db = load_batch_frames(
+                numpy_meta,
+                next_load,
+                name,
+            )
+            data = []
+            new_jobs = 0
+            for batch_i, segments in enumerate(next_load):
                 start = time.time()
-                print(
-                    "%s preloader memory %s",
-                    name,
-                    psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+                segment_data = [None] * len(segments)
+                for i, seg in enumerate(segments):
+                    segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
+                preprocessed = loadbatch(labels, segment_data, params, label_mapping)
+
+                # data.append(segment_data)
+                put_with_timeout(
+                    train_queue,
+                    preprocessed,
+                    1,
+                    f"train_queue-process_batches",
                 )
-                next_load = batches[:preload_amount]
 
-                print(
-                    "%s preloader loading %s - %s ",
-                    name,
-                    loaded_up_to,
-                    loaded_up_to + len(next_load),
-                )
-                loaded_up_to = loaded_up_to + len(next_load)
+            results = None
+            segment_db = None
+            data = None
+            del batches[:preload_amount]
+            next_load = None
+            segment_data = None
+            print(
+                "%s preloader loaded up to %s time per batch %s",
+                name,
+                loaded_up_to,
+                time.time() - start,
+            )
+            total += 1
+        del batches
+        # gc.collect()
+        print("%s preloader loaded epoch %s batches", name, epoch)
 
-                segment_db = load_batch_frames(
-                    numpy_meta,
-                    next_load,
-                    name,
-                )
-                data = []
-                new_jobs = 0
-                for batch_i, segments in enumerate(next_load):
-                    start = time.time()
-                    segment_data = [None] * len(segments)
-                    for i, seg in enumerate(segments):
-                        segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
-                    data.append(segment_data)
-
-                # same as shuffling again order dont matter
-                print("processing %s", len(data))
-                res_it = pool.imap_unordered(process_batch, data, chunksize=1)
-                done = 0
-                while True:
-                    try:
-                        res = res_it.next(10)
-                        # res = next(res_it)
-                    except StopIteration:
-                        print("got stop")
-                        break
-                    except Exception as e:
-                        print("Exception getting item ", done, " / ", len(data), e)
-                        ex_type, ex, tb = sys.exc_info()
-                        traceback.print_tb(tb)
-                        continue
-                    done += 1
-
-                    put_with_timeout(
-                        train_queue,
-                        res,
-                        1,
-                        f"train_queue-process_batches",
-                    )
-
-                results = None
-                segment_db = None
-                data = None
-                del batches[:preload_amount]
-                next_load = None
-                segment_data = None
-                print(
-                    "%s preloader loaded up to %s time per batch %s",
-                    name,
-                    loaded_up_to,
-                    time.time() - start,
-                )
-                total += 1
-            del batches
-            # gc.collect()
-            print("%s preloader loaded epoch %s batches", name, epoch)
-
-            pool.close()
-            pool.join()
-
-            # break
-        except Exception as inst:
-            print("%s preloader epoch %s error %s", name, epoch, inst, exc_info=True)
+        # break
+    except Exception as inst:
+        print("%s preloader epoch %s error %s", name, epoch, inst, exc_info=True)
 
 
 LOG_EVERY = 25
