@@ -22,7 +22,7 @@ import time
 def listener_configurer():
     root = logging.getLogger()
     h = logging.handlers.RotatingFileHandler('train.log', 'a', 100 * 100, 10)
-    f = logging.Formatter('%(asctime)s %(processName)-10s %(name)s %(levelname)-8s %(message)s')
+    f = logging.Formatter('%(asctime)s %(process)-10s %(name)s %(levelname)-8s %(message)s')
     h.setFormatter(f)
     root.addHandler(h)
 

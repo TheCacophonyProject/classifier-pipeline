@@ -510,14 +510,18 @@ def preloader(
             segment_db = load_batch_frames(numpy_meta, next_load, name, logger)
             data = []
             new_jobs = 0
+            done = 0
+            logger.info("post load %s", len(next_load))
             for batch_i, segments in enumerate(next_load):
                 start = time.time()
                 segment_data = [None] * len(segments)
                 for i, seg in enumerate(segments):
                     segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
+                logger.info("preload %s", done)
                 preprocessed = loadbatch(
                     labels, segment_data, params, label_mapping, logger
                 )
+                logger.info("postload%s", done)
 
                 # data.append(segment_data)
                 put_with_timeout(
@@ -526,7 +530,8 @@ def preloader(
                     1,
                     f"train_queue-process_batches",
                 )
-
+                logger.info("post put%s", done)
+                done += 1
             results = None
             segment_db = None
             data = None
