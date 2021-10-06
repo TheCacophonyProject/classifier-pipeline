@@ -14,6 +14,8 @@ import threading
 from ml_tools.logs import init_logging
 import psutil
 import os
+import traceback
+import sys
 
 FRAMES_PER_SECOND = 9
 
@@ -531,11 +533,21 @@ def preloader(
 
                 # same as shuffling again order dont matter
                 print("processing %s", len(data))
-                results = pool.imap_unordered(process_batch, data, chunksize=30)
+                res_it = pool.imap_unordered(process_batch, data, chunksize=1)
                 done = 0
-                for res in results:
+                while True:
+                    try:
+                        res = res_it.next(10)
+                        # res = next(res_it)
+                    except StopIteration:
+                        print("got stop")
+                        break
+                    except Exception as e:
+                        print("Exception getting item ", done, " / ", len(data), e)
+                        ex_type, ex, tb = sys.exc_info()
+                        traceback.print_tb(tb)
+                        continue
                     done += 1
-                    print("processed %s", done)
 
                     put_with_timeout(
                         train_queue,
