@@ -8,7 +8,7 @@ from ml_tools.mplogs import init_logging, worker_configurer
 def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     """Trains a model with the given hyper parameters."""
     log_q, listener = init_logging()
-    # worker_configurer(log_q)
+    worker_configurer(log_q)
     logger = logging.getLogger()
     model = KerasModel(train_config=conf.train, labels=conf.labels, log_q=log_q)
 

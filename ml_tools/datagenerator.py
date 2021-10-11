@@ -8,7 +8,7 @@ import gc
 from ml_tools.preprocess import preprocess_movement, preprocess_frame, FrameTypes
 from ml_tools.frame import TrackChannels
 from ml_tools.frame import Frame
-from collections import Counter
+from collections import Counter, deque
 from queue import Empty, Full
 import threading
 from ml_tools.mplogs import worker_configurer
@@ -77,15 +77,21 @@ class DataGenerator(keras.utils.Sequence):
         self.epoch_stats = []
         self.lazy_load = params.get("lazy_load", False)
         self.preload = params.get("preload", False)
-
+        self.threads = True
         self.segments = []
         # load epoch
         self.epoch_labels = []
         self.epoch_data = []
         if self.preload:
-            self.epoch_queue = multiprocessing.Queue()
-            # m = multiprocessing.Manager()
-            self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
+            if self.threads:
+                self.epoch_queue = deque()
+                # m = multiprocessing.Manager()
+                self.train_queue = deque()
+            # self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
+            else:
+                self.epoch_queue = multiprocessing.Queue()
+                # m = multiprocessing.Manager()
+                self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
             # self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
             self.preloader_thread = None
         self.load_next_epoch()
@@ -104,7 +110,7 @@ class DataGenerator(keras.utils.Sequence):
             if not self.epoch_queue:
                 return
             self.logger.info("stopping %s", self.dataset.name)
-            self.epoch_queue.put("STOP")
+            self.epoch_queue.appendleft("STOP")
             del self.train_queue
             self.train_queue = None
             if self.preloader_thread:
@@ -150,12 +156,18 @@ class DataGenerator(keras.utils.Sequence):
 
     def get_item(self, index):
         if self.preload:
-            return get_with_timeout(
-                self.train_queue,
-                30,
-                f"train_queue get_item {self.dataset.name}",
-                sleep_time=1,
-            )
+            while True:
+                try:
+                    return self.train_queue.pop()
+                except:
+                    self.logger.debug("train_queue cant get item")
+                    time.sleep(5)
+            # return get_with_timeout(
+            #     self.train_queue,
+            #     30,
+            #     f"train_queue get_item {self.dataset.name}",
+            #     sleep_time=1,
+            # )
         else:
             batch_segments = [
                 self.samples[index * self.batch_size : (index + 1) * self.batch_size]
@@ -224,7 +236,7 @@ class DataGenerator(keras.utils.Sequence):
     def preload_samples(self):
         if self.preloader_thread is not None:
             self.stop_preload()
-        self.preloader_thread = multiprocessing.Process(
+        self.preloader_thread = threading.Thread(
             target=preloader,
             args=(
                 self.train_queue,
@@ -245,7 +257,7 @@ class DataGenerator(keras.utils.Sequence):
             ]
             batches.append(samples)
         if len(batches) > 0:
-            self.epoch_queue.put((self.loaded_epochs + 1, batches))
+            self.epoch_queue.append((self.loaded_epochs + 1, batches))
         self.loaded_epochs += 1
         # self.epoch_queue.put("STOP")
 
@@ -261,7 +273,7 @@ class DataGenerator(keras.utils.Sequence):
             batches.append(samples)
 
         if len(batches) > 0:
-            self.epoch_queue.put((self.loaded_epochs + 1, batches))
+            self.epoch_queue.append((self.loaded_epochs + 1, batches))
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
@@ -455,7 +467,7 @@ def load_batch_frames(numpy_meta, batches, name, logger):
 def preloader(
     train_queue, epoch_queue, labels, name, params, label_mapping, numpy_meta, log_q
 ):
-    worker_configurer(log_q)
+    # worker_configurer(log_q)
     logger = logging.getLogger(f"Preload-{name}")
     # init_logging()
     """add a segment into buffer"""
@@ -474,8 +486,14 @@ def preloader(
     preload_amount = max(1, params.maximum_preload)
     max_jobs = max(1, params.maximum_preload)
     chunk_size = processes * 30
-
-    item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
+    while True:
+        try:
+            item = epoch_queue.pop()
+            break
+        except:
+            logger.info("Waiting for samples")
+            time.sleep(5)
+    # item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
     try:
         epoch, batches = item
         count = 0
@@ -517,20 +535,21 @@ def preloader(
                 segment_data = [None] * len(segments)
                 for i, seg in enumerate(segments):
                     segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
-                logger.info("preload %s", done)
+                # logger.info("preload %s", done)
                 preprocessed = loadbatch(
                     labels, segment_data, params, label_mapping, logger
                 )
-                logger.info("postload%s", done)
+                # logger.info("postload%s", done)
 
                 # data.append(segment_data)
-                put_with_timeout(
-                    train_queue,
-                    preprocessed,
-                    1,
-                    f"train_queue-process_batches",
-                )
-                logger.info("post put%s", done)
+                train_queue.append(preprocessed)
+                # put_with_timeout(
+                #     train_queue,
+                #     preprocessed,
+                #     1,
+                #     f"train_queue-process_batches",
+                # )
+                # logger.info("post put%s", done)
                 done += 1
             results = None
             segment_db = None
