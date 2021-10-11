@@ -316,52 +316,67 @@ def _data(labels, data, params, mapped_labels, logger, to_categorical=True):
     mvm = []
     for label_original, u_id, frame_data in data:
         label = mapped_labels[label_original]
-        if label not in labels:
-            continue
-        if params.use_segments:
-            # temps = [frame.frame_temp_median for frame in frame_data]
-            data = preprocess_movement(
-                frame_data,
-                params.square_width,
-                params.frame_size,
-                red_type=params.red_type,
-                green_type=params.green_type,
-                blue_type=params.blue_type,
-                preprocess_fn=params.model_preprocess,
-                augment=params.augment,
-                reference_level=None,
-                sample="test",
-                keep_edge=params.keep_edge,
-            )
-        else:
-            data = preprocess_frame(
-                frame_data[0],
-                params.frame_size,
-                params.augment,
-                sample.temp_median,
-                sample.velocity,
-                params.output_dim,
-                preprocess_fn=params.model_preprocess,
-                sample=sample,
-            )
-        if data is None:
-            continue
-        y_original.append(label_original)
-        X[data_i] = data
-        y[data_i] = labels.index(label)
-        if np.isnan(np.sum(data)) or labels.index(label) is None:
-            logger.warn(
-                "Nan in data for %s", u_id, [frame.frame_number for frame in frame_data]
-            )
-            continue
-        if np.amin(data) < -1 or np.amax(data) > 1:
-            logger.warn(
-                "Data out of bounds for %s %s",
+        try:
+            if label not in labels:
+                continue
+            if params.use_segments:
+                # temps = [frame.frame_temp_median for frame in frame_data]
+                data = preprocess_movement(
+                    frame_data,
+                    params.square_width,
+                    params.frame_size,
+                    red_type=params.red_type,
+                    green_type=params.green_type,
+                    blue_type=params.blue_type,
+                    preprocess_fn=params.model_preprocess,
+                    augment=params.augment,
+                    reference_level=None,
+                    sample="test",
+                    keep_edge=params.keep_edge,
+                )
+            else:
+                data = preprocess_frame(
+                    frame_data[0],
+                    params.frame_size,
+                    params.augment,
+                    sample.temp_median,
+                    sample.velocity,
+                    params.output_dim,
+                    preprocess_fn=params.model_preprocess,
+                    sample=sample,
+                )
+            if data is None:
+                continue
+            y_original.append(label_original)
+            X[data_i] = data
+            y[data_i] = labels.index(label)
+            if np.isnan(np.sum(data)) or labels.index(label) is None:
+                logger.warn(
+                    "Nan in data for %s %s",
+                    u_id,
+                    [frame.frame_number for frame in frame_data],
+                )
+                continue
+            if np.amin(data) < -1 or np.amax(data) > 1:
+                logger.warn(
+                    "Data out of bounds for %s %s",
+                    u_id,
+                    [frame.frame_number for frame in frame_data],
+                )
+                continue
+            data_i += 1
+        except Exception as e:
+            shapes = [frame.thermal.shape for frame in frame_data]
+            frame_in = [frame.frame_number for frame in frame_data]
+
+            logger.error(
+                "Error getting data for %s frame shape %s indexes %s",
                 u_id,
-                [frame.frame_number for frame in frame_data],
+                shapes,
+                frame_in,
+                exc_info=True,
             )
-            continue
-        data_i += 1
+            raise e
     # remove data that was null
     X = X[:data_i]
     y = y[:data_i]
