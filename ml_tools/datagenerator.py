@@ -136,7 +136,6 @@ class DataGenerator(keras.utils.Sequence):
             if index == 0 and self.preload and self.lazy_load:
                 self.preload_samples()
             try:
-
                 X, y, y_original = self.get_item(index)
             except:
                 self.logger.error(

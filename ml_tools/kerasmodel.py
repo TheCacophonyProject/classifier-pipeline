@@ -1,3 +1,5 @@
+import psutil
+
 import itertools
 import io
 import time
@@ -404,6 +406,25 @@ class KerasModel:
             lazy_load=True,
             **self.params,
         )
+
+        for epoch in range(epochs):
+            for i in range(len(self.train)):
+                self.train.__getitem__(i)
+            self.logger.info(
+                "finished epoch %s mem %s",
+                epoch,
+                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            )
+            for i in range(len(self.validate)):
+                self.validate.__getitem__(i)
+            self.logger.info(
+                "finished validating epoch %s mem %s",
+                epoch,
+                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            )
+            self.validate.on_epoch_end()
+            self.train.on_epoch_end()
+        return
         self.save_metadata(run_name)
 
         weight_for_0 = 1
