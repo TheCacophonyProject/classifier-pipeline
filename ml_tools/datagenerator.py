@@ -82,6 +82,9 @@ class DataGenerator(keras.utils.Sequence):
         # load epoch
         self.epoch_labels = []
         self.epoch_data = []
+        self.logger.info(
+            "size of datagen is %s MB", get_size(self, name=self.dataset.name) * 1e-6
+        )
         if self.preload:
             if self.threads:
                 self.epoch_queue = deque()
@@ -685,11 +688,11 @@ def get_size(obj, name="base", seen=None, depth=0):
         size += sum([get_size(k, f"{name}.{k}", seen, depth + 1) for k in obj.keys()])
     elif hasattr(obj, "__dict__"):
 
-        size += get_size(obj.__dict__, f"{name}.dict", seen)
+        size += get_size(obj.__dict__, f"{name}.dict", seen, depth + 1)
     elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes, bytearray)):
         # print("iter??")
 
         size += sum([get_size(i, f"{name}.iter", seen, depth + 1) for i in obj])
-    # if size * 1e-6 > 0.1 and depth <= 1:
-    #     print(name, " size ", round(size * 1e-6, 2), "MB")
+    if size * 0.000001 > 0.1 and depth <= 2:
+        print(name, " size ", size * 0.000001, "MB")
     return size
