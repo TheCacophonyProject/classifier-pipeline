@@ -35,12 +35,13 @@ STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
 track_extractor = None
 clip = None
-
+import time
+prediction_i = 0
+import matplotlib.pyplot as plt
 
 class NeuralInterpreter:
     def __init__(self, model_name):
         from openvino.inference_engine import IENetwork, IECore
-
         # device = "CPU"
         device = "MYRIAD"
         model_xml = model_name + ".xml"
@@ -54,12 +55,19 @@ class NeuralInterpreter:
         self.load_json(model_name)
 
     def predict(self, input_x):
+        global prediction_i
+        logging.info("saving")
+        imgplot = plt.imshow(input_x)
+        plt.savefig("prediction{}.png".format(prediction_i))
+        plt.clf()
+        start = time.time()
         if input_x is None:
             return None
         rearranged_arr = np.transpose(input_x, axes=[2, 0, 1])
         input_x = np.array([[rearranged_arr]])
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
+        logging.info("taken %s to predict", time.time() -start)
         return res[0]
 
     def load_json(self, filename):
