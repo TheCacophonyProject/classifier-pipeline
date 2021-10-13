@@ -107,10 +107,10 @@ class DataGenerator(keras.utils.Sequence):
 
     def stop_load(self):
         if self.preload:
-            if not self.epoch_queue:
-                return
+            # if not self.epoch_queue:
+            #     return
             self.logger.info("stopping %s", self.dataset.name)
-            self.epoch_queue.appendleft("STOP")
+            # self.epoch_queue.appendleft("STOP")
             del self.train_queue
             self.train_queue = None
             if self.preloader_thread:
@@ -235,11 +235,14 @@ class DataGenerator(keras.utils.Sequence):
     def preload_samples(self):
         if self.preloader_thread is not None:
             self.stop_preload()
+
+        self.loaded_epochs += 1
         self.preloader_thread = threading.Thread(
             target=preloader,
             args=(
+                self.samples,
+                self.batch_size,
                 self.train_queue,
-                self.epoch_queue,
                 self.labels,
                 self.dataset.name,
                 self.params,
@@ -249,15 +252,6 @@ class DataGenerator(keras.utils.Sequence):
             ),
         )
         self.preloader_thread.start()
-        batches = []
-        for index in range(len(self)):
-            samples = self.samples[
-                index * self.batch_size : (index + 1) * self.batch_size
-            ]
-            batches.append(samples)
-        if len(batches) > 0:
-            self.epoch_queue.append((self.loaded_epochs + 1, batches))
-        self.loaded_epochs += 1
         # self.epoch_queue.put("STOP")
 
     def reload_samples(self):
@@ -456,17 +450,16 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
     # returns loaded batches as segments
     all_batches = []
     data_by_track = {}
-    for batch in batches:
-        for s_id, label, track_id, frames in batch:
-            track_segments = data_by_track.setdefault(
+    for s_id, label, track_id, frames in batches:
+        track_segments = data_by_track.setdefault(
+            track_id,
+            (
+                numpy_meta.track_info[track_id]["data"],
+                [],
                 track_id,
-                (
-                    numpy_meta.track_info[track_id]["data"],
-                    [],
-                    track_id,
-                ),
-            )
-            track_segments[1].append((s_id, frames))
+            ),
+        )
+        track_segments[1].append((s_id, frames))
     # sort by position in file
     track_segments = sorted(
         data_by_track.values(),
@@ -479,7 +472,15 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
 
 
 def preloader(
-    train_queue, epoch_queue, labels, name, params, label_mapping, numpy_meta, log_q
+    samples,
+    batch_size,
+    train_queue,
+    labels,
+    name,
+    params,
+    label_mapping,
+    numpy_meta,
+    log_q,
 ):
     # worker_configurer(log_q)
     logger = logging.getLogger(f"Preload-{name}")
@@ -500,36 +501,30 @@ def preloader(
     preload_amount = max(1, params.maximum_preload)
     max_jobs = max(1, params.maximum_preload)
     chunk_size = processes * 30
-    while True:
-        try:
-            item = epoch_queue.popleft()
-            break
-        except:
-            logger.info("Waiting for samples")
-            time.sleep(5)
-    # item = get_with_timeout(epoch_queue, 1, f"epoch_queue preloader {name}")
+    batches = math.ceil(len(samples) / batch_size)
     try:
-        epoch, batches = item
         count = 0
 
         logger.info(
             "%s preloader got %s batches for epoch %s mem %s",
             name,
-            len(batches),
+            batches,
             epoch,
             psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
         )
         total = 0
         # Once process_batch starts to back up
         loaded_up_to = 0
-        while len(batches) > 0:
+        while len(samples) > 0:
+            next_load = samples[: batch_size * preload_amount]
+
             start = time.time()
             logger.info(
                 "%s preloader memory %s",
                 name,
                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
             )
-            next_load = batches[:preload_amount]
+            # next_load = batches[:preload_amount]
 
             logger.info(
                 "%s preloader loading %s - %s ",
@@ -552,7 +547,9 @@ def preloader(
             new_jobs = 0
             done = 0
             logger.info("post load %s", len(next_load))
-            for batch_i, segments in enumerate(next_load):
+            num_batches = math.ceil(len(next_load) / batch_size)
+            while len(next_load) > 0:
+                segments = next_load[:batch_size]
                 start = time.time()
                 segment_data = [None] * len(segments)
                 for i, seg in enumerate(segments):
@@ -561,22 +558,14 @@ def preloader(
                 preprocessed = loadbatch(
                     labels, segment_data, params, label_mapping, logger
                 )
-                # logger.info("postload%s", done)
-
-                # data.append(segment_data)
                 train_queue.append(preprocessed)
-                # put_with_timeout(
-                #     train_queue,
-                #     preprocessed,
-                #     1,
-                #     f"train_queue-process_batches",
-                # )
-                # logger.info("post put%s", done)
+                next_load = next_load[batch_size:]
+
                 done += 1
             results = None
             segment_db = None
             data = None
-            del batches[:preload_amount]
+            samples = samples[batch_size * preload_amount :]
             next_load = None
             segment_data = None
             logger.info(
@@ -586,6 +575,7 @@ def preloader(
                 time.time() - start,
             )
             total += 1
+
         del batches
         # gc.collect()
         logger.info("%s preloader loaded epoch %s batches", name, epoch)
