@@ -396,13 +396,14 @@ def load_from_numpy(numpy_meta, tracks, name, logger, size):
     seek = 0
     segment_db = {}
     try:
-        with numpy_meta as f:
-            for _, segments, u_id in tracks:
-                numpy_info = numpy_meta.track_info[u_id]
-                track_is = u_id
-                start_frame = numpy_info["start_frame"]
-                if "data" not in numpy_info:
-                    logger.warn("No data for", u_id)
+        for _, segments, u_id in tracks:
+            numpy_info = numpy_meta.track_info[u_id]
+            track_is = u_id
+            start_frame = numpy_info["start_frame"]
+            if "data" not in numpy_info:
+                logger.warn("No data for", u_id)
+            with numpy_meta as f:
+
                 seek = numpy_info["data"]
                 f.seek(numpy_info["data"])
                 thermals = np.load(f, allow_pickle=False)
@@ -429,12 +430,12 @@ def load_from_numpy(numpy_meta, tracks, name, logger, size):
                         # frame.frame_temp_median = meta[1][relative_f]
                         segment_data[i] = frame
 
-            logger.debug(
-                "%s time to load %s frames %s",
-                name,
-                count,
-                time.time() - start,
-            )
+        logger.debug(
+            "%s time to load %s frames %s",
+            name,
+            count,
+            time.time() - start,
+        )
     except:
         logger.error(
             "%s error loading numpy file seek %s cur %s prev %s",
@@ -528,7 +529,7 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
         key=lambda track_segment: track_segment[0],
     )
     logger.info("%s loading tracks from numpy file", name)
-    segment_db = load_from_numpy_dummy(numpy_meta, track_segments, name, logger, size)
+    segment_db = load_from_numpy(numpy_meta, track_segments, name, logger, size)
 
     return segment_db
 
@@ -742,7 +743,7 @@ def get_size(obj, name="base", seen=None, depth=0):
         )
         size += sum([get_size(k, f"{name}.{k}", seen, depth + 1) for k in obj.keys()])
     if isinstance(obj, np.ndarray):
-        return obj.nbytes
+        print("is object")
     if isinstance(obj, dict):
         size += sum(
             [get_size(v, f"{name}.{k}", seen, depth + 1) for k, v in obj.items()]
