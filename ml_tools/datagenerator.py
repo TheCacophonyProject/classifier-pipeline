@@ -454,26 +454,26 @@ def load_from_numpy_new(numpy_meta, tracks, name, logger, size):
     segments = 1
     segment_db = {}
     with open(numpy_meta.filename, "rb") as f:
-        for track, numpy_info in numpy_meta.track_info.items():
-            if count > 700 * 16:
-                break
-            count += 1
-            # numpy_info = track.unique_track_id
-            start_frame = numpy_info["start_frame"]
-            f.seek(numpy_info["data"])
-            thermals = np.load(f, allow_pickle=False)
-            filtered = np.load(f, allow_pickle=False)
+        for _ in range(11201):
+            for sample in samples:
+                numpy_info = numpy_meta.track_info[sample.unique_track_id]
+                #
+                if count > 11201:
+                    break
+                f.seek(numpy_info["data"])
+                thermals = np.load(f, allow_pickle=False)
+                start_frame = numpy_info["start_frame"]
 
-            segment_data = []
-            # np.empty(len(thermals), dtype=object)
-            segment_db[count] = segment_data
-            for relative_f in range(25):
-                # relative_f = frame_i - start_frame
+                filtered = np.load(f, allow_pickle=False)
                 count += 1
-                thermal = thermals[relative_f]
-                filter = filtered[relative_f]
-                segment_data.append((thermal, filter))
 
+                segment_data = []
+                # np.empty(len(thermals), dtype=object)
+                segment_db[count] = segment_data
+                for relative_f in sample.frame_indices:
+                    thermal = np.copy(thermals[relative_f - start_frame])
+                    filter = np.copy(filtered[relative_f - start_frame])
+                    segment_data.append((thermal, filter))
     return segment_db
 
 
@@ -560,7 +560,11 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
     )
     logger.info("%s loading tracks from numpy file", name)
     segment_db = load_from_numpy_new(numpy_meta, track_segments, name, logger, size)
-    logger.info("loaded %s", len(segment_db))
+    logger.info(
+        "loaded %s mem %s",
+        len(segment_db),
+        psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+    )
     return segment_db
 
 
