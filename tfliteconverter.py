@@ -5,9 +5,7 @@ import numpy as np
 import shutil
 import tensorflow as tf
 from config.config import Config
-from ml_tools.dataset import dataset_db_path
 import pickle
-from model_crnn import ModelCRNN_HQ
 
 MODEL_DIR = "../cptv-download/train/checkpoints"
 MODEL_NAME = "training-most-recent.sav"
@@ -38,7 +36,7 @@ def optimizer_model(args):
 # frame count to 1 as is needed for tflite
 def save_eval_model(args):
     config = Config.load_from_file()
-    datasets_filename = dataset_db_path(config)
+    datasets_filename = config.tracks
     with open(datasets_filename, "rb") as f:
         dsets = pickle.load(f)
 
@@ -156,37 +154,19 @@ def get_feed_dict(X, state_in=None):
 
 
 def convert_model(args):
-    print("converting to tflite: ", os.path.join(args.model_dir, SAVED_DIR))
+    print("converting to tflite: ", args.model)
+    dir = os.path.dirname(args.model)
+    lite_dir = os.path.join(dir, "tflite")
+    model = tf.keras.models.load_model(args.model)
+    model.trainable = False
 
-    model = tf.keras.models.load_model(args.model_dir)
+    if args.weights:
+        print("using weights ", args.weights)
+        model.load_weights(args.weights).expect_partial()
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     tflite_model = converter.convert()
-    open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
-    return
-    model = tf.saved_model.load(
-        export_dir=os.path.join(args.model_dir, SAVED_DIR), tags=None
-    )
-    concrete_func = model.signatures[tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-
-    inputs = concrete_func.inputs[:2]
-    # gets input shape and the order of the inputs as it seems to be random
-    for i, val in enumerate(inputs):
-        input_map[val.name] = (i, val.shape)
-    concrete_func.inputs[input_map["X:0"][0]].set_shape([1, 1, 5, 48, 48])
-
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
-
-    # be good to get this going but throws error
-    #         return _tensorflow_wrap_interpreter_wrapper.InterpreterWrapper_AllocateTensors(self)
-    # RuntimeError: tensorflow/lite/kernels/maximum_minimum.cc:54 op_context.input1->type != op_context.input2->type (9 != 1)Node number 15 (MINIMUM) failed to prepare
-    # converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    # converter.representative_dataset = representative_dataset_gen
-
-    converter.post_training_quantize = True
-    converter.experimental_new_converter = True
-    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
-    tflite_model = converter.convert()
-    open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
+    print("saving model to ",os.path.join(lite_dir, args.tflite_name))
+    open(os.path.join(lite_dir, args.tflite_name), "wb").write(tflite_model)
 
 
 def parse_args():
@@ -195,6 +175,8 @@ def parse_args():
     parser.add_argument(
         "-f", "--freeze", action="store_true", help="freeze saved model to .pb format"
     )
+    parser.add_argument("-w", "--weights", help="Weights to use")
+
     parser.add_argument(
         "-c", "--convert", action="store_true", help="Convert frozen model to tflite"
     )
@@ -205,14 +187,9 @@ def parse_args():
         help="Test converted model with random data using tflite interpreter",
     )
     parser.add_argument(
-        "--model_dir",
+        "--model",
         default=MODEL_DIR,
         help="Directory where meta data of the model you want to convert is stored",
-    )
-    parser.add_argument(
-        "--model_name",
-        default=MODEL_NAME,
-        help="Name of the model to convert <name>.sav",
     )
     parser.add_argument(
         "--tflite_name",
@@ -224,6 +201,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    print(args.weights)
     if args.freeze:
         # optimizer_model(args)
         freeze_model(args)
