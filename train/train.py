@@ -3,6 +3,9 @@ from ml_tools.kerasmodel import KerasModel
 import pickle
 import os
 from ml_tools.mplogs import init_logging, worker_configurer
+import faulthandler
+
+faulthandler.enable()
 
 
 def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):

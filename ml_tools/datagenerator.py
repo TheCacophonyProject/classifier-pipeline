@@ -157,7 +157,7 @@ class DataGenerator(keras.utils.Sequence):
         if self.preload:
             while True:
                 try:
-                    return self.train_queue.pop()
+                    return self.train_queue.popleft()
                 except:
                     self.logger.debug("train_queue cant get item")
                     time.sleep(5)
@@ -399,45 +399,46 @@ def load_from_numpy(numpy_meta, tracks, name, logger, size):
     seek = 0
     segment_db = {}
     try:
-        # with numpy_meta as f:
-        for _, segments, u_id in tracks:
-            numpy_info = numpy_meta.track_info[u_id]
-            track_is = u_id
-            start_frame = numpy_info["start_frame"]
-            if "data" not in numpy_info:
-                logger.warn("No data for", u_id)
-            seek = numpy_info["data"]
-            # f.seek(numpy_info["data"])
-            # thermals = np.load(f, allow_pickle=False)
-            # filtered = np.load(f, allow_pickle=False)
-            # regions = np.load(f, allow_pickle=False)
+        with numpy_meta as f:
+            for _, segments, u_id in tracks:
+                numpy_info = numpy_meta.track_info[u_id]
+                track_is = u_id
+                start_frame = numpy_info["start_frame"]
+                if "data" not in numpy_info:
+                    logger.warn("No data for", u_id)
+                seek = numpy_info["data"]
+                f.seek(numpy_info["data"])
+                thermals = np.load(f, allow_pickle=False)
+                filtered = np.load(f, allow_pickle=False)
+                # regions = np.load(f, allow_pickle=False)
 
-            for id, segment_frames in segments:
-                segment_data = np.empty(len(segment_frames), dtype=object)
-                segment_db[id] = segment_data
+                for id, segment_frames in segments:
+                    segment_data = np.empty(len(segment_frames), dtype=object)
+                    segment_db[id] = segment_data
 
-                for i, frame_i in enumerate(segment_frames):
-                    relative_f = frame_i - start_frame
-                    count += 1
-                    thermal = np.uint16(np.random.rand(size, size) * 4000)
-                    filter = np.random.rand(size, size) * 255
-                    frame = Frame.from_channels(
-                        [thermal, filter],
-                        [TrackChannels.thermal, TrackChannels.filtered],
-                        frame_i,
-                        flow_clipped=True,
-                    )
-                    # frame.region = regions[i]
-                    # meta[0][relative_f]
-                    # frame.frame_temp_median = meta[1][relative_f]
-                    segment_data[i] = frame
+                    for i, frame_i in enumerate(segment_frames):
+                        relative_f = frame_i - start_frame
+                        count += 1
+                        thermal = thermals[relative_f]
 
-        logger.debug(
-            "%s time to load %s frames %s",
-            name,
-            count,
-            time.time() - start,
-        )
+                        filter = filter[relative_f]
+                        frame = Frame.from_channels(
+                            [thermal, filter],
+                            [TrackChannels.thermal, TrackChannels.filtered],
+                            frame_i,
+                            flow_clipped=True,
+                        )
+                        # frame.region = regions[i]
+                        # meta[0][relative_f]
+                        # frame.frame_temp_median = meta[1][relative_f]
+                        segment_data[i] = frame
+
+            logger.debug(
+                "%s time to load %s frames %s",
+                name,
+                count,
+                time.time() - start,
+            )
     except:
         logger.error(
             "%s error loading numpy file seek %s cur %s prev %s",
@@ -502,7 +503,7 @@ def preloader(
     chunk_size = processes * 30
     while True:
         try:
-            item = epoch_queue.pop()
+            item = epoch_queue.popleft()
             break
         except:
             logger.info("Waiting for samples")
@@ -542,6 +543,12 @@ def preloader(
             segment_db = load_batch_frames(
                 numpy_meta, next_load, name, logger, 36 if params.augment else 32
             )
+            logger.info(
+                "post load %s mem %s",
+                len(next_load),
+                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            )
+
             data = []
             new_jobs = 0
             done = 0
