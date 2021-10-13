@@ -1,5 +1,5 @@
 import psutil
-
+import joblib
 import itertools
 import io
 import time
@@ -533,7 +533,7 @@ class KerasModel:
         datasets = ["train", "validation", "test"]
         self.datasets = {}
         for i, name in enumerate(datasets):
-            self.datasets[name] = pickle.load(
+            self.datasets[name] = joblib.load(
                 open(f"{os.path.join(base_dir, name)}.dat", "rb")
             )
 
