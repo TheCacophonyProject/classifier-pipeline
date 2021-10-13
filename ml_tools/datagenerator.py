@@ -420,8 +420,7 @@ def load_from_numpy(numpy_meta, tracks, name, logger, size):
                         relative_f = frame_i - start_frame
                         count += 1
                         thermal = thermals[relative_f]
-
-                        filter = filter[relative_f]
+                        filter = filtered[relative_f]
                         frame = Frame.from_channels(
                             [thermal, filter],
                             [TrackChannels.thermal, TrackChannels.filtered],
