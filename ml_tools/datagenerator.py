@@ -558,7 +558,11 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
         data_by_track.values(),
         key=lambda track_segment: track_segment[0],
     )
-    logger.info("%s loading tracks from numpy file", name)
+    logger.info(
+        "%s loading tracks from numpy file pre mem %s",
+        name,
+        psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+    )
     segment_db = load_from_numpy_new(numpy_meta, track_segments, name, logger, size)
     logger.info(
         "loaded %s mem %s",
