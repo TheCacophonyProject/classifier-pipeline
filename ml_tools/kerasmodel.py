@@ -394,9 +394,9 @@ class KerasModel:
             model_preprocess=self.preprocess_fn,
             maximum_preload=self.params.maximum_train_preload,
             preload=True,
+            lazy_load=True,
             **self.params,
         )
-        time.sleep(1)
         self.validate = DataGenerator(
             self.validation_dataset,
             self.labels,
@@ -414,14 +414,15 @@ class KerasModel:
             "Pre get item mem %s",
             psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
         )
-
-        for i in range(len(self.train)):
-            self.train.__getitem__(i)
-        self.logger.info(
-            "Post get item mem %s",
-            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-        )
-        return
+        # for i in range(len(self.train)):
+        #     self.train.__getitem__(i)
+        # self.logger.info(
+        #     "Post get item mem %s",
+        #     psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+        # )
+        # print("DONE?")
+        # time.sleep(2000)
+        # return
         self.save_metadata(run_name)
 
         weight_for_0 = 1

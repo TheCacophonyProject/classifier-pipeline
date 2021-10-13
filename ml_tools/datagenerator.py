@@ -238,7 +238,7 @@ class DataGenerator(keras.utils.Sequence):
     def preload_samples(self):
         if self.preloader_thread is not None:
             self.stop_preload()
-
+        print("PRELOADING SAMPLES FOR", self.dataset.name)
         self.loaded_epochs += 1
         self.preloader_thread = threading.Thread(
             target=preloader,
@@ -541,9 +541,10 @@ def preloader(
                 numpy_meta, next_load, name, logger, 36 if params.augment else 32
             )
             logger.info(
-                "post load %s mem %s",
+                "post load %s mem %s db size %s",
                 len(next_load),
                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+                get_size(segment_db) * 1e-6,
             )
 
             data = []
