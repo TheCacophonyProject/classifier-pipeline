@@ -430,9 +430,6 @@ class KerasModel:
             shuffle=False,
             class_weight=class_weight,
             callbacks=[
-                tf.keras.callbacks.TensorBoard(
-                    self.log_dir, write_graph=True, write_images=True
-                ),
                 *checkpoints,
             ],  # log metricslast_stats
         )

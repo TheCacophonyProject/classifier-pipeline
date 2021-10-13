@@ -554,6 +554,7 @@ def preloader(
                 segment_data = [None] * len(segments)
                 for i, seg in enumerate(segments):
                     segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
+                    segment_db[seg[0]] = None
                 # logger.info("preload %s", done)
                 preprocessed = loadbatch(
                     labels, segment_data, params, label_mapping, logger
