@@ -55,19 +55,13 @@ class NeuralInterpreter:
         self.load_json(model_name)
 
     def predict(self, input_x):
-        global prediction_i
-        logging.info("saving")
-        imgplot = plt.imshow(input_x)
-        plt.savefig("prediction{}.png".format(prediction_i))
-        plt.clf()
-        start = time.time()
+
         if input_x is None:
             return None
         rearranged_arr = np.transpose(input_x, axes=[2, 0, 1])
         input_x = np.array([[rearranged_arr]])
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
-        logging.info("taken %s to predict", time.time() -start)
         return res[0]
 
     def load_json(self, filename):
@@ -104,12 +98,20 @@ class LiteInterpreter:
         self.prediction = self.out_values["Identity"]
 
     def predict(self, input_x):
+        global prediction_i
+        logging.info("saving")
+        imgplot = plt.imshow(input_x)
+        plt.savefig("prediction{}.png".format(prediction_i))
+        plt.clf()
+        start = time.time()
         input_x = np.float32(input_x)
         input_x = input_x[np.newaxis, :]
 
         self.interpreter.set_tensor(self.in_values["input"], input_x)
         self.interpreter.invoke()
         pred = self.interpreter.get_tensor(self.out_values["Identity"])[0]
+        logging.info("taken %s to predict", time.time() -start)
+
         return pred
 
     def load_json(self, filename):
