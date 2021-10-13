@@ -455,8 +455,8 @@ def load_from_numpy_new(numpy_meta, tracks, name, logger, size):
     segment_db = {}
     with open(numpy_meta.filename, "rb") as f:
         for _ in range(11201):
-            for sample in samples:
-                numpy_info = numpy_meta.track_info[sample.unique_track_id]
+            for numpy_info in numpy_meta.track_info.values():
+                # numpy_info = numpy_meta.track_info[sample.unique_track_id]
                 #
                 if count > 11201:
                     break
@@ -465,14 +465,16 @@ def load_from_numpy_new(numpy_meta, tracks, name, logger, size):
                 start_frame = numpy_info["start_frame"]
 
                 filtered = np.load(f, allow_pickle=False)
+                if len(filtered) < 25:
+                    continue
                 count += 1
 
                 segment_data = []
                 # np.empty(len(thermals), dtype=object)
                 segment_db[count] = segment_data
-                for relative_f in sample.frame_indices:
-                    thermal = np.copy(thermals[relative_f - start_frame])
-                    filter = np.copy(filtered[relative_f - start_frame])
+                for relative_f in range(25):
+                    thermal = np.copy(thermals[relative_f])
+                    filter = np.copy(filtered[relative_f])
                     segment_data.append((thermal, filter))
     return segment_db
 
