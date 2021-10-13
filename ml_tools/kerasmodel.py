@@ -406,7 +406,17 @@ class KerasModel:
             lazy_load=True,
             **self.params,
         )
-
+        self.logger.info(
+            "Pre get item mem %s",
+            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+        )
+        for i in range(len(self.train)):
+            self.train.__getitem__(0)
+        self.logger.info(
+            "Post get item mem %s",
+            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+        )
+        return
         self.save_metadata(run_name)
 
         weight_for_0 = 1
