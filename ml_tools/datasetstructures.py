@@ -78,6 +78,7 @@ class NumpyMeta:
     def close(self):
         if self.f is not None:
             self.f.close()
+        del self.f
         self.f = None
 
     def save_tracks(self, db, tracks):

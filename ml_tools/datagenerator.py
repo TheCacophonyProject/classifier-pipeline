@@ -238,7 +238,6 @@ class DataGenerator(keras.utils.Sequence):
     def preload_samples(self):
         if self.preloader_thread is not None:
             self.stop_preload()
-        print("PRELOADING SAMPLES FOR", self.dataset.name)
         self.loaded_epochs += 1
         self.preloader_thread = threading.Thread(
             target=preloader,
@@ -396,18 +395,19 @@ def load_from_numpy(numpy_meta, tracks, name, logger, size):
     seek = 0
     segment_db = {}
     try:
-        for _, segments, u_id in tracks:
-            numpy_info = numpy_meta.track_info[u_id]
-            track_is = u_id
-            start_frame = numpy_info["start_frame"]
-            if "data" not in numpy_info:
-                logger.warn("No data for", u_id)
-            with numpy_meta as f:
-
+        with open(numpy_meta.filename, "rb") as f:
+            for _, segments, u_id in tracks:
+                numpy_info = numpy_meta.track_info[u_id]
+                track_is = u_id
+                start_frame = numpy_info["start_frame"]
+                if "data" not in numpy_info:
+                    logger.warn("No data for", u_id)
                 seek = numpy_info["data"]
                 f.seek(numpy_info["data"])
                 thermals = np.load(f, allow_pickle=False)
+
                 filtered = np.load(f, allow_pickle=False)
+
                 # regions = np.load(f, allow_pickle=False)
 
                 for id, segment_frames in segments:
@@ -425,17 +425,18 @@ def load_from_numpy(numpy_meta, tracks, name, logger, size):
                             frame_i,
                             flow_clipped=True,
                         )
+                        continue
                         # frame.region = regions[i]
                         # meta[0][relative_f]
                         # frame.frame_temp_median = meta[1][relative_f]
                         segment_data[i] = frame
 
-        logger.debug(
-            "%s time to load %s frames %s",
-            name,
-            count,
-            time.time() - start,
-        )
+            logger.debug(
+                "%s time to load %s frames %s",
+                name,
+                count,
+                time.time() - start,
+            )
     except:
         logger.error(
             "%s error loading numpy file seek %s cur %s prev %s",
@@ -445,6 +446,34 @@ def load_from_numpy(numpy_meta, tracks, name, logger, size):
             prev,
             exc_info=True,
         )
+    return segment_db
+
+
+def load_from_numpy_new(numpy_meta, tracks, name, logger, size):
+    count = 0
+    segments = 1
+    segment_db = {}
+    with open(numpy_meta.filename, "rb") as f:
+        for track, numpy_info in numpy_meta.track_info.items():
+            if count > 700 * 16:
+                break
+            count += 1
+            # numpy_info = track.unique_track_id
+            start_frame = numpy_info["start_frame"]
+            f.seek(numpy_info["data"])
+            thermals = np.load(f, allow_pickle=False)
+            filtered = np.load(f, allow_pickle=False)
+
+            segment_data = []
+            # np.empty(len(thermals), dtype=object)
+            segment_db[count] = segment_data
+            for relative_f in range(25):
+                # relative_f = frame_i - start_frame
+                count += 1
+                thermal = thermals[relative_f]
+                filter = filtered[relative_f]
+                segment_data.append((thermal, filter))
+
     return segment_db
 
 
@@ -504,6 +533,7 @@ def load_from_numpy_dummy(numpy_meta, tracks, name, logger, size):
             prev,
             exc_info=True,
         )
+    logger.info("loaded %s", len(segment_db))
     return segment_db
 
 
@@ -529,8 +559,8 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
         key=lambda track_segment: track_segment[0],
     )
     logger.info("%s loading tracks from numpy file", name)
-    segment_db = load_from_numpy(numpy_meta, track_segments, name, logger, size)
-
+    segment_db = load_from_numpy_new(numpy_meta, track_segments, name, logger, size)
+    logger.info("loaded %s", len(segment_db))
     return segment_db
 
 
@@ -726,6 +756,7 @@ import attr
 
 
 def get_size(obj, name="base", seen=None, depth=0):
+    return 0
     """Recursively finds size of objects"""
     size = sys.getsizeof(obj)
     if seen is None:
@@ -743,7 +774,7 @@ def get_size(obj, name="base", seen=None, depth=0):
         )
         size += sum([get_size(k, f"{name}.{k}", seen, depth + 1) for k in obj.keys()])
     if isinstance(obj, np.ndarray):
-        print("is object")
+        return obj.nbytes
     if isinstance(obj, dict):
         size += sum(
             [get_size(v, f"{name}.{k}", seen, depth + 1) for k, v in obj.items()]
