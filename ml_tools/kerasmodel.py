@@ -16,7 +16,7 @@ import json
 from sklearn.metrics import confusion_matrix
 
 from ml_tools import tools
-from ml_tools.datagenerator import DataGenerator, get_size
+from ml_tools.datagenerator import DataGenerator
 from ml_tools.preprocess import (
     preprocess_movement,
     preprocess_frame,
@@ -379,10 +379,6 @@ class KerasModel:
         self.model.summary()
         if weights is not None:
             self.model.load_weights(weights)
-        self.logger.info(
-            "size of kerasmodel is %s MB", get_size(self, name="keras") * 0.000001
-        )
-
         self.train = DataGenerator(
             self.train_dataset,
             self.labels,
