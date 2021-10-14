@@ -13,6 +13,7 @@ import os
 import time
 import matplotlib.pyplot as plt
 import json
+
 from sklearn.metrics import confusion_matrix
 
 from ml_tools import tools
@@ -442,6 +443,7 @@ class KerasModel:
             shuffle=False,
             class_weight=class_weight,
             callbacks=[
+                ClearMemory(),
                 *checkpoints,
             ],  # log metricslast_stats
         )
@@ -994,9 +996,7 @@ def train_test_model(model, hparams, params, log_dir, writer, epochs=15):
     else:
         opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, epsilon=epsilon)
     model.compile(
-        optimizer=opt,
-        loss=loss(params),
-        metrics=["accuracy"],
+        optimizer=opt, loss=loss(params), metrics=["accuracy"], run_eagerly=True
     )
     cm_callback = keras.callbacks.LambdaCallback(
         on_epoch_end=lambda epoch, logs: log_confusion_matrix(
@@ -1112,3 +1112,12 @@ def run(keras_model, log_dir, hparams, params, epochs):
             loss = val_loss[step]
             tf.summary.scalar(METRIC_ACCURACY, accuracy, step=step)
             tf.summary.scalar(METRIC_LOSS, loss, step=step)
+
+
+from tensorflow.keras.callbacks import Callback
+
+
+class ClearMemory(Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        gc.collect()
+        tf.keras.backend.clear_session()
