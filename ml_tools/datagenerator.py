@@ -395,9 +395,9 @@ def load_from_numpy(numpy_meta, tracks, name, logger, size):
         with open(numpy_meta.filename, "rb") as f:
             for _, segments, u_id in tracks:
                 numpy_info = numpy_meta.track_info[u_id]
+                start_frame = numpy_info["start_frame"]
                 if "data" not in numpy_info:
                     logger.warn("No data for", u_id)
-                start_frame = numpy_info["start_frame"]
                 f.seek(numpy_info["data"])
                 thermals = np.load(f, allow_pickle=False)
                 filtered = np.load(f, allow_pickle=False)
@@ -413,8 +413,13 @@ def load_from_numpy(numpy_meta, tracks, name, logger, size):
                         count += 1
                         thermal = np.copy(thermals[relative_f])
                         filter = np.copy(filtered[relative_f])
-                        segment_data.append((thermal, filter))
-
+                        frame = Frame.from_channels(
+                            [thermal, filter],
+                            [TrackChannels.thermal, TrackChannels.filtered],
+                            frame_i,
+                            flow_clipped=True,
+                        )
+                        segment_data.append(frame)
             logger.debug(
                 "%s time to load %s frames %s",
                 name,
@@ -423,102 +428,10 @@ def load_from_numpy(numpy_meta, tracks, name, logger, size):
             )
     except:
         logger.error(
-            "%s error loading numpy file seek %s cur %s prev %s",
+            "%s error loading numpy file ",
             name,
-            seek,
-            track_is,
-            prev,
             exc_info=True,
         )
-    return segment_db
-
-
-def load_from_numpy_new(numpy_meta, tracks, name, logger, size):
-    count = 0
-    segments = 1
-    segment_db = {}
-    with open(numpy_meta.filename, "rb") as f:
-        for _ in range(11201):
-            for numpy_info in numpy_meta.track_info.values():
-                # numpy_info = numpy_meta.track_info[sample.unique_track_id]
-                #
-                if count > 11201:
-                    break
-                start_frame = numpy_info["start_frame"]
-                f.seek(numpy_info["data"])
-                thermals = np.load(f, allow_pickle=False)
-                filtered = np.load(f, allow_pickle=False)
-                if len(filtered) < 25:
-                    continue
-                count += 1
-
-                segment_data = []
-                # np.empty(len(thermals), dtype=object)
-                segment_db[count] = segment_data
-                for relative_f in range(25):
-                    thermal = np.copy(thermals[relative_f])
-                    filter = np.copy(filtered[relative_f])
-                    segment_data.append((thermal, filter))
-    return segment_db
-
-
-def load_from_numpy_dummy(numpy_meta, tracks, name, logger, size):
-    start = time.time()
-    count = 0
-    track_is = 0
-    prev = 0
-    seek = 0
-    segment_db = {}
-    try:
-        for _, segments, u_id in tracks:
-            numpy_info = numpy_meta.track_info[u_id]
-            track_is = u_id
-            start_frame = numpy_info["start_frame"]
-            if "data" not in numpy_info:
-                logger.warn("No data for", u_id)
-            seek = numpy_info["data"]
-            # f.seek(numpy_info["data"])
-            # thermals = np.load(f, allow_pickle=False)
-            # filtered = np.load(f, allow_pickle=False)
-            # regions = np.load(f, allow_pickle=False)
-
-            for id, segment_frames in segments:
-                segment_data = np.empty(len(segment_frames), dtype=object)
-                segment_db[id] = segment_data
-
-                for i, frame_i in enumerate(segment_frames):
-                    relative_f = frame_i - start_frame
-                    count += 1
-                    thermal = np.uint16(np.random.rand(36, 36) * 4000)
-                    filter = np.float64(np.random.rand(36, 36) * 255)
-
-                    frame = Frame.from_channels(
-                        [thermal, filter],
-                        [TrackChannels.thermal, TrackChannels.filtered],
-                        frame_i,
-                        flow_clipped=True,
-                    )
-                    # frame.region = regions[i]
-                    # meta[0][relative_f]
-                    # frame.frame_temp_median = meta[1][relative_f]
-                    segment_data[i] = frame
-
-        logger.debug(
-            "%s time to load %s frames %s",
-            name,
-            count,
-            time.time() - start,
-        )
-    except:
-        logger.error(
-            "%s error loading numpy file seek %s cur %s prev %s",
-            name,
-            seek,
-            track_is,
-            prev,
-            exc_info=True,
-        )
-    logger.info("loaded %s", len(segment_db))
     return segment_db
 
 
