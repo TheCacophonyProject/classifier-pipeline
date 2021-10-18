@@ -24,7 +24,7 @@ from ml_tools.preprocess import (
 )
 
 from classify.trackprediction import TrackPrediction
-
+from ml_tools.custommodel import CustomModel, custom_train
 from ml_tools.hyperparams import HyperParams
 import gc
 import logging
@@ -209,7 +209,7 @@ class KerasModel:
             preds = tf.keras.layers.Dense(
                 len(self.labels), activation="softmax", name="prediction"
             )(x)
-            self.model = tf.keras.models.Model(inputs, outputs=preds)
+            self.model = CustomModel(inputs, outputs=preds)
 
         if retrain_from is None:
             retrain_from = self.params.retrain_layer
@@ -223,7 +223,6 @@ class KerasModel:
                     layer.trainable = i >= retrain_from
         else:
             base_model.trainable = self.params.base_training
-
         self.model.compile(
             optimizer=optimizer(self.params),
             loss=loss(self.params),
@@ -436,6 +435,14 @@ class KerasModel:
         self.logger.info("training with class wieghts %s", class_weight)
         # give a bit of time for preloader to cache data
         checkpoints = self.checkpoints(run_name)
+        # custom_train(
+        #     self.model,
+        #     epochs,
+        #     self.train,
+        #     self.validate,
+        #     loss(self.params),
+        #     optimizer(self.params),
+        # )
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
@@ -444,7 +451,7 @@ class KerasModel:
             class_weight=class_weight,
             callbacks=[
                 ClearMemory(),
-                *checkpoints,
+                # *checkpoints,
             ],  # log metricslast_stats
         )
         self.train.stop_load()
@@ -1119,5 +1126,6 @@ from tensorflow.keras.callbacks import Callback
 
 class ClearMemory(Callback):
     def on_epoch_end(self, epoch, logs=None):
+        print("epoch edned", epoch)
         gc.collect()
         tf.keras.backend.clear_session()
