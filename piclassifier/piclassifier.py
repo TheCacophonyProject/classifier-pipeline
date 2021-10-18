@@ -446,10 +446,9 @@ class PiClassifier(Processor):
             and self.frame_num % PiClassifier.DEBUG_EVERY == 0
         ):
             logging.info(
-                "tracking {} process {} rec {} identify {} fps {}/sec time to process {}ms cpu % {} memory % {}".format(
+                "tracking {} process {}  identify {} fps {}/sec time to process {}ms cpu % {} memory % {}".format(
                     round(self.tracking_time, 3),
                     round(self.process_time, 3),
-                    round(self.motion_detector.rec_time, 3),
                     round(self.identify_time, 3),
                     round(1 / timetaken, 2),
                     round(timetaken * 1000, 2),
@@ -510,11 +509,12 @@ def on_recording_stopping(filename):
 
         if predictions is not None:
             predictions_per_model = {predictions.model.id: predictions}
+            meta_data["models"] = [predictions.model.as_dict()]
+
         meta_data = clip.get_metadata(predictions_per_model)
         meta_data["algorithm"] = {}
         meta_data["algorithm"]["model_name"] = "PI-INC3"
         meta_data["algorithm"]["tracker_version"] = track_extractor.VERSION
-        meta_data["models"] = [predictions.model.as_dict()]
 
         with open(meta_name, "w") as f:
             json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)

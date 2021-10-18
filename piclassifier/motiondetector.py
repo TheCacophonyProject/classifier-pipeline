@@ -81,7 +81,6 @@ class MotionDetector:
     BACKGROUND_WEIGHT_ADD = 0.1
 
     def __init__(self, thermal_config, dynamic_thresh, headers):
-        self.rec_time = 0
         self.headers = headers
         if headers.model.lower() == "lepton3.5":
             MotionDetector.BACKGROUND_WEIGHT_ADD = 1
@@ -112,7 +111,6 @@ class MotionDetector:
         self.background_weight = np.zeros(
             (headers.res_y - edge * 2, headers.res_x - edge * 2)
         )
-        self.background_weight[:, :] = 0
         self.movement_detected = False
         self.dynamic_thresh = dynamic_thresh
         self.temp_thresh = self.config.temp_thresh
@@ -145,7 +143,7 @@ class MotionDetector:
                 edgeless_back,
                 cropped_thermal,
             )
-
+            # update weighting
             self.background_weight = np.where(
                 edgeless_back < cropped_thermal - self.background_weight,
                 self.background_weight + MotionDetector.BACKGROUND_WEIGHT_ADD,
@@ -236,7 +234,6 @@ class MotionDetector:
                 self.thermal_window.add(cptv_frame)
                 if self.background is None:
                     self.background = cptv_frame.pix
-                    logging.debug("Setting background with %s", np.amax(cropped_frame))
                     self.last_background_change = self.processed
                 else:
                     self.calc_temp_thresh(cropped_frame)
