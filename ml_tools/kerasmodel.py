@@ -139,6 +139,15 @@ class KerasModel:
                 ),
                 tf.keras.applications.inception_v3.preprocess_input,
             )
+        elif pretrained_model == "efficientnetb5":
+            return (
+                tf.keras.applications.EfficientNetB5(
+                    weights=weights,
+                    include_top=False,
+                    input_shape=input_shape,
+                ),
+                None
+            )
         raise Exception("Could not find model" + pretrained_model)
 
     def get_preprocess_fn(self):
@@ -302,7 +311,7 @@ class KerasModel:
 
         if history:
             json_history = {}
-            for key, item in history.history.items():
+            for key, item in history.items():
                 if isinstance(item, list) and isinstance(item[0], np.floating):
                     json_history[key] = [float(i) for i in item]
                 else:
@@ -387,7 +396,6 @@ class KerasModel:
             self.params.output_dim,
             self.log_q,
             augment=True,
-            label_cap=1000,
             cap_at="bird",
             epochs=epochs,
             model_preprocess=self.preprocess_fn,
@@ -401,7 +409,6 @@ class KerasModel:
             self.labels,
             self.params.output_dim,
             self.log_q,
-            label_cap=1000,
             cap_at="bird",
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
@@ -439,25 +446,26 @@ class KerasModel:
         self.logger.info("training with class wieghts %s", class_weight)
         # give a bit of time for preloader to cache data
         checkpoints = self.checkpoints(run_name)
-        custom_train(
+        history = custom_train(
             self.model,
             epochs,
             self.train,
             self.validate,
             loss(self.params),
             optimizer(self.params),
+            os.path.join(self.checkpoint_folder, run_name, "val_acc")
         )
-        history = self.model.fit(
-            self.train,
-            validation_data=self.validate,
-            epochs=epochs,
-            shuffle=False,
-            class_weight=class_weight,
-            callbacks=[
-                ClearMemory(),
-                # *checkpoints,
-            ],  # log metricslast_stats
-        )
+        # history = self.model.fit(
+        #     self.train,
+        #     validation_data=self.validate,
+        #     epochs=epochs,
+        #     shuffle=False,
+        #     class_weight=class_weight,
+        #     callbacks=[
+        #         ClearMemory(),
+        #         # *checkpoints,
+        #     ],  # log metricslast_stats
+        # )
         self.train.stop_load()
         self.validate.stop_load()
         test_accuracy = None
@@ -471,6 +479,7 @@ class KerasModel:
                 epochs=1,
                 cap_at="bird",
                 preload=True,
+                lazy_load=True,
                 **self.params,
             )
             self.logger.info("Evaluating test %s", len(self.test))

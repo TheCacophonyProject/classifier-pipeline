@@ -82,9 +82,6 @@ class DataGenerator(keras.utils.Sequence):
         # load epoch
         self.epoch_labels = []
         self.epoch_data = []
-        self.logger.info(
-            "size of datagen is %s MB", get_size(self, name=self.dataset.name) * 1e-6
-        )
         if self.preload:
             if self.threads:
                 self.epoch_queue = deque()
@@ -537,10 +534,9 @@ def preloader(
                 numpy_meta, next_load, name, logger, 36 if params.augment else 32
             )
             logger.info(
-                "post load %s mem %s db size %s",
+                "post load %s mem %s",
                 len(next_load),
                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-                get_size(segment_db) * 1e-6,
             )
 
             data = []

@@ -34,36 +34,30 @@ val_acc_metric = tf.keras.metrics.CategoricalAccuracy()
 model = None
 loss_fn = None
 optimizer = None
-def custom_train(m, epochs,train, val,loss,opt):
+def custom_train(m, epochs,train, val,loss,opt,dir):
+    history = {"accuracy":[],"loss":[], "val_accuracy":[]}
     global model, loss_fn, optimizer
     loss_fn = loss
     model = m
     optimizer = opt
+    best_accuracy = None
+    same_accuracy = 0
     for epoch in range(epochs):
         logging.info("Start Epoch %s mem %s",epoch, psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
 
         for batch_i in range(len(train)):
             x_batch_train,y_batch_train = train.__getitem__(batch_i)
             loss_value = train_step(x_batch_train,y_batch_train)
-            # with tf.GradientTape() as tape:
-            #     logits = model(x_batch_train, training=True)
-            #     loss_value = loss_fn(y_batch_train, logits)
-            # grads = tape.gradient(loss_value, model.trainable_weights)
-            # optimizer.apply_gradients(zip(grads, model.trainable_weights))
-            #
-            # # Update training metric.
-            # train_acc_metric.update_state(y_batch_train, logits)
-
             # Log every 200 batches.
             if batch_i % 200 == 0:
-                print(
-                    "Training loss (for one batch) at step %d: %.4f"
-                    % (batch_i, float(loss_value))
+                logging.info(
+                    "Training loss (for one batch) at step %s %s",
+                    batch_i, float(loss_value)
                 )
-                print("Seen so far: %d samples" % ((batch_i + 1) * train.batch_size))
-        train_acc = train_acc_metric.result()
-        print("Training acc over epoch: %.4f" % (float(train_acc),))
-
+        train_acc = float(train_acc_metric.result())
+        logging.info("Training acc over epoch: %s" % (float(train_acc),))
+        history["accuracy"].append(train_acc)
+        history["loss"].append(float(loss_value))
         # Reset training metrics at the end of each epoch
         train_acc_metric.reset_states()
 
@@ -75,15 +69,31 @@ def custom_train(m, epochs,train, val,loss,opt):
 
             # Update val metrics
             # val_acc_metric.update_state(y_batch_val, val_logits)
-        val_acc = val_acc_metric.result()
+        val_acc = float(val_acc_metric.result())
+        history["val_accuracy"].append(val_acc)
         val_acc_metric.reset_states()
-        print("Validation acc: %.4f" % (float(val_acc),))
-        # print("Time taken: %.2fs" % (time.time() - start_time))
+        logging.info("Validation acc: %s" % (float(val_acc),))
         val.on_epoch_end()
         train.on_epoch_end()
-        logging.info("Epoch %s mem %s",epoch ,psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
-        print("Epoch %s mem %s",epoch ,psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
+        if best_accuracy is None:
+            best_accuracy = val_acc
+            model.save_weights(os.path.join(dir,'val_acc'))
+            logging.info("Epoch %s saving best weights accuracy %s %s", epoch,val_acc,dir)
 
+        else:
+            if round(best_accuracy * 100) == round(val_acc*100):
+                same_accuracy+=1
+            elif val_acc > best_accuracy:
+                model.save_weights(os.path.join(dir,'val_acc'))
+                logging.info("Epoch %s saving best weights accuracy %s %s",epoch, val_acc,dir)
+                same_accuracy = 0
+                best_accuracy = val_acc
+        logging.info("Epoch %s mem %s",epoch ,psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
+        if same_accuracy == 15:
+            # early stop
+            logging.info("Done accuray has been the same for 15")
+            break
+    return history
 
 @tf.function
 def train_step(x, y):
