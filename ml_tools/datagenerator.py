@@ -131,12 +131,12 @@ class DataGenerator(keras.utils.Sequence):
         start = time.time()
         if index == 0 and len(self.epoch_data) > self.cur_epoch:
             # when tensorflow uses model.fit it requests index 0 twice
-            X, y = self.epoch_data[self.cur_epoch]
+            X, y, weights = self.epoch_data[self.cur_epoch]
         else:
             if index == 0 and self.preload and self.lazy_load:
                 self.preload_samples()
             try:
-                X, y, y_original = self.get_item(index)
+                X, y, y_original, weights = self.get_item(index)
             except:
                 self.logger.error(
                     "%s error getting preloaded data",
@@ -146,12 +146,9 @@ class DataGenerator(keras.utils.Sequence):
 
             # always keep a copy of epoch data
             if index == 0:
-                self.epoch_data.append((X, y))
+                self.epoch_data.append((X, y, weights))
             self.epoch_labels[self.cur_epoch].extend(y_original)
-        if np.isnan(np.sum(X)) or np.isnan(np.sum(y)):
-            self.logger.error("Got nan in batch %s", index)
-            return [[]], [[]]
-        return X, y
+        return X, y, weights
 
     def get_item(self, index):
         if self.preload:
@@ -288,8 +285,8 @@ class DataGenerator(keras.utils.Sequence):
 
 
 def loadbatch(labels, data, params, mapped_labels, logger):
-    X, y, y_orig = _data(labels, data, params, mapped_labels, logger)
-    return X, y, y_orig
+    X, y, y_orig, weights = _data(labels, data, params, mapped_labels, logger)
+    return X, y, y_orig, weights
 
 
 def _data(labels, data, params, mapped_labels, logger, to_categorical=True):
@@ -303,6 +300,8 @@ def _data(labels, data, params, mapped_labels, logger, to_categorical=True):
         )
     )
     y = np.empty((len(data)), dtype=int)
+    weights = np.empty((len(data)), dtype=np.float32)
+
     data_i = 0
     y_original = []
     mvm = []
@@ -342,6 +341,14 @@ def _data(labels, data, params, mapped_labels, logger, to_categorical=True):
             y_original.append(label_original)
             X[data_i] = data
             y[data_i] = labels.index(label)
+            if label == "bird":
+                weight = 1.6
+            elif label == "wallaby":
+                # wallabies not so important better to predict birds
+                weight = 0.6
+            else:
+                weight = 1
+            weights[data_i] = weight
             if np.isnan(np.sum(data)) or labels.index(label) is None:
                 logger.warn(
                     "Nan in data for %s %s",
@@ -372,16 +379,19 @@ def _data(labels, data, params, mapped_labels, logger, to_categorical=True):
     # remove data that was null
     X = X[:data_i]
     y = y[:data_i]
+    weights = weights[:data_i]
     if len(X) == 0:
         logger.warn("Empty length of x")
     assert len(X) == len(y)
     if to_categorical:
+        print("to categorical")
         y = keras.utils.to_categorical(y, num_classes=len(labels))
+        # , weights
     total_time = time.time() - start
 
     if params.mvm:
         return [np.array(X), np.array(mvm)], y, y_original
-    return np.array(X), y, y_original
+    return np.array(X), y, y_original, weights
 
 
 def load_from_numpy(numpy_meta, tracks, name, logger, size):
@@ -514,72 +524,78 @@ def preloader(
         total = 0
         # Once process_batch starts to back up
         loaded_up_to = 0
-        while len(samples) > 0:
-            next_load = samples[: batch_size * preload_amount]
+        with multiprocessing.Pool(
+            processes,
+            init_process,
+            (labels, params, label_mapping, logger),
+            maxtasksperchild=30,
+        ) as pool:
+            while len(samples) > 0:
+                next_load = samples[: batch_size * preload_amount]
 
-            start = time.time()
-            logger.info(
-                "%s preloader memory %s",
-                name,
-                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-            )
-            # next_load = batches[:preload_amount]
-
-            logger.info(
-                "%s preloader loading %s - %s ",
-                name,
-                loaded_up_to,
-                loaded_up_to + len(next_load),
-            )
-            loaded_up_to = loaded_up_to + len(next_load)
-
-            segment_db = load_batch_frames(
-                numpy_meta, next_load, name, logger, 36 if params.augment else 32
-            )
-            logger.info(
-                "post load %s mem %s",
-                len(next_load),
-                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-            )
-
-            data = []
-            new_jobs = 0
-            done = 0
-            logger.info("post load %s", len(next_load))
-            num_batches = math.ceil(len(next_load) / batch_size)
-            while len(next_load) > 0:
-                segments = next_load[:batch_size]
                 start = time.time()
-                segment_data = [None] * len(segments)
-                for i, seg in enumerate(segments):
-                    segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
-                    segment_db[seg[0]] = None
-                # logger.info("preload %s", done)
-                preprocessed = loadbatch(
-                    labels, segment_data, params, label_mapping, logger
+                logger.info(
+                    "%s preloader memory %s",
+                    name,
+                    psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
                 )
-                train_queue.append(preprocessed)
-                next_load = next_load[batch_size:]
+                # next_load = batches[:preload_amount]
 
-                done += 1
-            results = None
-            segment_db = None
-            data = None
-            samples = samples[batch_size * preload_amount :]
-            next_load = None
-            segment_data = None
-            logger.info(
-                "%s preloader loaded up to %s time per batch %s",
-                name,
-                loaded_up_to,
-                time.time() - start,
-            )
-            total += 1
+                logger.info(
+                    "%s preloader loading %s - %s ",
+                    name,
+                    loaded_up_to,
+                    loaded_up_to + len(next_load),
+                )
+                loaded_up_to = loaded_up_to + len(next_load)
 
-        del batches
-        # gc.collect()
-        logger.info("%s preloader loaded epoch %s batches", name, epoch)
+                segment_db = load_batch_frames(
+                    numpy_meta, next_load, name, logger, 36 if params.augment else 32
+                )
+                logger.info(
+                    "post load %s mem %s",
+                    len(next_load),
+                    psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+                )
 
+                data = []
+                new_jobs = 0
+                done = 0
+                logger.info("post load %s", len(next_load))
+                num_batches = math.ceil(len(next_load) / batch_size)
+                while len(next_load) > 0:
+                    segments = next_load[:batch_size]
+                    start = time.time()
+                    segment_data = [None] * len(segments)
+                    for i, seg in enumerate(segments):
+                        segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
+                        segment_db[seg[0]] = None
+                    data.append(segment_data)
+                    next_load = next_load[batch_size:]
+
+                logger.debug("processing %s", len(data))
+                results = pool.imap_unordered(process_batch, data, chunksize=30)
+                for res in results:
+                    train_queue.append(res)
+                results = None
+                segment_db = None
+                data = None
+                samples = samples[batch_size * preload_amount :]
+                next_load = None
+                segment_data = None
+                logger.info(
+                    "%s preloader loaded up to %s time per batch %s",
+                    name,
+                    loaded_up_to,
+                    time.time() - start,
+                )
+                total += 1
+
+            del batches
+            # gc.collect()
+            logger.info("%s preloader loaded epoch %s batches", name, epoch)
+            pool.close()
+            pool.join()
         # break
     except Exception as inst:
         logger.error("%s preloader epoch %s error %s", name, epoch, inst, exc_info=True)
@@ -589,20 +605,23 @@ LOG_EVERY = 25
 labels = None
 params = None
 label_mapping = None
+logger = None
 
 
-def init_process(l, p, map):
-    global labels, params, label_mapping
+def init_process(l, p, map, log_q):
+    global labels, params, label_mapping, logger
     labels = l
     params = p
     label_mapping = map
+    worker_configurer(log_q)
+    logger = logging.getLogger(f"Pool-worker")
 
 
-def process_batch(segment_data, logger):
+def process_batch(segment_data):
     # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
     # try:
     # init_logging()
-    global labels, params, label_mapping
+    global labels, params, label_mapping, logger
     try:
         preprocessed = loadbatch(labels, segment_data, params, label_mapping, logger)
     except Exception as e:

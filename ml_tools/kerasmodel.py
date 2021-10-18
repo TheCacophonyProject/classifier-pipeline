@@ -146,7 +146,7 @@ class KerasModel:
                     include_top=False,
                     input_shape=input_shape,
                 ),
-                None
+                None,
             )
         raise Exception("Could not find model" + pretrained_model)
 
@@ -218,7 +218,7 @@ class KerasModel:
             preds = tf.keras.layers.Dense(
                 len(self.labels), activation="softmax", name="prediction"
             )(x)
-            self.model = CustomModel(inputs, outputs=preds)
+            self.model = tf.keras.models.Model(inputs, outputs=preds)
 
         if retrain_from is None:
             retrain_from = self.params.retrain_layer
@@ -242,8 +242,6 @@ class KerasModel:
                 tf.keras.metrics.Precision(),
             ],
         )
-        print("METRICS")
-        print(self.model.metrics)
 
     def load_weights(self, model_path, meta=True, training=False):
         self.logger.info("loading weights %s", model_path)
@@ -453,7 +451,7 @@ class KerasModel:
             self.validate,
             loss(self.params),
             optimizer(self.params),
-            os.path.join(self.checkpoint_folder, run_name, "val_acc")
+            os.path.join(self.checkpoint_folder, run_name, "val_acc"),
         )
         # history = self.model.fit(
         #     self.train,
