@@ -20,28 +20,29 @@ from ml_tools.preprocess import (
     preprocess_frame,
     preprocess_movement,
 )
+from PIL import ImageDraw
+
+from ml_tools.interpreter import Interpreter
 import logging
 from ml_tools.logs import init_logging
 from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
 from track.region import Region
-from PIL import ImageDraw
 from tensorflow.keras.applications.inception_v3 import (
     preprocess_input as inc3preprocess,
 )
 
 STOP_SIGNAL = "stop"
-
 SKIP_SIGNAL = "skip"
 track_extractor = None
 clip = None
-import time
-prediction_i = 0
-import matplotlib.pyplot as plt
 
-class NeuralInterpreter:
+
+class NeuralInterpreter(Interpreter):
     def __init__(self, model_name):
         from openvino.inference_engine import IENetwork, IECore
+
+        # can use to test on PC
         # device = "CPU"
         device = "MYRIAD"
         model_xml = model_name + ".xml"
@@ -55,7 +56,6 @@ class NeuralInterpreter:
         self.load_json(model_name)
 
     def predict(self, input_x):
-
         if input_x is None:
             return None
         rearranged_arr = np.transpose(input_x, axes=[2, 0, 1])
@@ -64,18 +64,8 @@ class NeuralInterpreter:
         res = res[self.out_blob]
         return res[0]
 
-    def load_json(self, filename):
-        """Loads model and parameters from file."""
-        stats = json.load(open(filename + ".txt", "r"))
 
-        self.MODEL_NAME = stats["name"]
-        self.MODEL_DESCRIPTION = stats["description"]
-        self.labels = stats["labels"]
-        self.params = HyperParams()
-        self.params.update(stats["hyperparams"])
-
-
-class LiteInterpreter:
+class LiteInterpreter(Interpreter):
     def __init__(self, model_name):
         import tensorflow as tf
 
@@ -91,7 +81,6 @@ class LiteInterpreter:
         output_details = self.interpreter.get_output_details()
         self.out_values = {}
         for detail in output_details:
-
             self.out_values[detail["name"]] = detail["index"]
 
         self.load_json(model_name)
@@ -99,10 +88,6 @@ class LiteInterpreter:
 
     def predict(self, input_x):
         global prediction_i
-        logging.info("saving")
-        imgplot = plt.imshow(input_x)
-        plt.savefig("prediction{}.png".format(prediction_i))
-        plt.clf()
         start = time.time()
         input_x = np.float32(input_x)
         input_x = input_x[np.newaxis, :]
@@ -110,7 +95,7 @@ class LiteInterpreter:
         self.interpreter.set_tensor(self.in_values["input"], input_x)
         self.interpreter.invoke()
         pred = self.interpreter.get_tensor(self.out_values["Identity"])[0]
-        logging.info("taken %s to predict", time.time() -start)
+        logging.info("taken %s to predict", time.time() - start)
 
         return pred
 
@@ -154,7 +139,7 @@ def get_classifier(model):
     return classifier
 
 
-def run(frame_queue, config, thermal_config, headers, classify=True):
+def run_classifier(frame_queue, config, thermal_config, headers, classify=True):
     init_logging()
     pi_classifier = PiClassifier(config, thermal_config, headers, classify)
     while True:
@@ -176,7 +161,7 @@ predictions = None
 class PiClassifier(Processor):
     """Classifies frames from leptond"""
 
-    NUM_CONCURRENT_TRACKS = 4
+    NUM_CONCURRENT_TRACKS = 2
     DEBUG_EVERY = 100
     MAX_CONSEC = 1
     # after every MAX_CONSEC frames skip this many frames
@@ -258,8 +243,6 @@ class PiClassifier(Processor):
             self.config.use_opt_flow,
             True,
         )
-        # self.clip.predictions = self.predictions
-        # process preview_frames
         frames = self.motion_detector.thermal_window.get_frames()
         edge_pixels = self.config.tracking.edge_pixels
 
@@ -394,28 +377,6 @@ class PiClassifier(Processor):
             if frame is None:
                 return None
             return tools.convert_heat_to_img(frame)
-        # draw = ImageDraw.Draw(last_frame.thermal)
-        # for track in clip.active_tracks:
-        #     region = track.bounds_history[-1]
-        #     if region.frame_number != last_frame.frame_number:
-        #         continue
-        #     draw.rectangle(
-        #         region.to_ltrb().enlarge(1, max=bounds),
-        #         outline=TRACK_COLOURS[track.get_id() % len(TRACK_COLOURS)],
-        #     )
-        #     track_prediction = self.predictions.prediction_for(track)
-        #     if track_prediction:
-        #         current_prediction_string = prediction.get_classified_footer(
-        #             frame_offset
-        #         )
-        #         footer_center = region.mid_x
-        #         footer_rect = Region(
-        #             region.left + footer_center,
-        #             (v_offset + rect.bottom) * self.frame_scale,
-        #             footer_size[0],
-        #             footer_size[1],
-        #         )
-        # return self.motion_detector.get_recent_frame()
 
     def disconnected(self):
         self.motion_detector.disconnected()

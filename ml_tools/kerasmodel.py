@@ -12,6 +12,7 @@ import os
 import time
 import matplotlib.pyplot as plt
 import json
+import gc
 from sklearn.metrics import confusion_matrix
 
 from ml_tools import tools
@@ -20,17 +21,17 @@ from ml_tools.preprocess import (
     preprocess_movement,
     preprocess_frame,
 )
-
+from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 
 from ml_tools.hyperparams import HyperParams
-import gc
+
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 tf_device = "/gpu:1"
 
 
-class KerasModel:
+class KerasModel(Interpreter):
     """Defines a deep learning model"""
 
     VERSION = 1

@@ -20,7 +20,7 @@ from .headerinfo import HeaderInfo
 from ml_tools.logs import init_logging
 from ml_tools import tools
 from .motiondetector import MotionDetector
-from .piclassifier import PiClassifier, run
+from .piclassifier import PiClassifier, run_classifier
 from .cameras import lepton3
 import multiprocessing
 
@@ -105,7 +105,7 @@ def parse_cptv(cptv_file, config, thermal_config):
 
 def get_processor(process_queue, config, thermal_config, headers):
     p_processor = multiprocessing.Process(
-        target=run,
+        target=run_classifier,
         args=(
             process_queue,
             config,
@@ -150,6 +150,7 @@ def handle_connection(connection, config, thermal_config):
             data = extra_b + connection.recv(
                 headers.frame_size - len(extra_b), socket.MSG_WAITALL
             )
+            extra_b = None
         else:
             data = connection.recv(
                 headers.frame_size - len(extra_b), socket.MSG_WAITALL
@@ -173,7 +174,7 @@ def handle_connection(connection, config, thermal_config):
         cropped_frame = crop_rectangle.subimage(frame.pix)
         t_max = np.amax(cropped_frame)
         t_min = np.amin(cropped_frame)
-        # logging.info("Cropped frame max %s and min %s", t_max, t_min)
+        # seems to happen if pi is working hard
         if t_max > 10000 or t_min == 0:
             logging.warning(
                 "received frame has odd values skipping thermal frame max {} thermal frame min {} cpu % {} memory % {}".format(
@@ -181,13 +182,9 @@ def handle_connection(connection, config, thermal_config):
                 )
             )
             process_queue.put(SKIP_SIGNAL)
-            # this frame has bad data probably from lack of CPU
-            # processor.skip_frame()
         elif read < 10:
             process_queue.put(SKIP_SIGNAL)
-            # processor.skip_frame()
         else:
-            # print("ADDED FRAME")
             process_queue.put(frame)
     time.sleep(5)
     # give it a moment to close down properly
