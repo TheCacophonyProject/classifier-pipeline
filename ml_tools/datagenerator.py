@@ -407,6 +407,9 @@ def load_from_numpy(numpy_meta, tracks, name, logger, size):
 
                     for i, frame_i in enumerate(segment_frames):
                         relative_f = frame_i - start_frame
+                        if relative_f >= len(thermals):
+                            logger.warn("Track %s has OOB frame %s", u_id, relative_f)
+                            continue
                         count += 1
                         thermal = np.copy(thermals[relative_f])
                         filter = np.copy(filtered[relative_f])
