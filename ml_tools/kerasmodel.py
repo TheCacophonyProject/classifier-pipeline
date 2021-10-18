@@ -233,6 +233,8 @@ class KerasModel:
                 tf.keras.metrics.Precision(),
             ],
         )
+        print("METRICS")
+        print(self.model.metrics)
 
     def load_weights(self, model_path, meta=True, training=False):
         self.logger.info("loading weights %s", model_path)
@@ -385,6 +387,7 @@ class KerasModel:
             self.params.output_dim,
             self.log_q,
             augment=True,
+            label_cap=1000,
             cap_at="bird",
             epochs=epochs,
             model_preprocess=self.preprocess_fn,
@@ -398,6 +401,7 @@ class KerasModel:
             self.labels,
             self.params.output_dim,
             self.log_q,
+            label_cap=1000,
             cap_at="bird",
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
@@ -435,14 +439,14 @@ class KerasModel:
         self.logger.info("training with class wieghts %s", class_weight)
         # give a bit of time for preloader to cache data
         checkpoints = self.checkpoints(run_name)
-        # custom_train(
-        #     self.model,
-        #     epochs,
-        #     self.train,
-        #     self.validate,
-        #     loss(self.params),
-        #     optimizer(self.params),
-        # )
+        custom_train(
+            self.model,
+            epochs,
+            self.train,
+            self.validate,
+            loss(self.params),
+            optimizer(self.params),
+        )
         history = self.model.fit(
             self.train,
             validation_data=self.validate,

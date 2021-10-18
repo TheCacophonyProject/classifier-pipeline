@@ -29,22 +29,30 @@ class CustomModel(tf.keras.Model):
         # Return a dict mapping metric names to current value
         return {m.name: m.result() for m in self.metrics}
 
-def custom_train(model, epochs,train, val,loss_fn,optimizer):
-    train_acc_metric = tf.keras.metrics.Accuracy(10)
-    val_acc_metric = tf.keras.metrics.Accuracy(10)
+train_acc_metric = tf.keras.metrics.CategoricalAccuracy()
+val_acc_metric = tf.keras.metrics.CategoricalAccuracy()
+model = None
+loss_fn = None
+optimizer = None
+def custom_train(m, epochs,train, val,loss,opt):
+    global model, loss_fn, optimizer
+    loss_fn = loss
+    model = m
+    optimizer = opt
     for epoch in range(epochs):
         logging.info("Start Epoch %s mem %s",epoch, psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)
 
         for batch_i in range(len(train)):
             x_batch_train,y_batch_train = train.__getitem__(batch_i)
-            with tf.GradientTape() as tape:
-                logits = model(x_batch_train, training=True)
-                loss_value = loss_fn(y_batch_train, logits)
-            grads = tape.gradient(loss_value, model.trainable_weights)
-            optimizer.apply_gradients(zip(grads, model.trainable_weights))
-
-            # Update training metric.
-            train_acc_metric.update_state(y_batch_train, logits)
+            loss_value = train_step(x_batch_train,y_batch_train)
+            # with tf.GradientTape() as tape:
+            #     logits = model(x_batch_train, training=True)
+            #     loss_value = loss_fn(y_batch_train, logits)
+            # grads = tape.gradient(loss_value, model.trainable_weights)
+            # optimizer.apply_gradients(zip(grads, model.trainable_weights))
+            #
+            # # Update training metric.
+            # train_acc_metric.update_state(y_batch_train, logits)
 
             # Log every 200 batches.
             if batch_i % 200 == 0:
@@ -62,10 +70,11 @@ def custom_train(model, epochs,train, val,loss_fn,optimizer):
         # Run a validation loop at the end of each epoch.
         for batch_i in range(len(val)):
             x_batch_val,y_batch_val = val.__getitem__(batch_i)
-            val_logits = model(x_batch_val, training=False)
+            val_logits=test_step(x_batch_val, y_batch_val)
+            # val_logits = model(x_batch_val, training=False)
 
             # Update val metrics
-            val_acc_metric.update_state(y_batch_val, val_logits)
+            # val_acc_metric.update_state(y_batch_val, val_logits)
         val_acc = val_acc_metric.result()
         val_acc_metric.reset_states()
         print("Validation acc: %.4f" % (float(val_acc),))
