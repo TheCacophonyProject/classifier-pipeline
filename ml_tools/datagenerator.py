@@ -161,7 +161,7 @@ class DataGenerator(keras.utils.Sequence):
         if self.preload:
             while True:
                 try:
-                    return pickle.loads(self.train_queue.popleft())
+                    return self.train_queue.popleft()
                 except:
                     self.logger.debug("train_queue cant get item")
                     time.sleep(5)
@@ -514,7 +514,7 @@ def preloader(
     processes = 4
 
     preload_amount = max(1, params.maximum_preload)
-    max_jobs = max(1, params.maximum_preload)
+    max_jobs = max(1, params.maximum_preload // 2)
     chunk_size = processes * 30
     batches = math.ceil(len(samples) / batch_size)
     use_pool = True
@@ -598,9 +598,9 @@ def preloader(
                     initargs=(labels, params, label_mapping, log_q),
                 ) as pool:
 
-                    results = pool.map(process_batch, data, chunksize=30)
+                    results = pool.map(process_batch, data, chunksize=5)
                     for res in results:
-                        train_queue.append(pickle.dumps(res))
+                        train_queue.append(res)
                     item_c += 1
                 del pool
 
