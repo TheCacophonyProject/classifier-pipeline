@@ -239,7 +239,7 @@ class TrackHeader:
         return self.sample_frames
 
     def remove_sample_frame(self, f):
-        self.important_frams.remove(f)
+        self.important_frames.remove(f)
 
     def get_sample_frame(self, i=0, remove=False):
         if len(self.sample_frames) == 0:
