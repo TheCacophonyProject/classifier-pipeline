@@ -152,9 +152,7 @@ def handle_connection(connection, config, thermal_config):
             )
             extra_b = None
         else:
-            data = connection.recv(
-                headers.frame_size - len(extra_b), socket.MSG_WAITALL
-            )
+            data = connection.recv(headers.frame_size, socket.MSG_WAITALL)
 
         if not data:
             logging.info("disconnected from camera")

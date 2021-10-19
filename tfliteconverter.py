@@ -93,9 +93,7 @@ def freeze_model(args):
 
 
 def run_model(args):
-    interpreter = tf.lite.Interpreter(
-        model_path=os.path.join(args.model_dir, args.tflite_name)
-    )
+    interpreter = tf.lite.Interpreter(model_path=os.path.join(args.model))
     interpreter.allocate_tensors()
     input_details = interpreter.get_tensor_details()
 
@@ -103,10 +101,10 @@ def run_model(args):
     for detail in input_details:
         in_values[detail["name"]] = detail["index"]
     output_details = interpreter.get_output_details()
-    input_shape = input_details[in_values["input_1"]]["shape"]
+    input_shape = input_details[in_values["input"]]["shape"]
 
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
-    interpreter.set_tensor(in_values["input_1"], input_data)
+    interpreter.set_tensor(in_values["input"], input_data)
     interpreter.invoke()
     print("model pass 1")
     out_values = {}
@@ -115,11 +113,10 @@ def run_model(args):
     print(out_values)
     print("pred", out_values["Identity"])
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
-    interpreter.set_tensor(in_values["input_1"], input_data)
-    interpreter.set_tensor(in_values["state_in"], out_values["state_out"])
+    interpreter.set_tensor(in_values["input"], input_data)
     interpreter.invoke()
     print("model pass 2")
-    print("pred", out_values["prediction"])
+    print("pred", out_values["Identity"])
 
 
 def representative_dataset_gen():
@@ -165,7 +162,7 @@ def convert_model(args):
         model.load_weights(args.weights).expect_partial()
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     tflite_model = converter.convert()
-    print("saving model to ",os.path.join(lite_dir, args.tflite_name))
+    print("saving model to ", os.path.join(lite_dir, args.tflite_name))
     open(os.path.join(lite_dir, args.tflite_name), "wb").write(tflite_model)
 
 
