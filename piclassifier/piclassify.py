@@ -157,7 +157,6 @@ def handle_connection(connection, config, thermal_config):
         if not data:
             logging.info("disconnected from camera")
             process_queue.put(STOP_SIGNAL)
-            service.quit()
             break
         try:
             message = data[:5].decode("utf-8")

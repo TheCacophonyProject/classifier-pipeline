@@ -28,9 +28,7 @@ from ml_tools.logs import init_logging
 from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
 from track.region import Region
-from tensorflow.keras.applications.inception_v3 import (
-    preprocess_input as inc3preprocess,
-)
+
 
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
@@ -41,6 +39,8 @@ clip = None
 class NeuralInterpreter(Interpreter):
     def __init__(self, model_name):
         from openvino.inference_engine import IENetwork, IECore
+
+        super().__init__(model_name)
 
         # can use to test on PC
         # device = "CPU"
@@ -53,7 +53,6 @@ class NeuralInterpreter(Interpreter):
         self.out_blob = next(iter(net.outputs))
         net.batch_size = 1
         self.exec_net = ie.load_network(network=net, device_name=device)
-        self.load_json(model_name)
 
     def predict(self, input_x):
         if input_x is None:
@@ -67,6 +66,8 @@ class NeuralInterpreter(Interpreter):
 
 class LiteInterpreter(Interpreter):
     def __init__(self, model_name):
+        super().__init__(model_name)
+
         import tensorflow as tf
 
         self.interpreter = tf.lite.Interpreter(model_path=model_name + ".tflite")
@@ -83,7 +84,6 @@ class LiteInterpreter(Interpreter):
         for detail in output_details:
             self.out_values[detail["name"]] = detail["index"]
 
-        self.load_json(model_name)
         self.prediction = self.out_values["Identity"]
 
     def predict(self, input_x):
@@ -98,16 +98,6 @@ class LiteInterpreter(Interpreter):
         logging.info("taken %s to predict", time.time() - start)
 
         return pred
-
-    def load_json(self, filename):
-        stats = json.load(open(filename + ".txt", "r"))
-
-        self.MODEL_NAME = stats["name"]
-        self.MODEL_DESCRIPTION = stats["description"]
-        self.labels = stats["labels"]
-        # self.eval_score = stats["score"]
-        self.params = HyperParams()
-        self.params.update(stats["hyperparams"])
 
 
 def get_full_classifier(model):
@@ -128,6 +118,7 @@ def get_full_classifier(model):
 
 def get_classifier(model):
     model_name, model_type = os.path.splitext(model.model_file)
+    logging.info("Loading %s", model_name)
     if model_type == ".tflite":
         classifier = LiteInterpreter(model_name)
     elif model_type == ".xml":
@@ -225,7 +216,42 @@ class PiClassifier(Processor):
                 self.fp_index = self.classifier.labels.index("false-positive")
             except ValueError:
                 self.fp_index = None
+            self.preprocess_fn = self.get_preprocess_fn()
             self.startup_classifier()
+
+    def get_preprocess_fn(self):
+        import tensorflow as tf
+
+        pretrained_model = self.classifier.model_name
+        if pretrained_model == "resnet":
+            return tf.keras.applications.resnet.preprocess_input
+
+        elif pretrained_model == "resnetv2":
+            return tf.keras.applications.resnet_v2.preprocess_input
+
+        elif pretrained_model == "resnet152":
+            return tf.keras.applications.resnet.preprocess_input
+
+        elif pretrained_model == "vgg16":
+            return tf.keras.applications.vgg16.preprocess_input
+
+        elif pretrained_model == "vgg19":
+            return tf.keras.applications.vgg19.preprocess_input
+
+        elif pretrained_model == "mobilenet":
+            return tf.keras.applications.mobilenet_v2.preprocess_input
+
+        elif pretrained_model == "densenet121":
+            return tf.keras.applications.densenet.preprocess_input
+
+        elif pretrained_model == "inceptionresnetv2":
+            return tf.keras.applications.inception_resnet_v2.preprocess_input
+        elif pretrained_model == "inceptionv3":
+            return tf.keras.applications.inception_v3.preprocess_input
+        logging.warn(
+            "pretrained model %s has no preprocessing function", pretrained_model
+        )
+        return None
 
     def new_clip(self):
         self.clip = Clip(
@@ -329,16 +355,7 @@ class PiClassifier(Processor):
                 thermal_reference = np.median(frame.thermal)
                 segment_data.append(frame.crop_by_region(region))
                 mass += region.mass
-            # preprocessed = preprocess_movement(
-            #     segment_data,
-            #     5,
-            #     None,
-            #     0,
-            #     inc3preprocess,
-            #     reference_level=refs,
-            #     sample="Test-{}".format(self.clip.frame_on),
-            #     type=1,
-            # )
+
             params = self.classifier.params
             preprocessed = preprocess_movement(
                 segment_data,
@@ -347,7 +364,7 @@ class PiClassifier(Processor):
                 red_type=params.red_type,
                 green_type=params.green_type,
                 blue_type=params.blue_type,
-                preprocess_fn=inc3preprocess,
+                preprocess_fn=self.preprocess_fn,
                 reference_level=refs,
                 keep_edge=params.keep_edge,
             )
