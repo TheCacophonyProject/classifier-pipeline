@@ -504,12 +504,13 @@ def preloader(
     )
     epoch = 0
     # this does the data pre processing
-    processes = 8
+    processes = 4
 
     preload_amount = max(1, params.maximum_preload)
     max_jobs = max(1, params.maximum_preload)
     chunk_size = processes * 30
     batches = math.ceil(len(samples) / batch_size)
+    use_pool = False
     try:
         count = 0
 
@@ -523,78 +524,90 @@ def preloader(
         total = 0
         # Once process_batch starts to back up
         loaded_up_to = 0
-        with multiprocessing.Pool(
-            processes,
-            init_process,
-            (labels, params, label_mapping, log_q),
-            maxtasksperchild=30,
-        ) as pool:
-            while len(samples) > 0:
-                next_load = samples[: batch_size * preload_amount]
 
-                start = time.time()
-                logger.info(
-                    "%s preloader memory %s",
-                    name,
-                    psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-                )
-                # next_load = batches[:preload_amount]
+        while len(samples) > 0:
+            next_load = samples[: batch_size * preload_amount]
 
-                logger.info(
-                    "%s preloader loading %s - %s ",
-                    name,
-                    loaded_up_to,
-                    loaded_up_to + len(next_load),
-                )
-                loaded_up_to = loaded_up_to + len(next_load)
+            start = time.time()
+            logger.info(
+                "%s preloader memory %s",
+                name,
+                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            )
+            # next_load = batches[:preload_amount]
 
-                segment_db = load_batch_frames(
-                    numpy_meta, next_load, name, logger, 36 if params.augment else 32
-                )
-                logger.info(
-                    "post load %s mem %s",
-                    len(next_load),
-                    psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-                )
+            logger.info(
+                "%s preloader loading %s - %s ",
+                name,
+                loaded_up_to,
+                loaded_up_to + len(next_load),
+            )
+            loaded_up_to = loaded_up_to + len(next_load)
 
-                data = []
-                new_jobs = 0
-                done = 0
-                logger.info("post load %s", len(next_load))
-                num_batches = math.ceil(len(next_load) / batch_size)
-                start = time.time()
-                while len(next_load) > 0:
-                    segments = next_load[:batch_size]
-                    segment_data = [None] * len(segments)
-                    for i, seg in enumerate(segments):
-                        segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
-                        segment_db[seg[0]] = None
-                    data.append(segment_data)
-                    next_load = next_load[batch_size:]
+            segment_db = load_batch_frames(
+                numpy_meta, next_load, name, logger, 36 if params.augment else 32
+            )
+            logger.info(
+                "post load %s mem %s",
+                len(next_load),
+                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            )
 
-                logger.debug("processing %s", len(data))
-                results = pool.imap_unordered(process_batch, data, chunksize=30)
-                for res in results:
-                    train_queue.append(res)
-                results = None
-                segment_db = None
-                data = None
-                samples = samples[batch_size * preload_amount :]
-                next_load = None
-                segment_data = None
-                logger.info(
-                    "%s preloader loaded up to %s time per batch %s",
-                    name,
-                    loaded_up_to,
-                    time.time() - start,
-                )
-                total += 1
+            data = []
+            new_jobs = 0
+            done = 0
+            logger.info("post load %s", len(next_load))
+            num_batches = math.ceil(len(next_load) / batch_size)
+            start = time.time()
+            while len(next_load) > 0:
+                segments = next_load[:batch_size]
+                segment_data = [None] * len(segments)
+                for i, seg in enumerate(segments):
+                    segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
+                    segment_db[seg[0]] = None
+                data.append(segment_data)
+                next_load = next_load[batch_size:]
+            logger.debug(
+                "processing %s mem %s",
+                len(data),
+                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            )
+            if not use_pool:
+                for segment_data in data:
+                    preprocessed = loadbatch(
+                        labels, segment_data, params, label_mapping, logger
+                    )
+                    train_queue.append(preprocessed)
+            else:
+                with multiprocessing.Pool(
+                    processes,
+                    init_process,
+                    (labels, params, label_mapping, log_q),
+                    maxtasksperchild=30,
+                ) as pool:
+                    results = pool.imap_unordered(process_batch, data, chunksize=30)
+                    for res in results:
+                        train_queue.append(res)
+                    pool.close()
+                    pool.join()
+            results = None
+            segment_db = None
+            data = None
+            samples = samples[batch_size * preload_amount :]
+            next_load = None
+            segment_data = None
+            logger.info(
+                "%s preloader loaded up to %s time per batch %s",
+                name,
+                loaded_up_to,
+                time.time() - start,
+            )
+            total += 1
 
-            del batches
-            # gc.collect()
-            logger.info("%s preloader loaded epoch %s batches", name, epoch)
-            pool.close()
-            pool.join()
+        del batches
+        # gc.collect()
+        logger.info("%s preloader loaded epoch %s batches", name, epoch)
+
         # break
     except Exception as inst:
         logger.error("%s preloader epoch %s error %s", name, epoch, inst, exc_info=True)
