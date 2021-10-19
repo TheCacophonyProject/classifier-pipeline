@@ -148,6 +148,15 @@ class KerasModel:
                 ),
                 None,
             )
+        elif pretrained_model == "efficientnetb0":
+            return (
+                tf.keras.applications.EfficientNetB5(
+                    weights=weights,
+                    include_top=False,
+                    input_shape=input_shape,
+                ),
+                None,
+            )
         raise Exception("Could not find model" + pretrained_model)
 
     def get_preprocess_fn(self):

@@ -18,6 +18,7 @@ import traceback
 import sys
 from concurrent.futures.process import ProcessPoolExecutor
 import pickle
+import tracemalloc
 
 FRAMES_PER_SECOND = 9
 
@@ -579,6 +580,9 @@ def preloader(
                 len(data),
                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
             )
+            tracemalloc.start()
+            snapshot1 = tracemalloc.take_snapshot()
+
             if not use_pool:
                 for segment_data in data:
                     preprocessed = loadbatch(
@@ -587,6 +591,7 @@ def preloader(
                     train_queue.append(preprocessed)
                     item_c += 1
             else:
+
                 with ProcessPoolExecutor(
                     max_workers=processes,
                     initializer=init_process,
@@ -611,6 +616,12 @@ def preloader(
                 loaded_up_to,
                 time.time() - start,
             )
+            snapshot2 = tracemalloc.take_snapshot()
+            top_stats = snapshot2.compare_to(snapshot1, "lineno")
+
+            logger.info("[ Top 10 differences ]")
+            for stat in top_stats[:10]:
+                logger.info("%s", stat)
             total += 1
             while item_c > 0:
                 logger.info(
