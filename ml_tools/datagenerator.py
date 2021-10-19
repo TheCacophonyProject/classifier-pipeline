@@ -21,6 +21,8 @@ import pickle
 
 FRAMES_PER_SECOND = 9
 
+item_c = 0
+
 
 class GeneartorParams:
     def __init__(self, output_dim, params):
@@ -139,6 +141,8 @@ class DataGenerator(keras.utils.Sequence):
                 self.preload_samples()
             try:
                 X, y, y_original, weights = self.get_item(index)
+                global item_c
+                item_c -= 1
             except:
                 self.logger.error(
                     "%s error getting preloaded data",
@@ -513,6 +517,7 @@ def preloader(
     chunk_size = processes * 30
     batches = math.ceil(len(samples) / batch_size)
     use_pool = True
+    global item_c
     try:
         count = 0
 
@@ -580,6 +585,7 @@ def preloader(
                         labels, segment_data, params, label_mapping, logger
                     )
                     train_queue.append(preprocessed)
+                    item_c += 1
             else:
                 with ProcessPoolExecutor(
                     max_workers=processes,
@@ -590,6 +596,8 @@ def preloader(
                     results = pool.map(process_batch, data, chunksize=30)
                     for res in results:
                         train_queue.append(pickle.dumps(res))
+                    item_c += 1
+                del pool
 
             results = None
             segment_db = None
@@ -604,6 +612,13 @@ def preloader(
                 time.time() - start,
             )
             total += 1
+            while item_c > 0:
+                logger.info(
+                    "waiting for items %s mem %s",
+                    item_c,
+                    psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+                )
+                time.sleep(5)
 
         del batches
         # gc.collect()
