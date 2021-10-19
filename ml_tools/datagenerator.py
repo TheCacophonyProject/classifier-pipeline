@@ -16,6 +16,8 @@ import psutil
 import os
 import traceback
 import sys
+from concurrent.futures.process import ProcessPoolExecutor
+import pickle
 
 FRAMES_PER_SECOND = 9
 
@@ -154,7 +156,7 @@ class DataGenerator(keras.utils.Sequence):
         if self.preload:
             while True:
                 try:
-                    return self.train_queue.popleft()
+                    return pickle.loads(self.train_queue.popleft())
                 except:
                     self.logger.debug("train_queue cant get item")
                     time.sleep(5)
@@ -510,7 +512,7 @@ def preloader(
     max_jobs = max(1, params.maximum_preload)
     chunk_size = processes * 30
     batches = math.ceil(len(samples) / batch_size)
-    use_pool = False
+    use_pool = True
     try:
         count = 0
 
@@ -579,17 +581,16 @@ def preloader(
                     )
                     train_queue.append(preprocessed)
             else:
-                with multiprocessing.Pool(
-                    processes,
-                    init_process,
-                    (labels, params, label_mapping, log_q),
-                    maxtasksperchild=30,
+                with ProcessPoolExecutor(
+                    max_workers=processes,
+                    initializer=init_process,
+                    initargs=(labels, params, label_mapping, log_q),
                 ) as pool:
-                    results = pool.imap_unordered(process_batch, data, chunksize=30)
+
+                    results = pool.map(process_batch, data, chunksize=30)
                     for res in results:
-                        train_queue.append(res)
-                    pool.close()
-                    pool.join()
+                        train_queue.append(pickle.dumps(res))
+
             results = None
             segment_db = None
             data = None
