@@ -384,7 +384,6 @@ def _data(labels, data, params, mapped_labels, logger, to_categorical=True):
         logger.warn("Empty length of x")
     assert len(X) == len(y)
     if to_categorical:
-        print("to categorical")
         y = keras.utils.to_categorical(y, num_classes=len(labels))
         # , weights
     total_time = time.time() - start
@@ -527,7 +526,7 @@ def preloader(
         with multiprocessing.Pool(
             processes,
             init_process,
-            (labels, params, label_mapping, logger),
+            (labels, params, label_mapping, log_q),
             maxtasksperchild=30,
         ) as pool:
             while len(samples) > 0:
@@ -563,9 +562,9 @@ def preloader(
                 done = 0
                 logger.info("post load %s", len(next_load))
                 num_batches = math.ceil(len(next_load) / batch_size)
+                start = time.time()
                 while len(next_load) > 0:
                     segments = next_load[:batch_size]
-                    start = time.time()
                     segment_data = [None] * len(segments)
                     for i, seg in enumerate(segments):
                         segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])

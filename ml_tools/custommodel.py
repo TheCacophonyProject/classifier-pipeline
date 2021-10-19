@@ -96,7 +96,7 @@ def custom_train(m, epochs, train, val, loss, opt, dir):
             maxval=len(val),
             widgets=[
                 "{} - Validating ".format(epoch),
-                progressbar.ETA(),
+                progressbar.AdaptiveETA(),
                 progressbar.Bar("=", "[", "]"),
                 " ",
                 progressbar.Percentage(),
