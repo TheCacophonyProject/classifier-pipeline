@@ -1,4 +1,7 @@
 import json
+import logging
+
+from ml_tools.hyperparams import HyperParams
 
 
 class Interpreter:
@@ -7,6 +10,7 @@ class Interpreter:
 
     def load_json(self, filename):
         """Loads model and parameters from file."""
+        logging.info("Loading metadata from %s.txt", filename)
         stats = json.load(open(filename + ".txt", "r"))
 
         self.model_name = stats["name"]
