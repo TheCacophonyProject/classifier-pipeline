@@ -132,18 +132,21 @@ def get_classifier(model):
 
 def run_classifier(frame_queue, config, thermal_config, headers, classify=True):
     init_logging()
-    pi_classifier = PiClassifier(config, thermal_config, headers, classify)
-    while True:
-        frame = frame_queue.get()
-        if isinstance(frame, str):
-            if frame == STOP_SIGNAL:
-                logging.info("PiClassifier received stop signal")
-                pi_classifier.disconnected()
-                return
-            if frame == "skip":
-                pi_classifier.skip_frame()
-        else:
-            pi_classifier.process_frame(frame)
+    try:
+        pi_classifier = PiClassifier(config, thermal_config, headers, classify)
+        while True:
+            frame = frame_queue.get()
+            if isinstance(frame, str):
+                if frame == STOP_SIGNAL:
+                    logging.info("PiClassifier received stop signal")
+                    pi_classifier.disconnected()
+                    return
+                if frame == "skip":
+                    pi_classifier.skip_frame()
+            else:
+                pi_classifier.process_frame(frame)
+    except:
+        logging.error("Error running classifier restarting ..", exc_info=True)
 
 
 predictions = None
