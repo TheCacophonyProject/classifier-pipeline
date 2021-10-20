@@ -2,7 +2,7 @@ import time
 import logging
 from piclassifier.recorder import Recorder
 from piclassifier.cptvrecorder import CPTVRecorder
-from eventreport import throttled_event
+from piclassifier.eventreporter import throttled_event
 
 
 class ThrottledRecorder(Recorder):
