@@ -30,7 +30,7 @@ class Service(object):
 
     def CameraInfo(self):
         logging.debug("Serving headers %s", self.headers)
-        return self.headers
+        return self.headers.as_dict()
 
     def TakeSnapshot(self, last_frame):
         last_frame, track_meta, f_num = self.get_frame()
@@ -66,59 +66,8 @@ class SnapshotService:
     def quit(self):
         self.loop.quit()
 
-    def run_server(self, get_frame):
+    def run_server(self, get_frame, headers):
         bus = SystemBus()
-        service = bus.publish(DBUS_NAME, Service(get_frame))
-        self.loop.run()
-        service.unpublish()
-
-
-class Service(object):
-    """
-    <node>
-        <interface name='org.cacophony.thermalrecorder'>
-            <method name='TakeSnapshot'>
-                <arg type='s' name='response' direction='out'/>
-            </method>
-        </interface>
-    </node>
-    """
-
-    def __init__(self, get_frame, output_dir):
-        self.get_frame = get_frame
-        self.output_dir = output_dir
-
-    def TakeSnapshot(self):
-        last_frame, track_meta = self.get_frame()
-        if last_frame is None:
-            return "Reading from camera has not start yet."
-        #
-        # last_frame.save(self.output_dir + "/" + SNAPSHOT_NAME)
-        # # frame_to_jpg(last_frame, self.output_dir + "/" + SNPASHOT_NAME)
-        return {
-            "Pix": last_frame.pix,
-            "Status": {"FrameCount": last_frame.frame_counter},
-        }
-        # return "Success"
-
-
-class SnapshotService:
-    def __init__(self, get_frame, output_dir):
-        self.loop = GLib.MainLoop()
-        self.t = threading.Thread(
-            target=self.run_server,
-            args=(
-                get_frame,
-                output_dir,
-            ),
-        )
-        self.t.start()
-
-    def quit(self):
-        self.loop.quit()
-
-    def run_server(self, get_frame, output_dir):
-        bus = SystemBus()
-        service = bus.publish(DBUS_NAME, Service(get_frame, output_dir))
+        service = bus.publish(DBUS_NAME, Service(get_frame, headers))
         self.loop.run()
         service.unpublish()
