@@ -82,7 +82,7 @@ class DataGenerator(keras.utils.Sequence):
         self.epoch_stats = []
         self.lazy_load = params.get("lazy_load", False)
         self.preload = params.get("preload", False)
-        self.threads = True
+        self.threads = False
         self.segments = []
         # load epoch
         self.epoch_labels = []
@@ -159,18 +159,18 @@ class DataGenerator(keras.utils.Sequence):
 
     def get_item(self, index):
         if self.preload:
-            while True:
-                try:
-                    return self.train_queue.popleft()
-                except:
-                    self.logger.debug("train_queue cant get item")
-                    time.sleep(5)
-            # return get_with_timeout(
-            #     self.train_queue,
-            #     30,
-            #     f"train_queue get_item {self.dataset.name}",
-            #     sleep_time=1,
-            # )
+            # while True:
+            #     try:
+            #         return self.train_queue.popleft()
+            #     except:
+            #         self.logger.debug("train_queue cant get item")
+            #         time.sleep(5)
+            return get_with_timeout(
+                self.train_queue,
+                30,
+                f"train_queue get_item {self.dataset.name}",
+                sleep_time=1,
+            )
         else:
             batch_segments = [
                 self.samples[index * self.batch_size : (index + 1) * self.batch_size]
@@ -269,7 +269,7 @@ class DataGenerator(keras.utils.Sequence):
             batches.append(samples)
 
         if len(batches) > 0:
-            self.epoch_queue.append((self.loaded_epochs + 1, batches))
+            self.epoch_queue.put((self.loaded_epochs + 1, batches))
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
@@ -517,7 +517,7 @@ def preloader(
     max_jobs = max(1, params.maximum_preload // 2)
     chunk_size = processes * 30
     batches = math.ceil(len(samples) / batch_size)
-    use_pool = True
+    use_pool = False
     global item_c
     try:
         count = 0
@@ -588,7 +588,8 @@ def preloader(
                     preprocessed = loadbatch(
                         labels, segment_data, params, label_mapping, logger
                     )
-                    train_queue.append(preprocessed)
+                    put_with_timeout(train_queue, preprocessed, 10, "preloader")
+                    # train_queue.append(preprocessed)
                     item_c += 1
             else:
 
@@ -600,7 +601,7 @@ def preloader(
 
                     results = pool.map(process_batch, data, chunksize=5)
                     for res in results:
-                        train_queue.append(res)
+                        put_with_timeout(train_queue, res, 10, "preloader")
                     item_c += 1
                 del pool
 
