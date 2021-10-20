@@ -166,8 +166,8 @@ class PiClassifier(Processor):
 
     def __init__(self, config, thermal_config, headers, classify):
         self._output_dir = thermal_config.recorder.output_dir
-        super().__init__()
         self.headers = headers
+        super().__init__()
         self.frame_num = 0
         self.clip = None
         self.tracking = False
@@ -389,20 +389,18 @@ class PiClassifier(Processor):
             last_frame = clip.frame_buffer.get_last_frame()
             if last_frame is None:
                 return None
-            bounds = Region(0, 0, clip.res_x, clip.res_y)
+            track_meta = []
+            tracks = clip.active_tracks()
+            for track in tracks:
+                track_meta.append(track.get_metadata(self.predictions))
 
-            img = add_last_frame_tracking(
-                last_frame,
-                clip.active_tracks,
-                self.predictions if self.classify else None,
-                screen_bounds=bounds,
-            )
-            return img
+            return last_frame, track_meta, last_frame.frame_number
         else:
-            frame = self.motion_detector.get_recent_frame()
-            if frame is None:
-                return None
-            return tools.convert_heat_to_img(frame)
+            return (
+                self.motion_detector.get_recent_frame(),
+                {},
+                self.motion_detector.num_frames,
+            )
 
     def disconnected(self):
         self.motion_detector.disconnected()

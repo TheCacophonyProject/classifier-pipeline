@@ -2,7 +2,7 @@ tensorflow-addons
 tensorflow~=2.5.0
 matplotlib~=3.0
 pytz
-cptv~=1.5.1
+cptv~=1.5.2
 opencv-contrib-python-headless~=4.5.1.48
 numpy~=1.19.2
 scipy~=1.4.1
