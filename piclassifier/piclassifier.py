@@ -211,8 +211,6 @@ class PiClassifier(Processor):
             self.config.tracking.motion.dynamic_thresh,
             headers,
         )
-        print("set up rec")
-
         self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)
@@ -233,7 +231,7 @@ class PiClassifier(Processor):
     def get_preprocess_fn(self):
         import tensorflow as tf
 
-        pretrained_model = self.classifier.model_name
+        pretrained_model = self.classifier.params.model_name
         if pretrained_model == "resnet":
             return tf.keras.applications.resnet.preprocess_input
 
@@ -537,9 +535,9 @@ def on_recording_stopping(filename):
         meta_data = clip.get_metadata(predictions_per_model)
         if predictions is not None:
             meta_data["models"] = [predictions.model.as_dict()]
+            meta_data["algorithm"]["model_name"] = predictions.model.name
 
         meta_data["algorithm"] = {}
-        meta_data["algorithm"]["model_name"] = "PI-INC3"
         meta_data["algorithm"]["tracker_version"] = track_extractor.VERSION
 
         with open(meta_name, "w") as f:

@@ -36,7 +36,6 @@ class ThrottledRecorder(Recorder):
             self.stop_recording()
 
     def update_tokens(self):
-        print("any motion?", self.last_motion)
         if self.last_motion is None:
             return
         since_motion = time.time() - self.last_motion
