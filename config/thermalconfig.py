@@ -38,6 +38,26 @@ class LockSafeConfig:
 
 
 @attr.s
+class ThrottlerConfig:
+    bucket_size = attr.ib()
+    activate = attr.ib()
+    no_motion = attr.ib()
+    max_throttling_minutes = attr.ib()
+
+    @classmethod
+    def load(cls, motion):
+        return cls(
+            bucket_size=motion.get("bucket_size", 10),
+            activate=motion.get("activate", False),
+            no_motion=motion.get("no_motion", 5),
+            max_throttling=motion.get("max_throttling_minutes", 60),
+        )
+
+    def as_dict(self):
+        return attr.asdict(self)
+
+
+@attr.s
 class MotionConfig:
     temp_thresh = attr.ib()
     delta_thresh = attr.ib()

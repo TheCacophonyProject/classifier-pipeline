@@ -421,12 +421,13 @@ class PiClassifier(Processor):
             and self.motion_detector.processed > 100
         ):
             background = self.motion_detector.set_background_edges()
-            self.recorder.start_recording(
+            recording = self.recorder.start_recording(
                 self.motion_detector.background,
                 self.motion_detector.thermal_window.get_frames(),
                 self.motion_detector.temp_thresh,
             )
-            self.new_clip()
+            if recording:
+                self.new_clip()
         if self.recorder.recording:
             t_start = time.time()
             self.track_extractor.process_frame(

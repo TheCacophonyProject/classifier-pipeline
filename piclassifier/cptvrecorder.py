@@ -8,12 +8,14 @@ from cptv import Frame
 from datetime import timedelta
 import time
 
+from piclassifier import Recorder
+
 CPTV_TEMP_EXT = ".cptv.temp"
 
 CACHE_COUNT = 20
 
 
-class CPTVRecorder:
+class CPTVRecorder(Recorder):
     def __init__(self, thermal_config, headers, on_recording_stopping=None):
         self.location_config = thermal_config.location
         self.device_config = thermal_config.device
@@ -35,8 +37,7 @@ class CPTVRecorder:
     def force_stop(self):
         if not self.recording:
             return
-        self.stop_recording()
-        return
+
         if self.has_minimum():
             self.stop_recording()
         else:
