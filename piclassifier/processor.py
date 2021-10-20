@@ -27,7 +27,6 @@ class Processor(ABC):
         self,
     ):
         self.service = SnapshotService(self.get_recent_frame, self.output_dir)
-        print("INIT SERVICE")
 
     @abstractmethod
     def process_frame(self, lepton_frame):

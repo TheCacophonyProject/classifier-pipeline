@@ -1,14 +1,15 @@
 import time
 import logging
-from piclassifier import Recorder
+from piclassifier.recorder import Recorder
+from piclassifier.cptvrecorder import CPTVRecorder
 
 
 class ThrottledRecorder(Recorder):
-    def __init__(self, recorder, thermal_config, headers):
+    def __init__(self, thermal_config, headers, on_recording_stopping):
         self.bucket_size = thermal_config.throttler.bucket_size * 60 * headers.fps
         self.throttling = False
         self.tokens = self.bucket_size
-        self.recoreder = recorder
+        self.recorder = CPTVRecorder(thermal_config, headers, on_recording_stopping)
         self.last_rec = None
         self.last_motion = None
         self.fps = headers.fps
@@ -16,12 +17,15 @@ class ThrottledRecorder(Recorder):
         self.max_throttling_seconds = (
             thermal_config.throttler.max_throttling_minutes * 60
         )
-        self.min_recording = recorder.min_frames
+        self.min_recording = self.recorder.min_frames
         self.throttled_at = None
 
     @property
     def recording(self):
         return self.recorder.recording
+
+    def force_stop(self):
+        self.recorder.force_stop()
 
     def process_frame(self, movement_detected, cptv_frame):
         if movement_detected:
@@ -32,6 +36,9 @@ class ThrottledRecorder(Recorder):
             self.stop_recording()
 
     def update_tokens(self):
+        print("any motion?", self.last_motion)
+        if self.last_motion is None:
+            return
         since_motion = time.time() - self.last_motion
         # if we have been throttled wait for no motion before adding any tokens back
         if self.throttling:

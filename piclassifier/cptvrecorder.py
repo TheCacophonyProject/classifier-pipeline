@@ -8,7 +8,7 @@ from cptv import Frame
 from datetime import timedelta
 import time
 
-from piclassifier import Recorder
+from piclassifier.recorder import Recorder
 
 CPTV_TEMP_EXT = ".cptv.temp"
 

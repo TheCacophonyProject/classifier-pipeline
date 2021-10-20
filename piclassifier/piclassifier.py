@@ -14,6 +14,8 @@ from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer, add_last_frame_tracking
 from ml_tools import tools
 from .cptvrecorder import CPTVRecorder
+from .throttledrecorder import ThrottledRecorder
+
 from .motiondetector import MotionDetector
 from .processor import Processor
 from ml_tools.preprocess import (
@@ -198,12 +200,18 @@ class PiClassifier(Processor):
         self.motion = thermal_config.motion
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
-        self.recorder = CPTVRecorder(thermal_config, headers, on_recording_stopping)
+        if thermal_config.throttler.activate:
+            self.recorder = ThrottledRecorder(
+                thermal_config, headers, on_recording_stopping
+            )
+        else:
+            self.recorder = CPTVRecorder(thermal_config, headers, on_recording_stopping)
         self.motion_detector = MotionDetector(
             thermal_config,
             self.config.tracking.motion.dynamic_thresh,
             headers,
         )
+        print("set up rec")
 
         self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
@@ -415,11 +423,7 @@ class PiClassifier(Processor):
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
 
-        if (
-            not self.recorder.recording
-            and self.motion_detector.movement_detected
-            and self.motion_detector.processed > 100
-        ):
+        if not self.recorder.recording and self.motion_detector.movement_detected:
             background = self.motion_detector.set_background_edges()
             recording = self.recorder.start_recording(
                 self.motion_detector.background,

@@ -75,9 +75,13 @@ def main():
             handle_connection(connection, config, thermal_config)
         except:
             logging.error("Error with connection", exc_info=True)
+            # return
         finally:
             # Clean up the connection
-            connection.close()
+            try:
+                connection.close()
+            except:
+                pass
 
 
 def parse_cptv(cptv_file, config, thermal_config):
@@ -145,44 +149,46 @@ def handle_connection(connection, config, thermal_config):
     )
     raw_frame = lepton3.Lepton3(headers)
     read = 0
-    while True:
-        if extra_b is not None:
-            data = extra_b + connection.recv(
-                headers.frame_size - len(extra_b), socket.MSG_WAITALL
-            )
-            extra_b = None
-        else:
-            data = connection.recv(headers.frame_size, socket.MSG_WAITALL)
+    try:
+        while True:
+            if extra_b is not None:
+                data = extra_b + connection.recv(
+                    headers.frame_size - len(extra_b), socket.MSG_WAITALL
+                )
+                extra_b = None
+            else:
+                data = connection.recv(headers.frame_size, socket.MSG_WAITALL)
 
-        if not data:
-            logging.info("disconnected from camera")
-            process_queue.put(STOP_SIGNAL)
-            break
-        try:
-            message = data[:5].decode("utf-8")
-            if message == "clear":
-                logging.info("processing error from camera")
+            if not data:
+                logging.info("disconnected from camera")
                 process_queue.put(STOP_SIGNAL)
                 break
-        except:
-            pass
-        read += 1
-        frame = raw_frame.parse(data)
-        cropped_frame = crop_rectangle.subimage(frame.pix)
-        t_max = np.amax(cropped_frame)
-        t_min = np.amin(cropped_frame)
-        # seems to happen if pi is working hard
-        if t_max > 10000 or t_min == 0:
-            logging.warning(
-                "received frame has odd values skipping thermal frame max {} thermal frame min {} cpu % {} memory % {}".format(
-                    t_max, t_min, psutil.cpu_percent(), psutil.virtual_memory()[2]
+            try:
+                message = data[:5].decode("utf-8")
+                if message == "clear":
+                    logging.info("processing error from camera")
+                    process_queue.put(STOP_SIGNAL)
+                    break
+            except:
+                pass
+            read += 1
+            frame = raw_frame.parse(data)
+            cropped_frame = crop_rectangle.subimage(frame.pix)
+            t_max = np.amax(cropped_frame)
+            t_min = np.amin(cropped_frame)
+            # seems to happen if pi is working hard
+            if t_max > 10000 or t_min == 0:
+                logging.warning(
+                    "received frame has odd values skipping thermal frame max {} thermal frame min {} cpu % {} memory % {}".format(
+                        t_max, t_min, psutil.cpu_percent(), psutil.virtual_memory()[2]
+                    )
                 )
-            )
-            process_queue.put(SKIP_SIGNAL)
-        elif read < 10:
-            process_queue.put(SKIP_SIGNAL)
-        else:
-            process_queue.put(frame)
-    time.sleep(5)
-    # give it a moment to close down properly
-    processor.terminate()
+                process_queue.put(SKIP_SIGNAL)
+            elif read < 0:
+                process_queue.put(SKIP_SIGNAL)
+            else:
+                process_queue.put(frame)
+    finally:
+        time.sleep(5)
+        # give it a moment to close down properly
+        processor.terminate()

@@ -45,12 +45,14 @@ class ThrottlerConfig:
     max_throttling_minutes = attr.ib()
 
     @classmethod
-    def load(cls, motion):
+    def load(cls, throttler):
         return cls(
-            bucket_size=motion.get("bucket_size", 10),
-            activate=motion.get("activate", False),
-            no_motion=motion.get("no_motion", 5),
-            max_throttling=motion.get("max_throttling_minutes", 60),
+            bucket_size=RelAbsTime(
+                throttler.get("bucket_size"), default_offset=10 * 60
+            ).offset_s,
+            activate=throttler.get("activate", False),
+            no_motion=throttler.get("no_motion", 5),
+            max_throttling_minutes=throttler.get("max_throttling_minutes", 60),
         )
 
     def as_dict(self):
@@ -127,6 +129,7 @@ class ThermalConfig:
     recorder = attr.ib()
     device = attr.ib()
     location = attr.ib()
+    throttler = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename=None):
@@ -141,6 +144,7 @@ class ThermalConfig:
         if raw is None:
             raw = {}
         return cls(
+            throttler=ThrottlerConfig.load(raw.get("thermal-throttler", {})),
             motion=MotionConfig.load(raw.get("thermal-motion", {})),
             recorder=RecorderConfig.load(
                 raw.get("thermal-recorder", {}), raw.get("windows", {})
