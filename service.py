@@ -18,7 +18,7 @@ class Service(object):
 
             </method>
             <method name='CameraInfo'>
-                <arg type='a{si}' name='response' direction='out'/>
+                <arg type='a{ss}' name='response' direction='out'/>
             </method>
         </interface>
     </node>
@@ -30,7 +30,10 @@ class Service(object):
 
     def CameraInfo(self):
         logging.debug("Serving headers %s", self.headers)
-        return self.headers.as_dict()
+        headers = self.headers.as_dict
+        for k, v in headers.items():
+            headers[k] = "{}", format(v)
+        return headers
 
     def TakeSnapshot(self, last_frame):
         last_frame, track_meta, f_num = self.get_frame()
