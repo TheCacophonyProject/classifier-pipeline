@@ -30,9 +30,10 @@ class Service(object):
 
     def CameraInfo(self):
         logging.debug("Serving headers %s", self.headers)
-        headers = self.headers.as_dict
+        headers = self.headers.as_dict()
         for k, v in headers.items():
-            headers[k] = "{}", format(v)
+            headers[k] = "{}".format(v)
+        logging.debug("Sending headers %s", headers)
         return headers
 
     def TakeSnapshot(self, last_frame):

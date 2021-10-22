@@ -531,12 +531,12 @@ def on_recording_stopping(filename):
         if predictions is not None:
             predictions_per_model = {predictions.model.id: predictions}
         meta_data = clip.get_metadata(predictions_per_model)
+        meta_data["algorithm"] = {}
+        meta_data["algorithm"]["tracker_version"] = track_extractor.VERSION
+
         if predictions is not None:
             meta_data["models"] = [predictions.model.as_dict()]
             meta_data["algorithm"]["model_name"] = predictions.model.name
-
-        meta_data["algorithm"] = {}
-        meta_data["algorithm"]["tracker_version"] = track_extractor.VERSION
 
         with open(meta_name, "w") as f:
             json.dump(meta_data, f, indent=4, cls=CustomJSONEncoder)
