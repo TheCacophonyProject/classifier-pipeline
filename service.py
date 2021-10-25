@@ -35,16 +35,17 @@ class Service(object):
             try:
                 headers[k] = int(v)
             except:
+                headers[k] = 0
                 pass
         headers["FPS"] = headers.get("fps", 9)
         logging.debug("Sending headers %s", headers)
         return headers
 
-    def TakeSnapshot(self, last_frame):
+    def TakeSnapshot(self, last_num):
         last_frame, track_meta, f_num = self.get_frame()
         logging.debug("Frame requested %s latest frame %s", last_frame, f_num)
 
-        if f_num == last_frame:
+        if f_num == last_num:
             return None
         return (
             last_frame.pix,
