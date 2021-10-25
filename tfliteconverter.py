@@ -6,6 +6,7 @@ import shutil
 import tensorflow as tf
 from config.config import Config
 import pickle
+from pathlib import Path
 
 MODEL_DIR = "../cptv-download/train/checkpoints"
 MODEL_NAME = "training-most-recent.sav"
@@ -161,8 +162,13 @@ def convert_model(args):
         print("using weights ", args.weights)
         model.load_weights(args.weights).expect_partial()
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    # converter.target_spec.supported_ops = [
+    #     tf.lite.OpsSet.TFLITE_BUILTINS,  # enable TensorFlow Lite ops.
+    #     tf.lite.OpsSet.SELECT_TF_OPS,  # enable TensorFlow ops.
+    # ]
     tflite_model = converter.convert()
     print("saving model to ", os.path.join(lite_dir, args.tflite_name))
+    Path(lite_dir).mkdir(parents=True, exist_ok=True)
     open(os.path.join(lite_dir, args.tflite_name), "wb").write(tflite_model)
 
 
