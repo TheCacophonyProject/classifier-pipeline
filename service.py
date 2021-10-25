@@ -47,17 +47,17 @@ class Service(object):
         logging.debug("Frame requested %s latest frame %s", last_num, f_num)
 
         if f_num == last_num or last_frame is None:
-            return None
+            return (np.empty((0, 0)), (), "")
         return (
             last_frame.pix,
             (
-                last_frame.time_on,
+                last_frame.time_on.total_seconds() * 1e9,
                 "",
                 f_num,  # count
                 0,
                 last_frame.temp_c,
                 last_frame.last_ffc_temp_c,
-                last_frame.last_ffc_time,
+                last_frame.last_ffc_time.total_seconds() * 1e9,
                 last_frame.background_frame,
             ),
             json.dumps(track_meta),
