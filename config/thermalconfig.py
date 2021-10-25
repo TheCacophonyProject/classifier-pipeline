@@ -102,8 +102,8 @@ class RecorderConfig:
     @classmethod
     def load(cls, recorder, window):
         return cls(
-            min_secs=recorder.get("min-secs", 2),
-            max_secs=recorder.get("max-secs", 10),
+            min_secs=recorder.get("min-secs", 10),
+            max_secs=recorder.get("max-secs", 600),
             preview_secs=recorder.get("preview-secs", 5),
             rec_window=TimeWindow(
                 RelAbsTime(window.get("start-recording"), default_offset=30 * 60),

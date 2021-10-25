@@ -184,7 +184,7 @@ def handle_connection(connection, config, thermal_config):
                     )
                 )
                 process_queue.put(SKIP_SIGNAL)
-            elif read < 0:
+            elif read < 100:
                 process_queue.put(SKIP_SIGNAL)
             else:
                 process_queue.put(frame)
