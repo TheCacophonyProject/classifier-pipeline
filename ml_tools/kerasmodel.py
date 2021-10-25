@@ -150,7 +150,16 @@ class KerasModel:
             )
         elif pretrained_model == "efficientnetb0":
             return (
-                tf.keras.applications.EfficientNetB5(
+                tf.keras.applications.EfficientNetB0(
+                    weights=weights,
+                    include_top=False,
+                    input_shape=input_shape,
+                ),
+                None,
+            )
+        elif pretrained_model == "efficientnetb1":
+            return (
+                tf.keras.applications.EfficientNetB1(
                     weights=weights,
                     include_top=False,
                     input_shape=input_shape,
@@ -387,7 +396,6 @@ class KerasModel:
         os.makedirs(self.log_base, exist_ok=True)
         self.log_dir = os.path.join(self.log_base, run_name)
         os.makedirs(self.log_base, exist_ok=True)
-
         if not self.model:
             self.build_model(
                 dense_sizes=self.params.dense_sizes,

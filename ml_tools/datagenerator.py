@@ -569,29 +569,37 @@ def preloader(
             start = time.time()
             while len(next_load) > 0:
                 segments = next_load[:batch_size]
-                segment_data = [None] * len(segments)
+                segment_data = []
                 for i, seg in enumerate(segments):
-                    segment_data[i] = (seg[1], seg[2], segment_db[seg[0]])
+                    segment_data.append((seg[1], seg[2], segment_db[seg[0]]))
                     segment_db[seg[0]] = None
-                data.append(segment_data)
-                next_load = next_load[batch_size:]
-            logger.debug(
-                "processing %s mem %s",
-                len(data),
-                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-            )
-            tracemalloc.start()
-            snapshot1 = tracemalloc.take_snapshot()
-
-            if not use_pool:
-                for segment_data in data:
+                if not use_pool:
                     preprocessed = loadbatch(
                         labels, segment_data, params, label_mapping, logger
                     )
                     put_with_timeout(train_queue, preprocessed, 10, "preloader")
                     # train_queue.append(preprocessed)
                     item_c += 1
-            else:
+                else:
+                    data.append(segment_data)
+                next_load = next_load[batch_size:]
+            logger.debug(
+                "processing %s mem %s",
+                len(data),
+                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            )
+            # tracemalloc.start()
+            # snapshot1 = tracemalloc.take_snapshot()
+
+            #     for segment_data in data:
+            #         preprocessed = loadbatch(
+            #             labels, segment_data, params, label_mapping, logger
+            #         )
+            #         put_with_timeout(train_queue, preprocessed, 10, "preloader")
+            #         # train_queue.append(preprocessed)
+            #         item_c += 1
+            # else:
+            if use_pool:
 
                 with ProcessPoolExecutor(
                     max_workers=processes,
@@ -617,12 +625,12 @@ def preloader(
                 loaded_up_to,
                 time.time() - start,
             )
-            snapshot2 = tracemalloc.take_snapshot()
-            top_stats = snapshot2.compare_to(snapshot1, "lineno")
+            # snapshot2 = tracemalloc.take_snapshot()
+            # top_stats = snapshot2.compare_to(snapshot1, "lineno")
 
-            logger.info("[ Top 10 differences ]")
-            for stat in top_stats[:10]:
-                logger.info("%s", stat)
+            # logger.info("[ Top 10 differences ]")
+            # for stat in top_stats[:10]:
+            #     logger.info("%s", stat)
             total += 1
             while item_c > 0:
                 logger.info(

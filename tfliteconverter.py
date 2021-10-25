@@ -5,9 +5,7 @@ import numpy as np
 import shutil
 import tensorflow as tf
 from config.config import Config
-from ml_tools.dataset import dataset_db_path
 import pickle
-from model_crnn import ModelCRNN_HQ
 
 MODEL_DIR = "../cptv-download/train/checkpoints"
 MODEL_NAME = "training-most-recent.sav"
@@ -159,34 +157,11 @@ def convert_model(args):
     print("converting to tflite: ", os.path.join(args.model_dir, SAVED_DIR))
 
     model = tf.keras.models.load_model(args.model_dir)
+    model.summary()
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     tflite_model = converter.convert()
     open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
     return
-    model = tf.saved_model.load(
-        export_dir=os.path.join(args.model_dir, SAVED_DIR), tags=None
-    )
-    concrete_func = model.signatures[tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-
-    inputs = concrete_func.inputs[:2]
-    # gets input shape and the order of the inputs as it seems to be random
-    for i, val in enumerate(inputs):
-        input_map[val.name] = (i, val.shape)
-    concrete_func.inputs[input_map["X:0"][0]].set_shape([1, 1, 5, 48, 48])
-
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
-
-    # be good to get this going but throws error
-    #         return _tensorflow_wrap_interpreter_wrapper.InterpreterWrapper_AllocateTensors(self)
-    # RuntimeError: tensorflow/lite/kernels/maximum_minimum.cc:54 op_context.input1->type != op_context.input2->type (9 != 1)Node number 15 (MINIMUM) failed to prepare
-    # converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    # converter.representative_dataset = representative_dataset_gen
-
-    converter.post_training_quantize = True
-    converter.experimental_new_converter = True
-    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
-    tflite_model = converter.convert()
-    open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
 
 
 def parse_args():
