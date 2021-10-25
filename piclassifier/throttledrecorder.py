@@ -34,6 +34,7 @@ class ThrottledRecorder(Recorder):
         self.recorder.process_frame(movement_detected, cptv_frame)
         self.take_token()
         if self.throttling:
+            logging.info("Throttling recording")
             self.stop_recording()
 
     def update_tokens(self):
@@ -74,6 +75,7 @@ class ThrottledRecorder(Recorder):
         self.tokens = max(self.tokens, self.bucket_size)
 
     def start_recording(self, background_frame, preview_frames, temp_thresh):
+        logging.debug("Attempting rec have %s tokens", self.tokens)
         self.update_tokens()
         self.last_motion = time.time()
         if self.throttling or self.tokens < self.min_recording:
