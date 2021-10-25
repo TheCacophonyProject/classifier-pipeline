@@ -18,7 +18,7 @@ class Service(object):
 
             </method>
             <method name='CameraInfo'>
-                <arg type='a{ss}' name='response' direction='out'/>
+                <arg type='a{si}' name='response' direction='out'/>
             </method>
         </interface>
     </node>
@@ -32,7 +32,11 @@ class Service(object):
         logging.debug("Serving headers %s", self.headers)
         headers = self.headers.as_dict()
         for k, v in headers.items():
-            headers[k] = "{}".format(v)
+            try:
+                headers[k] = int(v)
+            except:
+                pass
+        headers["FPS"] = headers.get("fps", 9)
         logging.debug("Sending headers %s", headers)
         return headers
 
