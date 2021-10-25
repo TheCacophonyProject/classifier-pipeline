@@ -1,5 +1,6 @@
 import threading
 import logging
+import json
 from pydbus import SystemBus
 from gi.repository import GLib
 
@@ -45,7 +46,7 @@ class Service(object):
         last_frame, track_meta, f_num = self.get_frame()
         logging.debug("Frame requested %s latest frame %s", last_num, f_num)
 
-        if f_num == last_num:
+        if f_num == last_num or last_frame is None:
             return None
         return (
             last_frame.pix,
@@ -59,7 +60,7 @@ class Service(object):
                 last_frame.last_ffc_time,
                 last_frame.background_frame,
             ),
-            json.dumps(f_num),
+            json.dumps(track_meta),
         )
 
 
