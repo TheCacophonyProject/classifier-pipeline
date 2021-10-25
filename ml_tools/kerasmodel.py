@@ -5,7 +5,6 @@ import tensorflow as tf
 import pickle
 import logging
 from tensorboard.plugins.hparams import api as hp
-import tensorflow_addons as tfa
 import os
 import numpy as np
 import os
@@ -701,6 +700,8 @@ class KerasModel(Interpreter):
         plt.savefig(filename, format="png")
 
     def f1(self, batch_y, pred_raw):
+        import tensorflow_addons as tfa
+
         one_hot_y = tf.keras.utils.to_categorical(batch_y, num_classes=len(self.labels))
         metric = tfa.metrics.F1Score(num_classes=len(self.labels))
         metric.update_state(one_hot_y, pred_raw)
