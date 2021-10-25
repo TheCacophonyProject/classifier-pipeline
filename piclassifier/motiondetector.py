@@ -213,7 +213,7 @@ class MotionDetector:
         return False
 
     def get_recent_frame(self):
-        return self.thermal_window.current.pix.copy()
+        return self.thermal_window.current
 
     def can_record(self):
         return self.rec_window.inside_window()

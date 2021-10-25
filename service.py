@@ -43,7 +43,7 @@ class Service(object):
 
     def TakeSnapshot(self, last_num):
         last_frame, track_meta, f_num = self.get_frame()
-        logging.debug("Frame requested %s latest frame %s", last_frame, f_num)
+        logging.debug("Frame requested %s latest frame %s", last_num, f_num)
 
         if f_num == last_num:
             return None

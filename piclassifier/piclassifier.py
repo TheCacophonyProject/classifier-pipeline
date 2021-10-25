@@ -386,7 +386,7 @@ class PiClassifier(Processor):
 
     def get_recent_frame(self):
         if self.clip:
-            last_frame = clip.frame_buffer.get_last_frame()
+            last_frame = self.motion_detector.get_recent_frame()
             if last_frame is None:
                 return None
             track_meta = []
@@ -394,7 +394,7 @@ class PiClassifier(Processor):
             for track in tracks:
                 track_meta.append(track.get_metadata(self.predictions))
 
-            return last_frame, track_meta, last_frame.frame_number
+            return last_frame, track_meta, self.motion_detector.num_frames
         else:
             return (
                 self.motion_detector.get_recent_frame(),
