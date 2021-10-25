@@ -39,6 +39,9 @@ class Service(object):
                 headers[k] = 0
                 pass
         headers["FPS"] = headers.get("fps", 9)
+        headers["Res_X"] = headers.get("res_x", 160)
+        headers["Res_Y"] = headers.get("res_y", 120)
+
         logging.debug("Sending headers %s", headers)
         return headers
 
