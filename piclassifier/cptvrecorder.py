@@ -12,8 +12,6 @@ from piclassifier.recorder import Recorder
 
 CPTV_TEMP_EXT = ".cptv.temp"
 
-CACHE_COUNT = 20
-
 
 class CPTVRecorder(Recorder):
     def __init__(self, thermal_config, headers, on_recording_stopping=None):
@@ -31,7 +29,6 @@ class CPTVRecorder(Recorder):
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.write_until = 0
         self.rec_time = 0
-        self.cache_frames = []
         self.on_recording_stopping = on_recording_stopping
 
     def force_stop(self):
@@ -101,19 +98,12 @@ class CPTVRecorder(Recorder):
 
     def write_frame(self, cptv_frame):
         start = time.time()
-        self.cache_frames.append(cptv_frame)
-        if len(self.cache_frames) == CACHE_COUNT:
-            for frame in self.cache_frames:
-                self.writer.write_frame(frame)
-            self.cache_frames = []
+        self.writer.write_frame(frame)
         self.frames += 1
         self.rec_time += time.time() - start
 
     def stop_recording(self):
         start = time.time()
-        for frame in self.cache_frames:
-            self.writer.write_frame(frame)
-        self.cache_frames = []
         self.rec_time += time.time() - start
         self.recording = False
         logging.info(
