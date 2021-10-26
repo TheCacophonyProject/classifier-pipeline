@@ -157,7 +157,7 @@ predictions = None
 class PiClassifier(Processor):
     """Classifies frames from leptond"""
 
-    NUM_CONCURRENT_TRACKS = 2
+    NUM_CONCURRENT_TRACKS = 1
     DEBUG_EVERY = 100
     MAX_CONSEC = 1
     # after every MAX_CONSEC frames skip this many frames

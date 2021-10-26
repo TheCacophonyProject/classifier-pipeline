@@ -250,7 +250,7 @@ class MotionDetector:
                 logging.debug("{} MotionDetector FFC".format(self.num_frames))
                 self.movement_detected = False
                 self.clipped_window.oldest_index = self.clipped_window.last_index
-            elif self.processed != 0:
+            elif self.processed > self.clipped_window.size * 2:
                 self.movement_detected = self.detect(
                     clipped_frame, cptv_frame.received_at
                 )
