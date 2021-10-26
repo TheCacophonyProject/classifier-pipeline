@@ -111,7 +111,7 @@ class CPTVRecorder(Recorder):
         self.rec_time += time.time() - start
         self.recording = False
         logging.info(
-            "recording ended %s frames %s last frame received %s time recording %s per frame ",
+            "recording ended %s frames %s time recording %s per frame ",
             self.frames,
             self.rec_time,
             self.rec_time / self.frames,
