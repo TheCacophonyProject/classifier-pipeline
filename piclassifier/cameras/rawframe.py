@@ -11,6 +11,7 @@ class RawFrame(ABC):
         self.res_x = headers.res_x
         self.res_y = headers.res_y
         self.img_dtype = np.dtype("uint{}".format(headers.pixel_bits))
+        self.received_at = None
 
     def parse(self, data):
         telemetry = self.parse_telemetry(data[: self.get_telemetry_size()])

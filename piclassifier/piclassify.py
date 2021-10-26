@@ -173,6 +173,7 @@ def handle_connection(connection, config, thermal_config):
                 pass
             read += 1
             frame = raw_frame.parse(data)
+            frame.received_at = time.time()
             cropped_frame = crop_rectangle.subimage(frame.pix)
             t_max = np.amax(cropped_frame)
             t_min = np.amin(cropped_frame)

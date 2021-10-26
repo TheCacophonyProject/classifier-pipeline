@@ -169,7 +169,7 @@ class MotionDetector:
         else:
             self.temp_thresh = self.config.temp_thresh
 
-    def detect(self, clipped_frame):
+    def detect(self, clipped_frame, received_at=None):
         oldest = self.clipped_window.oldest
         delta_frame = clipped_frame - oldest
 
@@ -198,16 +198,22 @@ class MotionDetector:
         if diff > self.config.count_thresh:
             if not self.movement_detected:
                 logging.debug(
-                    "{} MotionDetector motion detected thresh {} count {}".format(
-                        timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
+                    "{} MotionDetector motion detected thresh {} count {} received at %s".format(
+                        timedelta(seconds=self.num_frames / 9),
+                        self.temp_thresh,
+                        diff,
+                        received_at,
                     )
                 )
             return True
 
         if self.movement_detected:
             logging.debug(
-                "{} MotionDetector motion stopped thresh {} count {}".format(
-                    timedelta(seconds=self.num_frames / 9), self.temp_thresh, diff
+                "{} MotionDetector motion stopped thresh {} count {} received at %s".format(
+                    timedelta(seconds=self.num_frames / 9),
+                    self.temp_thresh,
+                    diff,
+                    received_at,
                 )
             )
         return False
@@ -245,7 +251,9 @@ class MotionDetector:
                 self.movement_detected = False
                 self.clipped_window.oldest_index = self.clipped_window.last_index
             elif self.processed != 0:
-                self.movement_detected = self.detect(clipped_frame)
+                self.movement_detected = self.detect(
+                    clipped_frame, cptv_frame.received_at
+                )
             self.processed += 1
         else:
             self.thermal_window.update_current_frame(cptv_frame)

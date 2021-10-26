@@ -427,6 +427,9 @@ class PiClassifier(Processor):
                 self.motion_detector.temp_thresh,
             )
             if recording:
+                logging.info(
+                    "Recoridng started from frame at %s", lepton_frame.received_at
+                )
                 self.new_clip()
         if self.recorder.recording:
             t_start = time.time()
