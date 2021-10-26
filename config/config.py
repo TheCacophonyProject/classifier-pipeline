@@ -60,9 +60,7 @@ class Config(DefaultConfig):
         # Configuration from "tracking" section is used in
         # "classify_tracking" when not specified.
         deep_copy_map_if_key_not_exist(default.as_dict(), raw)
-        base_folder = raw.get("base_data_folder")
-        if base_folder is None:
-            raise KeyError("base_data_folder not found in configuration file")
+        base_folder = raw.get("base_data_folder", ".")
         base_folder = path.expanduser(base_folder)
 
         return cls(

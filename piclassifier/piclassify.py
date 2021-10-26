@@ -177,7 +177,7 @@ def handle_connection(connection, config, thermal_config):
             t_max = np.amax(cropped_frame)
             t_min = np.amin(cropped_frame)
             # seems to happen if pi is working hard
-            if t_max > 10000 or t_min == 0:
+            if t_min == 0:
                 logging.warning(
                     "received frame has odd values skipping thermal frame max {} thermal frame min {} cpu % {} memory % {}".format(
                         t_max, t_min, psutil.cpu_percent(), psutil.virtual_memory()[2]
