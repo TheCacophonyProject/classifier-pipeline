@@ -198,7 +198,7 @@ class MotionDetector:
         if diff > self.config.count_thresh:
             if not self.movement_detected:
                 logging.debug(
-                    "{} MotionDetector motion detected thresh {} count {} received at %s".format(
+                    "{} MotionDetector motion detected thresh {} count {} received at {}".format(
                         timedelta(seconds=self.num_frames / 9),
                         self.temp_thresh,
                         diff,
@@ -209,7 +209,7 @@ class MotionDetector:
 
         if self.movement_detected:
             logging.debug(
-                "{} MotionDetector motion stopped thresh {} count {} received at %s".format(
+                "{} MotionDetector motion stopped thresh {} count {} received at {}".format(
                     timedelta(seconds=self.num_frames / 9),
                     self.temp_thresh,
                     diff,
