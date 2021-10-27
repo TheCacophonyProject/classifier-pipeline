@@ -4,6 +4,7 @@ import json
 import numpy as np
 from pydbus import SystemBus
 from gi.repository import GLib
+from ml_tools.tools import CustomJSONEncoder
 
 SNAPSHOT_NAME = "still.png"
 DBUS_NAME = "org.cacophony.thermalrecorder"
@@ -64,7 +65,7 @@ class Service(object):
                 last_frame.last_ffc_time.total_seconds() * 1e9,
                 last_frame.background_frame,
             ),
-            json.dumps(track_meta),
+            json.dumps(track_meta, cls=tools.CustomJSONEncoder),
         )
 
 
