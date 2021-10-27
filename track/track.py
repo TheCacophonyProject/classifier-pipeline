@@ -511,7 +511,7 @@ class Track:
 
     def start_and_end_in_secs(self):
         if self.end_s is None:
-            self.end_s = (self.end_frame + 1) / self.frames_per_second
+            self.end_s = (self.end_frame + 1) / self.fps
 
         return (self.start_s, self.end_s)
 

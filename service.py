@@ -1,6 +1,7 @@
 import threading
 import logging
 import json
+import numpy as np
 from pydbus import SystemBus
 from gi.repository import GLib
 

@@ -390,9 +390,11 @@ class PiClassifier(Processor):
             if last_frame is None:
                 return None
             track_meta = []
-            tracks = clip.active_tracks()
+            tracks = clip.active_tracks
             for track in tracks:
-                track_meta.append(track.get_metadata(self.predictions))
+                track_meta.append(
+                    track.get_metadata({self.predictions.model.id: self.predictions})
+                )
 
             return last_frame, track_meta, self.motion_detector.num_frames
         else:
