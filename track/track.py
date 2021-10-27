@@ -531,6 +531,8 @@ class Track:
         if predictions_per_model:
             for model_id, predictions in predictions_per_model.items():
                 prediction = predictions.prediction_for(self.get_id())
+                if prediction is None:
+                    continue
                 prediciont_meta = prediction.get_metadata()
                 prediciont_meta["model_id"] = model_id
                 prediction_info.append(prediciont_meta)

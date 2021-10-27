@@ -52,7 +52,7 @@ class Service(object):
         logging.debug("Frame requested %s latest frame %s", last_num, f_num)
 
         if f_num == last_num or last_frame is None:
-            return (np.empty((0, 0)), (), "")
+            return (np.empty((0, 0)), (0, "", 0, 0, 0, 0, 0, False), "")
         return (
             last_frame.pix,
             (
@@ -65,7 +65,7 @@ class Service(object):
                 last_frame.last_ffc_time.total_seconds() * 1e9,
                 last_frame.background_frame,
             ),
-            json.dumps(track_meta, cls=tools.CustomJSONEncoder),
+            json.dumps(track_meta, cls=CustomJSONEncoder),
         )
 
 
