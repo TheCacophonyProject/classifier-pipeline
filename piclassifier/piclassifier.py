@@ -395,8 +395,8 @@ class PiClassifier(Processor):
                 pred = None
                 if self.predictions:
                     pred = {self.predictions.model.id: self.predictions}
-                    meta = track.get_metadata(pred)
-                    meta["positions"] = meta["positions"][-1:]
+                meta = track.get_metadata(pred)
+                meta["positions"] = meta["positions"][-1:]
                 track_meta.append(meta)
 
             return last_frame, track_meta, self.motion_detector.num_frames
