@@ -77,9 +77,12 @@ class CPTVRecorder(Recorder):
         self.motion.temp_thresh = temp_thresh
         self.writer.motion_config = yaml.dump(self.motion.as_dict()).encode()[:255]
         self.motion.temp_thresh = default_thresh
-        self.writer.model = self.headers.model.encode()
-        self.writer.brand = self.headers.brand.encode()
-        self.writer.firmware = self.headers.firmware.encode()
+        if self.headers.model:
+            self.writer.model = self.headers.model.encode()
+        if self.headers.brand:
+            self.writer.brand = self.headers.brand.encode()
+        if self.headers.firmware:
+            self.writer.firmware = self.headers.firmware.encode()
         self.writer.camera_serial = self.headers.serial
         f = Frame(background_frame, timedelta(), timedelta(), 0, 0)
 

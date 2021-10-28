@@ -1,9 +1,9 @@
-tensorflow~=2.5.0
+tensorflow~=1.14
 matplotlib~=3.0
 pytz
 cptv~=1.5.2
 opencv-contrib-python-headless~=4.5.1.48
-numpy~=1.19.2
+numpy~=1.21.3
 scipy~=1.4.1
 python-dateutil
 sklearn
@@ -19,3 +19,6 @@ portalocker~=1.5.2
 toml~=0.10.0
 cacophonyapi
 psutil~=5.6.7
+#used when running on the pi (Still under construction)
+PyGObject~=3.34.0
+dbus-python
