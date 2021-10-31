@@ -50,7 +50,7 @@ class ThrottlerConfig:
             bucket_size=RelAbsTime(
                 throttler.get("bucket_size"), default_offset=10 * 60
             ).offset_s,
-            activate=throttler.get("activate", False),
+            activate=throttler.get("activate", True),
             no_motion=throttler.get("no_motion", 5 * 60),
             max_throttling_minutes=throttler.get("max_throttling_minutes", 60),
         )
