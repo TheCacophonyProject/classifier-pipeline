@@ -439,7 +439,11 @@ class PiClassifier(Processor):
                 logging.info(
                     "Recoridng started from frame at %s", lepton_frame.received_at
                 )
+                t_start = time.time()
+
                 self.new_clip()
+                self.tracking_time += time.time() - t_start
+
         if self.recorder.recording:
             t_start = time.time()
             self.track_extractor.process_frame(
