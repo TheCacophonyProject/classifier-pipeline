@@ -105,11 +105,12 @@ def parse_cptv(cptv_file, config, thermal_config):
         for frame in reader:
             if frame.background_frame:
                 pi_classifier.motion_detector.background = frame.pix
+                continue
             pi_classifier.process_frame(frame)
         pi_classifier.disconnected()
 
 
-def get_processor(process_queue, config, thermal_config, headers, detect_after=None):
+def get_processor(process_queue, config, thermal_config, headers):
     p_processor = multiprocessing.Process(
         target=run_classifier,
         args=(
@@ -118,7 +119,6 @@ def get_processor(process_queue, config, thermal_config, headers, detect_after=N
             thermal_config,
             headers,
             thermal_config.motion.run_classifier,
-            detect_after,
         ),
     )
     return p_processor

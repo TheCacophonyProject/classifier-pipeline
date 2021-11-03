@@ -91,10 +91,10 @@ class MotionDetector:
         edge = self.config.edge_pixels
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
-        self.clipped_window = SlidingWindow(
-            (self.compare_gap, headers.res_y - edge * 2, headers.res_x - edge * 2),
-            np.int32,
-        )
+        # self.clipped_window = SlidingWindow(
+        #     (self.compare_gap, headers.res_y - edge * 2, headers.res_x - edge * 2),
+        #     np.int32,
+        # )
         self.diff_window = SlidingWindow(
             (self.compare_gap, headers.res_y - edge * 2, headers.res_x - edge * 2),
             np.int32,
@@ -133,7 +133,7 @@ class MotionDetector:
 
         self.ffc_affected = False
         if detect_after is None:
-            self.detect_after = self.clipped_window.size * 2
+            self.detect_after = self.thermal_window.size * 2
         else:
             self.detect_after = detect_after
 
@@ -173,9 +173,9 @@ class MotionDetector:
             self.temp_thresh = self.config.temp_thresh
 
     def detect(self, clipped_frame, received_at=None):
-        oldest = self.clipped_window.oldest
-        # oldest = np.clip(oldest, a_min=self.temp_thresh, a_max=None)
-        # clipped_frame = np.clip(clipped_frame, a_min=self.temp_thresh, a_max=None)
+        oldest = self.crop_rectangle.subimage(self.thermal_window.oldest.pix)
+        oldest = np.clip(oldest, a_min=self.temp_thresh, a_max=None)
+        clipped_frame = np.clip(clipped_frame, a_min=self.temp_thresh, a_max=None)
         delta_frame = clipped_frame - oldest
         if not self.config.warmer_only:
             delta_frame = abs(delta_frame)
@@ -227,31 +227,32 @@ class MotionDetector:
         return self.rec_window.inside_window()
 
     def disconnected(self):
-        self.clipped_window.reset()
+        # self.clipped_window.reset()
         self.thermal_window.reset()
         self.diff_window.reset()
         self.processed = 0
 
     def process_frame(self, cptv_frame, force_process=False):
         if self.can_record() or force_process:
+            self.thermal_window.add(cptv_frame)
             cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
             test_crop = cropped_frame.copy()
             prev_ffc = self.ffc_affected
             self.ffc_affected = is_affected_by_ffc(cptv_frame)
+            self.thermal_window.add(cptv_frame)
             if not self.ffc_affected:
-                self.thermal_window.add(cptv_frame)
                 if self.background is None:
                     self.background = cptv_frame.pix
                     self.last_background_change = self.processed
                 else:
                     self.calc_temp_thresh(cropped_frame)
-            clipped_frame = np.clip(cropped_frame, a_min=self.temp_thresh, a_max=None)
-            self.clipped_window.add(clipped_frame)
+            # clipped_frame = np.clip(cropped_frame, a_min=self.temp_thresh, a_max=None)
+            # self.clipped_window.add(clipped_frame)
 
             if self.ffc_affected or prev_ffc:
                 logging.debug("{} MotionDetector FFC".format(self.num_frames))
                 self.movement_detected = False
-                self.clipped_window.oldest_index = self.clipped_window.last_index
+                # self.clipped_window.oldest_index = self.clipped_window.last_index
             elif self.processed > self.detect_after:
                 movement = self.detect(cropped_frame)
                 if movement:

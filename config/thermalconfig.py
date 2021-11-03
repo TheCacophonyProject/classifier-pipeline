@@ -59,6 +59,7 @@ class ThrottlerConfig:
         return attr.asdict(self)
 
 
+# TODO CHANGE defaults BASED ON CAMERA
 @attr.s
 class MotionConfig:
     temp_thresh = attr.ib()
