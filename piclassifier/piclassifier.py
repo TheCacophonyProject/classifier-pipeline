@@ -182,7 +182,7 @@ class PiClassifier(Processor):
         self.tracking_time = 0
         self.identify_time = 0
         self.total_time = 0
-
+        self.rec_time = 0
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
         self.crop_rectangle = tools.Rectangle(
@@ -428,11 +428,13 @@ class PiClassifier(Processor):
 
         if not self.recorder.recording and self.motion_detector.movement_detected:
             background = self.motion_detector.set_background_edges()
+            s_r = time.time()
             recording = self.recorder.start_recording(
                 self.motion_detector.background,
                 self.motion_detector.thermal_window.get_frames(),
                 self.motion_detector.temp_thresh,
             )
+            self.rec_time += time.time() - s_r
             if recording:
                 logging.info(
                     "Recoridng started from frame at %s", lepton_frame.received_at
@@ -444,9 +446,13 @@ class PiClassifier(Processor):
                 self.clip, lepton_frame.pix, self.motion_detector.ffc_affected
             )
             self.tracking_time += time.time() - t_start
+            s_r = time.time()
+
             self.recorder.process_frame(
                 self.motion_detector.movement_detected, lepton_frame
             )
+            self.rec_time += time.time() - s_r
+
             if self.motion_detector.ffc_affected or self.clip.on_preview():
                 self.skip_classifying = PiClassifier.SKIP_FRAMES
                 self.classified_consec = 0
@@ -476,10 +482,11 @@ class PiClassifier(Processor):
             and self.frame_num % PiClassifier.DEBUG_EVERY == 0
         ):
             logging.info(
-                "tracking {}% process {}%  identify {}% fps {}/sec  cpu % {} memory % {}".format(
+                "tracking {}% process {}%  identify {}% rec{}%s fps {}/sec  cpu % {} memory % {}".format(
                     round(100 * self.tracking_time / self.total_time, 3),
                     round(100 * self.process_time / self.total_time, 3),
                     round(100 * self.identify_time / self.total_time, 3),
+                    round(100 * self.rec_time / self.total_time, 3),
                     round(self.total_time / PiClassifier.DEBUG_EVERY, 2),
                     psutil.cpu_percent(),
                     psutil.virtual_memory()[2],
@@ -490,6 +497,7 @@ class PiClassifier(Processor):
             self.identify_time = 0
             self.motion_detector.rec_time = 0
             self.total_time = 0
+            self.rec_time = 0
 
     def create_mp4(self):
         previewer = Previewer(self.config, "classified")
