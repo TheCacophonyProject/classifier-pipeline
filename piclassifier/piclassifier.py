@@ -181,6 +181,7 @@ class PiClassifier(Processor):
         self.process_time = 0
         self.tracking_time = 0
         self.identify_time = 0
+        self.total_time = 0
 
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
@@ -214,6 +215,7 @@ class PiClassifier(Processor):
         self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)
+
         if self.classify:
             model = config.classify.models[0]
             self.classifier = get_classifier(model)
@@ -468,19 +470,17 @@ class PiClassifier(Processor):
 
         self.skip_classifying -= 1
         self.frame_num += 1
-        end = time.time()
-        timetaken = end - start
+        self.total_time += time.time() - start
         if (
             self.motion_detector.can_record()
             and self.frame_num % PiClassifier.DEBUG_EVERY == 0
         ):
             logging.info(
-                "tracking {} process {}  identify {} fps {}/sec time to process {}ms cpu % {} memory % {}".format(
-                    round(self.tracking_time, 3),
-                    round(self.process_time, 3),
-                    round(self.identify_time, 3),
-                    round(1 / timetaken, 2),
-                    round(timetaken * 1000, 2),
+                "tracking {}% process {}%  identify {}% fps {}/sec  cpu % {} memory % {}".format(
+                    round(100 * self.tracking_time / self.total_time, 3),
+                    round(100 * self.process_time / self.total_time, 3),
+                    round(100 * self.identify_time / self.total_time, 3),
+                    round(self.total_time / PiClassifier.DEBUG_EVERY, 2),
                     psutil.cpu_percent(),
                     psutil.virtual_memory()[2],
                 )
@@ -489,6 +489,7 @@ class PiClassifier(Processor):
             self.process_time = 0
             self.identify_time = 0
             self.motion_detector.rec_time = 0
+            self.total_time = 0
 
     def create_mp4(self):
         previewer = Previewer(self.config, "classified")

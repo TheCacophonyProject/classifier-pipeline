@@ -7,8 +7,9 @@ from cptv import CPTVWriter
 from cptv import Frame
 from datetime import timedelta
 import time
-
+import psutil
 from piclassifier.recorder import Recorder
+import tracemalloc
 
 CPTV_TEMP_EXT = ".cptv.temp"
 
@@ -60,6 +61,10 @@ class CPTVRecorder(Recorder):
         return self.frames > self.write_until
 
     def start_recording(self, background_frame, preview_frames, temp_thresh):
+        tracemalloc.start()
+
+        self.snapshot = tracemalloc.take_snapshot()
+
         start = time.time()
         if self.recording:
             logging.warn("Already recording, stop recording first")
@@ -103,6 +108,12 @@ class CPTVRecorder(Recorder):
         self.write_until = self.frames + self.min_frames
 
         logging.info("recording %s started temp_thresh: %d", self.filename, temp_thresh)
+
+        logging.info(
+            "%s memory",
+            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+        )
+
         self.rec_time += time.time() - start
         return True
 
@@ -111,6 +122,11 @@ class CPTVRecorder(Recorder):
         self.writer.write_frame(cptv_frame)
         self.frames += 1
         self.rec_time += time.time() - start
+        self.writer.fileobj.flush()
+        logging.info(
+            "%s memory on write",
+            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+        )
 
     def stop_recording(self):
         start = time.time()
@@ -122,6 +138,17 @@ class CPTVRecorder(Recorder):
             self.rec_time,
             self.rec_time / self.frames,
         )
+        logging.info(
+            "%s memory on stop",
+            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+        )
+        snapshot2 = tracemalloc.take_snapshot()
+
+        top_stats = snapshot2.compare_to(self.snapshot, "lineno")
+
+        print("[ Top 10 ]")
+        for stat in top_stats[:10]:
+            logging.info("Stats %s", stat)
         self.rec_time = 0
 
         self.write_until = 0
@@ -146,3 +173,37 @@ class CPTVRecorder(Recorder):
 
 def new_temp_name():
     return datetime.now().strftime("%Y%m%d.%H%M%S.%f" + CPTV_TEMP_EXT)
+
+
+def get_size(obj, name="base", seen=None, depth=0):
+    """Recursively finds size of objects"""
+    size = sys.getsizeof(obj)
+    if seen is None:
+        seen = set()
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+    # Important mark as seen *before* entering recursion to gracefully handle
+    # self-referential objects
+    seen.add(obj_id)
+    if attr.has(obj):
+        obj = attr.asdict(obj)
+        size += sum(
+            [get_size(v, f"{name}.{k}", seen, depth + 1) for k, v in obj.items()]
+        )
+        size += sum([get_size(k, f"{name}.{k}", seen, depth + 1) for k in obj.keys()])
+    if isinstance(obj, dict):
+        size += sum(
+            [get_size(v, f"{name}.{k}", seen, depth + 1) for k, v in obj.items()]
+        )
+        size += sum([get_size(k, f"{name}.{k}", seen, depth + 1) for k in obj.keys()])
+    elif hasattr(obj, "__dict__"):
+
+        size += get_size(obj.__dict__, f"{name}.dict", seen)
+    elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes, bytearray)):
+        # print("iter??")
+
+        size += sum([get_size(i, f"{name}.iter", seen, depth + 1) for i in obj])
+    # if size * 1e-6 > 0.1 and depth <= 1:
+    #     print(name, " size ", round(size * 1e-6, 2), "MB")
+    return size

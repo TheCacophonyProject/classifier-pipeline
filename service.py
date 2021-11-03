@@ -46,8 +46,14 @@ class Service(dbus.service.Object):
         out_signature="(aaq(xsiqddxb)s)",
     )
     def TakeSnapshot(self, last_num):
+        s = time.time()
         last_frame, track_meta, f_num = self.get_frame()
-        logging.debug("Frame requested %s latest frame %s", last_num, f_num)
+        logging.debug(
+            "Frame requested %s latest frame %s took %s",
+            last_num,
+            f_num,
+            time.time() - s,
+        )
 
         if f_num == last_num or last_frame is None:
             return (np.empty((0, 0)), (0, "", 0, 0, 0, 0, 0, False), "")
