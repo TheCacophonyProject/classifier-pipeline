@@ -47,10 +47,7 @@ class CPTVRecorder(Recorder):
             if movement_detected:
                 self.write_until = self.frames + self.min_frames
             elif self.has_minimum():
-                logging.debug(
-                    "Stopping recording with frame recevied at %s",
-                    cptv_frame.received_at,
-                )
+
                 self.stop_recording()
                 return
 
@@ -122,11 +119,6 @@ class CPTVRecorder(Recorder):
         self.writer.write_frame(cptv_frame)
         self.frames += 1
         self.rec_time += time.time() - start
-        self.writer.fileobj.flush()
-        logging.info(
-            "%s memory on write",
-            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-        )
 
     def stop_recording(self):
         start = time.time()

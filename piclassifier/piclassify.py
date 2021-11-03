@@ -54,7 +54,6 @@ def main():
 
     config = Config.load_from_file(args.config_file)
     thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
-
     if args.cptv:
         return parse_cptv(args.cptv, config, thermal_config)
 
@@ -96,18 +95,21 @@ def parse_cptv(cptv_file, config, thermal_config):
             model="",
             frame_size=reader.x_resolution * reader.y_resolution * 2,
             pixel_bits=16,
+            serial="",
+            firmware="",
         )
-        process_queue = multiprocessing.Queue()
 
-        p = get_processor(process_queue, config, thermal_config, headers)
-        p.start()
+        pi_classifier = PiClassifier(
+            config, thermal_config, headers, thermal_config.motion.run_classifier, 0
+        )
         for frame in reader:
-            process_queue.put(frame)
-        process_queue.put(STOP_SIGNAL)
-        p.join()
+            if frame.background_frame:
+                pi_classifier.motion_detector.background = frame.pix
+            pi_classifier.process_frame(frame)
+        pi_classifier.disconnected()
 
 
-def get_processor(process_queue, config, thermal_config, headers):
+def get_processor(process_queue, config, thermal_config, headers, detect_after=None):
     p_processor = multiprocessing.Process(
         target=run_classifier,
         args=(
@@ -116,6 +118,7 @@ def get_processor(process_queue, config, thermal_config, headers):
             thermal_config,
             headers,
             thermal_config.motion.run_classifier,
+            detect_after,
         ),
     )
     return p_processor

@@ -80,7 +80,7 @@ class MotionDetector:
     FFC_PERIOD = timedelta(seconds=9.9)
     BACKGROUND_WEIGHT_ADD = 0.1
 
-    def __init__(self, thermal_config, dynamic_thresh, headers):
+    def __init__(self, thermal_config, dynamic_thresh, headers, detect_after=None):
         self.headers = headers
         if headers.model.lower() == "lepton3.5":
             MotionDetector.BACKGROUND_WEIGHT_ADD = 1
@@ -124,7 +124,7 @@ class MotionDetector:
         self.sunrise = None
         self.sunset = None
         self.recording = False
-
+        self.triggered = 0
         if self.rec_window.use_sunrise_sunset():
             self.rec_window.set_location(
                 *self.location_config.get_lat_long(use_default=True),
@@ -132,6 +132,10 @@ class MotionDetector:
             )
 
         self.ffc_affected = False
+        if detect_after is None:
+            self.detect_after = self.clipped_window.size * 2
+        else:
+            self.detect_after = detect_after
 
     def calc_temp_thresh(self, cropped_thermal):
         edgeless_back = self.crop_rectangle.subimage(self.background)
@@ -149,7 +153,6 @@ class MotionDetector:
                 self.background_weight + MotionDetector.BACKGROUND_WEIGHT_ADD,
                 0,
             )
-
             back_changed = new_background != edgeless_back
             back_changed = np.any(back_changed == True)
             if back_changed:
@@ -171,8 +174,9 @@ class MotionDetector:
 
     def detect(self, clipped_frame, received_at=None):
         oldest = self.clipped_window.oldest
+        # oldest = np.clip(oldest, a_min=self.temp_thresh, a_max=None)
+        # clipped_frame = np.clip(clipped_frame, a_min=self.temp_thresh, a_max=None)
         delta_frame = clipped_frame - oldest
-
         if not self.config.warmer_only:
             delta_frame = abs(delta_frame)
         if self.config.one_diff_only:
@@ -194,26 +198,24 @@ class MotionDetector:
                 diff = 0
 
         self.diff_window.add(delta_frame)
-
         if diff > self.config.count_thresh:
             if not self.movement_detected:
                 logging.debug(
-                    "{} MotionDetector motion detected thresh {} count {} received at {}".format(
+                    "{} MotionDetector motion detected {} thresh {} count {} ".format(
                         timedelta(seconds=self.num_frames / 9),
+                        self.processed,
                         self.temp_thresh,
                         diff,
-                        received_at,
                     )
                 )
             return True
 
         if self.movement_detected:
             logging.debug(
-                "{} MotionDetector motion stopped thresh {} count {} received at {}".format(
+                "{} MotionDetector motion stopped thresh {} count {}".format(
                     timedelta(seconds=self.num_frames / 9),
                     self.temp_thresh,
                     diff,
-                    received_at,
                 )
             )
         return False
@@ -250,10 +252,16 @@ class MotionDetector:
                 logging.debug("{} MotionDetector FFC".format(self.num_frames))
                 self.movement_detected = False
                 self.clipped_window.oldest_index = self.clipped_window.last_index
-            elif self.processed > self.clipped_window.size * 2:
-                self.movement_detected = self.detect(
-                    clipped_frame, cptv_frame.received_at
-                )
+            elif self.processed > self.detect_after:
+                movement = self.detect(cropped_frame)
+                if movement:
+                    self.triggered += 1
+                else:
+                    self.triggered = 0
+                if self.triggered >= self.config.trigger_frames:
+                    self.movement_detected = True
+                else:
+                    self.movement_detected = False
             self.processed += 1
         else:
             self.thermal_window.update_current_frame(cptv_frame)

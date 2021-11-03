@@ -132,10 +132,14 @@ def get_classifier(model):
     return classifier
 
 
-def run_classifier(frame_queue, config, thermal_config, headers, classify=True):
+def run_classifier(
+    frame_queue, config, thermal_config, headers, classify=True, detect_after=None
+):
     init_logging()
     try:
-        pi_classifier = PiClassifier(config, thermal_config, headers, classify)
+        pi_classifier = PiClassifier(
+            config, thermal_config, headers, classify, detect_after
+        )
         while True:
             frame = frame_queue.get()
             if isinstance(frame, str):
@@ -164,7 +168,7 @@ class PiClassifier(Processor):
     # this gives the cpu a break
     SKIP_FRAMES = 10
 
-    def __init__(self, config, thermal_config, headers, classify):
+    def __init__(self, config, thermal_config, headers, classify, detect_after=None):
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
         super().__init__()
@@ -211,6 +215,7 @@ class PiClassifier(Processor):
             thermal_config,
             self.config.tracking.motion.dynamic_thresh,
             headers,
+            detect_after=detect_after,
         )
         self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
@@ -436,9 +441,7 @@ class PiClassifier(Processor):
             )
             self.rec_time += time.time() - s_r
             if recording:
-                logging.info(
-                    "Recoridng started from frame at %s", lepton_frame.received_at
-                )
+
                 t_start = time.time()
 
                 self.new_clip()
