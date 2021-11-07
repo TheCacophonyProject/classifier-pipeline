@@ -569,11 +569,11 @@ def get_max_distance_change(track):
     pred_vel = track.predicted_velocity()
     pred_distance = pred_vel[0] + pred_vel[1]
 
-    max_distance = np.clip(
-        ClipTrackExtractor.BASE_DISTANCE_CHANGE + max(velocity_distance, pred_distance),
-        0,
-        ClipTrackExtractor.MAX_DISTANCE,
+    max_distance = ClipTrackExtractor.BASE_DISTANCE_CHANGE + max(
+        velocity_distance, pred_distance
     )
+    if max_distance > ClipTrackExtractor.MAX_DISTANCE:
+        return ClipTrackExtractor.MAX_DISTANCE
     return max_distance
 
 
