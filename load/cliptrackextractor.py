@@ -232,15 +232,16 @@ class ClipTrackExtractor:
         for track in clip.active_tracks:
             for region in regions:
                 avg_mass = track.average_mass()
-                self.timer_test["avg_m"] += time.time() - s
+                s = time.time()
                 distance, size_change = get_region_score(track.last_bound, region)
+                self.timer_test["avg_m"] += time.time() - s
                 # we give larger tracks more freedom to find a match as they might move quite a bit.
 
                 s = time.time()
                 max_distance = get_max_distance_change(track)
+                self.timer_test["rs"] += time.time() - s
                 max_size_change = get_max_size_change(track, region)
                 max_mass_change = get_max_mass_change_percent(track, avg_mass)
-                self.timer_test["rs"] += time.time() - s
 
                 if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
                     self.print_if_verbose(
