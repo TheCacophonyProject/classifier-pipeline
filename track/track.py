@@ -244,9 +244,18 @@ class Track:
 
     def average_mass(self):
         """Average mass of last 3 frames that weren't blank"""
-        return np.mean(
-            [bound.mass for bound in self.bounds_history if bound.blank == False][-3:]
-        )
+        avg_mass = 0
+        count = 0
+        for i in range(len(self.bounds_history)):
+            bound = self.bounds_history[-i - 1]
+            if not bound.blank:
+                avg_mass += bound.mass
+                count += 1
+            if count == 3:
+                break
+        if count == 0:
+            return 0
+        return avg_mass / count
 
     def add_blank_frame(self, buffer_frame=None):
         """Maintains same bounds as previously, does not reset framce_since_target_seen counter"""
