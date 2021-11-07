@@ -35,7 +35,8 @@ from ml_tools.imageprocessing import detect_objects, normalize
 
 
 class ClipTrackExtractor:
-    BASE_DISTANCE_CHANGE = 450
+    BASE_DISTANCE_CHANGE = 21.2
+    # 450
     # minimum region mass change
     MIN_MASS_CHANGE = 20
     # enforce mass growth after X seconds
@@ -43,7 +44,8 @@ class ClipTrackExtractor:
     # amount region mass can change
     MASS_CHANGE_PERCENT = 0.55
 
-    MAX_DISTANCE = 2000
+    MAX_DISTANCE = 44.7
+    # 2000
     PREVIEW = "preview"
     VERSION = 10
 
@@ -83,6 +85,8 @@ class ClipTrackExtractor:
             "avg_m": 0,
             "rs": 0,
             "process": 0,
+            "scores": 0,
+            "pick": 0,
         }
 
     def parse_clip(self, clip, process_background=False):
@@ -229,6 +233,8 @@ class ClipTrackExtractor:
         scores = []
         used_regions = set()
         unmatched_regions = set(regions)
+        a = time.time()
+
         for track in clip.active_tracks:
             for region in regions:
                 avg_mass = track.average_mass()
@@ -269,6 +275,7 @@ class ClipTrackExtractor:
                     )
                     continue
                 scores.append((distance, track, region))
+        self.timer_test["scores"] += time.time() - a
 
         # makes tracking consistent by ordering by score then by frame since target then track id
         scores.sort(
@@ -276,7 +283,7 @@ class ClipTrackExtractor:
             + float(".{}".format(record[1]._id))
         )
         scores.sort(key=lambda record: record[0])
-
+        a = time.time()
         matched_tracks = set()
         for (score, track, region) in scores:
             if track in matched_tracks or region in used_regions:
@@ -285,6 +292,8 @@ class ClipTrackExtractor:
             matched_tracks.add(track)
             used_regions.add(region)
             unmatched_regions.remove(region)
+        self.timer_test["pick"] += time.time() - a
+
         return unmatched_regions, matched_tracks
 
     def _create_new_tracks(self, clip, unmatched_regions):
@@ -556,9 +565,9 @@ def get_max_distance_change(track):
     x, y = track.velocity
     x = 2 * x
     y = 2 * y
-    velocity_distance = x * x + y * y
+    velocity_distance = x + y
     pred_vel = track.predicted_velocity()
-    pred_distance = pred_vel[0] * pred_vel[0] + pred_vel[1] * pred_vel[1]
+    pred_distance = pred_vel[0] + pred_vel[1]
 
     max_distance = np.clip(
         ClipTrackExtractor.BASE_DISTANCE_CHANGE + max(velocity_distance, pred_distance),
