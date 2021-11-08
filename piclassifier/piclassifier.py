@@ -516,10 +516,9 @@ class PiClassifier(Processor):
 
     def end_clip(self):
         if self.clip:
-            logging.info("TIMINGS")
-            for k, v in self.track_extractor.timer_test.items():
-                logging.info(f"{k} took {v}")
-                self.track_extractor.timer_test[k] = 0
+            logging.debug(
+                "Ending clip with %s tracks pre filtering", len(self.clip.active_tracks)
+            )
             if self.classify:
                 for _, prediction in self.predictions.prediction_per_track.items():
                     if prediction.max_score:

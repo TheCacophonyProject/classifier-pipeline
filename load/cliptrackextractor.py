@@ -76,18 +76,6 @@ class ClipTrackExtractor:
         if self.config.dilation_pixels > 0:
             size = self.config.dilation_pixels * 2 + 1
             self.dilate_kernel = np.ones((size, size), np.uint8)
-        self.timer_test = {
-            "f": 0,
-            "o": 0,
-            "a": 0,
-            "ri": 0,
-            "m": 0,
-            "avg_m": 0,
-            "rs": 0,
-            "process": 0,
-            "scores": 0,
-            "pick": 0,
-        }
 
     def parse_clip(self, clip, process_background=False):
         """
@@ -182,18 +170,12 @@ class ClipTrackExtractor:
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-        s = time.time()
         filtered, threshold = self._get_filtered_frame(clip, thermal)
-        self.timer_test["f"] += time.time() - s
-        a = time.time()
         _, mask, component_details = detect_objects(
             filtered.copy(), otsus=False, threshold=threshold
         )
-        self.timer_test["o"] += time.time() - a
         prev_filtered = clip.frame_buffer.get_last_filtered()
-        a = time.time()
         clip.add_frame(thermal, filtered, mask, ffc_affected)
-        self.timer_test["a"] += time.time() - a
 
         if clip.from_metadata:
             for track in clip.tracks:
@@ -208,17 +190,12 @@ class ClipTrackExtractor:
             if ffc_affected:
                 clip.active_tracks = set()
             else:
-                a = time.time()
                 regions = self._get_regions_of_interest(
                     clip, component_details, filtered, prev_filtered
                 )
-                self.timer_test["ri"] += time.time() - a
-                a = time.time()
                 self._apply_region_matchings(clip, regions)
-                self.timer_test["m"] += time.time() - a
 
             clip.region_history.append(regions)
-        self.timer_test["process"] += time.time() - s
 
     def _apply_region_matchings(self, clip, regions):
         """
@@ -233,15 +210,12 @@ class ClipTrackExtractor:
         scores = []
         used_regions = set()
         unmatched_regions = set(regions)
-        a = time.time()
 
         for track in clip.active_tracks:
             avg_mass = track.average_mass()
             max_distance = get_max_distance_change(track)
             for region in regions:
-                s = time.time()
                 distance, size_change = get_region_score(track.last_bound, region)
-                self.timer_test["avg_m"] += time.time() - s
 
                 max_size_change = get_max_size_change(track, region)
                 max_mass_change = get_max_mass_change_percent(track, avg_mass)
@@ -272,7 +246,6 @@ class ClipTrackExtractor:
                     )
                     continue
                 scores.append((distance, track, region))
-        self.timer_test["scores"] += time.time() - a
 
         # makes tracking consistent by ordering by score then by frame since target then track id
         scores.sort(
@@ -280,7 +253,6 @@ class ClipTrackExtractor:
             + float(".{}".format(record[1]._id))
         )
         scores.sort(key=lambda record: record[0])
-        a = time.time()
         matched_tracks = set()
         for (score, track, region) in scores:
             if track in matched_tracks or region in used_regions:
@@ -289,7 +261,6 @@ class ClipTrackExtractor:
             matched_tracks.add(track)
             used_regions.add(region)
             unmatched_regions.remove(region)
-        self.timer_test["pick"] += time.time() - a
 
         return unmatched_regions, matched_tracks
 
