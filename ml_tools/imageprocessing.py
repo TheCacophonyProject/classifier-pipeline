@@ -156,7 +156,7 @@ def normalize(data, min=None, max=None, new_max=1):
         return data, (True, max, min)
     data -= min
     data /= max - min
-    if nex_max != 1:
+    if new_max != 1:
         data *= new_max
     return data, (True, max, min)
 
