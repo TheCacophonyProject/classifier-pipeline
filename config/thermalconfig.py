@@ -48,11 +48,11 @@ class ThrottlerConfig:
     def load(cls, throttler):
         return cls(
             bucket_size=RelAbsTime(
-                throttler.get("bucket_size"), default_offset=10 * 60
+                throttler.get("bucket-size"), default_offset=10 * 60
             ).offset_s,
             activate=throttler.get("activate", True),
-            no_motion=throttler.get("no_motion", 5 * 60),
-            max_throttling_minutes=throttler.get("max_throttling_minutes", 60),
+            no_motion=throttler.get("no-motion", 5 * 60),
+            max_throttling_minutes=throttler.get("max-throttling-minutes", 60),
         )
 
     def as_dict(self):

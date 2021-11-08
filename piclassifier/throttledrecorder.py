@@ -7,7 +7,7 @@ from piclassifier.eventreporter import throttled_event
 
 class ThrottledRecorder(Recorder):
     def __init__(self, thermal_config, headers, on_recording_stopping):
-        self.bucket_size = thermal_config.throttler.bucket_size * 60 * headers.fps
+        self.bucket_size = thermal_config.throttler.bucket_size * headers.fps
         self.throttling = False
         self.tokens = self.bucket_size
         self.recorder = CPTVRecorder(thermal_config, headers, on_recording_stopping)
