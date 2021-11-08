@@ -35,8 +35,7 @@ from ml_tools.imageprocessing import detect_objects, normalize
 
 
 class ClipTrackExtractor:
-    BASE_DISTANCE_CHANGE = 21.2
-    # 450
+    BASE_DISTANCE_CHANGE = 450
     # minimum region mass change
     MIN_MASS_CHANGE = 20
     # enforce mass growth after X seconds
@@ -44,8 +43,7 @@ class ClipTrackExtractor:
     # amount region mass can change
     MASS_CHANGE_PERCENT = 0.55
 
-    MAX_DISTANCE = 44.7
-    # 2000
+    MAX_DISTANCE = 2000
     PREVIEW = "preview"
     VERSION = 10
 
@@ -533,9 +531,9 @@ def get_max_distance_change(track):
     x, y = track.velocity
     x = 2 * x
     y = 2 * y
-    velocity_distance = x + y
+    velocity_distance = x * x + y * y
     pred_vel = track.predicted_velocity()
-    pred_distance = pred_vel[0] + pred_vel[1]
+    pred_distance = pred_vel[0] * pred_vel[0] + pred_vel[1] * pred_vel[1]
 
     max_distance = ClipTrackExtractor.BASE_DISTANCE_CHANGE + max(
         velocity_distance, pred_distance
