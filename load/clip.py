@@ -330,9 +330,16 @@ class Clip:
 
         return (track.start_s, track.end_s)
 
-    def set_frame_buffer(self, high_quality_flow, cache_to_disk, use_flow, keep_frames):
+    def set_frame_buffer(
+        self, high_quality_flow, cache_to_disk, use_flow, keep_frames, max_frames=None
+    ):
         self.frame_buffer = FrameBuffer(
-            self.source_file, high_quality_flow, cache_to_disk, use_flow, keep_frames
+            self.source_file,
+            high_quality_flow,
+            cache_to_disk,
+            use_flow,
+            keep_frames,
+            max_frames,
         )
 
     def set_res(self, res_x, res_y):
