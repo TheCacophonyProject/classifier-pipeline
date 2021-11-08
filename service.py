@@ -56,7 +56,7 @@ class Service(dbus.service.Object):
         )
 
         if f_num == last_num or last_frame is None:
-            return (np.empty((0, 0)), (0, "", 0, 0, 0, 0, 0, False), "")
+            return (np.empty((0, 0)), (0, "", f_num, 0, 0, 0, 0, False), "")
         return (
             last_frame.pix,
             (

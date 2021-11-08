@@ -152,9 +152,12 @@ def normalize(data, min=None, max=None, new_max=1):
     if max == min:
         if max == 0:
             return np.zeros((data.shape)), (False, max, min)
-        return data / max, (True, max, min)
+        data /= max
+        return data, (True, max, min)
     data -= min
-    data = data / (max - min) * new_max
+    data /= max - min
+    if nex_max != 1:
+        data *= new_max
     return data, (True, max, min)
 
 
@@ -177,6 +180,7 @@ def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5)):
     _, image = cv2.threshold(image, threshold, 255, flags)
     image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
+    del image
     return components, small_mask, stats
 
 
