@@ -283,7 +283,8 @@ class PiClassifier(Processor):
             self.config.tracking.high_quality_optical_flow,
             self.config.classify.cache_to_disk,
             self.config.use_opt_flow,
-            True,
+            False,
+            50 if self.classify else None,
         )
         frames = self.motion_detector.thermal_window.get_frames()
         edge_pixels = self.config.tracking.edge_pixels

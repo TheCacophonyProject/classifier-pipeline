@@ -179,9 +179,7 @@ def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5)):
         flags += cv2.THRESH_OTSU
     _, image = cv2.threshold(image, threshold, 255, flags)
     image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
-    components, small_mask, stats, centroid = cv2.connectedComponentsWithStats(image)
-    del image
-    del centroid
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
     return components, small_mask, stats
 
 

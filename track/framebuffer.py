@@ -21,12 +21,20 @@ from ml_tools.framecache import FrameCache
 from ml_tools.frame import Frame
 from ml_tools.tools import get_optical_flow_function
 
+import time
+
 
 class FrameBuffer:
     """Stores entire clip in memory, required for some operations such as track exporting."""
 
     def __init__(
-        self, cptv_name, high_quality_flow, cache_to_disk, calc_flow, keep_frames
+        self,
+        cptv_name,
+        high_quality_flow,
+        cache_to_disk,
+        calc_flow,
+        keep_frames,
+        max_frames=None,
     ):
         self.cache = FrameCache(cptv_name) if cache_to_disk else None
         self.opt_flow = None
@@ -34,6 +42,7 @@ class FrameBuffer:
         self.frames = None
         self.prev_frame = None
         self.calc_flow = calc_flow
+        self.max_frames = max_frames
         self.keep_frames = keep_frames
         self.current_frame = 0
         if calc_flow:
@@ -45,6 +54,7 @@ class FrameBuffer:
             self.opt_flow = get_optical_flow_function(self.high_quality_flow)
 
     def add_frame(self, thermal, filtered, mask, frame_number, ffc_affected=False):
+
         frame = Frame(thermal, filtered, mask, frame_number, ffc_affected=ffc_affected)
         if self.opt_flow:
             frame.generate_optical_flow(self.opt_flow, self.prev_frame)
@@ -53,6 +63,8 @@ class FrameBuffer:
             if self.cache:
                 self.cache.add_frame(frame)
             else:
+                if self.max_frames and len(self.frames) == self.max_frames:
+                    del self.frames[0]
                 self.frames.append(frame)
 
     @property
@@ -63,15 +75,7 @@ class FrameBuffer:
         if self.prev_frame and self.prev_frame.frame_number == frame_number:
             return self.prev_frame
         elif self.cache:
-            cache_frame, ffc_affected = self.cache.get_frame(frame_number)
-            if cache_frame:
-                return Frame.from_array(
-                    cache_frame,
-                    frame_number,
-                    flow_clipped=True,
-                    ffc_affected=ffc_affected,
-                )
-            return None
+            return self.cache.get_frame(frame_number)
         if len(self.frames) > frame_number:
             return self.frames[frame_number]
         return None
