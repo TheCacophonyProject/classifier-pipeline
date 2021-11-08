@@ -76,7 +76,9 @@ class RelAbsTime:
         try:
             self.time = datetime.strptime(time_str, "%H:%M").time()
         except (ValueError, TypeError):
-            if isinstance(time_str, int) or time_str.isnumeric():
+            if not time_str:
+                self.offset_s = default_offset
+            elif isinstance(time_str, int) or time_str.isnumeric():
                 self.offset_s = int(time_str)
             else:
                 self.offset_s = self.parse_duration(time_str, default_offset)

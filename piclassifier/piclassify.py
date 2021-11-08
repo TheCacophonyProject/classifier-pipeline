@@ -53,9 +53,8 @@ def main():
     args = parse_args()
 
     config = Config.load_from_file(args.config_file)
-    thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
     if args.cptv:
-        return parse_cptv(args.cptv, config, thermal_config)
+        return parse_cptv(args.cptv, config, args.thermal_config_file)
 
     try:
         os.unlink(SOCKET_NAME)
@@ -71,7 +70,7 @@ def main():
         connection, client_address = sock.accept()
         logging.info("connection from %s", client_address)
         try:
-            handle_connection(connection, config, thermal_config)
+            handle_connection(connection, config, args.thermal_config_file)
         except:
             logging.error("Error with connection", exc_info=True)
             # return
@@ -83,7 +82,7 @@ def main():
                 pass
 
 
-def parse_cptv(cptv_file, config, thermal_config):
+def parse_cptv(cptv_file, config, thermal_config_file):
     with open(cptv_file, "rb") as f:
         reader = CPTVReader(f)
 
@@ -91,14 +90,16 @@ def parse_cptv(cptv_file, config, thermal_config):
             res_x=reader.x_resolution,
             res_y=reader.y_resolution,
             fps=9,
-            brand="",
-            model="",
+            brand=reader.brand.decode() if reader.brand else None,
+            model=eader.model.decode() if reader.model else None,
             frame_size=reader.x_resolution * reader.y_resolution * 2,
             pixel_bits=16,
             serial="",
             firmware="",
         )
-
+        thermal_config = ThermalConfig.load_from_file(
+            thermal_config_file, headers.model
+        )
         pi_classifier = PiClassifier(
             config, thermal_config, headers, thermal_config.motion.run_classifier, 0
         )
@@ -138,9 +139,13 @@ def handle_headers(connection):
     return HeaderInfo.parse_header(headers), left_over
 
 
-def handle_connection(connection, config, thermal_config):
+def handle_connection(connection, config, thermal_config_file):
     headers, extra_b = handle_headers(connection)
-    logging.info("parsed camera headers %s", headers)
+    thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
+    logging.info(
+        "parsed camera headers %s running with config %s", headers, thermal_config
+    )
+
     process_queue = multiprocessing.Queue()
 
     processor = get_processor(process_queue, config, thermal_config, headers)

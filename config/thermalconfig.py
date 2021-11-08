@@ -74,19 +74,52 @@ class MotionConfig:
     run_classifier = attr.ib()
 
     @classmethod
-    def load(cls, motion):
-        return cls(
-            temp_thresh=motion.get("temp-thresh", 2750),
-            delta_thresh=motion.get("delta-thresh", 50),
-            count_thresh=motion.get("count-thresh", 3),
-            frame_compare_gap=motion.get("frame-compare-gap", 45),
-            one_diff_only=motion.get("use-one-diff-only", True),
-            trigger_frames=motion.get("trigger-frames", 2),
-            edge_pixels=motion.get("edge-pixels", 1),
-            warmer_only=motion.get("warmer-only", True),
-            dynamic_thresh=motion.get("dynamic-thresh", True),
-            run_classifier=motion.get("run-classifier", False),
+    def defaults_for(cls, model):
+        if model == "lepton3.5":
+            return cls(
+                temp_thresh=28000,
+                delta_thresh=200,
+                count_thresh=3,
+                frame_compare_gap=45,
+                one_diff_only=True,
+                trigger_frames=2,
+                edge_pixels=1,
+                warmer_only=True,
+                dynamic_thresh=True,
+                run_classifier=False,
+            )
+        else:
+            return cls(
+                temp_thresh=2750,
+                delta_thresh=50,
+                count_thresh=3,
+                frame_compare_gap=45,
+                one_diff_only=True,
+                trigger_frames=2,
+                edge_pixels=1,
+                warmer_only=True,
+                dynamic_thresh=True,
+                run_classifier=False,
+            )
+
+    @classmethod
+    def load(cls, motion, model=None):
+        default = MotionConfig.defaults_for(model)
+        motion = cls(
+            temp_thresh=motion.get("temp-thresh", default.temp_thresh),
+            delta_thresh=motion.get("delta-thresh", default.delta_thresh),
+            count_thresh=motion.get("count-thresh", default.count_thresh),
+            frame_compare_gap=motion.get(
+                "frame-compare-gap", default.frame_compare_gap
+            ),
+            one_diff_only=motion.get("use-one-diff-only", default.one_diff_only),
+            trigger_frames=motion.get("trigger-frames", default.trigger_frames),
+            edge_pixels=motion.get("edge-pixels", default.edge_pixels),
+            warmer_only=motion.get("warmer-only", default.warmer_only),
+            dynamic_thresh=motion.get("dynamic-thresh", default.dynamic_thresh),
+            run_classifier=motion.get("run-classifier", default.run_classifier),
         )
+        return motion
 
     def as_dict(self):
         return attr.asdict(self)
@@ -133,20 +166,20 @@ class ThermalConfig:
     throttler = attr.ib()
 
     @classmethod
-    def load_from_file(cls, filename=None):
+    def load_from_file(cls, filename=None, model=None):
         if not filename:
             filename = ThermalConfig.find_config()
         with LockSafeConfig(filename) as stream:
-            return cls.load_from_stream(stream)
+            return cls.load_from_stream(stream, model)
 
     @classmethod
-    def load_from_stream(cls, stream):
+    def load_from_stream(cls, stream, model=None):
         raw = toml.load(stream)
         if raw is None:
             raw = {}
         return cls(
             throttler=ThrottlerConfig.load(raw.get("thermal-throttler", {})),
-            motion=MotionConfig.load(raw.get("thermal-motion", {})),
+            motion=MotionConfig.load(raw.get("thermal-motion", {}), model),
             recorder=RecorderConfig.load(
                 raw.get("thermal-recorder", {}), raw.get("windows", {})
             ),

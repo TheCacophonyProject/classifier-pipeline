@@ -82,7 +82,7 @@ class MotionDetector:
 
     def __init__(self, thermal_config, dynamic_thresh, headers, detect_after=None):
         self.headers = headers
-        if headers.model.lower() == "lepton3.5":
+        if headers.model and headers.model.lower() == "lepton3.5":
             MotionDetector.BACKGROUND_WEIGHT_ADD = 1
         self.config = thermal_config.motion
         self.location_config = thermal_config.location
