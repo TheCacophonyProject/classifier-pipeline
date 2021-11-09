@@ -269,7 +269,7 @@ class PiClassifier(Processor):
         )
         return None
 
-    def new_clip(self):
+    def new_clip(self, preview_frames):
         self.clip = Clip(
             self.config.tracking,
             "stream",
@@ -285,16 +285,12 @@ class PiClassifier(Processor):
             self.config.use_opt_flow,
             True,
         )
-        frames = self.motion_detector.thermal_window.get_frames()
         edge_pixels = self.config.tracking.edge_pixels
 
         self.clip.update_background(self.motion_detector.background)
         self.clip._background_calculated()
-        for frame in frames:
+        for frame in preview_frames:
             self.track_extractor.process_frame(self.clip, frame.pix.copy())
-        logging.debug(
-            "Starting new clip now on frame %s after preview", self.clip.frame_on
-        )
 
     def startup_classifier(self):
         # classifies an empty frame to force loading of the model into memory
@@ -437,9 +433,11 @@ class PiClassifier(Processor):
         if not self.recorder.recording and self.motion_detector.movement_detected:
             background = self.motion_detector.set_background_edges()
             s_r = time.time()
+            preview_frames = self.motion_detector.thermal_window.get_frames()
+
             recording = self.recorder.start_recording(
                 self.motion_detector.background,
-                self.motion_detector.thermal_window.get_frames(),
+                preview_frames,
                 self.motion_detector.temp_thresh,
             )
             self.rec_time += time.time() - s_r
@@ -447,7 +445,7 @@ class PiClassifier(Processor):
 
                 t_start = time.time()
 
-                self.new_clip()
+                self.new_clip(preview_frames)
                 self.tracking_time += time.time() - t_start
 
         if self.recorder.recording:
