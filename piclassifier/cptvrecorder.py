@@ -54,7 +54,7 @@ class CPTVRecorder(Recorder):
                 self.stop_recording()
 
     def has_minimum(self):
-        return self.frames > (self.min_frames + self.preview_secs * self.headers.fps)
+        return self.frames > self.write_until
 
     def start_recording(self, background_frame, preview_frames, temp_thresh):
         start = time.time()
