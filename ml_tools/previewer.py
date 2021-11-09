@@ -115,26 +115,47 @@ class Previewer:
                     clip.stats.max_temp,
                 )
                 draw = ImageDraw.Draw(image)
-                self.add_tracks(draw, clip.tracks, frame_number, predictions, scale=4.0)
+                self.add_tracks(
+                    draw,
+                    clip.tracks,
+                    frame_number,
+                    predictions,
+                    frame_scale=frame_scale,
+                )
 
             elif self.preview_type == self.PREVIEW_BOXES:
                 image = self.convert_and_resize(
-                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp
+                    frame.thermal,
+                    clip.stats.min_temp,
+                    clip.stats.max_temp,
+                    frame_scale=frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(
-                    draw, clip.tracks, frame_number, colours=[(128, 255, 255)]
+                    draw,
+                    clip.tracks,
+                    frame_number,
+                    colours=[(128, 255, 255)],
+                    scale=frame_scale,
                 )
 
             elif self.preview_type == self.PREVIEW_CLASSIFIED:
                 image = self.convert_and_resize(
-                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp
+                    frame.thermal,
+                    clip.stats.min_temp,
+                    clip.stats.max_temp,
+                    frame_scale=frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
                 screen_bounds = Region(0, 0, image.width, image.height)
                 self.add_tracks(
-                    draw, clip.tracks, frame_number, predictions, screen_bounds
+                    draw,
+                    clip.tracks,
+                    frame_number,
+                    predictions,
+                    screen_bounds,
+                    scale=frame_scale,
                 )
             if frame.ffc_affected:
                 self.add_header(draw, image.width, image.height, "Calibrating ...")
@@ -177,20 +198,22 @@ class Previewer:
             logging.info("creating preview %s", filename_format.format(id + 1))
             tools.write_mpeg(filename_format.format(id + 1), video_frames)
 
-    def convert_and_resize(self, frame, h_min, h_max, size=None, mode=Image.BILINEAR):
+    def convert_and_resize(
+        self, frame, h_min, h_max, size=None, mode=Image.BILINEAR, frame_scale=1
+    ):
         """Converts the image to colour using colour map and resize"""
         thermal = frame[:120, :160].copy()
         image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
         image = image.resize(
             (
-                int(image.width * self.frame_scale),
-                int(image.height * self.frame_scale),
+                int(image.width * frame_scale),
+                int(image.height * frame_scale),
             ),
             mode,
         )
 
         if self.debug:
-            tools.add_heat_number(image, thermal, self.frame_scale)
+            tools.add_heat_number(image, thermal, frame_scale)
         return image
 
     def create_track_descriptions(self, clip, predictions):

@@ -284,7 +284,6 @@ class PiClassifier(Processor):
             self.config.classify.cache_to_disk,
             self.config.use_opt_flow,
             True,
-            50 if self.classify else None,
         )
         frames = self.motion_detector.thermal_window.get_frames()
         edge_pixels = self.config.tracking.edge_pixels
@@ -293,6 +292,9 @@ class PiClassifier(Processor):
         self.clip._background_calculated()
         for frame in frames:
             self.track_extractor.process_frame(self.clip, frame.pix.copy())
+        logging.debug(
+            "Starting new clip now on frame %s after preview", self.clip.frame_on
+        )
 
     def startup_classifier(self):
         # classifies an empty frame to force loading of the model into memory
@@ -519,6 +521,7 @@ class PiClassifier(Processor):
             logging.debug(
                 "Ending clip with %s tracks pre filtering", len(self.clip.active_tracks)
             )
+            self.create_mp4()
             if self.classify:
                 for _, prediction in self.predictions.prediction_per_track.items():
                     if prediction.max_score:

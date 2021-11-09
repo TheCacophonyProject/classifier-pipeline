@@ -337,6 +337,7 @@ class ClipTrackExtractor:
                 id=i,
                 frame_number=clip.frame_on,
             )
+            logging.info("new region with frame %s", clip.frame_on)
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)
