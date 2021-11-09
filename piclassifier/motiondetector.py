@@ -236,10 +236,8 @@ class MotionDetector:
         if self.can_record() or force_process:
             self.thermal_window.add(cptv_frame)
             cropped_frame = np.int32(self.crop_rectangle.subimage(cptv_frame.pix))
-            test_crop = cropped_frame.copy()
             prev_ffc = self.ffc_affected
             self.ffc_affected = is_affected_by_ffc(cptv_frame)
-            self.thermal_window.add(cptv_frame)
             if not self.ffc_affected:
                 if self.background is None:
                     self.background = cptv_frame.pix
