@@ -521,7 +521,6 @@ class PiClassifier(Processor):
             logging.debug(
                 "Ending clip with %s tracks pre filtering", len(self.clip.active_tracks)
             )
-            self.create_mp4()
             if self.classify:
                 for _, prediction in self.predictions.prediction_per_track.items():
                     if prediction.max_score:
