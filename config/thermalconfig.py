@@ -86,7 +86,7 @@ class MotionConfig:
                 edge_pixels=1,
                 warmer_only=True,
                 dynamic_thresh=True,
-                run_classifier=False,
+                run_classifier=True,
             )
         else:
             return cls(
@@ -99,7 +99,7 @@ class MotionConfig:
                 edge_pixels=1,
                 warmer_only=True,
                 dynamic_thresh=True,
-                run_classifier=False,
+                run_classifier=True,
             )
 
     @classmethod

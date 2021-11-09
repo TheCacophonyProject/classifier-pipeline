@@ -152,12 +152,9 @@ def normalize(data, min=None, max=None, new_max=1):
     if max == min:
         if max == 0:
             return np.zeros((data.shape)), (False, max, min)
-        data /= max
+        data = data / max
         return data, (True, max, min)
-    data -= min
-    data /= max - min
-    if new_max != 1:
-        data *= new_max
+    data = new_max * (data - min) / (max - min)
     return data, (True, max, min)
 
 

@@ -283,7 +283,7 @@ class PiClassifier(Processor):
             self.config.tracking.high_quality_optical_flow,
             self.config.classify.cache_to_disk,
             self.config.use_opt_flow,
-            False,
+            True,
             50 if self.classify else None,
         )
         frames = self.motion_detector.thermal_window.get_frames()
@@ -305,6 +305,7 @@ class PiClassifier(Processor):
         Gets current clips active_tracks and returns the top NUM_CONCURRENT_TRACKS order by priority
         """
         active_tracks = self.clip.active_tracks
+        active_tracks = [track for track in active_tracks if len(track) > 10]
         if len(active_tracks) <= PiClassifier.NUM_CONCURRENT_TRACKS:
             return active_tracks
         active_predictions = []
@@ -385,7 +386,6 @@ class PiClassifier(Processor):
                 reference_level=refs,
                 keep_edge=params.keep_edge,
             )
-
             if preprocessed is None:
                 continue
             prediction = self.classifier.predict(preprocessed)
@@ -460,7 +460,6 @@ class PiClassifier(Processor):
                 self.motion_detector.movement_detected, lepton_frame
             )
             self.rec_time += time.time() - s_r
-
             if self.motion_detector.ffc_affected or self.clip.on_preview():
                 self.skip_classifying = PiClassifier.SKIP_FRAMES
                 self.classified_consec = 0

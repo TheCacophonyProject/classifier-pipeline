@@ -91,7 +91,7 @@ def parse_cptv(cptv_file, config, thermal_config_file):
             res_y=reader.y_resolution,
             fps=9,
             brand=reader.brand.decode() if reader.brand else None,
-            model=eader.model.decode() if reader.model else None,
+            model=reader.model.decode() if reader.model else None,
             frame_size=reader.x_resolution * reader.y_resolution * 2,
             pixel_bits=16,
             serial="",
