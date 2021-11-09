@@ -9,7 +9,6 @@ from datetime import timedelta
 import time
 import psutil
 from piclassifier.recorder import Recorder
-import tracemalloc
 
 CPTV_TEMP_EXT = ".cptv.temp"
 
@@ -58,10 +57,6 @@ class CPTVRecorder(Recorder):
         return self.frames > self.write_until
 
     def start_recording(self, background_frame, preview_frames, temp_thresh):
-        tracemalloc.start()
-
-        self.snapshot = tracemalloc.take_snapshot()
-
         start = time.time()
         if self.recording:
             logging.warn("Already recording, stop recording first")
@@ -106,11 +101,6 @@ class CPTVRecorder(Recorder):
 
         logging.info("recording %s started temp_thresh: %d", self.filename, temp_thresh)
 
-        logging.info(
-            "%s memory",
-            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-        )
-
         self.rec_time += time.time() - start
         return True
 
@@ -130,17 +120,6 @@ class CPTVRecorder(Recorder):
             self.rec_time,
             self.rec_time / self.frames,
         )
-        logging.info(
-            "%s memory on stop",
-            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-        )
-        snapshot2 = tracemalloc.take_snapshot()
-
-        top_stats = snapshot2.compare_to(self.snapshot, "lineno")
-
-        print("[ Top 10 ]")
-        for stat in top_stats[:10]:
-            logging.info("Stats %s", stat)
         self.rec_time = 0
 
         self.write_until = 0
