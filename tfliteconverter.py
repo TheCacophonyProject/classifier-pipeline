@@ -6,6 +6,7 @@ import shutil
 import tensorflow as tf
 from config.config import Config
 import pickle
+from pathlib import Path
 
 MODEL_DIR = "../cptv-download/train/checkpoints"
 MODEL_NAME = "training-most-recent.sav"
@@ -36,7 +37,7 @@ def optimizer_model(args):
 # frame count to 1 as is needed for tflite
 def save_eval_model(args):
     config = Config.load_from_file()
-    datasets_filename = dataset_db_path(config)
+    datasets_filename = config.tracks
     with open(datasets_filename, "rb") as f:
         dsets = pickle.load(f)
 
@@ -93,9 +94,7 @@ def freeze_model(args):
 
 
 def run_model(args):
-    interpreter = tf.lite.Interpreter(
-        model_path=os.path.join(args.model_dir, args.tflite_name)
-    )
+    interpreter = tf.lite.Interpreter(model_path=os.path.join(args.model))
     interpreter.allocate_tensors()
     input_details = interpreter.get_tensor_details()
 
@@ -103,10 +102,10 @@ def run_model(args):
     for detail in input_details:
         in_values[detail["name"]] = detail["index"]
     output_details = interpreter.get_output_details()
-    input_shape = input_details[in_values["input_1"]]["shape"]
+    input_shape = input_details[in_values["input"]]["shape"]
 
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
-    interpreter.set_tensor(in_values["input_1"], input_data)
+    interpreter.set_tensor(in_values["input"], input_data)
     interpreter.invoke()
     print("model pass 1")
     out_values = {}
@@ -115,11 +114,10 @@ def run_model(args):
     print(out_values)
     print("pred", out_values["Identity"])
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
-    interpreter.set_tensor(in_values["input_1"], input_data)
-    interpreter.set_tensor(in_values["state_in"], out_values["state_out"])
+    interpreter.set_tensor(in_values["input"], input_data)
     interpreter.invoke()
     print("model pass 2")
-    print("pred", out_values["prediction"])
+    print("pred", out_values["Identity"])
 
 
 def representative_dataset_gen():
@@ -154,14 +152,26 @@ def get_feed_dict(X, state_in=None):
 
 
 def convert_model(args):
-    print("converting to tflite: ", os.path.join(args.model_dir, SAVED_DIR))
+    print("converting to tflite: ", args.model)
+    dir = os.path.dirname(args.model)
+    lite_dir = os.path.join(dir, "tflite")
+    inputs = tf.keras.Input(shape=(160, 160, 3), name="input")
 
-    model = tf.keras.models.load_model(args.model_dir)
+    model = tf.keras.models.load_model(args.model)
+    model.trainable = False
     model.summary()
+    if args.weights:
+        print("using weights ", args.weights)
+        model.load_weights(args.weights).expect_partial()
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    # converter.target_spec.supported_ops = [
+    #     tf.lite.OpsSet.TFLITE_BUILTINS,  # enable TensorFlow Lite ops.
+    #     tf.lite.OpsSet.SELECT_TF_OPS,  # enable TensorFlow ops.
+    # ]
     tflite_model = converter.convert()
-    open(os.path.join(args.model_dir, args.tflite_name), "wb").write(tflite_model)
-    return
+    print("saving model to ", os.path.join(lite_dir, args.tflite_name))
+    Path(lite_dir).mkdir(parents=True, exist_ok=True)
+    open(os.path.join(lite_dir, args.tflite_name), "wb").write(tflite_model)
 
 
 def parse_args():
@@ -170,6 +180,8 @@ def parse_args():
     parser.add_argument(
         "-f", "--freeze", action="store_true", help="freeze saved model to .pb format"
     )
+    parser.add_argument("-w", "--weights", help="Weights to use")
+
     parser.add_argument(
         "-c", "--convert", action="store_true", help="Convert frozen model to tflite"
     )
@@ -180,14 +192,9 @@ def parse_args():
         help="Test converted model with random data using tflite interpreter",
     )
     parser.add_argument(
-        "--model_dir",
+        "--model",
         default=MODEL_DIR,
         help="Directory where meta data of the model you want to convert is stored",
-    )
-    parser.add_argument(
-        "--model_name",
-        default=MODEL_NAME,
-        help="Name of the model to convert <name>.sav",
     )
     parser.add_argument(
         "--tflite_name",
@@ -199,6 +206,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    print(args.weights)
     if args.freeze:
         # optimizer_model(args)
         freeze_model(args)
