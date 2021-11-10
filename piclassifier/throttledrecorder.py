@@ -41,8 +41,8 @@ class ThrottledRecorder(Recorder):
         if self.last_motion is None:
             return
 
-        update_from = self.last_rec
-        if self.last_motion > self.last_rec:
+        update_from = self.last_motion
+        if not self.last_rec and self.last_rec > self.last_motion:
             update_from = self.last_motion
 
         since_motion = time.time() - update_from
