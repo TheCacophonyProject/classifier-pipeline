@@ -43,7 +43,7 @@ class ThrottledRecorder(Recorder):
 
         update_from = self.last_motion
         if not self.last_rec and self.last_rec > self.last_motion:
-            update_from = self.last_motion
+            update_from = self.last_rec
 
         since_motion = time.time() - update_from
         # if we have been throttled wait for no motion before adding any tokens back
@@ -53,10 +53,10 @@ class ThrottledRecorder(Recorder):
                 self.max_throttling_seconds is None
                 or since_throttle < self.max_throttling_seconds
             ):
-                since_motion -= self.no_motion
                 logging.debug(
                     "Updating tokens %s seconds since motion", round(since_motion)
                 )
+                since_motion -= self.no_motion
                 if since_motion < 0:
                     return
             else:
