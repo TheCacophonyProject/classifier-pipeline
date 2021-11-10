@@ -47,7 +47,7 @@ class ThrottledRecorder(Recorder):
 
         if self.throttling and self.recorder.recording:
             logging.info("Throttling recording")
-            self.stop_recording()
+            self.stop_recording(cptv_frame.received_at)
 
     def update_tokens(self, frame_time):
         if self.last_motion is None:
