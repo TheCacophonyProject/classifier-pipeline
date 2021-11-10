@@ -439,6 +439,7 @@ class PiClassifier(Processor):
                 self.motion_detector.background,
                 preview_frames,
                 self.motion_detector.temp_thresh,
+                lepton_frame.received_at,
             )
             self.rec_time += time.time() - s_r
             if recording:
@@ -477,6 +478,8 @@ class PiClassifier(Processor):
                 if self.classified_consec == PiClassifier.MAX_CONSEC:
                     self.skip_classifying = PiClassifier.SKIP_FRAMES
                     self.classified_consec = 0
+            else:
+                self.classified_consec = 0
 
         elif self.clip is not None:
             self.end_clip()

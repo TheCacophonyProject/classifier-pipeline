@@ -7,11 +7,13 @@ class Recorder(ABC):
         ...
 
     @abstractmethod
-    def start_recording(self, background_frame, preview_frames, temp_thresh):
+    def start_recording(
+        self, background_frame, preview_frames, temp_thresh, frame_time
+    ):
         ...
 
     @abstractmethod
-    def stop_recording(self):
+    def stop_recording(self, frame_time):
         ...
 
     @abstractmethod

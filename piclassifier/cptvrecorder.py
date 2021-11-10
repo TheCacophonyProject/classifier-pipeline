@@ -36,7 +36,7 @@ class CPTVRecorder(Recorder):
             return
 
         if self.has_minimum():
-            self.stop_recording()
+            self.stop_recording(time.time())
         else:
             self.delete_recording()
 
@@ -47,22 +47,24 @@ class CPTVRecorder(Recorder):
                 self.write_until = self.frames + self.min_frames
             elif self.has_minimum():
 
-                self.stop_recording()
+                self.stop_recording(cptv_frame.received_at)
                 return
 
             if self.frames == self.max_frames:
-                self.stop_recording()
+                self.stop_recording(cptv_frame.received_at)
 
     def has_minimum(self):
         return self.frames > self.write_until
 
-    def start_recording(self, background_frame, preview_frames, temp_thresh):
+    def start_recording(
+        self, background_frame, preview_frames, temp_thresh, frame_time
+    ):
         start = time.time()
         if self.recording:
             logging.warn("Already recording, stop recording first")
             return False
         self.frames = 0
-        self.filename = new_temp_name()
+        self.filename = new_temp_name(frame_time)
         self.filename = os.path.join(self.output_dir, self.filename)
         f = open(self.filename, "wb")
         self.writer = CPTVWriter(f)
@@ -110,7 +112,7 @@ class CPTVRecorder(Recorder):
         self.frames += 1
         self.rec_time += time.time() - start
 
-    def stop_recording(self):
+    def stop_recording(self, frame_time):
         start = time.time()
         self.rec_time += time.time() - start
         self.recording = False
@@ -142,39 +144,7 @@ class CPTVRecorder(Recorder):
         self.writer = None
 
 
-def new_temp_name():
-    return datetime.now().strftime("%Y%m%d.%H%M%S.%f" + CPTV_TEMP_EXT)
-
-
-def get_size(obj, name="base", seen=None, depth=0):
-    """Recursively finds size of objects"""
-    size = sys.getsizeof(obj)
-    if seen is None:
-        seen = set()
-    obj_id = id(obj)
-    if obj_id in seen:
-        return 0
-    # Important mark as seen *before* entering recursion to gracefully handle
-    # self-referential objects
-    seen.add(obj_id)
-    if attr.has(obj):
-        obj = attr.asdict(obj)
-        size += sum(
-            [get_size(v, f"{name}.{k}", seen, depth + 1) for k, v in obj.items()]
-        )
-        size += sum([get_size(k, f"{name}.{k}", seen, depth + 1) for k in obj.keys()])
-    if isinstance(obj, dict):
-        size += sum(
-            [get_size(v, f"{name}.{k}", seen, depth + 1) for k, v in obj.items()]
-        )
-        size += sum([get_size(k, f"{name}.{k}", seen, depth + 1) for k in obj.keys()])
-    elif hasattr(obj, "__dict__"):
-
-        size += get_size(obj.__dict__, f"{name}.dict", seen)
-    elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes, bytearray)):
-        # print("iter??")
-
-        size += sum([get_size(i, f"{name}.iter", seen, depth + 1) for i in obj])
-    # if size * 1e-6 > 0.1 and depth <= 1:
-    #     print(name, " size ", round(size * 1e-6, 2), "MB")
-    return size
+def new_temp_name(frame_time):
+    return datetime.fromtimestamp(frame_time).strftime(
+        "%Y%m%d.%H%M%S.%f" + CPTV_TEMP_EXT
+    )

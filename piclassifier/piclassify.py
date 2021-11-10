@@ -107,6 +107,7 @@ def parse_cptv(cptv_file, config, thermal_config_file):
             if frame.background_frame:
                 pi_classifier.motion_detector.background = frame.pix
                 continue
+            frame.received_at = time.time()
             pi_classifier.process_frame(frame)
         pi_classifier.disconnected()
 
@@ -181,7 +182,7 @@ def handle_connection(connection, config, thermal_config_file):
                 pass
             read += 1
             frame = raw_frame.parse(data)
-            frame.received_at = datetime.now().strftime("%H:%M:%S")
+            frame.received_at = time.time()
             cropped_frame = crop_rectangle.subimage(frame.pix)
             t_max = np.amax(cropped_frame)
             t_min = np.amin(cropped_frame)
