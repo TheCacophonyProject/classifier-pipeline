@@ -40,7 +40,12 @@ class ThrottledRecorder(Recorder):
     def update_tokens(self):
         if self.last_motion is None:
             return
-        since_motion = time.time() - self.last_motion
+
+        update_from = self.last_rec
+        if self.last_motion > self.last_rec:
+            update_from = self.last_motion
+
+        since_motion = time.time() - update_from
         # if we have been throttled wait for no motion before adding any tokens back
         if self.throttling:
             since_throttle = time.time() - self.throttled_at
