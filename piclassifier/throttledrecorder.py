@@ -103,9 +103,12 @@ class ThrottledRecorder(Recorder):
         self.update_tokens(frame_time)
         self.last_motion = frame_time
         logging.info("Update last_motion%s", datetime.fromtimestamp(self.last_motion))
-
-        if self.throttling or self.tokens < self.min_recording:
+        if self.throttling:
             return False
+        if self.tokens < self.min_recording:
+            self.throttle(frame_time)
+            return False
+        self.take_token(frame_time, len(preview_frames))
         self.recorder.start_recording(
             background_frame, preview_frames, temp_thresh, frame_time
         )
@@ -116,10 +119,13 @@ class ThrottledRecorder(Recorder):
             self.last_rec = frame_time
             self.recorder.stop_recording(frame_time)
 
-    def take_token(self, frame_time):
-        self.tokens -= 1
+    def throttle(self, frame_time):
+        logging.info("Throttling")
+        self.throttling = True
+        self.throttled_at = frame_time
+        throttled_event()
+
+    def take_token(self, frame_time, num_tokens=1):
+        self.tokens -= num_tokens
         if self.tokens == 0:
-            logging.info("Throttling")
-            self.throttling = True
-            self.throttled_at = frame_time
-            throttled_event()
+            self.throttle()
