@@ -40,8 +40,11 @@ Some labels have low amounts of data so a single camera is split into 2 cameras 
 ### train.py
 Trains a neural net using a provided test / train / validation dataset.
 
+### extract.py
+Extract tracking information for a specified CPTV file
+
 ### classify.py
-Uses a pre-trained model to identifying and classifying any animals in a CPTV file.
+Uses a pre-trained model to identifying and classifying any animals in supplied CPTV file, CPTV file must have associated metadata generated from extract.
 Classifier will produce a JSON output either to terminal or txt file.
 
 #### thumbnail algorithm
@@ -116,7 +119,7 @@ https://docs.google.com/document/d/1iPsp-LWRva8YTQHwXRq8R1vjJKT58wRNCn_8bi6BoW8/
 ## Classifying animals within a CPTV File
 
 A pre-trained model can be used to classify objects within a CPTV video
-
+`python extract.py [cptv filename]`
 `python classify.py [cptv filename]`
 
 This will generate a text file listing the animals identified, and create an MPEG preview file.

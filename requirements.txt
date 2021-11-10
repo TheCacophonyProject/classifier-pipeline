@@ -1,5 +1,5 @@
 tensorflow-addons
-tensorflow~=2.5.0
+tensorflow~=2.6.0
 matplotlib~=3.0
 pytz
 cptv~=1.5.1

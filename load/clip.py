@@ -32,6 +32,9 @@ from track.track import Track
 from track.region import Region
 from piclassifier.motiondetector import is_affected_by_ffc
 
+RES_X = 160
+RES_Y = 120
+
 
 class Clip:
     PREVIEW = "preview"
@@ -47,7 +50,7 @@ class Clip:
         Clip.CLIP_ID += 1
         Track._track_id = 1
         self.disable_background_subtraction = False
-        self.frame_on = 0
+        self.current_frame = -1
         self.ffc_affected = False
         self.crop_rectangle = None
         self.region_history = []
@@ -290,8 +293,8 @@ class Clip:
             video_start_time.astimezone(Clip.local_tz).time().hour >= 2
         )
 
-    def load_metadata(self, metadata, include_filtered_channel, tag_precedence):
-        self._id = metadata["id"]
+    def load_metadata(self, metadata, tag_precedence):
+        self._id = metadata.get("id", 0)
         device_meta = metadata.get("Device")
         self.tags = metadata.get("Tags")
 
@@ -302,14 +305,12 @@ class Clip:
                 "-"
             )[-1]
         self.location = metadata.get("location")
-        tracks = self.load_tracks_meta(
-            metadata, include_filtered_channel, tag_precedence
-        )
+        tracks = self.load_tracks_meta(metadata, tag_precedence)
         self.from_metadata = True
         self.tracks = set(tracks)
 
-    def load_tracks_meta(self, metadata, include_filtered_channel, tag_precedence):
-        tracks_meta = metadata["Tracks"]
+    def load_tracks_meta(self, metadata, tag_precedence):
+        tracks_meta = metadata.get("tracks", [])
         tracks = []
         # get track data
         for track_meta in tracks_meta:
@@ -317,7 +318,6 @@ class Clip:
             if track.load_track_meta(
                 track_meta,
                 self.frames_per_second,
-                include_filtered_channel,
                 tag_precedence,
                 self.config.min_tag_confidence,
             ):
@@ -336,8 +336,14 @@ class Clip:
         )
 
     def set_res(self, res_x, res_y):
-        self.res_x = res_x
-        self.res_y = res_y
+        if res_x == 0 or res_x == None:
+            self.res_x = RES_X
+        else:
+            self.res_x = res_x
+        if res_y == 0 or res_y == None:
+            self.res_y = RES_Y
+        else:
+            self.res_y = res_y
         self._set_crop_rectangle()
         for track in self.tracks:
             track.crop_rectangle = self.crop_rectangle
@@ -361,12 +367,13 @@ class Clip:
         if self.config.verbose:
             logging.info(info_string)
 
-    def add_frame(self, thermal, filtered, mask, ffc_affected=False):
+    def add_frame(self, thermal, filtered, mask=None, ffc_affected=False):
+        self.current_frame += 1
         if ffc_affected:
-            self.ffc_frames.append(self.frame_on)
+            self.ffc_frames.append(self.current_frame)
 
         self.frame_buffer.add_frame(
-            thermal, filtered, mask, self.frame_on, ffc_affected
+            thermal, filtered, mask, self.current_frame, ffc_affected
         )
         if self.calc_stats:
             self.stats.add_frame(thermal, filtered)

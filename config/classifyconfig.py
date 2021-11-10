@@ -33,19 +33,19 @@ class ClassifyConfig(DefaultConfig):
     models = attr.ib()
     meta_to_stdout = attr.ib()
     preview = attr.ib()
-    classify_folder = attr.ib()
     cache_to_disk = attr.ib()
+    service_socket = attr.ib()
 
     @classmethod
-    def load(cls, classify, base_folder):
+    def load(cls, classify):
         return cls(
             models=ClassifyConfig.load_models(classify.get("models")),
             meta_to_stdout=classify["meta_to_stdout"],
             preview=config.parse_options_param(
                 "preview", classify["preview"], Previewer.PREVIEW_OPTIONS
             ),
-            classify_folder=path.join(base_folder, classify["classify_folder"]),
             cache_to_disk=classify["cache_to_disk"],
+            service_socket=classify["service_socket"],
         )
 
     def load_models(raw):
@@ -64,8 +64,8 @@ class ClassifyConfig(DefaultConfig):
             models=None,
             meta_to_stdout=False,
             preview="none",
-            classify_folder="classify",
             cache_to_disk=False,
+            service_socket="/etc/cacophony/classifier",
         )
 
     def validate(self):
@@ -104,7 +104,7 @@ class ModelConfig:
 
     def validate(self):
         if not validate_model(self.model_file):
-            raise ValueError(f"{self.model_file}is not valid")
+            raise ValueError(f"{self.model_file} is not valid")
 
     def as_dict(self):
         return attr.asdict(self)

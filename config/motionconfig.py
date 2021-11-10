@@ -22,8 +22,29 @@ class MotionConfig(DefaultConfig):
 
     @classmethod
     def get_defaults(cls):
+        thresholds = {}
+        thresholds["lepton3"] = ThresholdConfig(
+            camera_model="lepton3",
+            temp_thresh=2900,
+            background_thresh=20,
+            default=True,
+            min_temp_thresh=None,
+            max_temp_thresh=None,
+            track_min_delta=1.0,
+            track_max_delta=150,
+        )
+        thresholds["lepton3.5"] = ThresholdConfig(
+            camera_model="lepton3.5",
+            temp_thresh=28000,
+            background_thresh=50,
+            default=False,
+            min_temp_thresh=None,
+            max_temp_thresh=None,
+            track_min_delta=1.0,
+            track_max_delta=150,
+        )
         return cls(
-            camera_thresholds={"default-model": ThresholdConfig.get_defaults()},
+            camera_thresholds=thresholds,
             dynamic_thresh=True,
         )
 

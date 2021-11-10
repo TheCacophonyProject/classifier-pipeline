@@ -3,13 +3,10 @@ import os
 import logging
 from datetime import datetime
 
-from .clipclassifier import ClipClassifier
+from track.trackextractor import TrackExtractor
 from ml_tools.logs import init_logging
-from ml_tools import tools
 from config.config import Config
 from config.classifyconfig import ModelConfig
-
-from ml_tools.previewer import Previewer
 
 import absl.logging
 
@@ -42,26 +39,18 @@ def main():
     parser.add_argument(
         "-v", "--verbose", action="count", help="Display additional information."
     )
-    parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument(
         "-o",
         "--meta-to-stdout",
         action="count",
         help="Print metadata to stdout instead of saving to file.",
     )
+    parser.add_argument("-c", "--config-file", help="Path to config file to use")
+
     parser.add_argument(
         "-T", "--timestamps", action="store_true", help="Emit log timestamps"
     )
-    parser.add_argument(
-        "-m",
-        "--model-file",
-        help="Path to model file to use, will override config model",
-    )
-    parser.add_argument(
-        "--reuse-prediction-frames",
-        action="count",
-        help="Use supplied prediction frames from metadata.txt",
-    )
+
     parser.add_argument(
         "--cache",
         type=str2bool,
@@ -84,22 +73,9 @@ def main():
 
     if args.meta_to_stdout:
         config.classify.meta_to_stdout = True
-    model = None
-    keras_model = None
-    if args.model_file:
-        model = ModelConfig.load(
-            {"id": 1, "model_file": args.model_file, "name": args.model_file}
-        )
-        model.validate()
-    clip_classifier = ClipClassifier(
-        config,
-        model,
-    )
-    clip_classifier.process(
-        args.source,
-        cache=args.cache,
-        reuse_frames=args.reuse_prediction_frames,
-    )
+    extractor = TrackExtractor(config, cache_to_disk=args.cache)
+
+    extractor.extract(args.source)
 
 
 if __name__ == "__main__":

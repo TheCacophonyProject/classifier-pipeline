@@ -586,17 +586,33 @@ class KerasModel:
         model = tf.keras.models.Model(input_layer, preds)
         return model
 
-    def classify_track(self, clip, track, keep_all=True):
+    def classify_track(self, clip, track, keep_all=True, segment_frames=None):
         track_data = []
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
-            frame.filtered = frame.thermal - clip.background
+            if frame is None:
+                logging.error(
+                    "Clasifying clip %s track %s can't get frame %s",
+                    clip.get_id(),
+                    track.get_id(),
+                    region.frame_number,
+                )
+                raise Exception(
+                    "Clasifying clip {} track {} can't get frame {}".format(
+                        clip.get_id(), track.get_id(), region.frame_number
+                    )
+                )
             cropped_frame = frame.crop_by_region(region)
             track_data.append(cropped_frame)
             thermal_median[i] = np.median(frame.thermal)
+
         segments = track.get_segments(
-            clip.ffc_frames, thermal_median, self.params.square_width ** 2, repeats=4
+            clip.ffc_frames,
+            thermal_median,
+            self.params.square_width ** 2,
+            repeats=4,
+            segment_frames=segment_frames,
         )
         return self.classify_track_data(
             track.get_id(),
@@ -636,12 +652,12 @@ class KerasModel:
                 logging.warn("No frames to predict on")
                 continue
             output = self.model.predict(frames[np.newaxis, :])
-            pred = output[0]
-            predictions.append(pred)
-            smoothed_predictions.append(np.uint32(pred ** 2 * segment.mass))
-        track_prediction.classified_clip(predictions, smoothed_predictions)
-        track_prediction.classify_time = time.time() - start
 
+            track_prediction.classified_frames(
+                segment.frame_indices, output[0], max(1, segment.mass)
+            )
+        track_prediction.classify_time = time.time() - start
+        track_prediction.normalize_score()
         return track_prediction
 
     def classify_frame(self, frame, thermal_median, preprocess=True):

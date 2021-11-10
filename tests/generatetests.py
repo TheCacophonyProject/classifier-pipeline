@@ -52,6 +52,7 @@ def main():
         recording_tests=tests, server=args.server, clip_dir=args.out_folder
     )
     for rec_id in args.ids:
+        rec_id = rec_id.strip()
         rec_meta = api.get(rec_id)
         tracks = api.get_tracks(rec_id)
         filename = Path(rec_id).with_suffix(".cptv")

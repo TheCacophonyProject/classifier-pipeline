@@ -167,7 +167,6 @@ class TrackHeader:
         self.frame_crop = None
         self.num_frames = num_frames
         self.frames_per_second = frames_per_second
-        self.sample_frames = None
         self.important_predicted = 0
         mass_history = [region.mass for region in self.regions]
         self.lower_mass = np.uint16(np.percentile(mass_history, q=25))
@@ -176,8 +175,8 @@ class TrackHeader:
         self.mean_mass = np.uint16(np.mean(mass_history))
         self.ffc_frames = np.uint16(ffc_frames)
         self.skipped_frames = skipped_frames
+        self.sample_frames = []
         if sample_frames_indices is not None:
-            self.sample_frames = []
             for region, frame_num, frame_temp in zip(
                 regions, sample_frames_indices, self.frame_temp_median
             ):
@@ -192,7 +191,6 @@ class TrackHeader:
                 )
                 self.sample_frames.append(f)
         else:
-            self.sample_frames = []
             for region, frame_temp in zip(regions, self.frame_temp_median):
                 if region.mass == 0:
                     continue
@@ -239,7 +237,7 @@ class TrackHeader:
         return self.sample_frames
 
     def remove_sample_frame(self, f):
-        self.important_frams.remove(f)
+        self.sample_frames.remove(f)
 
     def get_sample_frame(self, i=0, remove=False):
         if len(self.sample_frames) == 0:
@@ -362,6 +360,8 @@ class TrackHeader:
         ):
             r = Region.region_from_array(bounds, np.uint16(f_i + track_start_frame))
             r.mass = np.uint16(mass)
+            if r.mass == 0:
+                r.blank = True
             regions[f_i] = r
             f_i += 1
         header = TrackHeader(
@@ -668,6 +668,8 @@ def get_segments(
     repeats=1,
     min_frames=None,
     skipped_frames=None,
+    segment_frames=None,
+    ignore_mass=False,
 ):
     if min_frames is None:
         min_frames = 25
@@ -680,10 +682,11 @@ def get_segments(
         frame_indices = [
             region.frame_number
             for region in regions
-            if region.mass > 0
+            if (ignore_mass or region.mass > 0)
             and region.frame_number not in ffc_frames
             and (skipped_frames is None or region.frame_number not in skipped_frames)
         ]
+
         if segment_min_mass is not None:
             if len(frame_indices) > 0:
                 segment_min_mass = min(
@@ -730,7 +733,9 @@ def get_segments(
             segment_info = sorted_mass[0]
             index = segment_info[0]
             avg_mass = segment_info[1] / segment_width
-            if not best_mass and (avg_mass < lower_mass or avg_mass < segment_min_mass):
+            if not best_mass and (
+                ignore_mass or (avg_mass < lower_mass or avg_mass < segment_min_mass)
+            ):
                 break
             movement_data = get_movement_data(regions[index : index + segment_width])
             frames = np.arange(segment_width) + index
@@ -819,7 +824,11 @@ def get_segments(
             segment_mass = np.sum(mass_slice)
 
             segment_avg_mass = segment_mass / len(mass_slice)
-            if segment_min_mass and segment_avg_mass < segment_min_mass:
+            if (
+                not ignore_mass
+                and segment_min_mass
+                and segment_avg_mass < segment_min_mass
+            ):
                 filtered_stats["segment_mass"] += 1
                 continue
             if segment_avg_mass < 50:
