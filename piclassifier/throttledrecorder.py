@@ -128,4 +128,4 @@ class ThrottledRecorder(Recorder):
     def take_token(self, frame_time, num_tokens=1):
         self.tokens -= num_tokens
         if self.tokens == 0:
-            self.throttle()
+            self.throttle(frame_time)
