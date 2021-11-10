@@ -50,8 +50,8 @@ class ThrottledRecorder(Recorder):
         if self.throttling:
             since_throttle = time.time() - self.throttled_at
             if (
-                self.max_throttling_minutes is None
-                or since_throttle < self.max_throttling_minutes
+                self.max_throttling_seconds is None
+                or since_throttle < self.max_throttling_seconds
             ):
                 since_motion -= self.no_motion
                 logging.debug(
