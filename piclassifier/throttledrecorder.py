@@ -66,25 +66,31 @@ class ThrottledRecorder(Recorder):
         # if we have been throttled wait for no motion before adding any tokens back
         if self.throttling:
             since_throttle = frame_time - self.throttled_at
-            if (
-                self.max_throttling_seconds is None
-                or since_throttle < self.max_throttling_seconds
-            ):
-                logging.debug(
-                    "Updating tokens %s seconds since motion", round(since_motion)
-                )
-                since_motion -= self.no_motion
-                if since_motion < 0:
+            logging.debug(
+                "Updating tokens %s seconds since motion", round(since_motion)
+            )
+            since_motion -= self.no_motion
+
+            if since_motion < 0:
+                if (
+                    self.max_throttling_seconds
+                    and since_throttle >= self.max_throttling_seconds
+                ):
+                    self.tokens = self.recorder.min_frames // 2
+                    logging.info(
+                        "Giving a few free tokens %s has been %s seconds since motion",
+                        self.tokens,
+                        round(since_motion),
+                    )
+                else:
                     return
             else:
-                # give it a few tokens to get going
-                self.tokens = self.min_frames // 2
-                logging.info(
-                    "Giving a few free tokens %s has been %s seconds since motion",
-                    self.tokens,
+                self.tokens = since_motion * self.fps
+                logging.debug(
+                    "Updating tokens %s seconds since motion has earnt %s tokens",
                     round(since_motion),
+                    since_motion * self.fps,
                 )
-
         else:
             logging.debug(
                 "Updating tokens %s seconds since motion has earnt %s tokens",
