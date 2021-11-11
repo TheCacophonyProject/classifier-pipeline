@@ -34,16 +34,12 @@ class ThrottledRecorder(Recorder):
     def process_frame(self, movement_detected, cptv_frame):
         if movement_detected:
             self.last_motion = cptv_frame.received_at
-            logging.info(
-                "Update last_motion%s", datetime.fromtimestamp(self.last_motion)
-            )
 
         was_recording = self.recorder.recording
         self.recorder.process_frame(movement_detected, cptv_frame)
         self.take_token(cptv_frame.received_at)
         if was_recording and not self.recorder.recording:
             self.last_rec = cptv_frame.received_at
-            logging.info("Update last_rec%s", datetime.fromtimestamp(self.last_rec))
 
         if self.throttling and self.recorder.recording:
             logging.info("Throttling recording")
@@ -56,18 +52,13 @@ class ThrottledRecorder(Recorder):
         update_from = self.last_motion
         if self.last_rec and self.last_rec > self.last_motion:
             update_from = self.last_rec
-            logging.info("Using last rec")
-        logging.info(
-            "update_tokens last_rec%s frame %s",
-            datetime.fromtimestamp(update_from),
-            datetime.fromtimestamp(frame_time),
-        )
+
         since_motion = frame_time - update_from
         # if we have been throttled wait for no motion before adding any tokens back
         if self.throttling:
             since_throttle = frame_time - self.throttled_at
             logging.debug(
-                "Updating tokens %s seconds since motion with no motion %s since throttle %s, max throttle s",
+                "Updating tokens %s seconds since motion with no motion %s since throttle %s, max throttle %s",
                 round(since_motion),
                 self.no_motion,
                 datetime.fromtimestamp(since_throttle),
@@ -112,7 +103,6 @@ class ThrottledRecorder(Recorder):
         logging.debug("Attempting rec have %s tokens", self.tokens)
         self.update_tokens(frame_time)
         self.last_motion = frame_time
-        logging.info("Update last_motion%s", datetime.fromtimestamp(self.last_motion))
         if self.throttling:
             return False
         if self.tokens < self.min_recording:
