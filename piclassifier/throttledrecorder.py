@@ -15,7 +15,7 @@ class ThrottledRecorder(Recorder):
         self.last_rec = None
         self.last_motion = None
         self.fps = headers.fps
-        self.no_motion = thermal_config.throttler.no_motion * headers.fps
+        self.no_motion = thermal_config.throttler.no_motion
         self.max_throttling_seconds = (
             thermal_config.throttler.max_throttling_minutes * 60
         )
@@ -67,7 +67,11 @@ class ThrottledRecorder(Recorder):
         if self.throttling:
             since_throttle = frame_time - self.throttled_at
             logging.debug(
-                "Updating tokens %s seconds since motion", round(since_motion)
+                "Updating tokens %s seconds since motion with no motion %s since throttle %s, max throttle s",
+                round(since_motion),
+                self.no_motion,
+                datetime.fromtimestamp(since_throttle),
+                self.max_throttling_seconds,
             )
             since_motion -= self.no_motion
 
