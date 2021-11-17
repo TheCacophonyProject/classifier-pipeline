@@ -270,10 +270,7 @@ class PiClassifier(Processor):
         return None
 
     def new_clip(self, preview_frames):
-        self.clip = Clip(
-            self.config.tracking,
-            "stream",
-        )
+        self.clip = Clip(self.config.tracking, "stream", model=self.headers.model)
         global clip
         clip = self.clip
         self.clip.video_start_time = datetime.now()
@@ -520,7 +517,7 @@ class PiClassifier(Processor):
     def end_clip(self):
         if self.clip:
             logging.debug(
-                "Ending clip with %s tracks pre filtering", len(self.clip.active_tracks)
+                "Ending clip with %s tracks pre filtering", len(self.clip.tracks)
             )
             if self.classify:
                 for _, prediction in self.predictions.prediction_per_track.items():

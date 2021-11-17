@@ -42,7 +42,9 @@ class Clip:
     # and background object must overlap i.e. they are a valid object
     MIN_ORIGIN_OVERLAP = 0.80
 
-    def __init__(self, trackconfig, sourcefile, background=None, calc_stats=True):
+    def __init__(
+        self, trackconfig, sourcefile, background=None, calc_stats=True, model=None
+    ):
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
         Track._track_id = 1
@@ -79,12 +81,13 @@ class Clip:
         self.tags = None
 
         # sets defaults
-        self.set_model(None)
+        self.set_model(model)
         if background is not None:
             self.background = background
             self._background_calculated()
 
     def set_model(self, camera_model):
+        print("set model", camera_model)
         self.camera_model = camera_model
         threshold = self.config.motion.threshold_for_model(camera_model)
         if threshold:
@@ -92,6 +95,7 @@ class Clip:
             self.set_motion_thresholds(threshold)
 
     def set_motion_thresholds(self, threshold):
+        print("set thresholds", threshold)
         self.background_thresh = threshold.background_thresh
         self.temp_thresh = threshold.temp_thresh
         self.stats.threshold = self.background_thresh

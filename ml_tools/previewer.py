@@ -120,7 +120,7 @@ class Previewer:
                     clip.tracks,
                     frame_number,
                     predictions,
-                    frame_scale=frame_scale,
+                    scale=frame_scale,
                 )
 
             elif self.preview_type == self.PREVIEW_BOXES:
@@ -220,6 +220,7 @@ class Previewer:
         if predictions is None:
             return
         # look for any tracks that occur on this frame
+
         for track in clip.tracks:
             guesses = predictions.guesses_for(track.get_id())
             track_description = "\n".join(guesses)
@@ -251,11 +252,12 @@ class Previewer:
             if frame_offset >= 0 and frame_offset < len(track.bounds_history):
                 region = track.bounds_history[frame_offset]
                 prediction = None
-                prediction = track_predictions.prediction_for(track.get_id())
+                if track_predictions:
+                    prediction = track_predictions.prediction_for(track.get_id())
                 add_track(
                     draw,
                     track,
-                    self.track_descs[track],
+                    self.track_descs.get(track),
                     region,
                     frame_offset,
                     colours[index % len(colours)],

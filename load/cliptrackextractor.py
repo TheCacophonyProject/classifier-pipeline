@@ -152,7 +152,6 @@ class ClipTrackExtractor:
         filtered = np.float32(thermal.copy())
         avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
-
         filtered, stats = normalize(filtered, new_max=255)
         if self.config.denoise:
             filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
@@ -379,7 +378,6 @@ class ClipTrackExtractor:
         return regions
 
     def filter_tracks(self, clip):
-
         for track in clip.tracks:
             track.trim()
             track.set_end_s(clip.frames_per_second)
