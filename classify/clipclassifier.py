@@ -224,25 +224,27 @@ class ClipClassifier:
 
     def save_metadata(
         self,
-        meta_data,
+        existing_meta,
         meta_filename,
         clip,
         predictions_per_model,
         models,
     ):
-
-        # read in original metadata
-        existing_meta = self.get_meta_data(filename)
-        meta_data = clip.get_metadata(predictions_per_model)
-        meta_data["source"] = filename
-        meta_data["tracking_time"] = round(tracking_time, 1)
-        meta_data["algorithm"] = {}
-        meta_data["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
-        meta_data["algorithm"]["tracker_config"] = self.config.tracking.as_dict()
-        if existing_meta:
-            meta_data["camera"] = existing_meta["Device"]["devicename"]
-            meta_data["cptv_meta"] = existing_meta
-            meta_data["original_tag"] = existing_meta["primary_tag"]
+        tracks = meta_data.get("tracks")
+        for track in clip.tracks:
+            meta_track = next((x for x in tracks if x["id"] == track.get_id()), None)
+            if meta_track is None:
+                logging.error(
+                    "Got prediction for track which doesn't exist in metadata"
+                )
+                continue
+            prediction_info = []
+            for model_id, predictions in predictions_per_model.items():
+                prediction = predictions.prediction_for(track.get_id())
+                prediciont_meta = prediction.get_metadata()
+                prediciont_meta["model_id"] = model_id
+                prediction_info.append(prediciont_meta)
+            meta_track["predictions"] = prediction_info
 
         model_dictionaries = []
         for model in models:
@@ -261,6 +263,4 @@ class ClipClassifier:
         else:
             with open(meta_filename, "w") as f:
                 json.dump(meta_data, f, indent=4, cls=tools.CustomJSONEncoder)
-        if self.cache_to_disk:
-            clip.frame_buffer.remove_cache()
         return meta_data
