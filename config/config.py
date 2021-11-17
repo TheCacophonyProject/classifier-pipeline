@@ -61,12 +61,6 @@ class Config(DefaultConfig):
         # "classify_tracking" when not specified.
         deep_copy_map_if_key_not_exist(default.as_dict(), raw)
         base_folder = raw.get("base_data_folder", ".")
-<<<<<<< HEAD
-=======
-
->>>>>>> origin/master
-        base_folder = path.expanduser(base_folder)
-
         return cls(
             source_folder=path.join(base_folder, raw["source_folder"]),
             tracks_folder=path.join(base_folder, raw.get("tracks_folder", "tracks")),

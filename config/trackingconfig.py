@@ -60,9 +60,6 @@ class TrackingConfig(DefaultConfig):
     def load(cls, tracking):
         return cls(
             motion=TrackingMotionConfig.load(tracking.get("motion")),
-            threshold_percentile=tracking["stats"]["threshold_percentile"],
-            min_threshold=tracking["stats"]["min_threshold"],
-            max_threshold=tracking["stats"]["max_threshold"],
             edge_pixels=tracking["edge_pixels"],
             dilation_pixels=tracking["dilation_pixels"],
             frame_padding=tracking["frame_padding"],
@@ -96,11 +93,6 @@ class TrackingConfig(DefaultConfig):
     def get_defaults(cls):
         return cls(
             motion=TrackingMotionConfig.get_defaults(),
-            stats={
-                "threshold_percentile": 99.9,
-                "min_threshold": 30,
-                "max_threshold": 50,
-            },
             edge_pixels=1,
             frame_padding=4,
             dilation_pixels=2,
