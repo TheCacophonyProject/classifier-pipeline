@@ -131,24 +131,13 @@ class TrackExtractor:
     ):
 
         # record results in text file.
-        save_file = {}
+        save_file = clip.get_metadata()
         save_file["source"] = filename
-        if clip.camera_model:
-            save_file["camera_model"] = clip.camera_model
-        save_file["background_thresh"] = clip.background_thresh
-        start, end = clip.start_and_end_time_absolute()
-        save_file["start_time"] = start.isoformat()
-        save_file["end_time"] = end.isoformat()
+
         save_file["tracking_time"] = round(tracking_time, 1)
         save_file["algorithm"] = {}
         save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
         save_file["algorithm"]["tracker_config"] = self.config.tracking.as_dict()
-
-        tracks = []
-        for track in clip.tracks:
-            track_info = track.get_metadata()
-            tracks.append(track_info)
-        save_file["tracks"] = tracks
 
         if self.config.classify.meta_to_stdout:
             print(json.dumps(save_file, cls=tools.CustomJSONEncoder))

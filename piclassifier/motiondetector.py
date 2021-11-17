@@ -3,7 +3,6 @@ from datetime import timedelta
 import logging
 import time
 import numpy as np
-import time
 from ml_tools.tools import Rectangle
 from .processor import Processor
 
