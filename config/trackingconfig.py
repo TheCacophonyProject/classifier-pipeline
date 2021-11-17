@@ -20,7 +20,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import attr
 
 from .defaultconfig import DefaultConfig
-from .motionconfig import MotionConfig
+from .trackingmotionconfig import TrackingMotionConfig
 from load.cliptrackextractor import ClipTrackExtractor
 
 
@@ -63,7 +63,7 @@ class TrackingConfig(DefaultConfig):
     @classmethod
     def load(cls, tracking):
         return cls(
-            motion=MotionConfig.load(tracking.get("motion")),
+            motion=TrackingMotionConfig.load(tracking.get("motion")),
             threshold_percentile=tracking["stats"]["threshold_percentile"],
             min_threshold=tracking["stats"]["min_threshold"],
             max_threshold=tracking["stats"]["max_threshold"],
@@ -100,7 +100,7 @@ class TrackingConfig(DefaultConfig):
     @classmethod
     def get_defaults(cls):
         return cls(
-            motion=MotionConfig.get_defaults(),
+            motion=TrackingMotionConfig.get_defaults(),
             stats={
                 "threshold_percentile": 99.9,
                 "min_threshold": 30,

@@ -59,9 +59,8 @@ class ThrottlerConfig:
         return attr.asdict(self)
 
 
-# TODO CHANGE defaults BASED ON CAMERA
 @attr.s
-class MotionConfig:
+class CameraMotionConfig:
     temp_thresh = attr.ib()
     delta_thresh = attr.ib()
     count_thresh = attr.ib()
@@ -104,7 +103,7 @@ class MotionConfig:
 
     @classmethod
     def load(cls, motion, model=None):
-        default = MotionConfig.defaults_for(model)
+        default = CameraMotionConfig.defaults_for(model)
         motion = cls(
             temp_thresh=motion.get("temp-thresh", default.temp_thresh),
             delta_thresh=motion.get("delta-thresh", default.delta_thresh),
@@ -179,7 +178,7 @@ class ThermalConfig:
             raw = {}
         return cls(
             throttler=ThrottlerConfig.load(raw.get("thermal-throttler", {})),
-            motion=MotionConfig.load(raw.get("thermal-motion", {}), model),
+            motion=CameraMotionConfig.load(raw.get("thermal-motion", {}), model),
             recorder=RecorderConfig.load(
                 raw.get("thermal-recorder", {}), raw.get("windows", {})
             ),
