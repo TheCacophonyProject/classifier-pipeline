@@ -123,7 +123,7 @@ class TrackPrediction:
         else:
             self.class_best_score += smoothed_prediction
 
-    def classified_frame(self, frame_number, prediction):
+    def classified_frame(self, frame_number, prediction, mass):
         self.prediction_frames.append([frame_number])
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
