@@ -87,7 +87,7 @@ class Clip:
             self._background_calculated()
 
     def set_model(self, camera_model):
-        print("set model", camera_model)
+        logging.debug("set model %s", camera_model)
         self.camera_model = camera_model
         threshold = self.config.motion.threshold_for_model(camera_model)
         if threshold:
@@ -95,7 +95,7 @@ class Clip:
             self.set_motion_thresholds(threshold)
 
     def set_motion_thresholds(self, threshold):
-        print("set thresholds", threshold)
+        logging.debug("set thresholds %s", threshold)
         self.background_thresh = threshold.background_thresh
         self.temp_thresh = threshold.temp_thresh
         self.stats.threshold = self.background_thresh
