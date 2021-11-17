@@ -312,7 +312,7 @@ class PiClassifier(Processor):
 
         top_priority = sorted(
             active_predictions,
-            key=lambda i: i.get_priority(self.clip.frame_on),
+            key=lambda i: i.get_priority(self.clip.current_frame),
             reverse=True,
         )
 
@@ -384,7 +384,7 @@ class PiClassifier(Processor):
             if preprocessed is None:
                 continue
             prediction = self.classifier.predict(preprocessed)
-            track_prediction.classified_frame(self.clip.frame_on, prediction, mass)
+            track_prediction.classified_frame(self.clip.current_frame, prediction, mass)
             track_prediction.normalize_score()
 
     def get_recent_frame(self):
@@ -420,7 +420,7 @@ class PiClassifier(Processor):
         self.skip_classifying -= 1
 
         if self.clip:
-            self.clip.frame_on += 1
+            self.clip.current_frame += 1
 
     def process_frame(self, lepton_frame):
         start = time.time()
