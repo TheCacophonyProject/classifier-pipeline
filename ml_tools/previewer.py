@@ -45,6 +45,7 @@ class Previewer:
     PREVIEW_BOXES = "boxes"
 
     PREVIEW_OPTIONS = [
+        None,
         PREVIEW_NONE,
         PREVIEW_RAW,
         PREVIEW_CLASSIFIED,
@@ -66,7 +67,10 @@ class Previewer:
 
     @classmethod
     def create_if_required(self, config, preview_type):
-        if not preview_type.lower() == Previewer.PREVIEW_NONE:
+        if (
+            preview_type is not None
+            and not preview_type.lower() == Previewer.PREVIEW_NONE
+        ):
             return Previewer(config, preview_type)
 
     def _load_colourmap(self):
@@ -330,16 +334,21 @@ class Previewer:
         thermal = tools.convert_heat_to_img(thermal, self.colourmap, min_temp, max_temp)
         if self.debug:
             tools.add_heat_number(thermal, frame.thermal, 1)
-        mask, _ = normalize(frame.mask, new_max=255)
-        mask = np.uint8(mask)
+        if frame.mask is None:
+            mask = np.zeros((np.array(thermal).shape), dtype=np.uint8)
+        else:
+            mask, _ = normalize(frame.mask, new_max=255)
+            mask = np.uint8(mask)
 
-        mask = mask[..., np.newaxis]
-        mask = np.repeat(mask, 3, axis=2)
+            mask = mask[..., np.newaxis]
+            mask = np.repeat(mask, 3, axis=2)
 
         mask = Image.fromarray(mask)
         flow_h, flow_v = frame.get_flow_split(clip_flow=True)
         if flow_h is None and flow_v is None:
-            flow_magnitude = None
+            flow_magnitude = Image.fromarray(
+                np.zeros((np.array(thermal).shape), dtype=np.uint8)
+            )
         else:
             flow_magnitude = (
                 np.linalg.norm(np.float32([flow_h, flow_v]), ord=2, axis=0) / 4.0
@@ -348,7 +357,6 @@ class Previewer:
             flow_magnitude = tools.convert_heat_to_img(
                 flow_magnitude, self.colourmap, min_temp, max_temp
             )
-
         image = np.hstack(
             (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
         )

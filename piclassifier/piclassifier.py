@@ -385,7 +385,7 @@ class PiClassifier(Processor):
                 continue
             prediction = self.classifier.predict(preprocessed)
             track_prediction.classified_frame(self.clip.frame_on, prediction, mass)
-            track_prediction.normalize()
+            track_prediction.normalize_score()
 
     def get_recent_frame(self):
         if self.clip:

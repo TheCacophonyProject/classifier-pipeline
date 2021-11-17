@@ -122,22 +122,21 @@ class ClipTrackExtractor:
             self.apply_track_filtering(clip)
 
         if self.calc_stats:
-            clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
+            clip.stats.completed(clip.current_frame, clip.res_y, clip.res_x)
         self.tracking_time = time.time() - start
         return True
 
     def process_frame(self, clip, frame, ffc_affected=False):
         if ffc_affected:
-            self.print_if_verbose("{} ffc_affected".format(clip.frame_on))
+            self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
 
         self._process_frame(clip, frame, ffc_affected)
-        clip.frame_on += 1
 
     def apply_track_filtering(self, clip):
         self.filter_tracks(clip)
         # apply smoothing if required
-        if self.config.track_smoothing and clip.frame_on > 0:
+        if self.config.track_smoothing and clip.current_frame > 0:
             for track in clip.active_tracks:
                 track.smooth(Rectangle(0, 0, clip.res_x, clip.res_y))
 
@@ -176,7 +175,7 @@ class ClipTrackExtractor:
 
         if clip.from_metadata:
             for track in clip.tracks:
-                if clip.frame_on in track.frame_list:
+                if clip.current_frame in track.frame_list:
                     track.add_frame_for_existing_region(
                         clip.frame_buffer.get_last_frame(),
                         threshold,
@@ -302,7 +301,7 @@ class ClipTrackExtractor:
                 clip.active_tracks.add(track)
                 self.print_if_verbose(
                     "frame {} adding a blank frame to {} ".format(
-                        clip.frame_on, track.get_id()
+                        clip.current_frame, track.get_id()
                     )
                 )
 
@@ -334,7 +333,7 @@ class ClipTrackExtractor:
                 component[3],
                 mass=component[4],
                 id=i,
-                frame_number=clip.frame_on,
+                frame_number=clip.current_frame,
             )
             old_region = region.copy()
             region.crop(clip.crop_rectangle)

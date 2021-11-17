@@ -24,7 +24,7 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance
-from ml_tools.datasetstructures import get_segments
+from ml_tools.datasetstructures import get_segments, SegmentHeader
 
 
 class Track:
@@ -73,7 +73,6 @@ class Track:
         # the tag for this track
         self.tag = "unknown"
         self.prev_frame_num = None
-        self.include_filtered_channel = True
         self.confidence = None
         self.max_novelty = None
         self.avg_novelty = None
@@ -107,19 +106,47 @@ class Track:
         segment_frame_spacing=9,
         repeats=1,
         min_frames=0,
+        segment_frames=None,
     ):
-        segments, _ = get_segments(
-            self.clip_id,
-            self._id,
-            self.start_frame,
-            segment_frame_spacing,
-            segment_width,
-            regions=np.array(self.bounds_history),
-            ffc_frames=ffc_frames,
-            repeats=repeats,
-            frame_temp_median=np.uint16(frame_temp_median),
-            min_frames=min_frames,
-        )
+
+        regions = np.array(self.bounds_history)
+        frame_temp_median = np.uint16(frame_temp_median)
+        segments = []
+        if segment_frames is not None:
+            mass_history = np.uint16([region.mass for region in regions])
+            for frames in segment_frames:
+                relative_frames = frames - self.start_frame
+                mass_slice = mass_history[relative_frames]
+                segment_mass = np.sum(mass_slice)
+                segment = SegmentHeader(
+                    self.clip_id,
+                    self._id,
+                    start_frame=self.start_frame,
+                    frames=len(frames),
+                    weight=1,
+                    mass=segment_mass,
+                    label=None,
+                    regions=regions[relative_frames],
+                    frame_temp_median=frame_temp_median[relative_frames],
+                    frame_indices=frames,
+                )
+                segments.append(segment)
+        else:
+            has_mass = any([region.mass for region in regions if region.mass > 0])
+            segments, _ = get_segments(
+                self.clip_id,
+                self._id,
+                self.start_frame,
+                segment_frame_spacing,
+                segment_width,
+                regions=regions,
+                ffc_frames=ffc_frames,
+                repeats=repeats,
+                frame_temp_median=frame_temp_median,
+                min_frames=min_frames,
+                segment_frames=None,
+                ignore_mass=not has_mass,
+            )
         return segments
 
     @classmethod
@@ -146,31 +173,30 @@ class Track:
         self,
         track_meta,
         frames_per_second,
-        include_filtered_channel,
         tag_precedence,
         min_confidence,
     ):
         self.from_metadata = True
         self._id = track_meta["id"]
-        self.include_filtered_channel = include_filtered_channel
-        data = track_meta["data"]
-        self.start_s = data["start_s"]
-        self.end_s = data["end_s"]
+        extra_info = track_meta
+        if "data" in track_meta:
+            extra_info = track_meta["data"]
+
+        self.start_s = extra_info["start_s"]
+        self.end_s = extra_info["end_s"]
         self.fps = frames_per_second
-        self.predicted_tag = data.get("tag")
-        self.all_class_confidences = data.get("all_class_confidences", None)
-        self.predictions = data.get("predictions")
+        self.predicted_tag = extra_info.get("tag")
+        self.all_class_confidences = extra_info.get("all_class_confidences", None)
+        self.predictions = extra_info.get("predictions")
 
         self.track_tags = track_meta.get("TrackTags")
-        self.prediction_classes = data.get("classes")
+        self.prediction_classes = extra_info.get("classes")
         tag = Track.get_best_human_tag(self.track_tags, tag_precedence, min_confidence)
         if tag:
             self.tag = tag["what"]
             self.confidence = tag["confidence"]
-        else:
-            return False
 
-        positions = data.get("positions")
+        positions = extra_info.get("positions")
         if not positions:
             return False
         self.bounds_history = []
@@ -551,7 +577,8 @@ class Track:
     @classmethod
     def get_best_human_tag(cls, track_tags, tag_precedence, min_confidence=-1):
         """returns highest precidence non AI tag from the metadata"""
-
+        if track_tags is None:
+            return None
         track_tags = [
             tag
             for tag in track_tags
