@@ -224,7 +224,7 @@ class ClipClassifier:
 
     def save_metadata(
         self,
-        metadata,
+        meta_data,
         meta_filename,
         clip,
         predictions_per_model,
