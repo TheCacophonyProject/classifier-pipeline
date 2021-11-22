@@ -120,7 +120,7 @@ class MotionDetector:
             )
 
         self.thermal_window = SlidingWindow(
-            (self.preview_frames, headers.res_y, headers.res_x), "O"
+            (self.preview_frames + 1, headers.res_y, headers.res_x), "O"
         )
         self.processed = 0
         self.num_frames = 0
