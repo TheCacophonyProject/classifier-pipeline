@@ -281,6 +281,7 @@ class PiClassifier(Processor):
             self.config.classify.cache_to_disk,
             self.config.use_opt_flow,
             True,
+            50,
         )
         edge_pixels = self.config.tracking.edge_pixels
 
