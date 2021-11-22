@@ -104,6 +104,7 @@ class ThrottledRecorder(Recorder):
         self.update_tokens(frame_time)
         self.last_motion = frame_time
         if self.throttling:
+            throttled_event()
             return False
         if self.tokens < self.min_recording:
             self.throttle(frame_time)
