@@ -188,6 +188,7 @@ class MotionDetector:
                         )
                     )
                     temp_changed = True
+                self.set_background_edges()
         else:
             self.temp_thresh = self.config.temp_thresh
 

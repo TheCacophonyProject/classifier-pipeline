@@ -168,7 +168,15 @@ class PiClassifier(Processor):
     # this gives the cpu a break
     SKIP_FRAMES = 10
 
-    def __init__(self, config, thermal_config, headers, classify, detect_after=None):
+    def __init__(
+        self,
+        config,
+        thermal_config,
+        headers,
+        classify,
+        detect_after=None,
+        preview_type=None,
+    ):
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
         super().__init__()
@@ -192,12 +200,12 @@ class PiClassifier(Processor):
         self.crop_rectangle = tools.Rectangle(
             edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
         )
-
+        self.preview_type = preview_type
+        self.max_keep_frames = None if preview_type else 0
         self.track_extractor = ClipTrackExtractor(
             self.config.tracking,
             self.config.use_opt_flow,
             self.config.classify.cache_to_disk,
-            keep_frames=False,
             calc_stats=False,
         )
         global track_extractor
@@ -224,6 +232,13 @@ class PiClassifier(Processor):
         if self.classify:
             model = config.classify.models[0]
             self.classifier = get_classifier(model)
+            self.frames_per_classify = (
+                self.classifier.params.square_width
+                * self.classifier.params.square_width
+            )
+            self.max_keep_frames = (
+                self.frames_per_classify * 2 if not preview_type else None
+            )
             self.predictions = Predictions(self.classifier.labels, model)
             self.num_labels = len(self.classifier.labels)
             global predictions
@@ -281,11 +296,11 @@ class PiClassifier(Processor):
             self.config.classify.cache_to_disk,
             self.config.use_opt_flow,
             True,
-            50,
+            self.max_keep_frames,
         )
         edge_pixels = self.config.tracking.edge_pixels
 
-        self.clip.update_background(self.motion_detector.background)
+        self.clip.update_background(self.motion_detector.background.copy())
         self.clip._background_calculated()
         for frame in preview_frames:
             self.track_extractor.process_frame(self.clip, frame.pix.copy())
@@ -350,12 +365,14 @@ class PiClassifier(Processor):
             track_prediction = self.predictions.get_or_create_prediction(
                 track, keep_all=False
             )
-            regions = track.bounds_history[-50:]
+            regions = track.bounds_history[-self.frames_per_classify * 2 :]
             frames = self.clip.frame_buffer.get_last_x(len(regions))
             if frames is None:
                 return
             indices = np.random.choice(
-                len(regions), min(25, len(regions)), replace=False
+                len(regions),
+                min(self.frames_per_classify, len(regions)),
+                replace=False,
             )
             indices.sort()
             frames = np.array(frames)[indices]
@@ -429,9 +446,8 @@ class PiClassifier(Processor):
         self.process_time += time.time() - start
 
         if not self.recorder.recording and self.motion_detector.movement_detected:
-            background = self.motion_detector.set_background_edges()
             s_r = time.time()
-            preview_frames = self.motion_detector.thermal_window.get_frames()
+            preview_frames = self.motion_detector.thermal_window.get_frames()[:-1]
 
             recording = self.recorder.start_recording(
                 self.motion_detector.background,
@@ -508,15 +524,17 @@ class PiClassifier(Processor):
             self.rec_time = 0
 
     def create_mp4(self):
-        previewer = Previewer(self.config, "classified")
+        previewer = Previewer(self.config, self.preview_type)
         previewer.export_clip_preview(
-            self.clip.get_id() + ".mp4",
+            os.path.join(self.output_dir, self.clip.get_id() + ".mp4"),
             self.clip,
             self.predictions if self.classify else None,
         )
 
     def end_clip(self):
         if self.clip:
+            if self.preview_type:
+                self.create_mp4()
             logging.debug(
                 "Ending clip with %s tracks pre filtering", len(self.clip.tracks)
             )
