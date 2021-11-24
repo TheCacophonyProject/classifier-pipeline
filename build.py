@@ -17,7 +17,7 @@ from config.config import Config
 from ml_tools.dataset import Dataset
 from ml_tools.datasetstructures import Camera
 
-MIN_TRACKS = 1
+MIN_TRACKS = 100
 
 
 def load_config(config_file):
