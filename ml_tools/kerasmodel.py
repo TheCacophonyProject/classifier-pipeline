@@ -718,6 +718,7 @@ class KerasModel:
             dataset,
             self.labels,
             self.params.output_dim,
+            self.log_q,
             batch_size=self.params.batch_size,
             channel=self.params.channel,
             use_movement=self.params.use_movement,
@@ -731,6 +732,7 @@ class KerasModel:
             type=self.params.type,
             segment_type=self.params.segment_type,
             keep_edge=self.params.keep_edge,
+            preload=True,
         )
         test_pred_raw = self.model.predict(test)
         test.stop_load()

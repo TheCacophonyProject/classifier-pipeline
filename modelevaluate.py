@@ -118,7 +118,6 @@ if args.track_id or args.clip_id:
 
 dataset = pickle.load(open(os.path.join(base_dir, args.dataset), "rb"))
 logging.info("running on %s ", dataset.name)
-dataset.recalculate_segments(segment_type=5)
 
 dir = os.path.dirname(model_file)
 meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
