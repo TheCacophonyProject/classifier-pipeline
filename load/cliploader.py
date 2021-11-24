@@ -163,11 +163,11 @@ class ClipLoader:
         Returns valid tracks
         """
 
-        tracks_meta = clip_metadata.get("Tracks", [])
+        tracks_meta = clip_metadata.get("tracks", [])
         valid_tracks = [
             track for track in tracks_meta if self._track_meta_is_valid(track)
         ]
-        clip_metadata["Tracks"] = valid_tracks
+        clip_metadata["tracks"] = valid_tracks
         return valid_tracks
 
     def _track_meta_is_valid(self, track_meta):
@@ -176,13 +176,10 @@ class ClipLoader:
         not in the excluded_tags list, defined in the config.
         """
         min_confidence = self.track_config.min_tag_confidence
-        track_data = track_meta.get("data")
-        if not track_data:
-            return False
 
         track_tags = []
-        if "TrackTags" in track_meta:
-            track_tags = track_meta["TrackTags"]
+        if "tags" in track_meta:
+            track_tags = track_meta["tags"]
         excluded_tags = [
             tag
             for tag in track_tags
@@ -236,23 +233,10 @@ class ClipLoader:
             self.config.load.include_filtered_channel,
             self.config.load.tag_precedence,
         )
-        tracker_versions = set(
-            [
-                t.get("data", {}).get("tracker_version", 0)
-                for t in metadata.get("Tracks", [])
-            ]
-        )
-        if len(tracker_versions) > 1:
-            logginer.error(
-                "Tracks with different tracking versions cannot process %s versions %s",
-                filename,
-                tracker_versions,
-            )
-            return
-        tracker_version = tracker_versions.pop()
+        tracker_version = metadata.get("tracker_version")
         process_background = tracker_version < 10
         logging.debug(
-            "Processing background? %s tracker_versions %s",
+            "Processing background? %s tracker_version %s",
             process_background,
             tracker_version,
         )

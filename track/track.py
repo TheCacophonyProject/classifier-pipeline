@@ -79,7 +79,7 @@ class Track:
         self.avg_novelty = None
 
         self.from_metadata = False
-        self.track_tags = None
+        self.tags = None
         self.kalman_tracker = Kalman()
         self.predictions = None
         self.predicted_class = None
@@ -153,24 +153,19 @@ class Track:
         self.from_metadata = True
         self._id = track_meta["id"]
         self.include_filtered_channel = include_filtered_channel
-        data = track_meta["data"]
-        self.start_s = data["start_s"]
-        self.end_s = data["end_s"]
+        self.start_s = track_meta["start"]
+        self.end_s = track_meta["end"]
         self.fps = frames_per_second
-        self.predicted_tag = data.get("tag")
-        self.all_class_confidences = data.get("all_class_confidences", None)
-        self.predictions = data.get("predictions")
 
-        self.track_tags = track_meta.get("TrackTags")
-        self.prediction_classes = data.get("classes")
-        tag = Track.get_best_human_tag(self.track_tags, tag_precedence, min_confidence)
+        self.tags = track_meta.get("tags")
+        tag = Track.get_best_human_tag(self.tags, tag_precedence, min_confidence)
         if tag:
             self.tag = tag["what"]
             self.confidence = tag["confidence"]
         else:
             return False
 
-        positions = data.get("positions")
+        positions = track_meta.get("positions")
         if not positions:
             return False
         self.bounds_history = []

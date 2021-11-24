@@ -543,12 +543,12 @@ class TrackDatabase:
                 if cropped.thermal.size > 0:
                     height, width = cropped.shape
                     chunks = (1, height, width)
-                    dims = (5, height, width)
+                    cropped_array = cropped.as_array()
+                    dims = cropped_array.shape
                     frame_node = cropped_frame.create_dataset(
                         str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
                     )
-
-                    frame_node[:, :, :] = cropped.as_array()
+                    frame_node[:, :, :] = cropped_array
                 else:
                     skipped_frames.append(frame_i)
                 if original is not None:
@@ -564,8 +564,8 @@ class TrackDatabase:
             track_stats = track.get_stats()
             node_attrs = track_node.attrs
             node_attrs["id"] = track_id
-            if track.track_tags:
-                node_attrs["track_tags"] = json.dumps(track.track_tags)
+            if track.tags:
+                node_attrs["track_tags"] = json.dumps(track.tags)
             if sample_frames is not None:
                 node_attrs["sample_frames"] = np.uint16(sample_frames)
             node_attrs["tag"] = track.tag
