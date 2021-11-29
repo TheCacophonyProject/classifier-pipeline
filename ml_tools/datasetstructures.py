@@ -81,8 +81,8 @@ class NumpyMeta:
         del self.f
         self.f = None
 
-    def save_tracks(self, db, tracks):
-        logging.info("Writing %s tracks to %s", len(tracks), self.filename)
+    def save_segments(self, db, tracks):
+        logging.info("Writing %s segments to %s", len(tracks), self.filename)
         self.open(mode="wb")
         try:
             count = 0
@@ -110,47 +110,42 @@ class NumpyMeta:
             )
             index = 0
             track_info["start_frame"] = track.start_frame
+            frames_by_number = {}
+            for frame in frames:
+                frames_by_number[frame.frame_number] = frame
 
-            track_frames = np.arange(track.num_frames) + track.start_frame
-            data_frames = [frame.frame_number for frame in frames]
-            skipped = [f_i for f_i in track_frames if f_i not in data_frames]
-            track_info["data"] = self.f.tell()
             dim = self.dim
             if self.augment:
                 dim = (
                     self.dim[0] + 4,
                     self.dim[1] + 4,
                 )
-            thermals = np.empty((track.num_frames, *dim), dtype=np.uint16)
-            filtered = np.empty((track.num_frames, *dim), dtype=np.float32)
+            segment_offset = {}
 
-            for frame in frames:
-                if frame.region.height < MIN_SIZE or frame.region.width < MIN_SIZE:
-                    skipped.append(frame.frame_number)
-                    continue
-                frame.filtered = frame.thermal - frame.region.subimage(background)
-                frame.thermal -= track.frame_temp_median[
-                    frame.frame_number - track.start_frame
-                ]
-                np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
-                self.resize(frame)
+            for segment in track.segments:
+                thermals = []
+                filtered = []
 
-                thermals[frame.frame_number - track.start_frame] = np.uint16(
-                    frame.thermal
-                )
-                filtered[frame.frame_number - track.start_frame] = np.float32(
-                    frame.filtered
-                )
-            track.skipped_frames = np.uint16(skipped)
+                for f_i in segment.frame_indices:
+                    frame = frames_by_number[f_i].copy()
 
-            np.save(self.f, thermals, allow_pickle=False)
-            np.save(self.f, filtered, allow_pickle=False)
+                    frame.filtered = frame.thermal - frame.region.subimage(background)
+                    frame.thermal -= track.frame_temp_median[
+                        frame.frame_number - track.start_frame
+                    ]
+                    np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
+                    self.resize(frame)
 
-            # regions = np.uint8([np.uint8(region.to_ltrb()) for region in track.regions])
-            # np.save(self.f, regions, allow_pickle=False)
-
+                    thermals.append(np.uint16(frame.thermal))
+                    filtered.append(np.float32(frame.filtered))
+                segment_offset[segment.id] = self.f.tell()
+                np.save(self.f, thermals, allow_pickle=False)
+                np.save(self.f, filtered, allow_pickle=False)
+            track_info["segments"] = segment_offset
+            print("saving", segment_offset, "for", track.unique_id)
         except:
             logging.error("Error saving %s", track, exc_info=True)
+            raise "EX"
 
     def resize(self, frame):
         dim = self.dim

@@ -125,7 +125,7 @@ class Dataset:
         self.lbl_p = None
         self.numpy_data = None
 
-    # is much faster to read from numpy array when trianing
+    # is much faster to read from numpy array when training
     def saveto_numpy(self, path, frame_size):
         file = os.path.join(path, self.name)
         self.numpy_data = NumpyMeta(
@@ -133,7 +133,7 @@ class Dataset:
             self.enable_augmentation,
             frame_size,
         )
-        self.numpy_data.save_tracks(self.db, self.tracks)
+        self.numpy_data.save_segments(self.db, self.tracks)
         self.numpy_data.f = None
 
     def clear_tracks(self):

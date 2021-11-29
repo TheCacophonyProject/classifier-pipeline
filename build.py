@@ -29,6 +29,13 @@ def parse_args():
     parser.add_argument(
         "--rebuild-important", action="count", help="Rebuild important frames"
     )
+    parser.add_argument(
+        "-m",
+        "--min-tracks",
+        default=MIN_TRACKS,
+        type=int,
+        help="Min tracks per dataset (Default 100)",
+    )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-d", "--date", help="Use clips after this")
@@ -155,7 +162,12 @@ def print_counts(dataset, train, validation, test):
     print()
 
 
-def split_label(dataset, label, existing_test_count=0):
+def split_label(
+    dataset,
+    label,
+    min_tracks,
+    existing_test_count=0,
+):
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
     tracks = dataset.tracks_by_label.get(label, [])
     track_bins = [track.bin_id for track in tracks if len(track.segments) > 0]
@@ -176,7 +188,7 @@ def split_label(dataset, label, existing_test_count=0):
     last_index = 0
     label_count = 0
     total = len(tracks)
-    min_t = MIN_TRACKS
+    min_t = min_tracks
     if label in ["vehicle", "human"]:
         min_t = 10
     num_validate_tracks = max(total * 0.15, min_t)
@@ -248,7 +260,7 @@ def split_randomly(db_file, dataset, config, args, test_clips=[], balance_bins=T
     for label in dataset.labels:
         existing_test_count = len(test.tracks_by_label.get(label, []))
         train_c, validate_c, test_c = split_label(
-            dataset, label, existing_test_count=existing_test_count
+            dataset, label, args.min_tracks, existing_test_count=existing_test_count
         )
         if train_c is not None:
             train_cameras.append(train_c)
@@ -284,6 +296,7 @@ def main():
     init_logging()
     args = parse_args()
     config = load_config(args.config_file)
+    print("min tracks", args.min_tracks)
     # return
     # import yaml
     #
@@ -332,11 +345,12 @@ def main():
         # raise "DONE"
 
     for dataset in datasets:
-        dataset.clear_samples()
+        dataset.clear_unused()
         dataset.db = None
-        dataset.recalculate_segments()
-        dataset.clear_tracks()
 
+        # delete data that isn't needed for training, makes for a smaller file
+        # which loads daster
+        dataset.clear_tracks()
         for segment in dataset.segments:
             segment.frame_temp_median = None
             segment.regions = None

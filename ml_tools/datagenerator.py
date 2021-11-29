@@ -400,42 +400,29 @@ def _data(labels, data, params, mapped_labels, logger, to_categorical=True):
     return np.array(X), y, y_original, weights
 
 
-def load_from_numpy(numpy_meta, tracks, name, logger, size):
+def load_from_numpy(numpy_meta, batches, name, logger, size):
     start = time.time()
     count = 0
     segment_db = {}
     try:
         with open(numpy_meta.filename, "rb") as f:
-            for _, segments, u_id in tracks:
-                numpy_info = numpy_meta.track_info[u_id]
-                start_frame = numpy_info["start_frame"]
-                if "data" not in numpy_info:
-                    logger.warn("No data for", u_id)
-                f.seek(numpy_info["data"])
+            for s_id, label, track_id, frames in batches:
+                s_offset = numpy_meta.track_info[track_id]["segments"][s_id]
+                f.seek(s_offset)
                 thermals = np.load(f, allow_pickle=False)
                 filtered = np.load(f, allow_pickle=False)
+                segment_data = []
+                segment_db[s_id] = segment_data
+                for thermal, filtered, frame_i in zip(thermals, filtered, frames):
+                    # seems to leek memory without np.copy() go figure
+                    frame = Frame.from_channels(
+                        [np.copy(thermal), np.copy(filtered)],
+                        [TrackChannels.thermal, TrackChannels.filtered],
+                        frame_i,
+                        flow_clipped=True,
+                    )
+                    segment_data.append(frame)
 
-                # regions = np.load(f, allow_pickle=False)
-
-                for id, segment_frames in segments:
-                    segment_data = []
-                    segment_db[id] = segment_data
-
-                    for i, frame_i in enumerate(segment_frames):
-                        relative_f = frame_i - start_frame
-                        if relative_f >= len(thermals):
-                            logger.warn("Track %s has OOB frame %s", u_id, relative_f)
-                            continue
-                        count += 1
-                        thermal = np.copy(thermals[relative_f])
-                        filter = np.copy(filtered[relative_f])
-                        frame = Frame.from_channels(
-                            [thermal, filter],
-                            [TrackChannels.thermal, TrackChannels.filtered],
-                            frame_i,
-                            flow_clipped=True,
-                        )
-                        segment_data.append(frame)
             logger.debug(
                 "%s time to load %s frames %s",
                 name,
@@ -457,27 +444,19 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
     # returns loaded batches as segments
     all_batches = []
     data_by_track = {}
-    for s_id, label, track_id, frames in batches:
-        track_segments = data_by_track.setdefault(
-            track_id,
-            (
-                numpy_meta.track_info[track_id]["data"],
-                [],
-                track_id,
-            ),
-        )
-        track_segments[1].append((s_id, frames))
-    # sort by position in file
-    track_segments = sorted(
-        data_by_track.values(),
-        key=lambda track_segment: track_segment[0],
+
+    batches = sorted(
+        batches,
+        key=lambda batch_item: numpy_meta.track_info[batch_item[2]]["segments"][
+            batch_item[0]
+        ],
     )
     logger.info(
         "%s loading tracks from numpy file pre mem %s",
         name,
         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
     )
-    segment_db = load_from_numpy(numpy_meta, track_segments, name, logger, size)
+    segment_db = load_from_numpy(numpy_meta, batches, name, logger, size)
     logger.info(
         "loaded %s mem %s",
         len(segment_db),
