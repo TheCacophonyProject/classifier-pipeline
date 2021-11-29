@@ -142,7 +142,6 @@ class NumpyMeta:
                 np.save(self.f, thermals, allow_pickle=False)
                 np.save(self.f, filtered, allow_pickle=False)
             track_info["segments"] = segment_offset
-            print("saving", segment_offset, "for", track.unique_id)
         except:
             logging.error("Error saving %s", track, exc_info=True)
             raise "EX"
