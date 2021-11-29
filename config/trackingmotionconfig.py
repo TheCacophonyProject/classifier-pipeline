@@ -5,7 +5,7 @@ from .defaultconfig import DefaultConfig, deep_copy_map_if_key_not_exist
 
 
 @attr.s
-class MotionConfig(DefaultConfig):
+class TrackingMotionConfig(DefaultConfig):
     camera_thresholds = attr.ib()
     dynamic_thresh = attr.ib()
 
@@ -14,7 +14,7 @@ class MotionConfig(DefaultConfig):
         if inspect.isclass(threshold):
             return threshold
         return cls(
-            camera_thresholds=MotionConfig.load_camera_thresholds(
+            camera_thresholds=TrackingMotionConfig.load_camera_thresholds(
                 threshold.get("camera_thresholds")
             ),
             dynamic_thresh=threshold["dynamic_thresh"],
@@ -22,8 +22,29 @@ class MotionConfig(DefaultConfig):
 
     @classmethod
     def get_defaults(cls):
+        thresholds = {}
+        thresholds["lepton3"] = ThresholdConfig(
+            camera_model="lepton3",
+            temp_thresh=2900,
+            background_thresh=20,
+            default=True,
+            min_temp_thresh=None,
+            max_temp_thresh=None,
+            track_min_delta=1.0,
+            track_max_delta=150,
+        )
+        thresholds["lepton3.5"] = ThresholdConfig(
+            camera_model="lepton3.5",
+            temp_thresh=28000,
+            background_thresh=50,
+            default=False,
+            min_temp_thresh=None,
+            max_temp_thresh=None,
+            track_min_delta=1.0,
+            track_max_delta=150,
+        )
         return cls(
-            camera_thresholds={"default-model": ThresholdConfig.get_defaults()},
+            camera_thresholds=thresholds,
             dynamic_thresh=True,
         )
 

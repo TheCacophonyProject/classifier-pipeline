@@ -122,22 +122,21 @@ class ClipTrackExtractor:
             self.apply_track_filtering(clip)
 
         if self.calc_stats:
-            clip.stats.completed(clip.frame_on, clip.res_y, clip.res_x)
+            clip.stats.completed(clip.current_frame, clip.res_y, clip.res_x)
         self.tracking_time = time.time() - start
         return True
 
     def process_frame(self, clip, frame, ffc_affected=False):
         if ffc_affected:
-            self.print_if_verbose("{} ffc_affected".format(clip.frame_on))
+            self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
 
         self._process_frame(clip, frame, ffc_affected)
-        clip.frame_on += 1
 
     def apply_track_filtering(self, clip):
         self.filter_tracks(clip)
         # apply smoothing if required
-        if self.config.track_smoothing and clip.frame_on > 0:
+        if self.config.track_smoothing and clip.current_frame > 0:
             for track in clip.active_tracks:
                 track.smooth(Rectangle(0, 0, clip.res_x, clip.res_y))
 
@@ -152,9 +151,9 @@ class ClipTrackExtractor:
         filtered = np.float32(thermal.copy())
         avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
         np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
-
         filtered, stats = normalize(filtered, new_max=255)
-        filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
+        if self.config.denoise:
+            filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
         if stats[1] == stats[2]:
             mapped_thresh = clip.background_thresh
         else:
@@ -176,7 +175,7 @@ class ClipTrackExtractor:
 
         if clip.from_metadata:
             for track in clip.tracks:
-                if clip.frame_on in track.frame_list:
+                if clip.current_frame in track.frame_list:
                     track.add_frame_for_existing_region(
                         clip.frame_buffer.get_last_frame(),
                         threshold,
@@ -191,6 +190,7 @@ class ClipTrackExtractor:
                     clip, component_details, filtered, prev_filtered
                 )
                 self._apply_region_matchings(clip, regions)
+
             clip.region_history.append(regions)
 
     def _apply_region_matchings(self, clip, regions):
@@ -203,27 +203,25 @@ class ClipTrackExtractor:
         self._filter_inactive_tracks(clip, new_tracks, matched_tracks)
 
     def _match_existing_tracks(self, clip, regions):
-
         scores = []
         used_regions = set()
         unmatched_regions = set(regions)
+
         for track in clip.active_tracks:
+            avg_mass = track.average_mass()
+            max_distance = get_max_distance_change(track)
             for region in regions:
                 distance, size_change = get_region_score(track.last_bound, region)
-                # we give larger tracks more freedom to find a match as they might move quite a bit.
 
-                max_distance = get_max_distance_change(track)
                 max_size_change = get_max_size_change(track, region)
-                max_mass_change = get_max_mass_change_percent(track)
-                if (
-                    max_mass_change
-                    and abs(track.average_mass() - region.mass) > max_mass_change
-                ):
+                max_mass_change = get_max_mass_change_percent(track, avg_mass)
+
+                if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
                     self.print_if_verbose(
                         "track {} region mass {} deviates too much from {}".format(
                             track.get_id(),
                             region.mass,
-                            track.average_mass(),
+                            avg_mass,
                         )
                     )
 
@@ -251,7 +249,6 @@ class ClipTrackExtractor:
             + float(".{}".format(record[1]._id))
         )
         scores.sort(key=lambda record: record[0])
-
         matched_tracks = set()
         for (score, track, region) in scores:
             if track in matched_tracks or region in used_regions:
@@ -260,6 +257,7 @@ class ClipTrackExtractor:
             matched_tracks.add(track)
             used_regions.add(region)
             unmatched_regions.remove(region)
+
         return unmatched_regions, matched_tracks
 
     def _create_new_tracks(self, clip, unmatched_regions):
@@ -303,7 +301,7 @@ class ClipTrackExtractor:
                 clip.active_tracks.add(track)
                 self.print_if_verbose(
                     "frame {} adding a blank frame to {} ".format(
-                        clip.frame_on, track.get_id()
+                        clip.current_frame, track.get_id()
                     )
                 )
 
@@ -335,7 +333,7 @@ class ClipTrackExtractor:
                 component[3],
                 mass=component[4],
                 id=i,
-                frame_number=clip.frame_on,
+                frame_number=clip.current_frame,
             )
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
@@ -379,7 +377,6 @@ class ClipTrackExtractor:
         return regions
 
     def filter_tracks(self, clip):
-
         for track in clip.tracks:
             track.trim()
             track.set_end_s(clip.frames_per_second)
@@ -512,9 +509,7 @@ def get_max_size_change(track, region):
     return region_percent
 
 
-def get_max_mass_change_percent(track):
-    average_mass = track.average_mass()
-
+def get_max_mass_change_percent(track, average_mass):
     if len(track) > ClipTrackExtractor.RESTRICT_MASS_AFTER * track.fps:
         vel = track.velocity
         mass_percent = ClipTrackExtractor.MASS_CHANGE_PERCENT
@@ -531,15 +526,17 @@ def get_max_mass_change_percent(track):
 
 def get_max_distance_change(track):
     x, y = track.velocity
-    velocity_distance = (2 * x) ** 2 + (2 * y) ** 2
+    x = 2 * x
+    y = 2 * y
+    velocity_distance = x * x + y * y
     pred_vel = track.predicted_velocity()
-    pred_distance = pred_vel[0] ** 2 + pred_vel[1] ** 2
+    pred_distance = pred_vel[0] * pred_vel[0] + pred_vel[1] * pred_vel[1]
 
-    max_distance = np.clip(
-        ClipTrackExtractor.BASE_DISTANCE_CHANGE + max(velocity_distance, pred_distance),
-        0,
-        ClipTrackExtractor.MAX_DISTANCE,
+    max_distance = ClipTrackExtractor.BASE_DISTANCE_CHANGE + max(
+        velocity_distance, pred_distance
     )
+    if max_distance > ClipTrackExtractor.MAX_DISTANCE:
+        return ClipTrackExtractor.MAX_DISTANCE
     return max_distance
 
 

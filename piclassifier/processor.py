@@ -19,8 +19,15 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
 
+from service import SnapshotService
+
 
 class Processor(ABC):
+    def __init__(
+        self,
+    ):
+        self.service = SnapshotService(self.get_recent_frame, self.headers)
+
     @abstractmethod
     def process_frame(self, lepton_frame):
         ...

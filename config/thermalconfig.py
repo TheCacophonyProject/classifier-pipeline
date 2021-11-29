@@ -38,7 +38,29 @@ class LockSafeConfig:
 
 
 @attr.s
-class MotionConfig:
+class ThrottlerConfig:
+    bucket_size = attr.ib()
+    activate = attr.ib()
+    no_motion = attr.ib()
+    max_throttling_minutes = attr.ib()
+
+    @classmethod
+    def load(cls, throttler):
+        return cls(
+            bucket_size=RelAbsTime(
+                throttler.get("bucket-size"), default_offset=10 * 60
+            ).offset_s,
+            activate=throttler.get("activate", True),
+            no_motion=throttler.get("no-motion", 5 * 60),
+            max_throttling_minutes=throttler.get("max-throttling-minutes", 60),
+        )
+
+    def as_dict(self):
+        return attr.asdict(self)
+
+
+@attr.s
+class CameraMotionConfig:
     temp_thresh = attr.ib()
     delta_thresh = attr.ib()
     count_thresh = attr.ib()
@@ -51,19 +73,55 @@ class MotionConfig:
     run_classifier = attr.ib()
 
     @classmethod
-    def load(cls, motion):
-        return cls(
-            temp_thresh=motion.get("temp-thresh", 2750),
-            delta_thresh=motion.get("delta-thresh", 20),
-            count_thresh=motion.get("count-thresh", 1),
-            frame_compare_gap=motion.get("frame-compare-gap", 45),
-            one_diff_only=motion.get("use-one-diff-only", False),
-            trigger_frames=motion.get("trigger-frames", 1),
-            edge_pixels=motion.get("edge-pixels", 3),
-            warmer_only=motion.get("warmer-only", False),
-            dynamic_thresh=motion.get("dynamic-thresh", True),
-            run_classifier=motion.get("run-classifier", False),
+    def defaults_for(cls, model):
+        if model == "lepton3.5":
+            return cls(
+                temp_thresh=28000,
+                delta_thresh=200,
+                count_thresh=3,
+                frame_compare_gap=45,
+                one_diff_only=True,
+                trigger_frames=2,
+                edge_pixels=1,
+                warmer_only=True,
+                dynamic_thresh=True,
+                run_classifier=True,
+            )
+        else:
+            return cls(
+                temp_thresh=2750,
+                delta_thresh=50,
+                count_thresh=3,
+                frame_compare_gap=45,
+                one_diff_only=True,
+                trigger_frames=2,
+                edge_pixels=1,
+                warmer_only=True,
+                dynamic_thresh=True,
+                run_classifier=True,
+            )
+
+    @classmethod
+    def load(cls, motion, model=None):
+        default = CameraMotionConfig.defaults_for(model)
+        motion = cls(
+            temp_thresh=motion.get("temp-thresh", default.temp_thresh),
+            delta_thresh=motion.get("delta-thresh", default.delta_thresh),
+            count_thresh=motion.get("count-thresh", default.count_thresh),
+            frame_compare_gap=motion.get(
+                "frame-compare-gap", default.frame_compare_gap
+            ),
+            one_diff_only=motion.get("use-one-diff-only", default.one_diff_only),
+            trigger_frames=motion.get("trigger-frames", default.trigger_frames),
+            edge_pixels=motion.get("edge-pixels", default.edge_pixels),
+            warmer_only=motion.get("warmer-only", default.warmer_only),
+            dynamic_thresh=motion.get("dynamic-thresh", default.dynamic_thresh),
+            run_classifier=motion.get("run-classifier", default.run_classifier),
         )
+        return motion
+
+    def as_dict(self):
+        return attr.asdict(self)
 
 
 @attr.s
@@ -77,14 +135,14 @@ class RecorderConfig:
     @classmethod
     def load(cls, recorder, window):
         return cls(
-            min_secs=recorder.get("min-secs", 2),
-            max_secs=recorder.get("max-secs", 10),
+            min_secs=recorder.get("min-secs", 10),
+            max_secs=recorder.get("max-secs", 600),
             preview_secs=recorder.get("preview-secs", 5),
             rec_window=TimeWindow(
                 RelAbsTime(window.get("start-recording"), default_offset=30 * 60),
                 RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
             ),
-            output_dir=recorder["output-dir"],
+            output_dir=recorder.get("output-dir", "."),
         )
 
 
@@ -104,21 +162,23 @@ class ThermalConfig:
     recorder = attr.ib()
     device = attr.ib()
     location = attr.ib()
+    throttler = attr.ib()
 
     @classmethod
-    def load_from_file(cls, filename=None):
+    def load_from_file(cls, filename=None, model=None):
         if not filename:
             filename = ThermalConfig.find_config()
         with LockSafeConfig(filename) as stream:
-            return cls.load_from_stream(stream)
+            return cls.load_from_stream(stream, model)
 
     @classmethod
-    def load_from_stream(cls, stream):
+    def load_from_stream(cls, stream, model=None):
         raw = toml.load(stream)
         if raw is None:
             raw = {}
         return cls(
-            motion=MotionConfig.load(raw.get("thermal-motion", {})),
+            throttler=ThrottlerConfig.load(raw.get("thermal-throttler", {})),
+            motion=CameraMotionConfig.load(raw.get("thermal-motion", {}), model),
             recorder=RecorderConfig.load(
                 raw.get("thermal-recorder", {}), raw.get("windows", {})
             ),

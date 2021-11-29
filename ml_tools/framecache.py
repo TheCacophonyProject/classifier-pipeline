@@ -4,6 +4,7 @@ import numpy as np
 
 
 from ml_tools.tools import get_clipped_flow
+from ml_tools.frame import Frame, TrackChannels
 
 
 class FrameCache:
@@ -25,48 +26,63 @@ class FrameCache:
         frames = self.db["frames"]
         frame_group = frames.create_group(str(frame.frame_number))
         frame_group.attrs["ffc_affected"] = frame.ffc_affected
-
         height, width = frame.thermal.shape
 
         chunks = (1, height, width)
+        channels = []
+        dims = 0
+        data = []
+        if frame.thermal is not None:
+            channels.append(TrackChannels.thermal)
+            dims += 1
+            data.append(np.float32(frame.thermal))
+        if frame.filtered is not None:
+            channels.append(TrackChannels.filtered)
+            dims += 1
+            data.append(np.float32(frame.filtered))
 
-        dims = (5, height, width)
-        frame_node = frame_group.create_dataset(
-            "frame", dims, chunks=chunks, dtype=np.float32
-        )
-        scaled_flow_h = None
-        scaled_flow_v = None
         if frame.flow is not None:
+            channels.append(TrackChannels.flow)
             scaled_flow = get_clipped_flow(frame.flow)
             scaled_flow_h = np.float32(scaled_flow[:, :, 0])
             scaled_flow_v = np.float32(scaled_flow[:, :, 1])
-        else:
-            scaled_flow_h = np.zeros(frame.thermal.shape, dtype=np.float32)
-            scaled_flow_v = scaled_flow_h
+            data.append(scaled_flow_h)
+            data.append(scaled_flow_v)
+            dims += 2
+        if frame.mask is not None:
+            channels.append(TrackChannels.mask)
+            data.append(np.float32(frame.mask))
+            dims += 1
+        frame_group.attrs["channels"] = np.uint8(channels)
 
-        frame_val = (
-            np.float32(frame.thermal),
-            np.float32(frame.filtered),
-            scaled_flow_h,
-            scaled_flow_v,
-            np.float32(frame.mask),
+        dims = (dims, height, width)
+        frame_node = frame_group.create_dataset(
+            "frame", dims, chunks=chunks, dtype=np.float32
         )
-        frame_node[:, :, :] = frame_val
+
+        frame_node[:, :, :] = data
         if not self.keep_open:
             self.close()
 
     def get_frame(self, frame_number):
         self.open()
-        ffc_affected = False
+        frame = None
         if str(frame_number) in self.db["frames"]:
             frame_group = self.db["frames"][str(frame_number)]
             frame = frame_group["frame"]
             ffc_affected = frame_group.attrs["ffc_affected"]
-        else:
-            frame = None
+            channels = frame_group.attrs["channels"]
+            frame = Frame.from_channels(
+                frame,
+                channels,
+                frame_number,
+                flow_clipped=True,
+                ffc_affected=ffc_affected,
+            )
+
         if not self.keep_open:
             self.close()
-        return frame, ffc_affected
+        return frame
 
     def close(self):
         if self.db:

@@ -18,6 +18,8 @@ class HeaderInfo:
     BRAND = "Brand"
     PIXEL_BITS = "PixelBits"
     FRAME_SIZE = "FrameSize"
+    SERIAL = "CameraSerial"
+    FIRMWARE = "Firmware"
 
     res_x = attr.ib()
     res_y = attr.ib()
@@ -26,6 +28,8 @@ class HeaderInfo:
     model = attr.ib()
     frame_size = attr.ib()
     pixel_bits = attr.ib()
+    serial = attr.ib()
+    firmware = attr.ib()
 
     @classmethod
     def parse_header(cls, raw_string):
@@ -36,8 +40,10 @@ class HeaderInfo:
             fps=raw.get(HeaderInfo.FPS),
             brand=raw.get(HeaderInfo.BRAND),
             model=raw.get(HeaderInfo.MODEL),
+            serial=raw.get(HeaderInfo.SERIAL),
             frame_size=raw.get(HeaderInfo.FRAME_SIZE),
             pixel_bits=raw.get(HeaderInfo.PIXEL_BITS),
+            firmware=raw.get(HeaderInfo.FIRMWARE),
         )
         if headers.res_x and headers.res_y:
             if not headers.pixel_bits and headers.frame_size:
@@ -63,3 +69,6 @@ class HeaderInfo:
                 )
             )
         return True
+
+    def as_dict(self):
+        return attr.asdict(self)

@@ -24,7 +24,7 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance
-from ml_tools.datasetstructures import get_segments
+from ml_tools.datasetstructures import get_segments, SegmentHeader
 
 
 class Track:
@@ -73,7 +73,6 @@ class Track:
         # the tag for this track
         self.tag = "unknown"
         self.prev_frame_num = None
-        self.include_filtered_channel = True
         self.confidence = None
         self.max_novelty = None
         self.avg_novelty = None
@@ -107,19 +106,47 @@ class Track:
         segment_frame_spacing=9,
         repeats=1,
         min_frames=0,
+        segment_frames=None,
     ):
-        segments, _ = get_segments(
-            self.clip_id,
-            self._id,
-            self.start_frame,
-            segment_frame_spacing,
-            segment_width,
-            regions=np.array(self.bounds_history),
-            ffc_frames=ffc_frames,
-            repeats=repeats,
-            frame_temp_median=np.uint16(frame_temp_median),
-            min_frames=min_frames,
-        )
+
+        regions = np.array(self.bounds_history)
+        frame_temp_median = np.uint16(frame_temp_median)
+        segments = []
+        if segment_frames is not None:
+            mass_history = np.uint16([region.mass for region in regions])
+            for frames in segment_frames:
+                relative_frames = frames - self.start_frame
+                mass_slice = mass_history[relative_frames]
+                segment_mass = np.sum(mass_slice)
+                segment = SegmentHeader(
+                    self.clip_id,
+                    self._id,
+                    start_frame=self.start_frame,
+                    frames=len(frames),
+                    weight=1,
+                    mass=segment_mass,
+                    label=None,
+                    regions=regions[relative_frames],
+                    frame_temp_median=frame_temp_median[relative_frames],
+                    frame_indices=frames,
+                )
+                segments.append(segment)
+        else:
+            has_mass = any([region.mass for region in regions if region.mass > 0])
+            segments, _ = get_segments(
+                self.clip_id,
+                self._id,
+                self.start_frame,
+                segment_frame_spacing,
+                segment_width,
+                regions=regions,
+                ffc_frames=ffc_frames,
+                repeats=repeats,
+                frame_temp_median=frame_temp_median,
+                min_frames=min_frames,
+                segment_frames=None,
+                ignore_mass=not has_mass,
+            )
         return segments
 
     @classmethod
@@ -146,7 +173,6 @@ class Track:
         self,
         track_meta,
         frames_per_second,
-        include_filtered_channel,
         tag_precedence,
         min_confidence,
     ):
@@ -162,8 +188,6 @@ class Track:
         if tag:
             self.tag = tag["what"]
             self.confidence = tag["confidence"]
-        else:
-            return False
 
         positions = track_meta.get("positions")
         if not positions:
@@ -239,9 +263,18 @@ class Track:
 
     def average_mass(self):
         """Average mass of last 3 frames that weren't blank"""
-        return np.mean(
-            [bound.mass for bound in self.bounds_history if bound.blank == False][-3:]
-        )
+        avg_mass = 0
+        count = 0
+        for i in range(len(self.bounds_history)):
+            bound = self.bounds_history[-i - 1]
+            if not bound.blank:
+                avg_mass += bound.mass
+                count += 1
+            if count == 3:
+                break
+        if count == 0:
+            return 0
+        return avg_mass / count
 
     def add_blank_frame(self, buffer_frame=None):
         """Maintains same bounds as previously, does not reset framce_since_target_seen counter"""
@@ -506,7 +539,7 @@ class Track:
 
     def start_and_end_in_secs(self):
         if self.end_s is None:
-            self.end_s = (self.end_frame + 1) / self.frames_per_second
+            self.end_s = (self.end_frame + 1) / self.fps
 
         return (self.start_s, self.end_s)
 
@@ -523,18 +556,22 @@ class Track:
         track_info["frame_end"] = self.end_frame
         track_info["positions"] = self.bounds_history
         prediction_info = []
-        for model_id, predictions in predictions_per_model.items():
-            prediction = predictions.prediction_for(self.get_id())
-            prediciont_meta = prediction.get_metadata()
-            prediciont_meta["model_id"] = model_id
-            prediction_info.append(prediciont_meta)
+        if predictions_per_model:
+            for model_id, predictions in predictions_per_model.items():
+                prediction = predictions.prediction_for(self.get_id())
+                if prediction is None:
+                    continue
+                prediciont_meta = prediction.get_metadata()
+                prediciont_meta["model_id"] = model_id
+                prediction_info.append(prediciont_meta)
         track_info["predictions"] = prediction_info
         return track_info
 
     @classmethod
     def get_best_human_tag(cls, track_tags, tag_precedence, min_confidence=-1):
         """returns highest precidence non AI tag from the metadata"""
-
+        if track_tags is None:
+            return None
         track_tags = [
             tag
             for tag in track_tags

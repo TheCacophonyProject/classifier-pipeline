@@ -6,7 +6,6 @@ import time
 import tensorflow as tf
 import pickle
 from tensorboard.plugins.hparams import api as hp
-import tensorflow_addons as tfa
 import os
 import numpy as np
 import os
@@ -22,7 +21,7 @@ from ml_tools.preprocess import (
     preprocess_movement,
     preprocess_frame,
 )
-
+from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.custommodel import CustomModel, custom_train
 from ml_tools.hyperparams import HyperParams
@@ -33,7 +32,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 tf_device = "/gpu:1"
 
 
-class KerasModel:
+class KerasModel(Interpreter):
     """Defines a deep learning model"""
 
     VERSION = 1
@@ -639,17 +638,33 @@ class KerasModel:
         model = tf.keras.models.Model(input_layer, preds)
         return model
 
-    def classify_track(self, clip, track, keep_all=True):
-        track_data = {}
+    def classify_track(self, clip, track, keep_all=True, segment_frames=None):
+        track_data = []
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
-            frame.filtered = frame.thermal - clip.background
+            if frame is None:
+                logging.error(
+                    "Clasifying clip %s track %s can't get frame %s",
+                    clip.get_id(),
+                    track.get_id(),
+                    region.frame_number,
+                )
+                raise Exception(
+                    "Clasifying clip {} track {} can't get frame {}".format(
+                        clip.get_id(), track.get_id(), region.frame_number
+                    )
+                )
             cropped_frame = frame.crop_by_region(region)
             track_data[frame.frame_number] = cropped_frame
             thermal_median[i] = np.median(frame.thermal)
+
         segments = track.get_segments(
-            clip.ffc_frames, thermal_median, self.params.square_width ** 2, repeats=4
+            clip.ffc_frames,
+            thermal_median,
+            self.params.square_width ** 2,
+            repeats=4,
+            segment_frames=segment_frames,
         )
         return self.classify_track_data(
             track.get_id(),
@@ -688,13 +703,16 @@ class KerasModel:
                 self.logger.warn("No frames to predict on")
                 continue
             output = self.model.predict(frames[np.newaxis, :])
-            pred = output[0]
-            predictions.append(pred)
-            smoothed_predictions.append(np.uint32(pred ** 2 * segment.mass))
-        track_prediction.classified_clip(predictions, smoothed_predictions)
-        track_prediction.classify_time = time.time() - start
 
+            track_prediction.classified_frames(
+                segment.frame_indices, output[0], max(1, segment.mass)
+            )
+        track_prediction.classify_time = time.time() - start
+        track_prediction.normalize_score()
         return track_prediction
+
+    def predict(self, frame):
+        return self.model.predict(frame[np.newaxis, :])[0]
 
     def classify_frame(self, frame, thermal_median, preprocess=True):
         if preprocess:
@@ -751,6 +769,8 @@ class KerasModel:
         plt.savefig(filename, format="png")
 
     def f1(self, batch_y, pred_raw):
+        import tensorflow_addons as tfa
+
         one_hot_y = tf.keras.utils.to_categorical(batch_y, num_classes=len(self.labels))
         metric = tfa.metrics.F1Score(num_classes=len(self.labels))
         metric.update_state(one_hot_y, pred_raw)

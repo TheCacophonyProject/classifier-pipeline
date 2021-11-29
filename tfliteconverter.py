@@ -155,11 +155,9 @@ def convert_model(args):
     print("converting to tflite: ", args.model)
     dir = os.path.dirname(args.model)
     lite_dir = os.path.join(dir, "tflite")
-    inputs = tf.keras.Input(shape=(160, 160, 3), name="input")
-
     model = tf.keras.models.load_model(args.model)
     model.trainable = False
-    model.summary()
+
     if args.weights:
         print("using weights ", args.weights)
         model.load_weights(args.weights).expect_partial()

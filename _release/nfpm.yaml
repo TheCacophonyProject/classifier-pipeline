@@ -16,6 +16,10 @@ overrides:
 files:
   dist/classifier-pipeline.pex: "/usr/bin/classifier-pipeline.pex"
   resources/*: "/usr/lib/classifier-pipeline/resources/"
+  _release/cacophony-classifier.service: "/etc/systemd/system/cacophony-classifier.service"
 
 config_files:
   classifier_TEMPLATE.yaml: "/etc/cacophony/classifier.yaml"
+
+scripts:
+  postinstall: "_release/postinstall.sh"

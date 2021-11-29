@@ -330,7 +330,7 @@ def load_colourmap(filename):
         return pickle.load(f)
 
 
-def convert_heat_to_img(frame, colormap, temp_min=2800, temp_max=4200):
+def convert_heat_to_img(frame, colormap=None, temp_min=None, temp_max=None):
     """
     Converts a frame in float32 format to a PIL image in in uint8 format.
     :param frame: the numpy frame contining heat values to convert
@@ -340,7 +340,10 @@ def convert_heat_to_img(frame, colormap, temp_min=2800, temp_max=4200):
     # normalise
     if colormap is None:
         colormap = _load_colourmap(None)
-
+    if temp_min is None:
+        temp_min = np.amin(frame)
+    if temp_max is None:
+        temp_max = np.amax(frame)
     frame = np.float32(frame)
     frame = (frame - temp_min) / (temp_max - temp_min)
     colorized = np.uint8(255.0 * colormap(frame))
@@ -387,9 +390,10 @@ def load_clip_metadata(filename):
     with open(filename, "r") as t:
         # add in some metadata stats
         meta = json.load(t)
-
-    meta["recordingDateTime"] = dateutil.parser.parse(meta["recordingDateTime"])
-
+    if meta.get("recordingDateTime"):
+        meta["recordingDateTime"] = dateutil.parser.parse(meta["recordingDateTime"])
+    if meta.get("tracks") is None and meta.get("Tracks"):
+        meta["tracks"] = meta["Tracks"]
     return meta
 
 
@@ -825,10 +829,11 @@ def add_heat_number(img, frame, scale):
 
 
 def eucl_distance(first, second):
-    first_sq = (first[0] - second[0]) ** 2
-    second_sq = (first[1] - second[1]) ** 2
+    first_sq = first[0] - second[0]
+    first_sq = first_sq * first_sq
+    second_sq = first[1] - second[1]
+    second_sq = second_sq * second_sq
     return first_sq + second_sq
-    # return ((first[0] - second[0]) ** 2 + (first[1] - second[1]) ** 2) ** 0.5
 
 
 def get_clipped_flow(flow):

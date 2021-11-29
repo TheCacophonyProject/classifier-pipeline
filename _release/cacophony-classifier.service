@@ -1,0 +1,12 @@
+[Unit]
+Description=Cacophony Project classifier service
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/classifier-pipeline.pex -m classifyservice
+Restart=on-failure
+User=cacophony-processing
+Group=cacophony-processing
+
+[Install]
+WantedBy=multi-user.target

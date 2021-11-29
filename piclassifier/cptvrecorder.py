@@ -2,14 +2,19 @@ from datetime import datetime
 import logging
 import os
 import yaml
-
+from load.cliptrackextractor import ClipTrackExtractor
 from cptv import CPTVWriter
+from cptv import Frame
+from datetime import timedelta
+import time
+import psutil
+from piclassifier.recorder import Recorder
 
 CPTV_TEMP_EXT = ".cptv.temp"
 
 
-class CPTVRecorder:
-    def __init__(self, thermal_config, headers):
+class CPTVRecorder(Recorder):
+    def __init__(self, thermal_config, headers, on_recording_stopping=None):
         self.location_config = thermal_config.location
         self.device_config = thermal_config.device
         self.output_dir = thermal_config.recorder.output_dir
@@ -23,35 +28,43 @@ class CPTVRecorder:
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.write_until = 0
+        self.rec_time = 0
+        self.on_recording_stopping = on_recording_stopping
 
     def force_stop(self):
         if not self.recording:
             return
 
         if self.has_minimum():
-            self.stop_recording()
+            self.stop_recording(time.time())
         else:
             self.delete_recording()
 
-    def process_frame(self, movement_detected, cptv_frame, temp_thresh):
-        if movement_detected:
-            self.write_until = self.frames + self.min_frames
-            self.write_frame(cptv_frame, temp_thresh)
-        elif self.recording:
-            if self.has_minimum():
-                self.stop_recording()
-            else:
-                self.write_frame(cptv_frame, temp_thresh)
+    def process_frame(self, movement_detected, cptv_frame):
+        if self.recording:
+            self.write_frame(cptv_frame)
+            if movement_detected:
+                self.write_until = self.frames + self.min_frames
+            elif self.has_minimum():
 
-        if self.frames == self.max_frames:
-            self.stop_recording()
+                self.stop_recording(cptv_frame.received_at)
+                return
+
+            if self.frames == self.max_frames:
+                self.stop_recording(cptv_frame.received_at)
 
     def has_minimum(self):
         return self.frames > self.write_until
 
-    def start_recording(self, temp_thresh):
+    def start_recording(
+        self, background_frame, preview_frames, temp_thresh, frame_time
+    ):
+        start = time.time()
+        if self.recording:
+            logging.warn("Already recording, stop recording first")
+            return False
         self.frames = 0
-        self.filename = new_temp_name()
+        self.filename = new_temp_name(frame_time)
         self.filename = os.path.join(self.output_dir, self.filename)
         f = open(self.filename, "wb")
         self.writer = CPTVWriter(f)
@@ -61,9 +74,19 @@ class CPTVRecorder:
         self.writer.preview_secs = self.preview_secs
         default_thresh = self.motion.temp_thresh
         self.motion.temp_thresh = temp_thresh
-        self.writer.motion = yaml.dump(self.motion).encode()[:255]
+        self.writer.motion_config = yaml.dump(self.motion.as_dict()).encode()[:255]
         self.motion.temp_thresh = default_thresh
+        if self.headers.model:
+            self.writer.model = self.headers.model.encode()
+        if self.headers.brand:
+            self.writer.brand = self.headers.brand.encode()
+        if self.headers.firmware:
+            self.writer.firmware = self.headers.firmware.encode()
+        self.writer.camera_serial = self.headers.serial
+        f = Frame(background_frame, timedelta(), timedelta(), 0, 0)
 
+        f.background_frame = True
+        self.writer.background_frame = f
         # add brand model fps etc to cptv when python-cptv supports
 
         if self.device_config.name:
@@ -72,23 +95,42 @@ class CPTVRecorder:
             self.writer.device_id = self.device_config.device_id
 
         self.writer.write_header()
-        self.recording = True
-        logging.debug("recording started temp_thresh: %d", temp_thresh)
 
-    def write_frame(self, cptv_frame, temp_thresh):
-        if self.writer is None:
-            self.start_recording(temp_thresh)
+        self.recording = True
+        for frame in preview_frames:
+            self.write_frame(frame)
+        self.write_until = self.frames + self.min_frames
+
+        logging.info("recording %s started temp_thresh: %d", self.filename, temp_thresh)
+
+        self.rec_time += time.time() - start
+        return True
+
+    def write_frame(self, cptv_frame):
+        start = time.time()
         self.writer.write_frame(cptv_frame)
         self.frames += 1
+        self.rec_time += time.time() - start
 
-    def stop_recording(self):
+    def stop_recording(self, frame_time):
+        start = time.time()
+        self.rec_time += time.time() - start
         self.recording = False
-        logging.debug("recording ended")
+        logging.info(
+            "recording ended %s frames %s time recording %s per frame ",
+            self.frames,
+            self.rec_time,
+            self.rec_time / self.frames,
+        )
+        self.rec_time = 0
+
+        self.write_until = 0
         if self.writer is None:
             return
-
-        self.writer.close()
         final_name = os.path.splitext(self.filename)[0]
+        if self.on_recording_stopping is not None:
+            self.on_recording_stopping(final_name)
+        self.writer.close()
         os.rename(self.filename, final_name)
         self.writer = None
 
@@ -102,5 +144,7 @@ class CPTVRecorder:
         self.writer = None
 
 
-def new_temp_name():
-    return datetime.now().strftime("%Y%m%d.%H%M%S.%f" + CPTV_TEMP_EXT)
+def new_temp_name(frame_time):
+    return datetime.fromtimestamp(frame_time).strftime(
+        "%Y%m%d.%H%M%S.%f" + CPTV_TEMP_EXT
+    )

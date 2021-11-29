@@ -15,7 +15,7 @@
   managementd = 80
 
 [thermal-motion]
-  run-classifier = false
+  run-classifier = true
   count-thresh = 3
   delta-thresh = 50
   edge-pixels = 1

@@ -1,0 +1,12 @@
+[Unit]
+Description=Cacophony Project Classifier
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/home/pi/classifier-pipeline/piclassifier/run-classifier.sh
+Restart=always
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target

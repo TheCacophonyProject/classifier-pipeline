@@ -60,18 +60,14 @@ class Config(DefaultConfig):
         # Configuration from "tracking" section is used in
         # "classify_tracking" when not specified.
         deep_copy_map_if_key_not_exist(default.as_dict(), raw)
-        base_folder = raw.get("base_data_folder")
-        if base_folder is None:
-            raise KeyError("base_data_folder not found in configuration file")
-        base_folder = path.expanduser(base_folder)
-
+        base_folder = raw.get("base_data_folder", ".")
         return cls(
             source_folder=path.join(base_folder, raw["source_folder"]),
             tracks_folder=path.join(base_folder, raw.get("tracks_folder", "tracks")),
             tracking=TrackingConfig.load(raw["tracking"]),
             load=LoadConfig.load(raw["load"]),
             train=TrainConfig.load(raw["train"], base_folder),
-            classify=ClassifyConfig.load(raw["classify"], base_folder),
+            classify=ClassifyConfig.load(raw["classify"]),
             reprocess=raw["reprocess"],
             previews_colour_map=raw["previews_colour_map"],
             worker_threads=raw["worker_threads"],
@@ -126,10 +122,14 @@ def find_config():
 
 
 def parse_options_param(name, value, options):
-    if value.lower() not in options:
+    if value is None:
+        lower_value = value
+    else:
+        lower_value = value.lower()
+    if lower_value not in options:
         raise Exception(
             "Cannot parse {} as '{}'.  Valid options are {}.".format(
                 name, value, options
             )
         )
-    return value.lower()
+    return lower_value

@@ -20,22 +20,21 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import attr
 
 from .defaultconfig import DefaultConfig
-from .motionconfig import MotionConfig
+from .trackingmotionconfig import TrackingMotionConfig
 from load.cliptrackextractor import ClipTrackExtractor
 
 
 @attr.s
 class TrackingConfig(DefaultConfig):
     motion = attr.ib()
-    threshold_percentile = attr.ib()
     edge_pixels = attr.ib()
     dilation_pixels = attr.ib()
     frame_padding = attr.ib()
     track_smoothing = attr.ib()
+    denoise = attr.ib()
+
     remove_track_after_frames = attr.ib()
     high_quality_optical_flow = attr.ib()
-    min_threshold = attr.ib()
-    max_threshold = attr.ib()
     flow_threshold = attr.ib()
     max_tracks = attr.ib()
     track_overlap_ratio = attr.ib()
@@ -54,21 +53,18 @@ class TrackingConfig(DefaultConfig):
 
     max_jitter = attr.ib()
     # used to provide defaults
-    stats = attr.ib()
     filters = attr.ib()
     areas_of_interest = attr.ib()
 
     @classmethod
     def load(cls, tracking):
         return cls(
-            motion=MotionConfig.load(tracking.get("motion")),
-            threshold_percentile=tracking["stats"]["threshold_percentile"],
-            min_threshold=tracking["stats"]["min_threshold"],
-            max_threshold=tracking["stats"]["max_threshold"],
+            motion=TrackingMotionConfig.load(tracking.get("motion")),
             edge_pixels=tracking["edge_pixels"],
             dilation_pixels=tracking["dilation_pixels"],
             frame_padding=tracking["frame_padding"],
             track_smoothing=tracking["track_smoothing"],
+            denoise=tracking["denoise"],
             remove_track_after_frames=tracking["remove_track_after_frames"],
             high_quality_optical_flow=tracking["high_quality_optical_flow"],
             flow_threshold=tracking["flow_threshold"],
@@ -88,7 +84,6 @@ class TrackingConfig(DefaultConfig):
             min_moving_frames=tracking["min_moving_frames"],
             max_blank_percent=tracking["max_blank_percent"],
             max_jitter=tracking["max_jitter"],
-            stats=tracking["stats"],
             filters=tracking["filters"],
             areas_of_interest=tracking["areas_of_interest"],
             max_mass_std_percent=tracking["max_mass_std_percent"],
@@ -97,23 +92,19 @@ class TrackingConfig(DefaultConfig):
     @classmethod
     def get_defaults(cls):
         return cls(
-            motion=MotionConfig.get_defaults(),
-            stats={
-                "threshold_percentile": 99.9,
-                "min_threshold": 30,
-                "max_threshold": 50,
-            },
+            motion=TrackingMotionConfig.get_defaults(),
             edge_pixels=1,
             frame_padding=4,
             dilation_pixels=2,
             remove_track_after_frames=18,
             track_smoothing=False,
+            denoise=True,
             high_quality_optical_flow=False,
             flow_threshold=40,
             max_tracks=10,
             filters={
                 "track_overlap_ratio": 0.5,
-                "min_duration_secs": 3.0,
+                "min_duration_secs": 1.0,
                 "track_min_offset": 4.0,
                 "track_min_mass": 2.0,
                 "moving_vel_thresh": 4,
@@ -129,9 +120,6 @@ class TrackingConfig(DefaultConfig):
             cropped_regions_strategy="cautious",
             track_min_offset=4.0,
             track_min_mass=2.0,
-            threshold_percentile=99.9,
-            min_threshold=30,
-            max_threshold=50,
             track_overlap_ratio=0.5,
             min_duration_secs=3,
             min_tag_confidence=0.8,
