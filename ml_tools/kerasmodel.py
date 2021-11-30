@@ -639,7 +639,7 @@ class KerasModel(Interpreter):
         return model
 
     def classify_track(self, clip, track, keep_all=True, segment_frames=None):
-        track_data = []
+        track_data = {}
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
@@ -656,6 +656,11 @@ class KerasModel(Interpreter):
                     )
                 )
             cropped_frame = frame.crop_by_region(region)
+            cropped_frame.resize_with_aspect(
+                (self.params.frame_size, self.params.frame_size),
+                clip.crop_rectangle,
+                True,
+            )
             track_data[frame.frame_number] = cropped_frame
             thermal_median[i] = np.median(frame.thermal)
 
@@ -812,41 +817,46 @@ class KerasModel(Interpreter):
     def track_accuracy(self, dataset, confusion="confusion.png"):
         dataset.set_read_only(True)
         dataset.use_segments = self.params.use_segments
-        dataset.load_db()
         predictions = []
         actual = []
         raw_predictions = []
         total = 0
         correct = 0
-        for label in dataset.label_mapping.keys():
-            # if label != "bird":
-            # continue
-            label_tracks = dataset.tracks_by_label.get(label, [])
-            label_tracks = [track for track in label_tracks if len(track.segments) > 0]
-            if label == "insect" or label == "false-positive":
-                sample_tracks = np.random.choice(
-                    label_tracks, min(len(label_tracks), 70), replace=False
-                )
+        samples_by_label = {}
+        for sample in dataset.segments:
+            label_samples = samples_by_label.setdefault(sample.label, {})
+            if sample.track_id in label_samples:
+                label_samples[sample.track_id].append(sample)
             else:
-                sample_tracks = label_tracks
-            self.logger.info("taking %s from %s", len(sample_tracks), label)
-            mapped_label = dataset.mapped_label(label)
-            for track in sample_tracks:
+                label_samples[sample.track_id] = [sample]
+        bird_tracks = len(label_samples.get("bird", []))
 
-                track_data = dataset.db.get_track(track.clip_id, track.track_id)
-                background = dataset.db.get_clip_background(track.clip_id)
-                data = {}
-                for frame in track_data:
-                    region = track.regions[frame.frame_number - track.start_frame]
-                    cropped = region.subimage(background)
-                    frame.filtered = frame.thermal - cropped
-                    frame.region = region
-                    data[frame.frame_number] = frame
-                track_prediction = self.classify_track_data(
-                    track.track_id,
-                    data,
-                    segments=track.segments,
+        for label in dataset.label_mapping.keys():
+            track_samples = samples_by_label.get(label)
+            if not track_samples:
+                self.logger.warn("No samples for %s", label)
+                continue
+            track_samples = track_samples.values()
+            if label == "insect" or label == "false-positive":
+                track_samples = np.random.choice(
+                    list(track_samples),
+                    min(len(track_samples), bird_tracks),
+                    replace=False,
                 )
+            self.logger.info("taking %s tracks for %s", len(track_samples), label)
+            mapped_label = dataset.mapped_label(label)
+            for track_segments in track_samples:
+                segment_db = dataset.numpy_data.load_segments(track_segments)
+                frame_db = {}
+                for frames in segment_db.values():
+                    for f in frames:
+                        frame_db[f.frame_number] = f
+                track_prediction = self.classify_track_data(
+                    track_segments[0].track_id,
+                    frame_db,
+                    segments=track_segments,
+                )
+
                 total += 1
                 if track_prediction is None or len(track_prediction.predictions) == 0:
                     self.logger.warn("No predictions for %s", track)

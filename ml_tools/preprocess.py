@@ -106,12 +106,13 @@ def preprocess_segment(
         if chance <= 0.50:
             flip = True
     for i, frame in enumerate(frames):
-        frame.float_arrays()
+
+        # frame.float_arrays()
         frame_height, frame_width = frame.thermal.shape
 
         # adjusting the corners makes the algorithm robust to tracking differences.
         # gp changed to 0,1 maybe should be a percent of the frame size
-        if augment:
+        if augment or frame_height > frame_size or frame_width > frame_size:
             max_height_offset = frame_height - frame_size
             max_width_offset = frame_width - frame_size
             top_offset = int(random.random() * max_height_offset)
@@ -122,12 +123,12 @@ def preprocess_segment(
                 left_offset, top_offset, frame_size, frame_size
             )
             frame.crop_by_region(crop_region, out=frame)
+
             if chance <= 0.75:
                 # degress = 0
 
                 degrees = int(chance * 40) - 20
                 frame.rotate(degrees)
-
         if frame_height < MIN_SIZE or frame_width < MIN_SIZE:
             continue
         if reference_level is not None:

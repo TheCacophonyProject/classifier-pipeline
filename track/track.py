@@ -178,7 +178,6 @@ class Track:
     ):
         self.from_metadata = True
         self._id = track_meta["id"]
-        self.include_filtered_channel = include_filtered_channel
         self.start_s = track_meta["start"]
         self.end_s = track_meta["end"]
         self.fps = frames_per_second

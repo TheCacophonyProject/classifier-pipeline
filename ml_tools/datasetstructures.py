@@ -6,6 +6,7 @@ from ml_tools import tools
 from track.region import Region
 from abc import ABC, abstractmethod
 from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
+from ml_tools.frame import Frame, TrackChannels
 
 FRAMES_PER_SECOND = 9
 
@@ -188,6 +189,31 @@ class NumpyMeta:
             self.crop_rectangle,
             True,
         )
+
+    def load_segments(self, segments, close=True):
+        segment_db = {}
+        with self as f:
+            for segment in segments:
+                s_offset = self.track_info[segment.unique_track_id]["segments"][
+                    segment.id
+                ]
+                f.seek(s_offset)
+                thermals = np.load(f, allow_pickle=False)
+                filtered = np.load(f, allow_pickle=False)
+                segment_data = []
+                segment_db[segment.id] = segment_data
+                for thermal, filtered, frame_i in zip(
+                    thermals, filtered, segment.frame_indices
+                ):
+                    # seems to leek memory without np.copy() go figure
+                    frame = Frame.from_channels(
+                        [np.copy(thermal), np.copy(filtered)],
+                        [TrackChannels.thermal, TrackChannels.filtered],
+                        frame_i,
+                        flow_clipped=True,
+                    )
+                    segment_data.append(frame)
+        return segment_db
 
 
 class TrackHeader:

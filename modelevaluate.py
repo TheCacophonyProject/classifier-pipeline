@@ -126,7 +126,6 @@ label_probabilities = meta.get("label_probabilities")
 dataset.lbl_p = label_probabilities
 if mapped_labels:
     dataset.regroup(mapped_labels)
-print("dataset labels arenow ", dataset.labels)
 
 logging.info(
     "Dataset loaded %s, using labels %s, mapped labels %s",
@@ -150,11 +149,7 @@ for label in dataset.label_mapping.keys():
         ),
     )
 if args.tracks:
-    for i in range(8):
-        print("EVAL FOR ", i)
-        dataset.recalculate_segments(segment_type=i)
-
-        model.track_accuracy(dataset, args.confusion)
+    model.track_accuracy(dataset, args.confusion)
 elif args.confusion:
     model.confusion(dataset, args.confusion)
 else:
