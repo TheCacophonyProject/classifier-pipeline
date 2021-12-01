@@ -264,32 +264,32 @@ class Dataset:
         frames = 0
         if self.label_mapping:
             for key, value in self.label_mapping.items():
+
                 if key == label or value == label:
                     label_tracks = []
                     segments = self.segments_by_label.get(key, [])
-                    tracks += len(set([segment.track_id for segment in self.segments]))
+                    tracks += len(set([segment.track_id for segment in segments]))
                     segments_count += len(segments)
-                    frames += sum([segment.frames for segment in self.segments])
-
+                    frames += sum([segment.frames for segment in segments])
         else:
             label_tracks = []
             segments = self.segments_by_label.get(label, [])
             segments_count += len(segments)
             weight = self.get_label_weight(label)
-            tracks += len(set([segment.track_id for segment in self.segments]))
-            frames += sum([segment.frames for segment in self.segments])
+            tracks += len(set([segment.track_id for segment in segments]))
+            frames += sum([segment.frames for segment in segments])
 
             bins = 0
         return segments_count, frames, tracks, bins, weight
 
-    def load_tracks(self, shuffle=False, before_date=None, after_date=None):
+    def load_tracks(self, shuffle=False, before_date=None, after_date=None, label=None):
         """
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
         counter = 0
         track_ids = self.db.get_all_track_ids(
-            before_date=before_date, after_date=after_date
+            before_date=before_date, after_date=after_date, label=label
         )
         if shuffle:
             np.random.shuffle(track_ids)

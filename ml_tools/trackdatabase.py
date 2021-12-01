@@ -235,7 +235,7 @@ class TrackDatabase:
                     tracks.append(track)
         return tracks
 
-    def get_all_track_ids(self, before_date=None, after_date=None):
+    def get_all_track_ids(self, before_date=None, after_date=None, label=None):
         """
         Returns a list of clip_id, track_number pairs.
         """
@@ -252,6 +252,9 @@ class TrackDatabase:
                 if after_date and date < after_date:
                     continue
                 for track in clip:
+                    if label is not None:
+                        if label != clip[track].attrs.get("tag"):
+                            continue
                     if track not in special_datasets:
                         result.append((clip_id, track))
         return result
