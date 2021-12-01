@@ -355,13 +355,11 @@ class PiClassifier(Processor):
 
         prediction = 0.0
         novelty = 0.0
+
         active_tracks = self.get_active_tracks()
 
         for i, track in enumerate(active_tracks):
-
             regions = []
-            if len(track) < 10:
-                continue
             track_prediction = self.predictions.get_or_create_prediction(
                 track, keep_all=False
             )
@@ -400,10 +398,14 @@ class PiClassifier(Processor):
                 keep_edge=params.keep_edge,
             )
             if preprocessed is None:
+                last_frame_classified.last_frame_classified = self.clip.current_frame
+                # probably a false positive or bad frame data
                 continue
             prediction = self.classifier.predict(preprocessed)
             track_prediction.classified_frame(self.clip.current_frame, prediction, mass)
-            track_prediction.normalize_score()
+            logging.debug(
+                "Track %s is predicted as %s", track, track_prediction.get_prediction()
+            )
 
     def get_recent_frame(self):
         if self.clip:
@@ -568,6 +570,9 @@ class PiClassifier(Processor):
 
 def on_recording_stopping(filename):
     global clip, track_extractor, predictions
+    for track_prediction in predictions.prediction_per_track.values():
+        track_prediction.normalize_score()
+
     if clip and track_extractor:
         track_extractor.apply_track_filtering(clip)
         meta_name = os.path.splitext(filename)[0] + ".txt"
