@@ -30,7 +30,7 @@ from ml_tools.logs import init_logging
 from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
 from track.region import Region
-
+from . import beacon
 
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
@@ -403,7 +403,7 @@ class PiClassifier(Processor):
                 continue
             prediction = self.classifier.predict(preprocessed)
             track_prediction.classified_frame(self.clip.current_frame, prediction, mass)
-            track_prediction.normalize_score()
+            beacon.classification(track_prediction)
 
     def get_recent_frame(self):
         if self.clip:
@@ -457,7 +457,7 @@ class PiClassifier(Processor):
             )
             self.rec_time += time.time() - s_r
             if recording:
-
+                beacon.recording()
                 t_start = time.time()
 
                 self.new_clip(preview_frames)
@@ -568,6 +568,8 @@ class PiClassifier(Processor):
 
 def on_recording_stopping(filename):
     global clip, track_extractor, predictions
+    for prediction in predictions.prediction_per_track.values():
+        prediction.normalize_score()
     if clip and track_extractor:
         track_extractor.apply_track_filtering(clip)
         meta_name = os.path.splitext(filename)[0] + ".txt"

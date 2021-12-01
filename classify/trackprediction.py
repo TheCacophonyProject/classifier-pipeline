@@ -146,6 +146,13 @@ class TrackPrediction:
         priority = skipepd_frames / 9
         if self.num_frames_classified == 0:
             priority += 2
+        if (
+            self.fp_index
+            and self.best_label_index
+            and self.best_label_index == self.fp_index
+        ):
+            # dont bother with fps unless nothing else to do
+            priority -= 100
         logging.debug(
             "priority {} for track# {} num_frames {} last classified {}".format(
                 priority,
