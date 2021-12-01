@@ -498,7 +498,7 @@ def preloader(
     max_jobs = max(1, params.maximum_preload // 2)
     chunk_size = processes * 30
     batches = math.ceil(len(samples) / batch_size)
-    use_pool = False
+    use_pool = True
     global item_c
     try:
         count = 0
@@ -602,10 +602,11 @@ def preloader(
             next_load = None
             segment_data = None
             logger.info(
-                "%s preloader loaded up to %s time per batch %s",
+                "%s preloader loaded up to %s time per batch %s qsize %s",
                 name,
                 loaded_up_to,
                 time.time() - start,
+                tracin_queue.qsize(),
             )
             # snapshot2 = tracemalloc.take_snapshot()
             # top_stats = snapshot2.compare_to(snapshot1, "lineno")
