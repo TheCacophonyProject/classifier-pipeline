@@ -407,22 +407,24 @@ def load_from_numpy(numpy_meta, batches, name, logger, size):
     try:
         with open(numpy_meta.filename, "rb") as f:
             for s_id, label, track_id, frames in batches:
-                s_offset = numpy_meta.track_info[track_id]["segments"][s_id]
-                f.seek(s_offset)
-                thermals = np.load(f, allow_pickle=False)
-                filtered = np.load(f, allow_pickle=False)
-                segment_data = []
-                segment_db[s_id] = segment_data
-                for thermal, filtered, frame_i in zip(thermals, filtered, frames):
-                    # seems to leek memory without np.copy() go figure
-                    frame = Frame.from_channels(
-                        [np.copy(thermal), np.copy(filtered)],
-                        [TrackChannels.thermal, TrackChannels.filtered],
-                        frame_i,
-                        flow_clipped=True,
-                    )
-                    segment_data.append(frame)
-
+                try:
+                    s_offset = numpy_meta.track_info[track_id]["segments"][s_id]
+                    f.seek(s_offset)
+                    thermals = np.load(f, allow_pickle=False)
+                    filtered = np.load(f, allow_pickle=False)
+                    segment_data = []
+                    segment_db[s_id] = segment_data
+                    for thermal, filtered, frame_i in zip(thermals, filtered, frames):
+                        # seems to leek memory without np.copy() go figure
+                        frame = Frame.from_channels(
+                            [np.copy(thermal), np.copy(filtered)],
+                            [TrackChannels.thermal, TrackChannels.filtered],
+                            frame_i,
+                            flow_clipped=True,
+                        )
+                        segment_data.append(frame)
+                except:
+                    logger.error("%s error loading %s segment %s", name, track_id, s_id)
             logger.debug(
                 "%s time to load %s frames %s",
                 name,
@@ -550,8 +552,9 @@ def preloader(
                 segments = next_load[:batch_size]
                 segment_data = []
                 for i, seg in enumerate(segments):
-                    segment_data.append((seg[1], seg[2], segment_db[seg[0]]))
-                    segment_db[seg[0]] = None
+                    if seg[0] in segment_db:
+                        segment_data.append((seg[1], seg[2], segment_db[seg[0]]))
+                        segment_db[seg[0]] = None
                 if not use_pool:
                     preprocessed = loadbatch(
                         labels, segment_data, params, label_mapping, logger
