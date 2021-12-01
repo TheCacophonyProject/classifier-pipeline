@@ -398,7 +398,7 @@ class PiClassifier(Processor):
                 keep_edge=params.keep_edge,
             )
             if preprocessed is None:
-                last_frame_classified.last_frame_classified = self.clip.current_frame
+                track_prediction.last_frame_classified = self.clip.current_frame
                 # probably a false positive or bad frame data
                 continue
             prediction = self.classifier.predict(preprocessed)
