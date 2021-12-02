@@ -19,6 +19,7 @@ import sys
 from concurrent.futures.process import ProcessPoolExecutor
 import pickle
 import tracemalloc
+from multiprocess import Queue
 
 FRAMES_PER_SECOND = 9
 
@@ -94,9 +95,9 @@ class DataGenerator(keras.utils.Sequence):
                 self.train_queue = deque()
             # self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
             else:
-                self.epoch_queue = multiprocessing.Queue()
+                self.epoch_queue = Queue()
                 # m = multiprocessing.Manager()
-                self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
+                self.train_queue = Queue(self.params.maximum_preload)
             # self.train_queue = multiprocessing.Queue(self.params.maximum_preload)
             self.preloader_thread = None
         self.load_next_epoch()
