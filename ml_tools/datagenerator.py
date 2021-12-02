@@ -608,7 +608,7 @@ def preloader(
                 name,
                 loaded_up_to,
                 time.time() - start,
-                tracin_queue.qsize(),
+                train_queue.qsize(),
             )
             # snapshot2 = tracemalloc.take_snapshot()
             # top_stats = snapshot2.compare_to(snapshot1, "lineno")
