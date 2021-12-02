@@ -357,7 +357,7 @@ class PiClassifier(Processor):
         novelty = 0.0
 
         active_tracks = self.get_active_tracks()
-
+        new_prediction = False
         for i, track in enumerate(active_tracks):
             regions = []
             track_prediction = self.predictions.get_or_create_prediction(
@@ -403,10 +403,17 @@ class PiClassifier(Processor):
                 continue
             prediction = self.classifier.predict(preprocessed)
             track_prediction.classified_frame(self.clip.current_frame, prediction, mass)
-            beacon.classification(track_prediction)
             logging.debug(
                 "Track %s is predicted as %s", track, track_prediction.get_prediction()
             )
+            new_prediction = True
+        if new_prediction:
+            active_predictions = []
+            for track in self.clip.active_tracks:
+                track_prediction = self.predictions.prediction_for(track.get_id())
+                if track_prediction:
+                    active_predictions.append(track_prediction)
+            beacon.classification(active_predictions)
 
     def get_recent_frame(self):
         if self.clip:

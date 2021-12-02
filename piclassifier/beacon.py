@@ -44,20 +44,36 @@ def recording():
         logging.error("Dbus beacon error ", exc_info=True)
 
 
-def classification(track_prediction):
-    if track_prediction.class_best_score is None:
-        return
-    class_best_score = track_prediction.class_best_score / np.sum(
-        track_prediction.class_best_score
-    )
-    predictions = {}
-    for i, confidence in enumerate(class_best_score):
-        predictions[dbus.Byte(i)] = dbus.Byte(int(confidence))
-    logging.debug("Sending classifcations ", predictions)
+def classification(predictions):
+    byte_predictions = {}
+
+    for track_prediction in predictions:
+        logging.debug(
+            "%s prediction %s",
+            track_prediction.track_id,
+            track_prediction.predicted_tag(),
+        )
+        if track_prediction.class_best_score is None:
+            return
+        class_best_score = (
+            100
+            * track_prediction.class_best_score
+            / np.sum(track_prediction.class_best_score)
+        )
+        print(class_best_score)
+        for i, confidence in enumerate(class_best_score):
+            if dbus.Byte(i) in byte_predictions:
+                byte_predictions[dbus.Byte(i)] = max(
+                    dbus.Byte(int(confidence)), byte_predictions[dbus.Byte(i)]
+                )
+            else:
+                byte_predictions[dbus.Byte(i)] = dbus.Byte(int(confidence))
+
+    logging.debug("Sending classifcations %s ", byte_predictions)
     bus = dbus.SystemBus()
     try:
         beacon_dbus = bus.get_object(NAME, PATH)
-        beacon_dbus.Classification(predictions)
+        beacon_dbus.Classification(byte_predictions)
     except:
         logging.error("Dbus beacon error ", exc_info=True)
 
