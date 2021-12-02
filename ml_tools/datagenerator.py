@@ -543,21 +543,24 @@ def preprocess(batch):
     y = []
     orig = []
     weights = []
-    for frames in batch:
-        for item in frames:
-            item.thermal = item.thermal / (
-                np.amax(item.thermal) - np.amin(item.thermal)
-            )
-        X.append(np.random.rand(160, 160, 3))
-        y.append(0)
-        orig.append("TEST")
-        weights.append(1.0)
-    weights = np.array(weights)
-    y = np.array(y)
-    X = np.array(X)
-    orig = np.array(orig)
-    y = keras.utils.to_categorical(y, num_classes=6)
-    return X, y, orig, weights
+    try:
+        for frames in batch:
+            for item in frames:
+                item.thermal = item.thermal / (
+                    np.amax(item.thermal) - np.amin(item.thermal)
+                )
+            X.append(np.random.rand(160, 160, 3))
+            y.append(0)
+            orig.append("TEST")
+            weights.append(1.0)
+        weights = np.array(weights)
+        y = np.array(y)
+        X = np.array(X)
+        orig = np.array(orig)
+        y = keras.utils.to_categorical(y, num_classes=11)
+        return X, y, orig, weights
+    except e:
+        print("error preprocess", e)
 
 
 #
