@@ -21,17 +21,10 @@ PATH = "/org/cacophony/beacon"
 #         stream=sys.stderr, level=logging.DEBUG, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
 #     )
 #
-#
+# #
 # def main():
-#     init_logging()
-#     predictions = {}
-#     total = 100
-#     for i in range(1, 10):
-#         confidence = randint(0, total)
-#         predictions[dbus.Byte(i)] = dbus.Byte(confidence)
-#         # .to_bytes(1, byteorder="big")
-#         total -= confidence
-#     classification(predictions)
+#
+#     recording()
 #     recording()
 
 
