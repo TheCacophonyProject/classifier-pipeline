@@ -21,7 +21,7 @@ import sys
 # from concurrent.futures.process import ProcessPoolExecutor
 import pickle
 import tracemalloc
-from multiprocess import Queue
+from multiprocess import Queue, Process
 from pathos.multiprocessing import ProcessPool
 
 FRAMES_PER_SECOND = 9
@@ -244,7 +244,7 @@ class DataGenerator(keras.utils.Sequence):
         if self.preloader_thread is not None:
             self.stop_preload()
         self.loaded_epochs += 1
-        self.preloader_thread = threading.Thread(
+        self.preloader_thread = Process(
             target=preloader,
             args=(
                 self.samples,
@@ -515,7 +515,7 @@ def preloader(
             max_workers=4,
             initargs=(),
         ) as pool:
-            results = pool.uimap(preprocess, data, chunksize=5)
+            results = pool.uimap(preprocess, data, chunksize=50)
             for res in results:
                 while True:
                     try:
