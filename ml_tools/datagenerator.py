@@ -533,6 +533,9 @@ def preloader(
             psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
         )
         segments = segments[batch_size * preload_amount :]
+        while loaded_queue.qsize() > max(10, preload_amount // 2):
+            logger.debug("waiting for less items")
+            time.sleep(10)
 
 
 def preprocess(batch):
