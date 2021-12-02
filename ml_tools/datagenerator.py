@@ -481,7 +481,8 @@ def preloader(
     numpy_meta,
     log_q,
 ):
-    chunks = 700
+    logger = logging.getLogger(f"Preload-{name}")
+    # init_logging()
     preload_amount = max(1, params.maximum_preload)
     while len(segments) > 0:
         next_load = segments[: batch_size * preload_amount]
@@ -502,7 +503,12 @@ def preloader(
                 batch_data.append(segment_data)
             data.append(batch_data)
             next_load = next_load[batch_size:]
-
+        batch_segments = None
+        logger.debug(
+            "processing %s mem %s",
+            len(data),
+            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+        )
         with ProcessPoolExecutor(
             max_workers=4,
             initargs=(),
@@ -516,6 +522,16 @@ def preloader(
                     except (Full):
                         time.sleep(5)
 
+        results = None
+        segment_db = None
+        data = None
+        next_load = None
+        segment_data = None
+        logger.debug(
+            "loaded batch qsize %s mem %s",
+            loaded_queue.qsize(),
+            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+        )
         segments = segments[batch_size * preload_amount :]
 
 
