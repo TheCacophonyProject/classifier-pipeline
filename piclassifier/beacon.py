@@ -60,7 +60,6 @@ def classification(predictions):
             * track_prediction.class_best_score
             / np.sum(track_prediction.class_best_score)
         )
-        print(class_best_score)
         for i, confidence in enumerate(class_best_score):
             if dbus.Byte(i) in byte_predictions:
                 byte_predictions[dbus.Byte(i)] = max(
