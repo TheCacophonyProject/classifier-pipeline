@@ -75,7 +75,7 @@ class TrackPrediction:
         self.class_best_score = None
         self.start_frame = start_frame
 
-        self.last_frame_classified = start_frame
+        self.last_frame_classified = None
         self.num_frames_classified = 0
         self.keep_all = keep_all
         self.labels = labels
@@ -142,23 +142,24 @@ class TrackPrediction:
             self.class_best_score += smoothed_prediction
 
     def get_priority(self, frame_number):
-        skipepd_frames = frame_number - self.last_frame_classified
+        if self.last_frame_classified:
+            skipepd_frames = frame_number - self.last_frame_classified
+        else:
+            skipepd_frames = frame_number - self.start_frame
+
         priority = skipepd_frames / 9
         if self.num_frames_classified == 0:
             priority += 2
-        if (
-            self.fp_index
-            and self.best_label_index
-            and self.best_label_index == self.fp_index
-        ):
+        if self.fp_index and self.best_label_index == self.fp_index:
             # dont bother with fps unless nothing else to do
             priority -= 100
         logging.debug(
-            "priority {} for track# {} num_frames {} last classified {}".format(
+            "priority {} for track# {} num_frames {} last classified {} skipped {}".format(
                 priority,
                 self.track_id,
                 self.num_frames_classified,
                 self.last_frame_classified,
+                skipepd_frames,
             )
         )
         return priority
