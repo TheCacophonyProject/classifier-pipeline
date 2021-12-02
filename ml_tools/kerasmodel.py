@@ -438,7 +438,8 @@ class KerasModel(Interpreter):
         for i in range(epochs):
             self.logger.info("doing epoch %s", i)
             for b in range(len(self.train)):
-                self.train.__getitem__(b)
+                X, y, w = self.train.__getitem__(b)
+                X = X * np.amax(X) / np.amin(X)
             self.train.on_epoch_end()
         return
         # for i in range(len(self.train)):

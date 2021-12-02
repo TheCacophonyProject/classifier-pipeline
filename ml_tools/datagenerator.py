@@ -557,7 +557,7 @@ def preprocess(batch):
         y = np.array(y)
         X = np.array(X)
         orig = np.array(orig)
-        y = keras.utils.to_categorical(y, num_classes=11)
+        y = keras.utils.to_categorical(y, num_classes=6)
         return X, y, orig, weights
     except e:
         print("error preprocess", e)
