@@ -17,10 +17,12 @@ import psutil
 import os
 import traceback
 import sys
-from concurrent.futures.process import ProcessPoolExecutor
+
+# from concurrent.futures.process import ProcessPoolExecutor
 import pickle
 import tracemalloc
 from multiprocess import Queue
+from pathos.multiprocessing import ProcessPool
 
 FRAMES_PER_SECOND = 9
 
@@ -509,11 +511,11 @@ def preloader(
             len(data),
             psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
         )
-        with ProcessPoolExecutor(
+        with ProcessPool(
             max_workers=4,
             initargs=(),
         ) as pool:
-            results = pool.map(preprocess, data, chunksize=5)
+            results = pool.uimap(preprocess, data, chunksize=5)
             for res in results:
                 while True:
                     try:
