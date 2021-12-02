@@ -521,7 +521,7 @@ def preloader(
                         break
                     except (Full):
                         time.sleep(5)
-
+        del pool
         results = None
         segment_db = None
         data = None
