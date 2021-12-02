@@ -435,13 +435,13 @@ class KerasModel(Interpreter):
             "Pre get item mem %s",
             psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
         )
-        for i in range(epochs):
-            self.logger.info("doing epoch %s", i)
-            for b in range(len(self.train)):
-                X, y, w = self.train.__getitem__(b)
-                X = X * np.amax(X) / np.amin(X)
-            self.train.on_epoch_end()
-        return
+        # for i in range(epochs):
+        #     self.logger.info("doing epoch %s", i)
+        #     for b in range(len(self.train)):
+        #         X, y, w = self.train.__getitem__(b)
+        #         X = X * np.amax(X) / np.amin(X)
+        #     self.train.on_epoch_end()
+        # return
         # for i in range(len(self.train)):
         #     self.train.__getitem__(i)
         # self.logger.info(

@@ -483,7 +483,7 @@ def preloader(
 ):
     logger = logging.getLogger(f"Preload-{name}")
     # init_logging()
-    preload_amount = max(1, params.maximum_preload)
+    preload_amount = 100  # max(1, params.maximum_preload)
     while len(segments) > 0:
         next_load = segments[: batch_size * preload_amount]
         data = []
