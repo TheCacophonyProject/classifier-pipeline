@@ -422,6 +422,7 @@ def load_from_numpy(numpy_meta, batches, name, logger, size):
                             frame_i,
                             flow_clipped=True,
                         )
+                        count += 1
                         segment_data.append(frame)
                 except:
                     logger.error("%s error loading %s segment %s", name, track_id, s_id)
@@ -513,7 +514,7 @@ def preloader(
         total = 0
         # Once process_batch starts to back up
         loaded_up_to = 0
-
+        total_samples = len(samples)
         while len(samples) > 0:
             next_load = samples[: batch_size * preload_amount]
 
@@ -526,10 +527,11 @@ def preloader(
             # next_load = batches[:preload_amount]
 
             logger.info(
-                "%s preloader loading %s - %s ",
+                "%s preloader loading %s - %s  / %s",
                 name,
                 loaded_up_to,
                 loaded_up_to + len(next_load),
+                total_samples,
             )
             loaded_up_to = loaded_up_to + len(next_load)
 
@@ -591,9 +593,9 @@ def preloader(
 
                     results = pool.map(process_batch, data, chunksize=5)
                     for res in results:
-                        put_with_timeout(train_queue, res, 10, "preloader")
+                        put_with_timeout(train_queue, res, 10, "preloader", log_q)
                     item_c += 1
-                del pool
+                # del pool
 
             results = None
             segment_db = None
@@ -615,13 +617,13 @@ def preloader(
             # for stat in top_stats[:10]:
             #     logger.info("%s", stat)
             total += 1
-            while item_c > 0:
-                logger.info(
-                    "waiting for items %s mem %s",
-                    item_c,
-                    psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-                )
-                time.sleep(5)
+            # while item_c > 0:
+            #     logger.info(
+            #         "waiting for items %s mem %s",
+            #         item_c,
+            #         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            #     )
+            #     time.sleep(5)
 
         del batches
         # gc.collect()
@@ -664,15 +666,26 @@ def process_batch(segment_data):
 
 # Found hanging problems with blocking forever so using this as workaround
 # keeps trying to put data in queue until complete
-def put_with_timeout(queue, data, timeout, name=None, sleep_time=10):
+def put_with_timeout(queue, data, timeout, name=None, sleep_time=10, log_q=None):
     while True:
         try:
             queue.put(data, block=True, timeout=timeout)
             break
         except (Full):
+            if log_q:
+                log_q.debug("%s cant put cause full", name)
             print("%s cant put cause full", name)
             time.sleep(sleep_time)
         except Exception as e:
+            if log_q:
+                log_q.error(
+                    "%s put error %s t/o %s sleep %s",
+                    name,
+                    e,
+                    timeout,
+                    sleep_time,
+                    exc_info=True,
+                )
             print(
                 "%s put error %s t/o %s sleep %s",
                 name,
