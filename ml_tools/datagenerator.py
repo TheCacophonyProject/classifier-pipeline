@@ -476,12 +476,114 @@ LOG_EVERY = 25
 labels = None
 params = None
 label_mapping = None
+#
+#
+# def preloader(
+#     segments,
+#     batch_size,
+#     loaded_queue,
+#     l,
+#     name,
+#     p,
+#     l_map,
+#     numpy_meta,
+#     log_q,
+# ):
+#     worker_configurer(log_q)
+#
+#     global labels, params, label_mapping, logger_q
+#     logger_q = log_q
+#     labels = l
+#     params = p
+#     label_mapping = l_map
+#     logger = logging.getLogger(f"Preload-{name}")
+#     logger.info("WORKING")
+#     preload_amount = 400  # max(1, params.maximum_preload)
+#     orig_lbls = list(l_map.keys())
+#     while len(segments) > 0:
+#         next_load = segments[: batch_size * preload_amount]
+#         data = []
+#         while len(next_load) > 0:
+#             batch_segments = next_load[:batch_size]
+#             batch_data = []
+#             for i, seg in enumerate(batch_segments):
+#                 segment_data = []
+#                 for z in range(25):
+#                     f = Frame(
+#                         np.random.rand(36, 36),
+#                         np.random.rand(36, 36),
+#                         None,
+#                         frame_number=z,
+#                     )
+#                     segment_data.append(f)
+#                 batch_data.append((orig_lbls[i % len(l_map)], i, segment_data))
+#             data.append(batch_data)
+#             next_load = next_load[batch_size:]
+#         batch_segments = None
+#         logger.debug(
+#             "processing %s mem %s",
+#             len(data),
+#             psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+#         )
+#         with ProcessPool(
+#             max_workers=4,
+#             # initializer=init_process,
+#             # initargs=(labels, params, label_mapping, log_q),
+#         ) as pool:
+#             results = pool.uimap(process_batch, data, chunksize=50)
+#             for res in results:
+#                 while True:
+#                     try:
+#                         loaded_queue.put(res, block=True, timeout=10)
+#                         break
+#                     except (Full):
+#                         time.sleep(5)
+#         del pool
+#         results = None
+#         segment_db = None
+#         data = None
+#         next_load = None
+#         segment_data = None
+#         logger.debug(
+#             "loaded batch qsize %s mem %s",
+#             loaded_queue.qsize(),
+#             psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+#         )
+#         segments = segments[batch_size * preload_amount :]
+#         while loaded_queue.qsize() > max(10, preload_amount // 2):
+#             logger.debug("waiting for less items")
+#             time.sleep(10)
+
+#
+# def preprocess(batch):
+#     X = []
+#     y = []
+#     orig = []
+#     weights = []
+#     try:
+#         for frames in batch:
+#             for item in frames:
+#                 item.thermal = item.thermal / (
+#                     np.amax(item.thermal) - np.amin(item.thermal)
+#                 )
+#             X.append(np.random.rand(160, 160, 3))
+#             y.append(0)
+#             orig.append("TEST")
+#             weights.append(1.0)
+#         weights = np.array(weights)
+#         y = np.array(y)
+#         X = np.array(X)
+#         orig = np.array(orig)
+#         y = keras.utils.to_categorical(y, num_classes=6)
+#         return X, y, orig, weights
+#     except e:
+#         print("error preprocess", e)
 
 
 def preloader(
-    segments,
+    samples,
     batch_size,
-    loaded_queue,
+    train_queue,
     l,
     name,
     p,
@@ -489,269 +591,160 @@ def preloader(
     numpy_meta,
     log_q,
 ):
-    worker_configurer(log_q)
-
     global labels, params, label_mapping, logger_q
     logger_q = log_q
     labels = l
     params = p
     label_mapping = l_map
+    # worker_configurer(log_q)
     logger = logging.getLogger(f"Preload-{name}")
-    logger.info("WORKING")
-    preload_amount = 400  # max(1, params.maximum_preload)
-    orig_lbls = list(l_map.keys())
-    while len(segments) > 0:
-        next_load = segments[: batch_size * preload_amount]
-        data = []
-        while len(next_load) > 0:
-            batch_segments = next_load[:batch_size]
-            batch_data = []
-            for i, seg in enumerate(batch_segments):
-                segment_data = []
-                for z in range(25):
-                    f = Frame(
-                        np.random.rand(36, 36),
-                        np.random.rand(36, 36),
-                        None,
-                        frame_number=z,
-                    )
-                    segment_data.append(f)
-                batch_data.append((orig_lbls[i % len(l_map)], i, segment_data))
-            data.append(batch_data)
-            next_load = next_load[batch_size:]
-        batch_segments = None
-        logger.debug(
-            "processing %s mem %s",
-            len(data),
-            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-        )
-        with ProcessPool(
-            max_workers=4,
-            # initializer=init_process,
-            # initargs=(labels, params, label_mapping, log_q),
-        ) as pool:
-            results = pool.uimap(process_batch, data, chunksize=50)
-            for res in results:
-                while True:
-                    try:
-                        loaded_queue.put(res, block=True, timeout=10)
-                        break
-                    except (Full):
-                        time.sleep(5)
-        del pool
-        results = None
-        segment_db = None
-        data = None
-        next_load = None
-        segment_data = None
-        logger.debug(
-            "loaded batch qsize %s mem %s",
-            loaded_queue.qsize(),
-            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-        )
-        segments = segments[batch_size * preload_amount :]
-        while loaded_queue.qsize() > max(10, preload_amount // 2):
-            logger.debug("waiting for less items")
-            time.sleep(10)
+    # init_logging()
+    """add a segment into buffer"""
+    logger.info(
+        " -started async fetcher for %s augment=%s numpyfile %s preload amount %s mem %s",
+        name,
+        params.augment,
+        numpy_meta.filename,
+        params.maximum_preload,
+        psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+    )
+    epoch = 0
+    # this does the data pre processing
+    processes = 4
 
-
-def preprocess(batch):
-    X = []
-    y = []
-    orig = []
-    weights = []
+    preload_amount = max(1, params.maximum_preload)
+    max_jobs = max(1, params.maximum_preload // 2)
+    chunk_size = processes * 30
+    batches = math.ceil(len(samples) / batch_size)
+    use_pool = True
+    global item_c
     try:
-        for frames in batch:
-            for item in frames:
-                item.thermal = item.thermal / (
-                    np.amax(item.thermal) - np.amin(item.thermal)
-                )
-            X.append(np.random.rand(160, 160, 3))
-            y.append(0)
-            orig.append("TEST")
-            weights.append(1.0)
-        weights = np.array(weights)
-        y = np.array(y)
-        X = np.array(X)
-        orig = np.array(orig)
-        y = keras.utils.to_categorical(y, num_classes=6)
-        return X, y, orig, weights
-    except e:
-        print("error preprocess", e)
+        count = 0
 
+        logger.info(
+            "%s preloader got %s batches for epoch %s mem %s",
+            name,
+            batches,
+            epoch,
+            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+        )
+        total = 0
+        # Once process_batch starts to back up
+        loaded_up_to = 0
+        total_samples = len(samples)
+        while len(samples) > 0:
+            next_load = samples[: batch_size * preload_amount]
 
-#
-# def preloader(
-#     samples,
-#     batch_size,
-#     train_queue,
-#     labels,
-#     name,
-#     params,
-#     label_mapping,
-#     numpy_meta,
-#     log_q,
-# ):
-#     # worker_configurer(log_q)
-#     logger = logging.getLogger(f"Preload-{name}")
-#     # init_logging()
-#     """add a segment into buffer"""
-#     logger.info(
-#         " -started async fetcher for %s augment=%s numpyfile %s preload amount %s mem %s",
-#         name,
-#         params.augment,
-#         numpy_meta.filename,
-#         params.maximum_preload,
-#         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-#     )
-#     epoch = 0
-#     # this does the data pre processing
-#     processes = 4
-#
-#     preload_amount = max(1, params.maximum_preload)
-#     max_jobs = max(1, params.maximum_preload // 2)
-#     chunk_size = processes * 30
-#     batches = math.ceil(len(samples) / batch_size)
-#     use_pool = True
-#     global item_c
-#     try:
-#         count = 0
-#
-#         logger.info(
-#             "%s preloader got %s batches for epoch %s mem %s",
-#             name,
-#             batches,
-#             epoch,
-#             psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-#         )
-#         total = 0
-#         # Once process_batch starts to back up
-#         loaded_up_to = 0
-#         total_samples = len(samples)
-#         while len(samples) > 0:
-#             next_load = samples[: batch_size * preload_amount]
-#
-#             start = time.time()
-#             logger.info(
-#                 "%s preloader memory %s",
-#                 name,
-#                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-#             )
-#             # next_load = batches[:preload_amount]
-#
-#             logger.info(
-#                 "%s preloader loading %s - %s  / %s",
-#                 name,
-#                 loaded_up_to,
-#                 loaded_up_to + len(next_load),
-#                 total_samples,
-#             )
-#             loaded_up_to = loaded_up_to + len(next_load)
-#
-#             segment_db = load_batch_frames(
-#                 numpy_meta, next_load, name, logger, 36 if params.augment else 32
-#             )
-#             logger.info(
-#                 "post load %s mem %s",
-#                 len(next_load),
-#                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-#             )
-#
-#             data = []
-#             new_jobs = 0
-#             done = 0
-#             logger.info("post load %s", len(next_load))
-#             num_batches = math.ceil(len(next_load) / batch_size)
-#             start = time.time()
-#             while len(next_load) > 0:
-#                 segments = next_load[:batch_size]
-#                 segment_data = []
-#                 for i, seg in enumerate(segments):
-#                     if seg[0] in segment_db:
-#                         segment_data.append((seg[1], seg[2], segment_db[seg[0]]))
-#                         segment_db[seg[0]] = None
-#                 if not use_pool:
-#                     preprocessed = loadbatch(
-#                         labels, segment_data, params, label_mapping, logger
-#                     )
-#                     put_with_timeout(train_queue, preprocessed, 10, "preloader")
-#                     # train_queue.append(preprocessed)
-#                     item_c += 1
-#                 else:
-#                     data.append(segment_data)
-#                 next_load = next_load[batch_size:]
-#             logger.debug(
-#                 "processing %s mem %s",
-#                 len(data),
-#                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-#             )
-#             # tracemalloc.start()
-#             # snapshot1 = tracemalloc.take_snapshot()
-#
-#             #     for segment_data in data:
-#             #         preprocessed = loadbatch(
-#             #             labels, segment_data, params, label_mapping, logger
-#             #         )
-#             #         put_with_timeout(train_queue, preprocessed, 10, "preloader")
-#             #         # train_queue.append(preprocessed)
-#             #         item_c += 1
-#             # else:
-#             if use_pool:
-#
-#                 with ProcessPoolExecutor(
-#                     max_workers=processes,
-#                     initializer=init_process,
-#                     initargs=(labels, params, label_mapping, log_q),
-#                 ) as pool:
-#
-#                     results = pool.map(process_batch, data, chunksize=5)
-#                     for res in results:
-#                         put_with_timeout(train_queue, res, 10, "preloader", log_q)
-#                     item_c += 1
-#                 # del pool
-#
-#             results = None
-#             segment_db = None
-#             data = None
-#             samples = samples[batch_size * preload_amount :]
-#             next_load = None
-#             segment_data = None
-#             logger.info(
-#                 "%s preloader loaded up to %s time per batch %s qsize %s",
-#                 name,
-#                 loaded_up_to,
-#                 time.time() - start,
-#                 train_queue.qsize(),
-#             )
-#             # snapshot2 = tracemalloc.take_snapshot()
-#             # top_stats = snapshot2.compare_to(snapshot1, "lineno")
-#
-#             # logger.info("[ Top 10 differences ]")
-#             # for stat in top_stats[:10]:
-#             #     logger.info("%s", stat)
-#             total += 1
-#             # while item_c > 0:
-#             #     logger.info(
-#             #         "waiting for items %s mem %s",
-#             #         item_c,
-#             #         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-#             #     )
-#             #     time.sleep(5)
-#
-#         del batches
-#         # gc.collect()
-#         logger.info("%s preloader loaded epoch %s batches", name, epoch)
-#
-#         # break
-#     except Exception as inst:
-#         logger.error("%s preloader epoch %s error %s", name, epoch, inst, exc_info=True)
-#
-#
-LOG_EVERY = 25
-labels = None
-params = None
-label_mapping = None
-logger = None
+            start = time.time()
+            logger.info(
+                "%s preloader memory %s",
+                name,
+                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            )
+            # next_load = batches[:preload_amount]
+
+            logger.info(
+                "%s preloader loading %s - %s  / %s",
+                name,
+                loaded_up_to,
+                loaded_up_to + len(next_load),
+                total_samples,
+            )
+            loaded_up_to = loaded_up_to + len(next_load)
+
+            segment_db = load_batch_frames(
+                numpy_meta, next_load, name, logger, 36 if params.augment else 32
+            )
+            logger.info(
+                "post load %s mem %s",
+                len(next_load),
+                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            )
+
+            data = []
+            new_jobs = 0
+            done = 0
+            logger.info("post load %s", len(next_load))
+            num_batches = math.ceil(len(next_load) / batch_size)
+            start = time.time()
+            while len(next_load) > 0:
+                segments = next_load[:batch_size]
+                segment_data = []
+                for i, seg in enumerate(segments):
+                    if seg[0] in segment_db:
+                        segment_data.append((seg[1], seg[2], segment_db[seg[0]]))
+                        segment_db[seg[0]] = None
+                if not use_pool:
+                    preprocessed = loadbatch(
+                        labels, segment_data, params, label_mapping, logger
+                    )
+                    put_with_timeout(train_queue, preprocessed, 10, "preloader")
+                    # train_queue.append(preprocessed)
+                    item_c += 1
+                else:
+                    data.append(segment_data)
+                next_load = next_load[batch_size:]
+            logger.debug(
+                "processing %s mem %s",
+                len(data),
+                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            )
+            # tracemalloc.start()
+            # snapshot1 = tracemalloc.take_snapshot()
+
+            #     for segment_data in data:
+            #         preprocessed = loadbatch(
+            #             labels, segment_data, params, label_mapping, logger
+            #         )
+            #         put_with_timeout(train_queue, preprocessed, 10, "preloader")
+            #         # train_queue.append(preprocessed)
+            #         item_c += 1
+            # else:
+            if use_pool:
+
+                with ProcessPool(max_workers=processes) as pool:
+
+                    results = pool.map(process_batch, data, chunksize=5)
+                    for res in results:
+                        put_with_timeout(train_queue, res, 10, "preloader", log_q)
+                    item_c += 1
+                # del pool
+
+            results = None
+            segment_db = None
+            data = None
+            samples = samples[batch_size * preload_amount :]
+            next_load = None
+            segment_data = None
+            logger.info(
+                "%s preloader loaded up to %s time per batch %s qsize %s",
+                name,
+                loaded_up_to,
+                time.time() - start,
+                train_queue.qsize(),
+            )
+            # snapshot2 = tracemalloc.take_snapshot()
+            # top_stats = snapshot2.compare_to(snapshot1, "lineno")
+
+            # logger.info("[ Top 10 differences ]")
+            # for stat in top_stats[:10]:
+            #     logger.info("%s", stat)
+            total += 1
+            # while item_c > 0:
+            #     logger.info(
+            #         "waiting for items %s mem %s",
+            #         item_c,
+            #         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            #     )
+            #     time.sleep(5)
+
+        del batches
+        # gc.collect()
+        logger.info("%s preloader loaded epoch %s batches", name, epoch)
+
+        # break
+    except Exception as inst:
+        logger.error("%s preloader epoch %s error %s", name, epoch, inst, exc_info=True)
 
 
 def init_process(l, p, map, log_q):
