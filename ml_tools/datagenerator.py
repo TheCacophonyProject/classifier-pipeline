@@ -472,20 +472,34 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
     return segment_db
 
 
+LOG_EVERY = 25
+labels = None
+params = None
+label_mapping = None
+
+
 def preloader(
     segments,
     batch_size,
     loaded_queue,
-    labels,
+    l,
     name,
-    params,
-    label_mapping,
+    p,
+    l_map,
     numpy_meta,
     log_q,
 ):
+    worker_configurer(log_q)
+
+    global labels, params, label_mapping, logger_q
+    logger_q = log_q
+    labels = l
+    params = p
+    label_mapping = l_map
     logger = logging.getLogger(f"Preload-{name}")
-    # init_logging()
-    preload_amount = 100  # max(1, params.maximum_preload)
+    logger.info("WORKING")
+    preload_amount = 400  # max(1, params.maximum_preload)
+    orig_lbls = list(l_map.keys())
     while len(segments) > 0:
         next_load = segments[: batch_size * preload_amount]
         data = []
@@ -502,7 +516,7 @@ def preloader(
                         frame_number=z,
                     )
                     segment_data.append(f)
-                batch_data.append(segment_data)
+                batch_data.append((orig_lbls[i % len(l_map)], i, segment_data))
             data.append(batch_data)
             next_load = next_load[batch_size:]
         batch_segments = None
@@ -513,9 +527,10 @@ def preloader(
         )
         with ProcessPool(
             max_workers=4,
-            initargs=(),
+            # initializer=init_process,
+            # initargs=(labels, params, label_mapping, log_q),
         ) as pool:
-            results = pool.uimap(preprocess, data, chunksize=50)
+            results = pool.uimap(process_batch, data, chunksize=50)
             for res in results:
                 while True:
                     try:
@@ -732,34 +747,41 @@ def preprocess(batch):
 #         logger.error("%s preloader epoch %s error %s", name, epoch, inst, exc_info=True)
 #
 #
-# LOG_EVERY = 25
-# labels = None
-# params = None
-# label_mapping = None
-# logger = None
+LOG_EVERY = 25
+labels = None
+params = None
+label_mapping = None
+logger = None
+
+
+def init_process(l, p, map, log_q):
+    raise "EX"
+    global labels, params, label_mapping, logger
+    labels = l
+    params = p
+    label_mapping = map
+    worker_configurer(log_q)
+    logger = logging.getLogger(f"Pool-worker")
+    print("INIT PROCDSS")
+
+
 #
 #
-# def init_process(l, p, map, log_q):
-#     global labels, params, label_mapping, logger
-#     labels = l
-#     params = p
-#     label_mapping = map
-#     worker_configurer(log_q)
-#     logger = logging.getLogger(f"Pool-worker")
-#
-#
-# def process_batch(segment_data):
-#     # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
-#     # try:
-#     # init_logging()
-#     global labels, params, label_mapping, logger
-#     try:
-#         preprocessed = loadbatch(labels, segment_data, params, label_mapping, logger)
-#     except Exception as e:
-#         logger.error("Error processing batch", e)
-#         # self.loggererror("Error processing batch ", exc_info=True)
-#         return None
-#     return preprocessed
+def process_batch(segment_data):
+    # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
+    # try:
+    # init_logging()
+    global labels, params, label_mapping, logger_q
+    logger = logging.getLogger(f"process_batch")
+
+    try:
+        preprocessed = loadbatch(labels, segment_data, params, label_mapping, logger)
+    except Exception as e:
+        print("Error processing batch", e)
+        print("EXCEPTION", e)
+        # self.loggererror("Error processing batch ", exc_info=True)
+        return None
+    return preprocessed
 
 
 # Found hanging problems with blocking forever so using this as workaround
