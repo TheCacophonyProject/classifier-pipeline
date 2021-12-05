@@ -2,6 +2,7 @@
 import logging
 import logging.handlers
 import multiprocessing
+from multiprocess import Queue, Process
 
 # Next two import lines for this demo only
 from random import choice, random
@@ -78,10 +79,8 @@ def worker_process(queue, configurer):
 
 
 def init_logging():
-    queue = multiprocessing.Queue(-1)
-    listener = multiprocessing.Process(
-        target=listener_process, args=(queue, listener_configurer)
-    )
+    queue = Queue(-1)
+    listener = Process(target=listener_process, args=(queue, listener_configurer))
     listener.start()
     return queue, listener
 
