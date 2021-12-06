@@ -446,6 +446,19 @@ def load_from_numpy(numpy_meta, batches, name, logger, size):
 
 
 def load_batch_frames(numpy_meta, batches, name, logger, size):
+    segment_db = {}
+    for item in batches:
+        frames = []
+        for z in range(25):
+            f = Frame(
+                np.random.rand(36, 36),
+                np.random.rand(36, 36),
+                None,
+                frame_number=z,
+            )
+        frames.append(z)
+        segment_db[item[0]] = frames
+    return segment_db
     track_frames = {}
     # loads batches from numpy file, by increasing file location, into supplied track_frames dictionary
     # returns loaded batches as segments
@@ -504,6 +517,7 @@ label_mapping = None
 #         next_load = segments[: batch_size * preload_amount]
 #         data = []
 #         while len(next_load) > 0:
+
 #             batch_segments = next_load[:batch_size]
 #             batch_data = []
 #             for i, seg in enumerate(batch_segments):
@@ -554,30 +568,30 @@ label_mapping = None
 #             logger.debug("waiting for less items")
 #             time.sleep(10)
 
-#
-# def preprocess(batch):
-#     X = []
-#     y = []
-#     orig = []
-#     weights = []
-#     try:
-#         for frames in batch:
-#             for item in frames:
-#                 item.thermal = item.thermal / (
-#                     np.amax(item.thermal) - np.amin(item.thermal)
-#                 )
-#             X.append(np.random.rand(160, 160, 3))
-#             y.append(0)
-#             orig.append("TEST")
-#             weights.append(1.0)
-#         weights = np.array(weights)
-#         y = np.array(y)
-#         X = np.array(X)
-#         orig = np.array(orig)
-#         y = keras.utils.to_categorical(y, num_classes=6)
-#         return X, y, orig, weights
-#     except e:
-#         print("error preprocess", e)
+
+def preprocess(batch):
+    X = []
+    y = []
+    orig = []
+    weights = []
+    try:
+        for frames in batch:
+            # for l,id,item in frames:
+            #     item.thermal = item.thermal / (
+            #         np.amax(item.thermal) - np.amin(item.thermal)
+            #     )
+            X.append(np.random.rand(160, 160, 3))
+            y.append(0)
+            orig.append("TEST")
+            weights.append(1.0)
+        weights = np.array(weights)
+        y = np.array(y)
+        X = np.array(X)
+        orig = np.array(orig)
+        y = keras.utils.to_categorical(y, num_classes=6)
+        return X, y, orig, weights
+    except e:
+        print("error preprocess", e)
 
 
 def preloader(
@@ -704,7 +718,7 @@ def preloader(
 
                 with ProcessPool(max_workers=processes) as pool:
 
-                    results = pool.map(process_batch, data, chunksize=5)
+                    results = pool.map(preprocess, data, chunksize=5)
                     for res in results:
                         put_with_timeout(train_queue, res, 10, "preloader", log_q)
                     item_c += 1
