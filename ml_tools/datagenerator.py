@@ -456,7 +456,7 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
                 None,
                 frame_number=z,
             )
-        frames.append(z)
+            frames.append(f)
         segment_db[item[0]] = frames
     return segment_db
     track_frames = {}
@@ -718,7 +718,7 @@ def preloader(
 
                 with ProcessPool(max_workers=processes) as pool:
 
-                    results = pool.map(preprocess, data, chunksize=5)
+                    results = pool.uimap(process_batch, data, chunksize=5)
                     for res in results:
                         put_with_timeout(train_queue, res, 10, "preloader", log_q)
                     item_c += 1
@@ -780,7 +780,6 @@ def process_batch(segment_data):
     # init_logging()
     global labels, params, label_mapping, logger_q
     logger = logging.getLogger(f"process_batch")
-
     try:
         preprocessed = loadbatch(labels, segment_data, params, label_mapping, logger)
     except Exception as e:
