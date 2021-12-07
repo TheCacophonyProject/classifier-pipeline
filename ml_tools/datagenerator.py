@@ -408,6 +408,7 @@ def load_from_numpy(numpy_meta, batches, name, logger, size):
     start = time.time()
     count = 0
     segment_db = {}
+    # feels like something going wrong in here
     try:
         with open(numpy_meta.filename, "rb") as f:
             for s_id, label, track_id, frames in batches:
@@ -421,13 +422,15 @@ def load_from_numpy(numpy_meta, batches, name, logger, size):
                     for thermal, filtered, frame_i in zip(thermals, filtered, frames):
                         # seems to leek memory without np.copy() go figure
                         frame = Frame.from_channels(
-                            [np.copy(thermal), np.copy(filtered)],
+                            [np.float64(thermal), np.float64(filtered)],
                             [TrackChannels.thermal, TrackChannels.filtered],
                             frame_i,
                             flow_clipped=True,
                         )
                         count += 1
-                        segment_data.append(frame)
+                        # un comment this when using for real
+                        # segment_data.append(frame)
+
                 except:
                     logger.error("%s error loading %s segment %s", name, track_id, s_id)
             logger.debug(
@@ -480,8 +483,11 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
                 None,
                 frame_number=z,
             )
+
             frames.append(f)
+            # print("data types are", f.thermal.dtype, f.filtered.dtype)
         segment_db[item[0]] = frames
+
     return segment_db
 
 
@@ -792,7 +798,7 @@ def process_batch(segment_data):
 
 # Found hanging problems with blocking forever so using this as workaround
 # keeps trying to put data in queue until complete
-def put_with_timeout(queue, data, timeout, name=None, sleep_time=10, log_q=None):
+def put_with_timeout(queue, data, timeout, sleep_time=10, name=None, log_q=None):
     while True:
         try:
             queue.put(data, block=True, timeout=timeout)
@@ -831,7 +837,7 @@ def get_with_timeout(queue, timeout, name=None, sleep_time=10):
             # queue.task_done()
             return queue_data
         except (Empty):
-            print("%s cant get cause empty", name)
+            # print("%s cant get cause empty", name)
             time.sleep(sleep_time)
         except Exception as e:
             print(
