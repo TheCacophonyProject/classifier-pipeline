@@ -446,19 +446,7 @@ def load_from_numpy(numpy_meta, batches, name, logger, size):
 
 
 def load_batch_frames(numpy_meta, batches, name, logger, size):
-    segment_db = {}
-    for item in batches:
-        frames = []
-        for z in range(25):
-            f = Frame(
-                np.random.rand(36, 36),
-                np.random.rand(36, 36),
-                None,
-                frame_number=z,
-            )
-            frames.append(f)
-        segment_db[item[0]] = frames
-    return segment_db
+
     track_frames = {}
     # loads batches from numpy file, by increasing file location, into supplied track_frames dictionary
     # returns loaded batches as segments
@@ -482,6 +470,18 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
         len(segment_db),
         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
     )
+    segment_db = {}
+    for item in batches:
+        frames = []
+        for z in range(25):
+            f = Frame(
+                np.random.rand(36, 36),
+                np.random.rand(36, 36),
+                None,
+                frame_number=z,
+            )
+            frames.append(f)
+        segment_db[item[0]] = frames
     return segment_db
 
 
