@@ -30,7 +30,7 @@ from ml_tools.logs import init_logging
 from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
 from track.region import Region
-
+from piclassifier.leptoncontroller import run_ffc
 
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
@@ -177,6 +177,8 @@ class PiClassifier(Processor):
         detect_after=None,
         preview_type=None,
     ):
+        self.start_time = time.time()
+        self.last_ffc = datetime.now()
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
         super().__init__()
@@ -444,6 +446,18 @@ class PiClassifier(Processor):
 
     def process_frame(self, lepton_frame):
         start = time.time()
+        # first hour
+        if (
+            start - self.start_time < 60 * 60
+            and (datetime.now() - self.last_ffc).total_seconds() > 5 * 60
+        ):
+            logging.debug("Running start up ffc")
+            run_ffc()
+            self.last_ffc = datetime.now()
+        if datetime.now().hour != self.last_ffc.hour:
+            logging.debug("Running ffc")
+            run_ffc()
+            self.last_ffc = datetime.now()
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
 

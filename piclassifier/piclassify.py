@@ -23,6 +23,7 @@ from .motiondetector import MotionDetector
 from .piclassifier import PiClassifier, run_classifier
 from .cameras import lepton3
 import multiprocessing
+from .leptoncontroller import set_auto_ffc
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -57,7 +58,7 @@ def parse_args():
 def main():
     init_logging()
     args = parse_args()
-
+    set_auto_ffc(False)
     config = Config.load_from_file(args.config_file)
     if args.cptv:
         return parse_cptv(

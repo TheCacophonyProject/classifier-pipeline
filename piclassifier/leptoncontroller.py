@@ -25,5 +25,5 @@ def set_auto_ffc(automatic):
 def run_ffc():
     obj = get_dbus_obj()
     if obj is None:
-        return false
+        return False
     return obj.RunFFC()
