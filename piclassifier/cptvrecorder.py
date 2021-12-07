@@ -9,6 +9,7 @@ from datetime import timedelta
 import time
 import psutil
 from piclassifier.recorder import Recorder
+from piclassifier.leptoncontroller import set_auto_ffc
 
 CPTV_TEMP_EXT = ".cptv.temp"
 
@@ -39,6 +40,7 @@ class CPTVRecorder(Recorder):
             self.stop_recording(time.time())
         else:
             logging.info("Recording stopped early deleting short recording")
+            set_auto_ffc(True)
             self.delete_recording()
 
     def process_frame(self, movement_detected, cptv_frame):
@@ -64,6 +66,7 @@ class CPTVRecorder(Recorder):
         if self.recording:
             logging.warn("Already recording, stop recording first")
             return False
+        set_auto_ffc(False)
         self.frames = 0
         self.filename = new_temp_name(frame_time)
         self.filename = os.path.join(self.output_dir, self.filename)
@@ -114,6 +117,7 @@ class CPTVRecorder(Recorder):
         self.rec_time += time.time() - start
 
     def stop_recording(self, frame_time):
+        set_auto_ffc(True)
         start = time.time()
         self.rec_time += time.time() - start
         self.recording = False
