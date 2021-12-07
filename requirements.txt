@@ -21,3 +21,4 @@ toml~=0.10.0
 cacophonyapi
 psutil~=5.6.7
 dbus-python
+PyGObject~=3.34.0
