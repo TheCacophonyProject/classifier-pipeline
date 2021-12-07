@@ -449,6 +449,7 @@ class PiClassifier(Processor):
 
         if not self.recorder.recording and self.motion_detector.movement_detected:
             s_r = time.time()
+            # skip last frame
             preview_frames = self.motion_detector.thermal_window.get_frames()[:-1]
 
             recording = self.recorder.start_recording(
@@ -459,9 +460,7 @@ class PiClassifier(Processor):
             )
             self.rec_time += time.time() - s_r
             if recording:
-
                 t_start = time.time()
-
                 self.new_clip(preview_frames)
                 self.tracking_time += time.time() - t_start
 
