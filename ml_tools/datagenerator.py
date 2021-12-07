@@ -427,12 +427,22 @@ def load_from_numpy(numpy_meta, batches, name, logger, size):
                             frame_i,
                             flow_clipped=True,
                         )
+                        # shouldnt be needed but test this out
+                        np.clip(frame.filtered, 0, None, out=frame.filtered)
+                        frame.normalize()
                         count += 1
+
                         # un comment this when using for real
-                        # segment_data.append(frame)
+                        segment_data.append(frame)
 
                 except:
-                    logger.error("%s error loading %s segment %s", name, track_id, s_id)
+                    logger.error(
+                        "%s error loading %s segment %s",
+                        name,
+                        track_id,
+                        s_id,
+                        exc_info=True,
+                    )
             logger.debug(
                 "%s time to load %s frames %s",
                 name,

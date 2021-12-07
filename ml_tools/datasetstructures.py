@@ -131,6 +131,7 @@ class NumpyMeta:
                     frame = frames_by_number[f_i].copy()
 
                     frame.filtered = frame.thermal - frame.region.subimage(background)
+                    np.clip(frame.filtered, 0, None, out=frame.filtered)
                     frame.thermal -= track.frame_temp_median[
                         frame.frame_number - track.start_frame
                     ]
