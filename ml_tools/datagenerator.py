@@ -316,7 +316,16 @@ def _data(labels, data, params, mapped_labels, logger, to_categorical=True):
     data_i = 0
     y_original = []
     mvm = []
-    for label_original, u_id, frame_data in data:
+    for label_original, u_id, raw_frame in data:
+        frame_data = []
+        for thermal, filtetered in zip(raw_frame[0], raw_frame[1]):
+            f = Frame(
+                thermal,
+                filtetered,
+                None,
+                frame_number=0,
+            )
+            frame_data.append(f)
         label = mapped_labels[label_original]
         try:
             if label not in labels:
@@ -417,23 +426,25 @@ def load_from_numpy(numpy_meta, batches, name, logger, size):
                     f.seek(s_offset)
                     thermals = np.load(f, allow_pickle=False)
                     filtered = np.load(f, allow_pickle=False)
-                    segment_data = []
-                    segment_db[s_id] = segment_data
-                    for thermal, filtered, frame_i in zip(thermals, filtered, frames):
-                        # seems to leek memory without np.copy() go figure
-                        frame = Frame.from_channels(
-                            [np.float64(thermal), np.float64(filtered)],
-                            [TrackChannels.thermal, TrackChannels.filtered],
-                            frame_i,
-                            flow_clipped=True,
-                        )
-                        # shouldnt be needed but test this out
-                        np.clip(frame.filtered, 0, None, out=frame.filtered)
-                        frame.normalize()
-                        count += 1
+                    np.clip(filtered, 0, None, out=filtered)
 
-                        # un comment this when using for real
-                        segment_data.append(frame)
+                    segment_data = []
+                    segment_db[s_id] = (thermals, filtered)
+                    # for thermal, filtered, frame_i in zip(thermals, filtered, frames):
+                    #     # seems to leek memory without np.copy() go figure
+                    #     frame = Frame.from_channels(
+                    #         [np.float64(thermal), np.float64(filtered)],
+                    #         [TrackChannels.thermal, TrackChannels.filtered],
+                    #         frame_i,
+                    #         flow_clipped=True,
+                    #     )
+                    #     # shouldnt be needed but test this out
+                    #     np.clip(frame.filtered, 0, None, out=frame.filtered)
+                    #     frame.normalize()
+                    #     count += 1
+                    #
+                    #     # un comment this when using for real
+                    #     segment_data.append(frame)
 
                 except:
                     logger.error(
@@ -483,20 +494,25 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
         len(segment_db),
         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
     )
-    segment_db = {}
-    for item in batches:
-        frames = []
-        for z in range(25):
-            f = Frame(
-                np.random.rand(36, 36),
-                np.random.rand(36, 36),
-                None,
-                frame_number=z,
-            )
-
-            frames.append(f)
-            # print("data types are", f.thermal.dtype, f.filtered.dtype)
-        segment_db[item[0]] = frames
+    # segment_db = {}
+    # for item in batches:
+    #     frames = []
+    #     thermals = []
+    #     filtered = []
+    #     for z in range(25):
+    #         thermals.append(np.random.rand(36, 36))
+    #         filtered.append(np.random.rand(36, 36))
+    #         #
+    #         # f = Frame(
+    #         #     np.random.rand(36, 36),
+    #         #     np.random.rand(36, 36),
+    #         #     None,
+    #         #     frame_number=z,
+    #         # )
+    #
+    #         # frames.append()
+    #         # print("data types are", f.thermal.dtype, f.filtered.dtype)
+    #     segment_db[item[0]] = (thermals, filtered)
 
     return segment_db
 
