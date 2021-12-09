@@ -165,6 +165,12 @@ class KerasModel(Interpreter):
                 ),
                 None,
             )
+        elif pretrained_model == "test":
+            model = tf.keras.Sequential()
+            model.add(
+                tf.keras.layers.Dense(1024, activation="relu", input_shape=input_shape)
+            )
+            return (model, None)
         raise Exception("Could not find model" + pretrained_model)
 
     def get_preprocess_fn(self):
