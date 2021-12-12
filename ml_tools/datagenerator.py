@@ -116,10 +116,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def stop_load(self):
         if self.preload:
-            # if not self.epoch_queue:
-            #     return
             self.logger.info("stopping %s", self.dataset.name)
-            # self.epoch_queue.appendleft("STOP")
             del self.train_queue
             self.train_queue = None
             if self.preloader_thread:
@@ -163,12 +160,6 @@ class DataGenerator(keras.utils.Sequence):
 
     def get_item(self, index):
         if self.preload:
-            # while True:
-            #     try:
-            #         return self.train_queue.popleft()
-            #     except:
-            #         self.logger.debug("train_queue cant get item")
-            #         time.sleep(5)
             return get_with_timeout(
                 self.train_queue,
                 30,
@@ -259,21 +250,13 @@ class DataGenerator(keras.utils.Sequence):
             ),
         )
         self.preloader_thread.start()
-        # self.epoch_queue.put("STOP")
 
     def reload_samples(self):
         self.logger.debug("%s reloading samples", self.dataset.name)
         if self.shuffle:
             np.random.shuffle(self.samples)
-        batches = []
-        for index in range(len(self)):
-            samples = self.samples[
-                index * self.batch_size : (index + 1) * self.batch_size
-            ]
-            batches.append(samples)
-
-        if len(batches) > 0:
-            self.epoch_queue.put((self.loaded_epochs + 1, batches))
+        if self.preload_samples:
+            self.preload_samples()
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
@@ -415,9 +398,7 @@ def _data(labels, data, params, mapped_labels, logger, to_categorical=True):
 
 def load_from_numpy(numpy_meta, batches, name, logger, size):
     start = time.time()
-    count = 0
     segment_db = {}
-    # feels like something going wrong in here
     try:
         with open(numpy_meta.filename, "rb") as f:
             for s_id, label, track_id, frames in batches:
@@ -426,26 +407,12 @@ def load_from_numpy(numpy_meta, batches, name, logger, size):
                     f.seek(s_offset)
                     thermals = np.load(f, allow_pickle=False)
                     filtered = np.load(f, allow_pickle=False)
+
+                    # can delete once built new training set as clipped in build
                     np.clip(filtered, 0, None, out=filtered)
 
                     segment_data = []
                     segment_db[s_id] = (thermals, filtered)
-                    # for thermal, filtered, frame_i in zip(thermals, filtered, frames):
-                    #     # seems to leek memory without np.copy() go figure
-                    #     frame = Frame.from_channels(
-                    #         [np.float64(thermal), np.float64(filtered)],
-                    #         [TrackChannels.thermal, TrackChannels.filtered],
-                    #         frame_i,
-                    #         flow_clipped=True,
-                    #     )
-                    #     # shouldnt be needed but test this out
-                    #     np.clip(frame.filtered, 0, None, out=frame.filtered)
-                    #     frame.normalize()
-                    #     count += 1
-                    #
-                    #     # un comment this when using for real
-                    #     segment_data.append(frame)
-
                 except:
                     logger.error(
                         "%s error loading %s segment %s",
@@ -455,9 +422,9 @@ def load_from_numpy(numpy_meta, batches, name, logger, size):
                         exc_info=True,
                     )
             logger.debug(
-                "%s time to load %s frames %s",
+                "%s time to load %s segments %s",
                 name,
-                count,
+                len(batches),
                 time.time() - start,
             )
     except:
@@ -483,147 +450,24 @@ def load_batch_frames(numpy_meta, batches, name, logger, size):
             batch_item[0]
         ],
     )
-    logger.info(
+    logger.debug(
         "%s loading tracks from numpy file pre mem %s",
         name,
         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
     )
     segment_db = load_from_numpy(numpy_meta, batches, name, logger, size)
-    logger.info(
+    logger.debug(
         "loaded %s mem %s",
         len(segment_db),
         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
     )
-    # segment_db = {}
-    # for item in batches:
-    #     frames = []
-    #     thermals = []
-    #     filtered = []
-    #     for z in range(25):
-    #         thermals.append(np.random.rand(36, 36))
-    #         filtered.append(np.random.rand(36, 36))
-    #         #
-    #         # f = Frame(
-    #         #     np.random.rand(36, 36),
-    #         #     np.random.rand(36, 36),
-    #         #     None,
-    #         #     frame_number=z,
-    #         # )
-    #
-    #         # frames.append()
-    #         # print("data types are", f.thermal.dtype, f.filtered.dtype)
-    #     segment_db[item[0]] = (thermals, filtered)
-
     return segment_db
 
 
-LOG_EVERY = 25
 labels = None
 params = None
 label_mapping = None
-#
-#
-# def preloader(
-#     segments,
-#     batch_size,
-#     loaded_queue,
-#     l,
-#     name,
-#     p,
-#     l_map,
-#     numpy_meta,
-#     log_q,
-# ):
-#     worker_configurer(log_q)
-#
-#     global labels, params, label_mapping, logger_q
-#     logger_q = log_q
-#     labels = l
-#     params = p
-#     label_mapping = l_map
-#     logger = logging.getLogger(f"Preload-{name}")
-#     logger.info("WORKING")
-#     preload_amount = 400  # max(1, params.maximum_preload)
-#     orig_lbls = list(l_map.keys())
-#     while len(segments) > 0:
-#         next_load = segments[: batch_size * preload_amount]
-#         data = []
-#         while len(next_load) > 0:
-
-#             batch_segments = next_load[:batch_size]
-#             batch_data = []
-#             for i, seg in enumerate(batch_segments):
-#                 segment_data = []
-#                 for z in range(25):
-#                     f = Frame(
-#                         np.random.rand(36, 36),
-#                         np.random.rand(36, 36),
-#                         None,
-#                         frame_number=z,
-#                     )
-#                     segment_data.append(f)
-#                 batch_data.append((orig_lbls[i % len(l_map)], i, segment_data))
-#             data.append(batch_data)
-#             next_load = next_load[batch_size:]
-#         batch_segments = None
-#         logger.debug(
-#             "processing %s mem %s",
-#             len(data),
-#             psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-#         )
-#         with ProcessPool(
-#             max_workers=4,
-#             # initializer=init_process,
-#             # initargs=(labels, params, label_mapping, log_q),
-#         ) as pool:
-#             results = pool.uimap(process_batch, data, chunksize=50)
-#             for res in results:
-#                 while True:
-#                     try:
-#                         loaded_queue.put(res, block=True, timeout=10)
-#                         break
-#                     except (Full):
-#                         time.sleep(5)
-#         del pool
-#         results = None
-#         segment_db = None
-#         data = None
-#         next_load = None
-#         segment_data = None
-#         logger.debug(
-#             "loaded batch qsize %s mem %s",
-#             loaded_queue.qsize(),
-#             psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-#         )
-#         segments = segments[batch_size * preload_amount :]
-#         while loaded_queue.qsize() > max(10, preload_amount // 2):
-#             logger.debug("waiting for less items")
-#             time.sleep(10)
-
-
-def preprocess(batch):
-    X = []
-    y = []
-    orig = []
-    weights = []
-    try:
-        for frames in batch:
-            # for l,id,item in frames:
-            #     item.thermal = item.thermal / (
-            #         np.amax(item.thermal) - np.amin(item.thermal)
-            #     )
-            X.append(np.random.rand(160, 160, 3))
-            y.append(0)
-            orig.append("TEST")
-            weights.append(1.0)
-        weights = np.array(weights)
-        y = np.array(y)
-        X = np.array(X)
-        orig = np.array(orig)
-        y = keras.utils.to_categorical(y, num_classes=6)
-        return X, y, orig, weights
-    except e:
-        print("error preprocess", e)
+logger_q = None
 
 
 def preloader(
@@ -637,15 +481,16 @@ def preloader(
     numpy_meta,
     log_q,
 ):
-    global labels, params, label_mapping, logger_q
+
+    use_pool = False
+    if use_pool:
+        # only global if multi processing as these variables will be forked
+        global labels, params, label_mapping, logger_q
     logger_q = log_q
     labels = l
     params = p
     label_mapping = l_map
-    # worker_configurer(log_q)
     logger = logging.getLogger(f"Preload-{name}")
-    # init_logging()
-    """add a segment into buffer"""
     logger.info(
         " -started async fetcher for %s augment=%s numpyfile %s preload amount %s mem %s",
         name,
@@ -662,7 +507,9 @@ def preloader(
     max_jobs = max(1, params.maximum_preload // 2)
     chunk_size = processes * 30
     batches = math.ceil(len(samples) / batch_size)
-    use_pool = True
+    # really should be able to do this in a pool, but with TF it always
+    #  seg faults, fine running for a 1000 loops without tf running
+
     global item_c
     try:
         count = 0
@@ -680,14 +527,17 @@ def preloader(
         total_samples = len(samples)
         while len(samples) > 0:
             next_load = samples[: batch_size * preload_amount]
-
+            while train_queue.qsize() > max_jobs:
+                time.sleep(5)
+                logging.debug(
+                    "Preload sleeping as too many %s jobs waiting", train_queue.qsize()
+                )
             start = time.time()
             logger.info(
                 "%s preloader memory %s",
                 name,
                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
             )
-            # next_load = batches[:preload_amount]
 
             logger.info(
                 "%s preloader loading %s - %s  / %s",
@@ -725,8 +575,6 @@ def preloader(
                         labels, segment_data, params, label_mapping, logger
                     )
                     put_with_timeout(train_queue, preprocessed, 10, "preloader")
-                    # train_queue.append(preprocessed)
-                    item_c += 1
                 else:
                     data.append(segment_data)
                 next_load = next_load[batch_size:]
@@ -735,26 +583,12 @@ def preloader(
                 len(data),
                 psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
             )
-            # tracemalloc.start()
-            # snapshot1 = tracemalloc.take_snapshot()
 
-            #     for segment_data in data:
-            #         preprocessed = loadbatch(
-            #             labels, segment_data, params, label_mapping, logger
-            #         )
-            #         put_with_timeout(train_queue, preprocessed, 10, "preloader")
-            #         # train_queue.append(preprocessed)
-            #         item_c += 1
-            # else:
             if use_pool:
-
                 with ProcessPool(max_workers=processes) as pool:
-
-                    results = pool.uimap(process_batch, data, chunksize=5)
+                    results = pool.uimap(process_batch, data, chunksize=chunk_size)
                     for res in results:
                         put_with_timeout(train_queue, res, 10, "preloader", log_q)
-                    item_c += 1
-                # del pool
 
             results = None
             segment_db = None
@@ -769,55 +603,21 @@ def preloader(
                 time.time() - start,
                 train_queue.qsize(),
             )
-            # snapshot2 = tracemalloc.take_snapshot()
-            # top_stats = snapshot2.compare_to(snapshot1, "lineno")
-
-            # logger.info("[ Top 10 differences ]")
-            # for stat in top_stats[:10]:
-            #     logger.info("%s", stat)
-            total += 1
-            # while item_c > 0:
-            #     logger.info(
-            #         "waiting for items %s mem %s",
-            #         item_c,
-            #         psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
-            #     )
-            #     time.sleep(5)
-
         del batches
-        # gc.collect()
         logger.info("%s preloader loaded epoch %s batches", name, epoch)
 
-        # break
     except Exception as inst:
         logger.error("%s preloader epoch %s error %s", name, epoch, inst, exc_info=True)
 
 
-def init_process(l, p, map, log_q):
-    raise "EX"
-    global labels, params, label_mapping, logger
-    labels = l
-    params = p
-    label_mapping = map
-    worker_configurer(log_q)
-    logger = logging.getLogger(f"Pool-worker")
-    print("INIT PROCDSS")
-
-
-#
-#
 def process_batch(segment_data):
     # runs through loaded frames and applies appropriate prperocessing and then sends them to queue for training
-    # try:
-    # init_logging()
     global labels, params, label_mapping, logger_q
     logger = logging.getLogger(f"process_batch")
     try:
         preprocessed = loadbatch(labels, segment_data, params, label_mapping, logger)
     except Exception as e:
-        print("Error processing batch", e)
-        print("EXCEPTION", e)
-        # self.loggererror("Error processing batch ", exc_info=True)
+        logger_q.Error("Error processing batch ", exc_info=True)
         return None
     return preprocessed
 
@@ -844,14 +644,15 @@ def put_with_timeout(queue, data, timeout, sleep_time=10, name=None, log_q=None)
                     sleep_time,
                     exc_info=True,
                 )
-            print(
-                "%s put error %s t/o %s sleep %s",
-                name,
-                e,
-                timeout,
-                sleep_time,
-                exc_info=True,
-            )
+            else:
+                print(
+                    "%s put error %s t/o %s sleep %s",
+                    name,
+                    e,
+                    timeout,
+                    sleep_time,
+                    exc_info=True,
+                )
             raise e
 
 
@@ -860,10 +661,9 @@ def get_with_timeout(queue, timeout, name=None, sleep_time=10):
     while True:
         try:
             queue_data = queue.get(block=True, timeout=timeout)
-            # queue.task_done()
             return queue_data
         except (Empty):
-            # print("%s cant get cause empty", name)
+            print("%s cant get cause empty", name)
             time.sleep(sleep_time)
         except Exception as e:
             print(
@@ -875,44 +675,3 @@ def get_with_timeout(queue, timeout, name=None, sleep_time=10):
                 exc_info=True,
             )
             raise e
-
-
-import sys
-import attr
-
-
-def get_size(obj, name="base", seen=None, depth=0):
-    return 0
-    """Recursively finds size of objects"""
-    size = sys.getsizeof(obj)
-    if seen is None:
-        seen = set()
-    obj_id = id(obj)
-    if obj_id in seen:
-        return 0
-    # Important mark as seen *before* entering recursion to gracefully handle
-    # self-referential objects
-    seen.add(obj_id)
-    if attr.has(obj):
-        obj = attr.asdict(obj)
-        size += sum(
-            [get_size(v, f"{name}.{k}", seen, depth + 1) for k, v in obj.items()]
-        )
-        size += sum([get_size(k, f"{name}.{k}", seen, depth + 1) for k in obj.keys()])
-    if isinstance(obj, np.ndarray):
-        return obj.nbytes
-    if isinstance(obj, dict):
-        size += sum(
-            [get_size(v, f"{name}.{k}", seen, depth + 1) for k, v in obj.items()]
-        )
-        size += sum([get_size(k, f"{name}.{k}", seen, depth + 1) for k in obj.keys()])
-    elif hasattr(obj, "__dict__"):
-
-        size += get_size(obj.__dict__, f"{name}.dict", seen, depth + 1)
-    elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes, bytearray)):
-        # print("iter??")
-
-        size += sum([get_size(i, f"{name}.iter", seen, depth + 1) for i in obj])
-    if size * 0.000001 > 0.1 and depth <= 2:
-        print(name, " size ", size * 0.000001, "MB")
-    return size

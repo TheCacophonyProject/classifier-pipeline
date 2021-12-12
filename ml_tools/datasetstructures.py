@@ -136,6 +136,7 @@ class NumpyMeta:
                         frame.frame_number - track.start_frame
                     ]
                     np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
+
                     self.resize(frame)
 
                     thermals.append(np.uint16(frame.thermal))
