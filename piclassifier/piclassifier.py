@@ -454,7 +454,7 @@ class PiClassifier(Processor):
             logging.debug("Running start up ffc")
             run_ffc()
             self.last_ffc = datetime.now()
-        if datetime.now().hour != self.last_ffc.hour:
+        if datetime.now().minute // 10 != self.last_ffc.minute // 10:
             logging.debug("Running ffc")
             run_ffc()
             self.last_ffc = datetime.now()
