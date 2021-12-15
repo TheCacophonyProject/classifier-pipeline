@@ -888,7 +888,7 @@ class KerasModel(Interpreter):
                     correct += 1
                 else:
                     incorrect_labels[label].append(
-                        (track_segments[0].track_id, track_prediction.predicted_tag)
+                        (track_segments[0].track_id, track_prediction.predicted_tag())
                     )
                 if total % 50 == 0:
                     self.logger.info("Processed %s", total)
