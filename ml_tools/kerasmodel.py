@@ -810,6 +810,7 @@ class KerasModel(Interpreter):
             dataset,
             self.labels,
             self.params.output_dim,
+            self.log_q,
             batch_size=self.params.batch_size,
             channel=self.params.channel,
             use_movement=self.params.use_movement,
