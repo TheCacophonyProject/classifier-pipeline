@@ -43,7 +43,7 @@ class FrameBuffer:
         self.prev_frame = None
         self.calc_flow = calc_flow
         self.max_frames = max_frames
-        self.keep_frames = keep_frames
+        self.keep_frames = True if max_frames and max_frames > 0 else keep_frames
         self.current_frame = 0
         if calc_flow:
             self.set_optical_flow()

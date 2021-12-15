@@ -38,7 +38,13 @@ SKIP_SIGNAL = "skip"
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cptv", help="a CPTV file to send", default=None)
+    parser.add_argument(
+        "-p",
+        "--preview-type",
+        help="Create MP4 previews of this type",
+    )
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
+
     parser.add_argument(
         "--thermal-config-file", help="Path to pi-config file (config.toml) to use"
     )
@@ -54,7 +60,9 @@ def main():
 
     config = Config.load_from_file(args.config_file)
     if args.cptv:
-        return parse_cptv(args.cptv, config, args.thermal_config_file)
+        return parse_cptv(
+            args.cptv, config, args.thermal_config_file, args.preview_type
+        )
 
     try:
         os.unlink(SOCKET_NAME)
@@ -82,7 +90,7 @@ def main():
                 pass
 
 
-def parse_cptv(cptv_file, config, thermal_config_file):
+def parse_cptv(cptv_file, config, thermal_config_file, preview_type):
     with open(cptv_file, "rb") as f:
         reader = CPTVReader(f)
 
@@ -101,7 +109,12 @@ def parse_cptv(cptv_file, config, thermal_config_file):
             thermal_config_file, headers.model
         )
         pi_classifier = PiClassifier(
-            config, thermal_config, headers, thermal_config.motion.run_classifier, 0
+            config,
+            thermal_config,
+            headers,
+            thermal_config.motion.run_classifier,
+            0,
+            preview_type,
         )
         for frame in reader:
             if frame.background_frame:

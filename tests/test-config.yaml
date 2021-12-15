@@ -1,3 +1,8 @@
 base_data_folder: "."
 source_folder: "tests/clips/"
 tracks_folder: "tests/classify/"
+classify:
+    models:
+      - name: "Inc3"
+        id: 2
+        model_file: "model/val_acc/saved_model.pb"
