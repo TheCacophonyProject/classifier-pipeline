@@ -107,9 +107,8 @@ def preprocess_segment(
             flip = True
     for i, frame in enumerate(frames):
 
-        # frame.float_arrays()
+        frame.float_arrays()
         frame_height, frame_width = frame.thermal.shape
-
         # adjusting the corners makes the algorithm robust to tracking differences.
         # gp changed to 0,1 maybe should be a percent of the frame size
         if augment or frame_height > frame_size or frame_width > frame_size:

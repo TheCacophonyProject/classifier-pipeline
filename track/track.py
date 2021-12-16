@@ -178,8 +178,8 @@ class Track:
     ):
         self.from_metadata = True
         self._id = track_meta["id"]
-        self.start_s = track_meta["start"]
-        self.end_s = track_meta["end"]
+        self.start_s = track_meta["start_s"]
+        self.end_s = track_meta["end_s"]
         self.fps = frames_per_second
 
         self.tags = track_meta.get("tags")

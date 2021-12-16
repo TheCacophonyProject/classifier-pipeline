@@ -669,13 +669,13 @@ class KerasModel(Interpreter):
                     )
                 )
             cropped_frame = frame.crop_by_region(region)
+            thermal_median[i] = np.median(frame.thermal)
             cropped_frame.resize_with_aspect(
                 (self.params.frame_size, self.params.frame_size),
                 clip.crop_rectangle,
                 True,
             )
             track_data[frame.frame_number] = cropped_frame
-            thermal_median[i] = np.median(frame.thermal)
 
         segments = track.get_segments(
             clip.ffc_frames,
