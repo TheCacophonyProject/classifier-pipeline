@@ -887,7 +887,7 @@ class KerasModel(Interpreter):
                 if actual[-1] == predictions[-1]:
                     correct += 1
                 else:
-                    if label in incorrect_labels:
+                    if track_prediction.predicted_tag() in incorrect_labels:
                         incorrect_labels[label][
                             track_prediction.predicted_tag()
                         ].append(track_segments[0].track_id)
