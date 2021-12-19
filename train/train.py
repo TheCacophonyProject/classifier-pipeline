@@ -8,6 +8,30 @@ import faulthandler
 faulthandler.enable()
 
 
+def remove_fp_segments(
+    datasets,
+):
+    # TESTING REMOVING SOME AUTOMATICALLY SELECTED BAD CLIS
+    unique_ids = ignore_clips("ignore.txt")
+    print("ignore ids", unique_ids)
+    for dataset in datasets:
+        delete_me = []
+        for segment in dataset.segments:
+            if segment.unique_track_id in unique_ids:
+                dataset.segments_by_label[segment.label].remove(segment)
+                del dataset.segments_by_id[segment.id]
+                delete_me.append(segment)
+                print("deleting segment", segment.unique_track_id)
+        for delete in delete_me:
+            try:
+                datset.remove_track(delete.track_id)
+            except:
+                pass
+            dataset.segments.remove(delete)
+            print("delete track", delete.track_id, " from", dataset.name)
+        dataset.rebuild_cdf()
+
+
 def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     """Trains a model with the given hyper parameters."""
     log_q, listener = init_logging()
@@ -24,8 +48,11 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
         if label not in false_positives:
             groups[label] = [label]
 
-    groups["false-positives"] = false_positives
+    groups["false-positive"] = false_positives
     model.mapped_labels = groups
+
+    remove_fp_segments(model.datasets.values())
+
     model.regroup()
 
     # display the data set summary
@@ -77,19 +104,6 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
             model.train_dataset.sample_count / 1000
         )
     )
-    # for dataset in model.datasets.values():
-    #     # dataset.clear_tracks()
-    #     for segment in dataset.segments:
-    #         segment.frame_temp_median = None
-    #         segment.regions = None
-    # logging.info("SAVING %s", dataset.name)
-    # pickle.dump(
-    #     dataset,
-    #     open(f"{os.path.join(conf.tracks_folder, dataset.name)}-small.dat", "wb"),
-    # )
-    # import sys
-    #
-    # sys.exit(0)
     import gc
 
     gc.collect()
@@ -104,3 +118,27 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     log_q.put_nowait(None)
     listener.join()
     model.close()
+
+
+def ignore_clips(file_path):
+    ignore_clips = []
+    with open(file_path) as stream:
+        for line in stream:
+
+            if line.strip() == "" or line[0] != "[":
+                continue
+            try:
+                line = line.replace("[", "")
+                line = line.replace("]", "")
+                clips = line.split(",")
+
+                for clip in clips:
+                    clip = clip.replace("'", "")
+                    ignore_clips.append(clip.strip())
+            except:
+                logging.warn(
+                    "Could not parse clip_id %s from %s",
+                    line,
+                    file_path,
+                )
+    return ignore_clips
