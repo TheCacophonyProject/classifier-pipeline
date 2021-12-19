@@ -847,7 +847,8 @@ class KerasModel(Interpreter):
         bird_tracks = len(label_samples.get("bird", []))
 
         for label in dataset.label_mapping.keys():
-            incorrect_labels[label] = {}
+            incorrect = {}
+            incorrect_labels[label] = incorrect
             track_samples = samples_by_label.get(label)
             if not track_samples:
                 self.logger.warn("No samples for %s", label)
@@ -887,12 +888,13 @@ class KerasModel(Interpreter):
                 if actual[-1] == predictions[-1]:
                     correct += 1
                 else:
-                    if track_prediction.predicted_tag() in incorrect_labels:
-                        incorrect_labels[label][
-                            track_prediction.predicted_tag()
-                        ].append(track_segments[0].track_id)
+
+                    if track_prediction.predicted_tag() in incorrect:
+                        incorrect[track_prediction.predicted_tag()].append(
+                            track_segments[0].track_id
+                        )
                     else:
-                        incorrect_labels[label][track_prediction.predicted_tag()] = [
+                        incorrect[track_prediction.predicted_tag()] = [
                             track_segments[0].track_id
                         ]
 
