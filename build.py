@@ -342,14 +342,12 @@ def main():
         dataset.saveto_numpy(
             os.path.join(base_dir), config.train.hyper_params.get("frame_size")
         )
-        # raise "DONE"
 
     for dataset in datasets:
-        dataset.clear_unused()
-        dataset.db = None
-
         # delete data that isn't needed for training, makes for a smaller file
         # which loads daster
+        dataset.clear_unused()
+        dataset.db = None
         dataset.clear_tracks()
         for segment in dataset.segments:
             segment.frame_temp_median = None
