@@ -80,6 +80,7 @@ class TrackPrediction:
         self.keep_all = keep_all
         self.labels = labels
         self.classify_time = None
+        self.tracking = False
 
     def classified_clip(
         self,
@@ -142,6 +143,8 @@ class TrackPrediction:
             self.class_best_score += smoothed_prediction
 
     def get_priority(self, frame_number):
+        if self.tracking:
+            return 100
         if self.last_frame_classified:
             skipepd_frames = frame_number - self.last_frame_classified
         else:

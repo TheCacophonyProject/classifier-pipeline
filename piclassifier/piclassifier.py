@@ -406,6 +406,18 @@ class PiClassifier(Processor):
             logging.debug(
                 "Track %s is predicted as %s", track, track_prediction.get_prediction()
             )
+            if track_prediction.predicted_tag() != "false-positive":
+                track_prediction.tracking = True
+                self.service.tracking(
+                    track_prediction.predicted_tag(), track.bounds_history[-1].to_ltrb()
+                )
+                logging.debug(
+                    "Tracking track %s",
+                    track.get_id(),
+                    track_prediction.predicted_tag(),
+                )
+            elif track_prediction.tracking:
+                track_prediction.tracking = False
 
     def get_recent_frame(self):
         if self.clip:

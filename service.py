@@ -72,6 +72,10 @@ class Service(dbus.service.Object):
             json.dumps(track_meta, cls=CustomJSONEncoder),
         )
 
+    @dbus.service.signal("org.cacophony.thermalrecorder", signature="sai")
+    def Tracking(self, what, region):
+        pass
+
 
 class SnapshotService:
     def __init__(self, get_frame, headers):
@@ -82,6 +86,7 @@ class SnapshotService:
             args=(get_frame, headers),
         )
         self.t.start()
+        self.service = None
 
     def quit(self):
         self.loop.quit()
@@ -89,5 +94,16 @@ class SnapshotService:
     def run_server(self, get_frame, headers):
         session_bus = dbus.SystemBus()
         name = dbus.service.BusName(DBUS_NAME, session_bus)
-        object = Service(session_bus, get_frame, headers)
+        self.service = Service(session_bus, get_frame, headers)
+        # tracking_thread = threading.Thread(
+        #     target=self.send_tracks,
+        # )
+        # tracking_thread.start()
         self.loop.run()
+
+    def tracking(self, what, region):
+        self.service.Tracking(what, region)
+        # time.sleep(10)
+
+
+host = SnapshotService(None, None)
