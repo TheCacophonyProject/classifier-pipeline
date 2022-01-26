@@ -38,6 +38,7 @@ class CPTVRecorder(Recorder):
         if self.has_minimum():
             self.stop_recording(time.time())
         else:
+            logging.info("Recording stopped early deleting short recording")
             self.delete_recording()
 
     def process_frame(self, movement_detected, cptv_frame):

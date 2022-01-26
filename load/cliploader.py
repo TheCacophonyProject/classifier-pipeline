@@ -230,7 +230,6 @@ class ClipLoader:
         clip = Clip(self.track_config, filename)
         clip.load_metadata(
             metadata,
-            self.config.load.include_filtered_channel,
             self.config.load.tag_precedence,
         )
         tracker_version = metadata.get("tracker_version")
