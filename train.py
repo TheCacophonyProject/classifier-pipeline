@@ -43,6 +43,7 @@ def load_config():
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-g", "--grid", action="count", help="Grid Search hparams")
     parser.add_argument("-w", "--weights", help="Fine tune using these weights")
+    parser.add_argument("-i", "--ignore", help="Ignore clips in this file")
 
     parser.add_argument(
         "name",
@@ -65,6 +66,7 @@ def main():
         conf.train.hyper_params,
         grid_search=args.grid,
         weights=args.weights,
+        ignore=args.ignore,
     )
 
 

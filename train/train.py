@@ -2,17 +2,15 @@ import logging
 from ml_tools.kerasmodel import KerasModel
 import pickle
 import os
-from ml_tools.mplogs import init_logging, worker_configurer
 import faulthandler
+from ml_tools.logs import init_logging
 
 faulthandler.enable()
 
 
-def remove_fp_segments(
-    datasets,
-):
+def remove_fp_segments(datasets, ignore_file):
     # TESTING REMOVING SOME AUTOMATICALLY SELECTED BAD CLIS
-    unique_ids = ignore_clips("ignore.txt")
+    unique_ids = ignore_clips(ignore_file)
     print("ignore ids", unique_ids)
     for dataset in datasets:
         delete_me = []
@@ -32,12 +30,12 @@ def remove_fp_segments(
         dataset.rebuild_cdf()
 
 
-def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
+def train_model(
+    run_name, conf, hyper_params, weights=None, grid_search=None, ignore=None
+):
     """Trains a model with the given hyper parameters."""
-    log_q, listener = init_logging()
-    worker_configurer(log_q)
-    logger = logging.getLogger()
-    model = KerasModel(train_config=conf.train, labels=conf.labels, log_q=log_q)
+    init_logging()
+    model = KerasModel(train_config=conf.train, labels=conf.labels)
 
     logging.info("Importing datasets from %s ", conf.tracks_folder)
     model.import_dataset(conf.tracks_folder, lbl_p=conf.train.label_probabilities)
@@ -50,8 +48,8 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
 
     groups["false-positive"] = false_positives
     model.mapped_labels = groups
-
-    remove_fp_segments(model.datasets.values())
+    if ignore is not None:
+        remove_fp_segments(model.datasets.values(), ignore)
 
     model.regroup()
 
@@ -115,8 +113,6 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
         pass
     except:
         logging.error("Exited with error ", exc_info=True)
-    log_q.put_nowait(None)
-    listener.join()
     model.close()
 
 
