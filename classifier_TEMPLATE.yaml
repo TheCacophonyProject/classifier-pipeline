@@ -22,7 +22,7 @@ build:
   segment_min_avg_mass: 10
   # read all files in here of type .list and parsre each line as clipid to be used
   #  in test set
-  test_clips_folder: testset
+  test_clips_folder: training-testclips
 classify:
   # socket used for classifier service
   service_socket: "/etc/cacophony/classifier"
@@ -102,19 +102,17 @@ tracking:
 train:
   epochs: 3
   hyper_params:
-    batch_size: 8
-    buffer_size: 128
+    batch_size: 32
     dense_sizes: []
+    # dropout used between dense layers (when transfer learning)
     dropout: 0.3
     frame_size: 32
     keep_edge: true
     label_smoothing: 0.1
     learning_rate: 0.001
     learning_rate_decay: 1.0
-    lstm: false
-    lstm_units: 25
     maximum_preload: 600
-    model_name: inceptionv3
+    model_name: inceptionresnetv2
     segment_type: ALL_RANDOM
     shuffle: true
     square_width: 5

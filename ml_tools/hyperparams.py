@@ -22,7 +22,6 @@ class HyperParams(dict):
         self["use_movement"] = self.use_movement
         self["use_segments"] = self.use_segments
         self["square_width"] = self.square_width
-        self["buffer_size"] = self.buffer_size
         self["frame_size"] = self.frame_size
 
         self["shuffle"] = self.shuffle
@@ -123,10 +122,6 @@ class HyperParams(dict):
     @property
     def square_width(self):
         return self.get("square_width", 5)
-
-    @property
-    def buffer_size(self):
-        return self.get("buffer_size", 128)
 
     @property
     def frame_size(self):
