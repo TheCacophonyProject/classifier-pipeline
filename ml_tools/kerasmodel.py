@@ -4,14 +4,14 @@ import itertools
 import io
 import time
 import tensorflow as tf
-import pickle
 from tensorboard.plugins.hparams import api as hp
 import os
 import numpy as np
-import os
+import gc
 import time
 import matplotlib.pyplot as plt
 import json
+import logging
 
 from sklearn.metrics import confusion_matrix
 
@@ -24,11 +24,6 @@ from ml_tools.preprocess import (
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
-import gc
-import logging
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-tf_device = "/gpu:1"
 
 
 class KerasModel(Interpreter):
@@ -162,12 +157,6 @@ class KerasModel(Interpreter):
                 ),
                 None,
             )
-        elif pretrained_model == "test":
-            model = tf.keras.Sequential()
-            model.add(
-                tf.keras.layers.Dense(1024, activation="relu", input_shape=input_shape)
-            )
-            return (model, None)
         raise Exception("Could not find model" + pretrained_model)
 
     def get_preprocess_fn(self):
@@ -415,9 +404,7 @@ class KerasModel(Interpreter):
             cap_at="bird",
             epochs=epochs,
             model_preprocess=self.preprocess_fn,
-            maximum_preload=self.params.maximum_train_preload,
             preload=True,
-            lazy_load=True,
             **self.params,
         )
         self.validate = DataGenerator(
@@ -427,9 +414,7 @@ class KerasModel(Interpreter):
             cap_at="bird",
             model_preprocess=self.preprocess_fn,
             epochs=epochs,
-            maximum_preload=self.params.maximum_train_preload,
             preload=True,
-            lazy_load=True,
             **self.params,
         )
 
@@ -472,7 +457,6 @@ class KerasModel(Interpreter):
                 epochs=1,
                 cap_at="bird",
                 preload=True,
-                lazy_load=True,
                 **self.params,
             )
             logging.info("Evaluating test %s", len(self.test))
@@ -569,8 +553,6 @@ class KerasModel(Interpreter):
             dataset.set_read_only(True)
             dataset.lbl_p = lbl_p
             dataset.use_segments = self.params.use_segments
-            dataset.clear_unused()
-            # dataset.recalculate_segments(segment_type=self.params.segment_type)
 
             if ignore_labels:
                 for label in ignore_labels:
@@ -1007,7 +989,7 @@ METRIC_LOSS = "loss"
 def train_test_model(model, hparams, params, log_dir, writer, epochs=15):
     # if not self.model:
     learning_rate = hparams[HP_SEGMENT_TYPE]
-
+    # note gp this means we need to keep tracks in dataset file in build step
     keras_model.train_dataset.recalculate_segments(segment_type=segment_type)
     keras_model.validation_dataset.recalculate_segments(segment_type=segment_type)
     keras_model.test_dataset.recalculate_segments(segment_type=segment_type)

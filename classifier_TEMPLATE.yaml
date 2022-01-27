@@ -113,7 +113,7 @@ train:
     learning_rate_decay: 1.0
     lstm: false
     lstm_units: 25
-    maximum_train_preload: 600
+    maximum_preload: 600
     model_name: inceptionv3
     segment_type: ALL_RANDOM
     shuffle: true

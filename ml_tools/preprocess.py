@@ -182,10 +182,10 @@ def preprocess_frame(
     data[:, :, 1] = filtered
     data[:, :, 2] = filtered
     # for testing
-    tools.saveclassify_image(
-        data,
-        f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
-    )
+    # tools.saveclassify_image(
+    #     data,
+    #     f"samples/{sample.label}-{sample.clip_id}-{sample.track_id}",
+    # )
 
     # preprocess expects values in range 0-255
     if preprocess_fn:

@@ -9,7 +9,7 @@ faulthandler.enable()
 
 
 def remove_fp_segments(datasets, ignore_file):
-    # TESTING REMOVING SOME AUTOMATICALLY SELECTED BAD CLIS
+    # testing removing some automatically selected bad clips
     unique_ids = ignore_clips(ignore_file)
     print("ignore ids", unique_ids)
     for dataset in datasets:

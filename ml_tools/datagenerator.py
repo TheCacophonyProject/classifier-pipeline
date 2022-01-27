@@ -3,22 +3,16 @@ import logging
 import tensorflow.keras as keras
 import numpy as np
 
-# from multiprocessing import Queue
 import time
-import gc
 from ml_tools.preprocess import preprocess_movement, preprocess_frame, FrameTypes
 from ml_tools.frame import TrackChannels
 from ml_tools.frame import Frame
 from collections import Counter
 from queue import Empty, Full
-import threading
 import psutil
 import os
-import traceback
-import sys
 
-import pickle
-import tracemalloc
+# not sure if these are better than inbuilt libs
 from multiprocess import Queue, Process
 from pathos.multiprocessing import ProcessPool
 
@@ -77,7 +71,6 @@ class DataGenerator(keras.utils.Sequence):
         self.cur_epoch = 0
         self.loaded_epochs = 0
         self.epoch_stats = []
-        self.lazy_load = params.get("lazy_load", False)
         self.preload = params.get("preload", False)
         self.segments = []
         # load epoch
@@ -124,7 +117,7 @@ class DataGenerator(keras.utils.Sequence):
             # when tensorflow uses model.fit it requests index 0 twice
             X, y = self.epoch_data[self.cur_epoch]
         else:
-            if index == 0 and self.preload and self.lazy_load:
+            if index == 0 and self.preload:
                 self.preload_samples()
             try:
                 X, y, y_original = self.get_item(index)
@@ -187,7 +180,6 @@ class DataGenerator(keras.utils.Sequence):
             cap_at=self.cap_at,
             label_cap=self.label_cap,
         )
-        # self.samples = np.uint32([sample.id for sample in self.samples])
         self.samples = [
             (sample.id, sample.label, sample.unique_track_id, sample.frame_indices)
             for sample in self.samples
@@ -200,8 +192,6 @@ class DataGenerator(keras.utils.Sequence):
         if self.cur_epoch == 0:
             self.sample_size = len(self.samples)
 
-        if self.preload and not self.lazy_load:
-            self.preload_samples()
         if not self.preload:
             self.loaded_epochs += 1
 
@@ -325,20 +315,6 @@ def _data(labels, data, params, mapped_labels, logger, to_categorical=True):
             y_original.append(label_original)
             X[data_i] = data
             y[data_i] = labels.index(label)
-            if np.isnan(np.sum(data)) or labels.index(label) is None:
-                logger.warn(
-                    "Nan in data for %s %s",
-                    u_id,
-                    [frame.frame_number for frame in frame_data],
-                )
-                continue
-            if np.amin(data) < -1 or np.amax(data) > 1:
-                logger.warn(
-                    "Data out of bounds for %s %s",
-                    u_id,
-                    [frame.frame_number for frame in frame_data],
-                )
-                continue
             data_i += 1
         except Exception as e:
             shapes = [frame.thermal.shape for frame in frame_data]
@@ -378,9 +354,6 @@ def load_from_numpy(numpy_meta, batches, name, logger, size):
                     f.seek(s_offset)
                     thermals = np.load(f, allow_pickle=False)
                     filtered = np.load(f, allow_pickle=False)
-
-                    # can delete once built new training set as clipped in build
-                    np.clip(filtered, 0, None, out=filtered)
 
                     segment_data = []
                     segment_db[s_id] = (thermals, filtered)
@@ -602,10 +575,10 @@ def get_with_timeout(queue, timeout, name=None, sleep_time=10):
             queue_data = queue.get(block=True, timeout=timeout)
             return queue_data
         except (Empty):
-            print("%s cant get cause empty", name)
+            logging.debug("%s cant get cause empty", name)
             time.sleep(sleep_time)
         except Exception as e:
-            print(
+            logging.error(
                 "%s get error %s t/o %s sleep %s",
                 name,
                 e,

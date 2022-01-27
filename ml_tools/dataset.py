@@ -619,8 +619,10 @@ class Dataset:
         """
         if lbl_p is None:
             lbl_p = self.lbl_p
-        self.rebuild_segment_cdf(lbl_p=lbl_p)
-        # self.rebuild_frame_cdf(lbl_p=lbl_p)
+        if self.use_segments:
+            self.rebuild_segment_cdf(lbl_p=lbl_p)
+        else:
+            self.rebuild_frame_cdf(lbl_p=lbl_p)
 
     def rebuild_frame_cdf(self, lbl_p=None):
         self.frame_cdf = []
@@ -741,9 +743,6 @@ class Dataset:
                 count += len(lbl_samples)
                 samples.extend(lbl_samples)
                 self.label_mapping[label] = mapped_label
-                # for sample in lbl_samples:
-                #     track = self.tracks_by_id[sample.unique_track_id]
-                #     tracks_by_bin[track.bin_id] = track
             counts.append(count)
 
         self.labels = list(groups.keys())

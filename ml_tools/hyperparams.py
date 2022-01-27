@@ -137,8 +137,8 @@ class HyperParams(dict):
         return self.get("shuffle", True)
 
     @property
-    def maximum_train_preload(self):
-        return self.get("maximum_train_preload", 1000)
+    def maximum_preload(self):
+        return self.get("maximum_preload", 1000)
 
     @property
     def red_type(self):
