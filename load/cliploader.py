@@ -163,11 +163,11 @@ class ClipLoader:
         Returns valid tracks
         """
 
-        tracks_meta = clip_metadata.get("tracks", [])
+        tracks_meta = clip_metadata.get("Tracks", [])
         valid_tracks = [
             track for track in tracks_meta if self._track_meta_is_valid(track)
         ]
-        clip_metadata["tracks"] = valid_tracks
+        clip_metadata["Tracks"] = valid_tracks
         return valid_tracks
 
     def _track_meta_is_valid(self, track_meta):
@@ -176,7 +176,6 @@ class ClipLoader:
         not in the excluded_tags list, defined in the config.
         """
         min_confidence = self.track_config.min_tag_confidence
-
         track_tags = []
         if "tags" in track_meta:
             track_tags = track_meta["tags"]
