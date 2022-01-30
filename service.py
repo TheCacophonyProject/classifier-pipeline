@@ -20,7 +20,7 @@ class Service(dbus.service.Object):
         self.headers = headers
 
     @dbus.service.method(
-        "org.cacophony.thermalrecorder",
+        DBUS_NAME,
         in_signature="",
         out_signature="a{si}",
     )
@@ -41,7 +41,7 @@ class Service(dbus.service.Object):
         return headers
 
     @dbus.service.method(
-        "org.cacophony.thermalrecorder",
+        DBUS_NAME,
         in_signature="i",
         out_signature="(aaq(xsiqddxb)s)",
     )
@@ -72,7 +72,7 @@ class Service(dbus.service.Object):
             json.dumps(track_meta, cls=CustomJSONEncoder),
         )
 
-    @dbus.service.signal("org.cacophony.thermalrecorder", signature="sai")
+    @dbus.service.signal(DBUS_NAME, signature="sai")
     def Tracking(self, what, region):
         pass
 
@@ -104,6 +104,3 @@ class SnapshotService:
     def tracking(self, what, region):
         self.service.Tracking(what, region)
         # time.sleep(10)
-
-
-host = SnapshotService(None, None)
