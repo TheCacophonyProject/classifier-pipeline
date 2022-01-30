@@ -106,9 +106,7 @@ def train_model(
 
     gc.collect()
     try:
-        model.train_model(
-            epochs=conf.train.epochs, run_name=run_name + "_" + "TEST", weights=weights
-        )
+        model.train_model(epochs=conf.train.epochs, run_name=run_name, weights=weights)
     except KeyboardInterrupt:
         pass
     except:
