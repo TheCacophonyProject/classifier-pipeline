@@ -445,6 +445,7 @@ class KerasModel(Interpreter):
                 *checkpoints,
             ],  # log metricslast_stats
         )
+        history = history.history
         self.train.stop_load()
         self.validate.stop_load()
         test_accuracy = None
