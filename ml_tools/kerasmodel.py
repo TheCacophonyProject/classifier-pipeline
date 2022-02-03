@@ -394,6 +394,7 @@ class KerasModel(Interpreter):
                 dropout=self.params.dropout,
             )
         self.model.summary()
+        self.save()
         if weights is not None:
             self.model.load_weights(weights)
         self.train = DataGenerator(
