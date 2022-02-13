@@ -16,8 +16,15 @@ def handler(sender=None):
     print("got signal from %r" % sender)
 
 
-def catchall_tracking_signals_handler(what, region):
-    print("Received a trackng signal and it says " + what, region)
+def catchall_tracking_signals_handler(what, confidence, region, tracking):
+    print(
+        "Received a trackng signal and it says " + what,
+        confidence,
+        "% at ",
+        region,
+        " tracking?",
+        tracking,
+    )
 
 
 if __name__ == "__main__":

@@ -195,6 +195,7 @@ class PiClassifier(Processor):
         self.identify_time = 0
         self.total_time = 0
         self.rec_time = 0
+        self.tracking = None
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
         self.crop_rectangle = tools.Rectangle(
@@ -408,16 +409,22 @@ class PiClassifier(Processor):
             )
             if track_prediction.predicted_tag() != "false-positive":
                 track_prediction.tracking = True
+                self.tracking = track
+                track_prediction.normalize_score()
                 self.service.tracking(
-                    track_prediction.predicted_tag(), track.bounds_history[-1].to_ltrb()
-                )
-                logging.debug(
-                    "Tracking track %s",
-                    track.get_id(),
                     track_prediction.predicted_tag(),
+                    track_prediction.max_score,
+                    track.bounds_history[-1].to_ltrb(),
+                    True,
                 )
             elif track_prediction.tracking:
                 track_prediction.tracking = False
+                self.tracking = None
+                self.service.tracking(
+                    track_prediction.predicted_tag(),
+                    track.bounds_history[-1].to_ltrb(),
+                    False,
+                )
 
     def get_recent_frame(self):
         if self.clip:
@@ -483,6 +490,20 @@ class PiClassifier(Processor):
             )
             self.tracking_time += time.time() - t_start
             s_r = time.time()
+            if self.tracking is not None:
+                tracking = self.tracking in self.clip.active_tracks
+                track_prediction = self.predictions.prediction_for(
+                    self.tracking.get_id()
+                )
+                self.service.tracking(
+                    track_prediction.predicted_tag(),
+                    track_prediction.max_score,
+                    self.tracking.bounds_history[-1].to_ltrb(),
+                    tracking,
+                )
+                if not tracking:
+                    track_prediction.tracking = False
+                    self.tracking = None
 
             self.recorder.process_frame(
                 self.motion_detector.movement_detected, lepton_frame

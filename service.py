@@ -72,8 +72,8 @@ class Service(dbus.service.Object):
             json.dumps(track_meta, cls=CustomJSONEncoder),
         )
 
-    @dbus.service.signal(DBUS_NAME, signature="sai")
-    def Tracking(self, what, region):
+    @dbus.service.signal(DBUS_NAME, signature="siaib")
+    def Tracking(self, what, confidence, region, tracking):
         pass
 
 
@@ -101,6 +101,13 @@ class SnapshotService:
         # tracking_thread.start()
         self.loop.run()
 
-    def tracking(self, what, region):
-        self.service.Tracking(what, region)
+    def tracking(self, what, confidence, region, tracking):
+        logging.debug(
+            "Tracking %s animal %s confidence %s  at %s",
+            what,
+            round(100 * confidence),
+            region,
+            tracking,
+        )
+        self.service.Tracking(what, round(100 * confidence), region, tracking)
         # time.sleep(10)
