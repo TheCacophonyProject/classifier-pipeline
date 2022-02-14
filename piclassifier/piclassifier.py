@@ -420,8 +420,10 @@ class PiClassifier(Processor):
             elif track_prediction.tracking:
                 track_prediction.tracking = False
                 self.tracking = None
+                track_prediction.normalize_score()
                 self.service.tracking(
                     track_prediction.predicted_tag(),
+                    track_prediction.max_score,
                     track.bounds_history[-1].to_ltrb(),
                     False,
                 )
