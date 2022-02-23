@@ -636,8 +636,9 @@ class PiClassifier(Processor):
 
 def on_recording_stopping(filename):
     global clip, track_extractor, predictions
-    for track_prediction in predictions.prediction_per_track.values():
-        track_prediction.normalize_score()
+    if predictions is not None:
+        for track_prediction in predictions.prediction_per_track.values():
+            track_prediction.normalize_score()
 
     if clip and track_extractor:
         track_extractor.apply_track_filtering(clip)
