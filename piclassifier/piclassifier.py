@@ -494,42 +494,74 @@ class PiClassifier(Processor):
             s_r = time.time()
             if self.tracking is not None:
                 tracking = self.tracking in self.clip.active_tracks
-                track_prediction = self.predictions.prediction_for(
-                    self.tracking.get_id()
-                )
+                score = 0
+                prediction = ""
+                if self.classify:
+                    track_prediction = self.predictions.prediction_for(
+                        self.tracking.get_id()
+                    )
+                    prediction = track_prediction.predicted_tag()
+                    score = track_prediction.max_score
                 self.service.tracking(
-                    track_prediction.predicted_tag(),
-                    track_prediction.max_score,
+                    prediction,
+                    score,
                     self.tracking.bounds_history[-1].to_ltrb(),
                     tracking,
                 )
                 if not tracking:
-                    track_prediction.tracking = False
+                    if self.classify:
+                        track_prediction.tracking = False
                     self.tracking = None
 
             self.recorder.process_frame(
                 self.motion_detector.movement_detected, lepton_frame
             )
             self.rec_time += time.time() - s_r
-            if self.motion_detector.ffc_affected or self.clip.on_preview():
-                self.skip_classifying = PiClassifier.SKIP_FRAMES
-                self.classified_consec = 0
-            elif (
-                self.classify
-                and self.motion_detector.ffc_affected is False
-                and self.clip.active_tracks
-                and self.skip_classifying <= 0
-                and not self.clip.on_preview()
-            ):
-                id_start = time.time()
-                self.identify_last_frame()
-                self.identify_time += time.time() - id_start
-                self.classified_consec += 1
-                if self.classified_consec == PiClassifier.MAX_CONSEC:
+            if self.classify:
+                if self.motion_detector.ffc_affected or self.clip.on_preview():
                     self.skip_classifying = PiClassifier.SKIP_FRAMES
                     self.classified_consec = 0
-            else:
-                self.classified_consec = 0
+                elif (
+                    self.classify
+                    and self.motion_detector.ffc_affected is False
+                    and self.clip.active_tracks
+                    and self.skip_classifying <= 0
+                    and not self.clip.on_preview()
+                ):
+                    id_start = time.time()
+                    self.identify_last_frame()
+                    self.identify_time += time.time() - id_start
+                    self.classified_consec += 1
+                    if self.classified_consec == PiClassifier.MAX_CONSEC:
+                        self.skip_classifying = PiClassifier.SKIP_FRAMES
+                        self.classified_consec = 0
+                else:
+                    self.classified_consec = 0
+            elif self.tracking is None:
+                active_tracks = self.get_active_tracks()
+
+                active_tracks = [
+                    track
+                    for track in active_tracks
+                    if len(track) > 10 and track.last_bound.mass > 16
+                ]
+                logging.debug(
+                    "got active tracks bigger than 16 and longer than 10 frames %s",
+                    active_tracks,
+                )
+
+                active_tracks = sorted(
+                    active_tracks,
+                    key=lambda track: track.last_mass,
+                    reverse=True,
+                )
+
+                if len(active_tracks) > 0:
+                    logging.debug(
+                        "tracking by biggestd mass %s",
+                        active_tracks[0],
+                    )
+                    self.tracking = active_tracks[0]
 
         elif self.clip is not None:
             self.end_clip()
