@@ -6,6 +6,7 @@ import time
 
 import numpy as np
 
+import cv2
 from classify.trackprediction import Predictions
 from load.clip import Clip
 from load.cliptrackextractor import is_affected_by_ffc
@@ -18,6 +19,7 @@ from track.track import Track
 
 from classify.thumbnail import get_thumbnail
 from cptv import CPTVReader
+from datetime import datetime
 
 
 class ClipClassifier:
@@ -87,7 +89,7 @@ class ClipClassifier:
 
     def process(self, source, cache=None, reuse_frames=None):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
-        if os.path.splitext(source)[1] == ".cptv":
+        if os.path.isfile(source):
             self.process_file(source, cache=cache, reuse_frames=reuse_frames)
             return
         for folder_path, _, files in os.walk(source):
@@ -127,19 +129,71 @@ class ClipClassifier:
             self.config.load.tag_precedence,
         )
         frames = []
-        with open(clip.source_file, "rb") as f:
-            reader = CPTVReader(f)
-            clip.set_res(reader.x_resolution, reader.y_resolution)
-            clip.calculate_background(reader)
-            f.seek(0)
-            for frame in reader:
-                if frame.background_frame:
-                    continue
-                clip.add_frame(
-                    frame.pix,
-                    frame.pix - clip.background,
-                    ffc_affected=is_affected_by_ffc(frame),
-                )
+
+        _, ext = os.path.splitext(clip.source_file)
+        if ext != ".cptv":
+            vidcap = cv2.VideoCapture(clip.source_file)
+            frames = 0
+            success, image = vidcap.read()
+            background = []
+            if success:
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                background.append(image)
+                frames += 1
+            while success:
+
+                success, image = vidcap.read()
+                if success:
+                    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                    background.append(image)
+                    frames += 1
+            background = np.percentile(background, 25, axis=0)
+            background += 1
+            # imgplot = plt.imshow(background)
+            # plt.show()
+            count = 0
+            vidcap.set(2, 0)
+            success, image = vidcap.read()
+
+            # vidcap = cv2.VideoCapture(clip.source_file)
+            if success:
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+                print("setting resolution", image.shape, image.dtype)
+                y_res, x_res = image.shape
+                clip.set_res(x_res, y_res)
+                clip.set_model("ir")
+                clip.set_video_stats(datetime.now())
+
+                clip.update_background(background)
+
+            while success:
+                clip.add_frame(image, image - clip.background)
+                # self.process_frame(clip, image)
+                success, image = vidcap.read()
+                if success:
+                    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+                count += 1
+                # if count == 20:
+                #     break
+            vidcap.release()
+
+        else:
+            with open(clip.source_file, "rb") as f:
+                reader = CPTVReader(f)
+                clip.set_res(reader.x_resolution, reader.y_resolution)
+                clip.calculate_background(reader)
+                f.seek(0)
+                for frame in reader:
+                    if frame.background_frame:
+                        continue
+                    clip.add_frame(
+                        frame.pix,
+                        frame.pix - clip.background,
+                        ffc_affected=is_affected_by_ffc(frame),
+                    )
+
         predictions_per_model = {}
         if self.model:
             prediction = self.classify_clip(
@@ -155,8 +209,9 @@ class ClipClassifier:
 
         if self.previewer:
             mpeg_filename = os.path.join(
-                os.path.dirname(filename), base_filename + ".mp4"
+                os.path.dirname(filename), base_filename + "-classify.avi"
             )
+
             logging.info("Exporting preview to '{}'".format(mpeg_filename))
 
             self.previewer.export_clip_preview(

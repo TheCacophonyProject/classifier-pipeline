@@ -16,12 +16,14 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
+import matplotlib.pyplot as plt
 
-
+import os
 import logging
 import numpy as np
 import time
 import yaml
+from datetime import datetime
 
 from cptv import CPTVReader
 import cv2
@@ -31,7 +33,12 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
-from ml_tools.imageprocessing import detect_objects, normalize
+from ml_tools.imageprocessing import (
+    detect_objects,
+    normalize,
+    detect_objects_ir,
+    theshold_saliency,
+)
 
 
 class ClipTrackExtractor:
@@ -57,6 +64,7 @@ class ClipTrackExtractor:
         high_quality_optical_flow=False,
         verbose=False,
     ):
+        self.saliency = None
         self.verbose = verbose
         self.config = config
         self.use_opt_flow = use_opt_flow
@@ -87,36 +95,60 @@ class ClipTrackExtractor:
             self.use_opt_flow,
             self.keep_frames,
         )
+        _, ext = os.path.splitext(clip.source_file)
+        count = 0
+        if ext != ".cptv":
+            vidcap = cv2.VideoCapture(clip.source_file)
+            frames = []
+            while True:
+                success, image = vidcap.read()
+                if not success:
+                    break
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-        with open(clip.source_file, "rb") as f:
-            reader = CPTVReader(f)
-            clip.set_res(reader.x_resolution, reader.y_resolution)
-            if clip.from_metadata:
-                for track in clip.tracks:
-                    track.crop_regions()
-            camera_model = None
-            if reader.model:
-                camera_model = reader.model.decode()
-            clip.set_model(camera_model)
+                # if our saliency object is None, we need to instantiate it
+                if count == 0:
+                    self.saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
+                    self.saliency.setImagesize(gray.shape[1], gray.shape[0])
+                    self.saliency.init()
+                    clip.set_res(gray.shape[1], gray.shape[0])
+                    clip.set_model("ir")
+                    clip.set_video_stats(datetime.now())
+                count += 1
+                # clip.update_background(background)
+                # frames.append(gray)
+                self.process_frame(clip, gray)
+            vidcap.release()
+        else:
+            with open(clip.source_file, "rb") as f:
+                reader = CPTVReader(f)
+                clip.set_res(reader.x_resolution, reader.y_resolution)
+                if clip.from_metadata:
+                    for track in clip.tracks:
+                        track.crop_regions()
+                camera_model = None
+                if reader.model:
+                    camera_model = reader.model.decode()
+                clip.set_model(camera_model)
 
-            # if we have the triggered motion threshold should use that
-            # maybe even override dynamic threshold with this value
-            if reader.motion_config:
-                motion = yaml.safe_load(reader.motion_config)
-                temp_thresh = motion.get("triggeredthresh")
-                if temp_thresh:
-                    clip.temp_thresh = temp_thresh
+                # if we have the triggered motion threshold should use that
+                # maybe even override dynamic threshold with this value
+                if reader.motion_config:
+                    motion = yaml.safe_load(reader.motion_config)
+                    temp_thresh = motion.get("triggeredthresh")
+                    if temp_thresh:
+                        clip.temp_thresh = temp_thresh
 
-            video_start_time = reader.timestamp.astimezone(Clip.local_tz)
-            clip.set_video_stats(video_start_time)
-            clip.calculate_background(reader)
+                video_start_time = reader.timestamp.astimezone(Clip.local_tz)
+                clip.set_video_stats(video_start_time)
+                clip.calculate_background(reader)
 
-        with open(clip.source_file, "rb") as f:
-            reader = CPTVReader(f)
-            for frame in reader:
-                if not process_background and frame.background_frame:
-                    continue
-                self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
+            with open(clip.source_file, "rb") as f:
+                reader = CPTVReader(f)
+                for frame in reader:
+                    if not process_background and frame.background_frame:
+                        continue
+                    self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
 
         if not clip.from_metadata:
             self.apply_track_filtering(clip)
@@ -148,17 +180,39 @@ class ClipTrackExtractor:
         :return: uint8 filtered frame and adjusted clip threshold for normalized frame
         """
 
-        filtered = np.float32(thermal.copy())
-        avg_change = int(round(np.average(thermal) - clip.stats.mean_background_value))
-        np.clip(filtered - clip.background - avg_change, 0, None, out=filtered)
-        filtered, stats = normalize(filtered, new_max=255)
-        if self.config.denoise:
-            filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
-        if stats[1] == stats[2]:
-            mapped_thresh = clip.background_thresh
+        if len(thermal.shape) == 3:
+            filtered = cv2.cvtColor(thermal, cv2.COLOR_BGR2GRAY)
+            print("grey scaled", filtered.shape)
         else:
-            mapped_thresh = clip.background_thresh / (stats[1] - stats[2]) * 255
+            filtered = np.float32(thermal.copy())
+
+        avg_change = 0
+        # int(round(np.average(thermal) - clip.stats.mean_background_value))
+
+        filtered = filtered - clip.background
+        filtered[filtered < 0] = 0
+        # print("amount less than")
+        filtered, stats = normalize(filtered, new_max=255)
+        filtered[filtered > 30] += 30
+        # if self.config.denoise:
+        # filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
+        # if stats[1] == stats[2]:
+        mapped_thresh = clip.background_thresh
+        # else:
+        # mapped_thresh = clip.background_thresh / (stats[1] - stats[2]) * 255
+        # filtered[filtered < 20] = 0
+        # imgplot = plt.imshow(filtered)
+        # plt.show()
         return filtered, mapped_thresh
+
+    def _get_filtered_frame_ir(self, clip, thermal):
+        if clip.current_frame < 8:
+            for _ in range(6):
+                (success, saliencyMap) = self.saliency.computeSaliency(thermal)
+        (success, saliencyMap) = self.saliency.computeSaliency(thermal)
+        saliencyMap = (saliencyMap * 255).astype("uint8")
+        # cv2.imshow("saliencyMap.png", np.uint8(saliencyMap))
+        return saliencyMap
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
         """
@@ -166,12 +220,33 @@ class ClipTrackExtractor:
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-        filtered, threshold = self._get_filtered_frame(clip, thermal)
-        _, mask, component_details = detect_objects(
-            filtered.copy(), otsus=False, threshold=threshold
-        )
+        filtered = self._get_filtered_frame_ir(clip, thermal)
+
+        num, mask, component_details = theshold_saliency(filtered.copy(), threshold=100)
+
+        # print(clip.current_frame)
+        # if clip.current_frame > 5:
+        #     print("showing plot")
+        #     # Map component labels to hue val
+        #     label_hue = np.uint8(179 * mask / np.max(mask))
+        #     blank_ch = 255 * np.ones_like(label_hue)
+        #     labeled_img = cv2.merge([label_hue, blank_ch, blank_ch])
+        #
+        #     # cvt to BGR for display
+        #     labeled_img = cv2.cvtColor(labeled_img, cv2.COLOR_HSV2BGR)
+        #
+        #     # set bg label to black
+        #     labeled_img[label_hue == 0] = 0
+        #
+        #     import matplotlib.pyplot as plt
+        #
+        #     imgplot = plt.imshow(labeled_img)
+        #     plt.show()
+
+        # print("num components", num)
+        # raise "DONE"
         prev_filtered = clip.frame_buffer.get_last_filtered()
-        clip.add_frame(thermal, filtered, mask, ffc_affected)
+        clip.add_frame(thermal, np.uint8(filtered), mask, ffc_affected)
 
         if clip.from_metadata:
             for track in clip.tracks:
@@ -325,6 +400,10 @@ class ClipTrackExtractor:
         # find regions of interest
         regions = []
         for i, component in enumerate(component_details[1:]):
+            # print("got component", component)
+            if component[2] < 40 or component[3] < 40 or component[4] < 40 * 40:
+                continue
+            # print("got component", component)
 
             region = Region(
                 component[0],
@@ -411,41 +490,42 @@ class ClipTrackExtractor:
         )
         # apply max_tracks filter
         # note, we take the n best tracks.
-        if self.max_tracks is not None and self.max_tracks < len(clip.tracks):
-            logging.warning(
-                " -using only {0} tracks out of {1}".format(
-                    self.max_tracks, len(clip.tracks)
-                )
-            )
-            clip.filtered_tracks.extend(
-                [("Too many tracks", track) for track in clip.tracks[self.max_tracks :]]
-            )
-            clip.tracks = clip.tracks[: self.max_tracks]
-
-        for key in clip.filtered_tracks:
-            self.print_if_verbose(
-                "filtered track {} because {}".format(key[1].get_id(), key[0])
-            )
+        # if self.max_tracks is not None and self.max_tracks < len(clip.tracks):
+        #     logging.warning(
+        #         " -using only {0} tracks out of {1}".format(
+        #             self.max_tracks, len(clip.tracks)
+        #         )
+        #     )
+        #     clip.filtered_tracks.extend(
+        #         [("Too many tracks", track) for track in clip.tracks[self.max_tracks :]]
+        #     )
+        #     clip.tracks = clip.tracks[: self.max_tracks]
+        #
+        # for key in clip.filtered_tracks:
+        # self.print_if_verbose(
+        #     "filtered track {} because {}".format(key[1].get_id(), key[0])
+        # )
 
     def filter_track(self, clip, track, stats):
+        return False
         # discard any tracks that are less min_duration
         # these are probably glitches anyway, or don't contain enough information.
-        if len(track) < self.config.min_duration_secs * clip.frames_per_second:
-            self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
-            clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
-            return True
-
-        # discard tracks that do not move enough
-
-        if (
-            stats.max_offset < self.config.track_min_offset
-            or stats.frames_moved < self.config.min_moving_frames
-        ):
-            self.print_if_verbose(
-                "Track filtered.  Didn't move {}".format(stats.max_offset)
-            )
-            clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
-            return True
+        # if len(track) < self.config.min_duration_secs * clip.frames_per_second:
+        #     self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
+        #     clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
+        #     # return True
+        #
+        # # discard tracks that do not move enough
+        #
+        # if (
+        #     stats.max_offset < self.config.track_min_offset
+        #     or stats.frames_moved < self.config.min_moving_frames
+        # ):
+        #     self.print_if_verbose(
+        #         "Track filtered.  Didn't move {}".format(stats.max_offset)
+        #     )
+        #     clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
+        #     return True
 
         if stats.blank_percent > self.config.max_blank_percent:
             self.print_if_verbose("Track filtered.  Too Many Blanks")

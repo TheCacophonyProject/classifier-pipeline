@@ -1,3 +1,4 @@
+import cv2
 import gc
 import json
 import logging
@@ -32,10 +33,10 @@ class TrackExtractor:
             self.cache_to_disk = cache_to_disk
         # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
         self.enable_per_track_information = False
+
         self.track_extractor = ClipTrackExtractor(
             self.config.tracking,
-            self.config.use_opt_flow
-            or config.classify.preview == Previewer.PREVIEW_TRACKING,
+            self.config.use_opt_flow,
             self.cache_to_disk,
             high_quality_optical_flow=self.config.tracking.high_quality_optical_flow,
             verbose=self.config.verbose,
@@ -75,12 +76,13 @@ class TrackExtractor:
 
     def extract(self, base):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
-        if os.path.splitext(base)[1] == ".cptv":
+        if os.path.isfile(base):
             self.extract_file(base)
             return
         for folder_path, _, files in os.walk(base):
             for name in files:
-                if os.path.splitext(name)[1] == ".cptv":
+                print("name", name)
+                if os.path.splitext(name)[1] in [".avi", ".cptv"]:
                     full_path = os.path.join(folder_path, name)
                     self.extract_file(full_path)
 
@@ -90,7 +92,20 @@ class TrackExtractor:
         :param filename: filename to process
         :param enable_preview: if true an MPEG preview file is created.
         """
+        import cv2
 
+        out = cv2.VideoWriter(
+            "test.avi", cv2.VideoWriter_fourcc("M", "J", "P", "G"), 10, (640, 480)
+        )
+        for _ in range(10):
+            thermal = np.zeros((480, 640), dtype=np.uint8)
+            thermal = thermal[..., np.newaxis]
+
+            thermal = np.repeat(thermal, 3, axis=2)
+            out.write(thermal)
+            print("write frame", thermal.shape)
+        out.release()
+        return
         clip = self.extract_tracks(filename)
 
         out_file = self.get_output_file(filename)
@@ -101,10 +116,48 @@ class TrackExtractor:
         meta_filename = out_file + ".txt"
 
         if self.previewer:
-            mpeg_filename = out_file + ".mp4"
-            logging.info("Exporting preview to '{}'".format(mpeg_filename))
+            mpeg_filename = out_file + "-tracking.avi"
             self.previewer.export_clip_preview(mpeg_filename, clip)
+            return
+            logging.info("Exporting preview to '{}'".format(mpeg_filename))
+            out = cv2.VideoWriter(
+                mpeg_filename,
+                cv2.VideoWriter_fourcc("M", "J", "P", "G"),
+                10,
+                (clip.res_x, clip.res_y),
+                0,
+            )
+            for frame_number, frame in enumerate(clip.frame_buffer):
+                for index, track in enumerate(clip.tracks):
+                    frame_offset = frame_number - track.start_frame
+
+                    if frame_offset >= 0 and frame_offset < len(track.bounds_history):
+                        region = track.bounds_history[frame_offset]
+                        cv2.rectangle(
+                            frame.thermal,
+                            (region.left, region.top),
+                            (region.right, region.bottom),
+                            (0, 255, 0),
+                            3,
+                        )
+                        print(
+                            "region region",
+                            region,
+                            region.frame_number,
+                            " for rame X",
+                            frame_number,
+                        )
+                out.write(frame.thermal)
+
+                #
+                # cv2.imshow("detected.png", np.uint8(frame.thermal))
+                # cv2.waitKey(100)
+            # self.previewer.export_clip_preview(mpeg_filename, clip)
         logging.info("saving meta data %s", meta_filename)
+        out.release()
+
+        cv2.destroyAllWindows()
+
         self.save_metadata(
             filename,
             meta_filename,

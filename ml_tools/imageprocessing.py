@@ -168,14 +168,59 @@ def save_image_channels(data, filename):
     img.save(filename + ".png")
 
 
-def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5)):
+index = 0
+
+
+def theshold_saliency(image, otsus=False, threshold=100, kernel=(15, 15)):
+    image = np.uint8(image)
+    image = cv2.fastNlMeansDenoising(np.uint8(image), None)
+
+    image = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
+
+    # image = cv2.GaussianBlur(image, kernel, 0)
+    flags = cv2.THRESH_BINARY
+    if otsus:
+        flags += cv2.THRESH_OTSU
+
+    _, image = cv2.threshold(image, threshold, 255, flags)
+
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
+    #
+    # import matplotlib.pyplot as plt
+    #
+    # imgplot = plt.imshow(image)
+    # plt.show()
+
+    return components, small_mask, stats
+
+
+def detect_objects_ir(image, otsus=True, threshold=0, kernel=(15, 15)):
+
+    image = np.uint8(image)
+    image = cv2.Canny(image, 100, 200)
+    image = cv2.dilate(image, kernel, iterations=1)
+    image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
+    return components, small_mask, stats
+
+
+def detect_objects(image, otsus=True, threshold=0, kernel=(15, 15)):
+    global index
+    index += 1
     image = np.uint8(image)
     image = cv2.GaussianBlur(image, kernel, 0)
     flags = cv2.THRESH_BINARY
     if otsus:
         flags += cv2.THRESH_OTSU
     _, image = cv2.threshold(image, threshold, 255, flags)
+    image = cv2.dilate(image, kernel, iterations=1)
+
     image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
+    # import matplotlib.pyplot as plt
+    #
+    # imgplot = plt.imshow(image)
+    # plt.savefig(f"0 below{kernel[0]}-dilate{index}.png")
+    # plt.clf()
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
     return components, small_mask, stats
 

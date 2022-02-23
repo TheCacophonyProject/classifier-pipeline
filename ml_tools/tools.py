@@ -824,8 +824,10 @@ def add_heat_number(img, frame, scale):
             min_i = np.where(row == min_v)[0][0]
             max_v = np.amax(row)
             max_i = np.where(row == max_v)[0][0]
+            # print("min is", min_v, "max is", max_v)
             draw.text((min_i * scale, y * scale), str(int(min_v)), (0, 0, 0), font=font)
             draw.text((max_i * scale, y * scale), str(int(max_v)), (0, 0, 0), font=font)
+            # print("drawing the max at row", y, max, max_i * scale, y * scale)
 
 
 def eucl_distance(first, second):

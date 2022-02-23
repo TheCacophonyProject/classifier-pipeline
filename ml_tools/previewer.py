@@ -21,7 +21,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import logging
 from os import path
 import numpy as np
-
+import cv2
 from PIL import Image, ImageDraw, ImageFont
 
 from load.clip import Clip
@@ -104,8 +104,14 @@ class Previewer:
             thermals = [frame.thermal for frame in clip.frame_buffer.frames]
             clip.stats.min_temp = np.amin(thermals)
             clip.stats.max_temp = np.amax(thermals)
-        mpeg = MPEGCreator(filename)
-        frame_scale = 4.0
+
+        out = cv2.VideoWriter(
+            filename,
+            cv2.VideoWriter_fourcc("M", "J", "P", "G"),
+            10,
+            (clip.res_x, clip.res_y),
+        )
+        frame_scale = 1
         for frame_number, frame in enumerate(clip.frame_buffer):
             if self.preview_type == self.PREVIEW_RAW:
                 image = self.convert_and_resize(
@@ -167,13 +173,13 @@ class Previewer:
                 self.add_footer(
                     draw, image.width, image.height, footer, frame.ffc_affected
                 )
-            mpeg.next_frame(np.asarray(image))
 
+            out.write(np.uint8(image))
             # we store the entire video in memory so we need to cap the frame count at some point.
             if frame_number > clip.frames_per_second * 60 * 10:
                 break
         clip.frame_buffer.close_cache()
-        mpeg.close()
+        out.release()
 
     def create_individual_track_previews(self, filename, clip: Clip):
         # resolution of video file.
@@ -206,15 +212,21 @@ class Previewer:
         self, frame, h_min, h_max, size=None, mode=Image.BILINEAR, frame_scale=1
     ):
         """Converts the image to colour using colour map and resize"""
-        thermal = frame[:120, :160].copy()
-        image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
-        image = image.resize(
-            (
-                int(image.width * frame_scale),
-                int(image.height * frame_scale),
-            ),
-            mode,
-        )
+        thermal = frame.copy()
+        # image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
+        thermal = thermal[..., np.newaxis]
+
+        thermal = np.repeat(thermal, 3, axis=2)
+        image = Image.fromarray(thermal)
+        # image.save("test" + ".thumbnail", "JPEG")
+        if frame_scale != 1:
+            image = image.resize(
+                (
+                    int(image.width * frame_scale),
+                    int(image.height * frame_scale),
+                ),
+                mode,
+            )
 
         if self.debug:
             tools.add_heat_number(image, thermal, frame_scale)
@@ -286,52 +298,27 @@ class Previewer:
         draw.text((center[0], center[1]), text, font=font)
 
     def add_footer(self, draw, width, height, text, ffc_affected):
+        font = get_font()
         footer_text = "FFC {} {}".format(ffc_affected, text)
         footer_size = font.getsize(footer_text)
         center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
         draw.text((center[0], center[1]), footer_text, font=font)
 
-    def add_debug_text(
-        draw,
-        track,
-        region,
-        screen_bounds,
-        text=None,
-        v_offset=0,
-        frame_offset=0,
-        scale=1,
-    ):
-        font = get_font()
-        if text is None:
-            text = "id {}".format(track.get_id())
-            if region.pixel_variance:
-                text += "mass {} var {} vel ({},{})".format(
-                    region.mass,
-                    round(region.pixel_variance, 2),
-                    track.vel_x[frame_offset],
-                    track.vel_y[frame_offset],
-                )
-        footer_size = font.getsize(text)
-        footer_center = ((region.width * self.frame_scale) - footer_size[0]) / 2
-
-        footer_rect = Region(
-            region.right * scale - footer_center / 2.0,
-            (v_offset + region.bottom) * self.frame_scale,
-            footer_size[0],
-            footer_size[1],
-        )
-        fit_to_image(footer_rect, screen_bounds)
-
-        draw.text((footer_rect.x, footer_rect.y), text, font=font)
-
     def create_four_tracking_image(self, frame, min_temp, max_temp):
 
         thermal = frame.thermal
-        filtered = frame.filtered + min_temp
-        filtered = tools.convert_heat_to_img(
-            filtered, self.colourmap, min_temp, max_temp
-        )
-        thermal = tools.convert_heat_to_img(thermal, self.colourmap, min_temp, max_temp)
+        filtered = frame.filtered
+        thermal = thermal[..., np.newaxis]
+        thermal = np.repeat(thermal, 3, axis=2)
+        filtered = filtered[..., np.newaxis]
+        filtered = np.repeat(filtered, 3, axis=2)
+        thermal = Image.fromarray(thermal)
+        filtered = Image.fromarray(filtered)
+        #
+        # filtered = tools.convert_heat_to_img(
+        #     filtered, self.colourmap, min_temp, max_temp
+        # )
+        # thermal = tools.convert_heat_to_img(thermal, self.colourmap, min_temp, max_temp)
         if self.debug:
             tools.add_heat_number(thermal, frame.thermal, 1)
         if frame.mask is None:
@@ -342,7 +329,7 @@ class Previewer:
 
             mask = mask[..., np.newaxis]
             mask = np.repeat(mask, 3, axis=2)
-
+        #
         mask = Image.fromarray(mask)
         flow_h, flow_v = frame.get_flow_split(clip_flow=True)
         if flow_h is None and flow_v is None:
@@ -357,6 +344,7 @@ class Previewer:
             flow_magnitude = tools.convert_heat_to_img(
                 flow_magnitude, self.colourmap, min_temp, max_temp
             )
+
         image = np.hstack(
             (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
         )
@@ -509,7 +497,7 @@ def get_font():
     """gets default font."""
     if not globs._previewer_font:
         globs._previewer_font = ImageFont.truetype(
-            tools.resource_path("Ubuntu-R.ttf"), 12
+            tools.resource_path("Ubuntu-R.ttf"), 20
         )
     return globs._previewer_font
 
@@ -578,3 +566,37 @@ def add_last_frame_tracking(
                 draw, track, region, screen_bounds, text=text, v_offset=v_offset
             )
     return image
+
+
+def add_debug_text(
+    draw,
+    track,
+    region,
+    screen_bounds,
+    text=None,
+    v_offset=0,
+    frame_offset=0,
+    scale=1,
+):
+    font = get_font()
+    if text is None:
+        text = "id {}".format(track.get_id())
+        if region.pixel_variance:
+            text += "mass {} var {} vel ({},{})".format(
+                region.mass,
+                round(region.pixel_variance, 2),
+                track.vel_x[frame_offset],
+                track.vel_y[frame_offset],
+            )
+    footer_size = font.getsize(text)
+    footer_center = ((region.width * scale) - footer_size[0]) / 2
+
+    footer_rect = Region(
+        region.right * scale - footer_center / 2.0,
+        (v_offset + region.bottom) * scale,
+        footer_size[0],
+        footer_size[1],
+    )
+    fit_to_image(footer_rect, screen_bounds)
+
+    draw.text((footer_rect.x, footer_rect.y), text, font=font)
