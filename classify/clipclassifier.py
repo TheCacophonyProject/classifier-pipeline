@@ -20,6 +20,12 @@ from track.track import Track
 from classify.thumbnail import get_thumbnail
 from cptv import CPTVReader
 from datetime import datetime
+from ml_tools.imageprocessing import (
+    detect_objects,
+    normalize,
+    detect_objects_ir,
+    theshold_saliency,
+)
 
 
 class ClipClassifier:
@@ -94,7 +100,7 @@ class ClipClassifier:
             return
         for folder_path, _, files in os.walk(source):
             for name in files:
-                if os.path.splitext(name)[1] == ".cptv":
+                if os.path.splitext(name)[1] in [".cptv", ".avi"]:
                     full_path = os.path.join(folder_path, name)
                     self.process_file(full_path, cache=cache, reuse_frames=reuse_frames)
 
@@ -134,45 +140,46 @@ class ClipClassifier:
         if ext != ".cptv":
             vidcap = cv2.VideoCapture(clip.source_file)
             frames = 0
-            success, image = vidcap.read()
             background = []
-            if success:
+            saliency = None
+            while True:
+
+                success, image = vidcap.read()
+                if not success:
+                    break
+
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                 background.append(image)
                 frames += 1
-            while success:
+                if frames == 1:
+                    saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
+                    saliency.setImagesize(image.shape[1], image.shape[0])
+                    saliency.init()
+                    clip.set_res(image.shape[1], image.shape[0])
+                    clip.set_model("ir")
+                    clip.set_video_stats(datetime.now())
 
-                success, image = vidcap.read()
-                if success:
-                    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                    background.append(image)
-                    frames += 1
             background = np.percentile(background, 25, axis=0)
-            background += 1
-            # imgplot = plt.imshow(background)
-            # plt.show()
+            clip.update_background(background)
+
             count = 0
             vidcap.set(2, 0)
-            success, image = vidcap.read()
-
-            # vidcap = cv2.VideoCapture(clip.source_file)
-            if success:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-                print("setting resolution", image.shape, image.dtype)
-                y_res, x_res = image.shape
-                clip.set_res(x_res, y_res)
-                clip.set_model("ir")
-                clip.set_video_stats(datetime.now())
-
-                clip.update_background(background)
-
-            while success:
-                clip.add_frame(image, image - clip.background)
-                # self.process_frame(clip, image)
+            while True:
                 success, image = vidcap.read()
-                if success:
-                    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                if not success:
+                    break
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                if count < 8:
+                    for _ in range(6):
+                        (success, saliencyMap) = saliency.computeSaliency(image)
+                (success, saliencyMap) = saliency.computeSaliency(image)
+                saliencyMap = (saliencyMap * 255).astype("uint8")
+
+                filtered = image - clip.background
+                filtered, stats = normalize(filtered, new_max=255)
+
+                clip.add_frame(image, filtered)
+                # self.process_frame(clip, image)
 
                 count += 1
                 # if count == 20:
@@ -206,11 +213,28 @@ class ClipClassifier:
                     clip, model, meta_data, reuse_frames=reuse_frames
                 )
                 predictions_per_model[model.id] = prediction
+        tags = set()
 
+        for model, predictions in predictions_per_model.items():
+            for track, prediction in predictions.prediction_per_track.items():
+                pred = prediction.predicted_tag()
+                if pred is not None and pred != "false-positive":
+                    tags.add(pred)
+        print("tafgs are", tags)
+        tags = list(tags)
+        tags.sort()
+        if len(tags) == 0:
+            dirname = "false-positive"
+        else:
+            dirname = "-".join(tags)
+        destination_folder = os.path.dirname(filename)
+        dirname = destination_folder + "/../" + dirname
+        print("predictions are tags", tags, filename, dirname)
+        if not os.path.exists(dirname):
+            logging.info("Creating folder {}".format(dirname))
+            os.makedirs(dirname)
         if self.previewer:
-            mpeg_filename = os.path.join(
-                os.path.dirname(filename), base_filename + "-classify.avi"
-            )
+            mpeg_filename = os.path.join(dirname, base_filename + "-classify.avi")
 
             logging.info("Exporting preview to '{}'".format(mpeg_filename))
 

@@ -38,6 +38,7 @@ from ml_tools.imageprocessing import (
     normalize,
     detect_objects_ir,
     theshold_saliency,
+    detect_objects_both,
 )
 
 
@@ -97,6 +98,7 @@ class ClipTrackExtractor:
         )
         _, ext = os.path.splitext(clip.source_file)
         count = 0
+        background = None
         if ext != ".cptv":
             vidcap = cv2.VideoCapture(clip.source_file)
             frames = []
@@ -105,16 +107,26 @@ class ClipTrackExtractor:
                 if not success:
                     break
                 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                frames.append(gray)
 
-                # if our saliency object is None, we need to instantiate it
                 if count == 0:
+                    background = gray
                     self.saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
                     self.saliency.setImagesize(gray.shape[1], gray.shape[0])
                     self.saliency.init()
                     clip.set_res(gray.shape[1], gray.shape[0])
                     clip.set_model("ir")
                     clip.set_video_stats(datetime.now())
+                else:
+                    background = np.minimum(background, gray)
+
                 count += 1
+            vidcap.release()
+            # background = np.minimum(frames)
+            clip.update_background(background)
+            for gray in frames:
+                # if our saliency object is None, we need to instantiate it
+
                 # clip.update_background(background)
                 # frames.append(gray)
                 self.process_frame(clip, gray)
@@ -193,16 +205,17 @@ class ClipTrackExtractor:
         filtered[filtered < 0] = 0
         # print("amount less than")
         filtered, stats = normalize(filtered, new_max=255)
-        filtered[filtered > 30] += 30
         # if self.config.denoise:
         # filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
         # if stats[1] == stats[2]:
         mapped_thresh = clip.background_thresh
+        filtered[filtered > 10] += 30
         # else:
         # mapped_thresh = clip.background_thresh / (stats[1] - stats[2]) * 255
         # filtered[filtered < 20] = 0
         # imgplot = plt.imshow(filtered)
         # plt.show()
+
         return filtered, mapped_thresh
 
     def _get_filtered_frame_ir(self, clip, thermal):
@@ -212,7 +225,7 @@ class ClipTrackExtractor:
         (success, saliencyMap) = self.saliency.computeSaliency(thermal)
         saliencyMap = (saliencyMap * 255).astype("uint8")
         # cv2.imshow("saliencyMap.png", np.uint8(saliencyMap))
-        return saliencyMap
+        return saliencyMap, 0
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
         """
@@ -220,34 +233,35 @@ class ClipTrackExtractor:
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-        filtered = self._get_filtered_frame_ir(clip, thermal)
+        filtered, _ = self._get_filtered_frame_ir(clip, thermal)
+        backsub, _ = self._get_filtered_frame(clip, thermal)
 
-        num, mask, component_details = theshold_saliency(filtered.copy(), threshold=100)
+        if np.amin(filtered) == 255:
+            num = 0
+            mask = filtered.copy()
+            component_details = []
+            filtered = None
+        num, mask, component_details = detect_objects_both(filtered, backsub)
+        # else:
+        #
+        #     num, mask, component_details = theshold_saliency(
+        #         filtered.copy(), threshold=100
+        #     )
+        # cv2.imshow("salfiltered.png", np.uint8(filtered))
+        # cv2.imshow("salmask.png", np.uint8(mask * 255))
+        # backsub, _ = self._get_filtered_frame(clip, thermal)
+        # num, mask, component_details = detect_objects(backsub)
+        # cv2.imshow("backsub.png", np.uint8(backsub))
+        # cv2.imshow("backmask.png", np.uint8(mask * 100))
 
-        # print(clip.current_frame)
-        # if clip.current_frame > 5:
-        #     print("showing plot")
-        #     # Map component labels to hue val
-        #     label_hue = np.uint8(179 * mask / np.max(mask))
-        #     blank_ch = 255 * np.ones_like(label_hue)
-        #     labeled_img = cv2.merge([label_hue, blank_ch, blank_ch])
-        #
-        #     # cvt to BGR for display
-        #     labeled_img = cv2.cvtColor(labeled_img, cv2.COLOR_HSV2BGR)
-        #
-        #     # set bg label to black
-        #     labeled_img[label_hue == 0] = 0
-        #
-        #     import matplotlib.pyplot as plt
-        #
-        #     imgplot = plt.imshow(labeled_img)
-        #     plt.show()
-
-        # print("num components", num)
-        # raise "DONE"
         prev_filtered = clip.frame_buffer.get_last_filtered()
-        clip.add_frame(thermal, np.uint8(filtered), mask, ffc_affected)
-
+        # if prev_filtered is not None:
+        #     delta = backsub - prev_filtered
+        #     delta, _ = normalize(delta, new_max=255)
+        #     cv2.imshow("delta", np.uint8(delta))
+        #     cv2.waitKey(10)
+        clip.add_frame(thermal, np.uint8(backsub), mask, ffc_affected)
+        f = clip.frame_buffer.get_last_frame()
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.current_frame in track.frame_list:
@@ -262,27 +276,48 @@ class ClipTrackExtractor:
                 clip.active_tracks = set()
             else:
                 regions = self._get_regions_of_interest(
-                    clip, component_details, filtered, prev_filtered
+                    clip, component_details, backsub, prev_filtered
                 )
-                self._apply_region_matchings(clip, regions)
+                self._apply_region_matchings(clip, regions, f)
 
             clip.region_history.append(regions)
 
-    def _apply_region_matchings(self, clip, regions):
+    def _apply_region_matchings(self, clip, regions, f):
         """
         Work out the best matchings between tracks and regions of interest for the current frame.
         Create any new tracks required.
         """
-        unmatched_regions, matched_tracks = self._match_existing_tracks(clip, regions)
-        new_tracks = self._create_new_tracks(clip, unmatched_regions)
+        unmatched_regions, matched_tracks = self._match_existing_tracks(
+            clip, regions, f
+        )
+        new_tracks = self._create_new_tracks(clip, unmatched_regions, f)
         self._filter_inactive_tracks(clip, new_tracks, matched_tracks)
 
-    def _match_existing_tracks(self, clip, regions):
+    def _match_existing_tracks(self, clip, regions, frame):
         scores = []
         used_regions = set()
         unmatched_regions = set(regions)
+        matched_tracks = set()
 
         for track in clip.active_tracks:
+            if track.stable:
+                track.add_frame(frame)
+                matched_tracks.add(track)
+                delete = []
+                for region in regions:
+                    overlap = track.last_bound.overlap_area(region) / region.area
+
+                    if overlap > 0.8:
+                        # print("over lap is", overlap)
+                        # print("removing region", region)
+                        delete.append(region)
+
+                for d in delete:
+                    used_regions.add(d)
+                    unmatched_regions.remove(d)
+                    regions.remove(d)
+
+                continue
             avg_mass = track.average_mass()
             max_distance = get_max_distance_change(track)
             for region in regions:
@@ -324,18 +359,17 @@ class ClipTrackExtractor:
             + float(".{}".format(record[1]._id))
         )
         scores.sort(key=lambda record: record[0])
-        matched_tracks = set()
         for (score, track, region) in scores:
             if track in matched_tracks or region in used_regions:
                 continue
-            track.add_region(region)
+            track.add_region(region, frame)
             matched_tracks.add(track)
             used_regions.add(region)
             unmatched_regions.remove(region)
 
         return unmatched_regions, matched_tracks
 
-    def _create_new_tracks(self, clip, unmatched_regions):
+    def _create_new_tracks(self, clip, unmatched_regions, f):
         """Create new tracks for any unmatched regions"""
         new_tracks = set()
         for region in unmatched_regions:
@@ -346,7 +380,7 @@ class ClipTrackExtractor:
             if len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
                 continue
 
-            track = Track.from_region(clip, region, ClipTrackExtractor.VERSION)
+            track = Track.from_region(clip, region, ClipTrackExtractor.VERSION, f)
             new_tracks.add(track)
             clip._add_active_track(track)
             self.print_if_verbose(
@@ -363,8 +397,10 @@ class ClipTrackExtractor:
     def _filter_inactive_tracks(self, clip, new_tracks, matched_tracks):
         """Filters tracks which are or have become inactive"""
 
-        unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
-        clip.active_tracks = matched_tracks | new_tracks
+        unactive_tracks = clip.active_tracks
+        # - matched_tracks - new_tracks
+        clip.active_tracks = set()
+        # matched_tracks | new_tracks
         for track in unactive_tracks:
             # need sufficient frames to allow insertion of excess blanks
             remove_after = min(
@@ -372,13 +408,16 @@ class ClipTrackExtractor:
                 self.config.remove_track_after_frames,
             )
             if track.frames_since_target_seen + 1 < remove_after:
-                track.add_blank_frame(clip.frame_buffer)
-                clip.active_tracks.add(track)
-                self.print_if_verbose(
-                    "frame {} adding a blank frame to {} ".format(
-                        clip.current_frame, track.get_id()
+                if track.prev_frame_num != clip.current_frame:
+                    track.add_blank_frame(clip.frame_buffer)
+                    self.print_if_verbose(
+                        "frame {} adding a blank frame to {} ".format(
+                            clip.current_frame, track.get_id()
+                        )
                     )
-                )
+                clip.active_tracks.add(track)
+            else:
+                print("filtering track", track)
 
     def _get_regions_of_interest(
         self, clip, component_details, filtered, prev_filtered
@@ -507,6 +546,7 @@ class ClipTrackExtractor:
         # )
 
     def filter_track(self, clip, track, stats):
+        return not track.stable
         return False
         # discard any tracks that are less min_duration
         # these are probably glitches anyway, or don't contain enough information.

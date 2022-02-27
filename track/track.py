@@ -25,6 +25,7 @@ from track.region import Region
 from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance
 from ml_tools.datasetstructures import get_segments, SegmentHeader
+import cv2
 
 
 class Track:
@@ -53,7 +54,7 @@ class Track:
             Track._track_id += 1
         else:
             self._id = id
-
+        self.tracker = None
         self.clip_id = clip_id
         self.start_frame = None
         self.end_frame = None
@@ -97,6 +98,7 @@ class Track:
         self.all_class_confidences = None
         self.prediction_classes = None
         self.tracker_version = tracker_version
+        self.stable = False
 
     def get_segments(
         self,
@@ -150,7 +152,7 @@ class Track:
         return segments
 
     @classmethod
-    def from_region(cls, clip, region, tracker_version=None):
+    def from_region(cls, clip, region, tracker_version=None, frame=None):
         track = cls(
             clip.get_id(),
             fps=clip.frames_per_second,
@@ -159,7 +161,7 @@ class Track:
         )
         track.start_frame = region.frame_number
         track.start_s = region.frame_number / float(clip.frames_per_second)
-        track.add_region(region)
+        track.add_region(region, frame)
         return track
 
     def get_id(self):
@@ -216,7 +218,28 @@ class Track:
         self.current_frame_num = 0
         return True
 
-    def add_region(self, region):
+    def add_frame(self, frame):
+        if self.stable:
+            ok, bbox = self.tracker.update(frame.thermal)
+            if ok:
+                r = Region.from_ltwh(bbox[0], bbox[1], bbox[2], bbox[3])
+
+                r.crop(self.crop_rectangle)
+
+                sub_filtered = r.subimage(frame.filtered)
+                r.calculate_mass(sub_filtered, 1)
+                r.frame_number = frame.frame_number
+                self.add_region(r, frame)
+
+            else:
+                self.add_blank_frame()
+
+    def add_region(self, region, frame):
+        if self.tracker is None:
+            self.tracker = cv2.TrackerCSRT_create()
+        if not self.stable:
+            ok = self.tracker.init(frame.thermal, region.to_ltwh())
+
         if self.prev_frame_num and region.frame_number:
             frame_diff = region.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
@@ -231,6 +254,16 @@ class Track:
         prediction = self.kalman_tracker.predict()
 
         self.predicted_mid = (prediction[0][0], prediction[1][0])
+        if len(self) > 5 and not self.stable:
+            stable = True
+            for r in self.bounds_history[-5:]:
+                w_diff = region.width - r.width
+                h_diff = region.height - r.height
+                if w_diff > 10 or h_diff > 10:
+                    stable = False
+                    # print("not stable", w_diff, h_diff)
+            print("setting stable for track", self, stable)
+            self.stable = stable
 
     def update_velocity(self):
         if len(self.bounds_history) >= 2:

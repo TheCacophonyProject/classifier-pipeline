@@ -39,6 +39,11 @@ class Region(Rectangle):
     blank = attr.ib(default=False)
     is_along_border = attr.ib(default=False)
 
+    @staticmethod
+    def from_ltwh(left, top, width, height):
+        """Construct a rectangle from left, top, right, bottom co-ords."""
+        return Region(left, top, width=width, height=height)
+
     @classmethod
     def region_from_array(cls, region_bounds, frame_number=0):
         width = region_bounds[2] - region_bounds[0]
@@ -76,18 +81,6 @@ class Region(Rectangle):
         return (self.x != region.x and self.right != region.right) or (
             self.y != region.y and self.bottom != region.bottom
         )
-
-    def calculate_mass(self, filtered, threshold):
-        """
-        calculates mass on this frame for this region
-        filtered is assumed to be cropped to the region
-        """
-        height, width = filtered.shape
-        assert (
-            width == self.width and height == self.height
-        ), "calculating variance on incorrectly sized filtered"
-
-        self.mass = tools.calculate_mass(filtered, threshold)
 
     def calculate_variance(self, filtered, prev_filtered):
         """

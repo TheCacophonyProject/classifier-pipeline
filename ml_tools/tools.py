@@ -21,6 +21,8 @@ from matplotlib.colors import LinearSegmentedColormap
 import subprocess
 from PIL import Image, ImageFont, ImageDraw
 from pathlib import Path
+import ml_tools.tools as tools
+
 
 EPISON = 1e-5
 
@@ -46,6 +48,10 @@ class Rectangle:
         """Return rectangle as left, top, right, bottom co-ords."""
         return [self.left, self.top, self.right, self.bottom]
 
+    def to_ltwh(self):
+        """Return rectangle as left, top, right, bottom co-ords."""
+        return [self.left, self.top, self.width, self.height]
+
     def copy(self):
         return Rectangle(self.x, self.y, self.width, self.height)
 
@@ -56,6 +62,18 @@ class Rectangle:
     @property
     def mid_x(self):
         return self.x + self.width / 2
+
+    def calculate_mass(self, filtered, threshold):
+        """
+        calculates mass on this frame for this region
+        filtered is assumed to be cropped to the region
+        """
+        height, width = filtered.shape
+        assert (
+            width == self.width and height == self.height
+        ), "calculating variance on incorrectly sized filtered"
+
+        self.mass = tools.calculate_mass(filtered, threshold)
 
     @property
     def mid_y(self):

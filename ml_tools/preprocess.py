@@ -222,6 +222,9 @@ def preprocess_frame(
     return data
 
 
+index = 0
+
+
 def preprocess_movement(
     segment,
     frames_per_row,
@@ -292,10 +295,12 @@ def preprocess_movement(
         (frame_types[red_type], frame_types[green_type], frame_types[blue_type]), axis=2
     )
     # for testing
-    # tools.saveclassify_image(
-    #     data,
-    #     f"samples/{sample}",
-    # )
+    global index
+    index += 1
+    tools.saveclassify_image(
+        data,
+        f"samples/{index}-sample",
+    )
     if preprocess_fn:
         data = data * 255
         data = preprocess_fn(data)

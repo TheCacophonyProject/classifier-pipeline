@@ -92,20 +92,7 @@ class TrackExtractor:
         :param filename: filename to process
         :param enable_preview: if true an MPEG preview file is created.
         """
-        import cv2
 
-        out = cv2.VideoWriter(
-            "test.avi", cv2.VideoWriter_fourcc("M", "J", "P", "G"), 10, (640, 480)
-        )
-        for _ in range(10):
-            thermal = np.zeros((480, 640), dtype=np.uint8)
-            thermal = thermal[..., np.newaxis]
-
-            thermal = np.repeat(thermal, 3, axis=2)
-            out.write(thermal)
-            print("write frame", thermal.shape)
-        out.release()
-        return
         clip = self.extract_tracks(filename)
 
         out_file = self.get_output_file(filename)
@@ -116,47 +103,55 @@ class TrackExtractor:
         meta_filename = out_file + ".txt"
 
         if self.previewer:
-            mpeg_filename = out_file + "-tracking.avi"
-            self.previewer.export_clip_preview(mpeg_filename, clip)
-            return
-            logging.info("Exporting preview to '{}'".format(mpeg_filename))
-            out = cv2.VideoWriter(
-                mpeg_filename,
-                cv2.VideoWriter_fourcc("M", "J", "P", "G"),
-                10,
-                (clip.res_x, clip.res_y),
-                0,
+            base_name = os.path.basename(out_file)
+            mpeg_filename = (
+                destination_folder + "/../tracking/" + base_name + "-tracking.avi"
             )
-            for frame_number, frame in enumerate(clip.frame_buffer):
-                for index, track in enumerate(clip.tracks):
-                    frame_offset = frame_number - track.start_frame
+            if not os.path.exists(destination_folder + "/../tracking"):
+                logging.info(
+                    "Creating folder {}".format(destination_folder + "/../tracking")
+                )
+                os.makedirs(destination_folder + "/../tracking")
+            self.previewer.export_clip_preview(mpeg_filename, clip)
+            # return
+            # logging.info("Exporting preview to '{}'".format(mpeg_filename))
+            # out = cv2.VideoWriter(
+            #     mpeg_filename,
+            #     cv2.VideoWriter_fourcc("M", "J", "P", "G"),
+            #     10,
+            #     (clip.res_x, clip.res_y),
+            #     0,
+            # )
+            # for frame_number, frame in enumerate(clip.frame_buffer):
+            #     for index, track in enumerate(clip.tracks):
+            #         frame_offset = frame_number - track.start_frame
+            #
+            #         if frame_offset >= 0 and frame_offset < len(track.bounds_history):
+            #             region = track.bounds_history[frame_offset]
+            #             cv2.rectangle(
+            #                 frame.thermal,
+            #                 (region.left, region.top),
+            #                 (region.right, region.bottom),
+            #                 (0, 255, 0),
+            #                 3,
+            #             )
+            #             print(
+            #                 "region region",
+            #                 region,
+            #                 region.frame_number,
+            #                 " for rame X",
+            #                 frame_number,
+            #             )
+            #     out.write(frame.thermal)
 
-                    if frame_offset >= 0 and frame_offset < len(track.bounds_history):
-                        region = track.bounds_history[frame_offset]
-                        cv2.rectangle(
-                            frame.thermal,
-                            (region.left, region.top),
-                            (region.right, region.bottom),
-                            (0, 255, 0),
-                            3,
-                        )
-                        print(
-                            "region region",
-                            region,
-                            region.frame_number,
-                            " for rame X",
-                            frame_number,
-                        )
-                out.write(frame.thermal)
-
-                #
-                # cv2.imshow("detected.png", np.uint8(frame.thermal))
-                # cv2.waitKey(100)
+            #
+            # cv2.imshow("detected.png", np.uint8(frame.thermal))
+            # cv2.waitKey(100)
             # self.previewer.export_clip_preview(mpeg_filename, clip)
         logging.info("saving meta data %s", meta_filename)
-        out.release()
+        # out.release()
 
-        cv2.destroyAllWindows()
+        # cv2.destroyAllWindows()
 
         self.save_metadata(
             filename,
