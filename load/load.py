@@ -70,10 +70,10 @@ def load_clips(config, args):
     target = args.target
     if target is None:
         target = config.source_folder
-    if os.path.splitext(target)[1] == ".cptv":
+    if os.path.splitext(target)[1] in [".avi", ".cptv"]:
         loader.process_file(target)
     else:
-        if os.path.splitext(target)[1] == ".cptv":
+        if os.path.splitext(target)[1] in [".avi", ".cptv"]:
             loader.process_file(target)
         else:
             loader.process_all(target)

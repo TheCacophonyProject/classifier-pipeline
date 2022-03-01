@@ -195,7 +195,6 @@ class Frame:
         if self.filtered is not None:
             filtered = region.subimage(self.filtered)
         if self.mask is not None:
-            print("maks is", self.mask)
             mask = region.subimage(self.mask)
         if self.flow is not None:
             flow = region.subimage(self.flow)

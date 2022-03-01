@@ -12,5 +12,5 @@ def init_logging(timestamps=False):
     if timestamps:
         fmt = "%(asctime)s " + fmt
     logging.basicConfig(
-        stream=sys.stderr, level=logging.DEBUG, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
+        stream=sys.stderr, level=logging.INFO, format=fmt, datefmt="%Y-%m-%d %H:%M:%S"
     )

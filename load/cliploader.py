@@ -76,6 +76,7 @@ class ClipLoader:
         )
 
     def process_all(self, root):
+        print("process all", root)
         job_queue = Queue()
         processes = []
         for i in range(max(1, self.workers_threads)):
@@ -90,7 +91,7 @@ class ClipLoader:
         file_paths = []
         for folder_path, _, files in os.walk(root):
             for name in files:
-                if os.path.splitext(name)[1] == ".cptv":
+                if os.path.splitext(name)[1] in [".avi", ".cptv"]:
                     full_path = os.path.join(folder_path, name)
                     file_paths.append(full_path)
         # allows us know the order of processing
@@ -163,7 +164,9 @@ class ClipLoader:
         Returns valid tracks
         """
 
-        tracks_meta = clip_metadata.get("Tracks", [])
+        tracks_meta = clip_metadata.get("Tracks")
+        if tracks_meta is None:
+            tracks_meta = clip_metadata.get("tracks", [])
         valid_tracks = [
             track for track in tracks_meta if self._track_meta_is_valid(track)
         ]
@@ -175,6 +178,7 @@ class ClipLoader:
         Tracks are valid if their confidence meets the threshold and they are
         not in the excluded_tags list, defined in the config.
         """
+        return True
         min_confidence = self.track_config.min_tag_confidence
         track_data = track_meta.get("data")
         if not track_data:
@@ -221,6 +225,8 @@ class ClipLoader:
             return
 
         metadata = tools.load_clip_metadata(metadata_filename)
+        if "id" not in metadata:
+            metadata["id"] = self.database.get_unique_clip_id()
         if not self.reprocess and self.database.has_clip(str(metadata["id"])):
             logging.warning("Already loaded %s", filename)
             return

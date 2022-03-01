@@ -123,6 +123,8 @@ class ClipTrackExtractor:
                 count += 1
             vidcap.release()
             # background = np.minimum(frames)
+            background = cv2.GaussianBlur(background, (15, 15), 0)
+
             clip.update_background(background)
             for gray in frames:
                 # if our saliency object is None, we need to instantiate it
@@ -235,20 +237,23 @@ class ClipTrackExtractor:
         """
         filtered, _ = self._get_filtered_frame_ir(clip, thermal)
         backsub, _ = self._get_filtered_frame(clip, thermal)
-
+        threshold = 0
         if np.amin(filtered) == 255:
             num = 0
             mask = filtered.copy()
             component_details = []
             filtered = None
-        num, mask, component_details = detect_objects_both(filtered, backsub)
+        else:
+            num, mask, component_details = detect_objects_both(filtered, backsub)
+            cv2.imshow("salfiltered.png", np.uint8(filtered))
+            cv2.imshow("backsub.png", np.uint8(backsub))
+            cv2.waitKey(10)
+
         # else:
         #
         #     num, mask, component_details = theshold_saliency(
         #         filtered.copy(), threshold=100
         #     )
-        # cv2.imshow("salfiltered.png", np.uint8(filtered))
-        # cv2.imshow("salmask.png", np.uint8(mask * 255))
         # backsub, _ = self._get_filtered_frame(clip, thermal)
         # num, mask, component_details = detect_objects(backsub)
         # cv2.imshow("backsub.png", np.uint8(backsub))
@@ -259,7 +264,6 @@ class ClipTrackExtractor:
         #     delta = backsub - prev_filtered
         #     delta, _ = normalize(delta, new_max=255)
         #     cv2.imshow("delta", np.uint8(delta))
-        #     cv2.waitKey(10)
         clip.add_frame(thermal, np.uint8(backsub), mask, ffc_affected)
         f = clip.frame_buffer.get_last_frame()
         if clip.from_metadata:
@@ -276,7 +280,7 @@ class ClipTrackExtractor:
                 clip.active_tracks = set()
             else:
                 regions = self._get_regions_of_interest(
-                    clip, component_details, backsub, prev_filtered
+                    clip, component_details, backsub, prev_filtered, filtered
                 )
                 self._apply_region_matchings(clip, regions, f)
 
@@ -420,7 +424,7 @@ class ClipTrackExtractor:
                 print("filtering track", track)
 
     def _get_regions_of_interest(
-        self, clip, component_details, filtered, prev_filtered
+        self, clip, component_details, filtered, prev_filtered, saliency
     ):
         """
                 Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
@@ -440,6 +444,7 @@ class ClipTrackExtractor:
         regions = []
         for i, component in enumerate(component_details[1:]):
             # print("got component", component)
+
             if component[2] < 40 or component[3] < 40 or component[4] < 40 * 40:
                 continue
             # print("got component", component)
@@ -453,6 +458,14 @@ class ClipTrackExtractor:
                 id=i,
                 frame_number=clip.current_frame,
             )
+            saliency_filtered = region.subimage(saliency)
+            num_pixels = len(saliency_filtered[saliency_filtered > 0])
+            print("num saliency", num_pixels, clip.current_frame, np.amax(saliency))
+            if num_pixels <= 4:
+                print("skipped cause no saliency", clip.current_frame)
+                continue
+            print("using cause saliency", clip.current_frame)
+
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)
