@@ -105,11 +105,16 @@ class Previewer:
             clip.stats.min_temp = np.amin(thermals)
             clip.stats.max_temp = np.amax(thermals)
 
+        res_x = clip.res_x
+        res_y = clip.res_y
+        if self.preview_type == self.PREVIEW_TRACKING:
+            res_x *= 2
+            res_y *= 2
         out = cv2.VideoWriter(
             filename,
             cv2.VideoWriter_fourcc("M", "J", "P", "G"),
             10,
-            (clip.res_x, clip.res_y),
+            (res_x, res_y),
         )
         frame_scale = 1
         for frame_number, frame in enumerate(clip.frame_buffer):
@@ -172,6 +177,9 @@ class Previewer:
             if self.debug and draw:
                 self.add_footer(
                     draw, image.width, image.height, footer, frame.ffc_affected
+                )
+                self.add_header(
+                    draw, image.width, image.height, f"Frame {frame.frame_number}"
                 )
 
             out.write(np.uint8(image))
@@ -350,13 +358,13 @@ class Previewer:
         )
         image = Image.fromarray(image)
 
-        image = image.resize(
-            (
-                int(image.width * 4),
-                int(image.height * 4),
-            ),
-            Image.BILINEAR,
-        )
+        # image = image.resize(
+        #     (
+        #         int(image.width * 4),
+        #         int(image.height * 4),
+        #     ),
+        #     Image.BILINEAR,
+        # )
         return image
 
     @staticmethod
@@ -582,11 +590,12 @@ def add_debug_text(
     if text is None:
         text = "id {}".format(track.get_id())
         if region.pixel_variance:
-            text += "mass {} var {} vel ({},{})".format(
+            text += "mass {} var {} vel ({},{}) blank? {}".format(
                 region.mass,
                 round(region.pixel_variance, 2),
                 track.vel_x[frame_offset],
                 track.vel_y[frame_offset],
+                region.blank,
             )
     footer_size = font.getsize(text)
     footer_center = ((region.width * scale) - footer_size[0]) / 2

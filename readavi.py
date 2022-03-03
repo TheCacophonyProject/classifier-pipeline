@@ -117,7 +117,7 @@ def theshold_saliency(image, otsus=False, threshold=100, kernel=(15, 15)):
     # image = cv2.fastNlMeansDenoising(np.uint8(image), None)
 
     image = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
-    cv2.imshow("morph.png", np.uint8(image))
+    # cv2.imshow("morph.png", np.uint8(image))
 
     # image = cv2.GaussianBlur(image, kernel, 0)
     flags = cv2.THRESH_BINARY
@@ -135,11 +135,11 @@ def theshold_saliency(image, otsus=False, threshold=100, kernel=(15, 15)):
     # plt.savefig(f"0 below{kernel[0]}-dilate{index}.png")
     # plt.clf()
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
-    print("components are", components)
     return components, small_mask, stats
 
 
 def read_avi(args):
+    wait = 1
     vidcap = cv2.VideoCapture(args.cptv)
     count = 0
     fullbase = os.path.splitext(args.cptv)[0]
@@ -159,119 +159,111 @@ def read_avi(args):
         count += 1
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (15, 15), 0)
-        all_frames.append(gray)
 
-        if count < 8:
-            continue
         repeats = 1
-        if count == 8:
+        if count < 8:
             repeats = 8
         print("count", count, len(all_frames))
         # elif count % 9 != 0:
         #     all_frames = []
         #     continue
-        for gray in all_frames:
 
-            otsus = gray.copy()
-            # detect_objects(otsus)
+        # detect_objects(otsus)
 
-            for _ in range(repeats):
-                (success, saliencyMap) = saliency.computeSaliency(gray)
-                saliencyMap = (saliencyMap * 255).astype("uint8")
-                # cv2.imshow("repeat.png", np.uint8(saliencyMap))
-                # cv2.imshow("repeatImg.png", np.uint8(img))
-                #
-                # cv2.waitKey(100)
-            # (success, saliencyMap) = saliency.computeSaliency(gray)
-
-            # saliencyMap = (saliencyMap * 255).astype("uint8")
-            print("running saliency", count)
-            components, small_mask, stats = theshold_saliency(saliencyMap.copy())
+        for _ in range(repeats):
+            (success, saliencyMap) = saliency.computeSaliency(gray)
+            saliencyMap = (saliencyMap * 255).astype("uint8")
+            # cv2.imshow("repeat.png", np.uint8(saliencyMap))
+            # cv2.imshow("repeatImg.png", np.uint8(img))
             #
-            # for stat in stats:
-            #     # i += 10
-            #     if stat[4] > 40 * 40:
-            #         cv2.rectangle(
-            #             gray,
-            #             (stat[0], stat[1]),
-            #             (stat[0] + stat[2], stat[1] + stat[3]),
-            #             (0, 255, 0),
-            #             3,
-            #         )
-            #
-            # # cv2.putText(
-            # #     gray,
-            # #     f"{stat}",
-            # #     (stat[0] - 20, stat[1]),
-            # #     font,
-            # #     fontScale,
-            # #     fontColor,
-            # #     thickness,
-            # #     lineType,
-            # # )
-            if count > 10:
-                cv2.imshow("salicency.png", np.uint8(saliencyMap))
-                # cv2.imshow("detected.png", np.uint8(gray))
-                # imshow_components(small_mask)
-                # cv2.imshow("small mask.png", np.uint8(small_mask))
-
-                key = cv2.waitKey(30)
-            key = ""
-            if start or key == ord("s"):
-                start = True
-                components, small_mask, stats = theshold_saliency(saliencyMap.copy())
-
-                for stat in stats:
-                    # i += 10
-                    if stat[2] > 40 and stat[3] > 40 and stat[4] > 40 * 40:
-                        cv2.rectangle(
-                            gray,
-                            (stat[0], stat[1]),
-                            (stat[0] + stat[2], stat[1] + stat[3]),
-                            (0, 255, 0),
-                            3,
-                        )
-                cv2.imwrite(
-                    f"{fullbase}-{count}-computed.png", gray
-                )  # save frame as JPEG file
-                cv2.imwrite(
-                    f"{fullbase}-{count}-saliency.png", saliencyMap
-                )  # save frame as JPEG file
-                cv2.imwrite(
-                    f"{fullbase}-{count}-small_mask.png", small_mask
-                )  # save frame as JPEG file
-                # cv2.putText(
-                #     gray,
-                #     f"{stat}",
-                #     (stat[0] - 20, stat[1]),
-                #     font,
-                #     fontScale,
-                #     fontColor,
-                #     thickness,
-                #     lineType,
-                # )
-        # display the image to our screen
-        # cv2.imshow("Frame", image)
-        # cv2.imshow("Map", saliencyMap)
+            # cv2.waitKey(100)
+        # (success, saliencyMap) = saliency.computeSaliency(gray)
+        if np.amin(saliencyMap) == 255:
+            continue
+        # saliencyMap = (saliencyMap * 255).astype("uint8")
+        components, small_mask, stats = theshold_saliency(saliencyMap.copy())
+        # print("running saliency", count, components)
         #
-        # cv2.imshow("tt", np.uint8(tt))
-        # key = cv2.waitKey(100) & 0xFF
+        rectangles = list(stats[1:])
 
-        # if the `q` key was pressed, break from the loop
-        # if key == ord("q"):
-        #     break
-        all_frames = []
+        rect_i = 0
+        while rect_i < len(rectangles):
+            rect = rectangles[rect_i]
+            merged = False
+            mid_x = rect[2] / 2.0 + rect[0]
+            mid_y = rect[3] / 2.0 + rect[1]
+            index = 0
+            while index < len(rectangles):
+                r_2 = rectangles[index]
+                if r_2[0] == rect[0]:
+                    index += 1
+                    continue
+                r_mid_x = r_2[2] / 2.0 + r_2[0]
+                r_mid_y = r_2[3] / 2.0 + r_2[1]
+                distance = (mid_x - r_mid_x) ** 2 + (r_mid_y - mid_y) ** 2
+                distance = distance ** 0.5
+                distance = (
+                    distance - max(rect[2], rect[3]) / 2.0 - max(r_2[2], r_2[3]) / 2.0
+                )
+                widest = max(rect[2], rect[3]) * 1
+                within = r_2[0] > rect[0] and (r_2[0] + r_2[2]) <= (rect[0] + rect[2])
+                within = (
+                    within
+                    and r_2[1] > rect[1]
+                    and (r_2[1] + r_2[3]) <= (rect[1] + rect[3])
+                )
+
+                if distance < 40 or within:
+                    print("merging", rect, r_2, distance, within)
+                    rect[0] = min(rect[0], r_2[0])
+                    rect[1] = min(rect[1], r_2[1])
+                    rect[2] = max(rect[0] + rect[2], r_2[0] + r_2[2])
+                    rect[3] = max(rect[1] + rect[3], r_2[1] + r_2[3])
+                    rect[2] -= rect[0]
+                    rect[3] -= rect[1]
+                    print("second merged ", rect)
+                    merged = True
+                    # break
+                    del rectangles[index]
+                else:
+                    index += 1
+                    print("not mered", rect, r_2, distance)
+            if merged:
+                rect_i = 0
+            else:
+                rect_i += 1
+        print("done merges")
+        for stat in rectangles:
+            print("stat is", stat)
+            # if stat[4] < 5 * 5:
+            # continue
+            # print("final rect", stat)
+            cv2.rectangle(
+                gray,
+                (stat[0], stat[1]),
+                (stat[0] + stat[2], stat[1] + stat[3]),
+                (0, 255, 0),
+                3,
+            )
+        cv2.imshow("detected.png", np.uint8(gray))
+        cv2.imshow("salicency.png", np.uint8(saliencyMap))
+
+        cv2.imshow("contours.png", np.uint8(gray))
+
+        imshow_components(small_mask)
+        if wait == -1:
+            key = cv2.waitKey()
+        else:
+            key = cv2.waitKey(wait)
+        if key == 115:
+            if wait == -1:
+                wait = 1
+            else:
+                wait = -1
+        # cv2.imshow("small mask.png", np.uint8(small_mask))
 
         continue
-        # image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        if count == 0:
-            background = image
-        if count == 8:
-            cv2.imwrite(f"{fullbase}-first.png", image)  # save frame as JPEG file
-            print("writing image", image.shape)
-            return
-        background = np.minimum(background, image)
-        count += 1
+
     return
     background = all_frames[-1]
     cv2.imwrite(f"{fullbase}-backgorund.png", background)  # save frame as JPEG file
@@ -473,7 +465,7 @@ if ext != ".avi":
     # background_sub(args)
     read_image(args)
 else:
-    background_sub(args)
+    # background_sub(args)
 
-    # read_avi(args)
+    read_avi(args)
     # track_avi(args)

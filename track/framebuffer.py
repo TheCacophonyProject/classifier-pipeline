@@ -90,7 +90,7 @@ class FrameBuffer:
             self.cache.delete()
 
     def get_last_frame(self):
-        if self.cache and self.prev_frame:
+        if self.prev_frame:
             return self.prev_frame
         elif len(self.frames) > 0:
             return self.frames[-1]

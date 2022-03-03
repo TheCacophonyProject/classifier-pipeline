@@ -43,15 +43,19 @@ from ml_tools.imageprocessing import (
 
 
 class ClipTrackExtractor:
-    BASE_DISTANCE_CHANGE = 450
+    # BASE_DISTANCE_CHANGE = 450
+    # more res more distnace
+    BASE_DISTANCE_CHANGE = 11250
+
     # minimum region mass change
-    MIN_MASS_CHANGE = 20
+    MIN_MASS_CHANGE = 20 * 4
     # enforce mass growth after X seconds
     RESTRICT_MASS_AFTER = 1.5
     # amount region mass can change
     MASS_CHANGE_PERCENT = 0.55
 
-    MAX_DISTANCE = 2000
+    # MAX_DISTANCE = 2000
+    MAX_DISTANCE = 30752
     PREVIEW = "preview"
     VERSION = 10
 
@@ -98,6 +102,7 @@ class ClipTrackExtractor:
         )
         _, ext = os.path.splitext(clip.source_file)
         count = 0
+        movement_mask = None
         background = None
         if ext != ".cptv":
             vidcap = cv2.VideoCapture(clip.source_file)
@@ -117,20 +122,42 @@ class ClipTrackExtractor:
                     clip.set_res(gray.shape[1], gray.shape[0])
                     clip.set_model("ir")
                     clip.set_video_stats(datetime.now())
+
                 else:
                     background = np.minimum(background, gray)
+                repeats = 1
+                if count < 6:
+                    repeats = 6
+
+                # filtered, _ = self._get_filtered_frame_ir(clip, gray, repeats)
+                #
+                # if np.amin(filtered) != 255:
+                #     # filtered = cv2.dilate(filtered, (15, 15), iterations=3)
+                #     if movement_mask is None:
+                #         movement_mask = filtered
+                #     else:
+                #         movement_mask = movement_mask | filtered
+
+                # # print("inapinting")
+                # cv2.imshow("back", movement_mask)
+                # # cv2.imshow("filtered", filtered)
+                # #
+                # cv2.waitKey(30)
+                clip.current_frame += 1
 
                 count += 1
-            vidcap.release()
-            # background = np.minimum(frames)
-            background = cv2.GaussianBlur(background, (15, 15), 0)
+            clip.current_frame = -1
 
+            vidcap.release()
+            # background[:] = cv2.inpaint(
+            #     np.float32(background), np.uint8(movement_mask), 10, cv2.INPAINT_TELEA
+            # )
+
+            background = cv2.GaussianBlur(background, (15, 15), 0)
+            # cv2.imshow("backg", background)
+            # cv2.waitKey(100)
             clip.update_background(background)
             for gray in frames:
-                # if our saliency object is None, we need to instantiate it
-
-                # clip.update_background(background)
-                # frames.append(gray)
                 self.process_frame(clip, gray)
             vidcap.release()
         else:
@@ -194,61 +221,103 @@ class ClipTrackExtractor:
         :return: uint8 filtered frame and adjusted clip threshold for normalized frame
         """
 
-        if len(thermal.shape) == 3:
-            filtered = cv2.cvtColor(thermal, cv2.COLOR_BGR2GRAY)
-            print("grey scaled", filtered.shape)
-        else:
-            filtered = np.float32(thermal.copy())
+        filtered = np.float32(thermal.copy())
 
         avg_change = 0
-        # int(round(np.average(thermal) - clip.stats.mean_background_value))
-
         filtered = filtered - clip.background
         filtered[filtered < 0] = 0
-        # print("amount less than")
         filtered, stats = normalize(filtered, new_max=255)
-        # if self.config.denoise:
-        # filtered = cv2.fastNlMeansDenoising(np.uint8(filtered), None)
-        # if stats[1] == stats[2]:
+
         mapped_thresh = clip.background_thresh
         filtered[filtered > 10] += 30
-        # else:
-        # mapped_thresh = clip.background_thresh / (stats[1] - stats[2]) * 255
-        # filtered[filtered < 20] = 0
-        # imgplot = plt.imshow(filtered)
-        # plt.show()
-
         return filtered, mapped_thresh
 
-    def _get_filtered_frame_ir(self, clip, thermal):
-        if clip.current_frame < 8:
-            for _ in range(6):
-                (success, saliencyMap) = self.saliency.computeSaliency(thermal)
-        (success, saliencyMap) = self.saliency.computeSaliency(thermal)
+    def _get_filtered_frame_ir(self, clip, thermal, repeats=1):
+        for _ in range(repeats):
+            (success, saliencyMap) = self.saliency.computeSaliency(thermal)
+        # (success, saliencyMap) = self.saliency.computeSaliency(thermal)
         saliencyMap = (saliencyMap * 255).astype("uint8")
         # cv2.imshow("saliencyMap.png", np.uint8(saliencyMap))
         return saliencyMap, 0
 
+    # merge all regions that the midpoint is within the max(width,height) from the midpoint of another region
+    # keep merging until no more merges are possible, tihs works paticularly well from the IR videos where
+    # the filtered image is quite fragmented
+    def merge_components(self, rectangles):
+        MAX_GAP = 40
+        rect_i = 0
+        rectangles = list(rectangles)
+        while rect_i < len(rectangles):
+            rect = rectangles[rect_i]
+            merged = False
+            mid_x = rect[2] / 2.0 + rect[0]
+            mid_y = rect[3] / 2.0 + rect[1]
+            index = 0
+            while index < len(rectangles):
+                r_2 = rectangles[index]
+                if r_2[0] == rect[0]:
+                    index += 1
+                    continue
+                r_mid_x = r_2[2] / 2.0 + r_2[0]
+                r_mid_y = r_2[3] / 2.0 + r_2[1]
+                distance = (mid_x - r_mid_x) ** 2 + (r_mid_y - mid_y) ** 2
+                distance = distance ** 0.5
+
+                # widest = max(rect[2], rect[3])
+                # hack short cut just take line from mid points as shortest distance subtract biggest width or hieght from each
+                distance = (
+                    distance - max(rect[2], rect[3]) / 2.0 - max(r_2[2], r_2[3]) / 2.0
+                )
+                within = r_2[0] > rect[0] and (r_2[0] + r_2[2]) <= (rect[0] + rect[2])
+                within = (
+                    within
+                    and r_2[1] > rect[1]
+                    and (r_2[1] + r_2[3]) <= (rect[1] + rect[3])
+                )
+
+                if distance < MAX_GAP or within:
+                    rect[0] = min(rect[0], r_2[0])
+                    rect[1] = min(rect[1], r_2[1])
+                    rect[2] = max(rect[0] + rect[2], r_2[0] + r_2[2])
+                    rect[3] = max(rect[1] + rect[3], r_2[1] + r_2[3])
+                    rect[2] -= rect[0]
+                    rect[3] -= rect[1]
+                    # print("second merged ", rect)
+                    merged = True
+                    # break
+                    del rectangles[index]
+                else:
+                    index += 1
+                    # print("not mered", rect, r_2, distance)
+            if merged:
+                rect_i = 0
+            else:
+                rect_i += 1
+        return rectangles
+
     def _process_frame(self, clip, thermal, ffc_affected=False):
+        wait = 1
         """
         Tracks objects through frame
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-        filtered, _ = self._get_filtered_frame_ir(clip, thermal)
+        saliencyMap, _ = self._get_filtered_frame_ir(clip, thermal)
         backsub, _ = self._get_filtered_frame(clip, thermal)
         threshold = 0
-        if np.amin(filtered) == 255:
+        if np.amin(saliencyMap) == 255:
             num = 0
-            mask = filtered.copy()
+            mask = saliencyMap.copy()
             component_details = []
-            filtered = None
+            saliencyMap[:] = 0
         else:
-            num, mask, component_details = detect_objects_both(filtered, backsub)
-            cv2.imshow("salfiltered.png", np.uint8(filtered))
-            cv2.imshow("backsub.png", np.uint8(backsub))
-            cv2.waitKey(10)
-
+            num, mask, component_details = theshold_saliency(saliencyMap)
+            component_details = self.merge_components(component_details[1:])
+            # if clip.current_frame > 760:
+            #     cv2.imshow("salfiltered.png", np.uint8(saliencyMap))
+            #     cv2.imshow("backsub.png", np.uint8(backsub))
+            #     print(component_details, clip.current_frame)
+            #     cv2.waitKey(3000)
         # else:
         #
         #     num, mask, component_details = theshold_saliency(
@@ -256,15 +325,16 @@ class ClipTrackExtractor:
         #     )
         # backsub, _ = self._get_filtered_frame(clip, thermal)
         # num, mask, component_details = detect_objects(backsub)
-        # cv2.imshow("backsub.png", np.uint8(backsub))
-        # cv2.imshow("backmask.png", np.uint8(mask * 100))
-
+        # if saliencyMap is not None:
+        #     cv2.imshow("saliency", saliencyMap)
+        #     cv2.imshow("backsub", np.uint8(backsub))
+        #     cv2.waitKey(30)
         prev_filtered = clip.frame_buffer.get_last_filtered()
         # if prev_filtered is not None:
         #     delta = backsub - prev_filtered
         #     delta, _ = normalize(delta, new_max=255)
         #     cv2.imshow("delta", np.uint8(delta))
-        clip.add_frame(thermal, np.uint8(backsub), mask, ffc_affected)
+        clip.add_frame(thermal, np.uint8(saliencyMap), mask, ffc_affected)
         f = clip.frame_buffer.get_last_frame()
         if clip.from_metadata:
             for track in clip.tracks:
@@ -280,7 +350,7 @@ class ClipTrackExtractor:
                 clip.active_tracks = set()
             else:
                 regions = self._get_regions_of_interest(
-                    clip, component_details, backsub, prev_filtered, filtered
+                    clip, component_details, backsub, prev_filtered, saliencyMap
                 )
                 self._apply_region_matchings(clip, regions, f)
 
@@ -303,33 +373,44 @@ class ClipTrackExtractor:
         unmatched_regions = set(regions)
         matched_tracks = set()
 
+        logging.info("checking region %s", clip.current_frame)
+        for r in regions:
+            logging.info("%s", r)
         for track in clip.active_tracks:
             if track.stable:
+                # using opencv tracker
                 track.add_frame(frame)
+                logging.info(
+                    "%s adding frame to %s %s ",
+                    clip.current_frame,
+                    track,
+                    track.last_bound,
+                )
                 matched_tracks.add(track)
                 delete = []
                 for region in regions:
                     overlap = track.last_bound.overlap_area(region) / region.area
-
                     if overlap > 0.8:
-                        # print("over lap is", overlap)
-                        # print("removing region", region)
                         delete.append(region)
 
                 for d in delete:
+                    print(clip.current_frame, " removing", d)
                     used_regions.add(d)
                     unmatched_regions.remove(d)
                     regions.remove(d)
 
                 continue
+
             avg_mass = track.average_mass()
             max_distance = get_max_distance_change(track)
             for region in regions:
                 distance, size_change = get_region_score(track.last_bound, region)
-
+                logging.info(
+                    "checking region %s against %s %s", region, track, track.last_bound
+                )
                 max_size_change = get_max_size_change(track, region)
                 max_mass_change = get_max_mass_change_percent(track, avg_mass)
-
+                max_mass_change = None
                 if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
                     self.print_if_verbose(
                         "track {} region mass {} deviates too much from {}".format(
@@ -367,6 +448,13 @@ class ClipTrackExtractor:
             if track in matched_tracks or region in used_regions:
                 continue
             track.add_region(region, frame)
+            logging.info(
+                "%s matched region %s to track %s %s",
+                clip.current_frame,
+                region,
+                track,
+                track.last_bound,
+            )
             matched_tracks.add(track)
             used_regions.add(region)
             unmatched_regions.remove(region)
@@ -421,7 +509,7 @@ class ClipTrackExtractor:
                     )
                 clip.active_tracks.add(track)
             else:
-                print("filtering track", track)
+                self.print_if_verbose(f"stop tracking track {track}")
 
     def _get_regions_of_interest(
         self, clip, component_details, filtered, prev_filtered, saliency
@@ -442,10 +530,10 @@ class ClipTrackExtractor:
         padding = self.frame_padding
         # find regions of interest
         regions = []
-        for i, component in enumerate(component_details[1:]):
+        for i, component in enumerate(component_details):
             # print("got component", component)
 
-            if component[2] < 40 or component[3] < 40 or component[4] < 40 * 40:
+            if component[2] < 30 or component[3] < 30:
                 continue
             # print("got component", component)
 
@@ -458,13 +546,14 @@ class ClipTrackExtractor:
                 id=i,
                 frame_number=clip.current_frame,
             )
-            saliency_filtered = region.subimage(saliency)
-            num_pixels = len(saliency_filtered[saliency_filtered > 0])
-            print("num saliency", num_pixels, clip.current_frame, np.amax(saliency))
-            if num_pixels <= 4:
-                print("skipped cause no saliency", clip.current_frame)
-                continue
-            print("using cause saliency", clip.current_frame)
+            # if doing on both skip when no saliency in filtered
+            # saliency_filtered = region.subimage(saliency)
+            # num_pixels = len(saliency_filtered[saliency_filtered > 0])
+            # print("num saliency", num_pixels, clip.current_frame, np.amax(saliency))
+            # if num_pixels <= 4:
+            #     print("skipped cause no saliency", clip.current_frame)
+            #     continue
+            # print("using cause saliency", clip.current_frame)
 
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
@@ -559,54 +648,54 @@ class ClipTrackExtractor:
         # )
 
     def filter_track(self, clip, track, stats):
-        return not track.stable
-        return False
+        # return not track.stable
+        # return False
         # discard any tracks that are less min_duration
         # these are probably glitches anyway, or don't contain enough information.
-        # if len(track) < self.config.min_duration_secs * clip.frames_per_second:
-        #     self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
-        #     clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
-        #     # return True
+        if len(track) < self.config.min_duration_secs * clip.frames_per_second:
+            self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
+            clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
+            # return True
         #
         # # discard tracks that do not move enough
         #
-        # if (
-        #     stats.max_offset < self.config.track_min_offset
-        #     or stats.frames_moved < self.config.min_moving_frames
-        # ):
-        #     self.print_if_verbose(
-        #         "Track filtered.  Didn't move {}".format(stats.max_offset)
-        #     )
-        #     clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
-        #     return True
+        if (
+            stats.max_offset < self.config.track_min_offset
+            or stats.frames_moved < self.config.min_moving_frames
+        ):
+            self.print_if_verbose(
+                "Track filtered.  Didn't move {}".format(stats.max_offset)
+            )
+            clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
+            return True
 
         if stats.blank_percent > self.config.max_blank_percent:
             self.print_if_verbose("Track filtered.  Too Many Blanks")
             clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
             return True
-        if stats.region_jitter > self.config.max_jitter:
-            self.print_if_verbose("Track filtered.  Too Jittery")
-            clip.filtered_tracks.append(("Track filtered.  Too Jittery", track))
-            return True
-        # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
-        if stats.delta_std < clip.track_min_delta:
-            self.print_if_verbose(
-                "Track filtered.  Too static {}".format(stats.delta_std)
-            )
-            clip.filtered_tracks.append(("Track filtered.  Too static", track))
-            return True
-        if stats.delta_std > clip.track_max_delta:
-            self.print_if_verbose("Track filtered.  Too Dynamic")
-            clip.filtered_tracks.append(("Track filtered.  Too Dynamic", track))
-            return True
-        # discard tracks that do not have enough enough average mass.
-        if stats.average_mass < self.config.track_min_mass:
-            self.print_if_verbose(
-                "Track filtered.  Mass too small ({})".format(stats.average_mass)
-            )
-            clip.filtered_tracks.append(("Track filtered.  Mass too small", track))
-
-            return True
+        # if stats.region_jitter > self.config.max_jitter:
+        #     self.print_if_verbose("Track filtered.  Too Jittery")
+        #     clip.filtered_tracks.append(("Track filtered.  Too Jittery", track))
+        #     return True
+        # # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
+        # if stats.delta_std < clip.track_min_delta:
+        #     self.print_if_verbose(
+        #         "Track filtered.  Too static {}".format(stats.delta_std)
+        #     )
+        #     clip.filtered_tracks.append(("Track filtered.  Too static", track))
+        #     return True
+        # if stats.delta_std > clip.track_max_delta:
+        #     self.print_if_verbose("Track filtered.  Too Dynamic")
+        #     clip.filtered_tracks.append(("Track filtered.  Too Dynamic", track))
+        #     return True
+        # # discard tracks that do not have enough enough average mass.
+        # if stats.average_mass < self.config.track_min_mass:
+        #     self.print_if_verbose(
+        #         "Track filtered.  Mass too small ({})".format(stats.average_mass)
+        #     )
+        #     clip.filtered_tracks.append(("Track filtered.  Mass too small", track))
+        #
+        #     return True
 
         highest_ratio = 0
         for other in clip.tracks:
@@ -659,10 +748,17 @@ def get_max_mass_change_percent(track, average_mass):
 
 def get_max_distance_change(track):
     x, y = track.velocity
+    if len(track) == 1:
+        # be nice
+        x = 10
+        y = 10
     x = 2 * x
     y = 2 * y
     velocity_distance = x * x + y * y
     pred_vel = track.predicted_velocity()
+    logging.info(
+        "%s velo %s pred vel %s", track, track.velocity, track.predicted_velocity()
+    )
     pred_distance = pred_vel[0] * pred_vel[0] + pred_vel[1] * pred_vel[1]
 
     max_distance = ClipTrackExtractor.BASE_DISTANCE_CHANGE + max(

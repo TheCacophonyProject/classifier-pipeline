@@ -26,6 +26,7 @@ from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance
 from ml_tools.datasetstructures import get_segments, SegmentHeader
 import cv2
+import logging
 
 
 class Track:
@@ -252,13 +253,11 @@ class Track:
         self.frames_since_target_seen = 0
         self.kalman_tracker.correct(region)
         prediction = self.kalman_tracker.predict()
-
         self.predicted_mid = (prediction[0][0], prediction[1][0])
         if len(self) > 10 and not self.stable:
             stable = True
             for r in self.bounds_history[-10:]:
                 if r.blank:
-                    print("blank???")
                     stable = False
                     break
                 w_diff = region.width - r.width
@@ -268,7 +267,7 @@ class Track:
                     break
                     # print("not stable", w_diff, h_diff)
             print("setting stable for track", self, stable)
-            self.stable = stable
+            # self.stable = stable
 
     def update_velocity(self):
         if len(self.bounds_history) >= 2:
@@ -334,13 +333,21 @@ class Track:
                 region.crop(self.crop_rectangle)
         else:
             region = self.last_bound.copy()
+            pred_vel = self.velocity
+            percent = 1 - 0.1 * (self.blank_frames + 1)
+            # fade out by 10% * blank_frames?
+
+            self.vel_x.append(pred_vel[0] * percent)
+            self.vel_y.append(pred_vel[1] * percent)
         region.blank = True
         region.mass = 0
         region.pixel_variance = 0
         region.frame_number = self.last_bound.frame_number + 1
         self.bounds_history.append(region)
         self.prev_frame_num = region.frame_number
-        self.update_velocity()
+        # if copied prev frame should set velocity to something based of previous
+        if self.frames > Track.MIN_KALMAN_FRAMES:
+            self.update_velocity()
         self.blank_frames += 1
         self.frames_since_target_seen += 1
         prediction = self.kalman_tracker.predict()
