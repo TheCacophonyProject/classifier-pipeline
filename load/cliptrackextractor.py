@@ -767,12 +767,14 @@ def get_max_mass_change_percent(track, average_mass):
 
 def get_max_distance_change(track):
     x, y = track.velocity
+    x = max(x, 2)
+    y = max(y, 2)
     if len(track) == 1:
         # be nice
         x = 10
         y = 10
-    x = 3 * x
-    y = 3 * y
+    x = 8 * x
+    y = 8 * y
     velocity_distance = x * x + y * y
 
     pred_vel = track.predicted_velocity()
