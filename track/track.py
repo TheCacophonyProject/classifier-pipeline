@@ -254,20 +254,20 @@ class Track:
         self.kalman_tracker.correct(region)
         prediction = self.kalman_tracker.predict()
         self.predicted_mid = (prediction[0][0], prediction[1][0])
-        if len(self) > 10 and not self.stable:
-            stable = True
-            for r in self.bounds_history[-10:]:
-                if r.blank:
-                    stable = False
-                    break
-                w_diff = region.width - r.width
-                h_diff = region.height - r.height
-                if w_diff > 10 or h_diff > 10:
-                    stable = False
-                    break
-                    # print("not stable", w_diff, h_diff)
-            print("setting stable for track", self, stable)
-            # self.stable = stable
+        # if len(self) > 10 and not self.stable:
+        #     stable = True
+        #     for r in self.bounds_history[-10:]:
+        #         if r.blank:
+        #             stable = False
+        #             break
+        #         w_diff = region.width - r.width
+        #         h_diff = region.height - r.height
+        #         if w_diff > 10 or h_diff > 10:
+        #             stable = False
+        #             break
+        #             # print("not stable", w_diff, h_diff)
+        #     print("setting stable for track", self, stable)
+        #     # self.stable = stable
 
     def update_velocity(self):
         if len(self.bounds_history) >= 2:

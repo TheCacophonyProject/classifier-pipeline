@@ -121,20 +121,49 @@ class Region(Rectangle):
         """Calculates the distance between 2 regions by using the distance between
         (top, left), mid points and (bottom,right) of each region
         """
+        distances = []
+
+        expected_x = int(other.x)
+        expected_y = int(other.y)
+        distance = tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
+        distances.append(distance)
+        # print("distance between", (expected_x, expected_y), (self.x, self.y), distance)
+
         expected_x = int(other.mid_x)
         expected_y = int(other.mid_y)
         distance = tools.eucl_distance(
             (expected_x, expected_y), (self.mid_x, self.mid_y)
         )
-        expected_x = int(other.x)
-        expected_y = int(other.y)
-        distance += tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
-        distance += tools.eucl_distance(
+        distances.append(distance)
+        # print(
+        #     "distance between",
+        #     (expected_x, expected_y),
+        #     (self.mid_x, self.mid_y),
+        #     distance,
+        # )
+
+        distance = tools.eucl_distance(
             (
                 other.right,
                 other.bottom,
             ),
             (self.right, self.bottom),
         )
-        distance /= 3.0
-        return distance
+        expected_x = int(other.x)
+        expected_y = int(other.y)
+        distance = tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
+        distances.append(distance)
+        # print(
+        #     "right bottom distance",
+        #     (
+        #         other.right,
+        #         other.bottom,
+        #     ),
+        #     (self.right, self.bottom),
+        #     distance,
+        # )
+        return distances
+        # total_distance += distance
+        #
+        # total_distance /= 3.0
+        # return total_distance

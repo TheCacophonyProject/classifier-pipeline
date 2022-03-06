@@ -302,7 +302,10 @@ class ClipTrackExtractor:
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-        saliencyMap, _ = self._get_filtered_frame_ir(clip, thermal)
+        repeats = 1
+        if clip.current_frame < 6:
+            repeats = 8
+        saliencyMap, _ = self._get_filtered_frame_ir(clip, thermal, repeats=repeats)
         backsub, _ = self._get_filtered_frame(clip, thermal)
         threshold = 0
         if np.amin(saliencyMap) == 255:
@@ -373,9 +376,9 @@ class ClipTrackExtractor:
         unmatched_regions = set(regions)
         matched_tracks = set()
 
-        logging.info("checking region %s", clip.current_frame)
-        for r in regions:
-            logging.info("%s", r)
+        # logging.info("checking region %s", clip.current_frame)
+        # for r in regions:
+        # logging.info("%s", r)
         for track in clip.active_tracks:
             if track.stable:
                 # using opencv tracker
@@ -394,7 +397,6 @@ class ClipTrackExtractor:
                         delete.append(region)
 
                 for d in delete:
-                    print(clip.current_frame, " removing", d)
                     used_regions.add(d)
                     unmatched_regions.remove(d)
                     regions.remove(d)
@@ -402,10 +404,10 @@ class ClipTrackExtractor:
                 continue
 
             avg_mass = track.average_mass()
-            max_distance = get_max_distance_change(track)
+            max_distances = get_max_distance_change(track)
             for region in regions:
-                distance, size_change = get_region_score(track.last_bound, region)
-                logging.info(
+                distances, size_change = get_region_score(track.last_bound, region)
+                logging.debug(
                     "checking region %s against %s %s", region, track, track.last_bound
                 )
                 max_size_change = get_max_size_change(track, region)
@@ -421,10 +423,26 @@ class ClipTrackExtractor:
                     )
 
                     continue
-                if distance > max_distance:
+                if distances[0] > max_distances[0]:
                     self.print_if_verbose(
                         "track {} distance score {} bigger than max distance {}".format(
-                            track.get_id(), distance, max_distance
+                            track.get_id(), distances[0], max_distances[0]
+                        )
+                    )
+
+                    continue
+                elif max_distances[1] and distances[1] > max_distances[1]:
+                    self.print_if_verbose(
+                        "track {} mid point change score {} bigger than max distance {}".format(
+                            track.get_id(), distances[1], max_distance[1]
+                        )
+                    )
+
+                    continue
+                elif max_distances[2] and distances[2] > max_distances[2]:
+                    self.print_if_verbose(
+                        "track {} width height change score {} bigger than max distance {}".format(
+                            track.get_id(), distances[2], max_distance[2]
                         )
                     )
 
@@ -436,7 +454,7 @@ class ClipTrackExtractor:
                         )
                     )
                     continue
-                scores.append((distance, track, region))
+                scores.append((np.average(distances), track, region))
 
         # makes tracking consistent by ordering by score then by frame since target then track id
         scores.sort(
@@ -448,7 +466,7 @@ class ClipTrackExtractor:
             if track in matched_tracks or region in used_regions:
                 continue
             track.add_region(region, frame)
-            logging.info(
+            logging.debug(
                 "%s matched region %s to track %s %s",
                 clip.current_frame,
                 region,
@@ -670,6 +688,7 @@ class ClipTrackExtractor:
             return True
 
         if stats.blank_percent > self.config.max_blank_percent:
+            print("blank percent", stats.blank_percent)
             self.print_if_verbose("Track filtered.  Too Many Blanks")
             clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
             return True
@@ -752,21 +771,26 @@ def get_max_distance_change(track):
         # be nice
         x = 10
         y = 10
-    x = 2 * x
-    y = 2 * y
+    x = 3 * x
+    y = 3 * y
     velocity_distance = x * x + y * y
+
     pred_vel = track.predicted_velocity()
-    logging.info(
+    logging.debug(
         "%s velo %s pred vel %s", track, track.velocity, track.predicted_velocity()
     )
     pred_distance = pred_vel[0] * pred_vel[0] + pred_vel[1] * pred_vel[1]
-
-    max_distance = ClipTrackExtractor.BASE_DISTANCE_CHANGE + max(
-        velocity_distance, pred_distance
-    )
-    if max_distance > ClipTrackExtractor.MAX_DISTANCE:
-        return ClipTrackExtractor.MAX_DISTANCE
-    return max_distance
+    point_change = max(velocity_distance, pred_distance)
+    distances = [velocity_distance, None, None]
+    return distances
+    #
+    #
+    # max_distance = ClipTrackExtractor.BASE_DISTANCE_CHANGE + max(
+    #     velocity_distance, pred_distance
+    # )
+    # if max_distance > ClipTrackExtractor.MAX_DISTANCE:
+    #     return ClipTrackExtractor.MAX_DISTANCE
+    # return max_distance
 
 
 def get_region_score(last_bound: Region, region: Region):
@@ -774,10 +798,10 @@ def get_region_score(last_bound: Region, region: Region):
     Calculates a score between 2 regions based of distance and area.
     The higher the score the more similar the Regions are
     """
-    distance = last_bound.average_distance(region)
+    distances = last_bound.average_distance(region)
 
     # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
     # area is padded with 50 pixels so small regions don't change too much
     size_difference = abs(region.area - last_bound.area) / (last_bound.area + 50)
 
-    return distance, size_difference
+    return distances, size_difference
