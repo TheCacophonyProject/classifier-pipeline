@@ -37,16 +37,16 @@ def process_job(loader, queue):
     i = 0
     while True:
         i += 1
-        clip_id = queue.get()
+        filename, clip_id = queue.get()
         try:
             if clip_id == "DONE":
                 break
             else:
-                loader.process_file(str(clip_id))
+                loader.process_file(str(filename), clip_id)
             if i % 50 == 0:
                 logging.info("%s jobs left", queue.qsize())
         except Exception as e:
-            logging.error("Process_job error %s %s", clip_id, e)
+            logging.error("Process_job error %s %s", filename, e)
             traceback.print_exc()
 
 
@@ -76,6 +76,7 @@ class ClipLoader:
         )
 
     def process_all(self, root):
+        clip_id = self.database.get_unique_clip_id()
         print("process all", root)
         job_queue = Queue()
         processes = []
@@ -97,11 +98,12 @@ class ClipLoader:
         # allows us know the order of processing
         file_paths.sort()
         for file_path in file_paths:
-            job_queue.put(file_path)
+            job_queue.put((file_path, clip_id))
+            clip_id += 1
 
         logging.info("Processing %d", job_queue.qsize())
         for i in range(len(processes)):
-            job_queue.put("DONE")
+            job_queue.put(("DONE", 0))
         for process in processes:
             try:
                 process.join()
@@ -205,7 +207,7 @@ class ClipLoader:
         confidence = track_tag.get("confidence", 0)
         return tag and tag not in excluded_tags and confidence >= min_confidence
 
-    def process_file(self, filename, classifier=None):
+    def process_file(self, filename, clip_id=None, classifier=None):
         start = time.time()
         base_filename = os.path.splitext(os.path.basename(filename))[0]
 
@@ -225,8 +227,9 @@ class ClipLoader:
             return
 
         metadata = tools.load_clip_metadata(metadata_filename)
-        if "id" not in metadata:
-            metadata["id"] = self.database.get_unique_clip_id()
+        if "id" not in metadata and clip_id is not None:
+            metadata["id"] = clip_id
+            logging.info("Using clip id %s", clip_id)
         if not self.reprocess and self.database.has_clip(str(metadata["id"])):
             logging.warning("Already loaded %s", filename)
             return

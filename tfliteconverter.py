@@ -151,7 +151,7 @@ def get_feed_dict(X, state_in=None):
     return result
 
 
-def convert_model(args):
+def convert_model(args, lite=True):
     print("converting to tflite: ", args.model)
     dir = os.path.dirname(args.model)
     lite_dir = os.path.join(dir, "tflite")
@@ -161,15 +161,19 @@ def convert_model(args):
     if args.weights:
         print("using weights ", args.weights)
         model.load_weights(args.weights).expect_partial()
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    # converter.target_spec.supported_ops = [
-    #     tf.lite.OpsSet.TFLITE_BUILTINS,  # enable TensorFlow Lite ops.
-    #     tf.lite.OpsSet.SELECT_TF_OPS,  # enable TensorFlow ops.
-    # ]
-    tflite_model = converter.convert()
-    print("saving model to ", os.path.join(lite_dir, args.tflite_name))
-    Path(lite_dir).mkdir(parents=True, exist_ok=True)
-    open(os.path.join(lite_dir, args.tflite_name), "wb").write(tflite_model)
+    if lite:
+        converter = tf.lite.TFLiteConverter.from_keras_model(model)
+        # converter.target_spec.supported_ops = [
+        #     tf.lite.OpsSet.TFLITE_BUILTINS,  # enable TensorFlow Lite ops.
+        #     tf.lite.OpsSet.SELECT_TF_OPS,  # enable TensorFlow ops.
+        # ]
+        tflite_model = converter.convert()
+        print("saving model to ", os.path.join(lite_dir, args.tflite_name))
+        Path(lite_dir).mkdir(parents=True, exist_ok=True)
+        open(os.path.join(lite_dir, args.tflite_name), "wb").write(tflite_model)
+    else:
+        print("saving model to", os.path.join(args.model, "frozen_model"))
+        model.save(os.path.join(args.model, "frozen_model"))
 
 
 def parse_args():
@@ -209,7 +213,7 @@ def main():
         # optimizer_model(args)
         freeze_model(args)
     if args.convert:
-        convert_model(args)
+        convert_model(args, True)
     if args.run:
         run_model(args)
 
