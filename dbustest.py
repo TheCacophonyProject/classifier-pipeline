@@ -27,8 +27,9 @@ def catchall_tracking_signals_handler(what, confidence, region, tracking):
 
 # helper class to run dbus in background
 class TrackingService:
-    def __init__(self):
+    def __init__(self,callback):
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+        self.callback = callback
         self.loop = GLib.MainLoop()
         self.t = threading.Thread(
             target=self.run_server,
@@ -47,14 +48,14 @@ class TrackingService:
             sys.exit(2)
 
         bus.add_signal_receiver(
-            catchall_tracking_signals_handler,
+            self.callback,
             dbus_interface=DBUS_NAME,
             signal_name="Tracking",
         )
         self.loop.run()
 
 if __name__ == "__main__":
-    tracking = TrackingService()
+    tracking = TrackingService(catchall_tracking_signals_handler)
 
 
     # just to keep program alive
