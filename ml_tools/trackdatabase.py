@@ -20,7 +20,13 @@ from dateutil.parser import parse as parse_date
 import numpy as np
 from track.region import Region
 
-special_datasets = ["background_frame", "predictions", "overlay"]
+special_datasets = [
+    "tag_frames",
+    "frames",
+    "background_frame",
+    "predictions",
+    "overlay",
+]
 
 
 class HDF5Manager:
@@ -262,13 +268,25 @@ class TrackDatabase:
     def update_tag(self, clip_id, track_id, frames, clip_tag, track_tag):
         with HDF5Manager(self.database, "a") as f:
             clip = f["clips"][clip_id]
-            clip_frames = clip.attrs.get("tag_frames", [])
-            clip_frames = list(clip_frames)
+            clip_tags = clip.get("tag_frames")
+
+            if clip_tags is None:
+                clip_tags = clip.create_group("tag_frames")
+
+            if clip_tag in clip_tags.attrs:
+                clip_frames = list(clip_tags.attrs[clip_tag])
+            else:
+                clip_frames = set()
+
+            clip_frames = set(clip_frames)
             for f in frames:
                 if f not in clip_frames:
-                    clip_frames.append(f)
+                    clip_frames.add(f)
+            clip_frames = list(clip_frames)
             clip_frames.sort()
-            clip.attrs["tag_frames"] = clip_frames
+            clip_tags.attrs[clip_tag] = np.array(clip_frames)
+
+            # clip.attrs["tag_frames"] = clip_tags
             clip.attrs["tag"] = clip_tag
             track = clip[track_id]
             track.attrs["tag"] = track_tag
@@ -397,7 +415,8 @@ class TrackDatabase:
         """
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
-            track_node = clips[str(clip_id)][str(track_number)]
+            clip_node = clips[str(clip_id)]
+            track_node = clip_node[str(track_number)]
 
             bounds = track_node.attrs["bounds_history"]
             if start_frame is None:
@@ -408,7 +427,7 @@ class TrackDatabase:
             bad_frames = track_node.attrs.get("skipepd_frames", [])
             result = []
             if original:
-                track_node = track_node["original"]
+                track_node = clip_node["frames"]
             else:
                 if "cropped" in track_node:
                     track_node = track_node["cropped"]
@@ -421,10 +440,15 @@ class TrackDatabase:
             for frame_number in frame_iter:
 
                 if original:
-                    frame = track_node[str(frame_number)][:, :]
+
+                    region = Region.region_from_array(bounds[frame_number])
+                    frame = track_node[str(frame_number + track_start)][:, :]
                     result.append(
                         Frame.from_channels(
-                            [frame], [TrackChannels.thermal], frame_number
+                            [frame],
+                            [TrackChannels.thermal],
+                            frame_number + track_start,
+                            region=region,
                         )
                     )
                 else:
@@ -609,17 +633,7 @@ class TrackDatabase:
                 if original_thermal is not None:
                     original = original_thermal[frame_i]
                 # using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
-                if cropped.thermal.size > 0:
-                    height, width = cropped.shape
-                    chunks = (1, height, width)
-                    dims = (3, height, width)
-                    frame_node = cropped_frame.create_dataset(
-                        str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
-                    )
 
-                    frame_node[:, :, :] = cropped.as_array()
-                else:
-                    skipped_frames.append(frame_i)
                 if (
                     original is not None
                     and str(frame_i + track.start_frame) not in original_group

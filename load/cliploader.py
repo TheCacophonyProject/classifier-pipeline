@@ -292,7 +292,7 @@ class ClipLoader:
     def _log_message(self, message):
         """Record message in stdout.  Will be printed if verbose is enabled."""
         # note, python has really good logging... I should probably make use of this.
-        if self.track_config.verbose:
+        if self.config.verbose:
             logging.info(message)
 
 
