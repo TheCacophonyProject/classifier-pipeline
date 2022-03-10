@@ -393,14 +393,11 @@ class KerasModel(Interpreter):
         weight_for_0 = 1
         weight_for_1 = 1 / 4
 
-        class_weight = {0: 6.3, 1: 6.9, 2: 1.6, 3: 1}
-
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
             epochs=epochs,
             shuffle=False,
-            class_weight=class_weight,
             callbacks=[
                 tf.keras.callbacks.TensorBoard(
                     self.log_dir, write_graph=True, write_images=True
