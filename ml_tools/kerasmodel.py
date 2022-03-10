@@ -26,9 +26,6 @@ from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
 from ml_tools.recorddataset import get_dataset
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-tf_device = "/gpu:1"
-
 
 class KerasModel(Interpreter):
     """Defines a deep learning model"""
