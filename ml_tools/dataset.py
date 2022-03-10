@@ -548,8 +548,8 @@ class Dataset:
 
         for sample in self.samples:
             sample_weight = sample.sample_weight
-            if lbl_p and track.label in lbl_p:
-                sample_weight *= lbl_p[track.label]
+            if lbl_p and sample.label in lbl_p:
+                sample_weight *= lbl_p[sample.label]
             total += sample_weight
 
             self.sample_cdf.append(sample_weight)

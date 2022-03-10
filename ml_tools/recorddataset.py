@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 
 import tensorflow as tf
 from functools import partial
+import numpy as np
 
 AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
@@ -23,8 +24,18 @@ def load_dataset(filenames, image_size, num_labels, labeled=True):
         ),
         num_parallel_calls=AUTOTUNE,
     )
+    # dataset = dataset.map(preprocess, num_parallel_calls=AUTOTUNE)
+    # dataset = dataset.map(tf.keras.applications.inception_v3.preprocess_input)
     # returns a dataset of (image, label) pairs if labeled=True or just images if labeled=False
     return dataset
+
+
+#
+def preprocess(data):
+    x = tf.stack(fields[:-1])
+    y = tf.stack(fields[-1:])
+    print(x.shape)
+    return tf.keras.applications.inception_v3.preprocess_input(x), y
 
 
 def get_dataset(filenames, batch_size, image_size, num_labels, labeled=True):
@@ -65,7 +76,7 @@ def decode_image(image, image_size):
     image = tf.image.decode_jpeg(image, channels=3)
     image = tf.cast(image, tf.float32)
     image = tf.image.resize(image, image_size)
-
+    image = tf.keras.applications.inception_v3.preprocess_input(image)
     return image
 
 
