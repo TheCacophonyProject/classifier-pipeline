@@ -43,6 +43,12 @@ class Sample(ABC):
         """Represent the unique identifier for this sample."""
         ...
 
+    @property
+    @abstractmethod
+    def sample_weight(self):
+        """Represent the unique identifier for this sample."""
+        ...
+
 
 class NumpyMeta:
     # Save track data to a numpy file this is much faster for trianing off than
@@ -546,7 +552,7 @@ class FrameSample(Sample):
     _frame_id = 1
 
     def __init__(
-        self, clip_id, track_id, frame_num, label, temp_median, velocity, region
+        self, clip_id, track_id, frame_num, label, temp_median, velocity, region, weight
     ):
         self.id = FrameSample._frame_id
         FrameSample._frame_id += 1
@@ -557,6 +563,11 @@ class FrameSample(Sample):
         self.temp_median = temp_median
         self.velocity = velocity
         self.region = region
+        self.weight = weight
+
+    @property
+    def sample_weight(self):
+        return self.weight
 
     @property
     def unique_track_id(self):
@@ -628,6 +639,10 @@ class SegmentHeader(Sample):
 
         self.mass = np.uint16(mass)
         self.camera = camera
+
+    @property
+    def sample_weight(self):
+        return self.weight
 
     @property
     def track_bounds(self):
@@ -980,6 +995,10 @@ class TrackingSample(Sample):
     @property
     def frame_indices(self):
         return [self.frame_number]
+
+    @property
+    def sample_weight(self):
+        return 1
 
     @property
     def unique_id(self):
