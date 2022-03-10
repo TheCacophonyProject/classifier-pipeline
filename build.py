@@ -17,6 +17,7 @@ from config.config import Config
 from ml_tools.dataset import Dataset
 from ml_tools.datasetstructures import Camera
 from ml_tools.recordwriter import create_tf_records
+import numpy as np
 
 MIN_TRACKS = 1
 use_clips = True
@@ -147,10 +148,18 @@ def print_counts(dataset, train, validation, test):
     print()
 
 
-def split_label(dataset, label, existing_test_count=0):
+def split_label(dataset, label, existing_test_count=0, max_samples=0):
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
     samples = dataset.samples_by_label.get(label, [])
+    samples = np.random.choice(samples, min(len(samples), max_samples), replace=False)
+    samples_by_bin = {}
+    for sample in samples:
+        if sample.bin_id not in samples_by_bin:
+            samples_by_bin[sample.bin_id] = []
+        samples_by_bin[sample.bin_id].append(sample)
+
     sample_bins = [sample.bin_id for sample in samples]
+
     if len(sample_bins) == 0:
         return None, None, None
 
@@ -175,14 +184,14 @@ def split_label(dataset, label, existing_test_count=0):
     # should have test covered by test set
     num_test_samples = 0
     for i, sample_bin in enumerate(sample_bins):
-        samples = dataset.samples_by_bin[sample_bin]
+        samples = samples_by_bin[sample_bin]
         for sample in samples:
             if sample.label == label:
                 label_count += 1
 
             sample.camera = "{}-{}".format(sample.camera, camera_type)
             add_to.add_sample(sample)
-        dataset.samples_by_bin[sample_bin] = []
+        samples_by_bin[sample_bin] = []
         last_index = i
         if label_count >= num_validate_samples:
             # 100 more for test
@@ -197,13 +206,14 @@ def split_label(dataset, label, existing_test_count=0):
 
     sample_bins = sample_bins[last_index + 1 :]
     camera_type = "train"
+    added = 0
     for i, sample_bin in enumerate(sample_bins):
-        samples = dataset.samples_by_bin[sample_bin]
+        samples = samples_by_bin[sample_bin]
         for sample in samples:
             sample.camera = "{}-{}".format(sample.camera, camera_type)
             train_c.add_sample(sample)
-        dataset.samples_by_bin[sample_bin] = []
-
+            added += 1
+        samples_by_bin[sample_bin] = []
     return train_c, validate_c, test_c
 
 
@@ -235,10 +245,21 @@ def split_randomly(db_file, dataset, config, args, test_clips=[], balance_bins=T
     test_cameras = [test_c]
     validate_cameras = []
     train_cameras = []
+    min_label = None
+    for label in dataset.labels:
+        label_count = len(dataset.samples_by_label.get(label, []))
+        if label == "false-positive":
+            continue
+        if min_label is None or label_count < min_label[1]:
+            min_label = (label, label_count)
+    print("min label is", min_label)
     for label in dataset.labels:
         existing_test_count = len(test.samples_by_label.get(label, []))
         train_c, validate_c, test_c = split_label(
-            dataset, label, existing_test_count=existing_test_count
+            dataset,
+            label,
+            existing_test_count=existing_test_count,
+            max_samples=min_label[1],
         )
         if train_c is not None:
             train_cameras.append(train_c)
@@ -265,12 +286,9 @@ def add_camera_samples(
         for camera in cameras:
             samples = camera.label_to_samples.get(label, {}).values()
             all_samples.extend(list(samples))
+    print("adding samples", len(all_samples))
     dataset.add_samples(all_samples)
-    print("adding", len(dataset.samples))
-    print("post", len(dataset.samples))
-
     dataset.balance_bins()
-    print("post", len(dataset.samples))
 
 
 def main():
@@ -318,7 +336,7 @@ def main():
 
     print_counts(dataset, *datasets)
     print("split data")
-
+    # return
     base_dir = config.tracks_folder
     record_dir = os.path.join(base_dir, "training-data/")
     for dataset in datasets:
