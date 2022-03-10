@@ -18,6 +18,8 @@ from config.config import Config
 from ml_tools.kerasmodel import KerasModel
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
+import tensorflow as tf
+from ml_tools.recorddataset import get_dataset
 
 
 def evaluate_db_clip(model, db, classifier, clip_id, track_id=None):
@@ -134,24 +136,32 @@ logging.info(
     dataset.labels,
     dataset.label_mapping,
 )
-logging.info("%s %s / %s / %s", "label", "segments", "frames", "tracks")
+logging.info("%s %s / %s", "label", "samples", "tracks")
 for label in dataset.labels:
-    segments, frames, tracks, _, _ = dataset.get_counts(label)
-    logging.info("%s %s / %s / %s", label, segments, frames, tracks)
+    samples, tracks, _, _ = dataset.get_counts(label)
+    logging.info("%s/ %s / %s", label, samples, tracks)
 
 logging.info("Mapped labels")
 for label in dataset.label_mapping.keys():
     logging.info(
         "%s",
-        "{} {:<20} {:<20}".format(
+        "{} {:<20}".format(
             label,
             dataset.mapped_label(label),
-            "{}/{}/{}/{:.1f}".format(*dataset.get_counts(label)),
+            "{}/{}/{:.1f}".format(*dataset.get_counts(label)),
         ),
     )
+files = tf.io.gfile.glob(base_dir + f"/training-data/{dataset.name}/*.tfrecord")
+dataset = get_dataset(
+    files,
+    model.params.batch_size,
+    (model.params.frame_size, model.params.frame_size),
+    len(model.labels),
+)
+
 if args.tracks:
     model.track_accuracy(dataset, args.confusion)
 elif args.confusion:
-    model.confusion(dataset, args.confusion)
+    model.confusion_new(dataset, args.confusion)
 else:
     model.evaluate(dataset)

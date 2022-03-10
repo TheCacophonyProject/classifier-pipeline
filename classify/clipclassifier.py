@@ -281,7 +281,7 @@ class ClipClassifier:
                         segment_frames = previous_prediction.get("prediction_frames")
                         if segment_frames is not None:
                             segment_frames = np.uint16(segment_frames)
-            prediction = classifier.classify_track(
+            prediction = classifier.classify_ir(
                 clip, track, segment_frames=segment_frames
             )
 

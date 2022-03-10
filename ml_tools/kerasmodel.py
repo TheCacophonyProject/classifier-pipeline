@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import json
 import gc
 from sklearn.metrics import confusion_matrix
-
+import cv2
 from ml_tools import tools
 from ml_tools.datagenerator import DataGenerator
 from ml_tools.preprocess import (
@@ -684,6 +684,51 @@ class KerasModel(Interpreter):
             segments,
         )
 
+    def classify_ir(self, clip, track, keep_all=True, segment_frames=None):
+        data = []
+        thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
+        for i, region in enumerate(track.bounds_history):
+            frame = clip.frame_buffer.get_frame(region.frame_number)
+            if frame is None:
+                logging.error(
+                    "Clasifying clip %s track %s can't get frame %s",
+                    clip.get_id(),
+                    track.get_id(),
+                    region.frame_number,
+                )
+                raise Exception(
+                    "Clasifying clip {} track {} can't get frame {}".format(
+                        clip.get_id(), track.get_id(), region.frame_number
+                    )
+                )
+            cropped_frame = cv2.resize(
+                np.float32(frame.thermal),
+                (
+                    self.params.frame_size,
+                    self.params.frame_size,
+                ),
+                interpolation=cv2.INTER_LINEAR,
+            )
+            cropped_frame = cropped_frame[..., np.newaxis]
+            cropped_frame = np.repeat(cropped_frame, 3, axis=2)
+            cropped_frame = tf.keras.applications.inception_v3.preprocess_input(
+                cropped_frame
+            )
+
+            data.append(cropped_frame)
+            thermal_median[i] = np.median(frame.thermal)
+        data = np.float32(data)
+        output = self.model.predict(data)
+        print("predictions are")
+        for p in output:
+            print("predictions", np.round(output * 100))
+        track_prediction = TrackPrediction(track.get_id(), self.labels)
+
+        track_prediction.classified_clip(output, output, None)
+        # track_prediction.classify_time = time.time() - start
+        track_prediction.normalize_score()
+        return track_prediction
+
     def classify_track_data(
         self,
         track_id,
@@ -741,6 +786,20 @@ class KerasModel(Interpreter):
                 return None
         output = self.model.predict(frame[np.newaxis, :])
         return output[0]
+
+    def confusion_new(self, dataset, filename):
+        true_categories = tf.concat([y for x, y in dataset], axis=0)
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+
+        y_pred = self.model.predict(dataset)
+        predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
+
+        cm = confusion_matrix(
+            true_categories, predicted_categories, labels=np.arange(len(self.labels))
+        )
+        # Log the confusion matrix as an image summary.
+        figure = plot_confusion_matrix(cm, class_names=self.labels)
+        plt.savefig(filename, format="png")
 
     def confusion(self, dataset, filename="confusion.png"):
         dataset.recalculate_segments(segment_type=self.params.segment_type)
