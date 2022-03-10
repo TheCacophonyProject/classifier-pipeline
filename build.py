@@ -166,7 +166,7 @@ def split_label(dataset, label, existing_test_count=0):
     add_to = validate_c
     last_index = 0
     label_count = 0
-    total = len(sample_bins)
+    total = len(samples)
     min_t = MIN_TRACKS
     if label in ["vehicle", "human"]:
         min_t = 10
