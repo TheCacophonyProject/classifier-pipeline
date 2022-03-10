@@ -266,8 +266,11 @@ def add_camera_samples(
             samples = camera.label_to_samples.get(label, {}).values()
             all_samples.extend(list(samples))
     dataset.add_samples(all_samples)
-    dataset.recalculate_segments()
+    print("adding", len(dataset.samples))
+    print("post", len(dataset.samples))
+
     dataset.balance_bins()
+    print("post", len(dataset.samples))
 
 
 def main():
@@ -292,8 +295,8 @@ def main():
     # return
     dataset.labels.sort()
     print(
-        "Loaded {}/{} tracks, found {:.1f}k segments".format(
-            tracks_loaded, total_tracks, len(dataset.segments) / 1000
+        "Loaded {}/{} tracks, found {:.1f}k samples".format(
+            tracks_loaded, total_tracks, len(dataset.samples) / 1000
         )
     )
     for key, value in dataset.filtered_stats.items():

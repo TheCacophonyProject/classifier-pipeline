@@ -298,7 +298,14 @@ class Dataset:
                 result += 1
         return result
 
+    def filter_sample(self, sample):
+        if sample.label not in self.included_labels:
+            self.filtered_stats["tags"] += 1
+            return True
+
     def add_clip_sample_mappings(self, sample):
+        if self.filter_sample(sample):
+            return False
         self.samples.append(sample)
 
         if self.label_mapping and sample.label in self.label_mapping:
@@ -495,7 +502,7 @@ class Dataset:
         """
 
         for bin_name, samples in self.samples_by_bin.items():
-            bin_weight = sum(sample.weight for sample in samples)
+            bin_weight = sum(sample.sample_weight for sample in samples)
             if bin_weight == 0:
                 continue
             if max_bin_weight is None:
@@ -506,7 +513,7 @@ class Dataset:
             else:
                 scale_factor = 1
             for sample in samples:
-                sample.weight = np.float16(sample.weight * scale_factor)
+                sample.weight = np.float16(sample.sample_weight * scale_factor)
         self.rebuild_cdf()
 
     def remove_label(self, label_to_remove):
