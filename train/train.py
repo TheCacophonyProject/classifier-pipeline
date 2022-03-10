@@ -64,15 +64,18 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     print("---------------------")
     print(model.hyperparams_string)
     print()
-    print(
-        "Found {0:.1f}K training examples".format(
-            model.train_dataset.sample_count / 1000
-        )
-    )
-    for dataset in model.datasets.values():
-        dataset.clear_tracks()
-
-    model.train_model(
-        epochs=conf.train.epochs, run_name=run_name + "_" + "TEST", weights=weights
+    # print(
+    #     "Found {0:.1f}K training examples".format(
+    #         model.train_dataset.sample_count / 1000
+    #     )
+    # )
+    # for dataset in model.datasets.values():
+    #     dataset.clear_tracks()
+    print("tracks folder", conf.tracks_folder)
+    model.train_model_dataset(
+        epochs=conf.train.epochs,
+        run_name=run_name + "_" + "TEST",
+        base_dir=conf.tracks_folder,
+        weights=weights,
     )
     model.close()

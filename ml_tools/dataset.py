@@ -13,7 +13,7 @@ import os
 import time
 import numpy as np
 import gc
-from ml_tools.datasetstructures import NumpyMeta, TrackHeader
+from ml_tools.datasetstructures import NumpyMeta, TrackHeader, TrackingSample
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
 
@@ -71,6 +71,9 @@ class Dataset:
         # name of this dataset
         self.name = name
         # list of our tracks
+        self.samples_by_label = {}
+        self.samples_by_bin = {}
+        self.samples = []
         self.tracks = []
         self.tracks_by_label = {}
         self.tracks_by_bin = {}
@@ -121,6 +124,7 @@ class Dataset:
             "tags": 0,
             "segment_mass": 0,
             "no_data": 0,
+            "not-confirmed": 0,
         }
         self.lbl_p = None
         self.numpy_data = None
@@ -197,10 +201,11 @@ class Dataset:
     def sample_count(self):
         return len(self.samples())
 
-    def samples(self):
-        if self.use_segments:
-            return self.segments
-        return self.frame_samples
+    #
+    # def samples(self):
+    #     if self.use_segments:
+    #         return self.segments
+    #     return self.frame_samples
 
     def set_samples(self, samples):
         if self.use_segments:
@@ -253,33 +258,28 @@ class Dataset:
         :label: label to check
         :return: (segments, tracks, bins, weight)
         """
-        segments = 0
         tracks = 0
         bins = 0
         weight = 0
-        frames = 0
+        samples = 0
         if self.label_mapping:
             for key, value in self.label_mapping.items():
                 if key == label or value == label:
                     label_tracks = self.tracks_by_label.get(key, [])
                     tracks += len(label_tracks)
-                    segments += sum(len(track.segments) for track in label_tracks)
-                    frames += sum(
-                        len(track.get_sample_frames())
-                        for track in label_tracks
-                        if track.sample_frames is not None
-                    )
+                    samples += len(self.samples_by_label.get(key, []))
+                    # segments += sum(len(track.segments) for track in label_tracks)
+                    # frames += sum(
+                    #     len(track.get_sample_frames())
+                    #     for track in label_tracks
+                    #     if track.sample_frames is not None
+                    # )
 
         else:
+            samples = len(self.samples_by_label.get(label, []))
             label_tracks = self.tracks_by_label.get(label, [])
-            segments = sum(len(track.segments) for track in label_tracks)
             weight = self.get_label_weight(label)
             tracks = len(label_tracks)
-            frames = sum(
-                len(track.get_sample_frames())
-                for track in label_tracks
-                if track.sample_frames is not None
-            )
             bins = len(
                 [
                     tracks
@@ -287,7 +287,87 @@ class Dataset:
                     if len(tracks) > 0 and tracks[0].label == label
                 ]
             )
-        return segments, frames, tracks, bins, weight
+        return samples, tracks, bins, weight
+
+    def load_clips(self, shuffle=False, before_date=None, after_date=None, label=None):
+        """
+        Loads track headers from track database with optional filter
+        :return: [number of tracks added, total tracks].
+        """
+        counter = 0
+        clip_ids = self.db.get_all_clip_ids()
+        if shuffle:
+            np.random.shuffle(clip_ids)
+        for clip_id in clip_ids:
+            if self.load_clip(clip_id):
+                counter += 1
+            if counter % 50 == 0:
+                logging.debug("Dataset loaded %s / %s", counter, len(clip_ids))
+
+        return [counter, len(clip_ids)]
+
+    def load_clip(self, clip_id):
+        clip_meta = self.db.get_clip_meta(clip_id)
+        if "tag" not in clip_meta:
+            self.filtered_stats["not-confirmed"] += 1
+            return False
+        clip_id = int(clip_id)
+        samples = {}
+
+        # self.clip_samples[clip_id] = samples
+        for label, frames in clip_meta.get("tag_frames", {}).items():
+            if label == "tag_regions":
+                continue
+            for frame in frames:
+                samples_key = f"{clip_id}-None-{frame}"
+                if samples_key in samples:
+                    existing_sample = samples[samples_key]
+                    existing_sample.labels.append(label)
+                else:
+                    sample = TrackingSample(
+                        clip_id,
+                        None,
+                        frame,
+                        label,
+                        clip_meta["frame_temp_median"][frame],
+                        None,
+                        clip_meta["start_time"],
+                        clip_meta.get("device", "unknown"),
+                        clip_meta.get("filename", "unknown"),
+                    )
+                    samples[samples_key] = sample
+                    self.add_clip_sample_mappings(sample)
+
+        return True
+
+    def add_samples(self, samples):
+        """
+        Adds list of samples to dataset
+        :param track_filter: optional filter
+        """
+        result = 0
+        for sample in samples:
+            if self.add_clip_sample_mappings(sample):
+                result += 1
+        return result
+
+    def add_clip_sample_mappings(self, sample):
+        self.samples.append(sample)
+
+        if self.label_mapping and sample.label in self.label_mapping:
+            sample.label = self.mapped_label(sample.label)
+
+        if sample.label not in self.labels:
+            self.labels.append(sample.label)
+
+        if sample.label not in self.samples_by_label:
+            self.samples_by_label[sample.label] = []
+        self.samples_by_label[sample.label].append(sample)
+
+        bins = self.samples_by_bin.setdefault(sample.bin_id, [])
+        bins.append(sample)
+        self.camera_names.add(sample.camera)
+        return True
 
     def load_tracks(self, shuffle=False, before_date=None, after_date=None):
         """
@@ -344,6 +424,7 @@ class Dataset:
         clip_meta = self.db.get_clip_meta(clip_id)
         track_meta = self.db.get_track_meta(clip_id, track_id)
         if self.filter_track(clip_meta, track_meta):
+            print("filtering track", track_meta["id"])
             return False
         track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
         self.tracks.append(track_header)
@@ -363,6 +444,7 @@ class Dataset:
         ]
 
         self.segments.extend(track_header.segments)
+        self.samples.extend(track_header.segments)
         self.add_track_to_mappings(track_header)
 
         return True
@@ -374,9 +456,10 @@ class Dataset:
             self.filtered_stats["banned"] += 1
             return True
         if "tag" not in track_meta:
-            self.filtered_stats["tags"] += 1
+            self.filtered_stats["notags"] += 1
             return True
         if track_meta["tag"] not in self.included_labels:
+            print("not in", track_meta["tag"])
             self.filtered_stats["tags"] += 1
             return True
 
@@ -390,7 +473,7 @@ class Dataset:
             return False
 
         # for some reason we get some records with a None confidence?
-        if track_meta.get("confidence", 0.0) <= 0.6:
+        if track_meta.get("confidence", 1.0) <= 0.6:
             self.filtered_stats["confidence"] += 1
             return True
 
@@ -410,6 +493,9 @@ class Dataset:
 
         self.tracks_by_id[track_header.unique_id] = track_header
         bins = self.tracks_by_bin.setdefault(track_header.bin_id, [])
+        bins.append(track_header)
+
+        bins = self.samples_by_bin.setdefault(track_header.bin_id, [])
         bins.append(track_header)
 
         if track_header.label not in self.labels:
@@ -861,6 +947,10 @@ class Dataset:
             filtered_stats,
             time.time() - start,
         )
+
+    def remove_sample(self, sample):
+        self.samples.remove(sample)
+        self.samples_by_label[sample.label].remove(sample)
 
     def remove_track(self, track):
         self.tracks.remove(track)

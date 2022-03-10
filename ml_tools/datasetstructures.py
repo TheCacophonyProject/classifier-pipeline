@@ -31,6 +31,18 @@ class Sample(ABC):
         """Represent the unique identifier for this track."""
         ...
 
+    @property
+    @abstractmethod
+    def unique_id(self):
+        """Represent the unique identifier for this sample."""
+        ...
+
+    @property
+    @abstractmethod
+    def bin_id(self):
+        """Represent the unique identifier for this sample."""
+        ...
+
 
 class NumpyMeta:
     # Save track data to a numpy file this is much faster for trianing off than
@@ -310,6 +322,7 @@ class TrackHeader:
             lower_mass=self.lower_mass,
             repeats=repeats,
             min_frames=min_frames,
+            camera=self.camera,
         )
 
     @property
@@ -396,6 +409,7 @@ class Camera:
     def __init__(self, camera):
         self.label_to_bins = {}
         self.label_to_tracks = {}
+        self.label_to_samples = {}
 
         self.bins = {}
         self.camera = camera
@@ -506,6 +520,27 @@ class Camera:
         self.segment_sum += segment_length
         self.segments += 1
 
+    def remove_sample(self, sample):
+        del self.label_to_samples[sample.label][sample.unique_id]
+        if track.bin_id in self.label_to_bins[sample.label]:
+            self.label_to_bins[sample.label].remove(sample.bin_id)
+        self.label_frames[sample.label] -= len(sample.sample_frames)
+
+    def add_sample(self, sample):
+        samples = self.label_to_samples.setdefault(sample.label, {})
+        samples[sample.unique_id] = sample
+        if sample.bin_id not in self.bins:
+            self.bins[sample.bin_id] = []
+
+        if sample.label not in self.label_to_bins:
+            self.label_to_bins[sample.label] = []
+            self.label_frames[sample.label] = 0
+
+        if sample.bin_id not in self.label_to_bins[sample.label]:
+            self.label_to_bins[sample.label].append(sample.bin_id)
+
+        self.bins[sample.bin_id].append(sample)
+
 
 class FrameSample(Sample):
     _frame_id = 1
@@ -535,6 +570,15 @@ class FrameSample(Sample):
     def frame_indices(self):
         return [self.frame_number]
 
+    @property
+    def unique_id(self):
+        return f"{self.clip_id}-{self.track_id}-{self.frame_number}"
+
+    @property
+    def bin_id(self):
+        """Unique name of this segments track."""
+        return f"{self.clip_id}-{self.track_id}"
+
 
 class SegmentHeader(Sample):
     """Header for segment."""
@@ -556,6 +600,8 @@ class SegmentHeader(Sample):
         movement_data=None,
         best_mass=False,
         top_mass=False,
+        start_time=None,
+        camera=None,
     ):
         self.movement_data = movement_data
         self.top_mass = top_mass
@@ -566,7 +612,7 @@ class SegmentHeader(Sample):
         self.clip_id = clip_id
         self.track_id = track_id
         self.frame_numbers = np.uint16(frame_indices)
-
+        self.start_time = start_time
         self.regions = regions
         self.frame_temp_median = np.uint16(frame_temp_median)
         # for i, frame in enumerate(frame_indices):
@@ -581,6 +627,7 @@ class SegmentHeader(Sample):
         self.weight = np.float16(weight)
 
         self.mass = np.uint16(mass)
+        self.camera = camera
 
     @property
     def track_bounds(self):
@@ -622,7 +669,7 @@ class SegmentHeader(Sample):
         return self.start_frame + self.frames
 
     @property
-    def track_bin(self):
+    def bin_id(self):
         """Unique name of this segments track."""
         return self.track.bin_id
 
@@ -630,6 +677,10 @@ class SegmentHeader(Sample):
         return "{0} label {1} offset:{2} weight:{3:.1f}".format(
             self.unique_track_id, self.label, self.start_frame, self.weight
         )
+
+    @property
+    def unique_id(self):
+        return self.id
 
 
 def get_cropped_fraction(region: tools.Rectangle, width, height):
@@ -670,6 +721,7 @@ def get_segments(
     skipped_frames=None,
     segment_frames=None,
     ignore_mass=False,
+    camera=None,
 ):
     if min_frames is None:
         min_frames = 25
@@ -753,6 +805,7 @@ def get_segments(
                 movement_data=movement_data,
                 best_mass=best_mass,
                 top_mass=True,
+                camera=camera,
             )
             best_mass = False
             segments.append(segment)
@@ -858,6 +911,85 @@ def get_segments(
                 frame_temp_median=temp_slice,
                 frame_indices=frames,
                 movement_data=movement_data,
+                camera=camera,
             )
             segments.append(segment)
     return segments, filtered_stats
+
+
+class TrackingSample(Sample):
+    _s_id = 1
+
+    def __init__(
+        self,
+        clip_id,
+        track_id,
+        frame_num,
+        labels,
+        temp_median,
+        regions,
+        start_time,
+        camera,
+        filename,
+    ):
+        self.id = TrackingSample._s_id
+        TrackingSample._s_id += 1
+        self.clip_id = clip_id
+        self.filename = filename
+        self.track_id = track_id
+        self.start_time = dateutil.parser.parse(start_time)
+        # needed for original frame will change this GP
+        self.frame_number = frame_num
+        self.camera = camera
+        if isinstance(labels, str):
+            self.labels = [labels]
+        else:
+            self.labels = labels
+        self.temp_median = temp_median
+        if regions is None:
+            self.regions = []
+        else:
+            self.regions = regions
+
+    # asusming only one label for now GP should change
+    @property
+    def label(self):
+        return self.labels[0]
+
+    def add_sample(self, f):
+        self.labels.append(f.label)
+        self.regions.append(f.region)
+
+    def filename(self):
+        return f"{self.clip_id}-{self.track_id}-{self.frame_number}"
+
+    @classmethod
+    def from_sample(cls, f):
+        return cls(
+            f.clip_id, f.track_id, f.frame_number, [f.label], f.temp_median, [f.region]
+        )
+
+    @property
+    def unique_track_id(self):
+        return "{}".format(self.clip_id)
+
+    @property
+    def track_bounds(self):
+        return self.regions
+
+    @property
+    def frame_indices(self):
+        return [self.frame_number]
+
+    @property
+    def unique_id(self):
+        return f"{self.clip_id}-{self.track_id}-{self.frame_number}"
+
+    @property
+    def bin_id(self):
+        """Unique name of this segments track."""
+        frames_numbers = int(self.frame_number / 20)
+        # try and segment framesso 20 frames are in the same bin
+        return f"{self.clip_id}-{self.track_id}-{frames_numbers}"
+        # this should be used but dont have much data
+        # return f"{self.clip_id}-{self.track_id}"

@@ -265,23 +265,80 @@ class TrackDatabase:
                         result.append((clip_id, track))
         return result
 
-    def update_tag(self, clip_id, track_id, frames, clip_tag, track_tag):
+    def remove_tag_info(self, clip_id, track_id):
+        with HDF5Manager(self.database, "a") as f:
+            clip = f["clips"][clip_id]
+            try:
+                del clip["tag_frames"]
+            except:
+                pass
+
+            if "tag" in clip.attrs:
+                del clip.attrs["tag"]
+
+            track = clip[track_id]
+            track.attrs["tag_confirmed"] = False
+
+    def update_tag(self, clip_id, track_id, frames, clip_tag, track_tag, regions=None):
+        logging.info(
+            "Tagging clip %s as %s and track %s as %s",
+            clip_id,
+            clip_tag,
+            track_id,
+            track_tag,
+        )
         with HDF5Manager(self.database, "a") as f:
             clip = f["clips"][clip_id]
             clip_tags = clip.get("tag_frames")
-
             if clip_tags is None:
                 clip_tags = clip.create_group("tag_frames")
-
+                print("creating clip tags")
+            tag_regions = clip_tags.get("tag_regions")
+            if tag_regions is None:
+                tag_regions = clip_tags.create_group("tag_regions")
+            print("clip tag", clip_tag)
             if clip_tag in clip_tags.attrs:
                 clip_frames = list(clip_tags.attrs[clip_tag])
             else:
                 clip_frames = set()
 
             clip_frames = set(clip_frames)
+            add_regions = clip_tag == track_tag
+            label_regions = []
+            if add_regions:
+                if clip_tag in tag_regions.attrs:
+                    label_regions = list(tag_regions.attrs[clip_tag])
+                    for i in range(len(label_regions)):
+                        r = label_regions[i]
+                        r[6] = 1 if r[6] else 0
+                        r = np.uint16(r)
+                        label_regions[i] = r
             for f in frames:
-                if f not in clip_frames:
-                    clip_frames.add(f)
+                if f.frame_number not in clip_frames:
+                    clip_frames.add(f.frame_number)
+                if add_regions:
+                    if f.region.blank:
+                        continue
+                    r_array = f.region.to_array()
+
+                    unique_region = True
+                    for other in label_regions:
+                        diff = False
+                        for i in range(len(other)):
+                            if other[i] != r_array[i]:
+                                diff = True
+                                break
+                        if not diff:
+                            unique_region = False
+                            break
+                    if unique_region:
+                        label_regions.append(r_array)
+
+            if add_regions:
+                tag_regions.attrs[clip_tag] = label_regions
+                # for k, v in tag_regions.attrs.items():
+                #     print("K", k, v)
+
             clip_frames = list(clip_frames)
             clip_frames.sort()
             clip_tags.attrs[clip_tag] = np.array(clip_frames)
@@ -289,8 +346,9 @@ class TrackDatabase:
             # clip.attrs["tag_frames"] = clip_tags
             clip.attrs["tag"] = clip_tag
             track = clip[track_id]
-            track.attrs["tag"] = track_tag
-            track.attrs["tag_confirmed"] = True
+            if track_tag is not None:
+                track.attrs["tag"] = track_tag
+                track.attrs["tag_confirmed"] = True
 
     def get_track_meta(self, clip_id, track_number):
         """
@@ -336,6 +394,17 @@ class TrackDatabase:
             dataset = f["clips"][str(clip_id)]
             result = hdf5_attributes_dictionary(dataset)
             result["tracks"] = len(dataset)
+            tag_frames = dataset.get("tag_frames")
+            if tag_frames:
+                result["tag_frames"] = {}
+                for key, value in tag_frames.attrs.items():
+                    result["tag_frames"][key] = value
+
+                tag_regions = tag_frames.get("tag_regions")
+                if tag_regions is not None:
+                    result["tag_frames"]["tag_regions"] = {}
+                    for key, value in tag_regions.attrs.items():
+                        result["tag_frames"]["tag_regions"][key] = value
         return result
 
     def get_clip_tracks(self, clip_id):
@@ -442,6 +511,7 @@ class TrackDatabase:
                 if original:
 
                     region = Region.region_from_array(bounds[frame_number])
+                    region.frame_number = frame_number + track_start
                     frame = track_node[str(frame_number + track_start)][:, :]
                     result.append(
                         Frame.from_channels(

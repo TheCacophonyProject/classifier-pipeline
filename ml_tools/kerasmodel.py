@@ -24,7 +24,7 @@ from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 
 from ml_tools.hyperparams import HyperParams
-
+from ml_tools.recorddataset import get_dataset
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 tf_device = "/gpu:1"
@@ -338,12 +338,12 @@ class KerasModel(Interpreter):
             )
 
     def close(self):
-        if self.test:
-            self.test.stop_load()
-        if self.validate:
-            self.validate.stop_load()
-        if self.train:
-            self.train.stop_load()
+        # if self.test:
+        #     self.test.stop_load()
+        # if self.validate:
+        #     self.validate.stop_load()
+        # if self.train:
+        #     self.train.stop_load()
 
         self.validate = None
         self.test = None
@@ -356,6 +356,68 @@ class KerasModel(Interpreter):
         del self.validate
         del self.test
         gc.collect()
+
+    def train_model_dataset(self, epochs, run_name, base_dir, weights=None):
+        logging.info(
+            "%s Training model for %s epochs with weights %s", run_name, epochs, weights
+        )
+
+        os.makedirs(self.log_base, exist_ok=True)
+        self.log_dir = os.path.join(self.log_base, run_name)
+        os.makedirs(self.log_base, exist_ok=True)
+
+        if not self.model:
+            self.build_model(
+                dense_sizes=self.params.dense_sizes,
+                retrain_from=self.params.retrain_layer,
+                dropout=self.params.dropout,
+            )
+        self.model.summary()
+        if weights is not None:
+            self.model.load_weights(weights)
+        base_dir = os.path.join(base_dir, "training-data")
+        train_files = tf.io.gfile.glob(base_dir + "/train/*.tfrecord")
+        validate_files = tf.io.gfile.glob(base_dir + "/validation/*.tfrecord")
+        self.train = get_dataset(
+            train_files,
+            self.params.batch_size,
+            (self.params.frame_size, self.params.frame_size),
+            len(self.labels),
+        )
+        self.validate = get_dataset(
+            validate_files,
+            self.params.batch_size,
+            (self.params.frame_size, self.params.frame_size),
+            len(self.labels),
+        )
+        self.save_metadata(run_name)
+
+        checkpoints = self.checkpoints(run_name)
+        history = self.model.fit(
+            self.train,
+            validation_data=self.validate,
+            epochs=epochs,
+            shuffle=False,
+            # class_weight=class_weight,
+            callbacks=[
+                tf.keras.callbacks.TensorBoard(
+                    self.log_dir, write_graph=True, write_images=True
+                ),
+                *checkpoints,
+            ],  # log metricslast_stats
+        )
+        test_accuracy = None
+        test_files = tf.io.gfile.glob(base_dir + "/test/*.tfrecord")
+        if len(test_files) > 0:
+            self.test = get_dataset(
+                test_files,
+                self.params.batch_size,
+                (self.params.frame_size, self.params.frame_size),
+                len(self.labels),
+            )
+            test_accuracy = self.model.evaluate(self.validate)
+
+        self.save(run_name, history=history, test_results=test_accuracy)
 
     def train_model(self, epochs, run_name, weights=None):
         logging.info(
