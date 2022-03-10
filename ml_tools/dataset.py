@@ -616,7 +616,7 @@ class Dataset:
         self.labels.sort()
         self.samples_by_bin = samples_by_bin
         self.set_samples(samples)
-        self.samples_by_id == {}
+        # self.samples_by_id == {}
 
         if shuffle:
             np.random.shuffle(self.samples)
