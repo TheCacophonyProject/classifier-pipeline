@@ -24,7 +24,7 @@ def train_model(run_name, conf, hyper_params, weights=None, grid_search=None):
     print("Training on labels", model.train_dataset.labels)
     print()
     print(
-        "{:<20} {:<20} {:<20} {:<20} (segments/frames/tracks/bins)".format(
+        "{:<20} {:<20} {:<20} {:<20} (samples/frames/tracks/bins)".format(
             "label", "train", "validation", "test"
         )
     )

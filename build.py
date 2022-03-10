@@ -328,7 +328,7 @@ def main():
         # dataset.saveto_numpy(os.path.join(base_dir))
 
     for dataset in datasets:
-        dataset.clear_samples()
+        # dataset.clear_samples()
         dataset.db = None
         logging.info("saving to %s", f"{os.path.join(base_dir, dataset.name)}.dat")
         pickle.dump(dataset, open(f"{os.path.join(base_dir, dataset.name)}.dat", "wb"))
