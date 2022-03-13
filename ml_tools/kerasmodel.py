@@ -851,27 +851,27 @@ class KerasModel(Interpreter):
             logging.info("%s = %s", label, by_label[label])
 
     def evaluate(self, dataset):
-        dataset.set_read_only(True)
-        dataset.use_segments = self.params.use_segments
-
-        test = DataGenerator(
-            dataset,
-            self.labels,
-            self.params.output_dim,
-            batch_size=self.params.batch_size,
-            channel=self.params.channel,
-            use_movement=self.params.use_movement,
-            shuffle=True,
-            model_preprocess=self.preprocess_fn,
-            epochs=1,
-            cap_samples=True,
-            cap_at="bird",
-            square_width=self.params.square_width,
-            type=self.params.type,
-            segment_type=self.params.segment_type,
-            keep_edge=self.params.keep_edge,
-        )
-        test_accuracy = self.model.evaluate(test)
+        # dataset.set_read_only(True)
+        # dataset.use_segments = self.params.use_segments
+        #
+        # test = DataGenerator(
+        #     dataset,
+        #     self.labels,
+        #     self.params.output_dim,
+        #     batch_size=self.params.batch_size,
+        #     channel=self.params.channel,
+        #     use_movement=self.params.use_movement,
+        #     shuffle=True,
+        #     model_preprocess=self.preprocess_fn,
+        #     epochs=1,
+        #     cap_samples=True,
+        #     cap_at="bird",
+        #     square_width=self.params.square_width,
+        #     type=self.params.type,
+        #     segment_type=self.params.segment_type,
+        #     keep_edge=self.params.keep_edge,
+        # )
+        test_accuracy = self.model.evaluate(dataset)
         test.stop_load()
         logging.info("Test accuracy is %s", test_accuracy)
 
