@@ -60,7 +60,11 @@ def read_tfrecord(example, image_size, num_labels, labeled):
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
-    image = decode_image(example["image/thermalencoded"], image_size)
+    image = decode_image(
+        example["image/thermalencoded"], example["image/filteredencoded"], image_size
+    )
+    # image = decode_image image_size)
+
     if labeled:
         # label = tf.cast(
         #     tf.reshape(example["image/object/class/label"], shape=[]), dtype=tf.int64
@@ -72,10 +76,12 @@ def read_tfrecord(example, image_size, num_labels, labeled):
     return image
 
 
-def decode_image(image, image_size):
-    image = tf.image.decode_jpeg(image, channels=3)
+def decode_image(image, filtered, image_size):
+    image = tf.image.decode_jpeg(image, channels=1)
+    filtered = tf.image.decode_jpeg(filtered, channels=1)
+    image = tf.concat((image, image, filtered), axis=2)
     image = tf.cast(image, tf.float32)
-    image = tf.image.resize(image, image_size)
+    image = tf.image.resize_with_pad(image, image_size[0], image_size[1])
     image = tf.keras.applications.inception_v3.preprocess_input(image)
     return image
 
@@ -83,10 +89,10 @@ def decode_image(image, image_size):
 # test crap
 def main():
     train_files = tf.io.gfile.glob(
-        "/home/gp/cacophony/classifier-pipeline/training-data/train/*.tfrecord"
+        "/home/gp/cacophony/classifier-data/irvideos/tracks/training-data/validation/*.tfrecord"
     )
     print("got filename", train_files)
-    train_dataset = get_dataset(train_files, 32, (256, 256))
+    train_dataset = get_dataset(train_files, 32, (256, 256), 3)
 
     image_batch, label_batch = next(iter(train_dataset))
     show_batch(image_batch, label_batch)
@@ -97,10 +103,11 @@ def show_batch(image_batch, label_batch):
     labels = ["nothing", "possum"]
     print(label_batch)
     for n in range(25):
+        print("image data")
         ax = plt.subplot(5, 5, n + 1)
         plt.imshow(image_batch[n] / 255.0)
         print(image_batch[n].shape)
-        plt.title(labels[label_batch[n]])
+        # plt.title(labels[label_batch[n]])
         plt.axis("off")
     plt.show()
 

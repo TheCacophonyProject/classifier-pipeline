@@ -58,10 +58,26 @@ class Region(Rectangle):
             ]
         )
 
+    def from_array(self):
+        """Return rectangle as left, top, right, bottom co-ords."""
+        return np.uint16(
+            [
+                self.left,
+                self.top,
+                self.right,
+                self.bottom,
+                self.frame_number,
+                self.mass,
+                1 if self.blank else 0,
+            ]
+        )
+
     @classmethod
-    def region_from_array(cls, region_bounds, frame_number=0):
+    def region_from_array(cls, region_bounds, frame_number=None):
         width = region_bounds[2] - region_bounds[0]
         height = region_bounds[3] - region_bounds[1]
+        if frame_number is None and len(region_bounds) > 4:
+            frame_number = region_bounds[4]
         return cls(
             region_bounds[0],
             region_bounds[1],

@@ -202,7 +202,6 @@ class KerasModel(Interpreter):
                 len(self.labels), activation="softmax", name="prediction"
             )(x)
             self.model = tf.keras.models.Model(inputs, outputs=preds)
-
         if retrain_from is None:
             retrain_from = self.params.retrain_layer
         if retrain_from:

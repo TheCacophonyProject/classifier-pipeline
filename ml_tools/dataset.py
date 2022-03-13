@@ -16,6 +16,7 @@ import gc
 from ml_tools.datasetstructures import NumpyMeta, TrackHeader, TrackingSample
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
+from track.region import Region
 
 # from ml_tools.kerasmodel import KerasModel
 from enum import Enum
@@ -262,10 +263,25 @@ class Dataset:
         samples = {}
 
         # self.clip_samples[clip_id] = samples
-        for label, frames in clip_meta.get("tag_frames", {}).items():
+        tag_frames = clip_meta.get("tag_frames", {})
+        tag_regions = tag_frames.get("tag_regions")
+
+        for label, frames in tag_frames.items():
             if label == "tag_regions":
                 continue
+            regions_a = tag_regions.get(label)
+            regions = {}
+            if regions_a is None:
+                continue
+            for i in range(len(regions_a)):
+                region = Region.region_from_array(regions_a[i])
+                regions[region.frame_number] = region
+
             for frame in frames:
+                if frame not in regions:
+                    # print("no region for frame skipping")
+                    continue
+                # print("got regoin", regions[frame])
                 samples_key = f"{clip_id}-None-{frame}"
                 if samples_key in samples:
                     existing_sample = samples[samples_key]
@@ -277,7 +293,7 @@ class Dataset:
                         frame,
                         label,
                         clip_meta["frame_temp_median"][frame],
-                        None,
+                        regions[frame],
                         clip_meta["start_time"],
                         clip_meta.get("device", "unknown"),
                         clip_meta.get("filename", "unknown"),

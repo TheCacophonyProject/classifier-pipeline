@@ -42,6 +42,10 @@ from PIL import Image, ImageOps
 from pycocotools import mask
 import tensorflow as tf
 from . import tfrecord_util
+from ml_tools import tools
+from ml_tools.imageprocessing import normalize
+
+crop_rectangle = tools.Rectangle(0, 0, 640, 480)
 
 
 def create_tf_example(frame, image_dir, sample, labels, filename):
@@ -211,8 +215,21 @@ def create_tf_records(dataset, output_path, num_shards=1):
                     except Exception as e:
                         print(sample.clip_id, sample.frame_number, "error", e)
                         continue
+                    thresh = np.percentile(f.thermal, 15)
+                    region = sample.regions[0].copy()
+                    region.enlarge(20, max=crop_rectangle)
+                    f.crop_by_region(region, out=f)
+                    background = region.subimage(background)
+                    # f.thermal -= int(thresh)
+                    # f.thermal, _ = normalize(f.thermal, new_max=255)
+                    # print("normaled", normaled.dtype)
                     f.mask = f.filtered
                     f.filtered = f.thermal - background
+                    f.filtered[f.filtered < 0] = 0
+                    # f.filtered[f.filtered > 10] += 30
+                    # f.thermal -= int(thresh)
+                    # f.filtered, _ = normalize(f.filtered, new_max=255)
+                    assert f.thermal.shape == f.filtered.shape
                     loaded.append((f, sample))
                 except Exception as e:
                     logging.error("GOt exception", exc_info=True)

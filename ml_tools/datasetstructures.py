@@ -942,7 +942,7 @@ class TrackingSample(Sample):
         frame_num,
         labels,
         temp_median,
-        regions,
+        region,
         start_time,
         camera,
         filename,
@@ -961,10 +961,10 @@ class TrackingSample(Sample):
         else:
             self.labels = labels
         self.temp_median = temp_median
-        if regions is None:
+        if region is None:
             self.regions = []
         else:
-            self.regions = regions
+            self.regions = [region]
 
     # asusming only one label for now GP should change
     @property
