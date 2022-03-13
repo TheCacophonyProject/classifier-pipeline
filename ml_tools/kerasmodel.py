@@ -872,7 +872,6 @@ class KerasModel(Interpreter):
         #     keep_edge=self.params.keep_edge,
         # )
         test_accuracy = self.model.evaluate(dataset)
-        test.stop_load()
         logging.info("Test accuracy is %s", test_accuracy)
 
     def track_accuracy(self, dataset, confusion="confusion.png"):
