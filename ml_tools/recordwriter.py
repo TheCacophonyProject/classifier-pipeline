@@ -221,12 +221,9 @@ def create_tf_records(dataset, output_path, num_shards=1):
                     region.enlarge(20, max=crop_rectangle)
                     f.crop_by_region(region, out=f)
                     background = region.subimage(background)
-                    # f.thermal -= int(thresh)
-                    # f.thermal, _ = normalize(f.thermal, new_max=255)
-                    # print("normaled", normaled.dtype)
                     f.mask = f.filtered
-                    f.filtered = get_filtered_frame(background, f.thermal)
-
+                    f.filtered, _ = get_filtered_frame(background, f.thermal)
+                    # f.normalize()
                     assert f.thermal.shape == f.filtered.shape
                     loaded.append((f, sample))
                 except Exception as e:
