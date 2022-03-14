@@ -863,9 +863,9 @@ def get_clipped_flow(flow):
 def saveclassify_image(data, filename):
     # saves image channels side by side, expected data to be values in the range of 0->1
     Path(filename).parent.mkdir(parents=True, exist_ok=True)
-    r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
-    g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
-    b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
+    r = Image.fromarray(np.uint8(data[:, :, 0]))
+    g = Image.fromarray(np.uint8(data[:, :, 1]))
+    b = Image.fromarray(np.uint8(data[:, :, 2]))
     concat = np.concatenate((r, g, b), axis=1)  # horizontally
     img = Image.fromarray(np.uint8(concat))
     img.save(filename + ".png")
@@ -884,13 +884,3 @@ def saveclassify_rgb(data, filename):
     Path(filename).parent.mkdir(parents=True, exist_ok=True)
     r = Image.fromarray(np.uint8(data * 255))
     r.save(filename + ".png")
-
-
-def saveclassify_image(data, filename):
-    Path(filename).parent.mkdir(parents=True, exist_ok=True)
-    r = Image.fromarray(np.uint8(data[:, :, 0] * 255))
-    g = Image.fromarray(np.uint8(data[:, :, 1] * 255))
-    b = Image.fromarray(np.uint8(data[:, :, 2] * 255))
-    concat = np.concatenate((r, g, b), axis=1)  # horizontally
-    img = Image.fromarray(np.uint8(concat))
-    img.save(filename + ".png")

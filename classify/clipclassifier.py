@@ -9,7 +9,7 @@ import numpy as np
 import cv2
 from classify.trackprediction import Predictions
 from load.clip import Clip
-from load.cliptrackextractor import is_affected_by_ffc
+from load.cliptrackextractor import is_affected_by_ffc, get_filtered_frame
 from ml_tools import tools
 from ml_tools.kerasmodel import KerasModel
 
@@ -149,7 +149,6 @@ class ClipClassifier:
                     break
 
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                background.append(image)
                 frames += 1
                 if frames == 1:
                     saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
@@ -158,10 +157,12 @@ class ClipClassifier:
                     clip.set_res(image.shape[1], image.shape[0])
                     clip.set_model("ir")
                     clip.set_video_stats(datetime.now())
+                    background = image
+                else:
+                    background = np.minimum(background, image)
 
-            background = np.percentile(background, 25, axis=0)
+            background = cv2.GaussianBlur(background, (15, 15), 0)
             clip.update_background(background)
-
             count = 0
             vidcap.set(2, 0)
             while True:
@@ -174,12 +175,9 @@ class ClipClassifier:
                         (success, saliencyMap) = saliency.computeSaliency(image)
                 (success, saliencyMap) = saliency.computeSaliency(image)
                 saliencyMap = (saliencyMap * 255).astype("uint8")
-
-                filtered = image - clip.background
-                filtered, stats = normalize(filtered, new_max=255)
+                filtered, _ = get_filtered_frame(clip.background, image)
 
                 clip.add_frame(image, filtered)
-                # self.process_frame(clip, image)
 
                 count += 1
                 # if count == 20:
@@ -213,26 +211,22 @@ class ClipClassifier:
                     clip, model, meta_data, reuse_frames=reuse_frames
                 )
                 predictions_per_model[model.id] = prediction
-        tags = set()
-
-        for model, predictions in predictions_per_model.items():
-            for track, prediction in predictions.prediction_per_track.items():
-                pred = prediction.predicted_tag()
-                if pred is not None and pred != "false-positive":
-                    tags.add(pred)
-        print("tafgs are", tags)
-        tags = list(tags)
-        tags.sort()
-        if len(tags) == 0:
-            dirname = "false-positive"
-        else:
-            dirname = "-".join(tags)
+        # tags = set()
+        #
+        # for model, predictions in predictions_per_model.items():
+        #     for track, prediction in predictions.prediction_per_track.items():
+        #         pred = prediction.predicted_tag()
+        #         if pred is not None and pred != "false-positive":
+        #             tags.add(pred)
+        # tags = list(tags)
+        # tags.sort()
+        # if len(tags) == 0:
+        #     dirname = "false-positive"
+        # else:
+        #     dirname = "-".join(tags)
         destination_folder = os.path.dirname(filename)
-        dirname = destination_folder + "/../" + dirname
-        print("predictions are tags", tags, filename, dirname)
-        if not os.path.exists(dirname):
-            logging.info("Creating folder {}".format(dirname))
-            os.makedirs(dirname)
+        dirname = destination_folder
+
         if self.previewer:
             mpeg_filename = os.path.join(dirname, base_filename + "-classify.avi")
 

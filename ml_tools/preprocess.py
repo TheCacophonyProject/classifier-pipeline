@@ -223,6 +223,27 @@ def preprocess_frame(
 
 
 index = 0
+import cv2
+
+# /home/gp/cacophony/classifier-data/irvideos/tagged/hedgehogIR/2022-02-02_04.34.10_trap-ir-01.avi
+def preprocess_ir(
+    frame,
+    frame_size,
+    preprocess_fn=None,
+):
+    frame.normalize()
+    image = np.stack((frame.thermal, frame.thermal, frame.filtered), axis=2)
+    image = tf.cast(image, tf.float32)
+    image = tf.image.resize_with_pad(image, frame_size[0], frame_size[1])
+    # global index
+    # index += 1
+    # tools.saveclassify_image(
+    #     image,
+    #     f"samples/{index}-sample",
+    # )
+    if preprocess_fn:
+        image = preprocess_fn(image)
+    return image
 
 
 def preprocess_movement(

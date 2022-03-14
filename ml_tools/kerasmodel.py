@@ -16,10 +16,7 @@ from sklearn.metrics import confusion_matrix
 import cv2
 from ml_tools import tools
 from ml_tools.datagenerator import DataGenerator
-from ml_tools.preprocess import (
-    preprocess_movement,
-    preprocess_frame,
-)
+from ml_tools.preprocess import preprocess_movement, preprocess_frame, preprocess_ir
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 
@@ -683,6 +680,7 @@ class KerasModel(Interpreter):
 
     def classify_ir(self, clip, track, keep_all=True, segment_frames=None):
         data = []
+        crop = False
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
@@ -698,27 +696,24 @@ class KerasModel(Interpreter):
                         clip.get_id(), track.get_id(), region.frame_number
                     )
                 )
-            cropped_frame = cv2.resize(
-                np.float32(frame.thermal),
+            f = frame.copy()
+
+            if crop:
+                region.enlarge(20, max=track.crop_rectangle)
+                f.crop_by_region(region, out=f)
+
+            preprocessed = preprocess_ir(
+                f,
                 (
                     self.params.frame_size,
                     self.params.frame_size,
                 ),
-                interpolation=cv2.INTER_LINEAR,
-            )
-            cropped_frame = cropped_frame[..., np.newaxis]
-            cropped_frame = np.repeat(cropped_frame, 3, axis=2)
-            cropped_frame = tf.keras.applications.inception_v3.preprocess_input(
-                cropped_frame
+                self.preprocess_fn,
             )
 
-            data.append(cropped_frame)
-            thermal_median[i] = np.median(frame.thermal)
+            data.append(preprocessed)
         data = np.float32(data)
         output = self.model.predict(data)
-        print("predictions are")
-        for p in output:
-            print("predictions", np.round(output * 100))
         track_prediction = TrackPrediction(track.get_id(), self.labels)
 
         track_prediction.classified_clip(output, output, None)

@@ -149,12 +149,14 @@ def normalize(data, min=None, max=None, new_max=1):
         max = np.amax(data)
     if min is None:
         min = np.amin(data)
+    # print("normalizing with", max, min, new_max)
     if max == min:
         if max == 0:
             return np.zeros((data.shape)), (False, max, min)
         data = data / max
         return data, (True, max, min)
-    data = new_max * (data - min) / (max - min)
+
+    data = new_max * (np.float32(data) - min) / (max - min)
     return data, (True, max, min)
 
 

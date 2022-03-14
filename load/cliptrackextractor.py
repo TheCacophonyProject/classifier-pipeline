@@ -213,25 +213,6 @@ class ClipTrackExtractor:
             for track in clip.active_tracks:
                 track.smooth(Rectangle(0, 0, clip.res_x, clip.res_y))
 
-    def _get_filtered_frame(self, clip, thermal):
-        """
-        Calculates filtered frame from thermal
-        :param thermal: the thermal frame
-        :param background: (optional) used for background subtraction
-        :return: uint8 filtered frame and adjusted clip threshold for normalized frame
-        """
-
-        filtered = np.float32(thermal.copy())
-
-        avg_change = 0
-        filtered = filtered - clip.background
-        filtered[filtered < 0] = 0
-        filtered, stats = normalize(filtered, new_max=255)
-
-        mapped_thresh = clip.background_thresh
-        filtered[filtered > 10] += 30
-        return filtered, mapped_thresh
-
     def _get_filtered_frame_ir(self, clip, thermal, repeats=1):
         for _ in range(repeats):
             (success, saliencyMap) = self.saliency.computeSaliency(thermal)
@@ -306,7 +287,9 @@ class ClipTrackExtractor:
         if clip.current_frame < 6:
             repeats = 8
         saliencyMap, _ = self._get_filtered_frame_ir(clip, thermal, repeats=repeats)
-        backsub, _ = self._get_filtered_frame(clip, thermal)
+        backsub, _ = get_filtered_frame(clip.background, thermal)
+        # cv2.imshow("filtered", backsub)
+        # cv2.waitKey(100)
         threshold = 0
         if np.amin(saliencyMap) == 255:
             num = 0
@@ -337,7 +320,7 @@ class ClipTrackExtractor:
         #     delta = backsub - prev_filtered
         #     delta, _ = normalize(delta, new_max=255)
         #     cv2.imshow("delta", np.uint8(delta))
-        clip.add_frame(thermal, np.uint8(saliencyMap), mask, ffc_affected)
+        clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
         f = clip.frame_buffer.get_last_frame()
         if clip.from_metadata:
             for track in clip.tracks:
@@ -807,3 +790,22 @@ def get_region_score(last_bound: Region, region: Region):
     size_difference = abs(region.area - last_bound.area) / (last_bound.area + 50)
 
     return distances, size_difference
+
+
+def get_filtered_frame(background, thermal):
+    """
+    Calculates filtered frame from thermal
+    :param thermal: the thermal frame
+    :param background: (optional) used for background subtraction
+    :return: uint8 filtered frame and adjusted clip threshold for normalized frame
+    """
+
+    filtered = np.float32(thermal.copy())
+
+    avg_change = 0
+    filtered = filtered - background
+    filtered[filtered < 0] = 0
+    filtered, stats = normalize(filtered, new_max=255)
+
+    # filtered[filtered > 10] += 30
+    return filtered, 0

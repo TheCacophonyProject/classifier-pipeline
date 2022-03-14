@@ -103,14 +103,8 @@ class TrackExtractor:
 
         if self.previewer:
             base_name = os.path.basename(out_file)
-            mpeg_filename = (
-                destination_folder + "/../tracking/" + base_name + "-tracking.avi"
-            )
-            if not os.path.exists(destination_folder + "/../tracking"):
-                logging.info(
-                    "Creating folder {}".format(destination_folder + "/../tracking")
-                )
-                os.makedirs(destination_folder + "/../tracking")
+            mpeg_filename = destination_folder + base_name + "-tracking.avi.preview"
+
             self.previewer.export_clip_preview(mpeg_filename, clip)
             # return
             # logging.info("Exporting preview to '{}'".format(mpeg_filename))

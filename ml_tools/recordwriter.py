@@ -44,6 +44,7 @@ import tensorflow as tf
 from . import tfrecord_util
 from ml_tools import tools
 from ml_tools.imageprocessing import normalize
+from load.cliptrackextractor import get_filtered_frame
 
 crop_rectangle = tools.Rectangle(0, 0, 640, 480)
 
@@ -224,11 +225,8 @@ def create_tf_records(dataset, output_path, num_shards=1):
                     # f.thermal, _ = normalize(f.thermal, new_max=255)
                     # print("normaled", normaled.dtype)
                     f.mask = f.filtered
-                    f.filtered = f.thermal - background
-                    f.filtered[f.filtered < 0] = 0
-                    # f.filtered[f.filtered > 10] += 30
-                    # f.thermal -= int(thresh)
-                    # f.filtered, _ = normalize(f.filtered, new_max=255)
+                    f.filtered = get_filtered_frame(background, f.thermal)
+
                     assert f.thermal.shape == f.filtered.shape
                     loaded.append((f, sample))
                 except Exception as e:
