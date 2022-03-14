@@ -385,6 +385,7 @@ class KerasModel(Interpreter):
             self.params.batch_size,
             (self.params.frame_size, self.params.frame_size),
             len(self.labels),
+            reshuffle=False,
         )
         self.save_metadata(run_name)
 
