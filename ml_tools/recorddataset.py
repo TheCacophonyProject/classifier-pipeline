@@ -9,9 +9,11 @@ AUTOTUNE = tf.data.AUTOTUNE
 # BATCH_SIZE = 64
 
 
-def load_dataset(filenames, image_size, num_labels, labeled=True):
+def load_dataset(filenames, image_size, num_labels, deterministic=False, labeled=True):
     ignore_order = tf.data.Options()
-    ignore_order.experimental_deterministic = False  # disable order, increase speed
+    ignore_order.experimental_deterministic = (
+        deterministic  # disable order, increase speed
+    )
     dataset = tf.data.TFRecordDataset(
         filenames
     )  # automatically interleaves reads from multiple files
@@ -23,6 +25,7 @@ def load_dataset(filenames, image_size, num_labels, labeled=True):
             read_tfrecord, image_size=image_size, num_labels=num_labels, labeled=labeled
         ),
         num_parallel_calls=AUTOTUNE,
+        deterministic=deterministic,
     )
     # dataset = dataset.map(preprocess, num_parallel_calls=AUTOTUNE)
     # dataset = dataset.map(tf.keras.applications.inception_v3.preprocess_input)
@@ -38,9 +41,19 @@ def preprocess(data):
     return tf.keras.applications.inception_v3.preprocess_input(x), y
 
 
-def get_dataset(filenames, batch_size, image_size, num_labels, labeled=True):
-    dataset = load_dataset(filenames, image_size, num_labels, labeled=labeled)
-    dataset = dataset.shuffle(2048)
+def get_dataset(
+    filenames,
+    batch_size,
+    image_size,
+    num_labels,
+    reshuffle=True,
+    deterministic=False,
+    labeled=True,
+):
+    dataset = load_dataset(
+        filenames, image_size, num_labels, deterministic=deterministic, labeled=labeled
+    )
+    dataset = dataset.shuffle(2048, reshuffle_each_iteration=reshuffle)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     dataset = dataset.batch(batch_size)
     return dataset

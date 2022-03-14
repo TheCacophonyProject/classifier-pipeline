@@ -180,9 +180,9 @@ def split_label(dataset, label, existing_test_count=0, max_samples=0):
     if label in ["vehicle", "human"]:
         min_t = 10
     num_validate_samples = max(total * 0.15, min_t)
-    # num_test_tracks = max(total * 0.05, min_t) - existing_test_count
+    num_test_samples = max(total * 0.05, min_t) - existing_test_count
     # should have test covered by test set
-    num_test_samples = 0
+    # num_test_samples = 0
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:

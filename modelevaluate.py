@@ -157,6 +157,8 @@ dataset = get_dataset(
     model.params.batch_size,
     (model.params.frame_size, model.params.frame_size),
     len(model.labels),
+    reshuffle=False,
+    deterministic=True,
 )
 
 if args.tracks:
