@@ -680,7 +680,7 @@ class KerasModel(Interpreter):
 
     def classify_ir(self, clip, track, keep_all=True, segment_frames=None):
         data = []
-        crop = False
+        crop = True
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         for i, region in enumerate(track.bounds_history):
             frame = clip.frame_buffer.get_frame(region.frame_number)
@@ -709,6 +709,7 @@ class KerasModel(Interpreter):
                     self.params.frame_size,
                 ),
                 self.preprocess_fn,
+                save_info=f"{region.frame_number} - {region}",
             )
 
             data.append(preprocessed)

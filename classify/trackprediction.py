@@ -285,13 +285,14 @@ class TrackPrediction:
         average = np.mean(self.smoothed_predictions[:prediction_index], axis=0)
         return int(np.argsort(average)[-n])
 
-    def score_at_time(self, frame_number, n=-1):
+    def score_at_time(self, frame_number, n=1):
         """class prediction of nth best at a point in time."""
         if n is None:
             return None
 
         frames_per_prediction = len(self.smoothed_predictions) / self.num_frames
         prediction_index = int(frame_number / frames_per_prediction) + 1
+        # rolling mean up to this frame
         average = np.mean(self.smoothed_predictions[:prediction_index], axis=0)
         average = average / np.sum(average)
         return float(sorted(average)[-n])

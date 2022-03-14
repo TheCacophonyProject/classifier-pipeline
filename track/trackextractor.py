@@ -103,7 +103,7 @@ class TrackExtractor:
 
         if self.previewer:
             base_name = os.path.basename(out_file)
-            mpeg_filename = destination_folder + base_name + "-tracking.avi.preview"
+            mpeg_filename = destination_folder + base_name + "-tracking.avi"
 
             self.previewer.export_clip_preview(mpeg_filename, clip)
             # return
