@@ -31,6 +31,7 @@ from .cliptrackextractor import ClipTrackExtractor
 from ml_tools.imageprocessing import clear_frame
 from track.track import Track
 import numpy as np
+import json
 
 
 def process_job(loader, queue):
@@ -39,7 +40,7 @@ def process_job(loader, queue):
         i += 1
         filename, clip_id = queue.get()
         try:
-            if clip_id == "DONE":
+            if filename == "DONE":
                 break
             else:
                 loader.process_file(str(filename), clip_id)
@@ -230,6 +231,8 @@ class ClipLoader:
         if "id" not in metadata and clip_id is not None:
             metadata["id"] = clip_id
             logging.info("Using clip id %s", clip_id)
+            with open(metadata_filename, "w") as f:
+                json.dump(metadata, f, indent=4, cls=tools.CustomJSONEncoder)
         if not self.reprocess and self.database.has_clip(str(metadata["id"])):
             logging.warning("Already loaded %s", filename)
             return

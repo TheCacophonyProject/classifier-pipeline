@@ -100,28 +100,33 @@ class TrackDatabase:
             return clip.attrs.get("has_prediction", False)
         return False
 
-    def add_prediction_data(
-        self, clip_id, track, predictions, predicted_tag, score, labels=None
-    ):
-        """
-        Add prediction data as a dataset to the track
-        data should be  an array of int16 array
-        """
-        track_attrs = track.attrs
-        if predicted_tag is not None:
-            track_attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
-            track_attrs["predicted"] = predicted_tag
-        track_attrs["predicted_confidence"] = int(round(100 * score))
-
-        pred_data = track.create_dataset(
-            "predictions",
-            predictions.shape,
-            chunks=predictions.shape,
-            dtype=predictions.dtype,
-        )
-        pred_data[:, :] = predictions
-        if labels is not None:
-            track_attrs["prediction_classes"] = labels
+    #
+    # def add_prediction_data(self, clip_id, track, predictions, labels=None):
+    #     """
+    #     Add prediction data as a dataset to the track
+    #     data should be  an array of int16 array
+    #     """
+    #     logging.info("Add pre data %s", predictions)
+    #     track_attrs = track.attrs
+    #     prediction = predictions[0]
+    #     predicted_tag = prediction.get("label")
+    #     score = prediction.get("confidence")
+    #     print("tag is", predicted_tag), prediction
+    #     if predicted_tag is not None:
+    #         track_attrs["correct_prediction"] = track_attrs.get("tag") == predicted_tag
+    #         track_attrs["predicted"] = predicted_tag
+    #         print("predicted", predicted_tag)
+    #     track_attrs["predicted_confidence"] = int(round(100 * score))
+    #
+    #     pred_data = track.create_dataset(
+    #         "predictions",
+    #         predictions.shape,
+    #         chunks=predictions.shape,
+    #         dtype=predictions.dtype,
+    #     )
+    #     pred_data[:, :] = predictions
+    #     if labels is not None:
+    #         track_attrs["prediction_classes"] = labels
 
     def finished_processing(self, clip_id):
         with HDF5Manager(self.database, "a") as f:
@@ -360,6 +365,12 @@ class TrackDatabase:
         with HDF5Manager(self.database) as f:
             dataset = f["clips"][str(clip_id)][str(track_number)]
             result = hdf5_attributes_dictionary(dataset)
+            preds = dataset.get("model_predictions")
+            if preds is not None:
+                result["model_predictions"] = {}
+                for model in preds:
+                    model_preds = hdf5_attributes_dictionary(preds[model])
+                    result["model_predictions"][model] = model_preds
             result["id"] = track_number
         return result
 
@@ -631,7 +642,7 @@ class TrackDatabase:
 
         model_group = track.create_group("model_predictions")
         for prediction in model_predictions:
-            key = f'{prediction.get("model_id", "unnamed")}-{prediction.get("model_id", 0)}'
+            key = f'{prediction.get("model_id", 0)}'
             if key in model_group:
                 continue
             pred_g = model_group.create_group(key)
@@ -639,7 +650,9 @@ class TrackDatabase:
             if predicted_tag is not None:
                 pred_g.attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
                 pred_g.attrs["predicted"] = predicted_tag
-            track_attrs["predicted_confidence"] = prediction.get("confidence", 0)
+                pred_g.attrs["confidence"] = prediction.get("confidence", 0)
+            # track_attrs["predicted_confidence"] = prediction.get("confidence", 0)
+
             prediction_data = np.int16(prediction.get("predictions"))
             raw_predictions = pred_g.create_dataset(
                 "predictions",
@@ -729,12 +742,12 @@ class TrackDatabase:
             node_attrs["skipped_frames"] = np.uint16(skipped_frames)
             node_attrs["start_frame"] = track.start_frame
             node_attrs["end_frame"] = track.end_frame
-            # if track.predictions is not None:
-            #     self.add_prediction_data(
-            #         track_node,
-            #         track.predictions,
-            #     )
-            #     has_prediction = True
+            if track.predictions is not None:
+                self.add_prediction_data(
+                    track_node,
+                    track.predictions,
+                )
+                has_prediction = True
             if track.confidence:
                 node_attrs["confidence"] = track.confidence
             if start_time:

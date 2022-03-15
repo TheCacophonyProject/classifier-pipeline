@@ -71,12 +71,11 @@ def load_clips(config, args):
     if target is None:
         target = config.source_folder
     if os.path.splitext(target)[1] in [".avi", ".cptv"]:
-        loader.process_file(target)
+        clip_id = loader.database.get_unique_clip_id()
+
+        loader.process_file(target, clip_id)
     else:
-        if os.path.splitext(target)[1] in [".avi", ".cptv"]:
-            loader.process_file(target)
-        else:
-            loader.process_all(target)
+        loader.process_all(target)
 
 
 def print_opencl_info():
