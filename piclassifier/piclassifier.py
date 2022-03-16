@@ -308,7 +308,8 @@ class PiClassifier(Processor):
 
         self.clip.update_background(self.motion_detector.background.copy())
         self.clip._background_calculated()
-        for frame in preview_frames:
+        # no need to retrack all of preview
+        for frame in preview_frames[-9:]:
             self.track_extractor.process_frame(self.clip, frame.pix.copy())
 
     def startup_classifier(self):
