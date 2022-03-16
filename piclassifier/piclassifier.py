@@ -182,7 +182,6 @@ class PiClassifier(Processor):
         super().__init__()
         self.frame_num = 0
         self.clip = None
-        self.tracking = False
         self.enable_per_track_information = False
         self.rolling_track_classify = {}
         self.skip_classifying = 0
@@ -508,6 +507,7 @@ class PiClassifier(Processor):
                     self.tracking.bounds_history[-1].to_ltrb(),
                     tracking,
                 )
+
                 if not tracking:
                     if self.classify:
                         track_prediction.tracking = False
@@ -617,7 +617,7 @@ class PiClassifier(Processor):
                         )
                 self.predictions.clear_predictions()
             self.clip = None
-            self.tracking = False
+            self.tracking = None
         global clip
         clip = None
 
