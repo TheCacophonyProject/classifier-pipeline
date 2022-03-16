@@ -15,6 +15,7 @@ from ml_tools.previewer import Previewer, add_last_frame_tracking
 from ml_tools import tools
 from .cptvrecorder import CPTVRecorder
 from .throttledrecorder import ThrottledRecorder
+from .dummyrecorder import DummyRecorder
 
 from .motiondetector import MotionDetector
 from .processor import Processor
@@ -213,12 +214,17 @@ class PiClassifier(Processor):
         self.motion = thermal_config.motion
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
-        if thermal_config.throttler.activate:
-            self.recorder = ThrottledRecorder(
+        if thermal_config.recorder.disable_recordings:
+            self.recorder = DummyRecorder(
                 thermal_config, headers, on_recording_stopping
             )
         else:
             self.recorder = CPTVRecorder(thermal_config, headers, on_recording_stopping)
+        if thermal_config.throttler.activate:
+            self.recorder = ThrottledRecorder(
+                self.recorder, thermal_config, headers, on_recording_stopping
+            )
+
         self.motion_detector = MotionDetector(
             thermal_config,
             self.config.tracking.motion.dynamic_thresh,

@@ -131,10 +131,12 @@ class RecorderConfig:
     max_secs = attr.ib()
     rec_window = attr.ib()
     output_dir = attr.ib()
+    disable_recordings = attr.ib()
 
     @classmethod
     def load(cls, recorder, window):
         return cls(
+            disable_recordings=recorder.get("disable_recordings", False),
             min_secs=recorder.get("min-secs", 10),
             max_secs=recorder.get("max-secs", 600),
             preview_secs=recorder.get("preview-secs", 5),
