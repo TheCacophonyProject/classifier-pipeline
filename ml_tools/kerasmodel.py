@@ -48,6 +48,13 @@ class KerasModel(Interpreter):
         self.mapped_labels = None
         self.label_probabilities = None
 
+    def load_training_meta(self, base_dir):
+        file = f"{base_dir}/training-meta.json"
+        with open(file, "r") as f:
+            meta = json.load(f)
+        self.labels = meta.get("labels", [])
+        print("loaded labels", self.labels)
+
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.params.model_name
         if pretrained_model == "resnet":

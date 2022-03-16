@@ -220,7 +220,7 @@ class TrackDatabase:
 
         return start_time
 
-    def get_all_clip_ids(self, label=None):
+    def get_all_clip_ids(self, before_date=None, after_date=None, label=None):
         """
         Returns a list of clip_id, track_number pairs.
         """
@@ -228,10 +228,16 @@ class TrackDatabase:
             clips = f["clips"]
             results = {}
             for clip_id in clips:
-                if label is not None:
-                    if clips[clip_id].attrs.get("tag") != label:
+                clip = clips[clip_id]
+                date = parse_date(clip.attrs["start_time"])
+                if before_date and date >= before_date:
+                    continue
+                    if after_date and date < after_date:
                         continue
-                results[clip_id] = [track_id for track_id in clips[clip_id]]
+                if label is not None:
+                    if clip.attrs.get("tag") != label:
+                        continue
+                results[clip_id] = [track_id for track_id in clip]
         return results
 
     def get_clip_tracks_ids(self, clip_id):

@@ -3,7 +3,11 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from functools import partial
 import numpy as np
+import time
 
+seed = 1341
+tf.random.set_seed(seed)
+np.random.seed(seed)
 AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
@@ -49,11 +53,34 @@ def get_dataset(
     reshuffle=True,
     deterministic=False,
     labeled=True,
+    resample=True,
 ):
     dataset = load_dataset(
         filenames, image_size, num_labels, deterministic=deterministic, labeled=labeled
     )
-    dataset = dataset.shuffle(2048, reshuffle_each_iteration=reshuffle)
+
+    true_categories = [y for x, y in dataset]
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    c = Counter(list(true_categories))
+    total = np.sum(true_categories)
+    dist = np.empty((num_labels), dtype=np.float32)
+    target_dist = np.empty((num_labels), dtype=np.float32)
+    for i in range(num_labels):
+        dist[i] = c[i]
+        target_dist[i] = 1 / num_labels
+    dist = dist / np.sum(dist)
+    for i in range(num_labels):
+        dist[i] = max(dist[i], 0.2)
+    print("target dist", target_dist, "init", dist)
+    rej = dataset.rejection_resample(
+        class_func=class_func,
+        target_dist=0.25,
+        initial_dist=dist,
+    )
+
+    # dataset = dataset.shuffle(2048, reshuffle_each_iteration=False)
+    dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
+
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     dataset = dataset.batch(batch_size)
     return dataset
@@ -95,9 +122,16 @@ def decode_image(image, filtered, image_size):
     image = tf.concat((image, image, filtered), axis=2)
     image = tf.cast(image, tf.float32)
     image = tf.image.resize_with_pad(image, image_size[0], image_size[1])
-    image = tf.keras.applications.inception_v3.preprocess_input(image)
+    # image = tf.keras.applications.inception_v3.preprocess_input(image)
     return image
 
+
+def class_func(features, label):
+    label = tf.argmax(label)
+    return label
+
+
+from collections import Counter
 
 # test crap
 def main():
@@ -105,22 +139,32 @@ def main():
         "/home/gp/cacophony/classifier-data/irvideos/tracks/training-data/validation/*.tfrecord"
     )
     print("got filename", train_files)
-    train_dataset = get_dataset(train_files, 32, (256, 256), 3)
+    dataset = get_dataset(train_files, 32, (256, 256), 4)
 
-    image_batch, label_batch = next(iter(train_dataset))
-    show_batch(image_batch, label_batch)
+    for e in range(4):
+        print("epoch", e)
+        true_categories = tf.concat([y for x, y in dataset], axis=0)
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        c = Counter(list(true_categories))
+        print("epoch is size", len(true_categories))
+        for i in range(4):
+            print("after have", i, c[i])
+    # return
+    # image_batch, label_batch = next(iter(dataset))
+    # for e in range(4):
+    #     print("epoch", e)
+    #     for x, y in dataset:
+    #         show_batch(image_batch, label_batch)
 
 
 def show_batch(image_batch, label_batch):
     plt.figure(figsize=(10, 10))
-    labels = ["nothing", "possum"]
-    print(label_batch)
+    labels = ["cat", "false-positive", "hedgehog", "possum"]
+    # print(label_batch)
     for n in range(25):
-        print("image data")
         ax = plt.subplot(5, 5, n + 1)
         plt.imshow(image_batch[n] / 255.0)
-        print(image_batch[n].shape)
-        # plt.title(labels[label_batch[n]])
+        plt.title(labels[np.argmax(label_batch[n])])
         plt.axis("off")
     plt.show()
 

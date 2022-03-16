@@ -10,7 +10,7 @@ import datetime
 import logging
 import pickle
 import pytz
-
+import json
 from dateutil.parser import parse as parse_date
 from ml_tools.logs import init_logging
 from config.config import Config
@@ -21,6 +21,7 @@ import numpy as np
 
 MIN_TRACKS = 1
 use_clips = True
+TEST_TRACKS = 0
 
 
 def load_config(config_file):
@@ -148,10 +149,13 @@ def print_counts(dataset, train, validation, test):
     print()
 
 
-def split_label(dataset, label, existing_test_count=0, max_samples=0):
+def split_label(dataset, label, existing_test_count=0, max_samples=None):
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
     samples = dataset.samples_by_label.get(label, [])
-    samples = np.random.choice(samples, min(len(samples), max_samples), replace=False)
+    if max_samples is not None:
+        samples = np.random.choice(
+            samples, min(len(samples), max_samples), replace=False
+        )
     samples_by_bin = {}
     for sample in samples:
         if sample.bin_id not in samples_by_bin:
@@ -180,9 +184,8 @@ def split_label(dataset, label, existing_test_count=0, max_samples=0):
     if label in ["vehicle", "human"]:
         min_t = 10
     num_validate_samples = max(total * 0.15, min_t)
-    num_test_samples = max(total * 0.05, min_t) - existing_test_count
+    num_test_samples = min(TEST_TRACKS, max(total * 0.05, min_t)) - existing_test_count
     # should have test covered by test set
-    # num_test_samples = 0
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:
@@ -259,7 +262,8 @@ def split_randomly(db_file, dataset, config, args, test_clips=[], balance_bins=T
             dataset,
             label,
             existing_test_count=existing_test_count,
-            max_samples=min_label[1],
+            max_samples=None,
+            # min_label[1],
         )
         if train_c is not None:
             train_cameras.append(train_c)
@@ -309,7 +313,7 @@ def main():
         db_file, "dataset", config, consecutive_segments=args.consecutive_segments
     )
 
-    tracks_loaded, total_tracks = dataset.load_clips()
+    tracks_loaded, total_tracks = dataset.load_clips(allow_multiple_labels=True)
     # return
     dataset.labels.sort()
     print(
@@ -344,12 +348,16 @@ def main():
         create_tf_records(dataset, dir, num_shards=10)
 
         # dataset.saveto_numpy(os.path.join(base_dir))
-
-    for dataset in datasets:
-        # dataset.clear_samples()
-        dataset.db = None
-        logging.info("saving to %s", f"{os.path.join(base_dir, dataset.name)}.dat")
-        pickle.dump(dataset, open(f"{os.path.join(base_dir, dataset.name)}.dat", "wb"))
+    # dont need dataset anymore just need some meta
+    meta_filename = f"{base_dir}/training-meta.json"
+    meta_data = {"labels": datasets[0].labels}
+    with open(meta_filename, "w") as f:
+        json.dump(meta_data, f, indent=4)
+    # for dataset in datasets:
+    #     # dataset.clear_samples()
+    #     dataset.db = None
+    #     logging.info("saving to %s", f"{os.path.join(base_dir, dataset.name)}.dat")
+    #     pickle.dump(dataset, open(f"{os.path.join(base_dir, dataset.name)}.dat", "wb"))
 
 
 def validate_datasets(datasets, test_clips, date):

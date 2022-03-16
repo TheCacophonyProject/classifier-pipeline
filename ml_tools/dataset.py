@@ -237,24 +237,31 @@ class Dataset:
             )
         return samples, tracks, bins, weight
 
-    def load_clips(self, shuffle=False, before_date=None, after_date=None, label=None):
+    def load_clips(
+        self,
+        shuffle=False,
+        before_date=None,
+        after_date=None,
+        label=None,
+        allow_multiple_labels=False,
+    ):
         """
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
         counter = 0
-        clip_ids = self.db.get_all_clip_ids()
+        clip_ids = self.db.get_all_clip_ids(before_date, after_date, label)
         if shuffle:
             np.random.shuffle(clip_ids)
         for clip_id in clip_ids:
-            if self.load_clip(clip_id):
+            if self.load_clip(clip_id, allow_multiple_labels):
                 counter += 1
             if counter % 50 == 0:
                 logging.debug("Dataset loaded %s / %s", counter, len(clip_ids))
 
         return [counter, len(clip_ids)]
 
-    def load_clip(self, clip_id):
+    def load_clip(self, clip_id, allow_multiple_labels=False):
         clip_meta = self.db.get_clip_meta(clip_id)
         if "tag" not in clip_meta:
             self.filtered_stats["not-confirmed"] += 1
@@ -265,9 +272,25 @@ class Dataset:
         # self.clip_samples[clip_id] = samples
         tag_frames = clip_meta.get("tag_frames", {})
         tag_regions = tag_frames.get("tag_regions")
+        tags_per_frames = {}
 
         for label, frames in tag_frames.items():
             if label == "tag_regions":
+                continue
+            if label == "nothing":
+                continue
+            for f in frames:
+                # gp needs to be fixed in db
+                if label in ["false-positve", "false-positives"]:
+                    label = "false-positive"
+                if f in tags_per_frames:
+                    tags_per_frames[f].add(label)
+                else:
+                    tags_per_frames[f] = set([label])
+        for label, frames in tag_frames.items():
+            if label in ["false-positve", "false-positives"]:
+                label = "false-positive"
+            if label in ["nothing", "tag_regions"]:
                 continue
             regions_a = tag_regions.get(label)
             regions = {}
@@ -278,6 +301,16 @@ class Dataset:
                 regions[region.frame_number] = region
 
             for frame in frames:
+                if not allow_multiple_labels:
+                    if tags_per_frames and len(tags_per_frames.get(frame)) > 1:
+                        logging.info(
+                            "Skipping clip %s frame %s  as has multiple tags %s",
+                            clip_id,
+                            frame,
+                            tags_per_frames.get(frame),
+                        )
+                        continue
+
                 if frame not in regions:
                     # print("no region for frame skipping")
                     continue
