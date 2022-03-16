@@ -580,7 +580,7 @@ class PiClassifier(Processor):
             and self.frame_num % PiClassifier.DEBUG_EVERY == 0
         ):
             logging.info(
-                "tracking {}% process {}%  identify {}% rec{}%s fps {}/sec  cpu % {} memory % {}".format(
+                "tracking {}% process {}%  identify {}% rec{}%s fps {}/sec  cpu % {} memory % {} behind by {} seconds".format(
                     round(100 * self.tracking_time / self.total_time, 3),
                     round(100 * self.process_time / self.total_time, 3),
                     round(100 * self.identify_time / self.total_time, 3),
@@ -588,6 +588,7 @@ class PiClassifier(Processor):
                     round(self.total_time / PiClassifier.DEBUG_EVERY, 2),
                     psutil.cpu_percent(),
                     psutil.virtual_memory()[2],
+                    time.time() - lepton_frame.received_at,
                 )
             )
             self.tracking_time = 0
