@@ -345,7 +345,7 @@ def main():
     record_dir = os.path.join(base_dir, "training-data/")
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
-        create_tf_records(dataset, dir, num_shards=10)
+        create_tf_records(dataset, dir, num_shards=5)
 
         # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta

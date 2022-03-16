@@ -93,7 +93,6 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
 
     image = Image.fromarray(frame.filtered)
     image = ImageOps.grayscale(image)
-    image_id = sample.id
 
     encoded_jpg_io = io.BytesIO()
     image.save(encoded_jpg_io, format="JPEG")
@@ -110,7 +109,6 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
     # mask_key = hashlib.sha256(encoded_mask).hexdigest()
 
     feature_dict = {
-        "image/id": tfrecord_util.bytes_feature(str(sample._s_id).encode("utf8")),
         "image/height": tfrecord_util.int64_feature(image_height),
         "image/width": tfrecord_util.int64_feature(image_width),
         "image/filename": tfrecord_util.bytes_feature(filename.encode("utf8")),
@@ -181,7 +179,13 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
 
 
 def create_tf_records(dataset, output_path, num_shards=1, cropped=True):
+
     output_path = Path(output_path)
+    if output_path.is_dir():
+        logging.info("Clearing dir", output_path)
+        for child in pth.glob("*"):
+            if child.is_file():
+                child.unlink()
     output_path.mkdir(parents=True, exist_ok=True)
     samples = dataset.samples
     # keys = list(samples.keys())

@@ -69,16 +69,14 @@ def get_dataset(
         dist[i] = c[i]
         target_dist[i] = 1 / num_labels
     dist = dist / np.sum(dist)
-    for i in range(num_labels):
-        dist[i] = max(dist[i], 0.2)
     print("target dist", target_dist, "init", dist)
     rej = dataset.rejection_resample(
         class_func=class_func,
-        target_dist=0.25,
+        target_dist=1 / num_labels,
         initial_dist=dist,
     )
 
-    # dataset = dataset.shuffle(2048, reshuffle_each_iteration=False)
+    dataset = dataset.shuffle(2048, reshuffle_each_iteration=False)
     dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
 
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
