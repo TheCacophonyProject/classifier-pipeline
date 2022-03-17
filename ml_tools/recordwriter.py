@@ -182,8 +182,8 @@ def create_tf_records(dataset, output_path, num_shards=1, cropped=True):
 
     output_path = Path(output_path)
     if output_path.is_dir():
-        logging.info("Clearing dir", output_path)
-        for child in pth.glob("*"):
+        logging.info("Clearing dir %s", output_path)
+        for child in output_path.glob("*"):
             if child.is_file():
                 child.unlink()
     output_path.mkdir(parents=True, exist_ok=True)

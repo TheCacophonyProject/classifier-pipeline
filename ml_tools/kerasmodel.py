@@ -417,8 +417,10 @@ class KerasModel(Interpreter):
                 self.params.batch_size,
                 (self.params.frame_size, self.params.frame_size),
                 len(self.labels),
+                reshuffle=False,
             )
-            test_accuracy = self.model.evaluate(self.validate)
+            if self.test:
+                test_accuracy = self.model.evaluate(self.validate)
 
         self.save(run_name, history=history, test_results=test_accuracy)
 

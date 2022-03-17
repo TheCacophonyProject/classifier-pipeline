@@ -60,6 +60,8 @@ def get_dataset(
     )
 
     true_categories = [y for x, y in dataset]
+    if len(true_categories) == 0:
+        return None
     true_categories = np.int64(tf.argmax(true_categories, axis=1))
     c = Counter(list(true_categories))
     total = np.sum(true_categories)
