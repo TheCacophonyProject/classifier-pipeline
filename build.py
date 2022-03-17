@@ -16,7 +16,10 @@ from ml_tools.logs import init_logging
 from config.config import Config
 from ml_tools.dataset import Dataset
 from ml_tools.datasetstructures import Camera
-from ml_tools.recordwriter import create_tf_records
+
+# from ml_tools.recordwriter import create_tf_records
+from ml_tools.thermalrecord import create_tf_records
+
 import numpy as np
 
 MIN_TRACKS = 1

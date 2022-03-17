@@ -55,12 +55,7 @@ def get_dataset(
     resample=True,
 ):
     dataset = load_dataset(
-        filenames,
-        image_size,
-        num_labels,
-        deterministic=deterministic,
-        labeled=labeled,
-        resample=True,
+        filenames, image_size, num_labels, deterministic=deterministic, labeled=labeled
     )
     if resample:
         true_categories = [y for x, y in dataset]
@@ -75,16 +70,15 @@ def get_dataset(
             dist[i] = c[i]
             target_dist[i] = 1 / num_labels
         dist = dist / np.sum(dist)
-        print("target dist", target_dist, "init", dist)
         rej = dataset.rejection_resample(
             class_func=class_func,
             target_dist=1 / num_labels,
             initial_dist=dist,
         )
 
-    dataset = dataset.shuffle(2048, reshuffle_each_iteration=reshuffle)
     if resample:
         dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
+    dataset = dataset.shuffle(2048, reshuffle_each_iteration=reshuffle)
 
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     dataset = dataset.batch(batch_size)
@@ -145,15 +139,15 @@ def main():
     )
     print("got filename", train_files)
     dataset = get_dataset(train_files, 32, (256, 256), 4)
-
-    # for e in range(4):
-    #     print("epoch", e)
-    #     true_categories = tf.concat([y for x, y in dataset], axis=0)
-    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    #     c = Counter(list(true_categories))
-    #     print("epoch is size", len(true_categories))
-    #     for i in range(4):
-    #         print("after have", i, c[i])
+    #
+    for e in range(4):
+        print("epoch", e)
+        true_categories = tf.concat([y for x, y in dataset], axis=0)
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        c = Counter(list(true_categories))
+        print("epoch is size", len(true_categories))
+        for i in range(4):
+            print("after have", i, c[i])
     # return
     # image_batch, label_batch = next(iter(dataset))
     for e in range(1):

@@ -361,7 +361,7 @@ class TrackDatabase:
                 track.attrs["tag"] = track_tag
                 track.attrs["tag_confirmed"] = True
 
-    def get_track_meta(self, clip_id, track_number):
+    def get_track_meta(self, clip_id, track_id):
         """
         Gets metadata for given track
         :param clip_id:
@@ -369,15 +369,21 @@ class TrackDatabase:
         :return:
         """
         with HDF5Manager(self.database) as f:
-            dataset = f["clips"][str(clip_id)][str(track_number)]
-            result = hdf5_attributes_dictionary(dataset)
-            preds = dataset.get("model_predictions")
-            if preds is not None:
-                result["model_predictions"] = {}
-                for model in preds:
-                    model_preds = hdf5_attributes_dictionary(preds[model])
-                    result["model_predictions"][model] = model_preds
-            result["id"] = track_number
+            dataset = f["clips"][str(clip_id)][str(track_id)]
+            result = self.dataset_track(dataset, track_id)
+
+        return result
+
+    def dataset_track(self, dataset, track_id):
+        result = hdf5_attributes_dictionary(dataset)
+        preds = dataset.get("model_predictions")
+        if preds is not None:
+            result["model_predictions"] = {}
+            for model in preds:
+                model_preds = hdf5_attributes_dictionary(preds[model])
+                result["model_predictions"][model] = model_preds
+        result["id"] = track_id
+
         return result
 
     def get_track_predictions(self, clip_id, track_number):
@@ -432,11 +438,12 @@ class TrackDatabase:
         """
         tracks = []
         with HDF5Manager(self.database) as f:
-            dataset = f["clips"][str(clip_id)]
-            for track_id in dataset:
+            clip = f["clips"][str(clip_id)]
+            for track_id in clip:
                 if track_id in special_datasets:
                     continue
-                tracks.append(hdf5_attributes_dictionary(dataset[track_id]))
+                track = self.dataset_track(clip[track_id], track_id)
+                tracks.append(track)
         return tracks
 
     def get_tag(self, clip_id, track_number):

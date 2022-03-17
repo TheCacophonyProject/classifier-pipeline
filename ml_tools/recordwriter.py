@@ -224,7 +224,7 @@ def create_tf_records(dataset, output_path, num_shards=1, cropped=True):
                             [sample.frame_number],
                         )[0]
                     except Exception as e:
-                        print(sample.clip_id, sample.frame_number, "error", e)
+                        print(sample.clip_id, sample, "error", e)
                         continue
                     if cropped:
                         region = sample.regions[0].copy()

@@ -69,7 +69,7 @@ class Region(Rectangle):
             region_bounds[1],
             width,
             height,
-            frame_number=np.uint16(frame_number) if frame_number else None,
+            frame_number=np.uint16(frame_number) if frame_number is not None else None,
         )
 
     @classmethod

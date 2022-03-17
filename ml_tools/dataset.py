@@ -66,6 +66,7 @@ class Dataset:
         self.use_segments = use_segments
         # database holding track data
         self.db_file = db_file
+        print("db file", db_file)
         self.db = None
         self.load_db()
         self.label_mapping = None
@@ -261,7 +262,39 @@ class Dataset:
 
         return [counter, len(clip_ids)]
 
+    def load_clip_segments(self, clip_id):
+        clip_meta = self.db.get_clip_meta(clip_id)
+        tracks = self.db.get_clip_tracks(clip_id)
+        for track_meta in tracks:
+            if self.filter_track(clip_meta, track_meta):
+                print("filtering track", track_meta["id"])
+                return False
+            track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
+            # self.tracks.append(track_header)
+            if self.use_segments:
+                segment_frame_spacing = int(
+                    round(self.segment_spacing * track_header.frames_per_second)
+                )
+                segment_width = self.segment_length
+
+                track_header.calculate_segments(
+                    segment_frame_spacing,
+                    segment_width,
+                    self.segment_min_avg_mass,
+                )
+                self.filtered_stats["segment_mass"] += track_header.filtered_stats[
+                    "segment_mass"
+                ]
+                for segment in track_header.segments:
+                    self.add_clip_sample_mappings(segment)
+            else:
+                sample_frames = track_header.get_sample_frames()
+                for sample in sample_frames:
+                    self.add_clip_sample_mappings(sample)
+            return True
+
     def load_clip(self, clip_id, allow_multiple_labels=False):
+        return self.load_clip_segments(clip_id)
         clip_meta = self.db.get_clip_meta(clip_id)
         if "tag" not in clip_meta:
             self.filtered_stats["not-confirmed"] += 1

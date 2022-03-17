@@ -5,6 +5,7 @@ import logging
 from ml_tools import tools
 from track.region import Region
 from abc import ABC, abstractmethod
+from ml_tools import imageprocessing
 
 FRAMES_PER_SECOND = 9
 
@@ -206,6 +207,7 @@ class TrackHeader:
                     frame_temp,
                     None,
                     region,
+                    weight=1,
                 )
                 self.sample_frames.append(f)
         else:
@@ -220,6 +222,7 @@ class TrackHeader:
                     frame_temp,
                     None,
                     region,
+                    weight=1,
                 )
                 self.sample_frames.append(f)
 
@@ -686,7 +689,7 @@ class SegmentHeader(Sample):
     @property
     def bin_id(self):
         """Unique name of this segments track."""
-        return self.track.bin_id
+        return self.unique_track_id
 
     def __str__(self):
         return "{0} label {1} offset:{2} weight:{3:.1f}".format(
@@ -696,6 +699,37 @@ class SegmentHeader(Sample):
     @property
     def unique_id(self):
         return self.id
+
+    def get_data(self, db):
+        crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+
+        try:
+            background = db.get_clip_background(self.clip_id)
+
+            frames = db.get_track(
+                self.clip_id,
+                self.track_id,
+                original=False,
+                frame_numbers=self.frame_numbers - self.start_frame,
+            )
+
+            thermals = np.empty(len(frames), dtype=object)
+            filtered = np.empty(len(frames), dtype=object)
+            for i, frame in enumerate(frames):
+                frame.filtered = frame.thermal - frame.region.subimage(background)
+                temp_index = np.where(self.frame_numbers == frame.frame_number)[0][0]
+                temp = self.frame_temp_median[temp_index]
+                frame.resize_with_aspect((32, 32), crop_rectangle, keep_edge=True)
+                filtered[i] = frame.filtered
+                thermals[i] = frame.thermal - temp
+            thermal = imageprocessing.square_clip(thermals, 5, (32, 32))
+            filtered = imageprocessing.square_clip(filtered, 5, (32, 32))
+
+        except:
+            logging.error("Cant get segment %s", self, exc_info=True)
+            raise "EX"
+            return None
+        return thermal, filtered
 
 
 def get_cropped_fraction(region: tools.Rectangle, width, height):
@@ -753,7 +787,6 @@ def get_segments(
             and region.frame_number not in ffc_frames
             and (skipped_frames is None or region.frame_number not in skipped_frames)
         ]
-
         if segment_min_mass is not None:
             if len(frame_indices) > 0:
                 segment_min_mass = min(
