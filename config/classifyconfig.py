@@ -20,7 +20,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import os.path as path
 
 import attr
-
+import logging
 
 from config import config
 from .defaultconfig import DefaultConfig
@@ -103,7 +103,8 @@ class ModelConfig:
 
     def validate(self):
         if not path.exists(self.model_file):
-            raise ValueError(f"{self.model_file} does not exist")
+            logging.warn(f"{self.model_file} does not exist")
+            # raise ValueError(f"{self.model_file} does not exist")
 
     def as_dict(self):
         return attr.asdict(self)

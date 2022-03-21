@@ -92,8 +92,10 @@ class TrackExtractor:
         :param enable_preview: if true an MPEG preview file is created.
         """
 
-        clip = self.extract_tracks(filename)
-
+        clip, success = self.extract_tracks(filename)
+        if not success:
+            logging.error("Could not parse %s", filename)
+            return
         out_file = self.get_output_file(filename)
         destination_folder = os.path.dirname(out_file)
         if not os.path.exists(destination_folder):
@@ -160,8 +162,8 @@ class TrackExtractor:
 
         start = time.time()
         clip = Clip(self.config.tracking, filename)
-        self.track_extractor.parse_clip(clip)
-        return clip
+        success = self.track_extractor.parse_clip(clip)
+        return clip, success
 
     def save_metadata(
         self,

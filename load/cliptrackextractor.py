@@ -152,7 +152,8 @@ class ClipTrackExtractor:
             # background[:] = cv2.inpaint(
             #     np.float32(background), np.uint8(movement_mask), 10, cv2.INPAINT_TELEA
             # )
-
+            if background is None:
+                return False
             background = cv2.GaussianBlur(background, (15, 15), 0)
             # cv2.imshow("backg", background)
             # cv2.waitKey(100)

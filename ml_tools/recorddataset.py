@@ -4,6 +4,7 @@ import tensorflow as tf
 from functools import partial
 import numpy as np
 import time
+import math
 
 seed = 1341
 tf.random.set_seed(seed)
@@ -60,7 +61,6 @@ def get_dataset(
         num_labels,
         deterministic=deterministic,
         labeled=labeled,
-        resample=True,
     )
     if resample:
         true_categories = [y for x, y in dataset]
@@ -74,18 +74,33 @@ def get_dataset(
         for i in range(num_labels):
             dist[i] = c[i]
             target_dist[i] = 1 / num_labels
+        min_label = np.min(dist)
         dist = dist / np.sum(dist)
-        print("target dist", target_dist, "init", dist)
+        dist_r = np.max(dist) - np.min(dist)
+        max_range = 0.5
+        dist_max = np.max(dist)
+        dist_min = np.min(dist)
+        target_dist[:] = 1 / num_labels
+
+        # if values are too wide apart rejection sample seems to zero these labels
+        if dist_r > max_range:
+            for i in range(num_labels):
+                if dist[i] - dist_min > max_range:
+                    target_dist[i] += (
+                        math.ceil(10 * (dist[i] - dist_min)) / 10 - max_range
+                    )
+                    dist[i] -= math.ceil(10 * (dist[i] - dist_min)) / 10 - max_range
+
         rej = dataset.rejection_resample(
             class_func=class_func,
-            target_dist=1 / num_labels,
+            target_dist=target_dist,
             initial_dist=dist,
         )
 
-    dataset = dataset.shuffle(2048, reshuffle_each_iteration=reshuffle)
     if resample:
         dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
 
+    dataset = dataset.shuffle(2048, reshuffle_each_iteration=reshuffle)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     dataset = dataset.batch(batch_size)
     return dataset
@@ -98,22 +113,14 @@ def read_tfrecord(example, image_size, num_labels, labeled):
         "image/height": tf.io.FixedLenFeature((), tf.int64, -1),
         "image/width": tf.io.FixedLenFeature((), tf.int64, -1),
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
-        # "image/object/bbox/xmin": tf.io.VarLenFeature(tf.float32),
-        # "image/object/bbox/xmax": tf.io.VarLenFeature(tf.float32),
-        # "image/object/bbox/ymin": tf.io.VarLenFeature(tf.float32),
-        # "image/object/bbox/ymax": tf.io.VarLenFeature(tf.float32),
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     image = decode_image(
         example["image/thermalencoded"], example["image/filteredencoded"], image_size
     )
-    # image = decode_image image_size)
 
     if labeled:
-        # label = tf.cast(
-        #     tf.reshape(example["image/object/class/label"], shape=[]), dtype=tf.int64
-        # )
         label = tf.cast(example["image/class/label"], tf.int64)
         onehot_label = tf.one_hot(label, num_labels)
 
@@ -127,7 +134,7 @@ def decode_image(image, filtered, image_size):
     image = tf.concat((image, image, filtered), axis=2)
     image = tf.cast(image, tf.float32)
     image = tf.image.resize_with_pad(image, image_size[0], image_size[1])
-    # image = tf.keras.applications.inception_v3.preprocess_input(image)
+    image = tf.keras.applications.inception_v3.preprocess_input(image)
     return image
 
 

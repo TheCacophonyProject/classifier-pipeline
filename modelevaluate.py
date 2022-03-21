@@ -159,6 +159,7 @@ dataset = get_dataset(
     len(model.labels),
     reshuffle=False,
     deterministic=True,
+    resample=False,
 )
 
 if args.tracks:
