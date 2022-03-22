@@ -112,9 +112,11 @@ class RegionTracker(Tracker):
             self._frames_since_target_seen = 0
         self._last_bound = region
 
+    @property
     def blank_frames(self):
         return self._blank_frames
 
+    @property
     def frames_since_target_seen(self):
         return self._frames_since_target_seen
 
@@ -251,7 +253,6 @@ class Track:
         # our bounds over time
         self.bounds_history = []
         # number frames since we lost target.
-        self.frames_since_target_seen = 0
         self.blank_frames = 0
 
         self.vel_x = []
@@ -282,6 +283,10 @@ class Track:
         self.prediction_classes = None
         self.tracker_version = tracker_version
         self.tracker = RegionTracker(self.crop_rectangle)
+
+    @property
+    def frames_since_target_seen(self):
+        return self.tracker.frames_since_target_seen
 
     def match(self, regions):
         return self.tracker.match(regions, self)
@@ -397,7 +402,7 @@ class Track:
         return True
 
     def add_region(self, region):
-
+        logging.info("adding %s", region)
         if self.prev_frame_num and region.frame_number:
             frame_diff = region.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
@@ -415,6 +420,13 @@ class Track:
             )
             self.vel_y.append(
                 self.bounds_history[-1].mid_y - self.bounds_history[-2].mid_y
+            )
+            logging.info(
+                "updating vel %s, %s cur %s prev %s",
+                self,
+                self.velocity,
+                self.bounds_history[-1],
+                self.bounds_history[-2],
             )
         else:
             self.vel_x.append(0)
@@ -497,7 +509,7 @@ class Track:
             if region.blank or self.bounds_history[i - 1].blank:
                 continue
             if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
-                distance = (vx ** 2 + vy ** 2) ** 0.5
+                distance = (vx**2 + vy**2) ** 0.5
                 movement += distance
                 offset = eucl_distance(first_point, region.mid)
                 max_offset = max(max_offset, offset)
@@ -533,7 +545,7 @@ class Track:
                 else:
                     jitter_smaller += 1
 
-        movement_points = (movement ** 0.5) + max_offset
+        movement_points = (movement**0.5) + max_offset
         delta_points = delta_std * 25.0
         jitter_percent = int(
             round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))
@@ -611,11 +623,13 @@ class Track:
         while start < len(self) and mass_history[start] <= 2:
             start += 1
         end = len(self) - 1
+        blanks = self.frames_since_target_seen
         while end > 0 and mass_history[end] <= 2:
-            if self.frames_since_target_seen > 0:
-                self.frames_since_target_seen -= 1
+            if blanks > 0:
+                blanks -= 1
                 self.blank_frames -= 1
             end -= 1
+        self.tracker._frames_since_target_seen = 0
         if end < start:
             self.start_frame = 0
             self.bounds_history = []
