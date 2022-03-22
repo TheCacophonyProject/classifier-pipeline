@@ -108,10 +108,15 @@ class RegionTracker(Tracker):
             self._frames_since_target_seen += 1
         else:
             self.kalman_tracker.correct(region)
-            logging.info("%s Correcting with %s", self.track_id, region)
             self._frames_since_target_seen = 0
+
         prediction = self.kalman_tracker.predict()
         self.predicted_mid = (prediction[0][0], prediction[1][0])
+        if not region.blank:
+            logging.info(
+                "%s Correcting with %s %s", self.track_id, region, self.predicted_mid
+            )
+        # logging.info("%s Correcting with %s", self.track_id, region)
         self._last_bound = region
 
     @property
@@ -405,7 +410,6 @@ class Track:
         return True
 
     def add_region(self, region):
-        logging.info("adding %s", region)
         if self.prev_frame_num and region.frame_number:
             frame_diff = region.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
@@ -481,7 +485,8 @@ class Track:
         self.prev_frame_num = region.frame_number
         self.update_velocity()
         logging.info(
-            "Addfing a blank frame %s mid %s region",
+            "%s Addfing a blank frame %s mid %s region",
+            self.get_id(),
             self.tracker.predicted_mid,
             region,
         )
