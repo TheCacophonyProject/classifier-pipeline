@@ -34,7 +34,6 @@ import matplotlib
 
 matplotlib.use("Agg")  # enable canvas drawing
 
-from ml_tools.logs import init_logging
 from config.config import Config
 from train.train import train_model
 
@@ -44,6 +43,7 @@ def load_config():
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-g", "--grid", action="count", help="Grid Search hparams")
     parser.add_argument("-w", "--weights", help="Fine tune using these weights")
+    parser.add_argument("-i", "--ignore", help="Ignore clips in this file")
 
     parser.add_argument(
         "name",
@@ -57,7 +57,6 @@ def load_config():
 def main():
     conf, args = load_config()
 
-    init_logging()
     # tf.logging.set_verbosity(3)
 
     os.makedirs(conf.train.train_dir, exist_ok=True)
@@ -67,6 +66,7 @@ def main():
         conf.train.hyper_params,
         grid_search=args.grid,
         weights=args.weights,
+        ignore=args.ignore,
     )
 
 

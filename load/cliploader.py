@@ -183,13 +183,9 @@ class ClipLoader:
         """
         return True
         min_confidence = self.track_config.min_tag_confidence
-        track_data = track_meta.get("data")
-        if not track_data:
-            return False
-
         track_tags = []
-        if "TrackTags" in track_meta:
-            track_tags = track_meta["TrackTags"]
+        if "tags" in track_meta:
+            track_tags = track_meta["tags"]
         excluded_tags = [
             tag
             for tag in track_tags
@@ -247,23 +243,10 @@ class ClipLoader:
             metadata,
             self.config.load.tag_precedence,
         )
-        tracker_versions = set(
-            [
-                t.get("data", {}).get("tracker_version", 0)
-                for t in metadata.get("Tracks", [])
-            ]
-        )
-        if len(tracker_versions) > 1:
-            logginer.error(
-                "Tracks with different tracking versions cannot process %s versions %s",
-                filename,
-                tracker_versions,
-            )
-            return
-        tracker_version = tracker_versions.pop()
+        tracker_version = metadata.get("tracker_version")
         process_background = tracker_version < 10
         logging.debug(
-            "Processing background? %s tracker_versions %s",
+            "Processing background? %s tracker_version %s",
             process_background,
             tracker_version,
         )

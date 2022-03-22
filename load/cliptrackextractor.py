@@ -33,6 +33,7 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
 from piclassifier.motiondetector import is_affected_by_ffc
+<<<<<<< HEAD
 from ml_tools.imageprocessing import (
     detect_objects,
     normalize,
@@ -56,8 +57,20 @@ class ClipTrackExtractor:
 
     # MAX_DISTANCE = 2000
     MAX_DISTANCE = 30752
+=======
+from ml_tools.imageprocessing import detect_objects, normalize
+from track.cliptracker import ClipTracker
+
+
+class ClipTrackExtractor(ClipTracker):
+
+>>>>>>> gp-master
     PREVIEW = "preview"
     VERSION = 10
+
+    @property
+    def tracker_version(self):
+        return f"ClipTrackExtractor-{ClipTrackExtractor.VERSION}"
 
     def __init__(
         self,
@@ -69,12 +82,21 @@ class ClipTrackExtractor:
         high_quality_optical_flow=False,
         verbose=False,
     ):
+<<<<<<< HEAD
         self.saliency = None
         self.verbose = verbose
         self.config = config
+=======
+        super().__init__(
+            config,
+            cache_to_disk,
+            keep_frames=keep_frames,
+            calc_stats=calc_stats,
+            verbose=verbose,
+        )
+>>>>>>> gp-master
         self.use_opt_flow = use_opt_flow
         self.high_quality_optical_flow = high_quality_optical_flow
-        self.stats = None
         self.cache_to_disk = cache_to_disk
         self.max_tracks = config.max_tracks
         # frame_padding < 3 causes problems when we get small areas...
@@ -83,7 +105,7 @@ class ClipTrackExtractor:
         self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
         self.keep_frames = keep_frames
         self.calc_stats = calc_stats
-        self.tracking_time = None
+        self._tracking_time = None
         if self.config.dilation_pixels > 0:
             size = self.config.dilation_pixels * 2 + 1
             self.dilate_kernel = np.ones((size, size), np.uint8)
@@ -200,6 +222,7 @@ class ClipTrackExtractor:
         self.tracking_time = time.time() - start
         return True
 
+<<<<<<< HEAD
     def process_frame(self, clip, frame, ffc_affected=False):
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
@@ -279,11 +302,18 @@ class ClipTrackExtractor:
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
         wait = 1
+=======
+    def tracking_time(self):
+        return self._tracking_time
+
+    def process_frame(self, clip, thermal, ffc_affected=False):
+>>>>>>> gp-master
         """
         Tracks objects through frame
         :param thermal: A numpy array of shape (height, width) and type uint16
-            If specified background subtraction algorithm will be used.
+        If specified background subtraction algorithm will be used.
         """
+<<<<<<< HEAD
         repeats = 1
         if clip.current_frame < 6:
             repeats = 8
@@ -316,6 +346,15 @@ class ClipTrackExtractor:
         #     cv2.imshow("saliency", saliencyMap)
         #     cv2.imshow("backsub", np.uint8(backsub))
         #     cv2.waitKey(30)
+=======
+        if ffc_affected:
+            self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
+        clip.ffc_affected = ffc_affected
+        filtered, threshold = self._get_filtered_frame(clip, thermal)
+        _, mask, component_details = detect_objects(
+            filtered.copy(), otsus=False, threshold=threshold
+        )
+>>>>>>> gp-master
         prev_filtered = clip.frame_buffer.get_last_filtered()
         # if prev_filtered is not None:
         #     delta = backsub - prev_filtered
@@ -342,6 +381,7 @@ class ClipTrackExtractor:
                 self._apply_region_matchings(clip, regions, f)
 
             clip.region_history.append(regions)
+<<<<<<< HEAD
 
     def _apply_region_matchings(self, clip, regions, f):
         """
@@ -810,3 +850,5 @@ def get_filtered_frame(background, thermal):
 
     # filtered[filtered > 10] += 30
     return filtered, 0
+=======
+>>>>>>> gp-master

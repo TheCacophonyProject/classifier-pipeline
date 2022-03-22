@@ -119,7 +119,6 @@ if args.track_id or args.clip_id:
 
 dataset = pickle.load(open(os.path.join(base_dir, args.dataset), "rb"))
 logging.info("running on %s ", dataset.name)
-dataset.recalculate_segments(segment_type=1)
 
 dir = os.path.dirname(model_file)
 meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
@@ -128,7 +127,6 @@ label_probabilities = meta.get("label_probabilities")
 dataset.lbl_p = label_probabilities
 if mapped_labels:
     dataset.regroup(mapped_labels)
-print("dataset labels arenow ", dataset.labels)
 
 logging.info(
     "Dataset loaded %s, using labels %s, mapped labels %s",

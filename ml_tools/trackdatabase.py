@@ -272,6 +272,9 @@ class TrackDatabase:
                 if after_date and date < after_date:
                     continue
                 for track in clip:
+                    if label is not None:
+                        if label != clip[track].attrs.get("tag"):
+                            continue
                     if track not in special_datasets:
                         result.append((clip_id, track))
         return result
@@ -565,7 +568,7 @@ class TrackDatabase:
                                 )
                             result.append(f)
                         except:
-                            logging.error(
+                            logging.debug(
                                 "trying to get clip %s track %s frame %s",
                                 clip_id,
                                 track_number,
@@ -584,7 +587,7 @@ class TrackDatabase:
                                 )
                             )
                         except:
-                            logging.error(
+                            logging.debug(
                                 "trying to get clip %s track %s frame %s",
                                 clip_id,
                                 track_number,
@@ -734,13 +737,26 @@ class TrackDatabase:
                         **opts,
                         dtype=np.int16,
                     )
+                if original is not None:
                     thermal_node[:, :] = original
+                if cropped.thermal.size > 0:
+                    height, width = cropped.shape
+                    chunks = (1, height, width)
+                    cropped_array = cropped.as_array()
+                    dims = cropped_array.shape
+                    frame_node = cropped_frame.create_dataset(
+                        str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
+                    )
+                    frame_node[:, :, :] = cropped_array
+                else:
+                    skipped_frames.append(frame_i)
+
             # write out attributes
             track_stats = track.get_stats()
             node_attrs = track_node.attrs
             node_attrs["id"] = track_id
-            if track.track_tags:
-                node_attrs["track_tags"] = json.dumps(track.track_tags)
+            if track.tags:
+                node_attrs["track_tags"] = json.dumps(track.tags)
             if sample_frames is not None:
                 node_attrs["sample_frames"] = np.uint16(sample_frames)
             node_attrs["tag"] = track.tag

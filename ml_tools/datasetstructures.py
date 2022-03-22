@@ -5,11 +5,15 @@ import logging
 from ml_tools import tools
 from track.region import Region
 from abc import ABC, abstractmethod
+from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
+from ml_tools.frame import Frame, TrackChannels
 
 FRAMES_PER_SECOND = 9
 
 CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
+FRAME_SIZE = 32
+MIN_SIZE = 4
 
 
 class Sample(ABC):
@@ -50,15 +54,33 @@ class Sample(ABC):
         ...
 
 
+EDGE = 1
+
+res_x = 120
+res_y = 160
+
+
 class NumpyMeta:
     # Save track data to a numpy file this is much faster for trianing off than
     #  the h5py file
     # track_info contains the file read locations for each track
-    def __init__(self, filename):
+    def __init__(
+        self,
+        filename,
+        augment,
+        frame_size,
+    ):
         self.filename = filename
         self.track_info = {}
         self.f = None
         self.mode = "rb"
+        self.augment = augment
+        if frame_size is None:
+            frame_size = FRAME_SIZE
+        self.dim = (frame_size, frame_size)
+        self.crop_rectangle = tools.Rectangle(
+            EDGE, EDGE, res_x - 2 * EDGE, res_y - 2 * EDGE
+        )
 
     def __enter__(self):
         self.open(self.mode)
@@ -75,10 +97,11 @@ class NumpyMeta:
     def close(self):
         if self.f is not None:
             self.f.close()
+        del self.f
         self.f = None
 
-    def save_tracks(self, db, tracks):
-        logging.info("Writing %s tracks to %s", len(tracks), self.filename)
+    def save_segments(self, db, tracks):
+        logging.info("Writing %s segments to %s", len(tracks), self.filename)
         self.open(mode="wb")
         try:
             count = 0
@@ -89,6 +112,7 @@ class NumpyMeta:
             logging.debug("%s saved %s", self.filename, count)
 
         except:
+            raise "EX"
             logging.error("Error saving track info", exc_info=True)
         finally:
             self.close()
@@ -104,27 +128,112 @@ class NumpyMeta:
                 original=False,
             )
             index = 0
-            track_info["frames"] = {}
+            track_info["start_frame"] = track.start_frame
+            frames_by_number = {}
             for frame in frames:
-                track_info["frames"][frame.frame_number] = index
-                index += 1
+                frames_by_number[frame.frame_number] = frame
 
-            track_frames = np.arange(track.num_frames) + track.start_frame
-            data_frames = track_info["frames"].keys()
-            skipped = [f_i for f_i in track_frames if f_i not in data_frames]
-            track.skipped_frames = np.uint16(skipped)
-            track_info["data"] = self.f.tell()
-            thermals = np.empty(len(frames), dtype=object)
-            filtered = np.empty(len(frames), dtype=object)
+            dim = self.dim
+            if self.augment:
+                dim = (
+                    self.dim[0] + 4,
+                    self.dim[1] + 4,
+                )
+            segment_offset = {}
 
-            for i, frame in enumerate(frames):
-                thermals[i] = frame.thermal
-                filtered[i] = frame.thermal - frame.region.subimage(background)
-            data = np.stack((thermals, filtered))
-            np.save(self.f, data, allow_pickle=True)
+            for segment in track.segments:
+                thermals = []
+                filtered = []
 
+                for f_i in segment.frame_indices:
+                    frame = frames_by_number[f_i].copy()
+
+                    frame.filtered = frame.thermal - frame.region.subimage(background)
+                    np.clip(frame.filtered, 0, None, out=frame.filtered)
+                    frame.thermal -= track.frame_temp_median[
+                        frame.frame_number - track.start_frame
+                    ]
+                    np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
+
+                    self.resize(frame)
+
+                    thermals.append(np.uint16(frame.thermal))
+                    filtered.append(np.float32(frame.filtered))
+                segment_offset[segment.id] = self.f.tell()
+                np.save(self.f, thermals, allow_pickle=False)
+                np.save(self.f, filtered, allow_pickle=False)
+            track_info["segments"] = segment_offset
         except:
             logging.error("Error saving %s", track, exc_info=True)
+            raise "EX"
+
+    def resize(self, frame):
+        dim = self.dim
+        frame_height, frame_width = frame.thermal.shape
+
+        if self.augment:
+            max_height_offset = int(np.clip(frame_height * 0.1, 1, 2))
+            w_x = 1 if frame.region.on_width_edge(self.crop_rectangle) else 2
+            h_x = 1 if frame.region.on_height_edge(self.crop_rectangle) else 2
+            max_width_offset = int(np.clip(frame_width * 0.1, 1, 2))
+            resize_dim = (
+                self.dim[0] + max_height_offset * h_x,
+                self.dim[1] + max_width_offset * w_x,
+            )
+            dim = (
+                self.dim[0] + 4,
+                self.dim[1] + 4,
+            )
+
+        else:
+            resize_dim = self.dim
+
+        scale_percent = (resize_dim / np.array(frame.thermal.shape)).min()
+        width = int(frame.thermal.shape[1] * scale_percent)
+        height = int(frame.thermal.shape[0] * scale_percent)
+        resize_dim = (width, height)
+        frame.thermal = resize_and_pad(
+            frame.thermal,
+            resize_dim,
+            dim,
+            frame.region,
+            self.crop_rectangle,
+            True,
+        )
+        frame_height, frame_width = frame.thermal.shape
+        frame.filtered = resize_and_pad(
+            frame.filtered,
+            resize_dim,
+            dim,
+            frame.region,
+            self.crop_rectangle,
+            True,
+        )
+
+    def load_segments(self, segments, close=True):
+        segment_db = {}
+        with self as f:
+            for segment in segments:
+                s_offset = self.track_info[segment.unique_track_id]["segments"][
+                    segment.id
+                ]
+                f.seek(s_offset)
+                thermals = np.load(f, allow_pickle=False)
+                filtered = np.load(f, allow_pickle=False)
+                segment_data = []
+                segment_db[segment.id] = segment_data
+                for thermal, filtered, frame_i in zip(
+                    thermals, filtered, segment.frame_indices
+                ):
+                    # seems to leek memory without np.copy() go figure
+                    frame = Frame.from_channels(
+                        [np.copy(thermal), np.copy(filtered)],
+                        [TrackChannels.thermal, TrackChannels.filtered],
+                        frame_i,
+                        flow_clipped=True,
+                    )
+                    segment_data.append(frame)
+        return segment_db
 
 
 class TrackHeader:
@@ -328,7 +437,11 @@ class TrackHeader:
             lower_mass=self.lower_mass,
             repeats=repeats,
             min_frames=min_frames,
+<<<<<<< HEAD
             camera=self.camera,
+=======
+            skipped_frames=self.skipped_frames,
+>>>>>>> gp-master
         )
 
     @property
@@ -710,8 +823,8 @@ def get_movement_data(b_h, m_h):
     centrey = (b_h[:, 3] + b_h[:, 1]) / 2
     xv = np.hstack((0, centrex[1:] - centrex[:-1]))
     yv = np.hstack((0, centrey[1:] - centrey[:-1]))
-    axv = xv / areas ** 0.5
-    ayv = yv / areas ** 0.5
+    axv = xv / areas**0.5
+    ayv = yv / areas**0.5
     return np.hstack((b_h, np.vstack((m_h, xv, yv, axv, ayv)).T))
 
 

@@ -379,13 +379,20 @@ class PiClassifier(Processor):
             refs = []
             segment_data = []
             mass = 0
+            params = self.classifier.params
+
             for frame, region in zip(frames, regions):
                 refs.append(np.median(frame.thermal))
                 thermal_reference = np.median(frame.thermal)
-                segment_data.append(frame.crop_by_region(region))
+                f = frame.crop_by_region(region)
                 mass += region.mass
+                f.resize_with_aspect(
+                    (params.frame_size, params.frame_size),
+                    self.clip.crop_rectangle,
+                    True,
+                )
+                segment_data.append(f)
 
-            params = self.classifier.params
             preprocessed = preprocess_movement(
                 segment_data,
                 params.square_width,

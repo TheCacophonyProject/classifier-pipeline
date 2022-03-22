@@ -74,12 +74,15 @@ class Region(Rectangle):
 
     @classmethod
     def region_from_json(cls, region_json):
+        frame = region_json.get("frame_number")
+        if not frame:
+            frame = region_json.get("frameNumber")
         return cls(
             region_json["x"],
             region_json["y"],
             region_json["width"],
             region_json["height"],
-            frame_number=region_json["frame_number"],
+            frame_number=frame,
             mass=region_json.get("mass", 0),
             blank=region_json.get("blank", False),
             pixel_variance=region_json.get("pixel_variance", 0),
@@ -143,7 +146,6 @@ class Region(Rectangle):
         expected_y = int(other.y)
         distance = tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
         distances.append(distance)
-        # print("distance between", (expected_x, expected_y), (self.x, self.y), distance)
 
         expected_x = int(other.mid_x)
         expected_y = int(other.mid_y)
@@ -151,12 +153,6 @@ class Region(Rectangle):
             (expected_x, expected_y), (self.mid_x, self.mid_y)
         )
         distances.append(distance)
-        # print(
-        #     "distance between",
-        #     (expected_x, expected_y),
-        #     (self.mid_x, self.mid_y),
-        #     distance,
-        # )
 
         distance = tools.eucl_distance(
             (
@@ -169,17 +165,15 @@ class Region(Rectangle):
         expected_y = int(other.y)
         distance = tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
         distances.append(distance)
-        # print(
-        #     "right bottom distance",
-        #     (
-        #         other.right,
-        #         other.bottom,
-        #     ),
-        #     (self.right, self.bottom),
-        #     distance,
-        # )
+
         return distances
-        # total_distance += distance
-        #
-        # total_distance /= 3.0
-        # return total_distance
+
+    def on_height_edge(self, crop_region):
+        if self.top == crop_region.top or self.bottom == crop_region.bottom:
+            return True
+        return False
+
+    def on_width_edge(self, crop_region):
+        if self.left == crop_region.left or self.right == crop_region.right:
+            return True
+        return False

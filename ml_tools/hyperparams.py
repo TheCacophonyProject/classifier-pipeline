@@ -22,7 +22,6 @@ class HyperParams(dict):
         self["use_movement"] = self.use_movement
         self["use_segments"] = self.use_segments
         self["square_width"] = self.square_width
-        self["buffer_size"] = self.buffer_size
         self["frame_size"] = self.frame_size
 
         self["shuffle"] = self.shuffle
@@ -125,10 +124,6 @@ class HyperParams(dict):
         return self.get("square_width", 5)
 
     @property
-    def buffer_size(self):
-        return self.get("buffer_size", 128)
-
-    @property
     def frame_size(self):
         return self.get("frame_size", 32)
 
@@ -137,8 +132,8 @@ class HyperParams(dict):
         return self.get("shuffle", True)
 
     @property
-    def maximum_train_preload(self):
-        return self.get("maximum_train_preload", 1000)
+    def maximum_preload(self):
+        return self.get("maximum_preload", 1000)
 
     @property
     def red_type(self):

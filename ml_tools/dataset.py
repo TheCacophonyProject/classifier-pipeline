@@ -30,7 +30,7 @@ class SegmentType(Enum):
     TOP_SEQUENTIAL = 4
     ALL_RANDOM_SECTIONS = 5
     TOP_RANDOM = 6
-    ALL_RANDOM_NOMIN = 6
+    ALL_RANDOM_NOMIN = 7
 
 
 class Dataset:
@@ -116,11 +116,15 @@ class Dataset:
         self.lbl_p = None
         self.numpy_data = None
 
-    # is much faster to read from numpy array when trianing
-    def saveto_numpy(self, path):
+    # is much faster to read from numpy array when training
+    def saveto_numpy(self, path, frame_size):
         file = os.path.join(path, self.name)
-        self.numpy_data = NumpyMeta(f"{file}.npy")
-        self.numpy_data.save_tracks(self.db, self.tracks)
+        self.numpy_data = NumpyMeta(
+            f"{file}.npy",
+            self.enable_augmentation,
+            frame_size,
+        )
+        self.numpy_data.save_segments(self.db, self.tracks)
         self.numpy_data.f = None
 
     def clear_tracks(self):
@@ -223,6 +227,12 @@ class Dataset:
                     #     if track.sample_frames is not None
                     # )
 
+                if key == label or value == label:
+                    label_tracks = []
+                    segments = self.segments_by_label.get(key, [])
+                    tracks += len(set([segment.track_id for segment in segments]))
+                    segments_count += len(segments)
+                    frames += sum([segment.frames for segment in segments])
         else:
             samples = len(self.samples_by_label.get(label, []))
             label_tracks = self.tracks_by_label.get(label, [])
@@ -372,14 +382,14 @@ class Dataset:
         self.camera_names.add(sample.camera)
         return True
 
-    def load_tracks(self, shuffle=False, before_date=None, after_date=None):
+    def load_tracks(self, shuffle=False, before_date=None, after_date=None, label=None):
         """
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
         counter = 0
         track_ids = self.db.get_all_track_ids(
-            before_date=before_date, after_date=after_date
+            before_date=before_date, after_date=after_date, label=label
         )
         if shuffle:
             np.random.shuffle(track_ids)

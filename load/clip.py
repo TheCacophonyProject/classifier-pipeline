@@ -314,7 +314,7 @@ class Clip:
         self.tracks = set(tracks)
 
     def load_tracks_meta(self, metadata, tag_precedence):
-        tracks_meta = metadata.get("tracks", [])
+        tracks_meta = metadata.get("Tracks", [])
         tracks = []
         # get track data
         for track_meta in tracks_meta:
