@@ -162,9 +162,6 @@ class ClipTrackExtractor(ClipTracker):
                 regions = self._get_regions_of_interest(
                     clip, component_details, filtered, prev_filtered
                 )
-                for region in regions:
-                    logging.info(" %s Region %s", clip.current_frame, region)
-
                 self._apply_region_matchings(clip, regions)
 
             clip.region_history.append(regions)

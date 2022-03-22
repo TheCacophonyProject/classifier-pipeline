@@ -34,3 +34,9 @@ class Tracker(ABC):
     def predicted_velocity(self):
         """predicted_velocity version"""
         ...
+
+    @property
+    @abstractmethod
+    def tracking(self):
+        """tracking"""
+        ...

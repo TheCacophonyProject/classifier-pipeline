@@ -90,7 +90,10 @@ class ClipTracker(ABC):
         """
         unmatched_regions, matched_tracks = self._match_existing_tracks(clip, regions)
         new_tracks = self._create_new_tracks(clip, unmatched_regions)
-        self._filter_inactive_tracks(clip, new_tracks, matched_tracks)
+
+        unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
+        clip.active_tracks = matched_tracks | new_tracks
+        self._filter_inactive_tracks(clip, unactive_tracks)
 
     def _match_existing_tracks(self, clip, regions):
         scores = []
@@ -129,7 +132,12 @@ class ClipTracker(ABC):
             if len(overlaps) > 0 and max(overlaps) > (region.area * 0.25):
                 continue
 
-            track = Track.from_region(clip, region, self.tracker_version)
+            track = Track.from_region(
+                clip,
+                region,
+                self.tracker_version,
+                self.config,
+            )
             new_tracks.add(track)
             clip._add_active_track(track)
             self.print_if_verbose(
@@ -143,21 +151,13 @@ class ClipTracker(ABC):
             )
         return new_tracks
 
-    def _filter_inactive_tracks(self, clip, new_tracks, matched_tracks):
+    def _filter_inactive_tracks(self, clip, unactive_tracks):
         """Filters tracks which are or have become inactive"""
-
-        unactive_tracks = clip.active_tracks - matched_tracks - new_tracks
-        clip.active_tracks = matched_tracks | new_tracks
         for track in unactive_tracks:
-            # need sufficient frames to allow insertion of excess blanks
-            remove_after = min(
-                2 * (len(track) - track.blank_frames),
-                self.config.remove_track_after_frames,
-            )
-            if track.frames_since_target_seen + 1 < remove_after:
-                track.add_blank_frame(clip.frame_buffer)
+            track.add_blank_frame()
+            if track.tracking:
                 clip.active_tracks.add(track)
-                self.print_if_verbose(
+                logging.info(
                     "frame {} adding a blank frame to {} ".format(
                         clip.current_frame, track.get_id()
                     )
@@ -167,10 +167,10 @@ class ClipTracker(ABC):
         self, clip, component_details, filtered, prev_filtered
     ):
         """
-                Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
-                rectangles.
-                :param filtered: The filtered frame
-        =        :return: regions of interest, mask frame
+        Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
+        rectangles.
+        :param filtered: The filtered frame
+        :return: regions of interest, mask frame
         """
 
         if prev_filtered is not None:

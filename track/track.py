@@ -43,7 +43,7 @@ class RegionTracker(Tracker):
     # amount region mass can change
     MASS_CHANGE_PERCENT = 0.55
 
-    def __init__(self, id, crop_rectangle=None):
+    def __init__(self, id, tracking_config, crop_rectangle=None):
         self.track_id = id
         self.kalman_tracker = Kalman()
         self._frames_since_target_seen = 0
@@ -51,6 +51,12 @@ class RegionTracker(Tracker):
         self._blank_frames = 0
         self._last_bound = None
         self.crop_rectangle = crop_rectangle
+        self._tracking = False
+        self.max_blanks = tracking_config.remove_track_after_frames
+
+    @property
+    def tracking(self):
+        return self._tracking
 
     @property
     def last_bound(self):
@@ -106,18 +112,19 @@ class RegionTracker(Tracker):
         if region.blank:
             self._blank_frames += 1
             self._frames_since_target_seen += 1
+            stop_tracking = min(
+                2 * (self.frames - self.blank_frames),
+                self.max_blanks,
+            )
+            self._tracking = self._frames_since_target_seen < stop_tracking
+
         else:
+            self._tracking = True
             self.kalman_tracker.correct(region)
             self._frames_since_target_seen = 0
 
         prediction = self.kalman_tracker.predict()
         self.predicted_mid = (prediction[0][0], prediction[1][0])
-        if not region.blank:
-            logging.info(
-                "%s Correcting with %s %s", self.track_id, region, self.predicted_mid
-            )
-        logging.info("frames since %s", self._frames_since_target_seen)
-        # logging.info("%s Correcting with %s", self.track_id, region)
         self._last_bound = region
 
     @property
@@ -145,13 +152,6 @@ class RegionTracker(Tracker):
 
     def add_blank_frame(self):
         if self.frames > RegionTracker.MIN_KALMAN_FRAMES:
-            logging.info(
-                "%s Kalmn region from %s %s frames %s",
-                self.track_id,
-                self.last_bound,
-                self.predicted_mid,
-                self.frames,
-            )
             region = Region(
                 int(self.predicted_mid[0] - self.last_bound.width / 2.0),
                 int(self.predicted_mid[1] - self.last_bound.height / 2.0),
@@ -245,7 +245,13 @@ class Track:
     MIN_JITTER_CHANGE = 5
 
     def __init__(
-        self, clip_id, id=None, fps=9, crop_rectangle=None, tracker_version=None
+        self,
+        clip_id,
+        id=None,
+        fps=9,
+        tracking_config=None,
+        crop_rectangle=None,
+        tracker_version=None,
     ):
         """
         Creates a new Track.
@@ -297,11 +303,17 @@ class Track:
         self.all_class_confidences = None
         self.prediction_classes = None
         self.tracker_version = tracker_version
-        self.tracker = RegionTracker(self.get_id(), self.crop_rectangle)
+        self.tracker = RegionTracker(
+            self.get_id(), tracking_config, self.crop_rectangle
+        )
 
     @property
     def blank_frames(self):
         return self.tracker.blank_frames
+
+    @property
+    def tracking(self):
+        return self.tracker.tracking
 
     @property
     def frames_since_target_seen(self):
@@ -362,12 +374,13 @@ class Track:
         return segments
 
     @classmethod
-    def from_region(cls, clip, region, tracker_version=None):
+    def from_region(cls, clip, region, tracker_version=None, tracking_config=None):
         track = cls(
             clip.get_id(),
             fps=clip.frames_per_second,
             tracker_version=tracker_version,
             crop_rectangle=clip.crop_rectangle,
+            tracking_config=tracking_config,
         )
         track.start_frame = region.frame_number
         track.start_s = region.frame_number / float(clip.frames_per_second)
@@ -439,13 +452,6 @@ class Track:
             self.vel_y.append(
                 self.bounds_history[-1].mid_y - self.bounds_history[-2].mid_y
             )
-            logging.info(
-                "updating vel %s, %s cur %s prev %s",
-                self,
-                self.velocity,
-                self.bounds_history[-1],
-                self.bounds_history[-2],
-            )
         else:
             self.vel_x.append(0)
             self.vel_y.append(0)
@@ -489,18 +495,12 @@ class Track:
             return 0
         return avg_mass / count
 
-    def add_blank_frame(self, buffer_frame=None):
+    def add_blank_frame(self):
         """Maintains same bounds as previously, does not reset framce_since_target_seen counter"""
         region = self.tracker.add_blank_frame()
         self.bounds_history.append(region)
         self.prev_frame_num = region.frame_number
         self.update_velocity()
-        logging.info(
-            "%s Addfing a blank frame %s mid %s region",
-            self.get_id(),
-            self.tracker.predicted_mid,
-            region,
-        )
 
     def get_stats(self):
         """
