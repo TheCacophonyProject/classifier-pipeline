@@ -123,11 +123,11 @@ def preprocess_segment(
             )
             frame.crop_by_region(crop_region, out=frame)
 
-            if chance <= 0.75:
-                # degress = 0
+        if augment and chance <= 0.75:
+            # degress = 0
 
-                degrees = int(chance * 40) - 20
-                frame.rotate(degrees)
+            degrees = int(chance * 40) - 20
+            frame.rotate(degrees)
         if frame_height < MIN_SIZE or frame_width < MIN_SIZE:
             continue
         if reference_level is not None:
