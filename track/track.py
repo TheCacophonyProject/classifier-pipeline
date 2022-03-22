@@ -43,7 +43,8 @@ class RegionTracker(Tracker):
     # amount region mass can change
     MASS_CHANGE_PERCENT = 0.55
 
-    def __init__(self, crop_rectangle=None):
+    def __init__(self, id, crop_rectangle=None):
+        self.track_id = id
         self.kalman_tracker = Kalman()
         self._frames_since_target_seen = 0
         self.frames = 0
@@ -101,15 +102,16 @@ class RegionTracker(Tracker):
         return scores
 
     def add_region(self, region):
-        self.kalman_tracker.correct(region)
-        prediction = self.kalman_tracker.predict()
         self.frames += 1
-        self.predicted_mid = (prediction[0][0], prediction[1][0])
         if region.blank:
             self._blank_frames += 1
             self._frames_since_target_seen += 1
         else:
+            self.kalman_tracker.correct(region)
+            logging.info("%s Correcting with %s", self.track_id, region)
             self._frames_since_target_seen = 0
+        prediction = self.kalman_tracker.predict()
+        self.predicted_mid = (prediction[0][0], prediction[1][0])
         self._last_bound = region
 
     @property
@@ -151,6 +153,7 @@ class RegionTracker(Tracker):
         region.mass = 0
         region.pixel_variance = 0
         region.frame_number = self.last_bound.frame_number + 1
+
         self.add_region(region)
         return region
 
@@ -282,7 +285,7 @@ class Track:
         self.all_class_confidences = None
         self.prediction_classes = None
         self.tracker_version = tracker_version
-        self.tracker = RegionTracker(self.crop_rectangle)
+        self.tracker = RegionTracker(self.get_id(), self.crop_rectangle)
 
     @property
     def frames_since_target_seen(self):
@@ -477,6 +480,11 @@ class Track:
         self.bounds_history.append(region)
         self.prev_frame_num = region.frame_number
         self.update_velocity()
+        logging.info(
+            "Addfing a blank frame %s mid %s region",
+            self.tracker.predicted_mid,
+            region,
+        )
 
     def get_stats(self):
         """
