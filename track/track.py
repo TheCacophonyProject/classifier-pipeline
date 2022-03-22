@@ -66,7 +66,7 @@ class RegionTracker(Tracker):
             max_mass_change = get_max_mass_change_percent(track, avg_mass)
 
             if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
-                logging.debug(
+                logging.info(
                     "track {} region mass {} deviates too much from {}".format(
                         track.get_id(),
                         region.mass,
@@ -76,15 +76,21 @@ class RegionTracker(Tracker):
 
                 continue
             if distance > max_distance:
-                logging.debug(
-                    "track {} distance score {} bigger than max distance {}".format(
-                        track.get_id(), distance, max_distance
+                logging.info(
+                    "track {} distance score {} bigger than max distance {} frame {} region {} vel {} frames {}".format(
+                        track.get_id(),
+                        distance,
+                        max_distance,
+                        region.frame_number,
+                        region,
+                        self.predicted_velocity(),
+                        self.frames,
                     )
                 )
 
                 continue
             if size_change > max_size_change:
-                logging.debug(
+                logging.info(
                     "track {} size_change {} bigger than max size_change {}".format(
                         track.get_id(), size_change, max_size_change
                     )
