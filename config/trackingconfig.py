@@ -22,6 +22,7 @@ import attr
 from .defaultconfig import DefaultConfig
 from .trackingmotionconfig import TrackingMotionConfig
 from load.cliptrackextractor import ClipTrackExtractor
+from track.track import RegionTracker
 
 
 @attr.s
@@ -127,7 +128,7 @@ class TrackingConfig(DefaultConfig):
             moving_vel_thresh=4,
             min_moving_frames=2,
             max_blank_percent=30,
-            max_mass_std_percent=ClipTrackExtractor.MASS_CHANGE_PERCENT,
+            max_mass_std_percent=RegionTracker.MASS_CHANGE_PERCENT,
             max_jitter=20,
         )
 
