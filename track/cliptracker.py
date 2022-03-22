@@ -96,8 +96,9 @@ class ClipTracker(ABC):
         scores = []
         used_regions = set()
         unmatched_regions = set(regions)
-
-        for track in clip.active_tracks:
+        active = list(clip.active_tracks)
+        active.sort(key=lambda x: x.get_id())
+        for track in active:
             scores.extend(track.match(regions))
 
         # makes tracking consistent by ordering by score then by frame since target then track id

@@ -77,7 +77,7 @@ class RegionTracker(Tracker):
                 continue
             if distance > max_distance:
                 logging.info(
-                    "track {} distance score {} bigger than max distance {} frame {} region {} vel {} frames {}".format(
+                    "track {} distance score {} bigger than max distance {} frame {} region {} vel {} frames {} vel{}".format(
                         track.get_id(),
                         distance,
                         max_distance,
@@ -85,6 +85,7 @@ class RegionTracker(Tracker):
                         region,
                         self.predicted_velocity(),
                         self.frames,
+                        track.velocity,
                     )
                 )
 
