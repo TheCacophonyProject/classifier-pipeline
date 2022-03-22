@@ -146,6 +146,7 @@ class RegionTracker(Tracker):
         if self.frames > RegionTracker.MIN_KALMAN_FRAMES:
             logging.info(
                 "%s Kalmn region from %s %s frames %s",
+                self.track_id,
                 self.last_bound,
                 self.predicted_mid,
                 self.frames,
