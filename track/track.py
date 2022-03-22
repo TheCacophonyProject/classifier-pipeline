@@ -16,6 +16,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
+import logging
 import math
 import numpy as np
 from collections import namedtuple
@@ -25,6 +26,185 @@ from track.region import Region
 from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance
 from ml_tools.datasetstructures import get_segments, SegmentHeader
+from track.tracker import Tracker
+
+
+class RegionTracker(Tracker):
+    # number of frames required before using kalman estimation
+    MIN_KALMAN_FRAMES = 18
+    MAX_DISTANCE = 2000
+
+    TRACKER_VERSION = 1
+    BASE_DISTANCE_CHANGE = 450
+    # minimum region mass change
+    MIN_MASS_CHANGE = 20
+    # enforce mass growth after X seconds
+    RESTRICT_MASS_AFTER = 1.5
+    # amount region mass can change
+    MASS_CHANGE_PERCENT = 0.55
+
+    def __init__(self, crop_rectangle=None):
+        self.kalman_tracker = Kalman()
+        self._frames_since_target_seen = 0
+        self.frames = 0
+        self._blank_frames = 0
+        self._last_bound = None
+        self.crop_rectangle = crop_rectangle
+
+    @property
+    def last_bound(self):
+        return self._last_bound
+
+    def match(self, regions, track):
+        scores = []
+        avg_mass = track.average_mass()
+        max_distance = get_max_distance_change(track)
+        for region in regions:
+            distance, size_change = get_region_score(self.last_bound, region)
+
+            max_size_change = get_max_size_change(track, region)
+            max_mass_change = get_max_mass_change_percent(track, avg_mass)
+
+            if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
+                logging.debug(
+                    "track {} region mass {} deviates too much from {}".format(
+                        track.get_id(),
+                        region.mass,
+                        avg_mass,
+                    )
+                )
+
+                continue
+            if distance > max_distance:
+                logging.debug(
+                    "track {} distance score {} bigger than max distance {}".format(
+                        track.get_id(), distance, max_distance
+                    )
+                )
+
+                continue
+            if size_change > max_size_change:
+                logging.debug(
+                    "track {} size_change {} bigger than max size_change {}".format(
+                        track.get_id(), size_change, max_size_change
+                    )
+                )
+                continue
+            scores.append((distance, track, region))
+        return scores
+
+    def add_region(self, region):
+        self.kalman_tracker.correct(region)
+        prediction = self.kalman_tracker.predict()
+        self.frames += 1
+        self.predicted_mid = (prediction[0][0], prediction[1][0])
+        if region.blank:
+            self._blank_frames += 1
+            self._frames_since_target_seen += 1
+        else:
+            self._frames_since_target_seen = 0
+        self._last_bound = region
+
+    def blank_frames(self):
+        return self._blank_frames
+
+    def frames_since_target_seen(self):
+        return self._frames_since_target_seen
+
+    @property
+    def nonblank_frames(self):
+        return self.frames - self._blank_frames
+
+    def predicted_velocity(self):
+        if (
+            self.last_bound is None
+            or self.nonblank_frames <= RegionTracker.MIN_KALMAN_FRAMES
+        ):
+            return (0, 0)
+        pred_vel_x = self.predicted_mid[0] - self.last_bound.mid_x
+        pred_vel_y = self.predicted_mid[1] - self.last_bound.mid_y
+
+        return (pred_vel_x, pred_vel_y)
+
+    def add_blank_frame(self):
+        if self.frames > RegionTracker.MIN_KALMAN_FRAMES:
+            region = Region(
+                int(self.predicted_mid[0] - self.last_bound.width / 2.0),
+                int(self.predicted_mid[1] - self.last_bound.height / 2.0),
+                self.last_bound.width,
+                self.last_bound.height,
+            )
+            if self.crop_rectangle:
+                region.crop(self.crop_rectangle)
+        else:
+            region = self.last_bound.copy()
+        region.blank = True
+        region.mass = 0
+        region.pixel_variance = 0
+        region.frame_number = self.last_bound.frame_number + 1
+        self.add_region(region)
+        return region
+
+    def tracker_version(self):
+        return f"RegionTracker-{RegionTracker.TRACKER_VERSION}"
+
+
+def get_max_size_change(track, region):
+    exiting = region.is_along_border and not track.last_bound.is_along_border
+    entering = not exiting and track.last_bound.is_along_border
+    region_percent = 1.5
+    if len(track) < 5:
+        # may increase at first
+        region_percent = 2
+    if entering or exiting:
+        region_percent = 2
+
+    return region_percent
+
+
+def get_max_mass_change_percent(track, average_mass):
+    if len(track) > RegionTracker.RESTRICT_MASS_AFTER * track.fps:
+        vel = track.velocity
+        mass_percent = RegionTracker.MASS_CHANGE_PERCENT
+        if np.sum(np.abs(vel)) > 5:
+            # faster tracks can be a bit more deviant
+            mass_percent = mass_percent + 0.1
+        return max(
+            RegionTracker.MIN_MASS_CHANGE,
+            average_mass * mass_percent,
+        )
+    else:
+        return None
+
+
+def get_max_distance_change(track):
+    x, y = track.velocity
+    x = 2 * x
+    y = 2 * y
+    velocity_distance = x * x + y * y
+    pred_vel = track.predicted_velocity()
+    pred_distance = pred_vel[0] * pred_vel[0] + pred_vel[1] * pred_vel[1]
+
+    max_distance = RegionTracker.BASE_DISTANCE_CHANGE + max(
+        velocity_distance, pred_distance
+    )
+    if max_distance > RegionTracker.MAX_DISTANCE:
+        return RegionTracker.MAX_DISTANCE
+    return max_distance
+
+
+def get_region_score(last_bound: Region, region: Region):
+    """
+    Calculates a score between 2 regions based of distance and area.
+    The higher the score the more similar the Regions are
+    """
+    distance = last_bound.average_distance(region)
+
+    # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
+    # area is padded with 50 pixels so small regions don't change too much
+    size_difference = abs(region.area - last_bound.area) / (last_bound.area + 50)
+
+    return distance, size_difference
 
 
 class Track:
@@ -32,8 +212,7 @@ class Track:
 
     # keeps track of which id number we are up to.
     _track_id = 1
-    # number of frames required before using kalman estimation
-    MIN_KALMAN_FRAMES = 18
+
     # Percentage increase that is considered jitter, e.g. if a region gets
     # 30% bigger or smaller
     JITTER_THRESHOLD = 0.3
@@ -79,7 +258,6 @@ class Track:
 
         self.from_metadata = False
         self.tags = None
-        self.kalman_tracker = Kalman()
         self.predictions = None
         self.predicted_class = None
         self.predicted_confidence = None
@@ -87,7 +265,6 @@ class Track:
         self.all_class_confidences = None
         self.prediction_classes = None
 
-        self.predicted_mid = None
         self.crop_rectangle = crop_rectangle
 
         self.predictions = None
@@ -97,6 +274,10 @@ class Track:
         self.all_class_confidences = None
         self.prediction_classes = None
         self.tracker_version = tracker_version
+        self.tracker = RegionTracker(self.crop_rectangle)
+
+    def match(self, regions):
+        return self.tracker.match(regions, self)
 
     def get_segments(
         self,
@@ -209,20 +390,16 @@ class Track:
         return True
 
     def add_region(self, region):
+
         if self.prev_frame_num and region.frame_number:
             frame_diff = region.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
-
+        self.tracker.add_region(region)
         self.bounds_history.append(region)
         self.end_frame = region.frame_number
         self.prev_frame_num = region.frame_number
         self.update_velocity()
-        self.frames_since_target_seen = 0
-        self.kalman_tracker.correct(region)
-        prediction = self.kalman_tracker.predict()
-
-        self.predicted_mid = (prediction[0][0], prediction[1][0])
 
     def update_velocity(self):
         if len(self.bounds_history) >= 2:
@@ -254,11 +431,11 @@ class Track:
             frame_diff = frame.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
+        self.tracker.add_region(region)
+
         self.update_velocity()
         self.prev_frame_num = frame.frame_number
         self.current_frame_num += 1
-        self.frames_since_target_seen = 0
-        self.kalman_tracker.correct(region)
 
     def average_mass(self):
         """Average mass of last 3 frames that weren't blank"""
@@ -277,28 +454,10 @@ class Track:
 
     def add_blank_frame(self, buffer_frame=None):
         """Maintains same bounds as previously, does not reset framce_since_target_seen counter"""
-        if self.frames > Track.MIN_KALMAN_FRAMES:
-            region = Region(
-                int(self.predicted_mid[0] - self.last_bound.width / 2.0),
-                int(self.predicted_mid[1] - self.last_bound.height / 2.0),
-                self.last_bound.width,
-                self.last_bound.height,
-            )
-            if self.crop_rectangle:
-                region.crop(self.crop_rectangle)
-        else:
-            region = self.last_bound.copy()
-        region.blank = True
-        region.mass = 0
-        region.pixel_variance = 0
-        region.frame_number = self.last_bound.frame_number + 1
+        region = self.tracker.add_blank_frame()
         self.bounds_history.append(region)
         self.prev_frame_num = region.frame_number
         self.update_velocity()
-        self.blank_frames += 1
-        self.frames_since_target_seen += 1
-        prediction = self.kalman_tracker.predict()
-        self.predicted_mid = (prediction[0][0], prediction[1][0])
 
     def get_stats(self):
         """
@@ -331,7 +490,7 @@ class Track:
             if region.blank or self.bounds_history[i - 1].blank:
                 continue
             if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
-                distance = (vx**2 + vy**2) ** 0.5
+                distance = (vx ** 2 + vy ** 2) ** 0.5
                 movement += distance
                 offset = eucl_distance(first_point, region.mid)
                 max_offset = max(max_offset, offset)
@@ -367,7 +526,7 @@ class Track:
                 else:
                     jitter_smaller += 1
 
-        movement_points = (movement**0.5) + max_offset
+        movement_points = (movement ** 0.5) + max_offset
         delta_points = delta_std * 25.0
         jitter_percent = int(
             round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))
@@ -502,13 +661,7 @@ class Track:
         self.end_s = (self.end_frame + 1) / fps
 
     def predicted_velocity(self):
-        prev = self.last_bound
-        if prev is None or self.nonblank_frames <= Track.MIN_KALMAN_FRAMES:
-            return (0, 0)
-        pred_vel_x = self.predicted_mid[0] - prev.mid_x
-        pred_vel_y = self.predicted_mid[1] - prev.mid_y
-
-        return (pred_vel_x, pred_vel_y)
+        return self.tracker.predicted_velocity()
 
     @property
     def nonblank_frames(self):

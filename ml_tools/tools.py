@@ -166,6 +166,7 @@ class CustomJSONEncoder(json.JSONEncoder):
         elif isinstance(obj, Rectangle):
             return obj.meta_dictionary()
         # Let the base class default method raise the TypeError
+        print("catn serialize", obj)
         return json.JSONEncoder.default(self, obj)
 
 
