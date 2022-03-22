@@ -116,6 +116,7 @@ class RegionTracker(Tracker):
             logging.info(
                 "%s Correcting with %s %s", self.track_id, region, self.predicted_mid
             )
+        logging.info("frames since %s", self._frames_since_target_seen)
         # logging.info("%s Correcting with %s", self.track_id, region)
         self._last_bound = region
 
@@ -268,7 +269,6 @@ class Track:
         # our bounds over time
         self.bounds_history = []
         # number frames since we lost target.
-        self.blank_frames = 0
 
         self.vel_x = []
         self.vel_y = []
@@ -298,6 +298,10 @@ class Track:
         self.prediction_classes = None
         self.tracker_version = tracker_version
         self.tracker = RegionTracker(self.get_id(), self.crop_rectangle)
+
+    @property
+    def blank_frames(self):
+        return self.tracker.blank_frames
 
     @property
     def frames_since_target_seen(self):
@@ -647,7 +651,7 @@ class Track:
         while end > 0 and mass_history[end] <= 2:
             if blanks > 0:
                 blanks -= 1
-                self.blank_frames -= 1
+                self.tracker._blank_frames -= 1
             end -= 1
         self.tracker._frames_since_target_seen = 0
         if end < start:
@@ -655,7 +659,7 @@ class Track:
             self.bounds_history = []
             self.vel_x = []
             self.vel_y = []
-            self.blank_frames = 0
+            self.tracker._blank_frames = 0
         else:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
