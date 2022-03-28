@@ -195,7 +195,9 @@ def preprocess_frame(
     return data
 
 
-# /home/gp/cacophony/classifier-data/irvideos/tagged/hedgehogIR/2022-02-02_04.34.10_trap-ir-01.avi
+index = 0
+
+
 def preprocess_ir(
     frame,
     frame_size,

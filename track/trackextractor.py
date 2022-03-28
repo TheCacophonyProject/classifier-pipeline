@@ -10,6 +10,8 @@ import numpy as np
 from classify.trackprediction import Predictions
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
+from load.irtrackextractor import IRTrackExtractor
+
 from ml_tools import tools
 from ml_tools.previewer import Previewer
 from track.track import Track
@@ -34,7 +36,7 @@ class TrackExtractor:
         # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
         self.enable_per_track_information = False
 
-        self.track_extractor = ClipTrackExtractor(
+        self.track_extractor = IRTrackExtractor(
             self.config.tracking,
             self.config.use_opt_flow,
             self.cache_to_disk,
@@ -179,7 +181,7 @@ class TrackExtractor:
 
         save_file["tracking_time"] = round(tracking_time, 1)
         save_file["algorithm"] = {}
-        save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
+        save_file["algorithm"]["tracker_version"] = self.track_extractor.tracker_version
         save_file["algorithm"]["tracker_config"] = self.config.tracking.as_dict()
 
         if self.config.classify.meta_to_stdout:

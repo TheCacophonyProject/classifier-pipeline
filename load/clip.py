@@ -314,7 +314,11 @@ class Clip:
         self.tracks = set(tracks)
 
     def load_tracks_meta(self, metadata, tag_precedence):
-        tracks_meta = metadata.get("Tracks", [])
+        if "tracks" in metadata:
+            tracks_meta = metadata.get("tracks", [])
+        else:
+            tracks_meta = metadata.get("Tracks", [])
+
         tracks = []
         # get track data
         for track_meta in tracks_meta:
@@ -386,6 +390,7 @@ class Clip:
         self.frame_buffer.add_frame(
             thermal, filtered, mask, self.current_frame, ffc_affected
         )
+
         if self.calc_stats:
             self.stats.add_frame(thermal, filtered)
 
