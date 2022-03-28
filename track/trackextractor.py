@@ -83,7 +83,7 @@ class TrackExtractor:
             return
         for folder_path, _, files in os.walk(base):
             for name in files:
-                if os.path.splitext(name)[1] in [".avi", ".cptv"]:
+                if os.path.splitext(name)[1] in [".mp4", ".avi", ".cptv"]:
                     full_path = os.path.join(folder_path, name)
                     self.extract_file(full_path)
 
