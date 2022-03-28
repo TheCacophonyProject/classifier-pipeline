@@ -101,7 +101,7 @@ class ClipClassifier:
             return
         for folder_path, _, files in os.walk(source):
             for name in files:
-                if os.path.splitext(name)[1] in [".cptv", ".avi"]:
+                if os.path.splitext(name)[1] in [".mp4", ".cptv", ".avi"]:
                     full_path = os.path.join(folder_path, name)
                     self.process_file(full_path, cache=cache, reuse_frames=reuse_frames)
 
