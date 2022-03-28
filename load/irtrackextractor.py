@@ -1,0 +1,325 @@
+"""
+classifier-pipeline - this is a server side component that manipulates cptv
+files and to create a classification model of animals present
+Copyright (C) 2018, The Cacophony Project
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+"""
+import matplotlib.pyplot as plt
+
+import os
+import logging
+import numpy as np
+import time
+import yaml
+from datetime import datetime
+
+from cptv import CPTVReader
+import cv2
+
+from .clip import Clip
+from ml_tools.tools import Rectangle
+from track.region import Region
+from track.track import Track
+from piclassifier.motiondetector import is_affected_by_ffc
+from ml_tools.imageprocessing import (
+    detect_objects,
+    normalize,
+    detect_objects_ir,
+    theshold_saliency,
+    detect_objects_both,
+)
+from track.cliptracker import ClipTracker
+
+
+class IRTrackExtractor(ClipTracker):
+
+    PREVIEW = "preview"
+    VERSION = 10
+
+    @property
+    def tracker_version(self):
+        return f"IRTrackExtractor-{IRTrackExtractor.VERSION}"
+
+    @property
+    def tracking_time(self):
+        return self._tracking_time
+
+    def __init__(
+        self,
+        config,
+        use_opt_flow,
+        cache_to_disk=False,
+        keep_frames=True,
+        calc_stats=True,
+        high_quality_optical_flow=False,
+        verbose=False,
+    ):
+        self.saliency = None
+        self.verbose = verbose
+        self.config = config
+        self.use_opt_flow = use_opt_flow
+        self.high_quality_optical_flow = high_quality_optical_flow
+        self.stats = None
+        self.cache_to_disk = cache_to_disk
+        self.max_tracks = config.max_tracks
+        # frame_padding < 3 causes problems when we get small areas...
+        self.frame_padding = max(3, self.config.frame_padding)
+        # the dilation effectively also pads the frame so take it into consideration.
+        self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
+        self.keep_frames = keep_frames
+        self.calc_stats = calc_stats
+        self._tracking_time = None
+        if self.config.dilation_pixels > 0:
+            size = self.config.dilation_pixels * 2 + 1
+            self.dilate_kernel = np.ones((size, size), np.uint8)
+
+    def parse_clip(self, clip, process_background=False, track=True):
+        """
+        Loads a cptv file, and prepares for track extraction.
+        """
+        self._tracking_time = None
+        start = time.time()
+        clip.set_frame_buffer(
+            self.high_quality_optical_flow,
+            self.cache_to_disk,
+            self.use_opt_flow,
+            self.keep_frames,
+        )
+        _, ext = os.path.splitext(clip.source_file)
+        count = 0
+        background = None
+        vidcap = cv2.VideoCapture(clip.source_file)
+        frames = []
+        while True:
+            success, image = vidcap.read()
+            if not success:
+                break
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            frames.append(gray)
+
+            if count == 0:
+                background = gray
+                self.saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
+                self.saliency.setImagesize(gray.shape[1], gray.shape[0])
+                self.saliency.init()
+                clip.set_res(gray.shape[1], gray.shape[0])
+                clip.set_model("ir")
+                clip.set_video_stats(datetime.now())
+
+            else:
+                background = np.minimum(background, gray)
+            # repeats = 1
+            # if count < 6:
+            #     repeats = 6
+            #
+            # count += 1
+
+        vidcap.release()
+        if background is None:
+            return False
+        background = cv2.GaussianBlur(background, (15, 15), 0)
+        # cv2.imshow("backg", background)
+        # cv2.waitKey(100)
+        clip.update_background(background)
+        for gray in frames:
+            self.process_frame(clip, gray, track=track)
+        vidcap.release()
+
+        if not clip.from_metadata and track:
+            self.apply_track_filtering(clip)
+
+        if self.calc_stats:
+            clip.stats.completed(clip.current_frame, clip.res_y, clip.res_x)
+        self._tracking_time = time.time() - start
+        return True
+
+    def process_frame(self, clip, frame, ffc_affected=False, track=True):
+        if ffc_affected:
+            self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
+        clip.ffc_affected = ffc_affected
+
+        self._process_frame(clip, frame, ffc_affected, track=track)
+
+    def _get_filtered_frame_ir(self, clip, thermal, repeats=1):
+        for _ in range(repeats):
+            (success, saliencyMap) = self.saliency.computeSaliency(thermal)
+        # (success, saliencyMap) = self.saliency.computeSaliency(thermal)
+        saliencyMap = (saliencyMap * 255).astype("uint8")
+        # cv2.imshow("saliencyMap.png", np.uint8(saliencyMap))
+        return saliencyMap, 0
+
+    # merge all regions that the midpoint is within the max(width,height) from the midpoint of another region
+    # keep merging until no more merges are possible, tihs works paticularly well from the IR videos where
+    # the filtered image is quite fragmented
+    def merge_components(self, rectangles):
+        MAX_GAP = 40
+        rect_i = 0
+        rectangles = list(rectangles)
+        while rect_i < len(rectangles):
+            rect = rectangles[rect_i]
+            merged = False
+            mid_x = rect[2] / 2.0 + rect[0]
+            mid_y = rect[3] / 2.0 + rect[1]
+            index = 0
+            while index < len(rectangles):
+                r_2 = rectangles[index]
+                if r_2[0] == rect[0]:
+                    index += 1
+                    continue
+                r_mid_x = r_2[2] / 2.0 + r_2[0]
+                r_mid_y = r_2[3] / 2.0 + r_2[1]
+                distance = (mid_x - r_mid_x) ** 2 + (r_mid_y - mid_y) ** 2
+                distance = distance ** 0.5
+
+                # widest = max(rect[2], rect[3])
+                # hack short cut just take line from mid points as shortest distance subtract biggest width or hieght from each
+                distance = (
+                    distance - max(rect[2], rect[3]) / 2.0 - max(r_2[2], r_2[3]) / 2.0
+                )
+                within = r_2[0] > rect[0] and (r_2[0] + r_2[2]) <= (rect[0] + rect[2])
+                within = (
+                    within
+                    and r_2[1] > rect[1]
+                    and (r_2[1] + r_2[3]) <= (rect[1] + rect[3])
+                )
+
+                if distance < MAX_GAP or within:
+                    rect[0] = min(rect[0], r_2[0])
+                    rect[1] = min(rect[1], r_2[1])
+                    rect[2] = max(rect[0] + rect[2], r_2[0] + r_2[2])
+                    rect[3] = max(rect[1] + rect[3], r_2[1] + r_2[3])
+                    rect[2] -= rect[0]
+                    rect[3] -= rect[1]
+                    # print("second merged ", rect)
+                    merged = True
+                    # break
+                    del rectangles[index]
+                else:
+                    index += 1
+                    # print("not mered", rect, r_2, distance)
+            if merged:
+                rect_i = 0
+            else:
+                rect_i += 1
+        return rectangles
+
+    def _process_frame(self, clip, thermal, ffc_affected=False, track=True):
+
+        wait = 1
+        """
+        Tracks objects through frame
+        :param thermal: A numpy array of shape (height, width) and type uint16
+            If specified background subtraction algorithm will be used.
+        """
+        repeats = 1
+        if clip.current_frame < 6:
+            repeats = 8
+        saliencyMap, _ = self._get_filtered_frame_ir(clip, thermal, repeats=repeats)
+        backsub, _ = get_ir_back_filtered(clip.background, thermal)
+        clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
+        if not track:
+            return
+        prev_filtered = clip.frame_buffer.get_last_filtered()
+        threshold = 0
+        if np.amin(saliencyMap) == 255:
+            num = 0
+            mask = saliencyMap.copy()
+            component_details = []
+            saliencyMap[:] = 0
+        else:
+            num, mask, component_details = theshold_saliency(saliencyMap)
+            component_details = self.merge_components(component_details[1:])
+
+        if clip.from_metadata:
+            for track in clip.tracks:
+                if clip.current_frame in track.frame_list:
+                    track.add_frame_for_existing_region(
+                        clip.frame_buffer.get_last_frame(),
+                        threshold,
+                        prev_filtered,
+                    )
+        else:
+            regions = []
+            if ffc_affected:
+                clip.active_tracks = set()
+            else:
+                regions = self._get_regions_of_interest(
+                    clip, component_details, backsub, prev_filtered
+                )
+                self._apply_region_matchings(clip, regions)
+
+            clip.region_history.append(regions)
+
+    def filter_track(self, clip, track, stats):
+        # return not track.stable
+        # return False
+        # discard any tracks that are less min_duration
+        # these are probably glitches anyway, or don't contain enough information.
+        if len(track) < self.config.min_duration_secs * clip.frames_per_second:
+            self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
+            clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
+            # return True
+        #
+        # # discard tracks that do not move enough
+        #
+        if (
+            stats.max_offset < self.config.track_min_offset
+            or stats.frames_moved < self.config.min_moving_frames
+        ):
+            self.print_if_verbose(
+                "Track filtered.  Didn't move {}".format(stats.max_offset)
+            )
+            clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
+            return True
+
+        if stats.blank_percent > self.config.max_blank_percent:
+            print("blank percent", stats.blank_percent)
+            self.print_if_verbose("Track filtered.  Too Many Blanks")
+            clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
+            return True
+
+        highest_ratio = 0
+        for other in clip.tracks:
+            if track == other:
+                continue
+            highest_ratio = max(track.get_overlap_ratio(other), highest_ratio)
+
+        if highest_ratio > self.config.track_overlap_ratio:
+            self.print_if_verbose(
+                "Track filtered.  Too much overlap {}".format(highest_ratio)
+            )
+            clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
+            return True
+
+        return False
+
+
+def get_ir_back_filtered(background, thermal):
+    """
+    Calculates filtered frame from thermal
+    :param thermal: the thermal frame
+    :param background: (optional) used for background subtraction
+    :return: uint8 filtered frame and adjusted clip threshold for normalized frame
+    """
+
+    filtered = np.float32(thermal.copy())
+
+    avg_change = 0
+    filtered = filtered - background
+    filtered[filtered < 0] = 0
+    filtered, stats = normalize(filtered, new_max=255)
+
+    # filtered[filtered > 10] += 30
+    return filtered, 0
