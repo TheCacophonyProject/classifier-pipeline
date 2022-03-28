@@ -101,13 +101,11 @@ class IRTrackExtractor(ClipTracker):
         count = 0
         background = None
         vidcap = cv2.VideoCapture(clip.source_file)
-        frames = []
         while True:
             success, image = vidcap.read()
             if not success:
                 break
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            frames.append(gray)
 
             if count == 0:
                 background = gray
@@ -133,7 +131,12 @@ class IRTrackExtractor(ClipTracker):
         # cv2.imshow("backg", background)
         # cv2.waitKey(100)
         clip.update_background(background)
-        for gray in frames:
+        vidcap = cv2.VideoCapture(clip.source_file)
+        while True:
+            success, image = vidcap.read()
+            if not success:
+                break
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             self.process_frame(clip, gray, track=track)
         vidcap.release()
 
@@ -181,7 +184,7 @@ class IRTrackExtractor(ClipTracker):
                 r_mid_x = r_2[2] / 2.0 + r_2[0]
                 r_mid_y = r_2[3] / 2.0 + r_2[1]
                 distance = (mid_x - r_mid_x) ** 2 + (r_mid_y - mid_y) ** 2
-                distance = distance ** 0.5
+                distance = distance**0.5
 
                 # widest = max(rect[2], rect[3])
                 # hack short cut just take line from mid points as shortest distance subtract biggest width or hieght from each
