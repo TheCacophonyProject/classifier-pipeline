@@ -73,9 +73,6 @@ class TrackExtractor:
         else:
             return None
 
-    def get_output_file(self, input_filename):
-        return os.path.splitext(input_filename)[0]
-
     def extract(self, base):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
         if os.path.isfile(base):
@@ -99,6 +96,10 @@ config = None
 cache_to_disk = None
 
 
+def get_output_file(input_filename):
+    return os.path.splitext(input_filename)[0]
+
+
 def init_worker(c, cache):
     global config
     global cache_to_disk
@@ -119,6 +120,18 @@ def extract_file(filename):
         raise Exception("File {} not found.".format(filename))
     logging.info("Processing file '{}'".format(filename))
     previewer = Previewer.create_if_required(config, config.classify.preview)
+
+    # GP RMEOVE JUST FOR TESTING
+    out_file = get_output_file(filename)
+    destination_folder = os.path.dirname(out_file)
+    if not os.path.exists(destination_folder):
+        logging.info("Creating folder {}".format(destination_folder))
+        os.makedirs(destination_folder)
+    meta_filename = out_file + ".txt"
+
+    if not os.path.exists(meta_filename):
+        logging.info("ALREADY Tracking %s", meta_filename)
+        return
 
     track_extractor = IRTrackExtractor(
         config.tracking,
