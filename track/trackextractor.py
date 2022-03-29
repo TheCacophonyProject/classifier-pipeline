@@ -145,7 +145,7 @@ def extract_file(filename):
 
     if previewer:
         base_name = os.path.basename(out_file)
-        mpeg_filename = destination_folder + base_name + "-tracking.avi"
+        mpeg_filename = destination_folder + "/" + base_name + "-tracking.avi"
 
         previewer.export_clip_preview(mpeg_filename, clip)
         # return
