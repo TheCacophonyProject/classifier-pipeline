@@ -63,7 +63,7 @@ class ClipClassifier:
         logging.info("classifier loading")
         classifier = KerasModel(self.config.train)
         classifier.load_model(model.model_file, weights=model.model_weights)
-
+        self.models[model.id] = classifier
         return classifier
 
     def get_meta_data(self, filename):
@@ -132,9 +132,11 @@ class ClipClassifier:
         base_filename = os.path.splitext(os.path.basename(filename))[0]
         meta_file = os.path.join(os.path.dirname(filename), base_filename + ".txt")
         if not os.path.exists(filename):
-            raise Exception("File {} not found.".format(filename))
+            logging.error("File %s not found.", filename)
+            return False
         if not os.path.exists(meta_file):
-            raise Exception("File {} not found.".format(meta_file))
+            logging.error("File %s not found.", meta_file)
+            return False
         meta_data = tools.load_clip_metadata(meta_file)
         if meta_data.get("models") is not None:
             logging.error("Already processed %s", filename)
