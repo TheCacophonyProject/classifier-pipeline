@@ -112,17 +112,18 @@ class ClipClassifier:
         :param enable_preview: if true an MPEG preview file is created.
         """
         _, ext = os.path.splitext(filename)
+        cache_to_disk = (
+            cache if cache is not None else self.config.classify.cache_to_disk
+        )
         if ext == ".cptv":
             track_extractor = ClipTrackExtractor(
-                self.config.tracking,
-                self.config.use_opt_flow,
+                self.config.tracking, self.config.use_opt_flow, cache_to_disk
             )
             logging.info("Using clip extractor")
 
         elif ext in [".avi", ".mp4"]:
             track_extractor = IRTrackExtractor(
-                self.config.tracking,
-                self.config.use_opt_flow,
+                self.config.tracking, self.config.use_opt_flow, cache_to_disk
             )
             logging.info("Using ir extractor")
         else:
@@ -135,10 +136,11 @@ class ClipClassifier:
         if not os.path.exists(meta_file):
             raise Exception("File {} not found.".format(meta_file))
         meta_data = tools.load_clip_metadata(meta_file)
+        if meta_data.get("models") is not None:
+            logging.error("Already processed %s", filename)
+            return False
         logging.info("Processing file '{}'".format(filename))
-        cache_to_disk = (
-            cache if cache is not None else self.config.classify.cache_to_disk
-        )
+
         start = time.time()
         clip = Clip(self.config.tracking, filename)
         clip.load_metadata(
