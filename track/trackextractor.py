@@ -1,3 +1,5 @@
+from multiprocessing import Pool
+
 import cv2
 import gc
 import json
@@ -26,24 +28,22 @@ class TrackExtractor:
         """Create an instance of a clip classifier"""
 
         self.config = config
-
-        self.previewer = Previewer.create_if_required(config, config.classify.preview)
+        self.worker_threads = config.worker_threads
 
         if cache_to_disk is None:
             self.cache_to_disk = self.config.classify.cache_to_disk
         else:
             self.cache_to_disk = cache_to_disk
         # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
-        self.enable_per_track_information = False
-
-        self.track_extractor = IRTrackExtractor(
-            self.config.tracking,
-            self.config.use_opt_flow,
-            self.cache_to_disk,
-            high_quality_optical_flow=self.config.tracking.high_quality_optical_flow,
-            verbose=self.config.verbose,
-            keep_frames=False if self.previewer is None else True,
-        )
+        #
+        # self.track_extractor = IRTrackExtractor(
+        #     self.config.tracking,
+        #     self.config.use_opt_flow,
+        #     self.cache_to_disk,
+        #     high_quality_optical_flow=self.config.tracking.high_quality_optical_flow,
+        #     verbose=self.config.verbose,
+        #     keep_frames=False if self.previewer is None else True,
+        # )
 
     def get_meta_data(self, filename):
         """Reads meta-data for a given cptv file."""
@@ -79,115 +79,163 @@ class TrackExtractor:
     def extract(self, base):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
         if os.path.isfile(base):
-            self.extract_file(base)
+            init_worker(self.config, self.cache_to_disk)
+            extract_file(base)
             return
+        data = []
         for folder_path, _, files in os.walk(base):
             for name in files:
                 if os.path.splitext(name)[1] in [".mp4", ".avi", ".cptv"]:
                     full_path = os.path.join(folder_path, name)
-                    self.extract_file(full_path)
+                    data.append(full_path)
+        print("running pool with", len(data))
+        with Pool(
+            self.worker_threads, init_worker, (self.config, self.cache_to_disk)
+        ) as pool:
+            pool.map(extract_file, data)
 
-    def extract_file(self, filename):
-        """
-        Process a file extracting tracks and identifying them.
-        :param filename: filename to process
-        :param enable_preview: if true an MPEG preview file is created.
-        """
 
-        clip, success = self.extract_tracks(filename)
-        if not success:
-            logging.error("Could not parse %s", filename)
-            return
-        out_file = self.get_output_file(filename)
-        destination_folder = os.path.dirname(out_file)
-        if not os.path.exists(destination_folder):
-            logging.info("Creating folder {}".format(destination_folder))
-            os.makedirs(destination_folder)
-        meta_filename = out_file + ".txt"
+config = None
+cache_to_disk = None
 
-        if self.previewer:
-            base_name = os.path.basename(out_file)
-            mpeg_filename = destination_folder + base_name + "-tracking.avi"
 
-            self.previewer.export_clip_preview(mpeg_filename, clip)
-            # return
-            # logging.info("Exporting preview to '{}'".format(mpeg_filename))
-            # out = cv2.VideoWriter(
-            #     mpeg_filename,
-            #     cv2.VideoWriter_fourcc("M", "J", "P", "G"),
-            #     10,
-            #     (clip.res_x, clip.res_y),
-            #     0,
-            # )
-            # for frame_number, frame in enumerate(clip.frame_buffer):
-            #     for index, track in enumerate(clip.tracks):
-            #         frame_offset = frame_number - track.start_frame
-            #
-            #         if frame_offset >= 0 and frame_offset < len(track.bounds_history):
-            #             region = track.bounds_history[frame_offset]
-            #             cv2.rectangle(
-            #                 frame.thermal,
-            #                 (region.left, region.top),
-            #                 (region.right, region.bottom),
-            #                 (0, 255, 0),
-            #                 3,
-            #             )
-            #             print(
-            #                 "region region",
-            #                 region,
-            #                 region.frame_number,
-            #                 " for rame X",
-            #                 frame_number,
-            #             )
-            #     out.write(frame.thermal)
+def init_worker(c, cache):
+    global config
+    global cache_to_disk
+    config = c
+    cache_to_disk = cache
 
-            #
-            # cv2.imshow("detected.png", np.uint8(frame.thermal))
-            # cv2.waitKey(100)
-            # self.previewer.export_clip_preview(mpeg_filename, clip)
-        logging.info("saving meta data %s", meta_filename)
-        # out.release()
 
-        # cv2.destroyAllWindows()
+def extract_file(filename):
+    """
+    Process a file extracting tracks and identifying them.
+    :param filename: filename to process
+    :param enable_preview: if true an MPEG preview file is created.
+    """
+    global config
+    global cache_to_disk
+    print("extracting", filename, config is not None, cache_to_disk)
+    if not os.path.exists(filename):
+        raise Exception("File {} not found.".format(filename))
+    logging.info("Processing file '{}'".format(filename))
+    previewer = Previewer.create_if_required(config, config.classify.preview)
 
-        self.save_metadata(
-            filename,
-            meta_filename,
-            clip,
-            self.track_extractor.tracking_time,
-        )
+    track_extractor = IRTrackExtractor(
+        config.tracking,
+        config.use_opt_flow,
+        cache_to_disk,
+        high_quality_optical_flow=config.tracking.high_quality_optical_flow,
+        verbose=config.verbose,
+        keep_frames=False if previewer is None else True,
+    )
+    start = time.time()
+    clip = Clip(config.tracking, filename)
+    success = track_extractor.parse_clip(clip)
 
-    def extract_tracks(self, filename):
-        if not os.path.exists(filename):
-            raise Exception("File {} not found.".format(filename))
-        logging.info("Processing file '{}'".format(filename))
+    # clip, success, tracking_time = extract_tracks(filename, config, cache_to_disk)
+    if not success:
+        logging.error("Could not parse %s", filename)
+        return
+    out_file = get_output_file(filename)
+    destination_folder = os.path.dirname(out_file)
+    if not os.path.exists(destination_folder):
+        logging.info("Creating folder {}".format(destination_folder))
+        os.makedirs(destination_folder)
+    meta_filename = out_file + ".txt"
 
-        start = time.time()
-        clip = Clip(self.config.tracking, filename)
-        success = self.track_extractor.parse_clip(clip)
-        return clip, success
+    if previewer:
+        base_name = os.path.basename(out_file)
+        mpeg_filename = destination_folder + base_name + "-tracking.avi"
 
-    def save_metadata(
-        self,
+        previewer.export_clip_preview(mpeg_filename, clip)
+        # return
+        # logging.info("Exporting preview to '{}'".format(mpeg_filename))
+        # out = cv2.VideoWriter(
+        #     mpeg_filename,
+        #     cv2.VideoWriter_fourcc("M", "J", "P", "G"),
+        #     10,
+        #     (clip.res_x, clip.res_y),
+        #     0,
+        # )
+        # for frame_number, frame in enumerate(clip.frame_buffer):
+        #     for index, track in enumerate(clip.tracks):
+        #         frame_offset = frame_number - track.start_frame
+        #
+        #         if frame_offset >= 0 and frame_offset < len(track.bounds_history):
+        #             region = track.bounds_history[frame_offset]
+        #             cv2.rectangle(
+        #                 frame.thermal,
+        #                 (region.left, region.top),
+        #                 (region.right, region.bottom),
+        #                 (0, 255, 0),
+        #                 3,
+        #             )
+        #             print(
+        #                 "region region",
+        #                 region,
+        #                 region.frame_number,
+        #                 " for rame X",
+        #                 frame_number,
+        #             )
+        #     out.write(frame.thermal)
+
+        #
+        # cv2.imshow("detected.png", np.uint8(frame.thermal))
+        # cv2.waitKey(100)
+        # self.previewer.export_clip_preview(mpeg_filename, clip)
+    logging.info("saving meta data %s", meta_filename)
+    # out.release()
+
+    # cv2.destroyAllWindows()
+
+    save_metadata(
         filename,
         meta_filename,
         clip,
-        tracking_time,
-    ):
+        track_extractor.tracking_time,
+    )
 
-        # record results in text file.
-        save_file = clip.get_metadata()
-        save_file["source"] = filename
 
-        save_file["tracking_time"] = round(tracking_time, 1)
-        save_file["algorithm"] = {}
-        save_file["algorithm"]["tracker_version"] = self.track_extractor.tracker_version
-        save_file["algorithm"]["tracker_config"] = self.config.tracking.as_dict()
+def extract_tracks(filename, config, cache_to_disk):
+    if not os.path.exists(filename):
+        raise Exception("File {} not found.".format(filename))
+    logging.info("Processing file '{}'".format(filename))
 
-        if self.config.classify.meta_to_stdout:
-            print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
-        else:
-            with open(meta_filename, "w") as f:
-                json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
-        if self.cache_to_disk:
-            clip.frame_buffer.remove_cache()
+    track_extractor = IRTrackExtractor(
+        config.tracking,
+        config.use_opt_flow,
+        cache_to_disk,
+        high_quality_optical_flow=config.tracking.high_quality_optical_flow,
+        verbose=config.verbose,
+        keep_frames=False if previewer is None else True,
+    )
+    start = time.time()
+    clip = Clip(config.tracking, filename)
+    success = track_extractor.parse_clip(clip)
+    return clip, success, track_extractor.tracking_time
+
+
+def save_metadata(
+    self,
+    filename,
+    meta_filename,
+    clip,
+    tracking_time,
+):
+
+    # record results in text file.
+    save_file = clip.get_metadata()
+    save_file["source"] = filename
+
+    save_file["tracking_time"] = round(tracking_time, 1)
+    save_file["algorithm"] = {}
+    save_file["algorithm"]["tracker_version"] = self.track_extractor.tracker_version
+    save_file["algorithm"]["tracker_config"] = self.config.tracking.as_dict()
+
+    if self.config.classify.meta_to_stdout:
+        print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
+    else:
+        with open(meta_filename, "w") as f:
+            json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
+    if self.cache_to_disk:
+        clip.frame_buffer.remove_cache()

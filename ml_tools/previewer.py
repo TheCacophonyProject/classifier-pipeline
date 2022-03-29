@@ -313,6 +313,7 @@ class Previewer:
 
         thermal = frame.thermal
         filtered = frame.filtered
+        filtered = np.uint8(filtered)
         thermal = thermal[..., np.newaxis]
         thermal = np.repeat(thermal, 3, axis=2)
         filtered = filtered[..., np.newaxis]
