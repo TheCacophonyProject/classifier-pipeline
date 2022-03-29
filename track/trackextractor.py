@@ -205,44 +205,46 @@ def extract_file(filename):
         filename,
         meta_filename,
         clip,
-        track_extractor.tracking_time,
+        track_extractor,
     )
+    if cache_to_disk:
+        clip.frame_buffer.remove_cache()
 
 
-def extract_tracks(filename, config, cache_to_disk):
-    if not os.path.exists(filename):
-        raise Exception("File {} not found.".format(filename))
-    logging.info("Processing file '{}'".format(filename))
-
-    track_extractor = IRTrackExtractor(
-        config.tracking,
-        config.use_opt_flow,
-        cache_to_disk,
-        high_quality_optical_flow=config.tracking.high_quality_optical_flow,
-        verbose=config.verbose,
-        keep_frames=False if previewer is None else True,
-    )
-    start = time.time()
-    clip = Clip(config.tracking, filename)
-    success = track_extractor.parse_clip(clip)
-    return clip, success, track_extractor.tracking_time
+#
+# def extract_tracks(filename, config, cache_to_disk):
+#     if not os.path.exists(filename):
+#         raise Exception("File {} not found.".format(filename))
+#     logging.info("Processing file '{}'".format(filename))
+#
+#     track_extractor = IRTrackExtractor(
+#         config.tracking,
+#         config.use_opt_flow,
+#         cache_to_disk,
+#         high_quality_optical_flow=config.tracking.high_quality_optical_flow,
+#         verbose=config.verbose,
+#         keep_frames=False if previewer is None else True,
+#     )
+#     start = time.time()
+#     clip = Clip(config.tracking, filename)
+#     success = track_extractor.parse_clip(clip)
+#     return clip, success, track_extractor.tracking_time
 
 
 def save_metadata(
-    self,
     filename,
     meta_filename,
     clip,
-    tracking_time,
+    track_extractor,
 ):
 
     # record results in text file.
     save_file = clip.get_metadata()
     save_file["source"] = filename
 
-    save_file["tracking_time"] = round(tracking_time, 1)
+    save_file["tracking_time"] = round(track_extractor.tracking_time, 1)
     save_file["algorithm"] = {}
-    save_file["algorithm"]["tracker_version"] = self.track_extractor.tracker_version
+    save_file["algorithm"]["tracker_version"] = track_extractor.tracker_version
     save_file["algorithm"]["tracker_config"] = self.config.tracking.as_dict()
 
     if self.config.classify.meta_to_stdout:
@@ -250,5 +252,3 @@ def save_metadata(
     else:
         with open(meta_filename, "w") as f:
             json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
-    if self.cache_to_disk:
-        clip.frame_buffer.remove_cache()
