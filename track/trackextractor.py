@@ -201,12 +201,7 @@ def extract_file(filename):
 
     # cv2.destroyAllWindows()
 
-    save_metadata(
-        filename,
-        meta_filename,
-        clip,
-        track_extractor,
-    )
+    save_metadata(filename, meta_filename, clip, track_extractor, config)
     if cache_to_disk:
         clip.frame_buffer.remove_cache()
 
@@ -231,12 +226,7 @@ def extract_file(filename):
 #     return clip, success, track_extractor.tracking_time
 
 
-def save_metadata(
-    filename,
-    meta_filename,
-    clip,
-    track_extractor,
-):
+def save_metadata(filename, meta_filename, clip, track_extractor, config):
 
     # record results in text file.
     save_file = clip.get_metadata()
@@ -245,7 +235,7 @@ def save_metadata(
     save_file["tracking_time"] = round(track_extractor.tracking_time, 1)
     save_file["algorithm"] = {}
     save_file["algorithm"]["tracker_version"] = track_extractor.tracker_version
-    save_file["algorithm"]["tracker_config"] = self.config.tracking.as_dict()
+    save_file["algorithm"]["tracker_config"] = config.tracking.as_dict()
 
     if self.config.classify.meta_to_stdout:
         print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
