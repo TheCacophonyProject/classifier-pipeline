@@ -237,7 +237,7 @@ def save_metadata(filename, meta_filename, clip, track_extractor, config):
     save_file["algorithm"]["tracker_version"] = track_extractor.tracker_version
     save_file["algorithm"]["tracker_config"] = config.tracking.as_dict()
 
-    if self.config.classify.meta_to_stdout:
+    if config.classify.meta_to_stdout:
         print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
     else:
         with open(meta_filename, "w") as f:
