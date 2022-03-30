@@ -85,7 +85,6 @@ class TrackExtractor:
                 if os.path.splitext(name)[1] in [".mp4", ".avi", ".cptv"]:
                     full_path = os.path.join(folder_path, name)
                     data.append(full_path)
-        print("running pool with", len(data))
         with Pool(
             self.worker_threads, init_worker, (self.config, self.cache_to_disk)
         ) as pool:
@@ -115,23 +114,10 @@ def extract_file(filename):
     """
     global config
     global cache_to_disk
-    print("extracting", filename, config is not None, cache_to_disk)
     if not os.path.exists(filename):
         raise Exception("File {} not found.".format(filename))
     logging.info("Processing file '{}'".format(filename))
     previewer = Previewer.create_if_required(config, config.classify.preview)
-
-    # GP RMEOVE JUST FOR TESTING
-    out_file = get_output_file(filename)
-    destination_folder = os.path.dirname(out_file)
-    if not os.path.exists(destination_folder):
-        logging.info("Creating folder {}".format(destination_folder))
-        os.makedirs(destination_folder)
-    meta_filename = out_file + ".txt"
-
-    if not os.path.exists(meta_filename):
-        logging.info("ALREADY Tracking %s", meta_filename)
-        return
 
     track_extractor = IRTrackExtractor(
         config.tracking,

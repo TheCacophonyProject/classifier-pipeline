@@ -270,6 +270,7 @@ class ClipTracker(ABC):
         self.print_if_verbose(
             "{} {}".format("Number of 'good' tracks", len(clip.tracks))
         )
+        print("generic filter track")
         # apply max_tracks filter
         # note, we take the n best tracks.
         if self.max_tracks is not None and self.max_tracks < len(clip.tracks):
