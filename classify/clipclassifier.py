@@ -60,10 +60,13 @@ class ClipClassifier:
         """
         if model.id in self.models:
             return self.models[model.id]
-        logging.info("classifier loading")
+        load_start = time.time()
+        logging.info("classifier loading %s", model.model_file)
         classifier = KerasModel(self.config.train)
         classifier.load_model(model.model_file, weights=model.model_weights)
+        logging.info("classifier loaded (%s)", time.time() - load_start)
         self.models[model.id] = classifier
+
         return classifier
 
     def get_meta_data(self, filename):
@@ -189,12 +192,9 @@ class ClipClassifier:
 
     def classify_clip(self, clip, model, meta_data, reuse_frames=None):
         start = time.time()
-        load_start = time.time()
         classifier = self.get_classifier(model)
-        load_time = time.time() - load_start
-        logging.info("classifier loaded (%s)", load_time)
         predictions = Predictions(classifier.labels, model)
-        predictions.model_load_time = load_time
+        predictions.model_load_time = time.time() - start
         for i, track in enumerate(clip.tracks):
             segment_frames = None
             if reuse_frames:
