@@ -89,6 +89,7 @@ class IRTrackExtractor(ClipTracker):
         """
         Loads a cptv file, and prepares for track extraction.
         """
+        clip.type = "IR"
         self._tracking_time = None
         start = time.time()
         clip.set_frame_buffer(
@@ -119,7 +120,6 @@ class IRTrackExtractor(ClipTracker):
             else:
                 background = np.minimum(background, gray)
             if count < 6:
-                # get it started for tracking
                 self._get_filtered_frame_ir(gray, repeats=6)
 
             # repeats = 1
@@ -164,6 +164,8 @@ class IRTrackExtractor(ClipTracker):
             (success, saliencyMap) = self.saliency.computeSaliency(thermal)
         # (success, saliencyMap) = self.saliency.computeSaliency(thermal)
         saliencyMap = (saliencyMap * 255).astype("uint8")
+        saliencyMap = cv2.fastNlMeansDenoising(saliencyMap, None)
+
         # cv2.imshow("saliencyMap.png", np.uint8(saliencyMap))
         return saliencyMap, 0
 

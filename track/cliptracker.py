@@ -184,7 +184,7 @@ class ClipTracker(ABC):
         regions = []
         for i, component in enumerate(component_details):
 
-            if component[2] < 30 or component[3] < 30:
+            if component[2] < 0 or component[3] < 0:
                 # use config for this
                 continue
             region = Region(

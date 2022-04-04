@@ -82,7 +82,6 @@ class Previewer:
         """
 
         logging.info("creating clip preview %s", filename)
-
         # increased resolution of video file.
         # videos look much better scaled up
         if not clip.stats:
@@ -110,21 +109,19 @@ class Previewer:
         out = cv2.VideoWriter(
             filename,
             cv2.VideoWriter_fourcc("M", "J", "P", "G"),
-            10,
+            clip.frames_per_second,
             (res_x, res_y),
         )
         frame_scale = 1
         for frame_number, frame in enumerate(clip.frame_buffer):
             if self.preview_type == self.PREVIEW_RAW:
                 image = self.convert_and_resize(
-                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp
+                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp, clip.type
                 )
                 draw = ImageDraw.Draw(image)
             elif self.preview_type == self.PREVIEW_TRACKING:
                 image = self.create_four_tracking_image(
-                    frame,
-                    clip.stats.min_temp,
-                    clip.stats.max_temp,
+                    frame, clip.stats.min_temp, clip.stats.max_temp, clip.type
                 )
                 draw = ImageDraw.Draw(image)
                 self.add_tracks(
@@ -140,6 +137,7 @@ class Previewer:
                     frame.thermal,
                     clip.stats.min_temp,
                     clip.stats.max_temp,
+                    clip.type,
                     frame_scale=frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
@@ -157,6 +155,7 @@ class Previewer:
                     frame.thermal,
                     clip.stats.min_temp,
                     clip.stats.max_temp,
+                    clip.type,
                     frame_scale=frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
@@ -214,15 +213,17 @@ class Previewer:
             tools.write_mpeg(filename_format.format(id + 1), video_frames)
 
     def convert_and_resize(
-        self, frame, h_min, h_max, size=None, mode=Image.BILINEAR, frame_scale=1
+        self, frame, h_min, h_max, type, size=None, mode=Image.BILINEAR, frame_scale=1
     ):
         """Converts the image to colour using colour map and resize"""
         thermal = frame.copy()
-        # image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
-        thermal = thermal[..., np.newaxis]
+        if type == "IR":
+            thermal = thermal[..., np.newaxis]
+            thermal = np.repeat(thermal, 3, axis=2)
+            image = Image.fromarray(thermal)
+        else:
+            image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
 
-        thermal = np.repeat(thermal, 3, axis=2)
-        image = Image.fromarray(thermal)
         # image.save("test" + ".thumbnail", "JPEG")
         if frame_scale != 1:
             image = image.resize(
@@ -309,22 +310,25 @@ class Previewer:
         center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
         draw.text((center[0], center[1]), footer_text, font=font)
 
-    def create_four_tracking_image(self, frame, min_temp, max_temp):
+    def create_four_tracking_image(self, frame, min_temp, max_temp, type):
 
         thermal = frame.thermal
         filtered = frame.filtered
-        filtered = np.uint8(filtered)
-        thermal = thermal[..., np.newaxis]
-        thermal = np.repeat(thermal, 3, axis=2)
-        filtered = filtered[..., np.newaxis]
-        filtered = np.repeat(filtered, 3, axis=2)
-        thermal = Image.fromarray(thermal)
-        filtered = Image.fromarray(filtered)
-        #
-        # filtered = tools.convert_heat_to_img(
-        #     filtered, self.colourmap, min_temp, max_temp
-        # )
-        # thermal = tools.convert_heat_to_img(thermal, self.colourmap, min_temp, max_temp)
+        if type == "IR":
+            filtered = np.uint8(filtered)
+            thermal = thermal[..., np.newaxis]
+            thermal = np.repeat(thermal, 3, axis=2)
+            filtered = filtered[..., np.newaxis]
+            filtered = np.repeat(filtered, 3, axis=2)
+            thermal = Image.fromarray(thermal)
+            filtered = Image.fromarray(filtered)
+        else:
+            filtered = tools.convert_heat_to_img(
+                filtered, self.colourmap, min_temp, max_temp
+            )
+            thermal = tools.convert_heat_to_img(
+                thermal, self.colourmap, min_temp, max_temp
+            )
         if self.debug:
             tools.add_heat_number(thermal, frame.thermal, 1)
         if frame.mask is None:

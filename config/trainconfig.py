@@ -32,6 +32,7 @@ class TrainConfig(DefaultConfig):
     resnet_params = attr.ib()
     use_gru = attr.ib()
     label_probabilities = attr.ib()
+    tfrecords = attr.ib()
 
     LABEL_PROBABILITIES = {
         "bird": 20,
@@ -60,11 +61,13 @@ class TrainConfig(DefaultConfig):
             epochs=raw["epochs"],
             use_gru=raw["use_gru"],
             label_probabilities=raw["label_probabilities"],
+            tfrecords=raw["tfrecords"],
         )
 
     @classmethod
     def get_defaults(cls):
         return cls(
+            tfrecords=False,
             hyper_params={},
             resnet_params=None,
             train_dir="train",

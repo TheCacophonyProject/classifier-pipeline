@@ -57,8 +57,8 @@ def load_args():
     parser.add_argument(
         "-s",
         "--dataset",
-        default="test.dat",
-        help="Dataset to use train.dat, validation.dat, test.dat ( Default)",
+        default="test",
+        help="Dataset to use train, validation, test ( Default)",
     )
     parser.add_argument(
         "--confusion",
@@ -117,52 +117,66 @@ if args.track_id or args.clip_id:
     evaluate_db_clip(model, db, args.clip_id, args.track_id)
     sys.exit(0)
 
-dataset = pickle.load(open(os.path.join(base_dir, args.dataset), "rb"))
-logging.info("running on %s ", dataset.name)
 
-dir = os.path.dirname(model_file)
-meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
-mapped_labels = meta.get("mapped_labels")
-label_probabilities = meta.get("label_probabilities")
-dataset.lbl_p = label_probabilities
-if mapped_labels:
-    dataset.regroup(mapped_labels)
+if config.train.tfrecords:
+    model.load_training_meta(base_dir)
 
-logging.info(
-    "Dataset loaded %s, using labels %s, mapped labels %s",
-    dataset.name,
-    dataset.labels,
-    dataset.label_mapping,
-)
-logging.info("%s %s / %s", "label", "samples", "tracks")
-for label in dataset.labels:
-    samples, tracks, _, _ = dataset.get_counts(label)
-    logging.info("%s/ %s / %s", label, samples, tracks)
-
-logging.info("Mapped labels")
-for label in dataset.label_mapping.keys():
-    logging.info(
-        "%s",
-        "{} {:<20}".format(
-            label,
-            dataset.mapped_label(label),
-            "{}/{}/{:.1f}".format(*dataset.get_counts(label)),
-        ),
+    files = tf.io.gfile.glob(base_dir + f"/training-data/{args.dataset}/*.tfrecord")
+    dataset = get_dataset(
+        files,
+        model.params.batch_size,
+        (model.params.frame_size, model.params.frame_size),
+        len(model.labels),
+        reshuffle=False,
+        deterministic=True,
+        resample=False,
     )
-files = tf.io.gfile.glob(base_dir + f"/training-data/{dataset.name}/*.tfrecord")
-dataset = get_dataset(
-    files,
-    model.params.batch_size,
-    (model.params.frame_size, model.params.frame_size),
-    len(model.labels),
-    reshuffle=False,
-    deterministic=True,
-    resample=False,
-)
+    logging.info(
+        "Dataset loaded %s, using labels %s",
+        args.dataset,
+        model.labels,
+    )
+
+else:
+    dataset = pickle.load(open(os.path.join(base_dir, args.dataset + ".dat"), "rb"))
+    logging.info("running on %s ", dataset.name)
+
+    dir = os.path.dirname(model_file)
+    meta = json.load(open(os.path.join(dir, "metadata.txt"), "r"))
+    mapped_labels = meta.get("mapped_labels")
+    label_probabilities = meta.get("label_probabilities")
+    dataset.lbl_p = label_probabilities
+    if mapped_labels:
+        dataset.regroup(mapped_labels)
+
+    logging.info(
+        "Dataset loaded %s, using labels %s, mapped labels %s",
+        dataset.name,
+        dataset.labels,
+        dataset.label_mapping,
+    )
+    logging.info("%s %s / %s", "label", "samples", "tracks")
+    for label in dataset.labels:
+        samples, tracks, _, _ = dataset.get_counts(label)
+        logging.info("%s/ %s / %s", label, samples, tracks)
+
+    logging.info("Mapped labels")
+    for label in dataset.label_mapping.keys():
+        logging.info(
+            "%s",
+            "{} {:<20}".format(
+                label,
+                dataset.mapped_label(label),
+                "{}/{}/{:.1f}".format(*dataset.get_counts(label)),
+            ),
+        )
 
 if args.tracks:
     model.track_accuracy(dataset, args.confusion)
 elif args.confusion:
-    model.confusion_new(dataset, args.confusion)
+    if config.train.tfrecords:
+        model.confusion_tfrecords(dataset, args.confusion)
+    else:
+        model.confusion(dataset, args.confusion)
 else:
     model.evaluate(dataset)

@@ -383,7 +383,7 @@ class KerasModel(Interpreter):
         del self.test
         gc.collect()
 
-    def train_model_dataset(self, epochs, run_name, base_dir, weights=None):
+    def train_model_tfrecords(self, epochs, run_name, base_dir, weights=None):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
@@ -435,6 +435,7 @@ class KerasModel(Interpreter):
                 *checkpoints,
             ],  # log metricslast_stats
         )
+        history = history.history
         test_accuracy = None
         test_files = tf.io.gfile.glob(base_dir + "/test/*.tfrecord")
         if len(test_files) > 0:
@@ -812,11 +813,11 @@ class KerasModel(Interpreter):
         output = self.model.predict(frame[np.newaxis, :])
         return output[0]
 
-    def confusion_new(self, dataset, filename):
+    def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
-
         y_pred = self.model.predict(dataset)
+
         predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
 
         cm = confusion_matrix(

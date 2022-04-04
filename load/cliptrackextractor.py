@@ -80,7 +80,7 @@ class ClipTrackExtractor(ClipTracker):
         """
         Loads a cptv file, and prepares for track extraction.
         """
-        self.tracking_time = None
+        self._tracking_time = None
         start = time.time()
         clip.set_frame_buffer(
             self.high_quality_optical_flow,
@@ -88,7 +88,7 @@ class ClipTrackExtractor(ClipTracker):
             self.use_opt_flow,
             self.keep_frames,
         )
-
+        clip.type = "cptv"
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             clip.set_res(reader.x_resolution, reader.y_resolution)
@@ -126,7 +126,7 @@ class ClipTrackExtractor(ClipTracker):
 
         if self.calc_stats:
             clip.stats.completed(clip.current_frame, clip.res_y, clip.res_x)
-        self.tracking_time = time.time() - start
+        self._tracking_time = time.time() - start
         return True
 
     @property

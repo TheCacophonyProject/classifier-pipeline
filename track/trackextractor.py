@@ -34,16 +34,6 @@ class TrackExtractor:
             self.cache_to_disk = self.config.classify.cache_to_disk
         else:
             self.cache_to_disk = cache_to_disk
-        # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
-        #
-        # self.track_extractor = IRTrackExtractor(
-        #     self.config.tracking,
-        #     self.config.use_opt_flow,
-        #     self.cache_to_disk,
-        #     high_quality_optical_flow=self.config.tracking.high_quality_optical_flow,
-        #     verbose=self.config.verbose,
-        #     keep_frames=False if self.previewer is None else True,
-        # )
 
     def get_meta_data(self, filename):
         """Reads meta-data for a given cptv file."""
@@ -118,15 +108,29 @@ def extract_file(filename):
         raise Exception("File {} not found.".format(filename))
     logging.info("Processing file '{}'".format(filename))
     previewer = Previewer.create_if_required(config, config.classify.preview)
+    extension = os.path.splitext(filename)[1]
+    if extension == ".cptv":
+        track_extractor = ClipTrackExtractor(
+            config.tracking,
+            config.use_opt_flow,
+            cache_to_disk,
+            high_quality_optical_flow=config.tracking.high_quality_optical_flow,
+            verbose=config.verbose,
+            keep_frames=False if previewer is None else True,
+        )
+        logging.info("Using cptv extractor")
 
-    track_extractor = IRTrackExtractor(
-        config.tracking,
-        config.use_opt_flow,
-        cache_to_disk,
-        high_quality_optical_flow=config.tracking.high_quality_optical_flow,
-        verbose=config.verbose,
-        keep_frames=False if previewer is None else True,
-    )
+    else:
+        track_extractor = IRTrackExtractor(
+            config.tracking,
+            config.use_opt_flow,
+            cache_to_disk,
+            high_quality_optical_flow=config.tracking.high_quality_optical_flow,
+            verbose=config.verbose,
+            keep_frames=False if previewer is None else True,
+        )
+        logging.info("Using ir extractor")
+
     start = time.time()
     clip = Clip(config.tracking, filename)
     clip.frames_per_second = 10
@@ -148,69 +152,12 @@ def extract_file(filename):
         mpeg_filename = destination_folder + "/" + base_name + "-tracking.avi"
 
         previewer.export_clip_preview(mpeg_filename, clip)
-        # return
-        # logging.info("Exporting preview to '{}'".format(mpeg_filename))
-        # out = cv2.VideoWriter(
-        #     mpeg_filename,
-        #     cv2.VideoWriter_fourcc("M", "J", "P", "G"),
-        #     10,
-        #     (clip.res_x, clip.res_y),
-        #     0,
-        # )
-        # for frame_number, frame in enumerate(clip.frame_buffer):
-        #     for index, track in enumerate(clip.tracks):
-        #         frame_offset = frame_number - track.start_frame
-        #
-        #         if frame_offset >= 0 and frame_offset < len(track.bounds_history):
-        #             region = track.bounds_history[frame_offset]
-        #             cv2.rectangle(
-        #                 frame.thermal,
-        #                 (region.left, region.top),
-        #                 (region.right, region.bottom),
-        #                 (0, 255, 0),
-        #                 3,
-        #             )
-        #             print(
-        #                 "region region",
-        #                 region,
-        #                 region.frame_number,
-        #                 " for rame X",
-        #                 frame_number,
-        #             )
-        #     out.write(frame.thermal)
 
-        #
-        # cv2.imshow("detected.png", np.uint8(frame.thermal))
-        # cv2.waitKey(100)
-        # self.previewer.export_clip_preview(mpeg_filename, clip)
     logging.info("saving meta data %s", meta_filename)
-    # out.release()
-
-    # cv2.destroyAllWindows()
 
     save_metadata(filename, meta_filename, clip, track_extractor, config)
     if cache_to_disk:
         clip.frame_buffer.remove_cache()
-
-
-#
-# def extract_tracks(filename, config, cache_to_disk):
-#     if not os.path.exists(filename):
-#         raise Exception("File {} not found.".format(filename))
-#     logging.info("Processing file '{}'".format(filename))
-#
-#     track_extractor = IRTrackExtractor(
-#         config.tracking,
-#         config.use_opt_flow,
-#         cache_to_disk,
-#         high_quality_optical_flow=config.tracking.high_quality_optical_flow,
-#         verbose=config.verbose,
-#         keep_frames=False if previewer is None else True,
-#     )
-#     start = time.time()
-#     clip = Clip(config.tracking, filename)
-#     success = track_extractor.parse_clip(clip)
-#     return clip, success, track_extractor.tracking_time
 
 
 def save_metadata(filename, meta_filename, clip, track_extractor, config):
