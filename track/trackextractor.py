@@ -129,6 +129,7 @@ def extract_file(filename):
     )
     start = time.time()
     clip = Clip(config.tracking, filename)
+    clip.frames_per_second = 10
     success = track_extractor.parse_clip(clip)
 
     # clip, success, tracking_time = extract_tracks(filename, config, cache_to_disk)

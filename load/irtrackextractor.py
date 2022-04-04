@@ -118,11 +118,15 @@ class IRTrackExtractor(ClipTracker):
 
             else:
                 background = np.minimum(background, gray)
+            if count < 6:
+                # get it started for tracking
+                self._get_filtered_frame_ir(gray, repeats=6)
+
             # repeats = 1
             # if count < 6:
             #     repeats = 6
             #
-            # count += 1
+            count += 1
 
         vidcap.release()
         if background is None:
@@ -155,7 +159,7 @@ class IRTrackExtractor(ClipTracker):
 
         self._process_frame(clip, frame, ffc_affected, track=track)
 
-    def _get_filtered_frame_ir(self, clip, thermal, repeats=1):
+    def _get_filtered_frame_ir(self, thermal, repeats=1):
         for _ in range(repeats):
             (success, saliencyMap) = self.saliency.computeSaliency(thermal)
         # (success, saliencyMap) = self.saliency.computeSaliency(thermal)
@@ -229,7 +233,7 @@ class IRTrackExtractor(ClipTracker):
         repeats = 1
         if clip.current_frame < 6:
             repeats = 8
-        saliencyMap, _ = self._get_filtered_frame_ir(clip, thermal, repeats=repeats)
+        saliencyMap, _ = self._get_filtered_frame_ir(thermal, repeats=repeats)
         backsub, _ = get_ir_back_filtered(clip.background, thermal)
         clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
         if not track:
@@ -270,10 +274,11 @@ class IRTrackExtractor(ClipTracker):
         # return False
         # discard any tracks that are less min_duration
         # these are probably glitches anyway, or don't contain enough information.
+
         if len(track) < self.config.min_duration_secs * clip.frames_per_second:
             self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
             clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
-            # return True
+            return True
         #
         # # discard tracks that do not move enough
         #
@@ -287,10 +292,10 @@ class IRTrackExtractor(ClipTracker):
         #     clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
         #     return True
 
-        if stats.blank_percent > self.config.max_blank_percent:
-            self.print_if_verbose("Track filtered.  Too Many Blanks")
-            clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
-            return True
+        # if stats.blank_percent > self.config.max_blank_percent:
+        #     self.print_if_verbose("Track filtered.  Too Many Blanks")
+        #     clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
+        #     return True
 
         highest_ratio = 0
         for other in clip.tracks:
