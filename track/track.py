@@ -72,7 +72,7 @@ class RegionTracker(Tracker):
         self._last_bound = None
         self.crop_rectangle = crop_rectangle
         self._tracking = False
-
+        self.type = tracking_config.type
         self.min_mass_change = tracking_config.params.get(
             "min_mass_change", RegionTracker.MIN_MASS_CHANGE
         )
@@ -95,6 +95,7 @@ class RegionTracker(Tracker):
             "base_velocity", RegionTracker.BASE_VELOCITY
         )
         self.max_blanks = tracking_config.params.get("max_blanks", 18)
+        print("Set params using", tracking_config)
 
     @property
     def tracking(self):
@@ -109,13 +110,17 @@ class RegionTracker(Tracker):
         avg_mass = track.average_mass()
         max_distances = self.get_max_distance_change(track)
         for region in regions:
-            distances, size_change = get_region_score(self.last_bound, region)
+            size_change = get_size_change(self.last_bound, region)
+            distances = self.last_bound.average_distance(region)
 
             max_size_change = get_max_size_change(track, region)
             max_mass_change = self.get_max_mass_change_percent(track, avg_mass)
 
             # only for thermal
-            # distance = np.mean(distances)
+            if type == "thermal":
+                # GP should figure out good values for the 3 distances rather than the mean
+                logging.info("using mean")
+                distances[0] = np.mean(distances)
 
             if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
                 logging.info(
@@ -274,18 +279,16 @@ def get_max_size_change(track, region):
     return region_percent
 
 
-def get_region_score(last_bound: Region, region: Region):
+def get_size_change(last_bound: Region, region: Region):
     """
-    Calculates a score between 2 regions based of distance and area.
-    The higher the score the more similar the Regions are
+    Gets a value representing the difference in regions sizes
     """
-    distance = last_bound.average_distance(region)
 
     # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
     # area is padded with 50 pixels so small regions don't change too much
     size_difference = abs(region.area - last_bound.area) / (last_bound.area + 50)
 
-    return distance, size_difference
+    return size_difference
 
 
 class Track:
@@ -359,6 +362,7 @@ class Track:
         self.all_class_confidences = None
         self.prediction_classes = None
         self.tracker_version = tracker_version
+        logging.info("getting tracker for type %s", type)
         config = tracking_config.trackers.get(type)
         self.tracker = self.get_tracker(config)
         # self.tracker = RegionTracker(
@@ -367,7 +371,6 @@ class Track:
 
     def get_tracker(self, tracking_config):
         tracker = tracking_config.tracker
-        print("trakcing config", tracking_config)
         if tracker == "RegionTracker":
             return RegionTracker(self.get_id(), tracking_config, self.crop_rectangle)
         else:
@@ -447,6 +450,7 @@ class Track:
             tracker_version=tracker_version,
             crop_rectangle=clip.crop_rectangle,
             tracking_config=tracking_config,
+            type=clip.type,
         )
         track.start_frame = region.frame_number
         track.start_s = region.frame_number / float(clip.frames_per_second)

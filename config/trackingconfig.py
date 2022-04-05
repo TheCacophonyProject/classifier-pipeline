@@ -93,9 +93,9 @@ class TrackingConfig(DefaultConfig):
     @classmethod
     def get_defaults(cls):
         trackers = {}
-        trackers["ir"] = TrackerConfig(
+        trackers["IR"] = TrackerConfig(
             tracker="RegionTracker",
-            type="ir",
+            type="IR",
             params={
                 "base_distance_change": 11250,
                 "min_mass_change": 20 * 4,
@@ -202,7 +202,7 @@ class TrackerConfig(DefaultConfig):
     def get_defaults(cls):
         return cls(
             tracker="RegionTracker",
-            type="ir",
+            type="IR",
             params={
                 "base_distance_change": 11250,
                 "min_mass_change": 20 * 4,

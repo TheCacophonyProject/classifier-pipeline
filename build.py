@@ -19,7 +19,7 @@ from ml_tools.datasetstructures import Camera
 from ml_tools.recordwriter import create_tf_records
 import numpy as np
 
-MIN_TRACKS = 1
+MIN_SAMPLES = 100
 use_clips = True
 TEST_TRACKS = 0
 
@@ -35,8 +35,8 @@ def parse_args():
     )
     parser.add_argument(
         "-m",
-        "--min-tracks",
-        default=MIN_TRACKS,
+        "--min-samples",
+        default=MIN_SAMPLES,
         type=int,
         help="Min tracks per dataset (Default 100)",
     )
@@ -80,10 +80,14 @@ def parse_args():
 
 def show_tracks_breakdown(dataset):
     print("Tracks breakdown:")
+    samples = dataset.samples
+
     for label in dataset.labels:
+        lbl_samples = dataset.samples_by_label.get(label, [])
+        tracks = [s.unique_track_id for s in lbl_samples]
+        tracks = set(tracks)
         print("labels are", label)
-        count = len([track for track in dataset.tracks_by_label.get(label, [])])
-        print("  {:<20} {} tracks".format(label, count))
+        print("  {:<20} {} tracks".format(label, len(tracks)))
 
 
 def show_cameras_tracks(dataset):
@@ -105,15 +109,6 @@ def show_cameras_breakdown(dataset):
 
     for camera, samples in samples_by_camera.items():
         print("{:<20} {}".format(camera, len(samples)))
-
-
-def show_segments_breakdown(dataset):
-    print("Segments breakdown:")
-    for label in dataset.labels:
-        count = sum(
-            [len(track.segments) for track in dataset.tracks_by_label.get(label, [])]
-        )
-        print("  {:<20} {} segments".format(label, count))
 
 
 def show_samples_breakdown(dataset):
@@ -156,16 +151,7 @@ def print_counts(dataset, train, validation, test):
     print()
 
 
-<<<<<<< HEAD
 def split_label(dataset, label, existing_test_count=0, max_samples=None):
-=======
-def split_label(
-    dataset,
-    label,
-    min_tracks,
-    existing_test_count=0,
-):
->>>>>>> gp-master
     # split a label from dataset such that vlaidation is 15% or MIN_TRACKS
     samples = dataset.samples_by_label.get(label, [])
     if max_samples is not None:
@@ -195,13 +181,9 @@ def split_label(
     add_to = validate_c
     last_index = 0
     label_count = 0
-<<<<<<< HEAD
     total = len(samples)
-    min_t = MIN_TRACKS
-=======
-    total = len(tracks)
-    min_t = min_tracks
->>>>>>> gp-master
+    min_t = MIN_SAMPLES
+
     if label in ["vehicle", "human"]:
         min_t = 10
     num_validate_samples = max(total * 0.15, min_t)
@@ -276,19 +258,14 @@ def split_randomly(db_file, dataset, config, args, test_clips=[], balance_bins=T
             continue
         if min_label is None or label_count < min_label[1]:
             min_label = (label, label_count)
-    print("min label is", min_label)
     for label in dataset.labels:
         existing_test_count = len(test.samples_by_label.get(label, []))
         train_c, validate_c, test_c = split_label(
-<<<<<<< HEAD
             dataset,
             label,
             existing_test_count=existing_test_count,
             max_samples=None,
             # min_label[1],
-=======
-            dataset, label, args.min_tracks, existing_test_count=existing_test_count
->>>>>>> gp-master
         )
         if train_c is not None:
             train_cameras.append(train_c)
@@ -324,7 +301,7 @@ def main():
     init_logging()
     args = parse_args()
     config = load_config(args.config_file)
-    print("min tracks", args.min_tracks)
+    print("min samples", args.min_samples)
     test_clips = config.build.test_clips()
     if test_clips is None:
         test_clips = []
@@ -349,8 +326,6 @@ def main():
     print()
     show_tracks_breakdown(dataset)
     print()
-    show_segments_breakdown(dataset)
-    print()
     show_samples_breakdown(dataset)
     print()
     show_cameras_breakdown(dataset)
@@ -365,7 +340,6 @@ def main():
     base_dir = config.tracks_folder
     record_dir = os.path.join(base_dir, "training-data/")
     for dataset in datasets:
-<<<<<<< HEAD
         dir = os.path.join(record_dir, dataset.name)
         create_tf_records(dataset, dir, num_shards=5)
 
@@ -375,28 +349,6 @@ def main():
     meta_data = {"labels": datasets[0].labels}
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
-    # for dataset in datasets:
-    #     # dataset.clear_samples()
-    #     dataset.db = None
-    #     logging.info("saving to %s", f"{os.path.join(base_dir, dataset.name)}.dat")
-    #     pickle.dump(dataset, open(f"{os.path.join(base_dir, dataset.name)}.dat", "wb"))
-=======
-        dataset.saveto_numpy(
-            os.path.join(base_dir), config.train.hyper_params.get("frame_size")
-        )
-
-    for dataset in datasets:
-        # delete data that isn't needed for training, makes for a smaller file
-        # which loads daster
-        dataset.clear_unused()
-        dataset.db = None
-        dataset.clear_tracks()
-        for segment in dataset.segments:
-            segment.frame_temp_median = None
-            segment.regions = None
-        logging.info("saving to %s", f"{os.path.join(base_dir, dataset.name)}.dat")
-        pickle.dump(dataset, open(f"{os.path.join(base_dir, dataset.name)}.dat", "wb"))
->>>>>>> gp-master
 
 
 def validate_datasets(datasets, test_clips, date):

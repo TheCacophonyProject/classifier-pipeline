@@ -60,6 +60,7 @@ tracking:
   areas_of_interest: {cropped_regions_strategy: cautious, min_mass: 4.0, pixel_variance: 2.0}
   dilation_pixels: 2
   edge_pixels: 1
+  # this hsould be 0 for IR
   enable_track_output: true
   filters: {min_duration_secs: 1.0, moving_vel_thresh: 4, track_min_delta: 1.0, track_min_mass: 2.0,
     track_min_offset: 4.0, track_overlap_ratio: 0.5}

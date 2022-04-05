@@ -268,7 +268,6 @@ class Dataset:
                 counter += 1
             if counter % 50 == 0:
                 logging.debug("Dataset loaded %s / %s", counter, len(clip_ids))
-
         return [counter, len(clip_ids)]
 
     def load_clip(self, clip_id, allow_multiple_labels=False):

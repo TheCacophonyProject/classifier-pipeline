@@ -1096,7 +1096,7 @@ class TrackingSample(Sample):
 
     @property
     def unique_track_id(self):
-        return "{}".format(self.clip_id)
+        return "{}-{}".format(self.clip_id, self.track_id)
 
     @property
     def track_bounds(self):
