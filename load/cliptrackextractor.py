@@ -146,8 +146,9 @@ class ClipTrackExtractor(ClipTracker):
         mask = None
         if track:
             _, mask, component_details = detect_objects(
-                filtered.copy(), otsus=False, threshold=threshold
+                filtered.copy(), otsus=False, threshold=threshold, kernel=(5, 5)
             )
+            logging.info(" %s got components %s", clip.current_frame, component_details)
         clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not track:
             return

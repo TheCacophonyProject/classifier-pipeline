@@ -238,6 +238,7 @@ class ClipTracker(ABC):
             ):
                 continue
             regions.append(region)
+            logging.info("%s regions %s", clip.current_frame, region)
         return regions
 
     def filter_tracks(self, clip):
