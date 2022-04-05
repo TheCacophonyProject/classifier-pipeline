@@ -114,6 +114,9 @@ class ClipTracker(ABC):
         for (score, track, region) in scores:
             if track in matched_tracks or region in used_regions:
                 continue
+            logging.info(
+                "matched %s with %s to track %s", clip.current_frame, region, track
+            )
             track.add_region(region)
             matched_tracks.add(track)
             used_regions.add(region)
