@@ -109,6 +109,8 @@ def extract_file(filename):
     logging.info("Processing file '{}'".format(filename))
     previewer = Previewer.create_if_required(config, config.classify.preview)
     extension = os.path.splitext(filename)[1]
+    clip = Clip(config.tracking, filename)
+
     if extension == ".cptv":
         track_extractor = ClipTrackExtractor(
             config.tracking,
@@ -118,6 +120,8 @@ def extract_file(filename):
             verbose=config.verbose,
             keep_frames=False if previewer is None else True,
         )
+        clip.frames_per_second = 9
+
         logging.info("Using cptv extractor")
 
     else:
@@ -129,11 +133,11 @@ def extract_file(filename):
             verbose=config.verbose,
             keep_frames=False if previewer is None else True,
         )
+        clip.frames_per_second = 10
+
         logging.info("Using ir extractor")
 
     start = time.time()
-    clip = Clip(config.tracking, filename)
-    clip.frames_per_second = 10
     success = track_extractor.parse_clip(clip)
 
     # clip, success, tracking_time = extract_tracks(filename, config, cache_to_disk)
