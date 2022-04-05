@@ -60,6 +60,8 @@ class RegionTracker(Tracker):
 
     # MAX_DISTANCE = 2000
     MAX_DISTANCE = 30752
+    BASE_VELOCITY = 8
+    VELOCITY_MULTIPLIER = 10
 
     def __init__(self, id, tracking_config, crop_rectangle=None):
         self.track_id = id
@@ -70,8 +72,29 @@ class RegionTracker(Tracker):
         self._last_bound = None
         self.crop_rectangle = crop_rectangle
         self._tracking = False
-        if tracking_config:
-            self.max_blanks = tracking_config.remove_track_after_frames
+
+        self.min_mass_change = tracking_config.params.get(
+            "min_mass_change", RegionTracker.MIN_MASS_CHANGE
+        )
+        self.max_distance = tracking_config.params.get(
+            "max_distance", RegionTracker.MAX_DISTANCE
+        )
+        self.base_distance_change = tracking_config.params.get(
+            "base_distance_change", RegionTracker.BASE_DISTANCE_CHANGE
+        )
+        self.restrict_mass_after = tracking_config.params.get(
+            "restrict_mass_after", RegionTracker.RESTRICT_MASS_AFTER
+        )
+        self.mass_change_percent = tracking_config.params.get(
+            "mass_change_percent", RegionTracker.MASS_CHANGE_PERCENT
+        )
+        self.velocity_multiplier = tracking_config.params.get(
+            "velocity_multiplier", RegionTracker.VELOCITY_MULTIPLIER
+        )
+        self.base_velocity = tracking_config.params.get(
+            "base_velocity", RegionTracker.BASE_VELOCITY
+        )
+        self.max_blanks = tracking_config.params.get("max_blanks", 18)
 
     @property
     def tracking(self):
@@ -84,12 +107,12 @@ class RegionTracker(Tracker):
     def match(self, regions, track):
         scores = []
         avg_mass = track.average_mass()
-        max_distances = get_max_distance_change(track)
+        max_distances = self.get_max_distance_change(track)
         for region in regions:
             distances, size_change = get_region_score(self.last_bound, region)
 
             max_size_change = get_max_size_change(track, region)
-            max_mass_change = get_max_mass_change_percent(track, avg_mass)
+            max_mass_change = self.get_max_mass_change_percent(track, avg_mass)
 
             # only for thermal
             # distance = np.mean(distances)
@@ -202,6 +225,41 @@ class RegionTracker(Tracker):
     def tracker_version(self):
         return f"RegionTracker-{RegionTracker.TRACKER_VERSION}"
 
+    def get_max_distance_change(self, track):
+        x, y = track.velocity
+        x = max(x, 2)
+        y = max(y, 2)
+        if len(track) == 1:
+            x = self.base_velocity
+            y = self.base_velocity
+        x = self.velocity_multiplier * x
+        y = self.velocity_multiplier * y
+        velocity_distance = x * x + y * y
+
+        pred_vel = track.predicted_velocity()
+        logging.debug(
+            "%s velo %s pred vel %s", track, track.velocity, track.predicted_velocity()
+        )
+        pred_distance = pred_vel[0] * pred_vel[0] + pred_vel[1] * pred_vel[1]
+        pred_distance = max(velocity_distance, pred_distance)
+        max_distance = self.base_distance_change + max(velocity_distance, pred_distance)
+        distances = [max_distance, None, None]
+        return distances
+
+    def get_max_mass_change_percent(self, track, average_mass):
+        if len(track) > self.restrict_mass_after * track.fps:
+            vel = track.velocity
+            mass_percent = self.mass_change_percent
+            if np.sum(np.abs(vel)) > 5:
+                # faster tracks can be a bit more deviant
+                mass_percent = mass_percent + 0.1
+            return max(
+                self.min_mass_change,
+                average_mass * mass_percent,
+            )
+        else:
+            return None
+
 
 def get_max_size_change(track, region):
     exiting = region.is_along_border and not track.last_bound.is_along_border
@@ -214,60 +272,6 @@ def get_max_size_change(track, region):
         region_percent = 2
 
     return region_percent
-
-
-def get_max_mass_change_percent(track, average_mass):
-    if len(track) > RegionTracker.RESTRICT_MASS_AFTER * track.fps:
-        vel = track.velocity
-        mass_percent = RegionTracker.MASS_CHANGE_PERCENT
-        if np.sum(np.abs(vel)) > 5:
-            # faster tracks can be a bit more deviant
-            mass_percent = mass_percent + 0.1
-        return max(
-            RegionTracker.MIN_MASS_CHANGE,
-            average_mass * mass_percent,
-        )
-    else:
-        return None
-
-
-# ?THERMAL
-def get_max_distance_change(track):
-    x, y = track.velocity
-    x = 2 * x
-    y = 2 * y
-    velocity_distance = x * x + y * y
-    pred_vel = track.predicted_velocity()
-    pred_distance = pred_vel[0] * pred_vel[0] + pred_vel[1] * pred_vel[1]
-
-    max_distance = RegionTracker.BASE_DISTANCE_CHANGE + max(
-        velocity_distance, pred_distance
-    )
-    if max_distance > RegionTracker.MAX_DISTANCE:
-        return [RegionTracker.MAX_DISTANCE, None, None]
-    return [max_distance, None, None]
-
-
-# IR
-def get_max_distance_change(track):
-    x, y = track.velocity
-    x = max(x, 2)
-    y = max(y, 2)
-    if len(track) == 1:
-        x = 10
-        y = 10
-    x = 8 * x
-    y = 8 * y
-    velocity_distance = x * x + y * y
-
-    pred_vel = track.predicted_velocity()
-    logging.debug(
-        "%s velo %s pred vel %s", track, track.velocity, track.predicted_velocity()
-    )
-    pred_distance = pred_vel[0] * pred_vel[0] + pred_vel[1] * pred_vel[1]
-    point_change = max(velocity_distance, pred_distance)
-    distances = [velocity_distance, None, None]
-    return distances
 
 
 def get_region_score(last_bound: Region, region: Region):
@@ -301,6 +305,7 @@ class Track:
         clip_id,
         id=None,
         fps=9,
+        type="thermal",
         tracking_config=None,
         crop_rectangle=None,
         tracker_version=None,
@@ -354,9 +359,19 @@ class Track:
         self.all_class_confidences = None
         self.prediction_classes = None
         self.tracker_version = tracker_version
-        self.tracker = RegionTracker(
-            self.get_id(), tracking_config, self.crop_rectangle
-        )
+        config = tracking_config.trackers.get(type)
+        self.tracker = self.get_tracker(config)
+        # self.tracker = RegionTracker(
+        #     self.get_id(), tracking_config, self.crop_rectangle
+        # )
+
+    def get_tracker(self, tracking_config):
+        tracker = tracking_config.tracker
+        print("trakcing config", tracking_config)
+        if tracker == "RegionTracker":
+            return RegionTracker(self.get_id(), tracking_config, self.crop_rectangle)
+        else:
+            raise Exception(f"Cant find for tracker {tracker}")
 
     @property
     def blank_frames(self):

@@ -88,7 +88,7 @@ class ClipTrackExtractor(ClipTracker):
             self.use_opt_flow,
             self.keep_frames,
         )
-        clip.type = "cptv"
+        clip.type = "thermal"
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             clip.set_res(reader.x_resolution, reader.y_resolution)

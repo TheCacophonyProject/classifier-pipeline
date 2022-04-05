@@ -82,7 +82,7 @@ class Clip:
         self.background_thresh = None
         self.ffc_frames = []
         self.tags = None
-        self.type = "cptv"
+        self.type = "thermal"
         # sets defaults
         self.set_model(model)
         if background is not None:
