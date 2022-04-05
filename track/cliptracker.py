@@ -230,7 +230,7 @@ class ClipTracker(ABC):
             if delta_frame is not None:
                 region_difference = region.subimage(delta_frame)
                 region.pixel_variance = np.var(region_difference)
-
+            logging.info("mass is %s var %s", region.mass, region.pixel_variance)
             # filter out regions that are probably just noise
             if (
                 region.pixel_variance < self.config.aoi_pixel_variance
