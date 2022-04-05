@@ -194,3 +194,8 @@ by adding a valid cacophny api user and password to trackingtest.py
 
 Results for tests/tracking-tests.yml on tracking algorithms are located here
 https://drive.google.com/drive/u/1/folders/1uGU9FhKaypadUVcIvItBZuZebZa_Z7MG
+
+## IR Videos
+- Ir videos are built with build.py and saved as tf records
+- https://github.com/sulc/tfrecord-viewer is very useful for vieweing the images stored in these files
+- `python3 tfviewer.py <config.base_data_folder>/<config.tracks_folder>/training-data/<set to see train/vaidation/train>/*.tfrecord --overlay classification --image-key image/thermalencoded`
