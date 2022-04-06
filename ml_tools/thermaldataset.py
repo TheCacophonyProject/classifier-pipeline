@@ -177,7 +177,7 @@ def decode_image(image, filtered, image_size, augment=True):
     image = tf.cast(image, tf.float32)
     image = tf.image.resize_with_pad(image, image_size[0], image_size[1])
 
-    # image = tf.keras.applications.inception_v3.preprocess_input(image)
+    image = tf.keras.applications.inception_v3.preprocess_input(image)
     return image
 
 
