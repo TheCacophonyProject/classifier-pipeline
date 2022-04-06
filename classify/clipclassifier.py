@@ -9,11 +9,10 @@ import numpy as np
 import cv2
 from classify.trackprediction import Predictions
 from load.clip import Clip
-from load.cliptrackextractor import is_affected_by_ffc
+from load.cliptrackextractor import ClipTrackExtractor, is_affected_by_ffc
 from ml_tools import tools
 from ml_tools.kerasmodel import KerasModel
 from load.irtrackextractor import IRTrackExtractor
-
 from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer
 from track.track import Track
@@ -141,9 +140,7 @@ class ClipClassifier:
             logging.error("File %s not found.", meta_file)
             return False
         meta_data = tools.load_clip_metadata(meta_file)
-        if meta_data.get("models") is not None:
-            logging.error("Already processed %s", filename)
-            return False
+
         logging.info("Processing file '{}'".format(filename))
 
         start = time.time()
@@ -195,9 +192,11 @@ class ClipClassifier:
         classifier = self.get_classifier(model)
         predictions = Predictions(classifier.labels, model)
         predictions.model_load_time = time.time() - start
+
         for i, track in enumerate(clip.tracks):
+
             segment_frames = None
-            if reuse_frames:
+            if reuse_frames and classifier.type == "thermal":
                 tracks = meta_data.get("tracks")
                 meta_track = next(
                     (x for x in tracks if x["id"] == track.get_id()), None
@@ -214,7 +213,7 @@ class ClipClassifier:
                         segment_frames = previous_prediction.get("prediction_frames")
                         if segment_frames is not None:
                             segment_frames = np.uint16(segment_frames)
-            prediction = classifier.classify_ir(
+            prediction = classifier.classify_track(
                 clip, track, segment_frames=segment_frames
             )
 

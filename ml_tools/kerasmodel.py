@@ -294,6 +294,7 @@ class KerasModel(Interpreter):
         self.mapped_labels = meta.get("mapped_labels")
         self.label_probabilities = meta.get("label_probabilities")
         self.preprocess_fn = self.get_preprocess_fn()
+        self.type = meta.get("type", "thermal")
 
         logging.debug(
             "using types r %s g %s b %s",
@@ -321,6 +322,7 @@ class KerasModel(Interpreter):
         model_stats["version"] = self.VERSION
         model_stats["mapped_labels"] = self.mapped_labels
         model_stats["label_probabilities"] = self.label_probabilities
+        model_stats["type"] = self.type
 
         if history:
             json_history = {}
@@ -678,7 +680,7 @@ class KerasModel(Interpreter):
         model = tf.keras.models.Model(input_layer, preds)
         return model
 
-    def classify_track(self, clip, track, keep_all=True, segment_frames=None):
+    def classify_thermal_track(self, clip, track, keep_all=True, segment_frames=None):
         track_data = {}
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         for i, region in enumerate(track.bounds_history):
@@ -717,7 +719,13 @@ class KerasModel(Interpreter):
             segments,
         )
 
+    def classify_track(self, clip, track, keep_all=True, segment_frames=None):
+        if self.type == "ir":
+            return self.classify_ir(clip, track)
+        return self.classify_thermal_track(clip, track, keep_all, segment_frames)
+
     def classify_ir(self, clip, track, keep_all=True, segment_frames=None):
+        logging.info("classify IR")
         data = []
         crop = True
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
@@ -735,18 +743,15 @@ class KerasModel(Interpreter):
                         clip.get_id(), track.get_id(), region.frame_number
                     )
                 )
-            f = frame.copy()
-
-            if crop:
-                region.enlarge(20, max=track.crop_rectangle)
-                f.crop_by_region(region, out=f)
 
             preprocessed = preprocess_ir(
-                f,
+                frame.copy(),
                 (
                     self.params.frame_size,
                     self.params.frame_size,
                 ),
+                crop,
+                region,
                 self.preprocess_fn,
                 save_info=f"{region.frame_number} - {region}",
             )
@@ -757,7 +762,6 @@ class KerasModel(Interpreter):
         track_prediction = TrackPrediction(track.get_id(), self.labels)
 
         track_prediction.classified_clip(output, output, None)
-        # track_prediction.classify_time = time.time() - start
         track_prediction.normalize_score()
         return track_prediction
 
@@ -832,6 +836,7 @@ class KerasModel(Interpreter):
         figure = plot_confusion_matrix(cm, class_names=self.labels)
         plt.savefig(filename, format="png")
 
+    # Obselete
     def confusion(self, dataset, filename="confusion.png"):
         dataset.set_read_only(True)
         dataset.use_segments = self.params.use_segments
@@ -870,6 +875,7 @@ class KerasModel(Interpreter):
         figure = plot_confusion_matrix(cm, class_names=self.labels)
         plt.savefig(filename, format="png")
 
+    # Obsolete
     def f1(self, batch_y, pred_raw):
         import tensorflow_addons as tfa
 
@@ -887,29 +893,10 @@ class KerasModel(Interpreter):
             logging.info("%s = %s", label, by_label[label])
 
     def evaluate(self, dataset):
-        # dataset.set_read_only(True)
-        # dataset.use_segments = self.params.use_segments
-        #
-        # test = DataGenerator(
-        #     dataset,
-        #     self.labels,
-        #     self.params.output_dim,
-        #     batch_size=self.params.batch_size,
-        #     channel=self.params.channel,
-        #     use_movement=self.params.use_movement,
-        #     shuffle=True,
-        #     model_preprocess=self.preprocess_fn,
-        #     epochs=1,
-        #     cap_samples=True,
-        #     cap_at="bird",
-        #     square_width=self.params.square_width,
-        #     type=self.params.type,
-        #     segment_type=self.params.segment_type,
-        #     keep_edge=self.params.keep_edge,
-        # )
         test_accuracy = self.model.evaluate(dataset)
         logging.info("Test accuracy is %s", test_accuracy)
 
+    # needs to be updated to work with tfrecord datagen
     def track_accuracy(self, dataset, confusion="confusion.png"):
         dataset.set_read_only(True)
         dataset.use_segments = self.params.use_segments

@@ -362,9 +362,12 @@ class Track:
         self.all_class_confidences = None
         self.prediction_classes = None
         self.tracker_version = tracker_version
-        logging.info("getting tracker for type %s", type)
-        config = tracking_config.trackers.get(type)
-        self.tracker = self.get_tracker(config)
+
+        self.tracker = None
+        if tracking_config is not None:
+            logging.info("getting tracker for type %s", type)
+            config = tracking_config.trackers.get(type)
+            self.tracker = self.get_tracker(config)
         # self.tracker = RegionTracker(
         #     self.get_id(), tracking_config, self.crop_rectangle
         # )
@@ -566,7 +569,8 @@ class Track:
             frame_diff = frame.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
-        self.tracker.add_region(region)
+        if self.tracker:
+            self.tracker.add_region(region)
 
         self.update_velocity()
         self.prev_frame_num = frame.frame_number
@@ -589,7 +593,8 @@ class Track:
 
     def add_blank_frame(self):
         """Maintains same bounds as previously, does not reset framce_since_target_seen counter"""
-        region = self.tracker.add_blank_frame()
+        if self.tracker:
+            region = self.tracker.add_blank_frame()
         self.bounds_history.append(region)
         self.prev_frame_num = region.frame_number
         self.update_velocity()

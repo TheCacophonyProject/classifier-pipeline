@@ -76,10 +76,47 @@ def get_dataset(
         for i in range(num_labels):
             dist[i] = c[i]
             target_dist[i] = 1 / num_labels
+        min_label = np.min(dist)
         dist = dist / np.sum(dist)
+        print(dist)
+        print(c)
+        dist_r = np.max(dist) - np.min(dist)
+        print("range is", dist_r)
+        max_range = 0.5
+        dist_max = np.max(dist)
+        dist_min = np.min(dist)
+        print("dist was", dist)
+        print("min_label", min_label)
+        target_dist[:] = 1 / num_labels
+        print("target dist", target_dist)
+        if min_label < 1000000:
+            for i in range(num_labels):
+                if dist[i] - dist_min > max_range:
+                    target_dist[i] += (
+                        math.ceil(10 * (dist[i] - dist_min)) / 10 - max_range
+                    )
+
+                    print(
+                        "add",
+                        math.ceil(10 * (dist[i] - dist_min)) / 10 - max_range,
+                        "from label",
+                        i,
+                    )
+                    dist[i] -= math.ceil(10 * (dist[i] - dist_min)) / 10 - max_range
+                elif dist_max - dist[i] > max_range:
+                    print(
+                        "sub",
+                        math.ceil(10 * (dist_max - dist[i])) / 10 - max_range,
+                        "from label",
+                        i,
+                    )
+                    # target_dist[i] -= math.ceil(10*(dist_max - dist[i]))/10 -max_range
+                # dist[i] += math.ceil(10*(dist_max - dist[i]))/10 -max_range
+        print("now", dist)
+        print("target dist", target_dist, "init", dist)
         rej = dataset.rejection_resample(
             class_func=class_func,
-            target_dist=1 / num_labels,
+            target_dist=target_dist,
             initial_dist=dist,
         )
 

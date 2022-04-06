@@ -201,9 +201,15 @@ index = 0
 def preprocess_ir(
     frame,
     frame_size,
+    crop=False,
+    region=None,
     preprocess_fn=None,
     save_info="",
 ):
+    if crop:
+        region.enlarge(20, max=track.crop_rectangle)
+        f.crop_by_region(region, out=f)
+
     frame.normalize()
     image = np.stack((frame.thermal, frame.thermal, frame.filtered), axis=2)
     image = tf.cast(image, tf.float32)
