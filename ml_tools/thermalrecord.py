@@ -44,7 +44,6 @@ import tensorflow as tf
 from . import tfrecord_util
 from ml_tools import tools
 from ml_tools.imageprocessing import normalize
-from load.cliptrackextractor import get_filtered_frame
 
 crop_rectangle = tools.Rectangle(0, 0, 640, 480)
 
@@ -187,6 +186,7 @@ def create_tf_records(dataset, output_path, num_shards=1, cropped=True):
                     lbl_counts[sample.label] += 1
                     if count % 100 == 0:
                         logging.debug("saved %s", count)
+                    count += 1
                 except Exception as e:
                     logging.error("Error saving ", exc_info=True)
                     raise e

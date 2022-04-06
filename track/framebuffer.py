@@ -46,7 +46,6 @@ class FrameBuffer:
         self.keep_frames = True if max_frames and max_frames > 0 else keep_frames
         self.current_frame = 0
         if calc_flow:
-            print("setting opt?")
             self.set_optical_flow()
         self.reset()
 
@@ -58,7 +57,6 @@ class FrameBuffer:
 
         frame = Frame(thermal, filtered, mask, frame_number, ffc_affected=ffc_affected)
         if self.opt_flow:
-            print("genn opt flow")
             frame.generate_optical_flow(self.opt_flow, self.prev_frame)
         self.prev_frame = frame
         if self.keep_frames:

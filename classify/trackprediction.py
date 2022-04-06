@@ -107,7 +107,7 @@ class TrackPrediction:
 
     def classified_frames(self, frame_numbers, prediction, mass):
         self.num_frames_classified += len(frame_numbers)
-        smoothed_prediction = prediction ** 2 * mass
+        smoothed_prediction = prediction**2 * mass
         if self.keep_all:
             self.prediction_frames.append(frame_numbers)
             self.predictions.append(prediction)
@@ -127,7 +127,7 @@ class TrackPrediction:
         self.prediction_frames.append([frame_number])
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
-        smoothed_prediction = prediction ** 2 * mass
+        smoothed_prediction = prediction**2 * mass
         if self.keep_all:
             self.predictions.append(prediction)
             self.smoothed_predictions.append(smoothed_prediction)

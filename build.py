@@ -22,7 +22,7 @@ from ml_tools.thermalrecord import create_tf_records
 
 import numpy as np
 
-MIN_TRACKS = 1
+MIN_SAMPLES = 100
 use_clips = True
 TEST_TRACKS = 0
 
@@ -35,6 +35,13 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--rebuild-important", action="count", help="Rebuild important frames"
+    )
+    parser.add_argument(
+        "-m",
+        "--min-samples",
+        default=MIN_SAMPLES,
+        type=int,
+        help="Min tracks per dataset (Default 100)",
     )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
@@ -76,10 +83,14 @@ def parse_args():
 
 def show_tracks_breakdown(dataset):
     print("Tracks breakdown:")
+    samples = dataset.samples
+
     for label in dataset.labels:
+        lbl_samples = dataset.samples_by_label.get(label, [])
+        tracks = [s.unique_track_id for s in lbl_samples]
+        tracks = set(tracks)
         print("labels are", label)
-        count = len([track for track in dataset.tracks_by_label.get(label, [])])
-        print("  {:<20} {} tracks".format(label, count))
+        print("  {:<20} {} tracks".format(label, len(tracks)))
 
 
 def show_cameras_tracks(dataset):
@@ -101,15 +112,6 @@ def show_cameras_breakdown(dataset):
 
     for camera, samples in samples_by_camera.items():
         print("{:<20} {}".format(camera, len(samples)))
-
-
-def show_segments_breakdown(dataset):
-    print("Segments breakdown:")
-    for label in dataset.labels:
-        count = sum(
-            [len(track.segments) for track in dataset.tracks_by_label.get(label, [])]
-        )
-        print("  {:<20} {} segments".format(label, count))
 
 
 def show_samples_breakdown(dataset):
@@ -183,7 +185,8 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     last_index = 0
     label_count = 0
     total = len(samples)
-    min_t = MIN_TRACKS
+    min_t = MIN_SAMPLES
+
     if label in ["vehicle", "human"]:
         min_t = 10
     num_validate_samples = max(total * 0.15, min_t)
@@ -258,7 +261,6 @@ def split_randomly(db_file, dataset, config, args, test_clips=[], balance_bins=T
             continue
         if min_label is None or label_count < min_label[1]:
             min_label = (label, label_count)
-    print("min label is", min_label)
     for label in dataset.labels:
         existing_test_count = len(test.samples_by_label.get(label, []))
         train_c, validate_c, test_c = split_label(
@@ -302,11 +304,7 @@ def main():
     init_logging()
     args = parse_args()
     config = load_config(args.config_file)
-    # return
-    # import yaml
-    #
-    # with open("defualtstest.yml", "w") as f:
-    #     yaml.dump(config.as_dict(), f)
+    print("min samples", args.min_samples)
     test_clips = config.build.test_clips()
     if test_clips is None:
         test_clips = []
@@ -331,8 +329,6 @@ def main():
     print()
     show_tracks_breakdown(dataset)
     print()
-    show_segments_breakdown(dataset)
-    print()
     show_samples_breakdown(dataset)
     print()
     show_cameras_breakdown(dataset)
@@ -356,11 +352,6 @@ def main():
     meta_data = {"labels": datasets[0].labels}
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
-    # for dataset in datasets:
-    #     # dataset.clear_samples()
-    #     dataset.db = None
-    #     logging.info("saving to %s", f"{os.path.join(base_dir, dataset.name)}.dat")
-    #     pickle.dump(dataset, open(f"{os.path.join(base_dir, dataset.name)}.dat", "wb"))
 
 
 def validate_datasets(datasets, test_clips, date):

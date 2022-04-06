@@ -9,9 +9,10 @@ import numpy as np
 import cv2
 from classify.trackprediction import Predictions
 from load.clip import Clip
-from load.cliptrackextractor import is_affected_by_ffc, get_filtered_frame
+from load.cliptrackextractor import is_affected_by_ffc
 from ml_tools import tools
 from ml_tools.kerasmodel import KerasModel
+from load.irtrackextractor import IRTrackExtractor
 
 from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer
@@ -59,9 +60,12 @@ class ClipClassifier:
         """
         if model.id in self.models:
             return self.models[model.id]
-        logging.info("classifier loading")
+        load_start = time.time()
+        logging.info("classifier loading %s", model.model_file)
         classifier = KerasModel(self.config.train)
         classifier.load_model(model.model_file, weights=model.model_weights)
+        logging.info("classifier loaded (%s)", time.time() - load_start)
+        self.models[model.id] = classifier
 
         return classifier
 
@@ -100,7 +104,7 @@ class ClipClassifier:
             return
         for folder_path, _, files in os.walk(source):
             for name in files:
-                if os.path.splitext(name)[1] in [".cptv", ".avi"]:
+                if os.path.splitext(name)[1] in [".mp4", ".cptv", ".avi"]:
                     full_path = os.path.join(folder_path, name)
                     self.process_file(full_path, cache=cache, reuse_frames=reuse_frames)
 
@@ -110,94 +114,45 @@ class ClipClassifier:
         :param filename: filename to process
         :param enable_preview: if true an MPEG preview file is created.
         """
-
-        base_filename = os.path.splitext(os.path.basename(filename))[0]
-        meta_file = os.path.join(os.path.dirname(filename), base_filename + ".txt")
-        if not os.path.exists(filename):
-            raise Exception("File {} not found.".format(filename))
-        if not os.path.exists(meta_file):
-            raise Exception("File {} not found.".format(meta_file))
-        meta_data = tools.load_clip_metadata(meta_file)
-        logging.info("Processing file '{}'".format(filename))
+        _, ext = os.path.splitext(filename)
         cache_to_disk = (
             cache if cache is not None else self.config.classify.cache_to_disk
         )
+        if ext == ".cptv":
+            track_extractor = ClipTrackExtractor(
+                self.config.tracking, self.config.use_opt_flow, cache_to_disk
+            )
+            logging.info("Using clip extractor")
+
+        elif ext in [".avi", ".mp4"]:
+            track_extractor = IRTrackExtractor(
+                self.config.tracking, self.config.use_opt_flow, cache_to_disk
+            )
+            logging.info("Using ir extractor")
+        else:
+            logging.error("Unknown extention %s", ext)
+            return False
+        base_filename = os.path.splitext(os.path.basename(filename))[0]
+        meta_file = os.path.join(os.path.dirname(filename), base_filename + ".txt")
+        if not os.path.exists(filename):
+            logging.error("File %s not found.", filename)
+            return False
+        if not os.path.exists(meta_file):
+            logging.error("File %s not found.", meta_file)
+            return False
+        meta_data = tools.load_clip_metadata(meta_file)
+        if meta_data.get("models") is not None:
+            logging.error("Already processed %s", filename)
+            return False
+        logging.info("Processing file '{}'".format(filename))
+
         start = time.time()
         clip = Clip(self.config.tracking, filename)
-        clip.set_frame_buffer(
-            self.high_quality_optical_flow,
-            cache_to_disk,
-            self.config.use_opt_flow,
-            True,
-        )
         clip.load_metadata(
             meta_data,
             self.config.load.tag_precedence,
         )
-        frames = []
-
-        _, ext = os.path.splitext(clip.source_file)
-        if ext != ".cptv":
-            vidcap = cv2.VideoCapture(clip.source_file)
-            frames = 0
-            background = []
-            saliency = None
-            while True:
-
-                success, image = vidcap.read()
-                if not success:
-                    break
-
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                frames += 1
-                if frames == 1:
-                    saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
-                    saliency.setImagesize(image.shape[1], image.shape[0])
-                    saliency.init()
-                    clip.set_res(image.shape[1], image.shape[0])
-                    clip.set_model("ir")
-                    clip.set_video_stats(datetime.now())
-                    background = image
-                else:
-                    background = np.minimum(background, image)
-
-            background = cv2.GaussianBlur(background, (15, 15), 0)
-            clip.update_background(background)
-            count = 0
-            vidcap.set(2, 0)
-            while True:
-                success, image = vidcap.read()
-                if not success:
-                    break
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                if count < 8:
-                    for _ in range(6):
-                        (success, saliencyMap) = saliency.computeSaliency(image)
-                (success, saliencyMap) = saliency.computeSaliency(image)
-                saliencyMap = (saliencyMap * 255).astype("uint8")
-                filtered, _ = get_filtered_frame(clip.background, image)
-
-                clip.add_frame(image, filtered)
-
-                count += 1
-                # if count == 20:
-                #     break
-            vidcap.release()
-
-        else:
-            with open(clip.source_file, "rb") as f:
-                reader = CPTVReader(f)
-                clip.set_res(reader.x_resolution, reader.y_resolution)
-                clip.calculate_background(reader)
-                f.seek(0)
-                for frame in reader:
-                    if frame.background_frame:
-                        continue
-                    clip.add_frame(
-                        frame.pix,
-                        frame.pix - clip.background,
-                        ffc_affected=is_affected_by_ffc(frame),
-                    )
+        track_extractor.parse_clip(clip, track=False)
 
         predictions_per_model = {}
         if self.model:
@@ -211,19 +166,6 @@ class ClipClassifier:
                     clip, model, meta_data, reuse_frames=reuse_frames
                 )
                 predictions_per_model[model.id] = prediction
-        # tags = set()
-        #
-        # for model, predictions in predictions_per_model.items():
-        #     for track, prediction in predictions.prediction_per_track.items():
-        #         pred = prediction.predicted_tag()
-        #         if pred is not None and pred != "false-positive":
-        #             tags.add(pred)
-        # tags = list(tags)
-        # tags.sort()
-        # if len(tags) == 0:
-        #     dirname = "false-positive"
-        # else:
-        #     dirname = "-".join(tags)
         destination_folder = os.path.dirname(filename)
         dirname = destination_folder
 
@@ -250,12 +192,9 @@ class ClipClassifier:
 
     def classify_clip(self, clip, model, meta_data, reuse_frames=None):
         start = time.time()
-        load_start = time.time()
         classifier = self.get_classifier(model)
-        load_time = time.time() - load_start
-        logging.info("classifier loaded (%s)", load_time)
         predictions = Predictions(classifier.labels, model)
-        predictions.model_load_time = load_time
+        predictions.model_load_time = time.time() - start
         for i, track in enumerate(clip.tracks):
             segment_frames = None
             if reuse_frames:

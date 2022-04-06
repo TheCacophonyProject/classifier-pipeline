@@ -246,23 +246,14 @@ def detect_objects_both(
 
 
 def detect_objects(image, otsus=False, threshold=30, kernel=(15, 15)):
-    global index
-    index += 1
+
     image = np.uint8(image)
     image = cv2.GaussianBlur(image, kernel, 0)
     flags = cv2.THRESH_BINARY
     if otsus:
         flags += cv2.THRESH_OTSU
     _, image = cv2.threshold(image, threshold, 255, flags)
-    # cv2.imshow("theshold", image)
-    image = cv2.dilate(image, kernel, iterations=1)
-
     image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
-    # import matplotlib.pyplot as plt
-    #
-    # imgplot = plt.imshow(image)
-    # plt.savefig(f"0 below{kernel[0]}-dilate{index}.png")
-    # plt.clf()
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
     return components, small_mask, stats
 

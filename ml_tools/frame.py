@@ -28,6 +28,7 @@ class Frame:
     scaled_thermal = attr.ib(default=None)
     ffc_affected = attr.ib(default=False)
     region = attr.ib(default=None)
+    frame_temp_median = attr.ib(default=None)
 
     def get_channel(self, channel):
         if channel == TrackChannels.thermal:
@@ -96,11 +97,18 @@ class Frame:
                 (frame_arr[TrackChannels.flow_h], frame_arr[TrackChannels.flow_v]),
                 axis=2,
             )
-
+            t = frame_arr[TrackChannels.thermal]
+            f = frame_arr[TrackChannels.filtered]
+            m = frame_arr[TrackChannels.mask]
+        elif len(frame_arr) == 3:
+            # no flow so mask is at position 2
+            t = frame_arr[TrackChannels.thermal]
+            f = frame_arr[TrackChannels.filtered]
+            m = frame_arr[2]
         return cls(
-            frame_arr[TrackChannels.thermal],
-            frame_arr[TrackChannels.filtered],
-            frame_arr[TrackChannels.mask],
+            t,
+            f,
+            m,
             frame_number,
             flow=flow,
             flow_clipped=flow_clipped,
