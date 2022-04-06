@@ -197,16 +197,16 @@ def main():
     dataset = get_dataset(
         train_files, 32, (256, 256), 4, reshuffle=False, deterministic=False
     )
-    #
-    # for e in range(4):
-    #     print("epoch", e)
-    #     true_categories = tf.concat([y for x, y in dataset], axis=0)
-    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    #     c = Counter(list(true_categories))
-    #     print("epoch is size", len(true_categories))
-    #     for i in range(4):
-    #         print("after have", i, c[i])
-    # return
+
+    for e in range(4):
+        print("epoch", e)
+        true_categories = tf.concat([y for x, y in dataset], axis=0)
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        c = Counter(list(true_categories))
+        print("epoch is size", len(true_categories))
+        for i in range(4):
+            print("after have", i, c[i])
+    return
     image_batch, label_batch = next(iter(dataset))
     for e in range(1):
         print("epoch", e)

@@ -125,7 +125,7 @@ def create_tf_example(data, image_dir, sample, labels, filename):
     return example, 0
 
 
-def create_tf_records(dataset, output_path, num_shards=1, cropped=True):
+def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
 
     output_path = Path(output_path)
     if output_path.is_dir():
@@ -141,7 +141,7 @@ def create_tf_records(dataset, output_path, num_shards=1, cropped=True):
     dataset.load_db()
     db = dataset.db
     total_num_annotations_skipped = 0
-    num_labels = len(dataset.labels)
+    num_labels = len(labels)
     # pool = multiprocessing.Pool(4)
     logging.info("writing to output path: %s for %s samples", output_path, len(samples))
     lbl_writers = {}
@@ -175,7 +175,7 @@ def create_tf_records(dataset, output_path, num_shards=1, cropped=True):
             for data, sample in loaded:
                 try:
                     tf_example, num_annotations_skipped = create_tf_example(
-                        data, output_path, sample, dataset.labels, ""
+                        data, output_path, sample, labels, ""
                     )
                     total_num_annotations_skipped += num_annotations_skipped
                     writers = lbl_writers[sample.label]
