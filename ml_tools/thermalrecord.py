@@ -80,8 +80,8 @@ def create_tf_example(data, image_dir, sample, labels, filename):
       ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
 
-    thermal = data[0]
-    filtered = data[1]
+    thermal = data[0] * 255
+    filtered = data[1] * 255
     image_height, image_width = thermal.shape
     image = Image.fromarray(thermal)
     image = ImageOps.grayscale(image)

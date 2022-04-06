@@ -21,7 +21,8 @@ from ml_tools.preprocess import preprocess_movement, preprocess_frame, preproces
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
-from ml_tools.recorddataset import get_dataset
+from ml_tools.recorddataset import get_dataset as get_ir_dataset
+from ml_tools.thermaldataset import get_dataset as get_thermal_dataset
 
 
 class KerasModel(Interpreter):
@@ -44,7 +45,7 @@ class KerasModel(Interpreter):
         self.validate = None
         self.train = None
         self.test = None
-
+        self.type = None
         self.mapped_labels = None
         self.label_probabilities = None
 
@@ -53,6 +54,7 @@ class KerasModel(Interpreter):
         with open(file, "r") as f:
             meta = json.load(f)
         self.labels = meta.get("labels", [])
+        self.type = meta.get("type", "thermal")
         print("loaded labels", self.labels)
 
     def get_base_model(self, input_shape, weights="imagenet"):
@@ -383,7 +385,27 @@ class KerasModel(Interpreter):
         del self.test
         gc.collect()
 
-    def train_model_tfrecords(self, epochs, run_name, base_dir, weights=None):
+    def get_dataset(self, pattern, augment=False, reshuffle=True):
+        if self.type == "thermal":
+            return get_thermal_dataset(
+                pattern,
+                self.params.batch_size,
+                (self.params.frame_size, self.params.frame_size),
+                len(self.labels),
+                augment=augment,
+                reshuffle=reshuffle,
+            )
+
+        return get_ir_dataset(
+            pattern,
+            self.params.batch_size,
+            (self.params.frame_size, self.params.frame_size),
+            len(self.labels),
+            augment=augment,
+            reshuffle=reshuffle,
+        )
+
+    def train_model_dataset(self, epochs, run_name, base_dir, weights=None):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
@@ -404,19 +426,8 @@ class KerasModel(Interpreter):
         base_dir = os.path.join(base_dir, "training-data")
         train_files = tf.io.gfile.glob(base_dir + "/train/*.tfrecord")
         validate_files = tf.io.gfile.glob(base_dir + "/validation/*.tfrecord")
-        self.train = get_dataset(
-            train_files,
-            self.params.batch_size,
-            (self.params.frame_size, self.params.frame_size),
-            len(self.labels),
-        )
-        self.validate = get_dataset(
-            validate_files,
-            self.params.batch_size,
-            (self.params.frame_size, self.params.frame_size),
-            len(self.labels),
-            reshuffle=False,
-        )
+        self.train = self.get_dataset(train_files, augment=True)
+        self.validate = self.get_dataset(validate_files, augment=False)
         self.save_metadata(run_name)
 
         checkpoints = self.checkpoints(run_name)
@@ -439,13 +450,7 @@ class KerasModel(Interpreter):
         test_accuracy = None
         test_files = tf.io.gfile.glob(base_dir + "/test/*.tfrecord")
         if len(test_files) > 0:
-            self.test = get_dataset(
-                test_files,
-                self.params.batch_size,
-                (self.params.frame_size, self.params.frame_size),
-                len(self.labels),
-                reshuffle=False,
-            )
+            self.test = self.get_dataset(test_files, augment=False, reshuffle=False)
             if self.test:
                 test_accuracy = self.model.evaluate(self.validate)
 

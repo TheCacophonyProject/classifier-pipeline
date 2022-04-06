@@ -349,7 +349,7 @@ def main():
         # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta
     meta_filename = f"{base_dir}/training-meta.json"
-    meta_data = {"labels": datasets[0].labels}
+    meta_data = {"labels": datasets[0].labels, "type:": "thermal"}
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
 
