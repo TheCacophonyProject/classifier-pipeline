@@ -1,3 +1,4 @@
+import math
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
@@ -76,43 +77,35 @@ def get_dataset(
         for i in range(num_labels):
             dist[i] = c[i]
             target_dist[i] = 1 / num_labels
+        print("Initial counts are", dist)
         min_label = np.min(dist)
         dist = dist / np.sum(dist)
-        print(dist)
-        print(c)
-        dist_r = np.max(dist) - np.min(dist)
-        print("range is", dist_r)
-        max_range = 0.5
+        max_range = target_dist[0] / 2
+        print("Target dist is", dist, max_range)
         dist_max = np.max(dist)
         dist_min = np.min(dist)
-        print("dist was", dist)
-        print("min_label", min_label)
-        target_dist[:] = 1 / num_labels
-        print("target dist", target_dist)
-        if min_label < 1000000:
-            for i in range(num_labels):
-                if dist[i] - dist_min > max_range:
-                    target_dist[i] += (
-                        math.ceil(10 * (dist[i] - dist_min)) / 10 - max_range
-                    )
+        for i in range(num_labels):
+            if dist[i] - dist_min > max_range:
+                print("too far above", i)
+                target_dist[i] += max_range
 
-                    print(
-                        "add",
-                        math.ceil(10 * (dist[i] - dist_min)) / 10 - max_range,
-                        "from label",
-                        i,
-                    )
-                    dist[i] -= math.ceil(10 * (dist[i] - dist_min)) / 10 - max_range
-                elif dist_max - dist[i] > max_range:
-                    print(
-                        "sub",
-                        math.ceil(10 * (dist_max - dist[i])) / 10 - max_range,
-                        "from label",
-                        i,
-                    )
-                    # target_dist[i] -= math.ceil(10*(dist_max - dist[i]))/10 -max_range
-                # dist[i] += math.ceil(10*(dist_max - dist[i]))/10 -max_range
-        print("now", dist)
+                print(
+                    "add to taget dist and subtract form init dist",
+                    max_range,
+                    "from label",
+                    i,
+                )
+                # dist[i] -= max_range / 2.0
+            elif dist_max - dist[i] > max_range:
+                print("too far below", i)
+                print(
+                    "add",
+                    max_range,
+                    "to  target dist",
+                    i,
+                )
+                target_dist[i] -= max_range / 2.0
+                # dist[i] += math.ceil(10 * (dist_max - dist[i])) / 10 - max_range
         print("target dist", target_dist, "init", dist)
         rej = dataset.rejection_resample(
             class_func=class_func,
@@ -153,6 +146,7 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment=False):
         #     tf.reshape(example["image/object/class/label"], shape=[]), dtype=tf.int64
         # )
         label = tf.cast(example["image/class/label"], tf.int64)
+
         onehot_label = tf.one_hot(label, num_labels)
 
         return image, onehot_label
