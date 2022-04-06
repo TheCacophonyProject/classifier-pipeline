@@ -443,6 +443,7 @@ class TrackHeader:
             min_frames=min_frames,
             camera=self.camera,
             skipped_frames=self.skipped_frames,
+            start_time=self.start_time,
         )
 
     @property
@@ -889,6 +890,7 @@ def get_segments(
     segment_frames=None,
     ignore_mass=False,
     camera=None,
+    start_time=None,
 ):
     if min_frames is None:
         min_frames = 25
@@ -972,6 +974,7 @@ def get_segments(
                 best_mass=best_mass,
                 top_mass=True,
                 camera=camera,
+                start_time=start_time,
             )
             best_mass = False
             segments.append(segment)
@@ -1078,6 +1081,7 @@ def get_segments(
                 frame_indices=frames,
                 movement_data=movement_data,
                 camera=camera,
+                start_time=start_time,
             )
             segments.append(segment)
     return segments, filtered_stats
