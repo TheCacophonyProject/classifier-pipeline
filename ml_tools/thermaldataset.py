@@ -5,10 +5,12 @@ import tensorflow as tf
 from functools import partial
 import numpy as np
 import time
+from config.config import Config
+import json
 
-seed = 1341
-tf.random.set_seed(seed)
-np.random.seed(seed)
+# seed = 1341
+# tf.random.set_seed(seed)
+# np.random.seed(seed)
 AUTOTUNE = tf.data.AUTOTUNE
 # IMAGE_SIZE = [256, 256]
 # BATCH_SIZE = 64
@@ -184,13 +186,19 @@ from collections import Counter
 
 # test crap
 def main():
+    config = Config.load_from_file()
+
     train_files = tf.io.gfile.glob(
-        "/home/gp/cacophony/classifier-data/tracks/training-data/validation/*.tfrecord"
+        f"{config.tracks_folder}/training-data/validation/*.tfrecord"
     )
     print("got filename", train_files)
-    dataset = get_dataset(
-        train_files, 32, (256, 256), 4, reshuffle=False, deterministic=False
-    )
+    file = f"{config.tracks_folder}/training-meta.json"
+    with open(file, "r") as f:
+        meta = json.load(f)
+    labels = meta.get("labels", [])
+    dataset = get_dataset(train_files, 32, (256, 256), len(labels))
+
+    print("labels are", labels)
 
     for e in range(4):
         print("epoch", e)
@@ -198,7 +206,7 @@ def main():
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
         c = Counter(list(true_categories))
         print("epoch is size", len(true_categories))
-        for i in range(4):
+        for i in range(len(labels)):
             print("after have", i, c[i])
     return
     image_batch, label_batch = next(iter(dataset))
