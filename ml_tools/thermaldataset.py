@@ -83,7 +83,6 @@ def get_dataset(
             return None
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
         c = Counter(list(true_categories))
-        total = np.sum(true_categories)
         dist = np.empty((num_labels), dtype=np.float32)
         target_dist = np.empty((num_labels), dtype=np.float32)
         for i in range(num_labels):
@@ -92,13 +91,12 @@ def get_dataset(
         non_zero_labels = num_labels - len(zeros)
         target_dist[:] = 1 / non_zero_labels
 
-        print("Initial counts are", dist)
-        min_label = np.min(dist)
-        dist = dist / np.sum(dist)
-        max_range = target_dist[0] / 2
-        print("Target dist is", dist, max_range)
         dist_max = np.max(dist)
         dist_min = np.min(dist)
+        dist = dist / np.sum(dist)
+        # really this is what we want but when the values become too small they never get sampled
+        # so need to try reduce the large gaps in distribution
+        max_range = target_dist[0] / 2
         for i in range(num_labels):
             if dist[i] == 0:
                 target_dist[i] = 0
@@ -107,27 +105,12 @@ def get_dataset(
                 if dist[i] - dist_min > max_range * 2:
                     add_on *= 2
 
-                print("too far above", i)
                 target_dist[i] += add_on
 
-                print(
-                    "add to taget dist and subtract form init dist",
-                    max_range,
-                    "from label",
-                    i,
-                )
                 dist[i] -= add_on
             elif dist_max - dist[i] > max_range:
-                print("too far below", i)
-                print(
-                    "add",
-                    max_range,
-                    "to  target dist",
-                    i,
-                )
                 target_dist[i] -= max_range / 2.0
-                # dist[i] += math.ceil(10 * (dist_max - dist[i])) / 10 - max_range
-        print("target dist", target_dist, "init", dist)
+
         rej = dataset.rejection_resample(
             class_func=class_func,
             target_dist=target_dist,
@@ -147,8 +130,6 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment=False):
     tfrecord_format = {
         "image/thermalencoded": tf.io.FixedLenFeature([], tf.string),
         "image/filteredencoded": tf.io.FixedLenFeature([], tf.string),
-        # "image/height": tf.io.FixedLenFeature([], tf.int64),
-        # "image/width": tf.io.FixedLenFeature([], tf.int64),
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
 
@@ -207,7 +188,7 @@ def class_func(features, label):
 
 from collections import Counter
 
-# test crap
+# test stuff
 def main():
     config = Config.load_from_file()
 
@@ -222,7 +203,6 @@ def main():
     dataset = get_dataset(train_files, 32, (256, 256), labels)
 
     print("labels are", labels)
-
     for e in range(4):
         print("epoch", e)
         true_categories = tf.concat([y for x, y in dataset], axis=0)
