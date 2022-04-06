@@ -1,3 +1,4 @@
+import cv2
 import json
 import dateutil
 import numpy as np
@@ -705,7 +706,6 @@ class SegmentHeader(Sample):
 
         try:
             background = db.get_clip_background(self.clip_id)
-
             frames = db.get_track(
                 self.clip_id,
                 self.track_id,
@@ -716,15 +716,23 @@ class SegmentHeader(Sample):
             thermals = np.empty(len(frames), dtype=object)
             filtered = np.empty(len(frames), dtype=object)
             for i, frame in enumerate(frames):
+                frame.thermal, _ = imageprocessing.normalize(frame.thermal, new_max=255)
                 frame.filtered = frame.thermal - frame.region.subimage(background)
                 temp_index = np.where(self.frame_numbers == frame.frame_number)[0][0]
                 temp = self.frame_temp_median[temp_index]
                 frame.resize_with_aspect((32, 32), crop_rectangle, keep_edge=True)
                 filtered[i] = frame.filtered
                 thermals[i] = frame.thermal - temp
-            thermal = imageprocessing.square_clip(thermals, 5, (32, 32))
-            filtered = imageprocessing.square_clip(filtered, 5, (32, 32))
 
+            thermal, success = imageprocessing.square_clip(thermals, 5, (32, 32))
+            if not success:
+                logging.warn("Error making thermal square clip %s", filtered)
+                return None
+            filtered, success = imageprocessing.square_clip(filtered, 5, (32, 32))
+            if not success:
+                logging.warn("Error making filtered square clip %s", filtered)
+
+                return None
         except:
             logging.error("Cant get segment %s", self, exc_info=True)
             raise "EX"
