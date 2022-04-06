@@ -14,7 +14,7 @@ AUTOTUNE = tf.data.AUTOTUNE
 
 
 def load_dataset(
-    filenames, image_size, num_labels, deterministic=False, labeled=True, augment=True
+    filenames, image_size, num_labels, deterministic=False, labeled=True, augment=False
 ):
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = (
@@ -59,7 +59,7 @@ def get_dataset(
     deterministic=False,
     labeled=True,
     resample=True,
-    augment=True,
+    augment=False,
 ):
     dataset = load_dataset(
         filenames, image_size, num_labels, deterministic=deterministic, labeled=labeled
@@ -92,7 +92,7 @@ def get_dataset(
     return dataset
 
 
-def read_tfrecord(example, image_size, num_labels, labeled, augment=True):
+def read_tfrecord(example, image_size, num_labels, labeled, augment=False):
     tfrecord_format = {
         "image/thermalencoded": tf.io.FixedLenFeature([], tf.string),
         "image/filteredencoded": tf.io.FixedLenFeature([], tf.string),
@@ -183,6 +183,7 @@ def show_batch(image_batch, label_batch):
     print("images in batch", len(image_batch))
     num_images = min(len(image_batch), 25)
     for n in range(num_images):
+        print("image bach", image_batch[n])
         ax = plt.subplot(5, 5, n + 1)
         plt.imshow(image_batch[n] / 255.0)
         plt.title(labels[np.argmax(label_batch[n])])
