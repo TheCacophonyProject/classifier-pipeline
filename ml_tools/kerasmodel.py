@@ -405,7 +405,7 @@ class KerasModel(Interpreter):
             reshuffle=reshuffle,
         )
 
-    def train_model_dataset(self, epochs, run_name, base_dir, weights=None):
+    def train_model_tfrecords(self, epochs, run_name, base_dir, weights=None):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
