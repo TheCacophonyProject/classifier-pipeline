@@ -22,7 +22,7 @@ from ml_tools.thermalrecord import create_tf_records
 
 import numpy as np
 
-MIN_SAMPLES = 100
+MIN_SAMPLES = 1
 use_clips = True
 TEST_TRACKS = 0
 
@@ -256,7 +256,7 @@ def split_randomly(db_file, dataset, config, args, test_clips=[], balance_bins=T
     min_label = None
     for label in dataset.labels:
         label_count = len(dataset.samples_by_label.get(label, []))
-        if label == "false-positive":
+        if label not in ["insect", "false-positive"]:
             continue
         if min_label is None or label_count < min_label[1]:
             min_label = (label, label_count)
@@ -266,8 +266,7 @@ def split_randomly(db_file, dataset, config, args, test_clips=[], balance_bins=T
             dataset,
             label,
             existing_test_count=existing_test_count,
-            max_samples=None,
-            # min_label[1],
+            max_samples=min_label[1],
         )
         if train_c is not None:
             train_cameras.append(train_c)

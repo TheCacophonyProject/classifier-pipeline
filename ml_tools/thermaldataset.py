@@ -77,6 +77,7 @@ def get_dataset(
     dataset = load_dataset(
         filenames, image_size, num_labels, deterministic=deterministic, labeled=labeled
     )
+    resample = False
     if resample:
         true_categories = [y for x, y in dataset]
         if len(true_categories) == 0:

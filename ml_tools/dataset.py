@@ -262,6 +262,9 @@ class Dataset:
         """
         counter = 0
         clip_ids = self.db.get_all_clip_ids(before_date, after_date, label)
+        clip_ids = np.array(list(clip_ids.keys()))
+        np.random.shuffle(clip_ids)
+        clip_ids = clip_ids[:3000]
         if shuffle:
             np.random.shuffle(clip_ids)
         for clip_id in clip_ids:
