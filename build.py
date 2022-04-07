@@ -266,7 +266,7 @@ def split_randomly(db_file, dataset, config, args, test_clips=[], balance_bins=T
             dataset,
             label,
             existing_test_count=existing_test_count,
-            max_samples=min_label[1],
+            # max_samples=min_label[1],
         )
         if train_c is not None:
             train_cameras.append(train_c)

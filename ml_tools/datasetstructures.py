@@ -838,7 +838,6 @@ class SegmentHeader(Sample):
 
                 filtered[i] = frame.filtered
                 thermals[i] = frame.thermal
-
             thermal, success = imageprocessing.square_clip(thermals, 5, (32, 32))
             if not success:
                 logging.warn("Error making thermal square clip %s", filtered)
