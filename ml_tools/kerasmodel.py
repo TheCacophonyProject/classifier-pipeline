@@ -426,10 +426,8 @@ class KerasModel(Interpreter):
         if weights is not None:
             self.model.load_weights(weights)
         base_dir = os.path.join(base_dir, "training-data")
-        train_files = tf.io.gfile.glob(base_dir + "/train/*00000-of-00005.tfrecord")
-        validate_files = tf.io.gfile.glob(
-            base_dir + "/validation/*00000-of-00005.tfrecord"
-        )
+        train_files = tf.io.gfile.glob(base_dir + "/train/*.tfrecord")
+        validate_files = tf.io.gfile.glob(base_dir + "/validation/*.tfrecord")
         self.train = self.get_dataset(train_files, augment=True)
         self.validate = self.get_dataset(validate_files, augment=False)
         self.save_metadata(run_name)

@@ -826,7 +826,6 @@ class SegmentHeader(Sample):
 
             thermals = np.empty(len(frames), dtype=object)
             filtered = np.empty(len(frames), dtype=object)
-            import cv2
 
             for i, frame in enumerate(frames):
                 frame.filtered = frame.thermal - frame.region.subimage(background)
