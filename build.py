@@ -341,14 +341,24 @@ def main():
     # return
     base_dir = config.tracks_folder
     record_dir = os.path.join(base_dir, "training-data/")
+    dataset_counts = {}
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         create_tf_records(dataset, dir, datasets[0].labels, num_shards=5)
-
+        counts = {}
+        for label in dataset.labels:
+            count = len(dataset.samples_by_label.get(label, []))
+            counts[label] = count
+        dataset_counts[dataset.name] = counts
         # dataset.saveto_numpy(os.path.join(base_dir))
     # dont need dataset anymore just need some meta
     meta_filename = f"{base_dir}/training-meta.json"
-    meta_data = {"labels": datasets[0].labels, "type:": "thermal"}
+    meta_data = {
+        "labels": datasets[0].labels,
+        "type:": "thermal",
+        "counts": dataset_counts,
+    }
+
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
 

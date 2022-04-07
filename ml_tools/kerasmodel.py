@@ -393,7 +393,7 @@ class KerasModel(Interpreter):
                 pattern,
                 self.params.batch_size,
                 (self.params.frame_size, self.params.frame_size),
-                len(self.labels),
+                self.labels,
                 augment=augment,
                 reshuffle=reshuffle,
             )

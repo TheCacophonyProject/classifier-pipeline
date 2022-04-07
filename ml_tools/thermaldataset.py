@@ -96,6 +96,7 @@ def get_dataset(
         dist = dist / np.sum(dist)
         # really this is what we want but when the values become too small they never get sampled
         # so need to try reduce the large gaps in distribution
+        # can use class weights to adjust more, or just throw out some samples
         max_range = target_dist[0] / 2
         for i in range(num_labels):
             if dist[i] == 0:
