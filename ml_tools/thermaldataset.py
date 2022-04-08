@@ -26,9 +26,10 @@ def load_dataset(
     ignore_order.experimental_deterministic = (
         deterministic  # disable order, increase speed
     )
-    dataset = tf.data.TFRecordDataset(
-        filenames
-    )  # automatically interleaves reads from multiple files
+
+    dataset = tf.data.TFRecordDataset(filenames)
+    # dataset = dataset.interleave(tf.data.TFRecordDataset, cycle_length=4)
+    # automatically interleaves reads from multiple files
     dataset = dataset.with_options(
         ignore_order
     )  # uses data as soon as it streams in, rather than in its original order
@@ -77,6 +78,7 @@ def get_dataset(
     dataset = load_dataset(
         filenames, image_size, num_labels, deterministic=deterministic, labeled=labeled
     )
+
     if resample:
         true_categories = [y for x, y in dataset]
         if len(true_categories) == 0:
