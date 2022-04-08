@@ -22,7 +22,7 @@ from ml_tools.thermalrecord import create_tf_records
 
 import numpy as np
 
-MIN_SAMPLES = 1
+MIN_SAMPLES = 100
 use_clips = True
 TEST_TRACKS = 0
 

@@ -195,30 +195,36 @@ def main():
     config = Config.load_from_file()
 
     train_files = tf.io.gfile.glob(
-        f"{config.tracks_folder}/training-data/validation/*.tfrecord"
+        f"{config.tracks_folder}/training-data/train/*.tfrecord"
     )
     print("got filename", train_files)
     file = f"{config.tracks_folder}/training-meta.json"
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
-    dataset = get_dataset(train_files, 32, (256, 256), labels)
-
-    print("labels are", labels)
+    dataset = get_dataset(train_files, 32, (160, 160), labels, augment=False)
+    #
+    # print("labels are", labels)
+    # for e in range(4):
+    #     print("epoch", e)
+    #     true_categories = tf.concat([y for x, y in dataset], axis=0)
+    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    #     c = Counter(list(true_categories))
+    #     print("epoch is size", len(true_categories))
+    #     for i in range(len(labels)):
+    #         print("after have", i, c[i])
+    # return
+    image_batch, label_batch = next(iter(dataset))
     for e in range(4):
         print("epoch", e)
-        true_categories = tf.concat([y for x, y in dataset], axis=0)
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        c = Counter(list(true_categories))
-        print("epoch is size", len(true_categories))
-        for i in range(len(labels)):
-            print("after have", i, c[i])
-    return
-    image_batch, label_batch = next(iter(dataset))
-    for e in range(1):
-        print("epoch", e)
+        batch = 0
         for x, y in dataset:
-            show_batch(x, y, labels)
+            batch += 1
+            true_categories = np.int64(tf.argmax(y, axis=1))
+            c = Counter(true_categories)
+            for i in range(len(labels)):
+                print(batch, "batch have", labels[i], c[i])
+            # show_batch(x, y, labels)
 
 
 def show_batch(image_batch, label_batch, labels):
@@ -226,6 +232,7 @@ def show_batch(image_batch, label_batch, labels):
     print("images in batch", len(image_batch))
     num_images = min(len(image_batch), 25)
     for n in range(num_images):
+        print("imageas max is", np.amax(image_batch[n]), np.amin(image_batch[n]))
         print("image bach", image_batch[n])
         ax = plt.subplot(5, 5, n + 1)
         plt.imshow(image_batch[n] / 255.0)
