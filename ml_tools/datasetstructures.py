@@ -833,6 +833,8 @@ class SegmentHeader(Sample):
                 temp = self.frame_temp_median[temp_index]
                 frame.resize_with_aspect((32, 32), crop_rectangle, keep_edge=True)
                 frame.thermal -= temp
+                np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
+
                 # frame.thermal, _ = imageprocessing.normalize(frame.thermal, new_max=255)
                 # frame.filtered, _ = imageprocessing.normalize(frame.filtered, new_max=255)
 

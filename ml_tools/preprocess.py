@@ -106,8 +106,8 @@ def preprocess_segment(
             contrast_adjust = float(tools.random_log(0.9, (1 / 0.9)))
         if chance <= 0.50:
             flip = True
-    for i, frame in enumerate(frames):
 
+    for i, frame in enumerate(frames):
         frame.float_arrays()
         frame_height, frame_width = frame.thermal.shape
         # adjusting the corners makes the algorithm robust to tracking differences.
@@ -123,7 +123,6 @@ def preprocess_segment(
                 left_offset, top_offset, frame_size, frame_size
             )
             frame.crop_by_region(crop_region, out=frame)
-
         if augment and chance <= 0.75:
             # degress = 0
 
