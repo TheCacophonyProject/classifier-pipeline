@@ -129,7 +129,7 @@ class IRRecorder(Recorder):
             return
 
         self.writer.release()
-        self.filename.unlink(missing_ok=True)
+        self.filename.unlink()
         self.writer = None
 
 

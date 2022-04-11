@@ -25,7 +25,7 @@ from .throttledrecorder import ThrottledRecorder
 from .dummyrecorder import DummyRecorder
 from .irrecorder import IRRecorder
 
-from .motiondetector import MotionDetector
+from .motiondetector import MotionDetector, SlidingWindow
 from .processor import Processor
 from PIL import ImageDraw
 
@@ -165,7 +165,7 @@ class PiClassifier(Processor):
     """Classifies frames from leptond"""
 
     NUM_CONCURRENT_TRACKS = 1
-    DEBUG_EVERY = 100
+    DEBUG_EVERY = 20
     MAX_CONSEC = 1
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
@@ -204,6 +204,7 @@ class PiClassifier(Processor):
         self.crop_rectangle = tools.Rectangle(
             edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
         )
+        self.fps_timer = SlidingWindow((9), np.float32)
         self.preview_type = preview_type
         self.max_keep_frames = None if preview_type else 0
         if thermal_config.recorder.disable_recordings:
@@ -428,7 +429,6 @@ class PiClassifier(Processor):
                 )
 
     def identify_ir(self, track):
-        logging.info("Identifying IR")
         region = track.bounds_history[-1]
         frame = self.clip.frame_buffer.get_last_frame()
         if frame is None:
@@ -641,13 +641,15 @@ class PiClassifier(Processor):
             self.motion_detector.can_record()
             and self.frame_num % PiClassifier.DEBUG_EVERY == 0
         ):
+            average = np.mean(self.fps_timer.get_frames())
+
             logging.info(
                 "tracking {}% process {}%  identify {}% rec{}%s fps {}/sec  cpu % {} memory % {} behind by {} seconds".format(
                     round(100 * self.tracking_time / self.total_time, 3),
                     round(100 * self.process_time / self.total_time, 3),
                     round(100 * self.identify_time / self.total_time, 3),
                     round(100 * self.rec_time / self.total_time, 3),
-                    round(self.total_time / PiClassifier.DEBUG_EVERY, 2),
+                    round(1 / average),
                     psutil.cpu_percent(),
                     psutil.virtual_memory()[2],
                     time.time() - lepton_frame.received_at,
@@ -659,6 +661,7 @@ class PiClassifier(Processor):
             self.motion_detector.rec_time = 0
             self.total_time = 0
             self.rec_time = 0
+        self.fps_timer.add(time.time() - start)
 
     def create_mp4(self):
         previewer = Previewer(self.config, self.preview_type)
