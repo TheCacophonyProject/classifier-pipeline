@@ -266,7 +266,6 @@ class IRTrackExtractor(ClipTracker):
         tracking_thermal = thermal
         if self.resize_dims:
             tracking_thermal = cv2.resize(thermal, self.resize_dims)
-            logging.info("Resizing frame %s", tracking_thermal.shape)
 
         saliencyMap, _ = self._get_filtered_frame_ir(tracking_thermal, repeats=repeats)
         if self.resize_dims:
