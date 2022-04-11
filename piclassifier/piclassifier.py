@@ -82,36 +82,27 @@ class LiteInterpreter(Interpreter):
 
         self.interpreter = tf.lite.Interpreter(model_path=model_name + ".tflite")
 
-        self.interpreter.allocate_tensors()
-        input_details = self.interpreter.get_tensor_details()
-        self.in_shape = None
-        self.in_values = {}
-        for detail in input_details:
-            self.in_values[detail["name"]] = detail["index"]
-            if detail["name"] == "input":
-                self.in_shape = detail["shape"]
-        output_details = self.interpreter.get_output_details()
-        self.out_values = {}
-        for detail in output_details:
-            self.out_values[detail["name"]] = detail["index"]
+        self.interpreter.allocate_tensors()  # Needed before execution!
 
-        self.prediction = self.out_values["Identity"]
+        self.output = self.interpreter.get_output_details()[
+            0
+        ]  # Model has single output.
+        self.input = self.interpreter.get_input_details()[0]  # Model has single input.
 
     def predict(self, input_x):
-        global prediction_i
         start = time.time()
         input_x = np.float32(input_x)
         input_x = input_x[np.newaxis, :]
 
-        self.interpreter.set_tensor(self.in_values["input"], input_x)
+        self.interpreter.set_tensor(self.input["index"], input_x)
         self.interpreter.invoke()
-        pred = self.interpreter.get_tensor(self.out_values["Identity"])[0]
+        pred = self.interpreter.get_tensor(self.output["index"])[0]
         logging.info("taken %s to predict", time.time() - start)
 
         return pred
 
     def shape(self):
-        return self.in_shape
+        return self.input["shape"]
 
 
 def get_full_classifier(model):

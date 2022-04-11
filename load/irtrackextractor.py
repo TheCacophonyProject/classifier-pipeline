@@ -175,11 +175,12 @@ class IRTrackExtractor(ClipTracker):
         self._process_frame(clip, frame, ffc_affected, track=track)
 
     def _get_filtered_frame_ir(self, thermal, repeats=1):
+        start = time.time()
         for _ in range(repeats):
             (success, saliencyMap) = self.saliency.computeSaliency(thermal)
         # (success, saliencyMap) = self.saliency.computeSaliency(thermal)
         saliencyMap = (saliencyMap * 255).astype("uint8")
-        saliencyMap = cv2.fastNlMeansDenoising(saliencyMap, None)
+        logging.info("running saliency %s took %s", repeats, time.time() - start)
 
         # cv2.imshow("saliencyMap.png", np.uint8(saliencyMap))
         return saliencyMap, 0
