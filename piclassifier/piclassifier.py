@@ -83,11 +83,12 @@ class LiteInterpreter(Interpreter):
 
         self.interpreter.allocate_tensors()
         input_details = self.interpreter.get_tensor_details()
-
+        self.in_shape = None
         self.in_values = {}
         for detail in input_details:
             self.in_values[detail["name"]] = detail["index"]
-
+            if detail["name"] == "input":
+                self.in_shape = detail["shape"]
         output_details = self.interpreter.get_output_details()
         self.out_values = {}
         for detail in output_details:
@@ -109,7 +110,7 @@ class LiteInterpreter(Interpreter):
         return pred
 
     def shape(self):
-        return self.in_values["input"].shape
+        return self.in_shape
 
 
 def get_full_classifier(model):

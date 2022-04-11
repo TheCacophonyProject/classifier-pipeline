@@ -136,7 +136,7 @@ class RecorderConfig:
     @classmethod
     def load(cls, recorder, window):
         return cls(
-            disable_recordings=recorder.get("disable_recordings", False),
+            disable_recordings=recorder.get("disable-recordings", False),
             min_secs=recorder.get("min-secs", 10),
             max_secs=recorder.get("max-secs", 600),
             preview_secs=recorder.get("preview-secs", 5),

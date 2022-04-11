@@ -135,7 +135,7 @@ def parse_ir(file, config, thermal_config_file, preview_type):
                 0,
                 preview_type,
             )
-        frame = Frame(gray, 0, timedelta(milliseconds=0), None, None)
+        frame = Frame(gray, None, None, None, None)
         frame.received_at = time.time()
 
         pi_classifier.process_frame(frame)
