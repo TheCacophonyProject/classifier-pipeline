@@ -70,7 +70,7 @@ class Clip:
         self.location = None
         self.frame_buffer = None
         self.device = None
-        self.background = None
+        self._background = None
         self.background_calculated = False
         self.res_x = None
         self.res_y = None
@@ -92,8 +92,12 @@ class Clip:
         # sets defaults
         self.set_model(model)
         if background is not None:
-            self.background = background
+            self._background = background
             self._background_calculated()
+
+    @property
+    def background(self):
+        return self._background
 
     def set_model(self, camera_model):
         logging.debug("set model %s", camera_model)
@@ -112,7 +116,7 @@ class Clip:
         self.track_max_delta = threshold.track_max_delta
 
     def _background_calculated(self):
-        self.stats.mean_background_value = np.average(self.background)
+        self.stats.mean_background_value = np.average(self._background)
         self.set_temp_thresh()
         self.background_calculated = True
 
@@ -120,11 +124,11 @@ class Clip:
         return not self.background_calculated
 
     def update_background(self, frame):
-        """updates the clip background"""
-        if self.background is None:
-            self.background = frame
+        """updates the clip _background"""
+        if self._background is None:
+            self._background = frame
         else:
-            self.background = np.minimum(self.background, frame)
+            self._background = np.minimum(self._background, frame)
         self.background_frames += 1
 
     def calculate_initial_diff(self, frame, initial_frames, initial_diff):

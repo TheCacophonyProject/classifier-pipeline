@@ -65,7 +65,9 @@ class IRTrackExtractor(ClipTracker):
         calc_stats=True,
         high_quality_optical_flow=False,
         verbose=False,
+        resize_dims=None,
     ):
+        self.resize_dims = resize_dims
         self.saliency = None
         self.verbose = verbose
         self.config = config
@@ -154,8 +156,14 @@ class IRTrackExtractor(ClipTracker):
     def start_tracking(self, clip, frames):
         if len(frames) == 0:
             return
-
-        self.init_saliency(clip.res_x, clip.res_y)
+        res_x = clip.res_x
+        res_y = clip.res_y
+        if self.resize_dims is not None:
+            res_x = self.resize_dims[0]
+            res_y = self.resize_dims[1]
+            # clip.resized_background = cv2.resize(clip.background, self.resize_dims)
+            # logging.info("Resizing backgorund %s", clip.tracking_background.shape)
+        self.init_saliency(res_x, res_y)
         for frame in frames[-9:]:
             self.process_frame(clip, frame.pix.copy())
 
@@ -166,7 +174,10 @@ class IRTrackExtractor(ClipTracker):
 
     def process_frame(self, clip, frame, ffc_affected=False, track=True):
         if self.saliency is None:
-            self.init_saliency(clip.res_x, clip.res_y)
+            if self.resie_dims is not None:
+                self.init_saliency(*self.resize_dims)
+            else:
+                self.init_saliency(clip.res_x, clip.res_y)
 
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
@@ -251,7 +262,17 @@ class IRTrackExtractor(ClipTracker):
         repeats = 1
         if clip.current_frame < 6:
             repeats = 8
-        saliencyMap, _ = self._get_filtered_frame_ir(thermal, repeats=repeats)
+
+        tracking_thermal = thermal
+        if self.resize_dims:
+            tracking_thermal = cv2.resize(thermal, self.resize_dims)
+            logging.info("Resizing frame %s", tracking_thermal.shape)
+
+        saliencyMap, _ = self._get_filtered_frame_ir(tracking_thermal, repeats=repeats)
+        if self.resize_dims:
+            saliencyMap = cv2.resize(
+                saliencyMap, (clip.res_x, clip.res_y), cv2.INTER_NEAREST
+            )
         backsub, _ = get_ir_back_filtered(clip.background, thermal)
         clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
         if not track:

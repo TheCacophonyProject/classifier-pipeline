@@ -218,6 +218,7 @@ class PiClassifier(Processor):
                 self.config.classify.cache_to_disk,
                 verbose=config.verbose,
                 calc_stats=False,
+                resize_dims=(160, 120),
             )
             self.type = "IR"
             if not thermal_config.recorder.disable_recordings:
@@ -432,7 +433,6 @@ class PiClassifier(Processor):
         frame = self.clip.frame_buffer.get_last_frame()
         if frame is None:
             return
-
         params = self.classifier.params
         preprocessed = preprocess_ir(
             frame.copy(),
