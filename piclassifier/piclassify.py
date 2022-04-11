@@ -139,9 +139,7 @@ def parse_ir(file, config, thermal_config_file, preview_type):
         frame.received_at = time.time()
 
         pi_classifier.process_frame(frame)
-
         count += 1
-
     vidcap.release()
     pi_classifier.disconnected()
 

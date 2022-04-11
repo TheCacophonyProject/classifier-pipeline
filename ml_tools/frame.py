@@ -227,14 +227,9 @@ class Frame:
         return frame
 
     def resize_with_aspect(self, dim, crop_rectangle, keep_edge=False):
-        scale_percent = (dim / np.array(self.thermal.shape)).min()
-        width = int(self.thermal.shape[1] * scale_percent)
-        height = int(self.thermal.shape[0] * scale_percent)
-        resize_dim = (width, height)
         if self.thermal is not None:
             self.thermal = resize_and_pad(
                 self.thermal,
-                resize_dim,
                 dim,
                 self.region,
                 crop_rectangle,
@@ -243,7 +238,6 @@ class Frame:
         if self.mask is not None:
             self.mask = resize_and_pad(
                 self.mask,
-                resize_dim,
                 dim,
                 self.region,
                 crop_rectangle,
@@ -254,7 +248,6 @@ class Frame:
         if self.filtered is not None:
             self.filtered = resize_and_pad(
                 self.filtered,
-                resize_dim,
                 dim,
                 self.region,
                 crop_rectangle,
@@ -264,7 +257,6 @@ class Frame:
         if self.flow is not None:
             flow_h = resize_and_pad(
                 self.flow[:, :, 0],
-                resize_dim,
                 dim,
                 self.region,
                 crop_rectangle,
@@ -273,7 +265,6 @@ class Frame:
             )
             flow_v = resize_and_pad(
                 self.flow[:, :, 1],
-                resize_dim,
                 dim,
                 self.region,
                 crop_rectangle,

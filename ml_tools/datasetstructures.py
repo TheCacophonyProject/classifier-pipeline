@@ -196,7 +196,6 @@ class NumpyMeta:
         resize_dim = (width, height)
         frame.thermal = resize_and_pad(
             frame.thermal,
-            resize_dim,
             dim,
             frame.region,
             self.crop_rectangle,
@@ -205,7 +204,6 @@ class NumpyMeta:
         frame_height, frame_width = frame.thermal.shape
         frame.filtered = resize_and_pad(
             frame.filtered,
-            resize_dim,
             dim,
             frame.region,
             self.crop_rectangle,

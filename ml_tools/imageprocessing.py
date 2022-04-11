@@ -9,7 +9,6 @@ from PIL import Image
 
 def resize_and_pad(
     frame,
-    resize_dim,
     new_dim,
     region,
     crop_region,
@@ -19,6 +18,14 @@ def resize_and_pad(
     extra_h=0,
     extra_v=0,
 ):
+
+    scale_percent = (new_dim[:2] / np.array(frame.shape[:2])).min()
+    width = int(frame.shape[1] * scale_percent)
+    height = int(frame.shape[0] * scale_percent)
+    if len(frame.shape) == 3:
+        resize_dim = (width, height, frame.shape[2])
+    else:
+        resize_dim = (width, height)
     if pad is None:
         pad = np.min(frame)
     else:
@@ -30,7 +37,7 @@ def resize_and_pad(
     frame_height, frame_width = frame_resized.shape[:2]
     offset_x = (new_dim[1] - frame_width) // 2
     offset_y = (new_dim[0] - frame_height) // 2
-    if keep_edge:
+    if keep_edge and crop_region is not None:
         if region.left == crop_region.left:
             offset_x = 0
 

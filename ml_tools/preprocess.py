@@ -209,8 +209,20 @@ def preprocess_ir(
         frame.crop_by_region(region, out=frame)
 
     image = np.stack((frame.thermal, frame.thermal, frame.filtered), axis=2)
-    image = tf.cast(image, tf.float32)
-    image = tf.image.resize_with_pad(image, frame_size[0], frame_size[1])
+    image = np.float32(image)
+
+    image = imageprocessing.resize_and_pad(
+        image,
+        (frame_size[0], frame_size[1], 3),
+        frame.region,
+        None,
+        True,
+    )
+    # image = tf.cast(image, tf.float32)
+    # image = tf.compat.v1.image.resize_image_with_pad(
+    #     image, frame_size[0], frame_size[1]
+    # )
+    # image = tf.image.resize_with_pad(image, frame_size[0], frame_size[1])
 
     if preprocess_fn:
         image = preprocess_fn(image)

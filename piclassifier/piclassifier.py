@@ -23,6 +23,7 @@ from ml_tools import tools
 from .cptvrecorder import CPTVRecorder
 from .throttledrecorder import ThrottledRecorder
 from .dummyrecorder import DummyRecorder
+from .irrecorder import IRRecorder
 
 from .motiondetector import MotionDetector
 from .processor import Processor
@@ -214,6 +215,10 @@ class PiClassifier(Processor):
         )
         self.preview_type = preview_type
         self.max_keep_frames = None if preview_type else 0
+        if thermal_config.recorder.disable_recordings:
+            self.recorder = DummyRecorder(
+                thermal_config, headers, on_recording_stopping
+            )
         if headers.model == "IR":
             logging.info("Running on IR")
             self.track_extractor = IRTrackExtractor(
@@ -224,6 +229,10 @@ class PiClassifier(Processor):
                 calc_stats=False,
             )
             self.type = "IR"
+            if not thermal_config.recorder.disable_recordings:
+                self.recorder = IRRecorder(
+                    thermal_config, headers, on_recording_stopping
+                )
         else:
             logging.info("Running on Thermal")
             self.track_extractor = ClipTrackExtractor(
@@ -233,18 +242,15 @@ class PiClassifier(Processor):
                 calc_stats=False,
             )
             self.type = "thermal"
+            if not thermal_config.recorder.disable_recordings:
+                self.recorder = CPTVRecorder(
+                    thermal_config, headers, on_recording_stopping
+                )
 
         global track_extractor
         track_extractor = self.track_extractor
         self.motion = thermal_config.motion
-        self.min_frames = thermal_config.recorder.min_secs * headers.fps
-        self.max_frames = thermal_config.recorder.max_secs * headers.fps
-        if thermal_config.recorder.disable_recordings:
-            self.recorder = DummyRecorder(
-                thermal_config, headers, on_recording_stopping
-            )
-        else:
-            self.recorder = CPTVRecorder(thermal_config, headers, on_recording_stopping)
+
         if thermal_config.throttler.activate:
             self.recorder = ThrottledRecorder(
                 self.recorder, thermal_config, headers, on_recording_stopping
