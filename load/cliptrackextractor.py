@@ -133,6 +133,11 @@ class ClipTrackExtractor(ClipTracker):
     def tracking_time(self):
         return self._tracking_time
 
+    def start_tracking(self, clip, frames):
+        # no need to retrack all of preview
+        for frame in frames[-9:]:
+            self.process_frame(clip, frame.pix.copy())
+
     def process_frame(self, clip, thermal, ffc_affected=False, track=True):
         """
         Tracks objects through frame

@@ -9,8 +9,15 @@ import numpy as np
 
 from classify.trackprediction import Predictions
 from load.clip import Clip
+from load.irtrackextractor import IRTrackExtractor
+
 from load.cliptrackextractor import ClipTrackExtractor
-from ml_tools.preprocess import preprocess_segment
+from ml_tools.preprocess import (
+    preprocess_segment,
+    preprocess_ir,
+    preprocess_frame,
+    preprocess_movement,
+)
 from ml_tools.previewer import Previewer, add_last_frame_tracking
 from ml_tools import tools
 from .cptvrecorder import CPTVRecorder
@@ -19,10 +26,6 @@ from .dummyrecorder import DummyRecorder
 
 from .motiondetector import MotionDetector
 from .processor import Processor
-from ml_tools.preprocess import (
-    preprocess_frame,
-    preprocess_movement,
-)
 from PIL import ImageDraw
 
 from ml_tools.interpreter import Interpreter
@@ -66,6 +69,9 @@ class NeuralInterpreter(Interpreter):
         res = res[self.out_blob]
         return res[0]
 
+    def shape(self):
+        return self.input_blob.shape
+
 
 class LiteInterpreter(Interpreter):
     def __init__(self, model_name):
@@ -101,6 +107,9 @@ class LiteInterpreter(Interpreter):
         logging.info("taken %s to predict", time.time() - start)
 
         return pred
+
+    def shape(self):
+        return self.in_values["input"].shape
 
 
 def get_full_classifier(model):
@@ -183,6 +192,7 @@ class PiClassifier(Processor):
         super().__init__()
         self.frame_num = 0
         self.clip = None
+        self.type = type
         self.enable_per_track_information = False
         self.rolling_track_classify = {}
         self.skip_classifying = 0
@@ -203,12 +213,26 @@ class PiClassifier(Processor):
         )
         self.preview_type = preview_type
         self.max_keep_frames = None if preview_type else 0
-        self.track_extractor = ClipTrackExtractor(
-            self.config.tracking,
-            self.config.use_opt_flow,
-            self.config.classify.cache_to_disk,
-            calc_stats=False,
-        )
+        if headers.model == "IR":
+            logging.info("Running on IR")
+            self.track_extractor = IRTrackExtractor(
+                config.tracking,
+                config.use_opt_flow,
+                self.config.classify.cache_to_disk,
+                verbose=config.verbose,
+                calc_stats=False,
+            )
+            self.type = "IR"
+        else:
+            logging.info("Running on Thermal")
+            self.track_extractor = ClipTrackExtractor(
+                self.config.tracking,
+                self.config.use_opt_flow,
+                self.config.classify.cache_to_disk,
+                calc_stats=False,
+            )
+            self.type = "thermal"
+
         global track_extractor
         track_extractor = self.track_extractor
         self.motion = thermal_config.motion
@@ -247,6 +271,7 @@ class PiClassifier(Processor):
             )
             self.predictions = Predictions(self.classifier.labels, model)
             self.num_labels = len(self.classifier.labels)
+            logging.info("Labels are %s ", self.classifier.labels)
             global predictions
             predictions = self.predictions
             try:
@@ -291,7 +316,9 @@ class PiClassifier(Processor):
         return None
 
     def new_clip(self, preview_frames):
-        self.clip = Clip(self.config.tracking, "stream", model=self.headers.model)
+        self.clip = Clip(
+            self.config.tracking, "stream", model=self.headers.model, type=self.type
+        )
         global clip
         clip = self.clip
         self.clip.video_start_time = datetime.now()
@@ -309,13 +336,12 @@ class PiClassifier(Processor):
         self.clip.update_background(self.motion_detector.background.copy())
         self.clip._background_calculated()
         # no need to retrack all of preview
-        for frame in preview_frames[-9:]:
-            self.track_extractor.process_frame(self.clip, frame.pix.copy())
+        self.track_extractor.start_tracking(self.clip, preview_frames)
 
     def startup_classifier(self):
         # classifies an empty frame to force loading of the model into memory
-
-        p_frame = np.zeros((160, 160, 3), np.float32)
+        in_shape = self.classifier.shape()[1:]
+        p_frame = np.zeros((in_shape), np.float32)
         self.classifier.predict(p_frame)
 
     def get_active_tracks(self):
@@ -370,52 +396,13 @@ class PiClassifier(Processor):
             track_prediction = self.predictions.get_or_create_prediction(
                 track, keep_all=False
             )
-            regions = track.bounds_history[-self.frames_per_classify * 2 :]
-            frames = self.clip.frame_buffer.get_last_x(len(regions))
-            if frames is None:
-                return
-            indices = np.random.choice(
-                len(regions),
-                min(self.frames_per_classify, len(regions)),
-                replace=False,
-            )
-            indices.sort()
-            frames = np.array(frames)[indices]
-            regions = np.array(regions)[indices]
-
-            refs = []
-            segment_data = []
-            mass = 0
-            params = self.classifier.params
-
-            for frame, region in zip(frames, regions):
-                refs.append(np.median(frame.thermal))
-                thermal_reference = np.median(frame.thermal)
-                f = frame.crop_by_region(region)
-                mass += region.mass
-                f.resize_with_aspect(
-                    (params.frame_size, params.frame_size),
-                    self.clip.crop_rectangle,
-                    True,
-                )
-                segment_data.append(f)
-
-            preprocessed = preprocess_movement(
-                segment_data,
-                params.square_width,
-                params.frame_size,
-                red_type=params.red_type,
-                green_type=params.green_type,
-                blue_type=params.blue_type,
-                preprocess_fn=self.preprocess_fn,
-                reference_level=refs,
-                keep_edge=params.keep_edge,
-            )
-            if preprocessed is None:
+            if self.type == "IR":
+                prediction, mass = self.identify_ir(track)
+            else:
+                prediction, mass = self.identify_thermal(track)
+            if prediction is None:
                 track_prediction.last_frame_classified = self.clip.current_frame
-                # probably a false positive or bad frame data
                 continue
-            prediction = self.classifier.predict(preprocessed)
             track_prediction.classified_frame(self.clip.current_frame, prediction, mass)
             logging.debug(
                 "Track %s is predicted as %s", track, track_prediction.get_prediction()
@@ -440,6 +427,75 @@ class PiClassifier(Processor):
                     track.bounds_history[-1].to_ltrb(),
                     False,
                 )
+
+    def identify_ir(self, track):
+        logging.info("Identifying IR")
+        region = track.bounds_history[-1]
+        frame = self.clip.frame_buffer.get_last_frame()
+        if frame is None:
+            return
+
+        params = self.classifier.params
+        preprocessed = preprocess_ir(
+            frame.copy(),
+            (
+                params.frame_size,
+                params.frame_size,
+            ),
+            region=region,
+            preprocess_fn=self.preprocess_fn,
+        )
+        if preprocessed is None:
+            return None, 1
+        prediction = self.classifier.predict(preprocessed)
+        return prediction, 1
+
+    def identify_thermal(self, track):
+        regions = track.bounds_history[-self.frames_per_classify * 2 :]
+        frames = self.clip.frame_buffer.get_last_x(len(regions))
+        if frames is None:
+            return
+        indices = np.random.choice(
+            len(regions),
+            min(self.frames_per_classify, len(regions)),
+            replace=False,
+        )
+        indices.sort()
+        frames = np.array(frames)[indices]
+        regions = np.array(regions)[indices]
+
+        refs = []
+        segment_data = []
+        mass = 0
+        params = self.classifier.params
+
+        for frame, region in zip(frames, regions):
+            refs.append(np.median(frame.thermal))
+            thermal_reference = np.median(frame.thermal)
+            f = frame.crop_by_region(region)
+            mass += region.mass
+            f.resize_with_aspect(
+                (params.frame_size, params.frame_size),
+                self.clip.crop_rectangle,
+                True,
+            )
+            segment_data.append(f)
+
+        preprocessed = preprocess_movement(
+            segment_data,
+            params.square_width,
+            params.frame_size,
+            red_type=params.red_type,
+            green_type=params.green_type,
+            blue_type=params.blue_type,
+            preprocess_fn=self.preprocess_fn,
+            reference_level=refs,
+            keep_edge=params.keep_edge,
+        )
+        if preprocessed is None:
+            return None, mass
+        prediction = self.classifier.predict(preprocessed)
+        return prediction, mass
 
     def get_recent_frame(self):
         if self.clip:

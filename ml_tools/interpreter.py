@@ -1,10 +1,12 @@
+from abc import ABC, abstractmethod
+
 import json
 import logging
 
 from ml_tools.hyperparams import HyperParams
 
 
-class Interpreter:
+class Interpreter(ABC):
     def __init__(self, model_file):
         self.load_json(model_file)
 
@@ -16,3 +18,8 @@ class Interpreter:
         self.labels = stats["labels"]
         self.params = HyperParams()
         self.params.update(stats["hyperparams"])
+
+    @abstractmethod
+    def shape(self):
+        """Prediction shape"""
+        ...

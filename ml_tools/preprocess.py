@@ -200,25 +200,18 @@ index = 0
 def preprocess_ir(
     frame,
     frame_size,
-    crop=False,
+    crop=True,
     region=None,
     preprocess_fn=None,
     save_info="",
 ):
     if crop:
-        region.enlarge(20, max=track.crop_rectangle)
-        f.crop_by_region(region, out=f)
+        frame.crop_by_region(region, out=frame)
 
-    frame.normalize()
     image = np.stack((frame.thermal, frame.thermal, frame.filtered), axis=2)
     image = tf.cast(image, tf.float32)
     image = tf.image.resize_with_pad(image, frame_size[0], frame_size[1])
-    global index
-    index += 1
-    tools.saveclassify_image(
-        image,
-        f"samples/{index}-{save_info}-sample",
-    )
+
     if preprocess_fn:
         image = preprocess_fn(image)
     return image

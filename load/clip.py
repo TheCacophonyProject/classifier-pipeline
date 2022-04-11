@@ -46,7 +46,13 @@ class Clip:
     MIN_ORIGIN_OVERLAP = 0.80
 
     def __init__(
-        self, trackconfig, sourcefile, background=None, calc_stats=True, model=None
+        self,
+        trackconfig,
+        sourcefile,
+        background=None,
+        calc_stats=True,
+        model=None,
+        type="thermal",
     ):
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
@@ -82,7 +88,7 @@ class Clip:
         self.background_thresh = None
         self.ffc_frames = []
         self.tags = None
-        self.type = "thermal"
+        self.type = type
         # sets defaults
         self.set_model(model)
         if background is not None:

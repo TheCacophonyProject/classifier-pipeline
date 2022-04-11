@@ -120,9 +120,8 @@ def get_dataset(
             target_dist=target_dist,
             initial_dist=dist,
         )
-
-    if resample:
         dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
+
     dataset = dataset.shuffle(2048, reshuffle_each_iteration=reshuffle)
 
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)

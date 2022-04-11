@@ -51,6 +51,12 @@ class ClipTracker(ABC):
         """Tracker time"""
         ...
 
+    @property
+    @abstractmethod
+    def start_tracking(self, clip, preview_frames):
+        """start_tracking"""
+        ...
+
     @abstractmethod
     def process_frame(self, clip, rawframe, ffc_affected=False, track=True):
         """Get all regions for this sample"""

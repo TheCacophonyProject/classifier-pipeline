@@ -57,6 +57,11 @@ class KerasModel(Interpreter):
         self.type = meta.get("type", "thermal")
         print("loaded labels", self.labels)
 
+    def shape(self):
+        if self.model is None:
+            return None
+        return self.model.get_config()["layers"][0]["config"]["batch_input_shape"]
+
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.params.model_name
         if pretrained_model == "resnet":
@@ -720,7 +725,7 @@ class KerasModel(Interpreter):
         )
 
     def classify_track(self, clip, track, keep_all=True, segment_frames=None):
-        if self.type == "ir":
+        if self.type == "IR":
             return self.classify_ir(clip, track)
         return self.classify_thermal_track(clip, track, keep_all, segment_frames)
 

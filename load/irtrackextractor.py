@@ -110,11 +110,10 @@ class IRTrackExtractor(ClipTracker):
 
             if count == 0:
                 background = gray
-                self.saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
-                self.saliency.setImagesize(gray.shape[1], gray.shape[0])
-                self.saliency.init()
+                self.init_saliency(width, height)
+
                 clip.set_res(gray.shape[1], gray.shape[0])
-                clip.set_model("ir")
+                clip.set_model("IR")
                 clip.set_video_stats(datetime.now())
 
             else:
@@ -152,7 +151,23 @@ class IRTrackExtractor(ClipTracker):
         self._tracking_time = time.time() - start
         return True
 
+    def start_tracking(self, clip, frames):
+        if len(frames) == 0:
+            return
+
+        self.init_saliency(clip.res_x, clip.res_y)
+        for frame in frames[-9:]:
+            self.process_frame(clip, frame.pix.copy())
+
+    def init_saliency(self, width, height):
+        self.saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
+        self.saliency.setImagesize(width, height)
+        self.saliency.init()
+
     def process_frame(self, clip, frame, ffc_affected=False, track=True):
+        if self.saliency is None:
+            self.init_saliency(clip.res_x, clip.res_y)
+
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
