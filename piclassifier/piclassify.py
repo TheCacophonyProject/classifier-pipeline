@@ -113,6 +113,7 @@ def parse_ir(file, config, thermal_config_file, preview_type):
         if not success:
             break
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray = cv2.resize(gray, (160, 120))
         if count == 0:
             res_y, res_x = gray.shape
             headers = HeaderInfo(
