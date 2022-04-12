@@ -146,7 +146,16 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment):
 def decode_image(image, filtered, image_size, augment):
     image = tf.image.decode_jpeg(image, channels=1)
     filtered = tf.image.decode_jpeg(filtered, channels=1)
+    if augment:
+        image = tf.image.random_brightness(image, 0.2)
+        rand = tf.random.uniform(shape=(), minval=0, maxval=1, dtype=tf.float32)
+        if tf.math.greater_equal(rand, 0.5):
+            image = tf.image.flip_left_right(image)
+            filtered = tf.image.flip_left_right(filtered)
     image = tf.concat((image, image, filtered), axis=2)
+    if augment:
+        image = tf.image.random_contrast(image, 0, 1, seed=None)
+
     image = tf.cast(image, tf.float32)
     image = tf.image.resize_with_pad(image, image_size[0], image_size[1])
     image = tf.keras.applications.inception_v3.preprocess_input(image)
