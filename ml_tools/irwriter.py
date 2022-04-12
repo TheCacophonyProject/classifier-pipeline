@@ -234,11 +234,10 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     assert f.thermal.shape == f.filtered.shape
                     loaded.append((f, sample))
                 except Exception as e:
-                    logging.error("GOt exception", exc_info=True)
+                    logging.error("Got exception", exc_info=True)
                     pass
             loaded = np.array(loaded)
             np.random.shuffle(loaded)
-            print("shuffled loaded", len(loaded))
             for data, sample in loaded:
                 try:
                     tf_example, num_annotations_skipped = create_tf_example(
@@ -249,14 +248,14 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     # print("saving example", [count % num_shards])
                     count += 1
                     if count % 100 == 0:
-                        logging.debug("saved %s", count)
+                        logging.info("saved %s", count)
                 except Exception as e:
                     logging.error("Error saving ", exc_info=True)
             # break
     except:
         raise "EX"
         logging.error("Error saving track info", exc_info=True)
-    for writer in lbl_writer:
+    for writer in writers:
         writer.close()
 
     logging.info(

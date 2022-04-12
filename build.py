@@ -17,8 +17,8 @@ from config.config import Config
 from ml_tools.dataset import Dataset
 from ml_tools.datasetstructures import Camera
 
-from ml_tools.recordwriter import create_tf_records as create_ir_records
-from ml_tools.thermalrecord import create_tf_records as create_thermal_records
+from ml_tools.irwriter import create_tf_records as create_ir_records
+from ml_tools.thermalwriter import create_tf_records as create_thermal_records
 
 import numpy as np
 
@@ -360,7 +360,7 @@ def main():
     meta_filename = f"{base_dir}/training-meta.json"
     meta_data = {
         "labels": datasets[0].labels,
-        "type:": config.train.type,
+        "type": config.train.type,
         "counts": dataset_counts,
     }
 

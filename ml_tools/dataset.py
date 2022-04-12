@@ -267,6 +267,7 @@ class Dataset:
 
         if shuffle:
             np.random.shuffle(clip_ids)
+        clip_ids = list(clip_ids.keys())[:100]
         for clip_id in clip_ids:
             if self.load_clip(clip_id, allow_multiple_labels):
                 counter += 1

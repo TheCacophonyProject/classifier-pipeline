@@ -21,8 +21,8 @@ from ml_tools.preprocess import preprocess_movement, preprocess_frame, preproces
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
-from ml_tools.recorddataset import get_dataset as get_ir_dataset
 from ml_tools.thermaldataset import get_dataset as get_thermal_dataset
+from ml_tools.irdataset import get_dataset as get_ir_dataset
 
 
 class KerasModel(Interpreter):
@@ -53,12 +53,11 @@ class KerasModel(Interpreter):
 
     def load_training_meta(self, base_dir):
         file = f"{base_dir}/training-meta.json"
-        print("loading meta %s", file)
+        logging.info("loading meta %s", file)
         with open(file, "r") as f:
             meta = json.load(f)
         self.labels = meta.get("labels", [])
         self.type = meta.get("type", "thermal")
-        print("loaded labels", self.labels)
 
     def shape(self):
         if self.model is None:
@@ -717,7 +716,7 @@ class KerasModel(Interpreter):
         segments = track.get_segments(
             clip.ffc_frames,
             thermal_median,
-            self.params.square_width ** 2,
+            self.params.square_width**2,
             repeats=4,
             segment_frames=segment_frames,
         )

@@ -170,7 +170,6 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
 
             loaded = np.array(loaded)
             np.random.shuffle(loaded)
-            print("shuffled loaded", len(loaded))
             for data, sample in loaded:
                 try:
                     tf_example, num_annotations_skipped = create_tf_example(
@@ -178,11 +177,10 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     )
                     total_num_annotations_skipped += num_annotations_skipped
                     writers[count % num_shards].write(tf_example.SerializeToString())
-                    print("writing", sample.label, " to ", count % num_shards)
                     # print("saving example", [count % num_shards])
                     count += 1
                     if count % 100 == 0:
-                        logging.debug("saved %s", count)
+                        logging.info("saved %s", count)
                     # count += 1
                 except Exception as e:
                     logging.error("Error saving ", exc_info=True)
