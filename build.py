@@ -17,8 +17,8 @@ from config.config import Config
 from ml_tools.dataset import Dataset
 from ml_tools.datasetstructures import Camera
 
-# from ml_tools.recordwriter import create_tf_records
-from ml_tools.thermalrecord import create_tf_records
+from ml_tools.recordwriter import create_tf_records as create_ir_records
+from ml_tools.thermalrecord import create_tf_records as create_thermal_records
 
 import numpy as np
 
@@ -75,6 +75,7 @@ def parse_args():
     else:
         if args.date is None:
             args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=30)
+            args.date = datetime.datetime.now() - datetime.timedelta(days=30)
 
     logging.info("Loading training set up to %s", args.date)
     return args
@@ -341,6 +342,9 @@ def main():
     base_dir = config.tracks_folder
     record_dir = os.path.join(base_dir, "training-data/")
     dataset_counts = {}
+    create_tf_records = create_thermal_records
+    if config.train.type == "ir":
+        create_tf_records = create_ir_records
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         create_tf_records(
@@ -356,7 +360,7 @@ def main():
     meta_filename = f"{base_dir}/training-meta.json"
     meta_data = {
         "labels": datasets[0].labels,
-        "type:": "thermal",
+        "type:": config.train.type,
         "counts": dataset_counts,
     }
 

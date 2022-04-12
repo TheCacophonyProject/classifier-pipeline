@@ -35,22 +35,25 @@ class KerasModel(Interpreter):
         self.datasets = None
         # dictionary containing current hyper parameters
         self.params = HyperParams()
+        self.type = None
+
         if train_config:
             self.log_base = os.path.join(train_config.train_dir, "logs")
             self.log_dir = self.log_base
             self.checkpoint_folder = os.path.join(train_config.train_dir, "checkpoints")
             self.params.update(train_config.hyper_params)
+            self.type = train_config.type
         self.labels = labels
         self.preprocess_fn = None
         self.validate = None
         self.train = None
         self.test = None
-        self.type = None
         self.mapped_labels = None
         self.label_probabilities = None
 
     def load_training_meta(self, base_dir):
         file = f"{base_dir}/training-meta.json"
+        print("loading meta %s", file)
         with open(file, "r") as f:
             meta = json.load(f)
         self.labels = meta.get("labels", [])
@@ -393,6 +396,7 @@ class KerasModel(Interpreter):
         gc.collect()
 
     def get_dataset(self, pattern, augment=False, reshuffle=True):
+        logging.info("Getting dataset %s", self.type)
         if self.type == "thermal":
             return get_thermal_dataset(
                 pattern,
@@ -402,7 +406,6 @@ class KerasModel(Interpreter):
                 augment=augment,
                 reshuffle=reshuffle,
             )
-
         return get_ir_dataset(
             pattern,
             self.params.batch_size,

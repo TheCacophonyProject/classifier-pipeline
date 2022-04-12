@@ -178,7 +178,7 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
     return example, 0
 
 
-def create_tf_records(dataset, output_path, num_shards=1, cropped=True):
+def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
 
     output_path = Path(output_path)
     if output_path.is_dir():
@@ -197,16 +197,13 @@ def create_tf_records(dataset, output_path, num_shards=1, cropped=True):
     num_labels = len(dataset.labels)
     # pool = multiprocessing.Pool(4)
     logging.info("writing to output path: %s for %s samples", output_path, len(samples))
-    lbl_writers = {}
-    lbl_counts = {}
-    for l in dataset.labels:
-        lbl_counts[l] = 0
-        lbl_writers[l] = [
-            tf.io.TFRecordWriter(
-                str(output_path / (l + "-%05d-of-%05d.tfrecord" % (i, num_shards)))
-            )
-            for i in range(num_shards)
-        ]
+
+    writers = [
+        tf.io.TFRecordWriter(
+            str(output_path / ("%05d-of-%05d.tfrecord" % (i, num_shards)))
+        )
+        for i in range(num_shards)
+    ]
     load_first = 200
     try:
         count = 0
@@ -248,24 +245,19 @@ def create_tf_records(dataset, output_path, num_shards=1, cropped=True):
                         data, output_path, sample, dataset.labels, sample.filename
                     )
                     total_num_annotations_skipped += num_annotations_skipped
-                    writers = lbl_writers[sample.label]
-                    writers[lbl_counts[sample.label] % num_shards].write(
-                        tf_example.SerializeToString()
-                    )
+                    writers[count % num_shards].write(tf_example.SerializeToString())
                     # print("saving example", [count % num_shards])
-                    lbl_counts[sample.label] += 1
+                    count += 1
                     if count % 100 == 0:
                         logging.debug("saved %s", count)
-                    count += 1
                 except Exception as e:
                     logging.error("Error saving ", exc_info=True)
             # break
     except:
         raise "EX"
         logging.error("Error saving track info", exc_info=True)
-    for lbl_writer in lbl_writers.values():
-        for writer in lbl_writer:
-            writer.close()
+    for writer in lbl_writer:
+        writer.close()
 
     logging.info(
         "Finished writing, skipped %d annotations.", total_num_annotations_skipped

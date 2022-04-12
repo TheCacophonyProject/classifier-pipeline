@@ -56,17 +56,14 @@ class Dataset:
         db_file,
         name="Dataset",
         config=None,
-        use_segments=True,
         use_predictions=False,
         consecutive_segments=False,
         labels=[],
     ):
         self.consecutive_segments = consecutive_segments
         # self.camera_bins = {}
-        self.use_segments = use_segments
         # database holding track data
         self.db_file = db_file
-        print("db file", db_file)
         self.db = None
         self.load_db()
         self.label_mapping = None
@@ -90,8 +87,13 @@ class Dataset:
 
         self.enable_augmentation = False
         self.label_caps = {}
-
+        self.use_segments = True
         if config:
+
+            if config.train.type == "ir":
+                self.use_segments = False
+            else:
+                self.use_segments = config.train.use_segments
             self.segment_length = config.build.segment_length
             # number of seconds segments are spaced apart
             self.segment_spacing = config.build.segment_spacing
@@ -304,7 +306,8 @@ class Dataset:
             return True
 
     def load_clip(self, clip_id, allow_multiple_labels=False):
-        return self.load_clip_segments(clip_id)
+        if self.use_segments:
+            return self.load_clip_segments(clip_id)
         clip_meta = self.db.get_clip_meta(clip_id)
         if "tag" not in clip_meta:
             self.filtered_stats["not-confirmed"] += 1

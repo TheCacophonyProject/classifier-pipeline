@@ -5,6 +5,7 @@ from functools import partial
 import numpy as np
 import time
 import math
+import logging
 
 seed = 1341
 tf.random.set_seed(seed)
@@ -14,7 +15,9 @@ AUTOTUNE = tf.data.AUTOTUNE
 # BATCH_SIZE = 64
 
 
-def load_dataset(filenames, image_size, num_labels, deterministic=False, labeled=True):
+def load_dataset(
+    filenames, image_size, num_labels, deterministic=False, labeled=True, augment=False
+):
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = (
         deterministic  # disable order, increase speed
@@ -27,14 +30,15 @@ def load_dataset(filenames, image_size, num_labels, deterministic=False, labeled
     )  # uses data as soon as it streams in, rather than in its original order
     dataset = dataset.map(
         partial(
-            read_tfrecord, image_size=image_size, num_labels=num_labels, labeled=labeled
+            read_tfrecord,
+            image_size=image_size,
+            num_labels=num_labels,
+            labeled=labeled,
+            augment=augment,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
-    # dataset = dataset.map(preprocess, num_parallel_calls=AUTOTUNE)
-    # dataset = dataset.map(tf.keras.applications.inception_v3.preprocess_input)
-    # returns a dataset of (image, label) pairs if labeled=True or just images if labeled=False
     return dataset
 
 
@@ -54,6 +58,7 @@ def get_dataset(
     deterministic=False,
     labeled=True,
     resample=True,
+    augment=False,
 ):
     dataset = load_dataset(
         filenames,
@@ -61,35 +66,44 @@ def get_dataset(
         num_labels,
         deterministic=deterministic,
         labeled=labeled,
+        augment=augment,
     )
+
     if resample:
         true_categories = [y for x, y in dataset]
         if len(true_categories) == 0:
             return None
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
         c = Counter(list(true_categories))
-        total = np.sum(true_categories)
         dist = np.empty((num_labels), dtype=np.float32)
         target_dist = np.empty((num_labels), dtype=np.float32)
         for i in range(num_labels):
             dist[i] = c[i]
-            target_dist[i] = 1 / num_labels
-        min_label = np.min(dist)
-        dist = dist / np.sum(dist)
-        dist_r = np.max(dist) - np.min(dist)
-        max_range = 0.5
+        print("Count is", dist)
+        zeros = dist[dist == 0]
+        non_zero_labels = num_labels - len(zeros)
+        target_dist[:] = 1 / non_zero_labels
+
         dist_max = np.max(dist)
         dist_min = np.min(dist)
-        target_dist[:] = 1 / num_labels
+        dist = dist / np.sum(dist)
+        # really this is what we want but when the values become too small they never get sampled
+        # so need to try reduce the large gaps in distribution
+        # can use class weights to adjust more, or just throw out some samples
+        max_range = target_dist[0] / 2
+        for i in range(num_labels):
+            if dist[i] == 0:
+                target_dist[i] = 0
+            if dist[i] - dist_min > max_range:
+                add_on = max_range
+                if dist[i] - dist_min > max_range * 2:
+                    add_on *= 2
 
-        # if values are too wide apart rejection sample seems to zero these labels
-        if dist_r > max_range:
-            for i in range(num_labels):
-                if dist[i] - dist_min > max_range:
-                    target_dist[i] += (
-                        math.ceil(10 * (dist[i] - dist_min)) / 10 - max_range
-                    )
-                    dist[i] -= math.ceil(10 * (dist[i] - dist_min)) / 10 - max_range
+                target_dist[i] += add_on
+
+                dist[i] -= add_on
+            elif dist_max - dist[i] > max_range:
+                target_dist[i] -= max_range / 2.0
 
         rej = dataset.rejection_resample(
             class_func=class_func,
@@ -97,17 +111,14 @@ def get_dataset(
             initial_dist=dist,
         )
 
-    if resample:
         dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
-    dataset = dataset.shuffle(2048, reshuffle_each_iteration=reshuffle)
-
     dataset = dataset.shuffle(2048, reshuffle_each_iteration=reshuffle)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     dataset = dataset.batch(batch_size)
     return dataset
 
 
-def read_tfrecord(example, image_size, num_labels, labeled):
+def read_tfrecord(example, image_size, num_labels, labeled, augment):
     tfrecord_format = {
         "image/thermalencoded": tf.io.FixedLenFeature((), tf.string),
         "image/filteredencoded": tf.io.FixedLenFeature((), tf.string),
@@ -118,7 +129,10 @@ def read_tfrecord(example, image_size, num_labels, labeled):
 
     example = tf.io.parse_single_example(example, tfrecord_format)
     image = decode_image(
-        example["image/thermalencoded"], example["image/filteredencoded"], image_size
+        example["image/thermalencoded"],
+        example["image/filteredencoded"],
+        image_size,
+        augment,
     )
 
     if labeled:
@@ -129,7 +143,7 @@ def read_tfrecord(example, image_size, num_labels, labeled):
     return image
 
 
-def decode_image(image, filtered, image_size):
+def decode_image(image, filtered, image_size, augment):
     image = tf.image.decode_jpeg(image, channels=1)
     filtered = tf.image.decode_jpeg(filtered, channels=1)
     image = tf.concat((image, image, filtered), axis=2)
