@@ -122,11 +122,9 @@ if config.train.tfrecords:
     model.load_training_meta(base_dir)
 
     files = tf.io.gfile.glob(base_dir + f"/training-data/{args.dataset}/*.tfrecord")
-    dataset = get_dataset(
+    dataset = model.get_dataset(
         files,
         model.params.batch_size,
-        (model.params.frame_size, model.params.frame_size),
-        len(model.labels),
         reshuffle=False,
         deterministic=True,
         resample=False,

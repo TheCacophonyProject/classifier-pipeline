@@ -394,7 +394,9 @@ class KerasModel(Interpreter):
         del self.test
         gc.collect()
 
-    def get_dataset(self, pattern, augment=False, reshuffle=True):
+    def get_dataset(
+        self, pattern, augment=False, reshuffle=True, deterministic=False, resample=True
+    ):
         logging.info("Getting dataset %s", self.type)
         if self.type == "thermal":
             return get_thermal_dataset(
@@ -404,6 +406,8 @@ class KerasModel(Interpreter):
                 self.labels,
                 augment=augment,
                 reshuffle=reshuffle,
+                deterministic=deterministic,
+                resample=resample,
             )
         return get_ir_dataset(
             pattern,
@@ -412,6 +416,8 @@ class KerasModel(Interpreter):
             len(self.labels),
             augment=augment,
             reshuffle=reshuffle,
+            deterministic=deterministic,
+            resample=resample,
         )
 
     def train_model_tfrecords(self, epochs, run_name, base_dir, weights=None):
