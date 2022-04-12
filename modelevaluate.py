@@ -19,7 +19,6 @@ from ml_tools.kerasmodel import KerasModel
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 import tensorflow as tf
-from ml_tools.recorddataset import get_dataset
 
 
 def evaluate_db_clip(model, db, classifier, clip_id, track_id=None):
