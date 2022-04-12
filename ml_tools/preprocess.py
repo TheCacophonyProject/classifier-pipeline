@@ -206,6 +206,10 @@ def preprocess_ir(
     save_info="",
 ):
     if crop:
+        crop_rectangle = tools.Rectangle(
+            0, 0, frame.thermal.shape[1], frame.thermal.shape[0]
+        )
+        region.enlarge(20, max=crop_rectangle)
         frame.crop_by_region(region, out=frame)
 
     image = np.stack((frame.thermal, frame.thermal, frame.filtered), axis=2)

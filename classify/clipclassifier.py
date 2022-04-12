@@ -64,6 +64,7 @@ class ClipClassifier:
         classifier = KerasModel(self.config.train)
         classifier.load_model(model.model_file, weights=model.model_weights)
         logging.info("classifier loaded (%s)", time.time() - load_start)
+        classifier.model.summary()
         self.models[model.id] = classifier
 
         return classifier

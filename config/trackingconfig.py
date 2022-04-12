@@ -29,7 +29,7 @@ from track.track import RegionTracker
 class TrackingConfig(DefaultConfig):
     motion = attr.ib()
     edge_pixels = attr.ib()
-    dilation_pixels = attr.ib()
+    # dilation_pixels = attr.ib()
     frame_padding = attr.ib()
     track_smoothing = attr.ib()
     denoise = attr.ib()
@@ -62,7 +62,7 @@ class TrackingConfig(DefaultConfig):
         return cls(
             motion=TrackingMotionConfig.load(tracking.get("motion")),
             edge_pixels=tracking["edge_pixels"],
-            dilation_pixels=tracking["dilation_pixels"],
+            # dilation_pixels=tracking["dilation_pixels"],
             frame_padding=tracking["frame_padding"],
             track_smoothing=tracking["track_smoothing"],
             denoise=tracking["denoise"],
@@ -125,7 +125,7 @@ class TrackingConfig(DefaultConfig):
             motion=TrackingMotionConfig.get_defaults(),
             edge_pixels=1,
             frame_padding=4,
-            dilation_pixels=2,
+            # dilation_pixels=2,
             track_smoothing=False,
             denoise=True,
             high_quality_optical_flow=False,

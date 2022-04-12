@@ -79,13 +79,13 @@ class IRTrackExtractor(ClipTracker):
         # frame_padding < 3 causes problems when we get small areas...
         self.frame_padding = max(3, self.config.frame_padding)
         # the dilation effectively also pads the frame so take it into consideration.
-        self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
+        # self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
         self.keep_frames = keep_frames
         self.calc_stats = calc_stats
         self._tracking_time = None
-        if self.config.dilation_pixels > 0:
-            size = self.config.dilation_pixels * 2 + 1
-            self.dilate_kernel = np.ones((size, size), np.uint8)
+        # if self.config.dilation_pixels > 0:
+        # size = self.config.dilation_pixels * 2 + 1
+        # self.dilate_kernel = np.ones((size, size), np.uint8)
 
     def parse_clip(self, clip, process_background=False, track=True):
         """
@@ -112,8 +112,7 @@ class IRTrackExtractor(ClipTracker):
 
             if count == 0:
                 background = gray
-                self.init_saliency(width, height)
-
+                self.init_saliency(gray.shape[1], gray.shape[0])
                 clip.set_res(gray.shape[1], gray.shape[0])
                 clip.set_model("IR")
                 clip.set_video_stats(datetime.now())
@@ -127,6 +126,7 @@ class IRTrackExtractor(ClipTracker):
             # if count < 6:
             #     repeats = 6
             #
+
             count += 1
 
         vidcap.release()
@@ -186,14 +186,9 @@ class IRTrackExtractor(ClipTracker):
         self._process_frame(clip, frame, ffc_affected, track=track)
 
     def _get_filtered_frame_ir(self, thermal, repeats=1):
-        start = time.time()
         for _ in range(repeats):
             (success, saliencyMap) = self.saliency.computeSaliency(thermal)
-        # (success, saliencyMap) = self.saliency.computeSaliency(thermal)
         saliencyMap = (saliencyMap * 255).astype("uint8")
-        logging.info("running saliency %s took %s", repeats, time.time() - start)
-
-        # cv2.imshow("saliencyMap.png", np.uint8(saliencyMap))
         return saliencyMap, 0
 
     # merge all regions that the midpoint is within the max(width,height) from the midpoint of another region
@@ -217,7 +212,7 @@ class IRTrackExtractor(ClipTracker):
                 r_mid_x = r_2[2] / 2.0 + r_2[0]
                 r_mid_y = r_2[3] / 2.0 + r_2[1]
                 distance = (mid_x - r_mid_x) ** 2 + (r_mid_y - mid_y) ** 2
-                distance = distance ** 0.5
+                distance = distance**0.5
 
                 # widest = max(rect[2], rect[3])
                 # hack short cut just take line from mid points as shortest distance subtract biggest width or hieght from each
@@ -267,11 +262,15 @@ class IRTrackExtractor(ClipTracker):
         if self.resize_dims:
             tracking_thermal = cv2.resize(thermal, self.resize_dims)
 
-        saliencyMap, _ = self._get_filtered_frame_ir(tracking_thermal, repeats=repeats)
-        if self.resize_dims:
-            saliencyMap = cv2.resize(
-                saliencyMap, (clip.res_x, clip.res_y), cv2.INTER_NEAREST
+        saliencyMap = None
+        if track:
+            saliencyMap, _ = self._get_filtered_frame_ir(
+                tracking_thermal, repeats=repeats
             )
+            if self.resize_dims:
+                saliencyMap = cv2.resize(
+                    saliencyMap, (clip.res_x, clip.res_y), cv2.INTER_NEAREST
+                )
         backsub, _ = get_ir_back_filtered(clip.background, thermal)
         clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
         if not track:

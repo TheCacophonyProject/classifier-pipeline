@@ -27,13 +27,13 @@ class ClipTracker(ABC):
         # frame_padding < 3 causes problems when we get small areas...
         self.frame_padding = max(3, self.config.frame_padding)
         # the dilation effectively also pads the frame so take it into consideration.
-        self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
+        # self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
         self.keep_frames = keep_frames
         self.calc_stats = calc_stats
         self._tracking_time = None
-        if self.config.dilation_pixels > 0:
-            size = self.config.dilation_pixels * 2 + 1
-            self.dilate_kernel = np.ones((size, size), np.uint8)
+        # if self.config.dilation_pixels > 0:
+        #     size = self.config.dilation_pixels * 2 + 1
+        #     self.dilate_kernel = np.ones((size, size), np.uint8)
 
     @abstractmethod
     def parse_clip(self, clip, process_background=False):
@@ -232,7 +232,6 @@ class ClipTracker(ABC):
                     )
                 )
             region.enlarge(padding, max=clip.crop_rectangle)
-
             if delta_frame is not None:
                 region_difference = region.subimage(delta_frame)
                 region.pixel_variance = np.var(region_difference)

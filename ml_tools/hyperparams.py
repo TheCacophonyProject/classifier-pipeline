@@ -121,7 +121,10 @@ class HyperParams(dict):
 
     @property
     def square_width(self):
-        return self.get("square_width", 5)
+        default = 1
+        if self.use_segments:
+            default = 5
+        return self.get("square_width", default)
 
     @property
     def frame_size(self):

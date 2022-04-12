@@ -304,10 +304,11 @@ class KerasModel(Interpreter):
         self.type = meta.get("type", "thermal")
 
         logging.debug(
-            "using types r %s g %s b %s",
+            "using types r %s g %s b %s type %s",
             self.params.red_type,
             self.params.green_type,
             self.params.blue_type,
+            self.type,
         )
 
     def save(self, run_name=None, history=None, test_results=None):
@@ -397,7 +398,7 @@ class KerasModel(Interpreter):
     def get_dataset(
         self, pattern, augment=False, reshuffle=True, deterministic=False, resample=True
     ):
-        logging.info("Getting dataset %s", self.type)
+        logging.debug("Getting dataset %s", self.type)
         if self.type == "thermal":
             return get_thermal_dataset(
                 pattern,
@@ -733,12 +734,12 @@ class KerasModel(Interpreter):
         )
 
     def classify_track(self, clip, track, keep_all=True, segment_frames=None):
+        logging.debug("Classifying track %s", self.type)
         if self.type == "IR":
             return self.classify_ir(clip, track)
         return self.classify_thermal_track(clip, track, keep_all, segment_frames)
 
     def classify_ir(self, clip, track, keep_all=True, segment_frames=None):
-        logging.info("classify IR")
         data = []
         crop = True
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
