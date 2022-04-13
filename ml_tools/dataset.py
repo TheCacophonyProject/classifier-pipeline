@@ -280,7 +280,7 @@ class Dataset:
         tracks = self.db.get_clip_tracks(clip_id)
         for track_meta in tracks:
             if self.filter_track(clip_meta, track_meta):
-                print("filtering track", track_meta["id"])
+                logging.info("filtering track %s", track_meta["id"])
                 return False
             track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
             # self.tracks.append(track_header)
@@ -359,9 +359,7 @@ class Dataset:
                         continue
 
                 if frame not in regions:
-                    # print("no region for frame skipping")
                     continue
-                # print("got regoin", regions[frame])
                 samples_key = f"{clip_id}-None-{frame}"
                 if samples_key in samples:
                     existing_sample = samples[samples_key]
@@ -475,7 +473,7 @@ class Dataset:
         clip_meta = self.db.get_clip_meta(clip_id)
         track_meta = self.db.get_track_meta(clip_id, track_id)
         if self.filter_track(clip_meta, track_meta):
-            print("filtering track", track_meta["id"])
+            logging.info("filtering track %s", track_meta["id"])
             return False
         track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
         self.tracks.append(track_header)

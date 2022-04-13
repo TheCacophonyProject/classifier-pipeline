@@ -95,7 +95,6 @@ class RegionTracker(Tracker):
             "base_velocity", RegionTracker.BASE_VELOCITY
         )
         self.max_blanks = tracking_config.params.get("max_blanks", 18)
-        print("Set params using", tracking_config)
 
     @property
     def tracking(self):

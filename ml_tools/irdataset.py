@@ -79,7 +79,7 @@ def get_dataset(
         target_dist = np.empty((num_labels), dtype=np.float32)
         for i in range(num_labels):
             dist[i] = c[i]
-        print("Count is", dist)
+        logging.info("Count is %s", dist)
         zeros = dist[dist == 0]
         non_zero_labels = num_labels - len(zeros)
         target_dist[:] = 1 / non_zero_labels

@@ -221,7 +221,12 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                             [sample.frame_number],
                         )[0]
                     except Exception as e:
-                        print(sample.clip_id, sample, "error", e)
+                        logging.error(
+                            "Error gettin clip %s %s",
+                            sample.clip_id,
+                            sample,
+                            exc_info=True,
+                        )
                         continue
                     if cropped:
                         region = sample.regions[0].copy()
@@ -245,7 +250,6 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     )
                     total_num_annotations_skipped += num_annotations_skipped
                     writers[count % num_shards].write(tf_example.SerializeToString())
-                    # print("saving example", [count % num_shards])
                     count += 1
                     if count % 100 == 0:
                         logging.info("saved %s", count)
