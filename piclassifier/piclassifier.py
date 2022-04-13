@@ -6,6 +6,7 @@ import time
 
 import psutil
 import numpy as np
+from pathlib import Path
 
 from classify.trackprediction import Predictions
 from load.clip import Clip
@@ -80,7 +81,9 @@ class LiteInterpreter(Interpreter):
 
         import tensorflow as tf
 
-        self.interpreter = tf.lite.Interpreter(model_path=model_name + ".tflite")
+        model_name = Path(model_name)
+        model_name = model_name.with_suffix(".tflite")
+        self.interpreter = tf.lite.Interpreter(str(model_name))
 
         self.interpreter.allocate_tensors()  # Needed before execution!
 

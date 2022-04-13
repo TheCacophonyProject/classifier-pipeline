@@ -199,3 +199,9 @@ https://drive.google.com/drive/u/1/folders/1uGU9FhKaypadUVcIvItBZuZebZa_Z7MG
 - Ir videos are built with build.py and saved as tf records
 - https://github.com/sulc/tfrecord-viewer is very useful for vieweing the images stored in these files
 - `python3 tfviewer.py <config.base_data_folder>/<config.tracks_folder>/training-data/<set to see train/vaidation/train>/*.tfrecord --overlay classification --image-key image/thermalencoded`
+
+## TF Lite Conversion
+- Use tfliteconverter.py `python3 tfliteconvert.py -m <path to saved model> -w <weights to use> -c`
+Will save to <path to saved model>/tflite/converted_model.tflite
+- Can test running new model by using `python3 tfliteconvert.py -m <path to tf lite model>` -r`
+- Can test save weights into model file new model by using  `python3 tfliteconvert.py -m <path to saved model> -w <weights to use> -f`
