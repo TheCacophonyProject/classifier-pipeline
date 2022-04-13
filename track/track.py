@@ -380,6 +380,8 @@ class Track:
 
     @property
     def blank_frames(self):
+        if self.tracker is None:
+            return 0
         return self.tracker.blank_frames
 
     @property
@@ -670,6 +672,7 @@ class Track:
         jitter_percent = int(
             round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))
         )
+
         blank_percent = int(round(100.0 * self.blank_frames / self.frames))
         score = (
             min(movement_points, 100)

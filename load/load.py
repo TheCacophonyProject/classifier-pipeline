@@ -70,7 +70,7 @@ def load_clips(config, args):
     target = args.target
     if target is None:
         target = config.source_folder
-    if os.path.splitext(target)[1] in [".avi", ".cptv"]:
+    if os.path.splitext(target)[1] in [".avi", ".cptv", ".mp4"]:
         clip_id = loader.database.get_unique_clip_id()
 
         loader.process_file(target, clip_id)

@@ -1,4 +1,4 @@
-"""
+"" """
 classifier-pipeline - this is a server side component that manipulates cptv
 files and to create a classification model of animals present
 Copyright (C) 2018, The Cacophony Project
@@ -27,6 +27,7 @@ from ml_tools import tools
 from ml_tools.previewer import Previewer
 from ml_tools.trackdatabase import TrackDatabase
 from .clip import Clip
+from .irtrackextractor import IRTrackExtractor
 from .cliptrackextractor import ClipTrackExtractor
 from ml_tools.imageprocessing import clear_frame
 from track.track import Track
@@ -67,18 +68,9 @@ class ClipLoader:
         # number of threads to use when processing jobs.
         self.workers_threads = config.worker_threads
         self.previewer = Previewer.create_if_required(config, config.load.preview)
-        self.track_extractor = ClipTrackExtractor(
-            self.config.tracking,
-            self.config.use_opt_flow
-            or config.load.preview == Previewer.PREVIEW_TRACKING,
-            self.config.load.cache_to_disk,
-            high_quality_optical_flow=self.config.load.high_quality_optical_flow,
-            verbose=config.verbose,
-        )
 
     def process_all(self, root):
         clip_id = self.database.get_unique_clip_id()
-        print("process all", root)
         job_queue = Queue()
         processes = []
         for i in range(max(1, self.workers_threads)):
@@ -93,7 +85,7 @@ class ClipLoader:
         file_paths = []
         for folder_path, _, files in os.walk(root):
             for name in files:
-                if os.path.splitext(name)[1] in [".avi", ".cptv"]:
+                if os.path.splitext(name)[1] in [".mp4", ".avi", ".cptv"]:
                     full_path = os.path.join(folder_path, name)
                     file_paths.append(full_path)
         # allows us know the order of processing
@@ -134,6 +126,7 @@ class ClipLoader:
             original_thermal = []
             cropped_data = []
             for region in track.bounds_history:
+                print("gettign region", region)
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 original_thermal.append(frame.thermal)
                 cropped = frame.crop_by_region(region)
@@ -204,11 +197,35 @@ class ClipLoader:
         confidence = track_tag.get("confidence", 0)
         return tag and tag not in excluded_tags and confidence >= min_confidence
 
+    def get_track_extractor(self, filename):
+        ext = os.path.splitext(filename)[1]
+        if ext == ".cptv":
+            track_extractor = ClipTrackExtractor(
+                self.config.tracking,
+                self.config.use_opt_flow
+                or config.load.preview == Previewer.PREVIEW_TRACKING,
+                self.config.load.cache_to_disk,
+                high_quality_optical_flow=self.config.load.high_quality_optical_flow,
+                verbose=config.verbose,
+            )
+        else:
+            track_extractor = IRTrackExtractor(
+                self.config.tracking,
+                self.config.use_opt_flow
+                or self.config.load.preview == Previewer.PREVIEW_TRACKING,
+                self.config.load.cache_to_disk,
+                high_quality_optical_flow=self.config.load.high_quality_optical_flow,
+                verbose=self.config.verbose,
+            )
+        return track_extractor
+
     def process_file(self, filename, clip_id=None, classifier=None):
         start = time.time()
         base_filename = os.path.splitext(os.path.basename(filename))[0]
 
         logging.info(f"processing %s", filename)
+
+        track_extractor = self.get_track_extractor(filename)
 
         destination_folder = self._get_dest_folder(base_filename)
         # delete any previous files
@@ -237,7 +254,6 @@ class ClipLoader:
         if not valid_tracks or len(valid_tracks) == 0:
             logging.error("No valid track data found for %s", filename)
             return
-
         clip = Clip(self.track_config, filename)
         clip.load_metadata(
             metadata,
@@ -250,15 +266,11 @@ class ClipLoader:
             process_background,
             tracker_version,
         )
-        if not self.track_extractor.parse_clip(
-            clip, process_background=process_background
-        ):
+        if not track_extractor.parse_clip(clip, process_background=process_background):
             logging.error("No valid clip found for %s", filename)
             return
 
-        # , self.config.load.cache_to_disk, self.config.use_opt_flow
-        if self.track_config.enable_track_output:
-            self._export_tracks(filename, clip)
+        self._export_tracks(filename, clip)
 
         # write a preview
         if self.previewer:

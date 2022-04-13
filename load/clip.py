@@ -324,11 +324,10 @@ class Clip:
         self.tracks = set(tracks)
 
     def load_tracks_meta(self, metadata, tag_precedence):
-        if "tracks" in metadata:
-            tracks_meta = metadata.get("tracks", [])
-        else:
+        if "Tracks" in metadata:
             tracks_meta = metadata.get("Tracks", [])
-
+        else:
+            tracks_meta = metadata.get("tracks", [])
         tracks = []
         # get track data
         for track_meta in tracks_meta:
