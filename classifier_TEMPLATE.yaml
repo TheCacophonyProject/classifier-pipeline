@@ -100,8 +100,19 @@ tracking:
           # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
           track_min_delta: 1.0
           track_max_delta: 150
+        ir:
+            camera_model: "ir"
+            temp_thresh: 20
+            background_thresh: 50
+            max_temp_thresh: null
+            min_temp_thresh: null
+            # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
+            track_min_delta: 1.0
+            track_max_delta: 150
 train:
   epochs: 3
+  tfrecords: True
+  type: "thermal"
   hyper_params:
     batch_size: 32
     dense_sizes: []
@@ -112,8 +123,7 @@ train:
     label_smoothing: 0.1
     learning_rate: 0.001
     learning_rate_decay: 1.0
-    maximum_preload: 600
-    model_name: inceptionresnetv2
+    model_name: inceptionv3
     segment_type: ALL_RANDOM
     shuffle: true
     square_width: 5
