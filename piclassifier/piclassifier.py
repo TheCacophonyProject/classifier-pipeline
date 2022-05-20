@@ -182,9 +182,11 @@ class PiClassifier(Processor):
         self.send_lora_classifcation = thermal_config.recorder.send_lora_classification
         self.send_lora_recording = thermal_config.recorder.send_lora_recording
      
-        if(self.send_lora_classifcation == True or self.send_lora_recording == True):
+        if self.send_lora_classifcation == True or self.send_lora_recording == True:
             self.eventbus = dbus.SystemBus()
-            self.send_event = self.eventbus.get_object('org.cacophony.Lora', '/org/cacophony/Lora')
+            self.send_event = self.eventbus.get_object(
+                'org.cacophony.Lora', '/org/cacophony/Lora'
+            
             self.send_event.Connect()
 
         self._output_dir = thermal_config.recorder.output_dir
@@ -414,9 +416,12 @@ class PiClassifier(Processor):
             prediction = self.classifier.predict(preprocessed)
             track_prediction.classified_frame(self.clip.current_frame, prediction, mass)
 
-            #send ID via LoRa
-            #TODO - don't hard-code tags
-            if self.send_lora_classifcation == True and not track_prediction.get_prediction().__contains__('false-positive'):
+            # send ID via LoRa
+            # TODO - don't hard-code tags
+            if (
+                self.send_lora_classifcation == True 
+                and not track_prediction.get_prediction().__contains__('false-positive')
+            ):
                 self.send_event.UnreliableMessage(track_prediction.get_prediction())
 
             logging.debug(
@@ -564,10 +569,14 @@ class PiClassifier(Processor):
                                 prediction.description(),
                             )
                         )
-                        #send ID via LoRa
-                        #TODO - don't hard-code tags
-                        if self.send_lora_recording == True and not str(prediction.description()).__contains__('false-positive'):
-                            self.send_event.UnreliableMessage(str(prediction.description()))
+                        # send ID via LoRa
+                        # TODO - don't hard-code tags
+                        if self.send_lora_recording == True and not str(
+                            prediction.description()
+                        ).__contains__('false-positive'):
+                            self.send_event.UnreliableMessage(
+                                str(prediction.description())
+                            )
 
                 self.predictions.clear_predictions()
             self.clip = None
