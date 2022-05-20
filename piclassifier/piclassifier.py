@@ -182,9 +182,6 @@ class PiClassifier(Processor):
         self.send_lora_classifcation = thermal_config.recorder.send_lora_classification
         self.send_lora_recording = thermal_config.recorder.send_lora_recording
      
-        print("recording: ",self.send_lora_recording)
-        print("classification : ",self.send_lora_classifcation)
-
         if(self.send_lora_classifcation == True or self.send_lora_recording == True):
             self.eventbus = dbus.SystemBus()
             self.send_event = self.eventbus.get_object('org.cacophony.Lora', '/org/cacophony/Lora')
@@ -570,7 +567,6 @@ class PiClassifier(Processor):
                         #send ID via LoRa
                         #TODO - don't hard-code tags
                         if self.send_lora_recording == True and not str(prediction.description()).__contains__('false-positive'):
-                            print(prediction.description())
                             self.send_event.UnreliableMessage(str(prediction.description()))
 
                 self.predictions.clear_predictions()
