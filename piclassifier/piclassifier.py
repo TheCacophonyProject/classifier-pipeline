@@ -6,6 +6,7 @@ import time
 
 import psutil
 import numpy as np
+import dbus
 
 from classify.trackprediction import Predictions
 from load.clip import Clip
@@ -177,6 +178,18 @@ class PiClassifier(Processor):
         detect_after=None,
         preview_type=None,
     ):
+
+        self.send_lora_classifcation = thermal_config.recorder.send_lora_classification
+        self.send_lora_recording = thermal_config.recorder.send_lora_recording
+     
+        print("recording: ",self.send_lora_recording)
+        print("classification : ",self.send_lora_classifcation)
+
+        if(self.send_lora_classifcation == True or self.send_lora_recording == True):
+            self.eventbus = dbus.SystemBus()
+            self.send_event = self.eventbus.get_object('org.cacophony.Lora', '/org/cacophony/Lora')
+            self.send_event.Connect()
+
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
         super().__init__()
@@ -403,6 +416,12 @@ class PiClassifier(Processor):
                 continue
             prediction = self.classifier.predict(preprocessed)
             track_prediction.classified_frame(self.clip.current_frame, prediction, mass)
+
+            #send ID via LoRa
+            #TODO - don't hard-code tags
+            if self.send_lora_classifcation == True and not track_prediction.get_prediction().__contains__('false-positive'):
+                self.send_event.UnreliableMessage(track_prediction.get_prediction())
+
             logging.debug(
                 "Track %s is predicted as %s", track, track_prediction.get_prediction()
             )
@@ -548,6 +567,12 @@ class PiClassifier(Processor):
                                 prediction.description(),
                             )
                         )
+                        #send ID via LoRa
+                        #TODO - don't hard-code tags
+                        if self.send_lora_recording == True and not str(prediction.description()).__contains__('false-positive'):
+                            print(prediction.description())
+                            self.send_event.UnreliableMessage(str(prediction.description()))
+
                 self.predictions.clear_predictions()
             self.clip = None
             self.tracking = False

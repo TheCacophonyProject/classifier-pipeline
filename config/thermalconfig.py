@@ -131,6 +131,8 @@ class RecorderConfig:
     max_secs = attr.ib()
     rec_window = attr.ib()
     output_dir = attr.ib()
+    send_lora_classification = attr.ib()
+    send_lora_recording = attr.ib()
 
     @classmethod
     def load(cls, recorder, window):
@@ -138,6 +140,9 @@ class RecorderConfig:
             min_secs=recorder.get("min-secs", 10),
             max_secs=recorder.get("max-secs", 600),
             preview_secs=recorder.get("preview-secs", 5),
+            send_lora_classification=recorder.get("send-lora-classification", False),
+            send_lora_recording=recorder.get("send-lora-recording", False),
+
             rec_window=TimeWindow(
                 RelAbsTime(window.get("start-recording"), default_offset=30 * 60),
                 RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
