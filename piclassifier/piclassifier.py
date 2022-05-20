@@ -186,7 +186,7 @@ class PiClassifier(Processor):
             self.eventbus = dbus.SystemBus()
             self.send_event = self.eventbus.get_object(
                 'org.cacophony.Lora', '/org/cacophony/Lora'
-            
+            ) 
             self.send_event.Connect()
 
         self._output_dir = thermal_config.recorder.output_dir
