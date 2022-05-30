@@ -222,7 +222,7 @@ class PiClassifier(Processor):
                 self.config.classify.cache_to_disk,
                 verbose=config.verbose,
                 calc_stats=False,
-                resize_dims=(160, 120),
+                scale=0.25,
             )
             self.type = "IR"
             if not thermal_config.recorder.disable_recordings:

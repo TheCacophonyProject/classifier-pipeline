@@ -14,7 +14,7 @@ class ClipTracker(ABC):
     def __init__(
         self,
         config,
-        cache_to_disk,
+        cache_to_disk=False,
         keep_frames=True,
         calc_stats=True,
         verbose=False,
@@ -24,6 +24,7 @@ class ClipTracker(ABC):
         self.stats = None
         self.cache_to_disk = cache_to_disk
         self.max_tracks = config.max_tracks
+        self.min_dimension = config.min_dimension
         # frame_padding < 3 causes problems when we get small areas...
         self.frame_padding = max(3, self.config.frame_padding)
         # the dilation effectively also pads the frame so take it into consideration.
@@ -193,7 +194,7 @@ class ClipTracker(ABC):
         regions = []
         for i, component in enumerate(component_details):
 
-            if component[2] < 0 or component[3] < 0:
+            if component[2] < self.min_dimension or component[3] < self.min_dimension:
                 # use config for this
                 continue
             region = Region(

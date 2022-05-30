@@ -118,7 +118,6 @@ class RegionTracker(Tracker):
             # only for thermal
             if type == "thermal":
                 # GP should figure out good values for the 3 distances rather than the mean
-                logging.info("using mean")
                 distances[0] = np.mean(distances)
 
             if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
@@ -251,6 +250,8 @@ class RegionTracker(Tracker):
         return distances
 
     def get_max_mass_change_percent(self, track, average_mass):
+        if self.mass_change_percent is None:
+            return None
         if len(track) > self.restrict_mass_after * track.fps:
             vel = track.velocity
             mass_percent = self.mass_change_percent

@@ -172,7 +172,12 @@ class Previewer:
                 self.add_header(draw, image.width, image.height, "Calibrating ...")
             if self.debug and draw:
                 self.add_footer(
-                    draw, image.width, image.height, footer, frame.ffc_affected
+                    draw,
+                    image.width,
+                    image.height,
+                    footer,
+                    frame.ffc_affected,
+                    frame_number,
                 )
                 self.add_header(
                     draw, image.width, image.height, f"Frame {frame.frame_number}"
@@ -303,9 +308,9 @@ class Previewer:
         center = (width / 2 - footer_size[0] / 2.0, 5)
         draw.text((center[0], center[1]), text, font=font)
 
-    def add_footer(self, draw, width, height, text, ffc_affected):
+    def add_footer(self, draw, width, height, text, ffc_affected, frame_number):
         font = get_font()
-        footer_text = "FFC {} {}".format(ffc_affected, text)
+        footer_text = "{} FFC {} {}".format(frame_number, ffc_affected, text)
         footer_size = font.getsize(footer_text)
         center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
         draw.text((center[0], center[1]), footer_text, font=font)

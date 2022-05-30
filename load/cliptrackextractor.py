@@ -63,15 +63,15 @@ class ClipTrackExtractor(ClipTracker):
         )
         self.use_opt_flow = use_opt_flow
         self.high_quality_optical_flow = high_quality_optical_flow
-        self.cache_to_disk = cache_to_disk
-        self.max_tracks = config.max_tracks
-        # frame_padding < 3 causes problems when we get small areas...
-        self.frame_padding = max(3, self.config.frame_padding)
-        # the dilation effectively also pads the frame so take it into consideration.
-        # self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
-        self.keep_frames = keep_frames
-        self.calc_stats = calc_stats
-        self._tracking_time = None
+        # self.cache_to_disk = cache_to_disk
+        # self.max_tracks = config.max_tracks
+        # # frame_padding < 3 causes problems when we get small areas...
+        # self.frame_padding = max(3, self.config.frame_padding)
+        # # the dilation effectively also pads the frame so take it into consideration.
+        # # self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
+        # self.keep_frames = keep_frames
+        # self.calc_stats = calc_stats
+        # self._tracking_time = None
         # if self.config.dilation_pixels > 0:
         #     size = self.config.dilation_pixels * 2 + 1
         #     self.dilate_kernel = np.ones((size, size), np.uint8)

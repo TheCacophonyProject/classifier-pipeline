@@ -59,33 +59,25 @@ class IRTrackExtractor(ClipTracker):
     def __init__(
         self,
         config,
-        use_opt_flow,
         cache_to_disk=False,
         keep_frames=True,
         calc_stats=True,
-        high_quality_optical_flow=False,
         verbose=False,
-        resize_dims=None,
+        scale=None,
     ):
-        self.resize_dims = resize_dims
+        super().__init__(
+            config,
+            cache_to_disk,
+            keep_frames,
+            calc_stats,
+            verbose,
+        )
+
+        self.scale = scale
         self.saliency = None
-        self.verbose = verbose
-        self.config = config
-        self.use_opt_flow = use_opt_flow
-        self.high_quality_optical_flow = high_quality_optical_flow
-        self.stats = None
-        self.cache_to_disk = cache_to_disk
-        self.max_tracks = config.max_tracks
-        # frame_padding < 3 causes problems when we get small areas...
-        self.frame_padding = max(3, self.config.frame_padding)
-        # the dilation effectively also pads the frame so take it into consideration.
-        # self.frame_padding = max(0, self.frame_padding - self.config.dilation_pixels)
-        self.keep_frames = keep_frames
-        self.calc_stats = calc_stats
-        self._tracking_time = None
-        # if self.config.dilation_pixels > 0:
-        # size = self.config.dilation_pixels * 2 + 1
-        # self.dilate_kernel = np.ones((size, size), np.uint8)
+        if self.scale:
+            self.frame_padding = int(scale * self.frame_padding)
+            self.min_dimension = int(scale * self.min_dimension)
 
     def parse_clip(self, clip, process_background=False, track=True):
         """
@@ -95,9 +87,9 @@ class IRTrackExtractor(ClipTracker):
         self._tracking_time = None
         start = time.time()
         clip.set_frame_buffer(
-            self.high_quality_optical_flow,
+            False,
             self.cache_to_disk,
-            self.use_opt_flow,
+            False,
             self.keep_frames,
         )
         _, ext = os.path.splitext(clip.source_file)
@@ -122,19 +114,13 @@ class IRTrackExtractor(ClipTracker):
             if count < 6:
                 self._get_filtered_frame_ir(gray, repeats=6)
 
-            # repeats = 1
-            # if count < 6:
-            #     repeats = 6
-            #
-
             count += 1
 
         vidcap.release()
         if background is None:
             return False
         background = cv2.GaussianBlur(background, (15, 15), 0)
-        # cv2.imshow("backg", background)
-        # cv2.waitKey(100)
+
         clip.update_background(background)
         vidcap = cv2.VideoCapture(clip.source_file)
         while True:
@@ -143,6 +129,8 @@ class IRTrackExtractor(ClipTracker):
                 break
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             self.process_frame(clip, gray, track=track)
+            # if clip.current_frame > 200:
+            #     break
         vidcap.release()
 
         if not clip.from_metadata and track:
@@ -158,9 +146,10 @@ class IRTrackExtractor(ClipTracker):
             return
         res_x = clip.res_x
         res_y = clip.res_y
-        if self.resize_dims is not None:
-            res_x = self.resize_dims[0]
-            res_y = self.resize_dims[1]
+        if self.scale is not None:
+            res_x = int(self.res_x * self.scale)
+            res_y = int(self.res_y * self.scale)
+
             # clip.resized_background = cv2.resize(clip.background, self.resize_dims)
             # logging.info("Resizing backgorund %s", clip.tracking_background.shape)
         self.init_saliency(res_x, res_y)
@@ -175,7 +164,9 @@ class IRTrackExtractor(ClipTracker):
     def process_frame(self, clip, frame, ffc_affected=False, track=True):
         if self.saliency is None:
             if self.resie_dims is not None:
-                self.init_saliency(*self.resize_dims)
+                self.init_saliency(
+                    int(self.res_x * self.scale), int(self.res_y * self.scale)
+                )
             else:
                 self.init_saliency(clip.res_x, clip.res_y)
 
@@ -259,15 +250,17 @@ class IRTrackExtractor(ClipTracker):
             repeats = 8
 
         tracking_thermal = thermal
-        if self.resize_dims:
-            tracking_thermal = cv2.resize(thermal, self.resize_dims)
+        if self.scale:
+            tracking_thermal = cv2.resize(
+                thermal, (int(self.res_x * self.scale), int(self.res_y * self.scale))
+            )
 
         saliencyMap = None
         if track:
             saliencyMap, _ = self._get_filtered_frame_ir(
                 tracking_thermal, repeats=repeats
             )
-            if self.resize_dims:
+            if self.scale:
                 saliencyMap = cv2.resize(
                     saliencyMap, (clip.res_x, clip.res_y), cv2.INTER_NEAREST
                 )

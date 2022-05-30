@@ -57,6 +57,11 @@ load:
   excluded_tags: [untagged, dog, unidentified, hard, multi, moving, bird-kiwi, for_grant,
     missclassified, other, part, poor tracking]
 tracking:
+
+  min_dimension: 0
+  # The minimum width or height a region must be to be considered
+  # 10 for ir
+
   areas_of_interest: {cropped_regions_strategy: cautious, min_mass: 4.0, pixel_variance: 2.0}
   dilation_pixels: 2
   edge_pixels: 1

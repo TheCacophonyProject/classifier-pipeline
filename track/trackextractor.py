@@ -127,9 +127,7 @@ def extract_file(filename):
     else:
         track_extractor = IRTrackExtractor(
             config.tracking,
-            config.use_opt_flow,
             cache_to_disk,
-            high_quality_optical_flow=config.tracking.high_quality_optical_flow,
             verbose=config.verbose,
             keep_frames=False if previewer is None else True,
         )

@@ -30,6 +30,7 @@ class TrackingConfig(DefaultConfig):
     motion = attr.ib()
     edge_pixels = attr.ib()
     # dilation_pixels = attr.ib()
+    min_dimension = attr.ib()
     frame_padding = attr.ib()
     track_smoothing = attr.ib()
     denoise = attr.ib()
@@ -61,6 +62,7 @@ class TrackingConfig(DefaultConfig):
     def load(cls, tracking):
         return cls(
             motion=TrackingMotionConfig.load(tracking.get("motion")),
+            min_dimension=tracking["min_dimension"],
             edge_pixels=tracking["edge_pixels"],
             # dilation_pixels=tracking["dilation_pixels"],
             frame_padding=tracking["frame_padding"],
@@ -125,6 +127,7 @@ class TrackingConfig(DefaultConfig):
             motion=TrackingMotionConfig.get_defaults(),
             edge_pixels=1,
             frame_padding=4,
+            min_dimension=0,
             # dilation_pixels=2,
             track_smoothing=False,
             denoise=True,
