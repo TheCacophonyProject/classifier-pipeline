@@ -90,7 +90,7 @@ class Dataset:
         self.use_segments = True
         if config:
 
-            if config.train.type == "ir":
+            if config.train.type == "IR":
                 self.use_segments = False
             else:
                 self.use_segments = config.train.use_segments

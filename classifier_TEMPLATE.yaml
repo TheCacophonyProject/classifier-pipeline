@@ -66,6 +66,7 @@ tracking:
     track_min_offset: 4.0, track_overlap_ratio: 0.5}
   flow_threshold: 40
   frame_padding: 4
+  # 10 for IR
   high_quality_optical_flow: false
   max_blank_percent: 30
   max_mass_std_percent: 0.55
@@ -101,7 +102,7 @@ tracking:
           track_min_delta: 1.0
           track_max_delta: 150
         ir:
-            camera_model: "ir"
+            camera_model: "IR"
             temp_thresh: 20
             background_thresh: 50
             max_temp_thresh: null

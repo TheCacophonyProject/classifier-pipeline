@@ -343,7 +343,7 @@ def main():
     record_dir = os.path.join(base_dir, "training-data/")
     dataset_counts = {}
     create_tf_records = create_thermal_records
-    if config.train.type == "ir":
+    if config.train.type == "IR":
         create_tf_records = create_ir_records
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)

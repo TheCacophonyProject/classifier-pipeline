@@ -105,7 +105,7 @@ def parse_file(file, config, thermal_config_file, preview_type):
 
 def parse_ir(file, config, thermal_config_file, preview_type):
 
-    thermal_config = ThermalConfig.load_from_file(thermal_config_file, "ir")
+    thermal_config = ThermalConfig.load_from_file(thermal_config_file, "IR")
     count = 0
     vidcap = cv2.VideoCapture(file)
     while True:
