@@ -744,8 +744,8 @@ class TrackDatabase:
                         **opts,
                         dtype=np.int16,
                     )
-                if original is not None:
                     thermal_node[:, :] = original
+                # if original is not None:
                 if cropped.thermal.size > 0:
                     height, width = cropped.shape
                     chunks = (1, height, width)
