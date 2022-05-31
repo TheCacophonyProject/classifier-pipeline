@@ -77,6 +77,9 @@ class Region(Rectangle):
         frame = region_json.get("frame_number")
         if not frame:
             frame = region_json.get("frameNumber")
+        if frame is None:
+            frame = region_json.get("order")
+
         return cls(
             region_json["x"],
             region_json["y"],

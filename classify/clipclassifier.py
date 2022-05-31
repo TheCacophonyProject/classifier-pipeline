@@ -125,9 +125,7 @@ class ClipClassifier:
             logging.info("Using clip extractor")
 
         elif ext in [".avi", ".mp4"]:
-            track_extractor = IRTrackExtractor(
-                self.config.tracking, self.config.use_opt_flow, cache_to_disk
-            )
+            track_extractor = IRTrackExtractor(self.config.tracking, cache_to_disk)
             logging.info("Using ir extractor")
         else:
             logging.error("Unknown extention %s", ext)

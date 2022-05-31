@@ -126,7 +126,6 @@ class ClipLoader:
             original_thermal = []
             cropped_data = []
             for region in track.bounds_history:
-                print("gettign region", region)
                 frame = clip.frame_buffer.get_frame(region.frame_number)
                 original_thermal.append(frame.thermal)
                 cropped = frame.crop_by_region(region)
@@ -203,10 +202,10 @@ class ClipLoader:
             track_extractor = ClipTrackExtractor(
                 self.config.tracking,
                 self.config.use_opt_flow
-                or config.load.preview == Previewer.PREVIEW_TRACKING,
+                or self.config.load.preview == Previewer.PREVIEW_TRACKING,
                 self.config.load.cache_to_disk,
                 high_quality_optical_flow=self.config.load.high_quality_optical_flow,
-                verbose=config.verbose,
+                verbose=self.config.verbose,
             )
         else:
             track_extractor = IRTrackExtractor(
