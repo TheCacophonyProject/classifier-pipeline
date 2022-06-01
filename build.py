@@ -23,8 +23,7 @@ from ml_tools.thermalwriter import create_tf_records as create_thermal_records
 import numpy as np
 
 MIN_SAMPLES = 100
-use_clips = True
-TEST_TRACKS = 0
+TEST_TRACKS = 100
 
 
 def load_config(config_file):
@@ -75,7 +74,7 @@ def parse_args():
     else:
         if args.date is None:
             args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=30)
-            args.date = datetime.datetime.now() - datetime.timedelta(days=30)
+            # args.date = datetime.datetime.now() - datetime.timedelta(days=30)
 
     logging.info("Loading training set up to %s", args.date)
     return args

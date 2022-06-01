@@ -93,7 +93,7 @@ class Dataset:
             if config.train.type == "IR":
                 self.use_segments = False
             else:
-                self.use_segments = config.train.use_segments
+                self.use_segments = config.train.hyper_params.get("use_segments", True)
             self.segment_length = config.build.segment_length
             # number of seconds segments are spaced apart
             self.segment_spacing = config.build.segment_spacing
