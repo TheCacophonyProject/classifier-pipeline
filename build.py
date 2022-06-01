@@ -347,7 +347,7 @@ def main():
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         create_tf_records(
-            dataset, dir, datasets[0].labels, num_shards=5 * len(dataset.labels)
+            dataset, dir, datasets[0].labels, num_shards=10 * len(dataset.labels)
         )
         counts = {}
         for label in dataset.labels:
