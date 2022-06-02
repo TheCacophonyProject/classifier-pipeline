@@ -22,6 +22,7 @@ from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
 from ml_tools.thermaldataset import get_dataset as get_thermal_dataset
+from ml_tools.thermaldataset import get_distribution
 from ml_tools.irdataset import get_dataset as get_ir_dataset
 
 
@@ -50,6 +51,7 @@ class KerasModel(Interpreter):
         self.test = None
         self.mapped_labels = None
         self.label_probabilities = None
+        self.class_weights = None
 
     def load_training_meta(self, base_dir):
         file = f"{base_dir}/training-meta.json"
@@ -331,6 +333,8 @@ class KerasModel(Interpreter):
         model_stats["mapped_labels"] = self.mapped_labels
         model_stats["label_probabilities"] = self.label_probabilities
         model_stats["type"] = self.type
+        if self.class_weights is not None:
+            model_stats["class_weights"] = self.class_weights
 
         if history:
             json_history = {}
@@ -398,7 +402,7 @@ class KerasModel(Interpreter):
     def get_dataset(
         self, pattern, augment=False, reshuffle=True, deterministic=False, resample=True
     ):
-        logging.debug("Getting dataset %s", self.type)
+        logging.info("Getting dataset %s", self.type)
         if self.type == "thermal":
             return get_thermal_dataset(
                 pattern,
@@ -421,7 +425,9 @@ class KerasModel(Interpreter):
             resample=resample,
         )
 
-    def train_model_tfrecords(self, epochs, run_name, base_dir, weights=None):
+    def train_model_tfrecords(
+        self, epochs, run_name, base_dir, weights=None, rebalance=True, resample=False
+    ):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
         )
@@ -442,19 +448,45 @@ class KerasModel(Interpreter):
         base_dir = os.path.join(base_dir, "training-data")
         train_files = tf.io.gfile.glob(base_dir + "/train/*.tfrecord")
         validate_files = tf.io.gfile.glob(base_dir + "/validation/*.tfrecord")
-        self.train = self.get_dataset(train_files, augment=True)
-        self.validate = self.get_dataset(validate_files, augment=False)
+        self.train = self.get_dataset(train_files, augment=True, resample=resample)
+        self.validate = self.get_dataset(
+            validate_files, augment=False, resample=resample
+        )
+        distribution = get_distribution(self.train)
+        if rebalance:
+            self.class_weights = {}
+            total = np.sum(distribution)
+            multiplier = total / len(self.labels)
+            for index, label in enumerate(self.labels):
+                if distribution[index] == 0:
+                    self.class_weights[index] = 0
+                elif label == "bird":
+                    self.class_weights[index] = (
+                        1 / distribution[index] * (total / len(self.labels)) * 1.2
+                    )
+                elif label == "wallaby":
+                    # wallabies not so important better to predict birds
+                    self.class_weights[index] = (
+                        1 / distribution[index] * (total / len(self.labels)) * 0.8
+                    )
+                else:
+                    self.class_weights[index] = 1 / distribution[index] * multiplier
+            logging.info(
+                "%s Dist is %s giving weights %s",
+                self.labels,
+                distribution,
+                self.class_weights,
+            )
         self.save_metadata(run_name)
 
         checkpoints = self.checkpoints(run_name)
-        weight_for_0 = 1
-        weight_for_1 = 1 / 4
 
         history = self.model.fit(
             self.train,
             validation_data=self.validate,
             epochs=epochs,
             shuffle=False,
+            class_weight=self.class_weights,
             callbacks=[
                 tf.keras.callbacks.TensorBoard(
                     self.log_dir, write_graph=True, write_images=True
@@ -466,7 +498,9 @@ class KerasModel(Interpreter):
         test_accuracy = None
         test_files = tf.io.gfile.glob(base_dir + "/test/*.tfrecord")
         if len(test_files) > 0:
-            self.test = self.get_dataset(test_files, augment=False, reshuffle=False)
+            self.test = self.get_dataset(
+                test_files, augment=False, reshuffle=False, resample=False
+            )
             if self.test:
                 test_accuracy = self.model.evaluate(self.validate)
 
@@ -723,7 +757,7 @@ class KerasModel(Interpreter):
         segments = track.get_segments(
             clip.ffc_frames,
             thermal_median,
-            self.params.square_width**2,
+            self.params.square_width ** 2,
             repeats=4,
             segment_frames=segment_frames,
         )

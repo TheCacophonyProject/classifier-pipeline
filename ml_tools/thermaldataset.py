@@ -57,6 +57,19 @@ def preprocess(data):
     return tf.keras.applications.inception_v3.preprocess_input(x), y
 
 
+def get_distribution(dataset):
+    true_categories = tf.concat([y for x, y in dataset], axis=0)
+    num_labels = len(true_categories[0])
+    if len(true_categories) == 0:
+        return None
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    c = Counter(list(true_categories))
+    dist = np.empty((num_labels), dtype=np.float32)
+    for i in range(num_labels):
+        dist[i] = c[i]
+    return dist
+
+
 def get_dataset(
     filenames,
     batch_size,
@@ -78,7 +91,6 @@ def get_dataset(
     dataset = load_dataset(
         filenames, image_size, num_labels, deterministic=deterministic, labeled=labeled
     )
-
     if resample:
         true_categories = [y for x, y in dataset]
         if len(true_categories) == 0:

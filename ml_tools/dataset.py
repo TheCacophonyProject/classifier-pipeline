@@ -279,7 +279,7 @@ class Dataset:
         tracks = self.db.get_clip_tracks(clip_id)
         for track_meta in tracks:
             if self.filter_track(clip_meta, track_meta):
-                logging.info("filtering track %s", track_meta["id"])
+                # logging.info("filtering track %s", track_meta["id"])
                 return False
             track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
             # self.tracks.append(track_header)
