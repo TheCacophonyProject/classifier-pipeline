@@ -145,14 +145,23 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     # pool = multiprocessing.Pool(4)
     logging.info("writing to output path: %s for %s samples", output_path, len(samples))
     writers = []
-    # lbl_counts = {}
+    lbl_counts = [0] * num_labels
     # lbl_counts[l] = 0
-    writers = [
-        tf.io.TFRecordWriter(
-            str(output_path / ("%05d-of-%05d.tfrecord" % (i, num_shards)))
-        )
-        for i in range(num_shards)
-    ]
+    logging.info("labels are %s", labels)
+
+    writers = []
+    for label in labels:
+        for i in range(num_shards):
+
+            writers.append(
+                tf.io.TFRecordWriter(
+                    str(
+                        output_path
+                        / (f"{label}-%05d-of-%05d.tfrecord" % (i, num_shards))
+                    )
+                )
+            )
+
     load_first = 200
     try:
         count = 0
@@ -176,7 +185,14 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                         data, output_path, sample, labels, ""
                     )
                     total_num_annotations_skipped += num_annotations_skipped
-                    writers[count % num_shards].write(tf_example.SerializeToString())
+                    l_i = labels.index(sample.label)
+                    logging.info(
+                        "saving %s at offset %s", sample.label, (l_i * num_shards)
+                    )
+                    writers[num_shards * l_i + lbl_counts[l_i] % num_shards].write(
+                        tf_example.SerializeToString()
+                    )
+                    lbl_counts[l_i] += 1
                     # print("saving example", [count % num_shards])
                     count += 1
                     if count % 100 == 0:
