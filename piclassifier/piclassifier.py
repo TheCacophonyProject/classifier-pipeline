@@ -324,7 +324,10 @@ class PiClassifier(Processor):
         """
         active_tracks = self.clip.active_tracks
         active_tracks = [track for track in active_tracks if len(track) > 10]
-        if len(active_tracks) <= PiClassifier.NUM_CONCURRENT_TRACKS:
+        if (
+            len(active_tracks) <= PiClassifier.NUM_CONCURRENT_TRACKS
+            or not self.classify
+        ):
             return active_tracks
         active_predictions = []
         for track in active_tracks:
