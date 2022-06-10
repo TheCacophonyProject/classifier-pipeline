@@ -866,8 +866,8 @@ def get_movement_data(b_h, m_h):
     centrey = (b_h[:, 3] + b_h[:, 1]) / 2
     xv = np.hstack((0, centrex[1:] - centrex[:-1]))
     yv = np.hstack((0, centrey[1:] - centrey[:-1]))
-    axv = xv / areas ** 0.5
-    ayv = yv / areas ** 0.5
+    axv = xv / areas**0.5
+    ayv = yv / areas**0.5
     return np.hstack((b_h, np.vstack((m_h, xv, yv, axv, ayv)).T))
 
 
@@ -909,6 +909,7 @@ def get_segments(
             if (ignore_mass or region.mass > 0)
             and region.frame_number not in ffc_frames
             and (skipped_frames is None or region.frame_number not in skipped_frames)
+            and not region.blank
         ]
         if segment_min_mass is not None:
             if len(frame_indices) > 0:
