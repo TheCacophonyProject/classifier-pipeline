@@ -70,8 +70,8 @@ def get_distribution(dataset):
     return dist
 
 
-def get_dataset(
-    filenames,
+def get_resampled(
+    base_dir,
     batch_size,
     image_size,
     labels,
@@ -88,8 +88,55 @@ def get_dataset(
         fp = tf.constant(labels.index("false-positive"), tf.int64)
     if "insect" in labels:
         insect = tf.constant(labels.index("insect"), tf.int64)
+
+    datasets = []
+    weights = [0.5] * len(labels)
+    for l in labels:
+        filenames = tf.io.gfile.glob(f"{base_dir}/{l}*.tfrecord")
+        dataset = load_dataset(
+            filenames,
+            image_size,
+            num_labels,
+            deterministic=deterministic,
+            labeled=labeled,
+        )
+        dataset = dataset.shuffle(2048, reshuffle_each_iteration=True)
+
+        datasets.append(dataset)
+    resampled_ds = tf.data.Dataset.sample_from_datasets(
+        datasets, weights=weights, stop_on_empty_dataset=True
+    )
+    resampled_ds = resampled_ds.shuffle(2048, reshuffle_each_iteration=reshuffle)
+    resampled_ds = resampled_ds.prefetch(buffer_size=AUTOTUNE)
+    resampled_ds = resampled_ds.batch(batch_size)
+    return resampled_ds
+
+
+def get_dataset(
+    base_dir,
+    batch_size,
+    image_size,
+    labels,
+    reshuffle=True,
+    deterministic=False,
+    labeled=True,
+    resample=True,
+    augment=False,
+):
+    num_labels = len(labels)
+    global insect
+    global fp
+    if "false-positive" in labels:
+        fp = tf.constant(labels.index("false-positive"), tf.int64)
+    if "insect" in labels:
+        insect = tf.constant(labels.index("insect"), tf.int64)
+    files = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
     dataset = load_dataset(
-        filenames, image_size, num_labels, deterministic=deterministic, labeled=labeled
+        files,
+        image_size,
+        num_labels,
+        deterministic=deterministic,
+        labeled=labeled,
     )
     if resample:
         true_categories = [y for x, y in dataset]
@@ -145,6 +192,7 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment=False):
         "image/thermalencoded": tf.io.FixedLenFeature([], tf.string),
         "image/filteredencoded": tf.io.FixedLenFeature([], tf.string),
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
+        "image/source_id": tf.io.FixedLenFeature([], tf.string),
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
@@ -156,6 +204,7 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment=False):
         augment=augment,
     )
     # image = decode_image image_size)
+    # source_id = tf.cast(example["image/source_id"], tf.string)
 
     if labeled:
         # label = tf.cast(
@@ -206,26 +255,65 @@ from collections import Counter
 def main():
     config = Config.load_from_file()
 
-    train_files = tf.io.gfile.glob(
-        f"{config.tracks_folder}/training-data/train/*.tfrecord"
-    )
-    print("got filename", train_files)
     file = f"{config.tracks_folder}/training-meta.json"
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
-    dataset = get_dataset(train_files, 32, (160, 160), labels, augment=False)
+    datasets = []
+    # weights = [0.5] * len(labels)
+    resampled_ds = get_resampled(
+        f"{config.tracks_folder}/training-data/validation", 32, (160, 160), labels
+    )
+    # for l in labels:
+    #     train_files = tf.io.gfile.glob(
+    #         f"{config.tracks_folder}/training-data/validation/{l}*.tfrecord"
+    #     )
+    #     print("got filename", train_files)
+    #
+    #     dataset = load_dataset(
+    #         train_files, (160, 160), len(labels), deterministic=False, labeled=True
+    #     )
+    #     dataset = dataset.shuffle(2, reshuffle_each_iteration=True)
+    #
+    #     # print("for ", l)
+    #     # true_categories = [y for x, y in dataset]
+    #     # true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    #     # c = Counter(list(true_categories))
+    #     # for i in range(len(labels)):
+    #     #     print(" have", labels[i], c[i])
+    #     datasets.append(dataset)
+    # resampled_ds = tf.data.Dataset.sample_from_datasets(
+    #     datasets, weights=weights, stop_on_empty_dataset=True
+    # )
+    # resampled_ds = resampled_ds.shuffle(2, reshuffle_each_iteration=True)
+    # resampled_ds = resampled_ds.prefetch(buffer_size=AUTOTUNE)
+    # resampled_ds = resampled_ds.batch(32)
     #
     # print("labels are", labels)
-    # for e in range(4):
+    # for e in range(20):
     #     print("epoch", e)
-    #     true_categories = tf.concat([y for x, y in dataset], axis=0)
-    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    #     c = Counter(list(true_categories))
-    #     print("epoch is size", len(true_categories))
-    #     for i in range(len(labels)):
-    #         print("after have", i, c[i])
-    # return
+    #     x = {}
+    #     y = []
+    #     for d_x, d_y in resampled_ds:
+    #         d_x = tf.concat(d_x, axis=0)
+    #         d_y = tf.concat(d_y, axis=0)
+    #         d_y = np.int64(tf.argmax(d_y, axis=1))
+    #         for a, b in zip(d_x, d_y):
+    #             x.setdefault(b, [])
+    #
+    #             # x[b] = int(a)
+    #             x[b].append(int(a))
+    #             y.append(b)
+    for e in range(4):
+        print("epoch", e)
+        true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        c = Counter(list(true_categories))
+        print("epoch is size", len(true_categories))
+        for i in range(4):
+            print("after have", labels[i], c[i])
+
+    return
     image_batch, label_batch = next(iter(dataset))
     for e in range(4):
         print("epoch", e)

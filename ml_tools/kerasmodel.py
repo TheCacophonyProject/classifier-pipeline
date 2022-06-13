@@ -21,7 +21,7 @@ from ml_tools.preprocess import preprocess_movement, preprocess_frame, preproces
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
-from ml_tools.thermaldataset import get_dataset as get_thermal_dataset
+from ml_tools.thermaldataset import get_resampled as get_thermal_dataset
 from ml_tools.thermaldataset import get_distribution
 from ml_tools.irdataset import get_dataset as get_ir_dataset
 
@@ -426,7 +426,7 @@ class KerasModel(Interpreter):
         )
 
     def train_model_tfrecords(
-        self, epochs, run_name, base_dir, weights=None, rebalance=True, resample=False
+        self, epochs, run_name, base_dir, weights=None, rebalance=False, resample=False
     ):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
@@ -446,8 +446,8 @@ class KerasModel(Interpreter):
         if weights is not None:
             self.model.load_weights(weights)
         base_dir = os.path.join(base_dir, "training-data")
-        train_files = tf.io.gfile.glob(base_dir + "/train/*.tfrecord")
-        validate_files = tf.io.gfile.glob(base_dir + "/validation/*.tfrecord")
+        train_files = base_dir + "/train"
+        validate_files = base_dir + "/validation"
         self.train = self.get_dataset(train_files, augment=True, resample=resample)
         self.validate = self.get_dataset(
             validate_files, augment=False, resample=resample
@@ -471,12 +471,13 @@ class KerasModel(Interpreter):
                     )
                 else:
                     self.class_weights[index] = 1 / distribution[index] * multiplier
-            logging.info(
-                "%s Dist is %s giving weights %s",
-                self.labels,
-                distribution,
-                self.class_weights,
-            )
+        logging.info(
+            "%s Dist is %s giving weights %s",
+            self.labels,
+            distribution,
+            self.class_weights,
+        )
+
         self.save_metadata(run_name)
 
         checkpoints = self.checkpoints(run_name)
@@ -496,7 +497,7 @@ class KerasModel(Interpreter):
         )
         history = history.history
         test_accuracy = None
-        test_files = tf.io.gfile.glob(base_dir + "/test/*.tfrecord")
+        test_files = base_dir + "/test"
         if len(test_files) > 0:
             self.test = self.get_dataset(
                 test_files, augment=False, reshuffle=False, resample=False
