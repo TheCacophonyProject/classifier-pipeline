@@ -19,6 +19,8 @@ from ml_tools.kerasmodel import KerasModel
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 def evaluate_db_clip(model, db, classifier, clip_id, track_id=None):
@@ -120,13 +122,14 @@ if args.track_id or args.clip_id:
 if config.train.tfrecords:
     model.load_training_meta(base_dir)
 
-    files = tf.io.gfile.glob(base_dir + f"/training-data/{args.dataset}/*.tfrecord")
+    files = base_dir + f"/training-data/{args.dataset}"
     dataset = model.get_dataset(
         files,
         model.params.batch_size,
         reshuffle=False,
         deterministic=True,
         resample=False,
+        stop_on_empty_dataset=False,
     )
     logging.info(
         "Dataset loaded %s, using labels %s",
@@ -167,7 +170,52 @@ else:
                 "{}/{}/{:.1f}".format(*dataset.get_counts(label)),
             ),
         )
+stats = {}
+for x, y in dataset:
+    prediction = model.model.predict(x)
+    prediction = np.argmax(prediction, axis=1)
 
+    for l, p in zip(y, prediction):
+
+        label = l[1].numpy()
+        average = l[0].numpy()
+        bucket = int(average / 5.0)
+        lbl = model.labels[label]
+        lbl_stats = stats.setdefault(lbl, {})
+        bucket_stats = lbl_stats.setdefault(bucket, {"False": 0, "True": 0})
+        bucket_stats[str(label == p)] += 1
+
+
+for lbl, bins in stats.items():
+    bstats = []
+    b_keys = list(bins.keys())
+    b_keys.sort()
+    barKeys = []
+    i = 0
+    for b_key in b_keys:
+        i = b_key * 5
+        b_stat = bins[b_key]
+        if (b_stat["False"] + b_stat["True"]) == 0:
+            percent = 0
+        else:
+            percent = 100 * (b_stat["True"] / (b_stat["False"] + b_stat["True"]))
+        bstats.append(percent)
+        barKeys.append(f"{i}-{i+4}")
+        i += 5
+    print(lbl, bins)
+    fig = plt.figure(figsize=(10, 5))
+
+    # creating the bar plot
+    plt.bar(barKeys, bstats, width=1)
+
+    plt.xlabel("Average Area")
+    plt.ylabel("Accuracy")
+    plt.title(f"{lbl} accuracy vs area")
+    plt.savefig(f"{lbl}acc-vs-area.png")
+    plt.clf()
+
+print(stats)
+sys.exit(0)
 if args.tracks:
     model.track_accuracy(dataset, args.confusion)
 elif args.confusion:

@@ -194,6 +194,7 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment=False):
         "image/filteredencoded": tf.io.FixedLenFeature([], tf.string),
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
         "image/source_id": tf.io.FixedLenFeature([], tf.string),
+        "image/avg_dim": tf.io.FixedLenFeature([], tf.int64),
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
@@ -204,6 +205,10 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment=False):
         image_size,
         augment=augment,
     )
+    thermalencoded = tf.cast(example["image/avg_dim"], tf.int64)
+
+    # image = [image, thermalencoded]
+
     # image = decode_image image_size)
     # source_id = tf.cast(example["image/source_id"], tf.string)
 
@@ -217,8 +222,8 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment=False):
         if insect is not None and fp is not None:
             if tf.math.equal(label, insect):
                 label = fp
-        onehot_label = tf.one_hot(label, num_labels)
-
+        # onehot_label = tf.one_hot(label, num_labels)
+        onehot_label = tf.stack((thermalencoded, label), axis=0)
         return image, onehot_label
     return image
 
