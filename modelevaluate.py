@@ -191,20 +191,26 @@ for lbl, bins in stats.items():
     b_keys.sort()
     barKeys = []
     i = 0
-    for b_key in range(10):
-        lower = b_key * 5
-        upper = (b_key * 5) + 5
-        bstats.append(0)
-        barKeys.append(f"{lower}-{upper}")
-    for b_key in b_keys:
+    x = []
+    y = []
+    lbl = lbl.capitalize()
 
+    # for b_key in range(10):
+    #     lower = b_key * 5
+    #     upper = (b_key * 5) + 5
+    #     bstats.append(0)
+    #     barKeys.append(f"{lower}-{upper}")
+    for b_key in b_keys:
         i = b_key * 5
+
         b_stat = bins[b_key]
         if (b_stat["False"] + b_stat["True"]) == 0:
             percent = 0
         else:
             percent = 100 * (b_stat["True"] / (b_stat["False"] + b_stat["True"]))
         total = b_stat["False"] + b_stat["True"]
+        y.append(i + b_key / 2.0)
+        x.append(percent)
         if b_key < len(bstats):
             bstats[b_key] = percent
             barKeys[b_key] += "\n" + f" ({total})"
@@ -216,13 +222,20 @@ for lbl, bins in stats.items():
         i += 5
     fig = plt.figure(figsize=(10, 5))
 
+    x = np.array(x)
+    y = np.array(y)
+    # print("fixing too", x, y)
+    if np.sum(x) > 0:
+        m, b = np.polyfit(x, y, 1)
+        print(m, b)
+        plt.plot(x, m * x + b, label=lbl)
+
     # creating the bar plot
     plt.bar(barKeys, bstats, width=0.8)
-    fig.subplots_adjust(bottom=0.2)
+    # fig.subplots_adjust(bottom=0.2)
 
     plt.xlabel("Average Tracking Width")
     plt.xticks(rotation=45)
-    lbl = lbl.capitalize()
     plt.ylabel("Accuracy %")
     plt.title(f"{lbl} Accuracy vs Tracking Width")
     plt.savefig(f"{lbl}acc-vs-width.png")
