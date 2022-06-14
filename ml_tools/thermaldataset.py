@@ -80,6 +80,8 @@ def get_resampled(
     labeled=True,
     resample=True,
     augment=False,
+    weights=None,
+    stop_on_empty_dataset=True,
 ):
     num_labels = len(labels)
     global insect
@@ -88,9 +90,8 @@ def get_resampled(
         fp = tf.constant(labels.index("false-positive"), tf.int64)
     if "insect" in labels:
         insect = tf.constant(labels.index("insect"), tf.int64)
-
     datasets = []
-    weights = [0.5] * len(labels)
+    # weights = [1.0] * len(labels)
     for l in labels:
         filenames = tf.io.gfile.glob(f"{base_dir}/{l}*.tfrecord")
         dataset = load_dataset(
@@ -104,7 +105,7 @@ def get_resampled(
 
         datasets.append(dataset)
     resampled_ds = tf.data.Dataset.sample_from_datasets(
-        datasets, weights=weights, stop_on_empty_dataset=True
+        datasets, weights=weights, stop_on_empty_dataset=stop_on_empty_dataset
     )
     resampled_ds = resampled_ds.shuffle(2048, reshuffle_each_iteration=reshuffle)
     resampled_ds = resampled_ds.prefetch(buffer_size=AUTOTUNE)

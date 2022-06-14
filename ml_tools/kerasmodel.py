@@ -209,9 +209,8 @@ class KerasModel(Interpreter):
 
     def build_model(self, dense_sizes=None, retrain_from=None, dropout=None):
 
-        width = self.params.frame_size
-        if self.params.use_movement:
-            width = self.params.square_width * self.params.frame_size
+        # width = self.params.frame_size
+        width = self.params.output_dim[0]
         inputs = tf.keras.Input(shape=(width, width, 3), name="input")
         weights = None if self.params.base_training else "imagenet"
         base_model, preprocess = self.get_base_model((width, width, 3), weights=weights)
@@ -400,24 +399,33 @@ class KerasModel(Interpreter):
         gc.collect()
 
     def get_dataset(
-        self, pattern, augment=False, reshuffle=True, deterministic=False, resample=True
+        self,
+        pattern,
+        augment=False,
+        reshuffle=True,
+        deterministic=False,
+        resample=True,
+        weights=None,
+        stop_on_empty_dataset=True,
     ):
         logging.info("Getting dataset %s", self.type)
         if self.type == "thermal":
             return get_thermal_dataset(
                 pattern,
                 self.params.batch_size,
-                (self.params.frame_size, self.params.frame_size),
+                self.params.output_dim[:2],
                 self.labels,
                 augment=augment,
                 reshuffle=reshuffle,
                 deterministic=deterministic,
                 resample=resample,
+                weights=weights,
+                stop_on_empty_dataset=stop_on_empty_dataset,
             )
         return get_ir_dataset(
             pattern,
             self.params.batch_size,
-            (self.params.frame_size, self.params.frame_size),
+            self.params.output_dim[:2],
             len(self.labels),
             augment=augment,
             reshuffle=reshuffle,
@@ -448,9 +456,14 @@ class KerasModel(Interpreter):
         base_dir = os.path.join(base_dir, "training-data")
         train_files = base_dir + "/train"
         validate_files = base_dir + "/validation"
-        self.train = self.get_dataset(train_files, augment=True, resample=resample)
+        self.train = self.get_dataset(
+            train_files, augment=True, resample=resample, stop_on_empty_dataset=False
+        )
         self.validate = self.get_dataset(
-            validate_files, augment=False, resample=resample
+            validate_files,
+            augment=False,
+            resample=resample,
+            stop_on_empty_dataset=False,
         )
         distribution = get_distribution(self.train)
         if rebalance:

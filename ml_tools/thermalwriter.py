@@ -79,7 +79,8 @@ def create_tf_example(data, image_dir, sample, labels, filename):
     Raises:
       ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
-
+    average_dim = [r.area for r in sample.regions]
+    average_dim = int(round(np.mean(average_dim) ** 0.5))
     thermal = data[0] * 255
     filtered = data[1] * 255
     image_height, image_width = thermal.shape
@@ -104,6 +105,7 @@ def create_tf_example(data, image_dir, sample, labels, filename):
     filtered_key = hashlib.sha256(encoded_filtered).hexdigest()
 
     feature_dict = {
+        "image/avg_dim": tfrecord_util.int64_feature(average_dim),
         "image/height": tfrecord_util.int64_feature(image_height),
         "image/width": tfrecord_util.int64_feature(image_width),
         "image/filename": tfrecord_util.bytes_feature(filename.encode("utf8")),
@@ -186,9 +188,6 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                     )
                     total_num_annotations_skipped += num_annotations_skipped
                     l_i = labels.index(sample.label)
-                    logging.info(
-                        "saving %s at offset %s", sample.label, (l_i * num_shards)
-                    )
                     writers[num_shards * l_i + lbl_counts[l_i] % num_shards].write(
                         tf_example.SerializeToString()
                     )

@@ -31,14 +31,13 @@ class HyperParams(dict):
 
     @property
     def output_dim(self):
-        output_dim = (self.frame_size, self.frame_size, 3)
         if self.use_movement:
-            output_dim = (
+            return (
                 output_dim[0] * self.square_width,
                 output_dim[1] * self.square_width,
                 3,
             )
-        return output_dim
+        return (self.frame_size, self.frame_size, 3)
 
     @property
     def keep_aspect(self):
