@@ -185,34 +185,49 @@ for x, y in dataset:
         bucket_stats = lbl_stats.setdefault(bucket, {"False": 0, "True": 0})
         bucket_stats[str(label == p)] += 1
 
-
 for lbl, bins in stats.items():
     bstats = []
     b_keys = list(bins.keys())
     b_keys.sort()
     barKeys = []
     i = 0
+    for b_key in range(10):
+        lower = b_key * 5
+        upper = (b_key * 5) + 5
+        bstats.append(0)
+        barKeys.append(f"{lower}-{upper}")
     for b_key in b_keys:
+
         i = b_key * 5
         b_stat = bins[b_key]
         if (b_stat["False"] + b_stat["True"]) == 0:
             percent = 0
         else:
             percent = 100 * (b_stat["True"] / (b_stat["False"] + b_stat["True"]))
-        bstats.append(percent)
-        barKeys.append(f"{i}-{i+4}")
+        total = b_stat["False"] + b_stat["True"]
+        if b_key < len(bstats):
+            bstats[b_key] = percent
+            barKeys[b_key] += "\n" + f" ({total})"
+        else:
+            lower = i
+            upper = i + 5
+            bstats.append(percent)
+            barKeys.append(f"{lower}-{upper}\n ({total})")
         i += 5
-    print(lbl, bins)
     fig = plt.figure(figsize=(10, 5))
 
     # creating the bar plot
-    plt.bar(barKeys, bstats, width=1)
+    plt.bar(barKeys, bstats, width=0.8)
+    fig.subplots_adjust(bottom=0.2)
 
-    plt.xlabel("Average Area")
-    plt.ylabel("Accuracy")
-    plt.title(f"{lbl} accuracy vs area")
-    plt.savefig(f"{lbl}acc-vs-area.png")
+    plt.xlabel("Average Tracking Width")
+    plt.xticks(rotation=45)
+    lbl = lbl.capitalize()
+    plt.ylabel("Accuracy %")
+    plt.title(f"{lbl} Accuracy vs Tracking Width")
+    plt.savefig(f"{lbl}acc-vs-width.png")
     plt.clf()
+
 
 print(stats)
 sys.exit(0)
