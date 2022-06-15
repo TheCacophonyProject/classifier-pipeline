@@ -22,6 +22,7 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import optimize
+import scipy.stats
 
 
 def evaluate_db_clip(model, db, classifier, clip_id, track_id=None):
@@ -198,6 +199,7 @@ for x, y in dataset:
         lbl_stats = stats.setdefault(lbl, {})
         bucket_stats = lbl_stats.setdefault(bucket, {"False": 0, "True": 0})
         bucket_stats[str(label == p)] += 1
+fig = plt.figure(figsize=(10, 5))
 
 for lbl, bins in stats.items():
     bstats = []
@@ -209,11 +211,13 @@ for lbl, bins in stats.items():
     y = []
     lbl = lbl.capitalize()
 
-    # for b_key in range(10):
-    #     lower = b_key * 5
-    #     upper = (b_key * 5) + 5
-    #     bstats.append(0)
-    #     barKeys.append(f"{lower}-{upper}")
+    for b_key in range(10):
+        lower = b_key * 5
+        upper = (b_key * 5) + 5
+        bstats.append(0)
+        barKeys.append(f"{lower}-{upper}")
+        y.append(0)
+        x.append(lower + 5 / 2.0)
     for b_key in b_keys:
         i = b_key * 5
 
@@ -223,52 +227,70 @@ for lbl, bins in stats.items():
         else:
             percent = 100 * (b_stat["True"] / (b_stat["False"] + b_stat["True"]))
         total = b_stat["False"] + b_stat["True"]
-        y.append(i + b_key / 2.0)
-        x.append(percent)
+
         if b_key < len(bstats):
             bstats[b_key] = percent
             barKeys[b_key] += "\n" + f" ({total})"
+            y[b_key] = percent
+            x[b_key] = lower + 5 / 2.0
         else:
             lower = i
+            y.append(percent)
+            x.append(lower + 5 / 2.0)
             upper = i + 5
             bstats.append(percent)
             barKeys.append(f"{lower}-{upper}\n ({total})")
         i += 5
-    fig = plt.figure(figsize=(10, 5))
-    # x.append(10)
-    # x.append(15)
-    #
-    # x.append(6)
-    # y.append(y[-1] + 5)
-    # y.append(y[-1] + 5)
-    # y.append(y[-1] + 5)
+    # x.append(x[-1] + 5)
+    # x.append(x[-1] + 5)
+    # x.append(x[-1] + 5)
+    # y.append(70)
+    # y.append(80)
+    # y.append(60)
 
     x = np.array(x)
     y = np.array(y)
     print("fixing too", x, y)
     if np.sum(x) > 0:
-
-        params, params_covariance = optimize.curve_fit(sin, x, y, p0=[2, 2])
-        y = sin(x, params[0], params[1])
-        plt.plot(
-            x,
-            y,
-            label=lbl,
-        )
+        # curve_x = np.arange(x[-1])
+        # mn, std = scipy.stats.expon.fit(x)
+        # y_curve = scipy.stats.expon.pdf(curve_x, mn, std)
+        # plt.plot(curve_x, y_curve, "k", label=lbl)
+        #
+        theta = np.polyfit(x, y, 10)
+        y_line = None
+        for i in range(len(theta)):
+            print("doing", theta[-1], i)
+            if i == 0:
+                y_line = theta[-1]
+            else:
+                y_line += theta[-(i + 1)] * pow(x, i)
+        # y_line = theta[2] + theta[1] * pow(x, 1) + theta[0] * pow(x, 2)
+        plt.plot(x, y_line, label=lbl)
+        print("adding", lbl)
+        # #
+        # params, params_covariance = optimize.curve_fit(sin, x, y, p0=[2, 2])
+        # y = sin(x, params[0], params[1])
+        # plt.plot(
+        #     x,
+        #     y,
+        #     label=lbl,
+        # )
         # m, b = np.polyfit(x, y, 1)
         # print(m, b)
         # plt.plot(x, m * x + b, label=lbl)
 
     # creating the bar plot
-    plt.bar(barKeys, bstats, width=0.8)
-    # fig.subplots_adjust(bottom=0.2)
+# plt.bar(x, y, width=0.8)
+fig.subplots_adjust(bottom=0.2)
+plt.legend(loc="upper right")
 
-    plt.xlabel("Average Tracking Width")
-    plt.xticks(rotation=45)
-    plt.ylabel("Accuracy %")
-    plt.title(f"{lbl} Accuracy vs Tracking Width")
-    plt.savefig(f"{lbl}acc-vs-width.png")
-    plt.clf()
+plt.xlabel("Average Tracking Width")
+plt.xticks(rotation=45)
+plt.ylabel("Accuracy %")
+plt.title(f"{lbl} Accuracy vs Tracking Width")
+plt.savefig(f"{lbl}acc-vs-width.png")
+plt.clf()
 
 
 print(stats)
