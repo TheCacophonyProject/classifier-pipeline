@@ -21,7 +21,7 @@ from ml_tools.trackdatabase import TrackDatabase
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import curve_fit
+from scipy import optimize
 
 
 def evaluate_db_clip(model, db, classifier, clip_id, track_id=None):
@@ -180,6 +180,10 @@ def gauss(x, a, b, c):
     return a * np.exp(-((x - b) ** 2) / (2 * c ** 2))
 
 
+def sin(x, a, b):
+    return a * np.sin(b * x)
+
+
 stats = {}
 for x, y in dataset:
     prediction = model.model.predict(x)
@@ -238,15 +242,17 @@ for lbl, bins in stats.items():
     # y.append(y[-1] + 5)
     # y.append(y[-1] + 5)
     # y.append(y[-1] + 5)
-    #
-    # x = np.array(x)
-    # y = np.array(y)
-    # print("fixing too", x, y)
+
+    x = np.array(x)
+    y = np.array(y)
+    print("fixing too", x, y)
     if np.sum(x) > 0:
-        popt, pcov = curve_fit(gauss, x, y)
+
+        params, params_covariance = optimize.curve_fit(sin, x, y, p0=[2, 2])
+        y = sin(x, params[0], params[1])
         plt.plot(
             x,
-            gauss(x, *popt),
+            y,
             label=lbl,
         )
         # m, b = np.polyfit(x, y, 1)
