@@ -21,6 +21,7 @@ from ml_tools.trackdatabase import TrackDatabase
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
 
 
 def evaluate_db_clip(model, db, classifier, clip_id, track_id=None):
@@ -170,6 +171,15 @@ else:
                 "{}/{}/{:.1f}".format(*dataset.get_counts(label)),
             ),
         )
+
+        # fit bar plot data using curve_fit
+
+
+def gauss(x, a, b, c):
+    # a Gaussian distribution
+    return a * np.exp(-((x - b) ** 2) / (2 * c ** 2))
+
+
 stats = {}
 for x, y in dataset:
     prediction = model.model.predict(x)
@@ -221,14 +231,27 @@ for lbl, bins in stats.items():
             barKeys.append(f"{lower}-{upper}\n ({total})")
         i += 5
     fig = plt.figure(figsize=(10, 5))
-
-    x = np.array(x)
-    y = np.array(y)
+    # x.append(10)
+    # x.append(15)
+    #
+    # x.append(6)
+    # y.append(y[-1] + 5)
+    # y.append(y[-1] + 5)
+    # y.append(y[-1] + 5)
+    #
+    # x = np.array(x)
+    # y = np.array(y)
     # print("fixing too", x, y)
     if np.sum(x) > 0:
-        m, b = np.polyfit(x, y, 1)
-        print(m, b)
-        plt.plot(x, m * x + b, label=lbl)
+        popt, pcov = curve_fit(gauss, x, y)
+        plt.plot(
+            x,
+            gauss(x, *popt),
+            label=lbl,
+        )
+        # m, b = np.polyfit(x, y, 1)
+        # print(m, b)
+        # plt.plot(x, m * x + b, label=lbl)
 
     # creating the bar plot
     plt.bar(barKeys, bstats, width=0.8)
