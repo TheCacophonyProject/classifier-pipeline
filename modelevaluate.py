@@ -232,7 +232,7 @@ for lbl, bins in stats.items():
             bstats[b_key] = percent
             barKeys[b_key] += "\n" + f" ({total})"
             y[b_key] = percent
-            x[b_key] = lower + 5 / 2.0
+            # x[b_key] = lower + 5 / 2.0
         else:
             lower = i
             y.append(percent)
@@ -288,8 +288,8 @@ plt.legend(loc="upper right")
 plt.xlabel("Average Tracking Width")
 plt.xticks(rotation=45)
 plt.ylabel("Accuracy %")
-plt.title(f"{lbl} Accuracy vs Tracking Width")
-plt.savefig(f"{lbl}acc-vs-width.png")
+plt.title(f"Accuracy vs Tracking Width")
+plt.savefig(f"Acc-vs-width.png")
 plt.clf()
 
 
