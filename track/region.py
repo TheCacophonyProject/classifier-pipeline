@@ -164,9 +164,9 @@ class Region(Rectangle):
             ),
             (self.right, self.bottom),
         )
-        expected_x = int(other.x)
-        expected_y = int(other.y)
-        distance = tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
+        # expected_x = int(other.right)
+        # expected_y = int(other.bottom)
+        # distance = tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
         distances.append(distance)
 
         return distances

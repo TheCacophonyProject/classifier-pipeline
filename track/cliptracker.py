@@ -122,7 +122,11 @@ class ClipTracker(ABC):
             if track in matched_tracks or region in used_regions:
                 continue
             logging.debug(
-                "matched %s with %s to track %s", clip.current_frame, region, track
+                "%s matched track %s with %s last bound to region %s",
+                clip.current_frame,
+                track,
+                track.last_bound,
+                region,
             )
             track.add_region(region)
             matched_tracks.add(track)

@@ -114,7 +114,14 @@ class RegionTracker(Tracker):
 
             max_size_change = get_max_size_change(track, region)
             max_mass_change = self.get_max_mass_change_percent(track, avg_mass)
-
+            logging.debug(
+                "Track %s %s has max size change %s, distances %s to region %s",
+                track,
+                track.last_bound,
+                max_size_change,
+                distances,
+                region,
+            )
             # only for thermal
             if type == "thermal":
                 # GP should figure out good values for the 3 distances rather than the mean

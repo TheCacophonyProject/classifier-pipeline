@@ -129,7 +129,7 @@ class IRTrackExtractor(ClipTracker):
                 break
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             self.process_frame(clip, gray, track=track)
-            # if clip.current_frame > 200:
+            # if clip.current_frame > 12 * 10:
             #     break
         vidcap.release()
 
