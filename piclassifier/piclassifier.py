@@ -196,6 +196,7 @@ class PiClassifier(Processor):
         self.total_time = 0
         self.rec_time = 0
         self.tracking = None
+        self.tracking_events = thermal_config.motion.tracking_events
         self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
@@ -417,26 +418,27 @@ class PiClassifier(Processor):
             logging.debug(
                 "Track %s is predicted as %s", track, track_prediction.get_prediction()
             )
-            if track_prediction.predicted_tag() != "false-positive":
-                track_prediction.tracking = True
-                self.tracking = track
-                track_prediction.normalize_score()
-                self.service.tracking(
-                    track_prediction.predicted_tag(),
-                    track_prediction.max_score,
-                    track.bounds_history[-1].to_ltrb(),
-                    True,
-                )
-            elif track_prediction.tracking:
-                track_prediction.tracking = False
-                self.tracking = None
-                track_prediction.normalize_score()
-                self.service.tracking(
-                    track_prediction.predicted_tag(),
-                    track_prediction.max_score,
-                    track.bounds_history[-1].to_ltrb(),
-                    False,
-                )
+            if self.tracking_events:
+                if track_prediction.predicted_tag() != "false-positive":
+                    track_prediction.tracking = True
+                    self.tracking = track
+                    track_prediction.normalize_score()
+                    self.service.tracking(
+                        track_prediction.predicted_tag(),
+                        track_prediction.max_score,
+                        track.bounds_history[-1].to_ltrb(),
+                        True,
+                    )
+                elif track_prediction.tracking:
+                    track_prediction.tracking = False
+                    self.tracking = None
+                    track_prediction.normalize_score()
+                    self.service.tracking(
+                        track_prediction.predicted_tag(),
+                        track_prediction.max_score,
+                        track.bounds_history[-1].to_ltrb(),
+                        False,
+                    )
 
             new_prediction = True
         if self.bluetooth_beacons:
@@ -559,7 +561,7 @@ class PiClassifier(Processor):
                         self.classified_consec = 0
                 else:
                     self.classified_consec = 0
-            elif self.tracking is None:
+            elif self.tracking is None and self.tracking_events:
                 active_tracks = self.get_active_tracks()
 
                 active_tracks = [
