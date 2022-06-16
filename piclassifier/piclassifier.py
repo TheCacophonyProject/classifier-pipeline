@@ -31,7 +31,7 @@ from ml_tools.logs import init_logging
 from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
 from track.region import Region
-
+from . import beacon
 
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
@@ -196,6 +196,7 @@ class PiClassifier(Processor):
         self.total_time = 0
         self.rec_time = 0
         self.tracking = None
+        self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
         self.crop_rectangle = tools.Rectangle(
@@ -367,7 +368,7 @@ class PiClassifier(Processor):
         novelty = 0.0
 
         active_tracks = self.get_active_tracks()
-
+        new_prediction = False
         for i, track in enumerate(active_tracks):
             regions = []
             track_prediction = self.predictions.get_or_create_prediction(
@@ -437,6 +438,16 @@ class PiClassifier(Processor):
                     False,
                 )
 
+            new_prediction = True
+        if self.bluetooth_beacons:
+            if new_prediction:
+                active_predictions = []
+                for track in self.clip.active_tracks:
+                    track_prediction = self.predictions.prediction_for(track.get_id())
+                    if track_prediction:
+                        active_predictions.append(track_prediction)
+                beacon.classification(active_predictions)
+
     def get_recent_frame(self):
         if self.clip:
             last_frame = self.motion_detector.get_recent_frame()
@@ -479,7 +490,6 @@ class PiClassifier(Processor):
 
         if not self.recorder.recording and self.motion_detector.movement_detected:
             s_r = time.time()
-            # skip last frame
             preview_frames = self.motion_detector.thermal_window.get_frames()[:-1]
 
             recording = self.recorder.start_recording(
@@ -490,6 +500,8 @@ class PiClassifier(Processor):
             )
             self.rec_time += time.time() - s_r
             if recording:
+                if self.bluetooth_beacons:
+                    beacon.recording()
                 t_start = time.time()
                 self.new_clip(preview_frames)
                 self.tracking_time += time.time() - t_start
