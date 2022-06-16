@@ -3,9 +3,11 @@ import json
 import logging
 import os
 import time
-
 import psutil
 import numpy as np
+import logging
+from pathlib import Path
+from PIL import ImageDraw
 
 from classify.trackprediction import Predictions
 from load.clip import Clip
@@ -23,10 +25,8 @@ from ml_tools.preprocess import (
     preprocess_frame,
     preprocess_movement,
 )
-from PIL import ImageDraw
 
 from ml_tools.interpreter import Interpreter
-import logging
 from ml_tools.logs import init_logging
 from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
@@ -73,34 +73,31 @@ class LiteInterpreter(Interpreter):
 
         import tensorflow as tf
 
-        self.interpreter = tf.lite.Interpreter(model_path=model_name + ".tflite")
+        model_name = Path(model_name)
+        model_name = model_name.with_suffix(".tflite")
+        self.interpreter = tf.lite.Interpreter(str(model_name))
 
-        self.interpreter.allocate_tensors()
-        input_details = self.interpreter.get_tensor_details()
+        self.interpreter.allocate_tensors()  # Needed before execution!
 
-        self.in_values = {}
-        for detail in input_details:
-            self.in_values[detail["name"]] = detail["index"]
-
-        output_details = self.interpreter.get_output_details()
-        self.out_values = {}
-        for detail in output_details:
-            self.out_values[detail["name"]] = detail["index"]
-
-        self.prediction = self.out_values["Identity"]
+        self.output = self.interpreter.get_output_details()[
+            0
+        ]  # Model has single output.
+        self.input = self.interpreter.get_input_details()[0]  # Model has single input.
 
     def predict(self, input_x):
-        global prediction_i
         start = time.time()
         input_x = np.float32(input_x)
         input_x = input_x[np.newaxis, :]
 
-        self.interpreter.set_tensor(self.in_values["input"], input_x)
+        self.interpreter.set_tensor(self.input["index"], input_x)
         self.interpreter.invoke()
-        pred = self.interpreter.get_tensor(self.out_values["Identity"])[0]
+        pred = self.interpreter.get_tensor(self.output["index"])[0]
         logging.info("taken %s to predict", time.time() - start)
 
         return pred
+
+    def shape(self):
+        return self.input["shape"]
 
 
 def get_full_classifier(model):
