@@ -22,7 +22,7 @@ from track.region import Region
 
 special_datasets = [
     "tag_frames",
-    "frames",
+    "original_frames",
     "background_frame",
     "predictions",
     "overlay",
@@ -521,9 +521,10 @@ class TrackDatabase:
                 end_frame = track_node.attrs["frames"]
             track_start = track_node.attrs.get("start_frame")
             bad_frames = track_node.attrs.get("skipepd_frames", [])
+            print(track_start)
             result = []
             if original:
-                track_node = clip_node["frames"]
+                track_node = clip_node["original_frames"]
             else:
                 if "cropped" in track_node:
                     track_node = track_node["cropped"]
@@ -721,10 +722,10 @@ class TrackDatabase:
             has_prediction = False
             track_node = clip_node.create_group(track_id)
             cropped_frame = track_node.create_group("cropped")
-            if "frames" in clip_node:
-                original_group = clip_node["frames"]
+            if "original_frames" in clip_node:
+                original_group = clip_node["original_frames"]
             else:
-                original_group = clip_node.create_group("frames")
+                original_group = clip_node.create_group("original_frames")
             skipped_frames = []
             # write each frame out individually, as they will probably be different sizes.
             original = None
