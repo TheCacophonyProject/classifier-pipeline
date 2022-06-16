@@ -165,6 +165,7 @@ class ClipLoader:
         valid_tracks = [
             track for track in tracks_meta if self._track_meta_is_valid(track)
         ]
+
         clip_metadata["Tracks"] = valid_tracks
         return valid_tracks
 
@@ -173,7 +174,6 @@ class ClipLoader:
         Tracks are valid if their confidence meets the threshold and they are
         not in the excluded_tags list, defined in the config.
         """
-        return True
         min_confidence = self.track_config.min_tag_confidence
         track_tags = []
         if "tags" in track_meta:
@@ -190,6 +190,7 @@ class ClipLoader:
         track_tag = Track.get_best_human_tag(
             track_tags, self.config.load.tag_precedence, min_confidence
         )
+
         if track_tag is None:
             return False
         tag = track_tag.get("what")
@@ -210,10 +211,7 @@ class ClipLoader:
         else:
             track_extractor = IRTrackExtractor(
                 self.config.tracking,
-                self.config.use_opt_flow
-                or self.config.load.preview == Previewer.PREVIEW_TRACKING,
                 self.config.load.cache_to_disk,
-                high_quality_optical_flow=self.config.load.high_quality_optical_flow,
                 verbose=self.config.verbose,
             )
         return track_extractor
@@ -250,6 +248,7 @@ class ClipLoader:
             return
 
         valid_tracks = self._filter_clip_tracks(metadata)
+
         if not valid_tracks or len(valid_tracks) == 0:
             logging.error("No valid track data found for %s", filename)
             return
@@ -258,7 +257,7 @@ class ClipLoader:
             metadata,
             self.config.load.tag_precedence,
         )
-        tracker_version = metadata.get("tracker_version")
+        tracker_version = metadata.get("tracker_version", 0)
         process_background = tracker_version < 10
         logging.debug(
             "Processing background? %s tracker_version %s",
