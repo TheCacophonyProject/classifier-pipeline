@@ -71,6 +71,7 @@ class CameraMotionConfig:
     warmer_only = attr.ib()
     dynamic_thresh = attr.ib()
     run_classifier = attr.ib()
+    bluetooth_beacons = attr.ib()
 
     @classmethod
     def defaults_for(cls, model):
@@ -86,6 +87,7 @@ class CameraMotionConfig:
                 warmer_only=True,
                 dynamic_thresh=True,
                 run_classifier=True,
+                bluetooth_beacons=False,
             )
         else:
             return cls(
@@ -99,6 +101,7 @@ class CameraMotionConfig:
                 warmer_only=True,
                 dynamic_thresh=True,
                 run_classifier=True,
+                bluetooth_beacons=False,
             )
 
     @classmethod
@@ -117,6 +120,9 @@ class CameraMotionConfig:
             warmer_only=motion.get("warmer-only", default.warmer_only),
             dynamic_thresh=motion.get("dynamic-thresh", default.dynamic_thresh),
             run_classifier=motion.get("run-classifier", default.run_classifier),
+            bluetooth_beacons=motion.get(
+                "bluetooth_beacons", default.bluetooth_beacons
+            ),
         )
         return motion
 

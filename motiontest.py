@@ -39,10 +39,12 @@ def main():
             model="",
             frame_size=reader.x_resolution * reader.y_resolution * 2,
             pixel_bits=16,
+            serial="",
+            firmware="",
         )
 
         motion_detector = MotionDetector(
-            thermal_config, config.tracking.motion.dynamic_thresh, None, headers
+            thermal_config, config.tracking.motion.dynamic_thresh, headers
         )
         for i, frame in enumerate(reader):
             motion_detector.process_frame(frame)

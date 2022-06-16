@@ -195,6 +195,7 @@ class PiClassifier(Processor):
         self.identify_time = 0
         self.total_time = 0
         self.rec_time = 0
+        self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
         self.crop_rectangle = tools.Rectangle(
@@ -407,13 +408,14 @@ class PiClassifier(Processor):
                 "Track %s is predicted as %s", track, track_prediction.get_prediction()
             )
             new_prediction = True
-        if new_prediction:
-            active_predictions = []
-            for track in self.clip.active_tracks:
-                track_prediction = self.predictions.prediction_for(track.get_id())
-                if track_prediction:
-                    active_predictions.append(track_prediction)
-            beacon.classification(active_predictions)
+        if self.bluetooth_beacons:
+            if new_prediction:
+                active_predictions = []
+                for track in self.clip.active_tracks:
+                    track_prediction = self.predictions.prediction_for(track.get_id())
+                    if track_prediction:
+                        active_predictions.append(track_prediction)
+                beacon.classification(active_predictions)
 
     def get_recent_frame(self):
         if self.clip:
@@ -467,9 +469,9 @@ class PiClassifier(Processor):
             )
             self.rec_time += time.time() - s_r
             if recording:
-                beacon.recording()
+                if self.bluetooth_beacons:
+                    beacon.recording()
                 t_start = time.time()
-
                 self.new_clip(preview_frames)
                 self.tracking_time += time.time() - t_start
 
