@@ -136,7 +136,6 @@ class RecorderConfig:
     rec_window = attr.ib()
     output_dir = attr.ib()
     disable_recordings = attr.ib()
-    recorder_events = attr.ib()
 
     @classmethod
     def load(cls, recorder, window):
@@ -150,7 +149,6 @@ class RecorderConfig:
                 RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
             ),
             output_dir=recorder.get("output-dir", "."),
-            recorder_events=recorder.get("recorder-events", False),
         )
 
 

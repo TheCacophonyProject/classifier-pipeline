@@ -194,7 +194,6 @@ class PiClassifier(Processor):
         self.rec_time = 0
         self.tracking = None
         self.tracking_events = thermal_config.motion.tracking_events
-        self.recorder_events = thermal_config.recorder.recorder_events
         self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
@@ -638,17 +637,7 @@ class PiClassifier(Processor):
                                 prediction.description(),
                             )
                         )
-                        if self.recorder_events:
-                            logging.debug("GOT HERE")
-                            if prediction.predicted_tag() != "false-positive":
-                                self.service.tracking(
-                                    prediction.predicted_tag(),
-                                    prediction.max_score,
-                                    "",
-                                    True,
-                                )
-
-            self.predictions.clear_predictions()
+                self.predictions.clear_predictions()
             self.clip = None
             self.tracking = None
         global clip
@@ -681,7 +670,6 @@ def on_recording_stopping(filename):
 
         if predictions is not None:
             predictions_per_model = {predictions.model.id: predictions}
-
         meta_data = clip.get_metadata(predictions_per_model)
         meta_data["algorithm"] = {}
         meta_data["algorithm"]["tracker_version"] = track_extractor.VERSION
