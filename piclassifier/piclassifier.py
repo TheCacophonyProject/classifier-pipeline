@@ -647,7 +647,7 @@ class PiClassifier(Processor):
                                     True,
                                 )
 
-            self.predictions.clear_predictions()
+                self.predictions.clear_predictions()
             self.clip = None
             self.tracking = None
         global clip
