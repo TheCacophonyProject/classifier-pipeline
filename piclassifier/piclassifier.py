@@ -639,7 +639,6 @@ class PiClassifier(Processor):
                             )
                         )
                         if self.recorder_events:
-                            logging.debug("GOT HERE")
                             if prediction.predicted_tag() != "false-positive":
                                 self.service.tracking(
                                     prediction.predicted_tag(),
