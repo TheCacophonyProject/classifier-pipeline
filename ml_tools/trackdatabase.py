@@ -220,7 +220,9 @@ class TrackDatabase:
 
         return start_time
 
-    def get_all_clip_ids(self, before_date=None, after_date=None, label=None):
+    def get_all_clip_ids(
+        self, before_date=None, after_date=None, label=None, device=None
+    ):
         """
         Returns a list of clip_id, track_number pairs.
         """
@@ -230,6 +232,9 @@ class TrackDatabase:
             for clip_id in clips:
                 clip = clips[clip_id]
                 date = parse_date(clip.attrs["start_time"])
+                if device is not None:
+                    if clip.attrs["device"] != device:
+                        continue
                 if before_date and date >= before_date:
                     continue
                     if after_date and date < after_date:

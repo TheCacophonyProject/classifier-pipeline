@@ -235,6 +235,8 @@ def get_test_set_camera(dataset, test_clips, after_date):
         or after_date is not None
         and sample.start_time > after_date
     ]
+    test_samples = [sample for sample in dataset.samples]
+
     for sample in test_samples:
         dataset.remove_sample(sample)
         test_c.add_sample(sample)
@@ -293,7 +295,7 @@ def add_camera_samples(
         for camera in cameras:
             samples = camera.label_to_samples.get(label, {}).values()
             all_samples.extend(list(samples))
-    print("adding samples", len(all_samples))
+    print("adding samples", len(all_samples), dataset.name)
     dataset.add_samples(all_samples)
     dataset.balance_bins()
 
@@ -312,7 +314,9 @@ def main():
         db_file, "dataset", config, consecutive_segments=args.consecutive_segments
     )
 
-    tracks_loaded, total_tracks = dataset.load_clips(allow_multiple_labels=True)
+    tracks_loaded, total_tracks = dataset.load_clips(
+        allow_multiple_labels=True, device="Shaun test 35"
+    )
     # return
     dataset.labels.sort()
     print(

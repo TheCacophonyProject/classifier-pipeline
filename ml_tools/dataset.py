@@ -257,13 +257,16 @@ class Dataset:
         after_date=None,
         label=None,
         allow_multiple_labels=False,
+        device=None,
     ):
         """
         Loads track headers from track database with optional filter
         :return: [number of tracks added, total tracks].
         """
         counter = 0
-        clip_ids = self.db.get_all_clip_ids(before_date, after_date, label)
+        clip_ids = self.db.get_all_clip_ids(
+            before_date, after_date, label, device=device
+        )
 
         if shuffle:
             np.random.shuffle(clip_ids)
