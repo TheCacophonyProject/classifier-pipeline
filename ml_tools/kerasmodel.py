@@ -23,7 +23,7 @@ from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
 from ml_tools.thermaldataset import get_resampled as get_thermal_dataset
 from ml_tools.thermaldataset import get_distribution
-from ml_tools.irdataset import get_dataset as get_ir_dataset
+from ml_tools.irdataset import get_resampled as get_ir_dataset
 
 
 class KerasModel(Interpreter):
