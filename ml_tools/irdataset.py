@@ -81,16 +81,14 @@ def get_resampled(
     values = []
     remapped = {}
     remapped_y = {}
-    if distribution is not None:
-        print("got dist", distribution)
-        counts = list(distribution.values())
-        total = np.sum(counts)
-        weights = [1] * len(labels)
-        multiplier = total / len(labels)
+    weights = [1.0] * len(labels)
+    if "human" in labels:
+        weights[labels.index("human")] = 0
 
-        for index, label in enumerate(labels):
-            weights[index] = 1 / counts[index] * multiplier
-        print("auto weights", weights)
+    weights[labels.index("cat")] = 0
+    weights[labels.index("false-positive")] = 0.8
+    weights[labels.index("insect")] = 0
+
     for l in labels:
         remapped[l] = [l]
         keys.append(labels.index(l))
@@ -103,7 +101,7 @@ def get_resampled(
 
     if "possum" in labels and "cat" in labels:
         remapped["possum"].append("cat")
-        # values[labels.index("cat")] = labels.index("possum")
+        values[labels.index("cat")] = labels.index("possum")
 
         del remapped["cat"]
     remapped_y = tf.lookup.StaticHashTable(
@@ -114,10 +112,10 @@ def get_resampled(
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-    for label in labels:
+    for k, v in remapped.items():
         filenames = []
-        # for mapped_lbl in v:
-        filenames.append(tf.io.gfile.glob(f"{base_dir}/{label}*.tfrecord"))
+        for label in v:
+            filenames.append(tf.io.gfile.glob(f"{base_dir}/{label}*.tfrecord"))
         dataset = load_dataset(
             filenames,
             image_size,
@@ -280,7 +278,7 @@ def main():
         32,
         (160, 160),
         labels,
-        distribution=meta["counts"]["test"],
+        # distribution=meta["counts"]["test"],
         stop_on_empty_dataset=True,
     )
     global remapped
