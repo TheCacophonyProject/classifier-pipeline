@@ -280,9 +280,7 @@ def main():
     for e in range(4):
         print("epoch", e)
         true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
-        print(true_categories)
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        print(true_categories)
         c = Counter(list(true_categories))
         print("epoch is size", len(true_categories))
         for i in range(len(labels)):
