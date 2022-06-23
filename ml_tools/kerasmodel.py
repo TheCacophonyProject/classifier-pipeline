@@ -426,11 +426,13 @@ class KerasModel(Interpreter):
             pattern,
             self.params.batch_size,
             self.params.output_dim[:2],
-            len(self.labels),
+            self.labels,
             augment=augment,
             reshuffle=reshuffle,
             deterministic=deterministic,
             resample=resample,
+            weights=weights,
+            stop_on_empty_dataset=stop_on_empty_dataset,
         )
 
     def train_model_tfrecords(

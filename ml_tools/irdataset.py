@@ -108,7 +108,6 @@ def get_resampled(
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-    print(keys, values)
     for label, v in remapped.items():
         filenames = []
         for mapped_lbl in v:
