@@ -467,15 +467,15 @@ class KerasModel(Interpreter):
             train_files,
             augment=True,
             resample=resample,
-            stop_on_empty_dataset=False,
-            dist=self.dataset_counts["train"],
+            stop_on_empty_dataset=True,
+            # dist=self.dataset_counts["train"],
         )
         self.validate = self.get_dataset(
             validate_files,
             augment=False,
             resample=resample,
-            stop_on_empty_dataset=False,
-            dist=self.dataset_counts["validation"],
+            stop_on_empty_dataset=True,
+            # dist=self.dataset_counts["validation"],
         )
         distribution = get_distribution(self.train)
         if rebalance:
