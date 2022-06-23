@@ -69,7 +69,9 @@ def get_resampled(
     augment=False,
     weights=None,
     stop_on_empty_dataset=True,
+    distribution=None,
 ):
+
     num_labels = len(labels)
     global remapped
     global remapped_y
@@ -79,25 +81,29 @@ def get_resampled(
     values = []
     remapped = {}
     remapped_y = {}
+    if distribution is not None:
+        print("got dist", distribution)
+        counts = list(distribution.values())
+        total = np.sum(counts)
+        weights = [1] * len(labels)
+        multiplier = total / len(labels)
+
+        for index, label in enumerate(labels):
+            weights[index] = 1 / counts[index] * multiplier
+        print("auto weights", weights)
     for l in labels:
         remapped[l] = [l]
         keys.append(labels.index(l))
         values.append(labels.index(l))
     if "false-positive" in labels and "insect" in labels:
         remapped["false-positive"].append("insect")
-        remapped_y[tf.constant(labels.index("insect"), tf.int64).ref()] = tf.constant(
-            labels.index("false-positive"), tf.int64
-        )
         values[labels.index("insect")] = labels.index("false-positive")
 
         del remapped["insect"]
 
     if "possum" in labels and "cat" in labels:
         remapped["possum"].append("cat")
-        remapped_y[tf.constant(labels.index("cat"), tf.int64).ref()] = tf.constant(
-            labels.index("possum"), tf.int64
-        )
-        values[labels.index("cat")] = labels.index("possum")
+        # values[labels.index("cat")] = labels.index("possum")
 
         del remapped["cat"]
     remapped_y = tf.lookup.StaticHashTable(
@@ -108,10 +114,10 @@ def get_resampled(
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-    for label, v in remapped.items():
+    for label in labels:
         filenames = []
-        for mapped_lbl in v:
-            filenames.append(tf.io.gfile.glob(f"{base_dir}/{mapped_lbl}*.tfrecord"))
+        # for mapped_lbl in v:
+        filenames.append(tf.io.gfile.glob(f"{base_dir}/{label}*.tfrecord"))
         dataset = load_dataset(
             filenames,
             image_size,
@@ -270,7 +276,12 @@ def main():
     datasets = []
     # weights = [0.5] * len(labels)
     resampled_ds = get_resampled(
-        f"{config.tracks_folder}/training-data/test", 32, (160, 160), labels
+        f"{config.tracks_folder}/training-data/test",
+        32,
+        (160, 160),
+        labels,
+        distribution=meta["counts"]["test"],
+        stop_on_empty_dataset=True,
     )
     global remapped
     meta["remapped"] = remapped

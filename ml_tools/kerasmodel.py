@@ -60,6 +60,7 @@ class KerasModel(Interpreter):
             meta = json.load(f)
         self.labels = meta.get("labels", [])
         self.type = meta.get("type", "thermal")
+        self.dataset_counts = meta.get("counts")
 
     def shape(self):
         if self.model is None:
@@ -407,6 +408,7 @@ class KerasModel(Interpreter):
         resample=True,
         weights=None,
         stop_on_empty_dataset=True,
+        distribution=None,
     ):
         logging.info("Getting dataset %s", self.type)
         if self.type == "thermal":
@@ -421,6 +423,7 @@ class KerasModel(Interpreter):
                 resample=resample,
                 weights=weights,
                 stop_on_empty_dataset=stop_on_empty_dataset,
+                distribution=distribution,
             )
         return get_ir_dataset(
             pattern,
@@ -433,6 +436,7 @@ class KerasModel(Interpreter):
             resample=resample,
             weights=weights,
             stop_on_empty_dataset=stop_on_empty_dataset,
+            distribution=distribution,
         )
 
     def train_model_tfrecords(
@@ -458,14 +462,20 @@ class KerasModel(Interpreter):
         base_dir = os.path.join(base_dir, "training-data")
         train_files = base_dir + "/train"
         validate_files = base_dir + "/validation"
+
         self.train = self.get_dataset(
-            train_files, augment=True, resample=resample, stop_on_empty_dataset=False
+            train_files,
+            augment=True,
+            resample=resample,
+            stop_on_empty_dataset=False,
+            dist=self.dataset_counts["train"],
         )
         self.validate = self.get_dataset(
             validate_files,
             augment=False,
             resample=resample,
             stop_on_empty_dataset=False,
+            dist=self.dataset_counts["validation"],
         )
         distribution = get_distribution(self.train)
         if rebalance:
