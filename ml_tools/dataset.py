@@ -309,9 +309,9 @@ class Dataset:
         if self.use_segments:
             return self.load_clip_segments(clip_id)
         clip_meta = self.db.get_clip_meta(clip_id)
-        if "tag" not in clip_meta:
-            self.filtered_stats["not-confirmed"] += 1
-            return False
+        # if "tag" not in clip_meta:
+        #     self.filtered_stats["not-confirmed"] += 1
+        #     return False
         clip_id = int(clip_id)
         samples = {}
 
