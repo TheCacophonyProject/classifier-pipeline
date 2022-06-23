@@ -472,15 +472,14 @@ class TrackDatabase:
         frames = []
         with HDF5Manager(self.database) as f:
             clip = f["clips"][str(clip_id)]
-            if "frames" not in clip:
+            if "original_frames" not in clip:
                 return None
-            frames_node = clip["frames"]
+            frames_node = clip["original_frames"]
             if frame_numbers is None:
                 frame_numbers = []
                 for f_i in frames_node:
                     frame_numbers.append(int(f_i))
                 frame_numbers.sort()
-                print("using frames", frame_numbers)
             frame_iter = iter(frame_numbers)
 
             for frame_number in frame_iter:

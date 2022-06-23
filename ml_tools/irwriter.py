@@ -46,7 +46,7 @@ from ml_tools import tools
 from ml_tools.imageprocessing import normalize
 from load.irtrackextractor import get_ir_back_filtered
 
-crop_rectangle = tools.Rectangle(0, 0, 640, 480)
+crop_rectangle = tools.Rectangle(0, 0, 640 - 1, 480 - 1)
 
 
 def create_tf_example(frame, image_dir, sample, labels, filename):
@@ -81,13 +81,15 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
       ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
     image_height, image_width = frame.thermal.shape
+
     image = Image.fromarray(frame.thermal)
     image = ImageOps.grayscale(image)
 
-    image_id = sample.id
+    image_id = sample.unique_id
 
     encoded_jpg_io = io.BytesIO()
     image.save(encoded_jpg_io, format="JPEG")
+
     encoded_thermal = encoded_jpg_io.getvalue()
     thermal_key = hashlib.sha256(encoded_thermal).hexdigest()
 
@@ -199,13 +201,20 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
     num_labels = len(dataset.labels)
     # pool = multiprocessing.Pool(4)
     logging.info("writing to output path: %s for %s samples", output_path, len(samples))
+    lbl_counts = [0] * num_labels
 
-    writers = [
-        tf.io.TFRecordWriter(
-            str(output_path / ("%05d-of-%05d.tfrecord" % (i, num_shards)))
-        )
-        for i in range(num_shards)
-    ]
+    writers = []
+    for label in labels:
+        for i in range(num_shards):
+
+            writers.append(
+                tf.io.TFRecordWriter(
+                    str(
+                        output_path
+                        / (f"{label}-%05d-of-%05d.tfrecord" % (i, num_shards))
+                    )
+                )
+            )
     load_first = 200
     try:
         count = 0
@@ -231,35 +240,44 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                         )
                         continue
                     if cropped:
-                        region = sample.regions[0].copy()
+                        region = sample.region.copy()
                         region.enlarge(20, max=crop_rectangle)
                         f.crop_by_region(region, out=f)
                         background = region.subimage(background)
                     f.mask = f.filtered
                     f.filtered, _ = get_ir_back_filtered(background, f.thermal)
-                    # f.normalize()
+
+                    f.normalize()
                     assert f.thermal.shape == f.filtered.shape
                     loaded.append((f, sample))
                 except Exception as e:
                     logging.error("Got exception", exc_info=True)
-                    pass
             loaded = np.array(loaded)
             np.random.shuffle(loaded)
             for data, sample in loaded:
                 try:
                     tf_example, num_annotations_skipped = create_tf_example(
-                        data, output_path, sample, dataset.labels, sample.filename
+                        data,
+                        output_path,
+                        sample,
+                        dataset.labels,
+                        sample.unique_track_id,
                     )
+                    l_i = labels.index(sample.label)
+
                     total_num_annotations_skipped += num_annotations_skipped
-                    writers[count % num_shards].write(tf_example.SerializeToString())
+                    writers[num_shards * l_i + lbl_counts[l_i] % num_shards].write(
+                        tf_example.SerializeToString()
+                    )
                     count += 1
+                    lbl_counts[l_i] += 1
+
                     if count % 100 == 0:
                         logging.info("saved %s", count)
                 except Exception as e:
                     logging.error("Error saving ", exc_info=True)
             # break
     except:
-        raise "EX"
         logging.error("Error saving track info", exc_info=True)
     for writer in writers:
         writer.close()

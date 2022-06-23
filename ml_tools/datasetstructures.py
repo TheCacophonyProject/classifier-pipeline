@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
 from ml_tools.frame import Frame, TrackChannels
 from ml_tools import imageprocessing
+import datetime
 
 FRAMES_PER_SECOND = 9
 
@@ -316,10 +317,14 @@ class TrackHeader:
                     None,
                     region,
                     weight=1,
+                    camera=self.camera,
+                    start_time=self.start_time
+                    + datetime.timedelta(seconds=frame_num / self.frames_per_second),
                 )
                 self.sample_frames.append(f)
         else:
             for region, frame_temp in zip(regions, self.frame_temp_median):
+                print("track starting at", region.frame_number)
                 if region.mass == 0:
                     continue
                 f = FrameSample(
@@ -331,6 +336,9 @@ class TrackHeader:
                     None,
                     region,
                     weight=1,
+                    camera=self.camera,
+                    start_time=self.start_time
+                    + datetime.timedelta(seconds=frame_num / self.frames_per_second),
                 )
                 self.sample_frames.append(f)
 
@@ -484,6 +492,8 @@ class TrackHeader:
 
         ffc_frames = clip_meta.get("ffc_frames", [])
         sample_frames = track_meta.get("sample_frames")
+        if sample_frames is not None:
+            sample_frames = sample_frames + track_start_frame
         skipped_frames = track_meta.get("skipped_frames")
         regions = [None] * len(track_meta["bounds_history"])
         f_i = 0
@@ -665,7 +675,17 @@ class FrameSample(Sample):
     _frame_id = 1
 
     def __init__(
-        self, clip_id, track_id, frame_num, label, temp_median, velocity, region, weight
+        self,
+        clip_id,
+        track_id,
+        frame_num,
+        label,
+        temp_median,
+        velocity,
+        region,
+        weight,
+        camera,
+        start_time,
     ):
         self.id = FrameSample._frame_id
         FrameSample._frame_id += 1
@@ -677,6 +697,8 @@ class FrameSample(Sample):
         self.velocity = velocity
         self.region = region
         self.weight = weight
+        self.camera = camera
+        self.start_time = start_time
 
     @property
     def sample_weight(self):
@@ -866,8 +888,8 @@ def get_movement_data(b_h, m_h):
     centrey = (b_h[:, 3] + b_h[:, 1]) / 2
     xv = np.hstack((0, centrex[1:] - centrex[:-1]))
     yv = np.hstack((0, centrey[1:] - centrey[:-1]))
-    axv = xv / areas**0.5
-    ayv = yv / areas**0.5
+    axv = xv / areas ** 0.5
+    ayv = yv / areas ** 0.5
     return np.hstack((b_h, np.vstack((m_h, xv, yv, axv, ayv)).T))
 
 
@@ -1091,6 +1113,9 @@ def get_segments(
     return segments, filtered_stats
 
 
+# GP Not using at the moment, but handy for more complex training
+
+
 class TrackingSample(Sample):
     _s_id = 1
 
@@ -1129,6 +1154,10 @@ class TrackingSample(Sample):
     @property
     def label(self):
         return self.labels[0]
+
+    @property
+    def region(self):
+        return self.regions[0]
 
     def add_sample(self, f):
         self.labels.append(f.label)

@@ -306,8 +306,10 @@ class Dataset:
             return True
 
     def load_clip(self, clip_id, allow_multiple_labels=False):
-        if self.use_segments:
-            return self.load_clip_segments(clip_id)
+        # if self.use_segments:
+        return self.load_clip_segments(clip_id)
+
+        # GP DONT NEED THIS
         clip_meta = self.db.get_clip_meta(clip_id)
         # if "tag" not in clip_meta:
         #     self.filtered_stats["not-confirmed"] += 1
@@ -319,7 +321,6 @@ class Dataset:
         tag_frames = clip_meta.get("tag_frames", {})
         tag_regions = tag_frames.get("tag_regions")
         tags_per_frames = {}
-
         for label, frames in tag_frames.items():
             if label == "tag_regions":
                 continue
@@ -400,7 +401,6 @@ class Dataset:
         if self.filter_sample(sample):
             return False
         self.samples.append(sample)
-
         if self.label_mapping and sample.label in self.label_mapping:
             sample.label = self.mapped_label(sample.label)
 

@@ -167,7 +167,6 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
         samples_by_bin[sample.bin_id].append(sample)
 
     sample_bins = [sample.bin_id for sample in samples]
-
     if len(sample_bins) == 0:
         return None, None, None
 
@@ -233,7 +232,7 @@ def get_test_set_camera(dataset, test_clips, after_date):
         for sample in dataset.samples
         if sample.clip_id in test_clips
         or after_date is not None
-        and sample.start_time > after_date
+        and sample.start_time.replace(tzinfo=pytz.utc) > after_date
     ]
     for sample in test_samples:
         dataset.remove_sample(sample)
@@ -293,9 +292,36 @@ def add_camera_samples(
         for camera in cameras:
             samples = camera.label_to_samples.get(label, {}).values()
             all_samples.extend(list(samples))
-    print("adding samples", len(all_samples))
     dataset.add_samples(all_samples)
     dataset.balance_bins()
+
+
+def validate_datasets(datasets, test_clips, date):
+    # check that clips are only in one dataset
+    # that only test set has clips after date
+    # that test set is the only dataset with test_clips
+    for dataset in datasets[:2]:
+        for track in dataset.tracks:
+            assert track.start_time < date
+
+    for dataset in datasets:
+        clips = set([track.clip_id for track in dataset.tracks])
+        tracks = set([track.track_id for track in dataset.tracks])
+        if test_clips is not None and dataset.name != "test":
+            assert (
+                len(clips.intersection(set(test_clips))) == 0
+            ), "test clips should only be in test set"
+        if len(clips) == 0:
+            continue
+        if len(tracks) == 0:
+            continue
+        for other in datasets:
+            if dataset.name == other.name:
+                continue
+            other_clips = set([track.clip_id for track in other.tracks])
+            other_tracks = set([track.track_id for track in other.tracks])
+            assert clips != other_clips, "clips should only be in one set"
+            assert tracks != other_tracks, "tracks should only be in one set"
 
 
 def main():
@@ -363,34 +389,6 @@ def main():
 
     with open(meta_filename, "w") as f:
         json.dump(meta_data, f, indent=4)
-
-
-def validate_datasets(datasets, test_clips, date):
-    # check that clips are only in one dataset
-    # that only test set has clips after date
-    # that test set is the only dataset with test_clips
-    for dataset in datasets[:2]:
-        for track in dataset.tracks:
-            assert track.start_time < date
-
-    for dataset in datasets:
-        clips = set([track.clip_id for track in dataset.tracks])
-        tracks = set([track.track_id for track in dataset.tracks])
-        if test_clips is not None and dataset.name != "test":
-            assert (
-                len(clips.intersection(set(test_clips))) == 0
-            ), "test clips should only be in test set"
-        if len(clips) == 0:
-            continue
-        if len(tracks) == 0:
-            continue
-        for other in datasets:
-            if dataset.name == other.name:
-                continue
-            other_clips = set([track.clip_id for track in other.tracks])
-            other_tracks = set([track.track_id for track in other.tracks])
-            assert clips != other_clips, "clips should only be in one set"
-            assert tracks != other_tracks, "tracks should only be in one set"
 
 
 if __name__ == "__main__":
