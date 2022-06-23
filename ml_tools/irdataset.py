@@ -81,13 +81,6 @@ def get_resampled(
     values = []
     remapped = {}
     remapped_y = {}
-    weights = [1.0] * len(labels)
-    if "human" in labels:
-        weights[labels.index("human")] = 0
-
-    weights[labels.index("cat")] = 0
-    weights[labels.index("false-positive")] = 0.8
-    weights[labels.index("insect")] = 0
 
     for l in labels:
         remapped[l] = [l]
@@ -112,6 +105,14 @@ def get_resampled(
         default_value=tf.constant(-1),
         name="remapped_y",
     )
+    weights = [1.0] * len(remapped)
+    # if "human" in remapped:
+    #     weights[labels.index("human")] = 0
+    r_l = list(remapped.keys())
+    weights[r_l.index("human")] = 0
+
+    # weights[labels.index("cat")] = 0
+
     for k, v in remapped.items():
         filenames = []
         for label in v:
