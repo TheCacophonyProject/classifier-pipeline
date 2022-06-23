@@ -338,7 +338,7 @@ def main():
         db_file, "dataset", config, consecutive_segments=args.consecutive_segments
     )
 
-    tracks_loaded, total_tracks = dataset.load_clips(allow_multiple_labels=True)
+    tracks_loaded, total_tracks = dataset.load_clips()
     # return
     dataset.labels.sort()
     print(

@@ -256,7 +256,6 @@ class Dataset:
         before_date=None,
         after_date=None,
         label=None,
-        allow_multiple_labels=False,
     ):
         """
         Loads track headers from track database with optional filter
@@ -268,13 +267,13 @@ class Dataset:
         if shuffle:
             np.random.shuffle(clip_ids)
         for clip_id in clip_ids:
-            if self.load_clip(clip_id, allow_multiple_labels):
+            if self.load_clip(clip_id):
                 counter += 1
             if counter % 50 == 0:
                 logging.debug("Dataset loaded %s / %s", counter, len(clip_ids))
         return [counter, len(clip_ids)]
 
-    def load_clip_segments(self, clip_id):
+    def load_clip(self, clip_id):
         clip_meta = self.db.get_clip_meta(clip_id)
         tracks = self.db.get_clip_tracks(clip_id)
         for track_meta in tracks:
@@ -305,81 +304,82 @@ class Dataset:
                     self.add_clip_sample_mappings(sample)
             return True
 
-    def load_clip(self, clip_id, allow_multiple_labels=False):
-        # if self.use_segments:
-        return self.load_clip_segments(clip_id)
-
-        # GP DONT NEED THIS
-        clip_meta = self.db.get_clip_meta(clip_id)
-        # if "tag" not in clip_meta:
-        #     self.filtered_stats["not-confirmed"] += 1
-        #     return False
-        clip_id = int(clip_id)
-        samples = {}
-
-        # self.clip_samples[clip_id] = samples
-        tag_frames = clip_meta.get("tag_frames", {})
-        tag_regions = tag_frames.get("tag_regions")
-        tags_per_frames = {}
-        for label, frames in tag_frames.items():
-            if label == "tag_regions":
-                continue
-            if label == "nothing":
-                continue
-            for f in frames:
-                # gp needs to be fixed in db
-                if label in ["false-positve", "false-positives"]:
-                    label = "false-positive"
-                if f in tags_per_frames:
-                    tags_per_frames[f].add(label)
-                else:
-                    tags_per_frames[f] = set([label])
-        for label, frames in tag_frames.items():
-            if label in ["false-positve", "false-positives"]:
-                label = "false-positive"
-            if label in ["nothing", "tag_regions"]:
-                continue
-            regions_a = tag_regions.get(label)
-            regions = {}
-            if regions_a is None:
-                continue
-            for i in range(len(regions_a)):
-                region = Region.region_from_array(regions_a[i])
-                regions[region.frame_number] = region
-
-            for frame in frames:
-                if not allow_multiple_labels:
-                    if tags_per_frames and len(tags_per_frames.get(frame)) > 1:
-                        logging.info(
-                            "Skipping clip %s frame %s  as has multiple tags %s",
-                            clip_id,
-                            frame,
-                            tags_per_frames.get(frame),
-                        )
-                        continue
-
-                if frame not in regions:
-                    continue
-                samples_key = f"{clip_id}-None-{frame}"
-                if samples_key in samples:
-                    existing_sample = samples[samples_key]
-                    existing_sample.labels.append(label)
-                else:
-                    sample = TrackingSample(
-                        clip_id,
-                        None,
-                        frame,
-                        label,
-                        clip_meta["frame_temp_median"][frame],
-                        regions[frame],
-                        clip_meta["start_time"],
-                        clip_meta.get("device", "unknown"),
-                        clip_meta.get("filename", "unknown"),
-                    )
-                    samples[samples_key] = sample
-                    self.add_clip_sample_mappings(sample)
-
-        return True
+    #
+    # def load_clip(self, clip_id, allow_multiple_labels=False):
+    #     # if self.use_segments:
+    #     return self.load_clip_segments(clip_id)
+    #
+    #     # GP DONT NEED THIS
+    #     clip_meta = self.db.get_clip_meta(clip_id)
+    #     # if "tag" not in clip_meta:
+    #     #     self.filtered_stats["not-confirmed"] += 1
+    #     #     return False
+    #     clip_id = int(clip_id)
+    #     samples = {}
+    #
+    #     # self.clip_samples[clip_id] = samples
+    #     tag_frames = clip_meta.get("tag_frames", {})
+    #     tag_regions = tag_frames.get("tag_regions")
+    #     tags_per_frames = {}
+    #     for label, frames in tag_frames.items():
+    #         if label == "tag_regions":
+    #             continue
+    #         if label == "nothing":
+    #             continue
+    #         for f in frames:
+    #             # gp needs to be fixed in db
+    #             if label in ["false-positve", "false-positives"]:
+    #                 label = "false-positive"
+    #             if f in tags_per_frames:
+    #                 tags_per_frames[f].add(label)
+    #             else:
+    #                 tags_per_frames[f] = set([label])
+    #     for label, frames in tag_frames.items():
+    #         if label in ["false-positve", "false-positives"]:
+    #             label = "false-positive"
+    #         if label in ["nothing", "tag_regions"]:
+    #             continue
+    #         regions_a = tag_regions.get(label)
+    #         regions = {}
+    #         if regions_a is None:
+    #             continue
+    #         for i in range(len(regions_a)):
+    #             region = Region.region_from_array(regions_a[i])
+    #             regions[region.frame_number] = region
+    #
+    #         for frame in frames:
+    #             if not allow_multiple_labels:
+    #                 if tags_per_frames and len(tags_per_frames.get(frame)) > 1:
+    #                     logging.info(
+    #                         "Skipping clip %s frame %s  as has multiple tags %s",
+    #                         clip_id,
+    #                         frame,
+    #                         tags_per_frames.get(frame),
+    #                     )
+    #                     continue
+    #
+    #             if frame not in regions:
+    #                 continue
+    #             samples_key = f"{clip_id}-None-{frame}"
+    #             if samples_key in samples:
+    #                 existing_sample = samples[samples_key]
+    #                 existing_sample.labels.append(label)
+    #             else:
+    #                 sample = TrackingSample(
+    #                     clip_id,
+    #                     None,
+    #                     frame,
+    #                     label,
+    #                     clip_meta["frame_temp_median"][frame],
+    #                     regions[frame],
+    #                     clip_meta["start_time"],
+    #                     clip_meta.get("device", "unknown"),
+    #                     clip_meta.get("filename", "unknown"),
+    #                 )
+    #                 samples[samples_key] = sample
+    #                 self.add_clip_sample_mappings(sample)
+    #
+    #     return True
 
     def add_samples(self, samples):
         """

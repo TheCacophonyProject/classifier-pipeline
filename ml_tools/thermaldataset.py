@@ -234,7 +234,7 @@ def decode_image(image, filtered, image_size, augment=True):
             image = tf.image.flip_left_right(image)
             filtered = tf.image.flip_left_right(filtered)
 
-    image = tf.concat((image, image, filtered), axis=2)
+    image = tf.concat((image, filtered, filtered), axis=2)
     if augment:
         image = tf.image.random_contrast(image, 0, 1, seed=None)
 
@@ -311,7 +311,7 @@ def main():
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
         c = Counter(list(true_categories))
         print("epoch is size", len(true_categories))
-        for i in range(4):
+        for i in range(len(labels)):
             print("after have", labels[i], c[i])
 
     return

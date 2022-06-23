@@ -6,6 +6,8 @@ import numpy as np
 import time
 import math
 import logging
+from config.config import Config
+import json
 
 seed = 1341
 tf.random.set_seed(seed)
@@ -40,6 +42,94 @@ def load_dataset(
         deterministic=deterministic,
     )
     return dataset
+
+
+def get_distribution(dataset):
+    true_categories = tf.concat([y for x, y in dataset], axis=0)
+    num_labels = len(true_categories[0])
+    if len(true_categories) == 0:
+        return None
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    c = Counter(list(true_categories))
+    dist = np.empty((num_labels), dtype=np.float32)
+    for i in range(num_labels):
+        dist[i] = c[i]
+    return dist
+
+
+def get_resampled(
+    base_dir,
+    batch_size,
+    image_size,
+    labels,
+    reshuffle=True,
+    deterministic=False,
+    labeled=True,
+    resample=True,
+    augment=False,
+    weights=None,
+    stop_on_empty_dataset=True,
+):
+    num_labels = len(labels)
+    global remapped
+    global remapped_y
+    datasets = []
+
+    keys = []
+    values = []
+    remapped = {}
+    remapped_y = {}
+    for l in labels:
+        remapped[l] = [l]
+        keys.append(labels.index(l))
+        values.append(labels.index(l))
+    if "false-positive" in labels and "insect" in labels:
+        remapped["false-positive"].append("insect")
+        remapped_y[tf.constant(labels.index("insect"), tf.int64).ref()] = tf.constant(
+            labels.index("false-positive"), tf.int64
+        )
+        values[labels.index("insect")] = labels.index("false-positive")
+
+        del remapped["insect"]
+
+    if "possum" in labels and "cat" in labels:
+        remapped["possum"].append("cat")
+        remapped_y[tf.constant(labels.index("cat"), tf.int64).ref()] = tf.constant(
+            labels.index("possum"), tf.int64
+        )
+        values[labels.index("cat")] = labels.index("possum")
+
+        del remapped["cat"]
+    remapped_y = tf.lookup.StaticHashTable(
+        initializer=tf.lookup.KeyValueTensorInitializer(
+            keys=tf.constant(keys),
+            values=tf.constant(values),
+        ),
+        default_value=tf.constant(-1),
+        name="remapped_y",
+    )
+    print(keys, values)
+    for label, v in remapped.items():
+        filenames = []
+        for mapped_lbl in v:
+            filenames.append(tf.io.gfile.glob(f"{base_dir}/{mapped_lbl}*.tfrecord"))
+        dataset = load_dataset(
+            filenames,
+            image_size,
+            num_labels,
+            deterministic=deterministic,
+            labeled=labeled,
+        )
+        dataset = dataset.shuffle(2048, reshuffle_each_iteration=True)
+
+        datasets.append(dataset)
+    resampled_ds = tf.data.Dataset.sample_from_datasets(
+        datasets, weights=weights, stop_on_empty_dataset=stop_on_empty_dataset
+    )
+    resampled_ds = resampled_ds.shuffle(2048, reshuffle_each_iteration=reshuffle)
+    resampled_ds = resampled_ds.prefetch(buffer_size=AUTOTUNE)
+    resampled_ds = resampled_ds.batch(batch_size)
+    return resampled_ds
 
 
 #
@@ -136,9 +226,10 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment):
     )
 
     if labeled:
-        label = tf.cast(example["image/class/label"], tf.int64)
+        label = tf.cast(example["image/class/label"], tf.int32)
+        global remapped_y
+        label = remapped_y.lookup(label)
         onehot_label = tf.one_hot(label, num_labels)
-
         return image, onehot_label
     return image
 
@@ -169,40 +260,33 @@ def class_func(features, label):
 
 from collections import Counter
 
-# test crap
+
 def main():
-    train_files = tf.io.gfile.glob(
-        "/home/gp/cacophony/classifier-data/irvideos/tracks/training-data/validation/*.tfrecord"
+    config = Config.load_from_file()
+
+    file = f"{config.tracks_folder}/training-meta.json"
+    with open(file, "r") as f:
+        meta = json.load(f)
+    labels = meta.get("labels", [])
+    datasets = []
+    # weights = [0.5] * len(labels)
+    resampled_ds = get_resampled(
+        f"{config.tracks_folder}/training-data/test", 32, (160, 160), labels
     )
-    print("got filename", train_files)
-    dataset = get_dataset(train_files, 32, (256, 256), 4)
-    #
+    global remapped
+    meta["remapped"] = remapped
+    with open(file, "w") as f:
+        json.dump(meta, f)
     for e in range(4):
         print("epoch", e)
-        true_categories = tf.concat([y for x, y in dataset], axis=0)
+        true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
+        print(true_categories)
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        print(true_categories)
         c = Counter(list(true_categories))
         print("epoch is size", len(true_categories))
-        for i in range(4):
-            print("after have", i, c[i])
-    # return
-    # image_batch, label_batch = next(iter(dataset))
-    for e in range(1):
-        print("epoch", e)
-        for x, y in dataset:
-            show_batch(x, y)
-
-
-def show_batch(image_batch, label_batch):
-    plt.figure(figsize=(10, 10))
-    labels = ["cat", "false-positive", "hedgehog", "possum"]
-    # print(label_batch)
-    for n in range(25):
-        ax = plt.subplot(5, 5, n + 1)
-        plt.imshow(image_batch[n] / 255.0)
-        plt.title(labels[np.argmax(label_batch[n])])
-        plt.axis("off")
-    plt.show()
+        for i in range(len(labels)):
+            print("after have", labels[i], c[i])
 
 
 if __name__ == "__main__":
