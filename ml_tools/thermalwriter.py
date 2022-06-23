@@ -108,6 +108,8 @@ def create_tf_example(data, image_dir, sample, labels, filename):
         "image/avg_dim": tfrecord_util.int64_feature(average_dim),
         "image/height": tfrecord_util.int64_feature(image_height),
         "image/width": tfrecord_util.int64_feature(image_width),
+        "image/clip_id": tfrecord_util.int64_feature(sample.clip_id),
+        "image/track_iod": tfrecord_util.int64_feature(sample.track_id),
         "image/filename": tfrecord_util.bytes_feature(filename.encode("utf8")),
         "image/source_id": tfrecord_util.bytes_feature(str(image_id).encode("utf8")),
         "image/thermalencoded": tfrecord_util.bytes_feature(encoded_thermal),

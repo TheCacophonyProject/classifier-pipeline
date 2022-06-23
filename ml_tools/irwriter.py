@@ -120,6 +120,8 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
         "image/filteredkey/sha256": tfrecord_util.bytes_feature(
             filtered_key.encode("utf8")
         ),
+        "image/clip_id": tfrecord_util.int64_feature(sample.clip_id),
+        "image/track_iod": tfrecord_util.int64_feature(sample.track_id),
         "image/filteredencoded": tfrecord_util.bytes_feature(encoded_filtered),
         # "image/maskkey/sha256": tfrecord_util.bytes_feature(mask_key.encode("utf8")),
         # "image/maskencoded": tfrecord_util.bytes_feature(encoded_mask),
