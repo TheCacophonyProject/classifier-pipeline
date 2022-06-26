@@ -579,7 +579,7 @@ class PiClassifier(Processor):
 
                 if len(active_tracks) > 0:
                     logging.debug(
-                        "tracking by biggestd mass %s",
+                        "tracking by biggest mass %s",
                         active_tracks[0],
                     )
                     self.tracking = active_tracks[0]
