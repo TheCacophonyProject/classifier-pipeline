@@ -51,10 +51,12 @@ class NeuralInterpreter(Interpreter):
         model_xml = model_name + ".xml"
         model_bin = os.path.splitext(model_xml)[0] + ".bin"
         ie = IECore()
-        net = IENetwork(model=model_xml, weights=model_bin)
-        self.input_blob = next(iter(net.inputs))
+        ie.set_config({}, device)
+        net = ie.read_network(model=model_xml)
+        self.input_blob = next(iter(net.input_info))
         self.out_blob = next(iter(net.outputs))
         net.batch_size = 1
+
         self.exec_net = ie.load_network(network=net, device_name=device)
 
     def predict(self, input_x):
