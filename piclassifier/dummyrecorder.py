@@ -1,3 +1,4 @@
+import logging
 from piclassifier.recorder import Recorder
 
 
@@ -21,6 +22,9 @@ class DummyRecorder(Recorder):
             if self.frames == self.max_frames:
                 self.stop_recording(cptv_frame.received_at)
         return
+
+    def has_minimum(self):
+        return self.frames > self.write_until
 
     def write_frame(self, cptv_frame):
         self.frames += 1
