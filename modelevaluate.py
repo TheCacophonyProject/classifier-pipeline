@@ -120,7 +120,7 @@ if args.track_id or args.clip_id:
 if config.train.tfrecords:
     model.load_training_meta(base_dir)
 
-    files = tf.io.gfile.glob(base_dir + f"/training-data/{args.dataset}/*.tfrecord")
+    files = base_dir + f"/training-data/{args.dataset}"
     dataset = model.get_dataset(
         files,
         model.params.batch_size,
