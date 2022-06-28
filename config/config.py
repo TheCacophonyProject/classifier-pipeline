@@ -99,7 +99,8 @@ class Config(DefaultConfig):
 
     def validate(self):
         self.build.validate()
-        self.tracking.validate()
+        for tracker in self.tracking.values():
+            tracker.validate()
         self.load.validate()
         self.train.validate()
         self.classify.validate()

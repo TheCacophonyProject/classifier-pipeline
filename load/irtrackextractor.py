@@ -47,10 +47,15 @@ class IRTrackExtractor(ClipTracker):
 
     PREVIEW = "preview"
     VERSION = 10
+    TYPE = "IR"
 
     @property
     def tracker_version(self):
         return f"IRTrackExtractor-{IRTrackExtractor.VERSION}"
+
+    @property
+    def type(self):
+        return IRTrackExtractor.TYPE
 
     @property
     def tracking_time(self):
@@ -72,7 +77,6 @@ class IRTrackExtractor(ClipTracker):
             calc_stats,
             verbose,
         )
-
         self.scale = scale
         self.saliency = None
         if self.scale:
@@ -83,7 +87,7 @@ class IRTrackExtractor(ClipTracker):
         """
         Loads a cptv file, and prepares for track extraction.
         """
-        clip.type = "IR"
+        clip.type = self.type
         self._tracking_time = None
         start = time.time()
         clip.set_frame_buffer(
@@ -129,7 +133,7 @@ class IRTrackExtractor(ClipTracker):
                 break
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             self.process_frame(clip, gray, track=track)
-            # if clip.current_frame > 12 * 10:
+            # if clip.current_frame > 200:
             #     break
         vidcap.release()
 

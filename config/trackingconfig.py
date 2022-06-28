@@ -27,6 +27,10 @@ from track.track import RegionTracker
 
 @attr.s
 class TrackingConfig(DefaultConfig):
+
+    tracker = attr.ib()
+    params = attr.ib()
+    type = attr.ib()
     motion = attr.ib()
     edge_pixels = attr.ib()
     # dilation_pixels = attr.ib()
@@ -56,11 +60,28 @@ class TrackingConfig(DefaultConfig):
     # used to provide defaults
     filters = attr.ib()
     areas_of_interest = attr.ib()
-    trackers = attr.ib()
 
     @classmethod
     def load(cls, tracking):
+        if tracking is None:
+            return None
+        trackers = {}
+        for type, raw_tracker in tracking.items():
+            if raw_tracker is None:
+                raw_tracker = {}
+            tracker = TrackingConfig.load_type(raw_tracker, type)
+            trackers[tracker.type] = tracker
+        return trackers
+
+    @classmethod
+    def load_type(cls, tracking, type):
+        defaults = cls.get_type_defaults(type)
+        print(defaults)
+        deep_copy_map_if_key_not_exist(defaults.as_dict(), tracking)
         return cls(
+            tracker=tracking["tracker"],
+            params=tracking["params"],
+            type=type,
             motion=TrackingMotionConfig.load(tracking.get("motion")),
             min_dimension=tracking["min_dimension"],
             edge_pixels=tracking["edge_pixels"],
@@ -89,41 +110,15 @@ class TrackingConfig(DefaultConfig):
             filters=tracking["filters"],
             areas_of_interest=tracking["areas_of_interest"],
             max_mass_std_percent=tracking["max_mass_std_percent"],
-            trackers=TrackingConfig.load_trackers(tracking.get("trackers")),
         )
 
     @classmethod
     def get_defaults(cls):
-        trackers = {}
-        trackers["IR"] = TrackerConfig(
-            tracker="RegionTracker",
-            type="IR",
-            params={
-                "base_distance_change": 11250,
-                "min_mass_change": 20 * 4,
-                "restrict_mass_after": 1.5,
-                "mass_change_percent": 0.55,
-                "max_distance": 30752,
-                "max_blanks": 18,
-                "velocity_multiplier": 8,
-                "base_velocity": 10,
-            },
-        )
-        trackers["thermal"] = TrackerConfig(
-            tracker="RegionTracker",
-            type="thermal",
-            params={
-                "base_distance_change": 450,
-                "min_mass_change": 20,
-                "restrict_mass_after": 1.5,
-                "mass_change_percent": 0.55,
-                "max_distance": 2000,
-                "max_blanks": 18,
-                "velocity_multiplier": 2,
-                "base_velocity": 2,
-            },
-        )
-        return cls(
+        cls.get_type_defaults("thermal")
+
+    @classmethod
+    def get_type_defaults(cls, type):
+        default_tracking = cls(
             motion=TrackingMotionConfig.get_defaults(),
             edge_pixels=1,
             frame_padding=4,
@@ -161,59 +156,91 @@ class TrackingConfig(DefaultConfig):
             max_blank_percent=30,
             max_mass_std_percent=RegionTracker.MASS_CHANGE_PERCENT,
             max_jitter=20,
-            trackers=trackers,
-        )
-
-    def load_trackers(raw):
-        if raw is None:
-            return None
-        trackers = {}
-        for raw_tracker in raw.values():
-            tracker = TrackerConfig.load(raw_tracker)
-            trackers[tracker.type] = tracker
-        return trackers
-
-    def validate(self):
-        return True
-
-    def as_dict(self):
-        return attr.asdict(self)
-
-
-@attr.s
-class TrackerConfig(DefaultConfig):
-
-    tracker = attr.ib()
-    params = attr.ib()
-    type = attr.ib()
-
-    @classmethod
-    def load(cls, raw):
-        defaults = cls.get_defaults()
-        deep_copy_map_if_key_not_exist(defaults.as_dict(), raw)
-
-        return cls(
-            tracker=raw["tracker"],
-            params=raw["params"],
-            type=raw["type"],
-        )
-
-    def as_dict(self):
-        return attr.asdict(self)
-
-    @classmethod
-    def get_defaults(cls):
-        return cls(
             tracker="RegionTracker",
-            type="IR",
+            type="thermal",
             params={
+                "base_distance_change": 450,
+                "min_mass_change": 20,
+                "restrict_mass_after": 1.5,
+                "mass_change_percent": 0.55,
+                "max_distance": 2000,
+                "max_blanks": 18,
+                "velocity_multiplier": 2,
+                "base_velocity": 2,
+            },
+        )
+        if type == "IR":
+            default_tracking.min_dimenion = 10
+            default_tracking.min_tracks = None
+            default_tracking.frame_padding = 10
+            default_tracking.edge_pixels = 0
+            default_tracking.tracker = "RegionTracker"
+            default_tracking.type = "IR"
+            default_tracking.params = {
                 "base_distance_change": 11250,
                 "min_mass_change": 20 * 4,
                 "restrict_mass_after": 1.5,
                 "mass_change_percent": 0.55,
                 "max_distance": 30752,
-            },
-        )
+                "max_blanks": 18,
+                "velocity_multiplier": 8,
+                "base_velocity": 10,
+            }
+        return default_tracking
+
+    #
+    # def load_trackers(raw):
+    #     if raw is None:
+    #         return None
+    #     trackers = {}
+    #     for raw_tracker in raw.values():
+    #         tracker = TrackingConfig.load(raw_tracker)
+    #         trackers[tracker.type] = tracker
+    #     return trackers
 
     def validate(self):
         return True
+
+    def as_dict(self):
+        return attr.asdict(self)
+
+
+#
+#
+# @attr.s
+# class TrackerConfig(DefaultConfig):
+#
+#     tracker = attr.ib()
+#     params = attr.ib()
+#     type = attr.ib()
+#
+#     @classmethod
+#     def load(cls, raw):
+#         defaults = cls.get_defaults()
+#         deep_copy_map_if_key_not_exist(defaults.as_dict(), raw)
+#
+#         return cls(
+#             tracker=raw["tracker"],
+#             params=raw["params"],
+#             type=raw["type"],
+#         )
+#
+#     def as_dict(self):
+#         return attr.asdict(self)
+#
+#     @classmethod
+#     def get_defaults(cls):
+#         return cls(
+#             tracker="RegionTracker",
+#             type="IR",
+#             params={
+#                 "base_distance_change": 11250,
+#                 "min_mass_change": 20 * 4,
+#                 "restrict_mass_after": 1.5,
+#                 "mass_change_percent": 0.55,
+#                 "max_distance": 30752,
+#             },
+#         )
+#
+#     def validate(self):
+#         return True

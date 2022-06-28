@@ -39,10 +39,15 @@ class ClipTrackExtractor(ClipTracker):
 
     PREVIEW = "preview"
     VERSION = 10
+    TYPE = "thermal"
 
     @property
     def tracker_version(self):
         return f"ClipTrackExtractor-{ClipTrackExtractor.VERSION}"
+
+    @property
+    def type(self):
+        return ClipTrackExtractor.TYPE
 
     def __init__(
         self,
@@ -88,7 +93,7 @@ class ClipTrackExtractor(ClipTracker):
             self.use_opt_flow,
             self.keep_frames,
         )
-        clip.type = "thermal"
+        clip.type = self.type
         with open(clip.source_file, "rb") as f:
             reader = CPTVReader(f)
             clip.set_res(reader.x_resolution, reader.y_resolution)

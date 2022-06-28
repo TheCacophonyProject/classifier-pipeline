@@ -109,7 +109,6 @@ def extract_file(filename):
     logging.info("Processing file '{}'".format(filename))
     previewer = Previewer.create_if_required(config, config.classify.preview)
     extension = os.path.splitext(filename)[1]
-    clip = Clip(config.tracking, filename)
 
     if extension == ".cptv":
         track_extractor = ClipTrackExtractor(
@@ -131,9 +130,13 @@ def extract_file(filename):
             verbose=config.verbose,
             keep_frames=False if previewer is None else True,
         )
-        clip.frames_per_second = 10
 
         logging.info("Using ir extractor")
+    clip = Clip(track_extractor.config, filename)
+    if extension == ".cptv":
+        clip.frames_per_second = 9
+    else:
+        clip.frames_per_second = 10
 
     start = time.time()
     success = track_extractor.parse_clip(clip)
@@ -171,7 +174,7 @@ def save_metadata(filename, meta_filename, clip, track_extractor, config):
     save_file["tracking_time"] = round(track_extractor.tracking_time, 1)
     save_file["algorithm"] = {}
     save_file["algorithm"]["tracker_version"] = track_extractor.tracker_version
-    save_file["algorithm"]["tracker_config"] = config.tracking.as_dict()
+    save_file["algorithm"]["tracker_config"] = track_extractor.config.as_dict()
 
     if config.classify.meta_to_stdout:
         print(json.dumps(save_file, cls=tools.CustomJSONEncoder))

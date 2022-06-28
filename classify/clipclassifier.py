@@ -44,7 +44,6 @@ class ClipClassifier:
 
         self.previewer = Previewer.create_if_required(config, config.classify.preview)
 
-        self.high_quality_optical_flow = self.config.tracking.high_quality_optical_flow
         self.models = {}
 
     def load_models(self):
@@ -143,7 +142,7 @@ class ClipClassifier:
         logging.info("Processing file '{}'".format(filename))
 
         start = time.time()
-        clip = Clip(self.config.tracking, filename)
+        clip = Clip(track_extractor.config, filename)
         clip.load_metadata(
             meta_data,
             self.config.load.tag_precedence,

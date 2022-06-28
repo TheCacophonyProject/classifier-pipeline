@@ -315,7 +315,6 @@ class Track:
         clip_id,
         id=None,
         fps=9,
-        type="thermal",
         tracking_config=None,
         crop_rectangle=None,
         tracker_version=None,
@@ -372,9 +371,7 @@ class Track:
 
         self.tracker = None
         if tracking_config is not None:
-            logging.info("getting tracker for type %s", type)
-            config = tracking_config.trackers.get(type)
-            self.tracker = self.get_tracker(config)
+            self.tracker = self.get_tracker(tracking_config)
         # self.tracker = RegionTracker(
         #     self.get_id(), tracking_config, self.crop_rectangle
         # )
@@ -462,7 +459,6 @@ class Track:
             tracker_version=tracker_version,
             crop_rectangle=clip.crop_rectangle,
             tracking_config=tracking_config,
-            type=clip.type,
         )
         track.start_frame = region.frame_number
         track.start_s = region.frame_number / float(clip.frames_per_second)

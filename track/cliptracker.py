@@ -19,12 +19,13 @@ class ClipTracker(ABC):
         calc_stats=True,
         verbose=False,
     ):
+        config = config.get(self.type)
+
         self.verbose = verbose
         self.config = config
         self.stats = None
         self.cache_to_disk = cache_to_disk
         self.max_tracks = config.max_tracks
-        self.min_dimension = config.min_dimension
         # frame_padding < 3 causes problems when we get small areas...
         self.frame_padding = max(3, self.config.frame_padding)
         # the dilation effectively also pads the frame so take it into consideration.
@@ -32,9 +33,14 @@ class ClipTracker(ABC):
         self.keep_frames = keep_frames
         self.calc_stats = calc_stats
         self._tracking_time = None
+        self.min_dimension = config.min_dimension
         # if self.config.dilation_pixels > 0:
         #     size = self.config.dilation_pixels * 2 + 1
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
+
+    @abstractmethod
+    def type(self):
+        """Tracker type IR or Thermal"""
 
     @abstractmethod
     def parse_clip(self, clip, process_background=False):
@@ -122,11 +128,7 @@ class ClipTracker(ABC):
             if track in matched_tracks or region in used_regions:
                 continue
             logging.debug(
-                "%s matched track %s with %s last bound to region %s",
-                clip.current_frame,
-                track,
-                track.last_bound,
-                region,
+                "matched %s with %s to track %s", clip.current_frame, region, track
             )
             track.add_region(region)
             matched_tracks.add(track)
