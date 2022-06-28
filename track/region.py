@@ -53,12 +53,16 @@ class Region(Rectangle):
 
     @classmethod
     def region_from_json(cls, region_json):
+        if "frame_number" in region_json:
+            frame_key = "frame_number"
+        else:
+            frame_key = "order"
         return cls(
             region_json["x"],
             region_json["y"],
             region_json["width"],
             region_json["height"],
-            frame_number=region_json["frame_number"],
+            frame_number=region_json[frame_key],
             mass=region_json.get("mass", 0),
             blank=region_json.get("blank", False),
             pixel_variance=region_json.get("pixel_variance", 0),

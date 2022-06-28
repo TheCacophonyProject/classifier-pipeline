@@ -181,9 +181,12 @@ class Track:
         extra_info = track_meta
         if "data" in track_meta:
             extra_info = track_meta["data"]
-
-        self.start_s = extra_info["start_s"]
-        self.end_s = extra_info["end_s"]
+        if "start_s" in extra_info:
+            self.start_s = extra_info["start_s"]
+            self.end_s = extra_info["end_s"]
+        else:
+            self.start_s = extra_info["start"]
+            self.end_s = extra_info["end"]
         self.fps = frames_per_second
         self.predicted_tag = extra_info.get("tag")
         self.all_class_confidences = extra_info.get("all_class_confidences", None)
