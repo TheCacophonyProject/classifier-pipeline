@@ -57,7 +57,7 @@ load:
   excluded_tags: [untagged, dog, unidentified, hard, multi, moving, bird-kiwi, for_grant,
     missclassified, other, part, poor tracking]
 tracking:
-  thermal:
+  defaults:
     min_dimension: 0
     # The minimum width or height a region must be to be considered
     # 10 for ir
@@ -106,21 +106,14 @@ tracking:
             # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
             track_min_delta: 1.0
             track_max_delta: 150
+  thermal:
+    # same as defaults
   IR:
+    # defaults except for
     min_tracks: null
     min_dimension: 10 #IR
     frame_padding: 10 #IR
     edge_pixels: 0 #ir
-    motion:
-          IR:
-              camera_model: "IR"
-              temp_thresh: 20
-              background_thresh: 50
-              max_temp_thresh: null
-              min_temp_thresh: null
-              # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
-              track_min_delta: 1.0
-              track_max_delta: 150
 train:
   epochs: 3
   tfrecords: True
