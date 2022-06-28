@@ -771,6 +771,8 @@ class KerasModel(Interpreter):
                         clip.get_id(), track.get_id(), region.frame_number
                     )
                 )
+            # AI just uses a background subtraction
+            frame.filtered = frame.thermal - clip.background
             cropped_frame = frame.crop_by_region(region)
             thermal_median[i] = np.median(frame.thermal)
             cropped_frame.resize_with_aspect(
