@@ -52,16 +52,16 @@ class NeuralInterpreter(Interpreter):
         model_bin = os.path.splitext(model_xml)[0] + ".bin"
         ie = IECore()
         ie.set_config({}, device)
-        net = ie.read_network(model=model_xml)
+        net = ie.read_network(model=model_xml, weights=model_bin)
         self.input_blob = next(iter(net.input_info))
         self.out_blob = next(iter(net.outputs))
         net.batch_size = 1
-
         self.exec_net = ie.load_network(network=net, device_name=device)
 
     def predict(self, input_x):
         if input_x is None:
             return None
+        input_x = np.float32(input_x)
         rearranged_arr = np.transpose(input_x, axes=[2, 0, 1])
         input_x = np.array([[rearranged_arr]])
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
