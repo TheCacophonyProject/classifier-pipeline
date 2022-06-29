@@ -112,11 +112,10 @@ class IRTrackExtractor(ClipTracker):
                 clip.set_res(gray.shape[1], gray.shape[0])
                 clip.set_model("IR")
                 clip.set_video_stats(datetime.now())
+                self._get_filtered_frame_ir(gray, repeats=2)
 
             else:
                 background = np.minimum(background, gray)
-            if count < 6:
-                self._get_filtered_frame_ir(gray, repeats=6)
 
             count += 1
 
@@ -313,18 +312,18 @@ class IRTrackExtractor(ClipTracker):
             self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
             clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
             return True
-        #
-        # # discard tracks that do not move enough
-        #
-        # if (
-        #     stats.max_offset < self.config.track_min_offset
-        #     or stats.frames_moved < self.config.min_moving_frames
-        # ):
-        #     self.print_if_verbose(
-        #         "Track filtered.  Didn't move {}".format(stats.max_offset)
-        #     )
-        #     clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
-        #     return True
+
+        # discard tracks that do not move enough
+
+        if (
+            stats.max_offset < self.config.track_min_offset
+            or stats.frames_moved < self.config.min_moving_frames
+        ):
+            self.print_if_verbose(
+                "Track filtered.  Didn't move {}".format(stats.max_offset)
+            )
+            clip.filtered_tracks.append(("Track filtered.  Didn't move", track))
+            return True
 
         # if stats.blank_percent > self.config.max_blank_percent:
         #     self.print_if_verbose("Track filtered.  Too Many Blanks")
