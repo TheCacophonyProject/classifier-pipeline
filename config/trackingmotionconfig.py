@@ -46,7 +46,7 @@ class TrackingMotionConfig(DefaultConfig):
         thresholds["IR"] = ThresholdConfig(
             camera_model="IR",
             temp_thresh=20,
-            background_thresh=50,
+            background_thresh=20,
             default=False,
             min_temp_thresh=None,
             max_temp_thresh=None,

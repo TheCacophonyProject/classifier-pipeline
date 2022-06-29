@@ -596,14 +596,14 @@ def add_debug_text(
     font = get_font()
     if text is None:
         text = "id {}".format(track.get_id())
-        if region.pixel_variance:
-            text += "mass {} var {} vel ({},{}) blank? {}".format(
-                region.mass,
-                round(region.pixel_variance, 2),
-                track.vel_x[frame_offset],
-                track.vel_y[frame_offset],
-                region.blank,
-            )
+
+        text += "mass {} var {} vel ({},{}) blank? {}".format(
+            region.mass,
+            round(region.pixel_variance, 2),
+            track.vel_x[frame_offset],
+            track.vel_y[frame_offset],
+            region.blank,
+        )
     footer_size = font.getsize(text)
     footer_center = ((region.width * scale) - footer_size[0]) / 2
 

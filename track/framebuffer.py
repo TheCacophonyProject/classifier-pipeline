@@ -66,6 +66,7 @@ class FrameBuffer:
                 if self.max_frames and len(self.frames) == self.max_frames:
                     del self.frames[0]
                 self.frames.append(frame)
+        return frame
 
     @property
     def has_flow(self):

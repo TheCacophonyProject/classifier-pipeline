@@ -112,7 +112,6 @@ class IRTrackExtractor(ClipTracker):
                 clip.set_res(gray.shape[1], gray.shape[0])
                 clip.set_model("IR")
                 clip.set_video_stats(datetime.now())
-                self._get_filtered_frame_ir(gray, repeats=2)
 
             else:
                 background = np.minimum(background, gray)
@@ -250,7 +249,8 @@ class IRTrackExtractor(ClipTracker):
         """
         repeats = 1
         if clip.current_frame < 6:
-            repeats = 8
+            # helps init the saliency, when ir tracks have a 5 second preview this shouldnt be needed
+            repeats = 6
 
         tracking_thermal = thermal
         if self.scale:
@@ -268,10 +268,10 @@ class IRTrackExtractor(ClipTracker):
                     saliencyMap, (clip.res_x, clip.res_y), cv2.INTER_NEAREST
                 )
         backsub, _ = get_ir_back_filtered(clip.background, thermal)
-        clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
+        prev_frame = clip.frame_buffer.get_last_frame()
+        cur_frame = clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
         if not track:
             return
-        prev_filtered = clip.frame_buffer.get_last_filtered()
         threshold = 0
         if np.amin(saliencyMap) == 255:
             num = 0
@@ -286,9 +286,9 @@ class IRTrackExtractor(ClipTracker):
             for track in clip.tracks:
                 if clip.current_frame in track.frame_list:
                     track.add_frame_for_existing_region(
-                        clip.frame_buffer.get_last_frame(),
+                        cur_frame,
                         threshold,
-                        prev_filtered,
+                        prev_frame.filtered,
                     )
         else:
             regions = []
@@ -296,7 +296,7 @@ class IRTrackExtractor(ClipTracker):
                 clip.active_tracks = set()
             else:
                 regions = self._get_regions_of_interest(
-                    clip, component_details, backsub, prev_filtered
+                    clip, component_details, cur_frame, prev_frame
                 )
                 self._apply_region_matchings(clip, regions)
 

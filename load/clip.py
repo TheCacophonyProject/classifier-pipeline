@@ -396,12 +396,13 @@ class Clip:
         if ffc_affected:
             self.ffc_frames.append(self.current_frame)
 
-        self.frame_buffer.add_frame(
+        f = self.frame_buffer.add_frame(
             thermal, filtered, mask, self.current_frame, ffc_affected
         )
 
         if self.calc_stats:
             self.stats.add_frame(thermal, filtered)
+        return f
 
     def get_metadata(self, predictions_per_model=None):
         meta_data = {}

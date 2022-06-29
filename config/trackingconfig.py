@@ -169,6 +169,8 @@ class TrackingConfig(DefaultConfig):
             },
         )
         if type == "IR":
+            default_tracking.areas_of_interest["pixel_variance"] = 8
+            default_tracking.areas_of_interest["min_mass"] = 16
             default_tracking.filters["track_min_offset"] = 16
             default_tracking.track_min_offset = 16
             default_tracking.min_dimenion = 10

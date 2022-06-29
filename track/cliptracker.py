@@ -179,9 +179,7 @@ class ClipTracker(ABC):
                     )
                 )
 
-    def _get_regions_of_interest(
-        self, clip, component_details, filtered, prev_filtered
-    ):
+    def _get_regions_of_interest(self, clip, component_details, frame, prev_frame=None):
         """
         Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
         rectangles.
@@ -189,8 +187,16 @@ class ClipTracker(ABC):
         :return: regions of interest, mask frame
         """
 
-        if prev_filtered is not None:
-            delta_frame = np.abs(filtered - prev_filtered)
+        if prev_frame is not None:
+            # need to normalize or else filtering will be different for lepton 3, 3.5
+            filtered, _ = normalize(frame.filtered, new_max=255)
+            prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
+            delta_frame = np.abs(np.float32(filtered) - np.float32(prev_filtered))
+
+            thermal, _ = normalize(frame.thermal, new_max=255)
+            prev_thermal, _ = normalize(prev_frame.thermal, new_max=255)
+            delta_thermal = np.abs(np.float32(thermal) - np.float32(prev_thermal))
+
         else:
             delta_frame = None
 
@@ -212,6 +218,11 @@ class ClipTracker(ABC):
                 id=i,
                 frame_number=clip.current_frame,
             )
+            # GP this needs to be checked for themals 29/06/2022
+            sub_delta = region.subimage(delta_thermal)
+            sub_mass = len(sub_delta[sub_delta > clip.background_thresh])
+            region.mass = sub_mass
+
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)
@@ -247,6 +258,13 @@ class ClipTracker(ABC):
                 region.pixel_variance < self.config.aoi_pixel_variance
                 and region.mass < self.config.aoi_min_mass
             ):
+                logging.debug(
+                    "%s filtering region %s because of variance %s and mass %s",
+                    region.frame_number,
+                    region,
+                    region.pixel_variance,
+                    region.mass,
+                )
                 continue
             regions.append(region)
         return regions
