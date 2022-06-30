@@ -17,6 +17,7 @@ from ml_tools.datasetstructures import NumpyMeta, TrackHeader, TrackingSample
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
 from track.region import Region
+import json
 
 # from ml_tools.kerasmodel import KerasModel
 from enum import Enum
@@ -100,6 +101,7 @@ class Dataset:
             self.banned_clips = config.build.banned_clips
             self.included_labels = config.labels
             self.segment_min_avg_mass = config.build.segment_min_avg_mass
+            self.excluded_tags = config.load.excluded_tags
         else:
             # number of seconds each segment should be
             self.segment_length = 25
@@ -505,6 +507,18 @@ class Dataset:
             self.filtered_stats["tags"] += 1
             return True
 
+        track_tags = track_meta.get("track_tags")
+        if track_tags is not None:
+            track_tags = json.loads(track_tags)
+            excluded_tags = [
+                tag
+                for tag in track_tags
+                if not tag.get("automatic", False)
+                and tag.get("what") in self.excluded_tags
+            ]
+            if len(excluded_tags) > 0:
+                self.filtered_stats["tags"] += 1
+                return False
         # always let the false-positives through as we need them even though they would normally
         # be filtered out.
         if "bounds_history" not in track_meta or len(track_meta["bounds_history"]) == 0:

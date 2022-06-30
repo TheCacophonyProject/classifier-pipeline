@@ -901,8 +901,8 @@ def get_movement_data(regions):
     centrey = np.array([region.mid_y for region in regions])
     xv = np.hstack((0, centrex[1:] - centrex[:-1]))
     yv = np.hstack((0, centrey[1:] - centrey[:-1]))
-    axv = xv / areas**0.5
-    ayv = yv / areas**0.5
+    axv = xv / areas ** 0.5
+    ayv = yv / areas ** 0.5
     bounds = np.array([region.to_ltrb() for region in regions])
     mass = np.array([region.mass for region in regions])
 
