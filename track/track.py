@@ -502,8 +502,10 @@ class Track:
         self.frame_list = []
         for position in positions:
             if isinstance(position, list):
-                frame_number = round(position[0] * frames_per_second)
-                region = Region.region_from_array(position[1], frame_number)
+                region = Region.region_from_array(position[1])
+                if region.frame_number is None:
+                    frame_number = round(position[0] * frames_per_second)
+                    region.frame_number = frame_number
             else:
                 region = Region.region_from_json(position)
 

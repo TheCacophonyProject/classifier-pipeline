@@ -64,7 +64,6 @@ class ClipLoader:
         self.compression = (
             tools.gzip_compression if self.config.load.enable_compression else None
         )
-        self.track_config = config.tracking
         # number of threads to use when processing jobs.
         self.workers_threads = config.worker_threads
         self.previewer = Previewer.create_if_required(config, config.load.preview)
@@ -152,7 +151,7 @@ class ClipLoader:
             )
         self.database.finished_processing(clip.get_id())
 
-    def _filter_clip_tracks(self, clip_metadata):
+    def _filter_clip_tracks(self, clip_metadata, min_confidence):
         """
         Removes track metadata for tracks which are invalid. Tracks are invalid
         if they aren't confident or they are in the excluded_tags list.
@@ -163,18 +162,19 @@ class ClipLoader:
         if tracks_meta is None:
             tracks_meta = clip_metadata.get("tracks", [])
         valid_tracks = [
-            track for track in tracks_meta if self._track_meta_is_valid(track)
+            track
+            for track in tracks_meta
+            if self._track_meta_is_valid(track, min_confidence)
         ]
 
         clip_metadata["Tracks"] = valid_tracks
         return valid_tracks
 
-    def _track_meta_is_valid(self, track_meta):
+    def _track_meta_is_valid(self, track_meta, min_confidence):
         """
         Tracks are valid if their confidence meets the threshold and they are
         not in the excluded_tags list, defined in the config.
         """
-        min_confidence = self.track_config.min_tag_confidence
         track_tags = []
         if "tags" in track_meta:
             track_tags = track_meta["tags"]
@@ -246,13 +246,14 @@ class ClipLoader:
         if not self.reprocess and self.database.has_clip(str(metadata["id"])):
             logging.warning("Already loaded %s", filename)
             return
-
-        valid_tracks = self._filter_clip_tracks(metadata)
+        valid_tracks = self._filter_clip_tracks(
+            metadata, track_extractor.config.min_tag_confidence
+        )
 
         if not valid_tracks or len(valid_tracks) == 0:
             logging.error("No valid track data found for %s", filename)
             return
-        clip = Clip(self.track_config, filename)
+        clip = Clip(track_extractor.config, filename)
         clip.load_metadata(
             metadata,
             self.config.load.tag_precedence,

@@ -290,13 +290,13 @@ class TrackHeader:
         # tracking frame movements for each frame, array of tuples (x-vel, y-vel)
         self.frame_velocity = None
         # original tracking bounds
-        self.regions = np.array(regions)
+        self.regions_by_frame = regions
         # what fraction of pixels are from out of bounds
         self.frame_crop = None
         self.num_frames = num_frames
         self.frames_per_second = frames_per_second
         self.important_predicted = 0
-        mass_history = [region.mass for region in self.regions]
+        mass_history = [region.mass for region in self.regions_by_frame.values()]
         self.lower_mass = np.uint16(np.percentile(mass_history, q=25))
         self.upper_mass = np.uint16(np.percentile(mass_history, q=75))
         self.median_mass = np.uint16(np.median(mass_history))
@@ -304,10 +304,13 @@ class TrackHeader:
         self.ffc_frames = np.uint16(ffc_frames)
         self.skipped_frames = skipped_frames
         self.sample_frames = []
+        sample_frames_indices is None
         if sample_frames_indices is not None:
-            for region, frame_num, frame_temp in zip(
-                regions, sample_frames_indices, self.frame_temp_median
+            for frame_num, frame_temp in zip(
+                sample_frames_indices, self.frame_temp_median
             ):
+                region = self.regions_by_frame[frame_num]
+                assert region.frame_number == frame_num
                 f = FrameSample(
                     self.clip_id,
                     self.track_id,
@@ -323,7 +326,10 @@ class TrackHeader:
                 )
                 self.sample_frames.append(f)
         else:
-            for region, frame_temp in zip(regions, self.frame_temp_median):
+            frame_numbers = list(self.regions_by_frame.keys())
+            frame_numbers.sort()
+            for frame_num, frame_temp in zip(frame_numbers, self.frame_temp_median):
+                region = self.regions_by_frame[frame_num]
                 print("track starting at", region.frame_number)
                 if region.mass == 0:
                     continue
@@ -437,7 +443,7 @@ class TrackHeader:
             segment_frame_spacing,
             segment_width,
             label=self.label,
-            regions=self.regions,
+            regions=self.regions_by_frame,
             frame_temp_median=self.frame_temp_median,
             segment_min_mass=segment_min_mass,
             sample_frames=self.sample_frames if use_important else None,
@@ -495,16 +501,19 @@ class TrackHeader:
         if sample_frames is not None:
             sample_frames = sample_frames + track_start_frame
         skipped_frames = track_meta.get("skipped_frames")
-        regions = [None] * len(track_meta["bounds_history"])
+        regions = {}
         f_i = 0
         for bounds, mass in zip(
             track_meta["bounds_history"], track_meta["mass_history"]
         ):
-            r = Region.region_from_array(bounds, np.uint16(f_i + track_start_frame))
+            r = Region.region_from_array(bounds)
+            if r.frame_number is None:
+                r.frame_number = np.uint16(f_i + track_start_frame)
             r.mass = np.uint16(mass)
+
             if r.mass == 0:
                 r.blank = True
-            regions[f_i] = r
+            regions[r.frame_number] = r
             f_i += 1
         header = TrackHeader(
             clip_id=int(clip_id),
@@ -923,6 +932,7 @@ def get_segments(
     mass_history = np.uint16([region.mass for region in regions])
     filtered_stats = {"segment_mass": 0, "too short": 0}
     if sample_frames is not None:
+        print("using sample frames", sample_frames)
         frame_indices = [frame.frame_number for frame in sample_frames]
     else:
         frame_indices = [

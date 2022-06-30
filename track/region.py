@@ -59,17 +59,26 @@ class Region(Rectangle):
         )
 
     @classmethod
-    def region_from_array(cls, region_bounds, frame_number=None):
+    def region_from_array(cls, region_bounds):
         width = region_bounds[2] - region_bounds[0]
         height = region_bounds[3] - region_bounds[1]
-        if frame_number is None and len(region_bounds) > 4:
+        frame_number = None
+        if len(region_bounds) > 4:
             frame_number = region_bounds[4]
+        mass = 0
+        if len(region_bounds) > 5:
+            mass = region_bounds[5]
+        blank = False
+        if len(region_bounds) > 6:
+            mass = region_bounds[6]
         return cls(
             region_bounds[0],
             region_bounds[1],
             width,
             height,
             frame_number=np.uint16(frame_number) if frame_number is not None else None,
+            mass=mass,
+            blank=blank,
         )
 
     @classmethod

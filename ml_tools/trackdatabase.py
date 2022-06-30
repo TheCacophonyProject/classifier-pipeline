@@ -791,10 +791,7 @@ class TrackDatabase:
                 [bounds.mass for bounds in track.bounds_history]
             )
             node_attrs["bounds_history"] = np.int16(
-                [
-                    [bounds.left, bounds.top, bounds.right, bounds.bottom]
-                    for bounds in track.bounds_history
-                ]
+                [bounds.to_array() for bounds in track.bounds_history]
             )
             f.flush()
 
