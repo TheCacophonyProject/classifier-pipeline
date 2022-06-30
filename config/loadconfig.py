@@ -24,7 +24,7 @@ from config.defaultconfig import DefaultConfig
 
 @attr.s
 class LoadConfig(DefaultConfig):
-    EXCLUDED_TAGS = ["part", "untagged", "unidentified"]
+    EXCLUDED_TAGS = ["poor tracking", "part", "untagged", "unidentified"]
 
     DEFAULT_GROUPS = {
         0: [
