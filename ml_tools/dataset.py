@@ -117,6 +117,7 @@ class Dataset:
             "segment_mass": 0,
             "no_data": 0,
             "not-confirmed": 0,
+            "tag_names": set(),
         }
         self.lbl_p = None
         self.numpy_data = None
@@ -274,10 +275,8 @@ class Dataset:
         tracks = self.db.get_clip_tracks(clip_id)
         for track_meta in tracks:
             if self.filter_track(clip_meta, track_meta):
-                # logging.info("filtering track %s", track_meta["id"])
                 return False
             track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
-            # self.tracks.append(track_header)
             if self.use_segments:
                 segment_frame_spacing = int(
                     round(self.segment_spacing * track_header.frames_per_second)
@@ -505,20 +504,22 @@ class Dataset:
             return True
         if track_meta["tag"] not in self.included_labels:
             self.filtered_stats["tags"] += 1
+            self.filtered_stats["tag_names"].add(track_meta["tag"])
             return True
-
         track_tags = track_meta.get("track_tags")
         if track_tags is not None:
             track_tags = json.loads(track_tags)
             excluded_tags = [
-                tag
+                tag["what"]
                 for tag in track_tags
                 if not tag.get("automatic", False)
                 and tag.get("what") in self.excluded_tags
             ]
             if len(excluded_tags) > 0:
+                self.filtered_stats["tag_names"] |= set(excluded_tags)
+
                 self.filtered_stats["tags"] += 1
-                return False
+                return True
         # always let the false-positives through as we need them even though they would normally
         # be filtered out.
         if "bounds_history" not in track_meta or len(track_meta["bounds_history"]) == 0:
