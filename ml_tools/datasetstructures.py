@@ -1017,8 +1017,6 @@ def get_segments(
 
         frame_indices = whole_indices.copy()
         np.random.shuffle(frame_indices)
-        random_sections = True
-        random_frames = False
         for i in range(segment_count):
             if (len(frame_indices) < segment_width and len(segments) > 1) or len(
                 frame_indices
