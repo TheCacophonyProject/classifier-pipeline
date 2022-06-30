@@ -182,6 +182,7 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
 
             loaded = np.array(loaded)
             np.random.shuffle(loaded)
+
             for data, sample in loaded:
                 try:
                     tf_example, num_annotations_skipped = create_tf_example(

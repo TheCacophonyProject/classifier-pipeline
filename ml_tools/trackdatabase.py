@@ -520,7 +520,6 @@ class TrackDatabase:
                 end_frame = track_node.attrs["frames"]
             track_start = track_node.attrs.get("start_frame")
             bad_frames = track_node.attrs.get("skipepd_frames", [])
-            print(track_start)
             result = []
             if original:
                 track_node = clip_node["original_frames"]

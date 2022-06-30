@@ -97,8 +97,7 @@ def show_cameras_tracks(dataset):
         count = "Tracks:"
         for label in dataset.labels:
             count = "{} {}: {}".format(count, label, camera.label_track_count(label))
-        print("Camera", id)
-        print(count)
+        print("Camera", id, count)
 
 
 def show_cameras_breakdown(dataset):
@@ -370,6 +369,7 @@ def main():
     create_tf_records = create_thermal_records
     if config.train.type == "IR":
         create_tf_records = create_ir_records
+
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         create_tf_records(dataset, dir, datasets[0].labels, num_shards=5)
