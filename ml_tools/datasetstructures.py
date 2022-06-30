@@ -939,9 +939,6 @@ def get_segments(
     segments = []
     mass_history = np.uint16([region.mass for region in regions])
     filtered_stats = {"segment_mass": 0, "too short": 0}
-    top_frames = True
-    random_frames = True
-
     if sample_frames is not None:
         frame_indices = [frame.frame_number for frame in sample_frames]
     else:
