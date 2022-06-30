@@ -327,7 +327,6 @@ def main():
     init_logging()
     args = parse_args()
     config = load_config(args.config_file)
-    print("min samples", args.min_samples)
     test_clips = config.build.test_clips()
     if test_clips is None:
         test_clips = []

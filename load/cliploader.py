@@ -181,9 +181,9 @@ class ClipLoader:
         excluded_tags = [
             tag
             for tag in track_tags
-            if not tag.get("automatic", False) and tag in self.config.load.excluded_tags
+            if not tag.get("automatic", False)
+            and tag.get("what") in self.config.load.excluded_tags
         ]
-
         if len(excluded_tags) > 0:
             return False
 
