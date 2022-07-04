@@ -113,7 +113,10 @@ class TrackingConfig(DefaultConfig):
 
     @classmethod
     def get_defaults(cls):
-        cls.get_type_defaults("thermal")
+        default_tracking = {}
+        default_tracking["thermal"] = cls.get_type_defaults("thermal")
+        default_tracking["IR"] = cls.get_type_defaults("IR")
+        return default_tracking
 
     @classmethod
     def get_type_defaults(cls, type):
