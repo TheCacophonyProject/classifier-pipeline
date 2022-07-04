@@ -110,10 +110,30 @@ tracking:
     # same as defaults
   IR:
     # defaults except for
+    areas_of_interest: {cropped_regions_strategy: cautious, min_mass: 50, pixel_variance: 50 }
+
     min_tracks: null
     min_dimension: 10 #IR
     frame_padding: 10 #IR
     edge_pixels: 0 #ir
+    motion:
+        #if set to True Temp_thresh is calculated based on the minimum background temperature
+        #of the preview, or whole clip depending on cptv type
+        dynamic_thresh: True
+        camera_thresholds:
+          ir:
+            camera_model: "lepton3"
+            # Default temperature threshold require for tracking
+            temp_thresh: None
+            # Minimum raw temperature difference between background and track
+            background_thresh: 15
+            # Min/Max temperature threshold value to use if dynamic threshold is true
+            max_temp_thresh: null
+            min_temp_thresh: null
+            default: True
+          # discard tracks that do not have enough delta within the window (i.e. pixels that change a lot)
+            track_min_delta: 1.0
+            track_max_delta: 150
 train:
   epochs: 3
   tfrecords: True
