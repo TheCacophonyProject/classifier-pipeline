@@ -100,6 +100,8 @@ class IRTrackExtractor(ClipTracker):
         count = 0
         background = None
         vidcap = cv2.VideoCapture(clip.source_file)
+        # could just do a rolling background average to speed this up
+        # in future can just use background frame
         while True:
             success, image = vidcap.read()
             if not success:
@@ -107,20 +109,21 @@ class IRTrackExtractor(ClipTracker):
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
             if count == 0:
-                background = gray
+                background = np.uint32(gray)
                 self.init_saliency(gray.shape[1], gray.shape[0])
                 clip.set_res(gray.shape[1], gray.shape[0])
                 clip.set_model("IR")
                 clip.set_video_stats(datetime.now())
 
             else:
-                background = np.minimum(background, gray)
+                background += gray
 
             count += 1
 
         vidcap.release()
         if background is None:
             return False
+        background = background / count
         background = cv2.GaussianBlur(background, (15, 15), 0)
 
         clip.update_background(background)
@@ -205,7 +208,7 @@ class IRTrackExtractor(ClipTracker):
                 r_mid_x = r_2[2] / 2.0 + r_2[0]
                 r_mid_y = r_2[3] / 2.0 + r_2[1]
                 distance = (mid_x - r_mid_x) ** 2 + (r_mid_y - mid_y) ** 2
-                distance = distance**0.5
+                distance = distance ** 0.5
 
                 # widest = max(rect[2], rect[3])
                 # hack short cut just take line from mid points as shortest distance subtract biggest width or hieght from each
@@ -267,7 +270,9 @@ class IRTrackExtractor(ClipTracker):
                 saliencyMap = cv2.resize(
                     saliencyMap, (clip.res_x, clip.res_y), cv2.INTER_NEAREST
                 )
-        backsub, _ = get_ir_back_filtered(clip.background, thermal)
+        backsub, _ = get_ir_back_filtered(
+            clip.background, thermal, clip.background_thresh
+        )
         prev_frame = clip.frame_buffer.get_last_frame()
         cur_frame = clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
         if not track:
@@ -296,7 +301,10 @@ class IRTrackExtractor(ClipTracker):
                 clip.active_tracks = set()
             else:
                 regions = self._get_regions_of_interest(
-                    clip, component_details, cur_frame, prev_frame
+                    clip,
+                    component_details,
+                    cur_frame,
+                    prev_frame,
                 )
                 self._apply_region_matchings(clip, regions)
 
@@ -346,7 +354,7 @@ class IRTrackExtractor(ClipTracker):
         return False
 
 
-def get_ir_back_filtered(background, thermal):
+def get_ir_back_filtered(background, thermal, back_thresh):
     """
     Calculates filtered frame from thermal
     :param thermal: the thermal frame
@@ -357,8 +365,8 @@ def get_ir_back_filtered(background, thermal):
     filtered = np.float32(thermal.copy())
 
     avg_change = 0
-    filtered = filtered - background
-    filtered[filtered < 0] = 0
+    filtered = abs(filtered - background)
+    filtered[filtered < back_thresh] = 0
     filtered, stats = normalize(filtered, new_max=255)
 
     # filtered[filtered > 10] += 30

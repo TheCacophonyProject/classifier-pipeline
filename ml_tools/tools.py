@@ -148,7 +148,7 @@ class Rectangle:
 
     @property
     def area(self):
-        return self.width * self.height
+        return int(self.width) * self.height
 
     def __repr__(self):
         return "(x{0},y{1},x2{2},y2{3})".format(
