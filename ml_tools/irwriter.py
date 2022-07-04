@@ -182,8 +182,9 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
     return example, 0
 
 
-def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
-
+def create_tf_records(
+    dataset, output_path, labels, back_thresh, num_shards=1, cropped=True
+):
     output_path = Path(output_path)
     if output_path.is_dir():
         logging.info("Clearing dir %s", output_path)
@@ -192,14 +193,12 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                 child.unlink()
     output_path.mkdir(parents=True, exist_ok=True)
     samples = dataset.samples
-    # keys = list(samples.keys())
     np.random.shuffle(samples)
 
     dataset.load_db()
     db = dataset.db
     total_num_annotations_skipped = 0
     num_labels = len(dataset.labels)
-    # pool = multiprocessing.Pool(4)
     logging.info("writing to output path: %s for %s samples", output_path, len(samples))
     lbl_counts = [0] * num_labels
 
@@ -245,7 +244,9 @@ def create_tf_records(dataset, output_path, labels, num_shards=1, cropped=True):
                         f.crop_by_region(region, out=f)
                         background = region.subimage(background)
                     f.mask = f.filtered
-                    f.filtered, _ = get_ir_back_filtered(background, f.thermal)
+                    f.filtered, _ = get_ir_back_filtered(
+                        background, f.thermal, back_thresh
+                    )
 
                     f.normalize()
                     assert f.thermal.shape == f.filtered.shape

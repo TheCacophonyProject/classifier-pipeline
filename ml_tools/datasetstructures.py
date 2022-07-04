@@ -306,6 +306,7 @@ class TrackHeader:
         self.sample_frames = []
         sample_frames_indices is None
         if sample_frames_indices is not None:
+            # shouldnt need to use this ever
             for frame_num, frame_temp in zip(
                 sample_frames_indices, self.frame_temp_median
             ):
@@ -327,10 +328,17 @@ class TrackHeader:
                 self.sample_frames.append(f)
         else:
             frame_numbers = list(self.regions_by_frame.keys())
+            frame_numbers = [
+                frame
+                for frame in frame_numbers
+                if (skipped_frames is None or frame not in skipped_frames)
+                and (ffc_frames is None or frame not in ffc_frames)
+            ]
             frame_numbers.sort()
             for frame_num, frame_temp in zip(frame_numbers, self.frame_temp_median):
+
                 region = self.regions_by_frame[frame_num]
-                if region.mass == 0:
+                if region.mass == 0 or region.blank:
                     continue
                 f = FrameSample(
                     self.clip_id,
@@ -501,9 +509,10 @@ class TrackHeader:
         )
 
         ffc_frames = clip_meta.get("ffc_frames", [])
-        sample_frames = track_meta.get("sample_frames")
-        if sample_frames is not None:
-            sample_frames = sample_frames + track_start_frame
+        sample_frames = None
+        # sample_frames = track_meta.get("sample_frames")
+        # if sample_frames is not None:
+        #     sample_frames = sample_frames + track_start_frame
         skipped_frames = track_meta.get("skipped_frames")
         regions = {}
         f_i = 0

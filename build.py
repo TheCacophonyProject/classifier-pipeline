@@ -361,17 +361,24 @@ def main():
 
     print_counts(dataset, *datasets)
     print("split data")
-    # return
     base_dir = config.tracks_folder
     record_dir = os.path.join(base_dir, "training-data/")
     dataset_counts = {}
     create_tf_records = create_thermal_records
     if config.train.type == "IR":
+        threshold = (
+            config.tracking[config.train.type]
+            .motion.threshold_for_model(config.train.type)
+            .background_thresh
+        )
+
         create_tf_records = create_ir_records
+    else:
+        threshold = None
 
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
-        create_tf_records(dataset, dir, datasets[0].labels, num_shards=5)
+        create_tf_records(dataset, dir, datasets[0].labels, threshold, num_shards=5)
         counts = {}
         for label in dataset.labels:
             count = len(dataset.samples_by_label.get(label, []))

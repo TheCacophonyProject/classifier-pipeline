@@ -755,7 +755,7 @@ class TrackDatabase:
                     )
                     frame_node[:, :, :] = cropped_array
                 else:
-                    skipped_frames.append(frame_i)
+                    skipped_frames.append(frame_i + track.start_frame)
 
             # write out attributes
             track_stats = track.get_stats()

@@ -327,7 +327,7 @@ class ClipTracker(ABC):
         # these are probably glitches anyway, or don't contain enough information.
         if len(track) < self.config.min_duration_secs * clip.frames_per_second:
             self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
-            clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
+            clip.filtered_tracks.append(("Track filtered.  Too short", track))
             return True
 
         # discard tracks that do not move enough

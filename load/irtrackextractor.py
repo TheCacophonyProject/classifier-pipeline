@@ -223,12 +223,16 @@ class IRTrackExtractor(ClipTracker):
                 )
 
                 if distance < MAX_GAP or within:
+                    cur_right = rect[0] + rect[2]
+                    cur_bottom = rect[0] + rect[2]
+
                     rect[0] = min(rect[0], r_2[0])
                     rect[1] = min(rect[1], r_2[1])
-                    rect[2] = max(rect[0] + rect[2], r_2[0] + r_2[2])
+                    rect[2] = max(cur_right, r_2[0] + r_2[2])
                     rect[3] = max(rect[1] + rect[3], r_2[1] + r_2[3])
                     rect[2] -= rect[0]
                     rect[3] -= rect[1]
+
                     # print("second merged ", rect)
                     merged = True
                     # break
@@ -285,8 +289,13 @@ class IRTrackExtractor(ClipTracker):
             saliencyMap[:] = 0
         else:
             num, mask, component_details = theshold_saliency(saliencyMap)
+            # logging.info("at %s", clip.current_frame)
+            # for region in component_details:
+            #     logging.info("region is %s", region)
             component_details = self.merge_components(component_details[1:])
-
+            # logging.info("at %s", clip.current_frame)
+            # for region in component_details:
+            #     logging.info("region becomes %s", region)
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.current_frame in track.frame_list:
@@ -315,10 +324,9 @@ class IRTrackExtractor(ClipTracker):
         # return False
         # discard any tracks that are less min_duration
         # these are probably glitches anyway, or don't contain enough information.
-
         if len(track) < self.config.min_duration_secs * clip.frames_per_second:
             self.print_if_verbose("Track filtered. Too short, {}".format(len(track)))
-            clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
+            clip.filtered_tracks.append(("Track filtered.  Too short", track))
             return True
 
         # discard tracks that do not move enough

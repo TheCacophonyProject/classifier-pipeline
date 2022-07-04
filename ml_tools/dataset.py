@@ -102,12 +102,15 @@ class Dataset:
             self.included_labels = config.labels
             self.segment_min_avg_mass = config.build.segment_min_avg_mass
             self.excluded_tags = config.load.excluded_tags
+            self.min_frame_mass = config.build.min_frame_mass
+
         else:
             # number of seconds each segment should be
             self.segment_length = 25
             # number of seconds segments are spaced apart
             self.segment_spacing = 1
             self.segment_min_avg_mass = None
+            self.min_frame_mass = 16
         self.filtered_stats = {
             "confidence": 0,
             "trap": 0,
@@ -271,6 +274,8 @@ class Dataset:
         return [counter, len(clip_ids)]
 
     def load_clip(self, clip_id):
+        if clip_id != "4827":
+            return False
         clip_meta = self.db.get_clip_meta(clip_id)
         tracks = self.db.get_clip_tracks(clip_id)
         for track_meta in tracks:
@@ -387,13 +392,25 @@ class Dataset:
                 result += 1
         return result
 
-    def filter_sample(self, sample):
+    def filter_frame_sample(self, sample):
         if sample.label not in self.included_labels:
             self.filtered_stats["tags"] += 1
             return True
 
+        if self.min_frame_mass and sample.track_bounds[0].mass < self.min_frame_mass:
+            print("min mass", self.min_frame_mass, sample.track_bounds[0].mass)
+
+            return True
+        return False
+
     def add_clip_sample_mappings(self, sample):
-        if self.filter_sample(sample):
+        print(
+            "adding clip sample",
+            sample.frame_number,
+            sample.track_bounds[0],
+            sample.track_bounds[0].mass,
+        )
+        if self.filter_frame_sample(sample):
             return False
         self.samples.append(sample)
         if self.label_mapping and sample.label in self.label_mapping:

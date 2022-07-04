@@ -194,12 +194,6 @@ def theshold_saliency(image, otsus=False, threshold=100, kernel=(15, 15)):
     _, image = cv2.threshold(image, threshold, 255, flags)
 
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
-    #
-    # import matplotlib.pyplot as plt
-    #
-    # imgplot = plt.imshow(image)
-    # plt.show()
-
     return components, small_mask, stats
 
 
