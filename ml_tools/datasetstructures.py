@@ -478,7 +478,7 @@ class TrackHeader:
     @property
     def bin_id(self):
         """Unique name of this track."""
-        return "{}".format(self.clip_id)
+        return "{}-{}".format(self.clip_id, self.track_id)
 
     @property
     def weight(self):
@@ -745,7 +745,9 @@ class FrameSample(Sample):
     @property
     def bin_id(self):
         """Unique name of this segments track."""
-        return f"{self.clip_id}-{self.track_id}"
+        # break into 50 frame keys, since we dont have much data this means multiple sets can have same clip
+        i = int(self.frame_number / 50)
+        return f"{self.clip_id}-{self.track_id}-{i}"
 
 
 class SegmentHeader(Sample):

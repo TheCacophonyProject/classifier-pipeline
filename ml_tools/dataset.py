@@ -274,8 +274,6 @@ class Dataset:
         return [counter, len(clip_ids)]
 
     def load_clip(self, clip_id):
-        if clip_id != "4827":
-            return False
         clip_meta = self.db.get_clip_meta(clip_id)
         tracks = self.db.get_clip_tracks(clip_id)
         for track_meta in tracks:
@@ -301,7 +299,8 @@ class Dataset:
             else:
                 sample_frames = track_header.get_sample_frames()
                 for sample in sample_frames:
-                    self.add_clip_sample_mappings(sample)
+                    if sample.region.mass > track_header.median_mass:
+                        self.add_clip_sample_mappings(sample)
             return True
 
     #
@@ -398,18 +397,11 @@ class Dataset:
             return True
 
         if self.min_frame_mass and sample.track_bounds[0].mass < self.min_frame_mass:
-            print("min mass", self.min_frame_mass, sample.track_bounds[0].mass)
-
             return True
         return False
 
     def add_clip_sample_mappings(self, sample):
-        print(
-            "adding clip sample",
-            sample.frame_number,
-            sample.track_bounds[0],
-            sample.track_bounds[0].mass,
-        )
+
         if self.filter_frame_sample(sample):
             return False
         self.samples.append(sample)
