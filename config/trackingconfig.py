@@ -172,7 +172,7 @@ class TrackingConfig(DefaultConfig):
             },
         )
         if type == "IR":
-            default_tracking.areas_of_interest["pixel_variance"] = 50
+            default_tracking.areas_of_interest["pixel_variance"] = 20
             default_tracking.areas_of_interest["min_mass"] = 50
             default_tracking.filters["track_min_offset"] = 16
             default_tracking.track_min_offset = 16
@@ -184,9 +184,9 @@ class TrackingConfig(DefaultConfig):
             default_tracking.type = "IR"
             default_tracking.params = {
                 "base_distance_change": 11250,
-                "min_mass_change": 20 * 4,
+                "min_mass_change": None,
                 "restrict_mass_after": 1.5,
-                "mass_change_percent": 0.55,
+                "mass_change_percent": None,
                 "max_distance": 30752,
                 "max_blanks": 18,
                 "velocity_multiplier": 8,

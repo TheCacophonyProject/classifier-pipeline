@@ -158,7 +158,6 @@ class ClipTrackExtractor(ClipTracker):
             _, mask, component_details = detect_objects(
                 filtered.copy(), otsus=False, threshold=threshold, kernel=(5, 5)
             )
-        prev_frame = clip.frame_buffer.get_last_frame()
         cur_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
         if not track:
             return
@@ -169,16 +168,14 @@ class ClipTrackExtractor(ClipTracker):
                     track.add_frame_for_existing_region(
                         cur_frame,
                         threshold,
-                        prev_frame.filtered,
+                        clip.frame_buffer.current_frame.filtered,
                     )
         else:
             regions = []
             if ffc_affected:
                 clip.active_tracks = set()
             else:
-                regions = self._get_regions_of_interest(
-                    clip, component_details[1:], cur_frame, prev_frame
-                )
+                regions = self._get_regions_of_interest(clip, component_details[1:])
                 self._apply_region_matchings(clip, regions)
 
             clip.region_history.append(regions)

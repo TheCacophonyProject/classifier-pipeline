@@ -82,6 +82,7 @@ class IRTrackExtractor(ClipTracker):
         if self.scale:
             self.frame_padding = int(scale * self.frame_padding)
             self.min_dimension = int(scale * self.min_dimension)
+        self.background = None
 
     def parse_clip(self, clip, process_background=False, track=True):
         """
@@ -100,42 +101,21 @@ class IRTrackExtractor(ClipTracker):
         count = 0
         background = None
         vidcap = cv2.VideoCapture(clip.source_file)
-        # could just do a rolling background average to speed this up
-        # in future can just use background frame
         while True:
             success, image = vidcap.read()
             if not success:
                 break
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-            if count == 0:
+            if clip.current_frame == -1:
                 background = np.uint32(gray)
                 self.init_saliency(gray.shape[1], gray.shape[0])
                 clip.set_res(gray.shape[1], gray.shape[0])
                 clip.set_model("IR")
                 clip.set_video_stats(datetime.now())
-
-            else:
-                background += gray
-
-            count += 1
-
-        vidcap.release()
-        if background is None:
-            return False
-        background = background / count
-        background = cv2.GaussianBlur(background, (15, 15), 0)
-
-        clip.update_background(background)
-        vidcap = cv2.VideoCapture(clip.source_file)
-        while True:
-            success, image = vidcap.read()
-            if not success:
-                break
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                self.background = Background(gray)
             self.process_frame(clip, gray, track=track)
-            # if clip.current_frame > 200:
-            #     break
+
         vidcap.release()
 
         if not clip.from_metadata and track:
@@ -232,6 +212,7 @@ class IRTrackExtractor(ClipTracker):
                     rect[3] = max(rect[1] + rect[3], r_2[1] + r_2[3])
                     rect[2] -= rect[0]
                     rect[3] -= rect[1]
+                    rect[4] += r_2[4]
 
                     # print("second merged ", rect)
                     merged = True
@@ -275,10 +256,10 @@ class IRTrackExtractor(ClipTracker):
                     saliencyMap, (clip.res_x, clip.res_y), cv2.INTER_NEAREST
                 )
         backsub, _ = get_ir_back_filtered(
-            clip.background, thermal, clip.background_thresh
+            self.background.background, thermal, clip.background_thresh
         )
-        prev_frame = clip.frame_buffer.get_last_frame()
         cur_frame = clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
+        self.background.update_background(cur_frame)
         if not track:
             return
         threshold = 0
@@ -289,6 +270,7 @@ class IRTrackExtractor(ClipTracker):
             saliencyMap[:] = 0
         else:
             num, mask, component_details = theshold_saliency(saliencyMap)
+
             # logging.info("at %s", clip.current_frame)
             # for region in component_details:
             #     logging.info("region is %s", region)
@@ -302,7 +284,7 @@ class IRTrackExtractor(ClipTracker):
                     track.add_frame_for_existing_region(
                         cur_frame,
                         threshold,
-                        prev_frame.filtered,
+                        clip.frame_buffer.current_frame.filtered,
                     )
         else:
             regions = []
@@ -312,8 +294,6 @@ class IRTrackExtractor(ClipTracker):
                 regions = self._get_regions_of_interest(
                     clip,
                     component_details,
-                    cur_frame,
-                    prev_frame,
                 )
                 self._apply_region_matchings(clip, regions)
 
@@ -361,6 +341,22 @@ class IRTrackExtractor(ClipTracker):
 
         return False
 
+    def get_delta_frame(self, clip):
+        frame = clip.frame_buffer.current_frame
+        prev_i = max(0, clip.current_frame - 50)
+        if prev_i == frame.frame_number:
+            return None, None
+        prev_frame = clip.frame_buffer.get_frame(prev_i)
+
+        filtered, _ = normalize(frame.filtered, new_max=255)
+        prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
+        delta_filtered = np.abs(np.float32(filtered) - np.float32(prev_filtered))
+
+        thermal, _ = normalize(frame.thermal, new_max=255)
+        prev_thermal, _ = normalize(prev_frame.thermal, new_max=255)
+        delta_thermal = np.abs(np.float32(thermal) - np.float32(prev_thermal))
+        return delta_thermal, delta_filtered
+
 
 def get_ir_back_filtered(background, thermal, back_thresh):
     """
@@ -379,3 +375,19 @@ def get_ir_back_filtered(background, thermal, back_thresh):
 
     # filtered[filtered > 10] += 30
     return filtered, 0
+
+
+class Background:
+    def __init__(self, frame):
+        self._background = np.float32(frame)
+        self.frames = 1
+
+    def update_background(self, frame):
+        background = self.background
+        new_thermal = np.where(frame.filtered > 0, background, frame.thermal)
+        self._background += new_thermal
+        self.frames += 1
+
+    @property
+    def background(self):
+        return self._background / self.frames

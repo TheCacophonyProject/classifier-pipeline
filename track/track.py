@@ -104,23 +104,36 @@ class RegionTracker(Tracker):
     def last_bound(self):
         return self._last_bound
 
+    def get_size_change(self, current_area, region: Region):
+        """
+        Gets a value representing the difference in regions sizes
+        """
+
+        # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
+        # area is padded with 50 pixels so small regions don't change too much
+        size_difference = abs(region.area - current_area) / (current_area + 50)
+
+        return size_difference
+
     def match(self, regions, track):
         scores = []
         avg_mass = track.average_mass()
         max_distances = self.get_max_distance_change(track)
         for region in regions:
-            size_change = get_size_change(self.last_bound, region)
+            size_change = self.get_size_change(track.average_area(), region)
             distances = self.last_bound.average_distance(region)
 
             max_size_change = get_max_size_change(track, region)
             max_mass_change = self.get_max_mass_change_percent(track, avg_mass)
+
             logging.debug(
-                "Track %s %s has max size change %s, distances %s to region %s",
+                "Track %s %s has max size change %s, distances %s to region %s size change %s",
                 track,
                 track.last_bound,
                 max_size_change,
                 distances,
                 region,
+                size_change,
             )
             # only for thermal
             if type == "thermal":
@@ -284,18 +297,6 @@ def get_max_size_change(track, region):
         region_percent = 2
 
     return region_percent
-
-
-def get_size_change(last_bound: Region, region: Region):
-    """
-    Gets a value representing the difference in regions sizes
-    """
-
-    # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
-    # area is padded with 50 pixels so small regions don't change too much
-    size_difference = abs(region.area - last_bound.area) / (last_bound.area + 50)
-
-    return size_difference
 
 
 class Track:
@@ -583,8 +584,23 @@ class Track:
         self.prev_frame_num = frame.frame_number
         self.current_frame_num += 1
 
+    def average_area(self):
+        """Average mass of last 5 frames that weren't blank"""
+        avg_area = 0
+        count = 0
+        for i in range(len(self.bounds_history)):
+            bound = self.bounds_history[-i - 1]
+            if not bound.blank:
+                avg_area += bound.area
+                count += 1
+            if count == 5:
+                break
+        if count == 0:
+            return 0
+        return avg_area / count
+
     def average_mass(self):
-        """Average mass of last 3 frames that weren't blank"""
+        """Average mass of last 5 frames that weren't blank"""
         avg_mass = 0
         count = 0
         for i in range(len(self.bounds_history)):
@@ -592,7 +608,7 @@ class Track:
             if not bound.blank:
                 avg_mass += bound.mass
                 count += 1
-            if count == 3:
+            if count == 5:
                 break
         if count == 0:
             return 0
@@ -637,7 +653,7 @@ class Track:
             if region.blank or self.bounds_history[i - 1].blank:
                 continue
             if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
-                distance = (vx**2 + vy**2) ** 0.5
+                distance = (vx ** 2 + vy ** 2) ** 0.5
                 movement += distance
                 offset = eucl_distance(first_point, region.mid)
                 max_offset = max(max_offset, offset)
@@ -673,7 +689,7 @@ class Track:
                 else:
                     jitter_smaller += 1
 
-        movement_points = (movement**0.5) + max_offset
+        movement_points = (movement ** 0.5) + max_offset
         delta_points = delta_std * 25.0
         jitter_percent = int(
             round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))

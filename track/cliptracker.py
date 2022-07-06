@@ -179,19 +179,21 @@ class ClipTracker(ABC):
                     )
                 )
 
-    def get_delta_frame(self, clip, frame, prev_frame):
+    def get_delta_frame(self, clip):
+        frame = clip.frame_buffer.current_frame
+        prev_frame = clip.frame_buffer.prev_frame
         if prev_frame is None:
-            return None
+            return None, None
         filtered, _ = normalize(frame.filtered, new_max=255)
         prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
         delta_filtered = np.abs(np.float32(filtered) - np.float32(prev_filtered))
 
-        # thermal, _ = normalize(frame.thermal, new_max=255)
-        # prev_thermal, _ = normalize(prev_frame.thermal, new_max=255)
-        # delta_thermal = np.abs(np.float32(thermal) - np.float32(prev_thermal))
-        return delta_filtered
+        thermal, _ = normalize(frame.thermal, new_max=255)
+        prev_thermal, _ = normalize(prev_frame.thermal, new_max=255)
+        delta_thermal = np.abs(np.float32(thermal) - np.float32(prev_thermal))
+        return delta_thermal, delta_filtered
 
-    def _get_regions_of_interest(self, clip, component_details, frame, prev_frame=None):
+    def _get_regions_of_interest(self, clip, component_details):
         """
         Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
         rectangles.
@@ -199,7 +201,9 @@ class ClipTracker(ABC):
         :return: regions of interest, mask frame
         """
 
-        delta_filtered = self.get_delta_frame(clip, frame, prev_frame)
+        delta_thermal, delta_filtered = self.get_delta_frame(
+            clip,
+        )
 
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.frame_padding
@@ -221,10 +225,19 @@ class ClipTracker(ABC):
             )
             # GP this needs to be checked for themals 29/06/2022
             if clip.type == "IR":
-                sub_delta = region.subimage(frame.filtered)
-                sub_mass = len(sub_delta[sub_delta > 0])
-                region.mass = sub_mass
+                if delta_thermal is not None:
+                    sub_delta = region.subimage(delta_thermal)
+                    previous_delta_mass = len(
+                        sub_delta[sub_delta > clip.background_thresh]
+                    )
+                    if previous_delta_mass == 0:
+                        logging.info("No mass from previous so skipping")
+                        continue
+                    region.pixel_variance = np.var(sub_delta)
 
+            elif delta_filtered is not None:
+                region_difference = region.subimage(delta_filtered)
+                region.pixel_variance = np.var(region_difference)
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)
@@ -252,10 +265,9 @@ class ClipTracker(ABC):
                     )
                 )
             region.enlarge(padding, max=clip.crop_rectangle)
-            if delta_filtered is not None:
-                region_difference = region.subimage(delta_filtered)
-                region.pixel_variance = np.var(region_difference)
+
             # filter out regions that are probably just noise
+
             if (
                 region.pixel_variance < self.config.aoi_pixel_variance
                 and region.mass < self.config.aoi_min_mass
