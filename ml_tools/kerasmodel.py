@@ -424,6 +424,7 @@ class KerasModel(Interpreter):
                 weights=weights,
                 stop_on_empty_dataset=stop_on_empty_dataset,
                 distribution=distribution,
+                preprocess_fn=self.preprocess_fn,
             )
         return get_ir_dataset(
             pattern,
@@ -437,6 +438,7 @@ class KerasModel(Interpreter):
             weights=weights,
             stop_on_empty_dataset=stop_on_empty_dataset,
             distribution=distribution,
+            preprocess_fn=self.preprocess_fn,
         )
 
     def train_model_tfrecords(
@@ -785,7 +787,7 @@ class KerasModel(Interpreter):
         segments = track.get_segments(
             clip.ffc_frames,
             thermal_median,
-            self.params.square_width**2,
+            self.params.square_width ** 2,
             repeats=4,
             segment_frames=segment_frames,
         )

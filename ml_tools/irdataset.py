@@ -18,7 +18,13 @@ AUTOTUNE = tf.data.AUTOTUNE
 
 
 def load_dataset(
-    filenames, image_size, num_labels, deterministic=False, labeled=True, augment=False
+    filenames,
+    image_size,
+    num_labels,
+    deterministic=False,
+    labeled=True,
+    augment=False,
+    preprocess_fn=None,
 ):
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = (
@@ -37,10 +43,12 @@ def load_dataset(
             num_labels=num_labels,
             labeled=labeled,
             augment=augment,
+            preprocess_fn=preprocess_fn,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
+
     return dataset
 
 
@@ -70,6 +78,7 @@ def get_resampled(
     weights=None,
     stop_on_empty_dataset=True,
     distribution=None,
+    preprocess_fn=None,
 ):
 
     num_labels = len(labels)
@@ -123,6 +132,8 @@ def get_resampled(
             num_labels,
             deterministic=deterministic,
             labeled=labeled,
+            augment=augment,
+            preprocess_fn=preprocess_fn,
         )
         dataset = dataset.shuffle(2048, reshuffle_each_iteration=True)
 
@@ -212,7 +223,9 @@ def get_dataset(
     return dataset
 
 
-def read_tfrecord(example, image_size, num_labels, labeled, augment):
+def read_tfrecord(
+    example, image_size, num_labels, labeled, augment, preprocess_fn=None
+):
     tfrecord_format = {
         "image/thermalencoded": tf.io.FixedLenFeature((), tf.string),
         "image/filteredencoded": tf.io.FixedLenFeature((), tf.string),
@@ -221,6 +234,15 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment):
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
 
+    data_augmentation = tf.keras.Sequential(
+        [
+            tf.keras.layers.RandomFlip("horizontal"),
+            tf.keras.layers.RandomRotation(0.1, fill_mode="constant", fill_value=0),
+            tf.keras.layers.RandomZoom(0.1),
+            tf.keras.layers.RandomBrightness(0.2),
+            tf.keras.layers.RandomContrast(0.1),
+        ]
+    )
     example = tf.io.parse_single_example(example, tfrecord_format)
     image = decode_image(
         example["image/thermalencoded"],
@@ -228,6 +250,10 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment):
         image_size,
         augment,
     )
+    if augment:
+        image = data_augmentation(image)
+    if preprocess_fn is not None:
+        image = preprocess_fn(image)
 
     if labeled:
         label = tf.cast(example["image/class/label"], tf.int32)
@@ -241,19 +267,10 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment):
 def decode_image(image, filtered, image_size, augment):
     image = tf.image.decode_jpeg(image, channels=1)
     filtered = tf.image.decode_jpeg(filtered, channels=1)
-    if augment:
-        image = tf.image.random_brightness(image, 0.2)
-        rand = tf.random.uniform(shape=(), minval=0, maxval=1, dtype=tf.float32)
-        if tf.math.greater_equal(rand, 0.5):
-            image = tf.image.flip_left_right(image)
-            filtered = tf.image.flip_left_right(filtered)
     image = tf.concat((image, image, filtered), axis=2)
-    if augment:
-        image = tf.image.random_contrast(image, 0, 1, seed=None)
 
     image = tf.cast(image, tf.float32)
     image = tf.image.resize_with_pad(image, image_size[0], image_size[1])
-    image = tf.keras.applications.inception_v3.preprocess_input(image)
     return image
 
 
@@ -281,19 +298,38 @@ def main():
         labels,
         # distribution=meta["counts"]["test"],
         stop_on_empty_dataset=True,
+        augment=True,
+        # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     global remapped
     meta["remapped"] = remapped
     with open(file, "w") as f:
         json.dump(meta, f)
+
     for e in range(4):
-        print("epoch", e)
-        true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        c = Counter(list(true_categories))
-        print("epoch is size", len(true_categories))
-        for i in range(len(labels)):
-            print("after have", labels[i], c[i])
+        for x, y in resampled_ds:
+            show_batch(x, y, labels)
+        # print("epoch", e)
+        # true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
+        # true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        # c = Counter(list(true_categories))
+        # print("epoch is size", len(true_categories))
+        # for i in range(len(labels)):
+        #     print("after have", labels[i], c[i])
+
+
+def show_batch(image_batch, label_batch, labels):
+    plt.figure(figsize=(10, 10))
+    print("images in batch", len(image_batch))
+    num_images = min(len(image_batch), 25)
+    for n in range(num_images):
+        print("imageas max is", np.amax(image_batch[n]), np.amin(image_batch[n]))
+        # print("image bach", image_batch[n])
+        ax = plt.subplot(5, 5, n + 1)
+        plt.imshow(np.uint8(image_batch[n]))
+        plt.title(labels[np.argmax(label_batch[n])])
+        plt.axis("off")
+    plt.show()
 
 
 if __name__ == "__main__":

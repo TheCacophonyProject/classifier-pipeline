@@ -100,6 +100,7 @@ def get_resampled(
             num_labels,
             deterministic=deterministic,
             labeled=labeled,
+            augment=augment,
         )
         dataset = dataset.shuffle(2048, reshuffle_each_iteration=True)
 
