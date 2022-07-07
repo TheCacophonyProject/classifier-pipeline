@@ -118,7 +118,8 @@ def get_resampled(
     # if "human" in remapped:
     #     weights[labels.index("human")] = 0
     r_l = list(remapped.keys())
-    weights[r_l.index("human")] = 0
+    if "human" in r_l:
+        weights[r_l.index("human")] = 0
 
     # weights[labels.index("cat")] = 0
 
