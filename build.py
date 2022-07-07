@@ -192,12 +192,22 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     num_test_samples = min(TEST_TRACKS, max(total * 0.05, min_t)) - existing_test_count
     # should have test covered by test set
 
-    num_validate_samples = max(total_tracks * 0.15, min_t)
-    num_test_samples = (
+    num_validate_tracks = max(total_tracks * 0.15, min_t)
+    num_test_tracks = (
         min(TEST_TRACKS, max(total_tracks * 0.05, min_t)) - existing_test_count
     )
     tracks = set()
-    print("looking for", num_validate_samples, " tracks", total_tracks)
+    print(
+        label,
+        "looking for",
+        num_validate_tracks,
+        " tracks",
+        total_tracks,
+        " samples",
+        num_validate_samples,
+        "from",
+        total,
+    )
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:
@@ -210,14 +220,15 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
         samples_by_bin[sample_bin] = []
         last_index = i
         track_count = len(tracks)
-        if track_count >= num_validate_samples:
+        if track_count >= num_validate_samples and track_count >= num_validate_tracks:
             # 100 more for test
             if add_to == validate_c:
                 add_to = test_c
                 camera_type = "test"
                 if num_test_samples <= 0:
                     break
-                num_validate_samples += num_test_samples
+                num_validate_samples = num_test_samples
+                num_validate_tracks = num_test_tracks
             else:
                 break
 
