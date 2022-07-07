@@ -208,6 +208,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
         "from",
         total,
     )
+
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:
@@ -220,7 +221,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
         samples_by_bin[sample_bin] = []
         last_index = i
         track_count = len(tracks)
-        if track_count >= num_validate_samples and track_count >= num_validate_tracks:
+        if label_count >= num_validate_samples and track_count >= num_validate_tracks:
             # 100 more for test
             if add_to == validate_c:
                 add_to = test_c
