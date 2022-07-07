@@ -22,8 +22,8 @@ from ml_tools.thermalwriter import create_tf_records as create_thermal_records
 
 import numpy as np
 
-MIN_SAMPLES = 100
-TEST_TRACKS = 100
+MIN_SAMPLES = 1
+TEST_TRACKS = 1
 
 
 def load_config(config_file):
@@ -160,11 +160,13 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
             samples, min(len(samples), max_samples), replace=False
         )
     samples_by_bin = {}
+    total_tracks = set()
     for sample in samples:
+        total_tracks.add(sample.track_id)
         if sample.bin_id not in samples_by_bin:
             samples_by_bin[sample.bin_id] = []
         samples_by_bin[sample.bin_id].append(sample)
-
+    total_tracks = len(total_tracks)
     sample_bins = [sample.bin_id for sample in samples]
     if len(sample_bins) == 0:
         return None, None, None
@@ -189,17 +191,26 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     num_validate_samples = max(total * 0.15, min_t)
     num_test_samples = min(TEST_TRACKS, max(total * 0.05, min_t)) - existing_test_count
     # should have test covered by test set
+
+    num_validate_samples = max(total_tracks * 0.15, min_t)
+    num_test_samples = (
+        min(TEST_TRACKS, max(total_tracks * 0.05, min_t)) - existing_test_count
+    )
+    tracks = set()
+    print("looking for", num_validate_samples, " tracks", total_tracks)
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:
             if sample.label == label:
+                tracks.add(sample.track_id)
                 label_count += 1
 
             sample.camera = "{}-{}".format(sample.camera, camera_type)
             add_to.add_sample(sample)
         samples_by_bin[sample_bin] = []
         last_index = i
-        if label_count >= num_validate_samples:
+        track_count = len(tracks)
+        if track_count >= num_validate_samples:
             # 100 more for test
             if add_to == validate_c:
                 add_to = test_c
