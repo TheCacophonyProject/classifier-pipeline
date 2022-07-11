@@ -708,6 +708,7 @@ class FrameSample(Sample):
         weight,
         camera,
         start_time,
+        augment=False,
     ):
         self.id = FrameSample._frame_id
         FrameSample._frame_id += 1
@@ -721,6 +722,25 @@ class FrameSample(Sample):
         self.weight = weight
         self.camera = camera
         self.start_time = start_time
+        self.augment = augment
+
+    def copy(self):
+        f = FrameSample(
+            clip_id=self.clip_id,
+            track_id=self.track_id,
+            frame_num=self.frame_number,
+            label=self.label,
+            temp_median=self.temp_median,
+            velocity=self.velocity,
+            region=self.region,
+            weight=self.weight,
+            camera=self.camera,
+            start_time=self.start_time,
+            augment=self.augment,
+        )
+        FrameSample._frame_id += 1
+
+        return f
 
     @property
     def sample_weight(self):

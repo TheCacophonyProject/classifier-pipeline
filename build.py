@@ -22,8 +22,11 @@ from ml_tools.thermalwriter import create_tf_records as create_thermal_records
 
 import numpy as np
 
-MIN_SAMPLES = 1
-TEST_TRACKS = 1
+MAX_TEST_TRACKS = 100
+MAX_TEST_SAMPLES = 100
+
+MIN_SAMPLES = 100
+MIN_TRACKS = 100
 
 
 def load_config(config_file):
@@ -189,13 +192,22 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     if label in ["vehicle", "human"]:
         min_t = 10
     num_validate_samples = max(total * 0.15, min_t)
-    num_test_samples = min(TEST_TRACKS, max(total * 0.05, min_t)) - existing_test_count
+    num_test_samples = (
+        min(MAX_TEST_SAMPLES, max(total * 0.05, min_t)) - existing_test_count
+    )
     # should have test covered by test set
+
+    min_t = MIN_TRACKS
+
+    if label in ["vehicle", "human"]:
+        min_t = 1
 
     num_validate_tracks = max(total_tracks * 0.15, min_t)
     num_test_tracks = (
-        min(TEST_TRACKS, max(total_tracks * 0.05, min_t)) - existing_test_count
+        min(MAX_TEST_TRACKS, max(total_tracks * 0.05, min_t)) - existing_test_count
     )
+    track_limit = num_validate_tracks
+    sample_limit = num_test_samples
     tracks = set()
     print(
         label,
@@ -221,15 +233,15 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
         samples_by_bin[sample_bin] = []
         last_index = i
         track_count = len(tracks)
-        if label_count >= num_validate_samples and track_count >= num_validate_tracks:
+        if label_count >= sample_limit and track_count >= track_limit:
             # 100 more for test
             if add_to == validate_c:
                 add_to = test_c
                 camera_type = "test"
                 if num_test_samples <= 0:
                     break
-                num_validate_samples = num_test_samples
-                num_validate_tracks = num_test_tracks
+                sample_limit = num_test_samples
+                track_limit = num_test_tracks
             else:
                 break
 
@@ -399,6 +411,27 @@ def main():
     else:
         threshold = None
 
+    train_set = datasets[0]
+    aug_percent = 0.4
+    for l, samples in train_set.samples_by_label.items():
+        track_dic = {}
+        for s in samples:
+            track_dic.setdefault(s.track_id, []).append(s)
+        # track_dic = dict((x.track_id, x) for x in samples)
+
+        for track, s in track_dic.items():
+            augment_samples = int(aug_percent * len(s))
+            print("augmenting", augment_samples)
+            # words = ['banana', 'pie', 'Washington', 'book']
+            samples_by_mass = sorted(s, key=lambda s: s.region.mass, reverse=True)
+            samples = np.random.choice(samples_by_mass, augment_samples, replace=False)
+            new_samples = []
+            for s in samples:
+                new = s.copy()
+                new.augment = True
+                new_samples.append(new)
+            train_set.add_samples(new_samples)
+    print_counts(dataset, *datasets)
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         create_tf_records(dataset, dir, datasets[0].labels, threshold, num_shards=5)

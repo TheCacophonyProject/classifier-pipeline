@@ -43,8 +43,11 @@ from pycocotools import mask
 import tensorflow as tf
 from . import tfrecord_util
 from ml_tools import tools
-from ml_tools.imageprocessing import normalize
+from ml_tools.imageprocessing import normalize, rotate
 from load.irtrackextractor import get_ir_back_filtered
+import cv2
+import random
+import math
 
 crop_rectangle = tools.Rectangle(0, 0, 640 - 1, 480 - 1)
 
@@ -183,7 +186,7 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
 
 
 def create_tf_records(
-    dataset, output_path, labels, back_thresh, num_shards=1, cropped=True
+    dataset, output_path, labels, back_thresh, num_shards=1, cropped=True, augment=False
 ):
     output_path = Path(output_path)
     if output_path.is_dir():
@@ -224,35 +227,14 @@ def create_tf_records(
 
             for sample in local_set:
                 try:
-                    background = db.get_clip_background(sample.clip_id)
-                    try:
-                        f = db.get_clip(
-                            sample.clip_id,
-                            [sample.frame_number],
-                        )[0]
-                    except Exception as e:
-                        logging.error(
-                            "Error gettin clip %s %s",
-                            sample.clip_id,
-                            sample,
-                            exc_info=True,
-                        )
+                    f = get_data(db, sample, cropped, back_thresh)
+                    if f is None:
                         continue
-                    if cropped:
-                        region = sample.region.copy()
-                        region.enlarge(20, max=crop_rectangle)
-                        f.crop_by_region(region, out=f)
-                        background = region.subimage(background)
-                    f.mask = f.filtered
-                    f.filtered, _ = get_ir_back_filtered(
-                        background, f.thermal, back_thresh
-                    )
-
-                    f.normalize()
-                    assert f.thermal.shape == f.filtered.shape
                     loaded.append((f, sample))
                 except Exception as e:
                     logging.error("Got exception", exc_info=True)
+                    raise e
+
             loaded = np.array(loaded)
             np.random.shuffle(loaded)
             for data, sample in loaded:
@@ -286,3 +268,73 @@ def create_tf_records(
     logging.info(
         "Finished writing, skipped %d annotations.", total_num_annotations_skipped
     )
+
+
+def get_data(db, sample, cropped, back_thresh):
+    background = db.get_clip_background(sample.clip_id)
+    try:
+        f = db.get_clip(
+            sample.clip_id,
+            [sample.frame_number],
+        )[0]
+    except Exception as e:
+        logging.error(
+            "Error gettin clip %s %s",
+            sample.clip_id,
+            sample,
+            exc_info=True,
+        )
+        return None
+    prev = f.thermal.copy()
+    prev = sample.region.subimage(prev)
+    if cropped:
+        if sample.augment:
+            frame_height, frame_width = f.thermal.shape
+            percent_offset = 0.02
+            height_range = int(math.ceil(percent_offset * sample.region.height) / 2.0)
+            width_range = int(math.ceil(percent_offset * sample.region.width) / 2.0)
+            top_offset = random.randint(-height_range, height_range)
+            height_offset = random.randint(-height_range, height_range)
+            left_offset = random.randint(-width_range, width_range)
+            width_offset = random.randint(-width_range, width_range)
+            sample.region.left += left_offset
+            sample.region.top += top_offset
+            sample.region.width += width_offset
+            sample.region.height += height_offset
+            sample.region.crop(crop_rectangle)
+        region = sample.region.copy()
+        f.crop_by_region(region, out=f)
+        background = region.subimage(background)
+    f.mask = f.filtered
+    f.filtered, _ = get_ir_back_filtered(background, f.thermal, back_thresh)
+
+    assert f.thermal.shape == f.filtered.shape
+    f.normalize()
+
+    if sample.augment:
+        degrees = random.randint(-45, 45)
+
+        # degrees = int(chance * 40) - 20
+        brightness_adjust = random.randint(-20, 20)
+
+        contrast_adjust = random.random() * 0.4 + 1 - 0.4 / 2.0
+        # contrast_adjust *=
+        f.float_arrays()
+        f.brightness_adjust(brightness_adjust)
+        f.contrast_adjust(contrast_adjust)
+        f.filtered = np.fliplr(f.filtered)
+        f.thermal = np.fliplr(f.thermal)
+        f.filtered = rotate(f.filtered, degrees)
+        f.thermal = rotate(f.thermal, degrees)
+        np.clip(f.filtered, a_min=0, a_max=255, out=f.filtered)
+        np.clip(f.thermal, a_min=0, a_max=255, out=f.thermal)
+        #
+        # cv2.imshow("prev", np.uint8(prev))
+        #
+        # cv2.imshow("aug", np.uint8(f.thermal))
+        # cv2.moveWindow(f"prev", 0, 0)
+        # cv2.moveWindow(f"aug", 0, 500)
+        # cv2.waitKey(3000)
+    # f.normalize()
+
+    return f
