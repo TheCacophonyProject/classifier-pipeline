@@ -191,9 +191,9 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
 
     if label in ["vehicle", "human"]:
         min_t = 10
-    num_validate_samples = max(total * 0.15, min_t)
+    num_validate_samples = min(total * 0.15, min_t)
     num_test_samples = (
-        min(MAX_TEST_SAMPLES, max(total * 0.05, min_t)) - existing_test_count
+        min(MAX_TEST_SAMPLES, min(total * 0.05, min_t)) - existing_test_count
     )
     # should have test covered by test set
 
@@ -202,12 +202,12 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     if label in ["vehicle", "human"]:
         min_t = 1
 
-    num_validate_tracks = max(total_tracks * 0.15, min_t)
+    num_validate_tracks = min(total_tracks * 0.15, min_t)
     num_test_tracks = (
-        min(MAX_TEST_TRACKS, max(total_tracks * 0.05, min_t)) - existing_test_count
+        min(MAX_TEST_TRACKS, min(total_tracks * 0.05, min_t)) - existing_test_count
     )
     track_limit = num_validate_tracks
-    sample_limit = num_test_samples
+    sample_limit = num_validate_samples
     tracks = set()
     print(
         label,
@@ -219,6 +219,8 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
         num_validate_samples,
         "from",
         total,
+        num_test_tracks,
+        num_validate_tracks,
     )
 
     for i, sample_bin in enumerate(sample_bins):
@@ -242,6 +244,8 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
                     break
                 sample_limit = num_test_samples
                 track_limit = num_test_tracks
+                label_count = 0
+                tracks = set()
             else:
                 break
 
@@ -421,7 +425,6 @@ def main():
 
         for track, s in track_dic.items():
             augment_samples = int(aug_percent * len(s))
-            print("augmenting", augment_samples)
             # words = ['banana', 'pie', 'Washington', 'book']
             samples_by_mass = sorted(s, key=lambda s: s.region.mass, reverse=True)
             samples = np.random.choice(samples_by_mass, augment_samples, replace=False)
