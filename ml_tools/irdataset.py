@@ -228,6 +228,7 @@ def read_tfrecord(
     example, image_size, num_labels, labeled, augment, preprocess_fn=None
 ):
     tfrecord_format = {
+        "image/augmented": tf.io.FixedLenFeature((), tf.int64, 0),
         "image/thermalencoded": tf.io.FixedLenFeature((), tf.string),
         "image/filteredencoded": tf.io.FixedLenFeature((), tf.string),
         "image/height": tf.io.FixedLenFeature((), tf.int64, -1),
@@ -251,7 +252,9 @@ def read_tfrecord(
         image_size,
         augment,
     )
-    if augment:
+    augmented = tf.cast(example["image/augmented"], tf.bool)
+
+    if not augmented and augment:
         image = data_augmentation(image)
     if preprocess_fn is not None:
         image = preprocess_fn(image)
@@ -293,7 +296,7 @@ def main():
     datasets = []
     # weights = [0.5] * len(labels)
     resampled_ds = get_resampled(
-        f"{config.tracks_folder}/training-data/test",
+        f"{config.tracks_folder}/training-data/train",
         32,
         (160, 160),
         labels,
