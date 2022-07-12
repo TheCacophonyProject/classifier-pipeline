@@ -114,6 +114,7 @@ class IRTrackExtractor(ClipTracker):
                 clip.set_model("IR")
                 clip.set_video_stats(datetime.now())
                 self.background = Background(gray)
+                clip.set_background(background)
             self.process_frame(clip, gray, track=track)
 
         vidcap.release()
@@ -260,6 +261,8 @@ class IRTrackExtractor(ClipTracker):
         )
         cur_frame = clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
         self.background.update_background(cur_frame)
+        clip.set_background(self.background.background)
+
         if not track:
             return
         threshold = 0
@@ -342,12 +345,12 @@ class IRTrackExtractor(ClipTracker):
         return False
 
     def get_delta_frame(self, clip):
+
         frame = clip.frame_buffer.current_frame
         prev_i = max(0, clip.current_frame - 50)
+        prev_frame = clip.frame_buffer.get_frame(prev_i)
         if prev_i == frame.frame_number:
             return None, None
-        prev_frame = clip.frame_buffer.get_frame(prev_i)
-
         filtered, _ = normalize(frame.filtered, new_max=255)
         prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
         delta_filtered = np.abs(np.float32(filtered) - np.float32(prev_filtered))

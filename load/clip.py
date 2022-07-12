@@ -123,6 +123,10 @@ class Clip:
     def on_preview(self):
         return not self.background_calculated
 
+    def set_background(self, frame):
+        self._background = frame
+        self._background_calculated()
+
     def update_background(self, frame):
         """updates the clip _background"""
         if self._background is None:
