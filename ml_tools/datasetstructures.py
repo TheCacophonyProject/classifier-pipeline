@@ -1,3 +1,4 @@
+import math
 import cv2
 import json
 import dateutil
@@ -335,6 +336,8 @@ class TrackHeader:
                 and (ffc_frames is None or frame not in ffc_frames)
             ]
             frame_numbers.sort()
+            skip_x = math.ceil(len(frame_numbers) * 0.1)
+            frame_numbers = frame_numbers[:-skip_x]
             for frame_num, frame_temp in zip(frame_numbers, self.frame_temp_median):
 
                 region = self.regions_by_frame[frame_num]

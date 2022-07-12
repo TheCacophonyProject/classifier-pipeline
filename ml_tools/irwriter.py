@@ -114,6 +114,7 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
     # mask_key = hashlib.sha256(encoded_mask).hexdigest()
 
     feature_dict = {
+        "image/augmented": tfrecord_util.int64_feature(sample.augment),
         "image/height": tfrecord_util.int64_feature(image_height),
         "image/width": tfrecord_util.int64_feature(image_width),
         "image/filename": tfrecord_util.bytes_feature(filename.encode("utf8")),
