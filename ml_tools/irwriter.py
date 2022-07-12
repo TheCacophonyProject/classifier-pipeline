@@ -336,6 +336,5 @@ def get_data(db, sample, cropped, back_thresh):
         # cv2.moveWindow(f"prev", 0, 0)
         # cv2.moveWindow(f"aug", 0, 500)
         # cv2.waitKey(3000)
-    # f.normalize()
-
+    # f.no
     return f

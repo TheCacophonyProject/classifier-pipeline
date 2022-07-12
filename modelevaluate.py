@@ -123,10 +123,11 @@ if config.train.tfrecords:
     files = base_dir + f"/training-data/{args.dataset}"
     dataset = model.get_dataset(
         files,
-        model.params.batch_size,
+        augment=False,
         reshuffle=False,
         deterministic=True,
         resample=False,
+        stop_on_empty_dataset=False,
     )
     logging.info(
         "Dataset loaded %s, using labels %s",

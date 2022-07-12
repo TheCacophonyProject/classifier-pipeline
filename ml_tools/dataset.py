@@ -299,7 +299,7 @@ class Dataset:
             else:
                 sample_frames = track_header.get_sample_frames()
                 for sample in sample_frames:
-                    if sample.region.mass > track_header.median_mass:
+                    if sample.region.mass > track_header.lower_mass:
                         self.add_clip_sample_mappings(sample)
             return True
 

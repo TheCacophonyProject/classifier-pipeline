@@ -239,7 +239,7 @@ def read_tfrecord(
     data_augmentation = tf.keras.Sequential(
         [
             tf.keras.layers.RandomFlip("horizontal"),
-            tf.keras.layers.RandomRotation(0.1, fill_mode="constant", fill_value=0),
+            tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
             tf.keras.layers.RandomZoom(0.1),
             tf.keras.layers.RandomBrightness(0.2),
             tf.keras.layers.RandomContrast(0.1),
@@ -302,7 +302,7 @@ def main():
         labels,
         # distribution=meta["counts"]["test"],
         stop_on_empty_dataset=True,
-        augment=True,
+        augment=False,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     global remapped
