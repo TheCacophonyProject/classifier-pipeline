@@ -84,7 +84,7 @@ class Region(Rectangle):
     @classmethod
     def region_from_json(cls, region_json):
         frame = region_json.get("frame_number")
-        if not frame:
+        if frame is None:
             frame = region_json.get("frameNumber")
         if frame is None:
             frame = region_json.get("order")

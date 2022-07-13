@@ -130,7 +130,7 @@ class TrackingConfig(DefaultConfig):
             denoise=True,
             high_quality_optical_flow=False,
             flow_threshold=40,
-            max_tracks=10,
+            max_tracks=None,
             filters={
                 "track_overlap_ratio": 0.5,
                 "min_duration_secs": 1.0,

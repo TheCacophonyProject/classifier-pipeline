@@ -512,7 +512,7 @@ def get_font():
     """gets default font."""
     if not globs._previewer_font:
         globs._previewer_font = ImageFont.truetype(
-            tools.resource_path("Ubuntu-R.ttf"), 20
+            tools.resource_path("Ubuntu-R.ttf"), 8
         )
     return globs._previewer_font
 

@@ -109,18 +109,17 @@ def extract_file(filename):
     logging.info("Processing file '{}'".format(filename))
     previewer = Previewer.create_if_required(config, config.classify.preview)
     extension = os.path.splitext(filename)[1]
-
     if extension == ".cptv":
         track_extractor = ClipTrackExtractor(
             config.tracking,
             config.use_opt_flow,
             cache_to_disk,
-            high_quality_optical_flow=config.tracking.high_quality_optical_flow,
+            high_quality_optical_flow=config.tracking[
+                "thermal"
+            ].high_quality_optical_flow,
             verbose=config.verbose,
             keep_frames=False if previewer is None else True,
         )
-        clip.frames_per_second = 9
-
         logging.info("Using cptv extractor")
 
     else:
