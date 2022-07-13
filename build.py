@@ -45,6 +45,13 @@ def parse_args():
         type=int,
         help="Min tracks per dataset (Default 100)",
     )
+    parser.add_argument(
+        "-a",
+        "--aug_percent",
+        default=None,
+        type=float,
+        help="Percentage of training set to add extra augmentations of",
+    )
 
     parser.add_argument("-c", "--config-file", help="Path to config file to use")
     parser.add_argument("-d", "--date", help="Use clips after this")
@@ -416,25 +423,29 @@ def main():
         threshold = None
 
     train_set = datasets[0]
-    aug_percent = 0.4
-    for l, samples in train_set.samples_by_label.items():
-        track_dic = {}
-        for s in samples:
-            track_dic.setdefault(s.track_id, []).append(s)
-        # track_dic = dict((x.track_id, x) for x in samples)
-
-        for track, s in track_dic.items():
-            augment_samples = int(aug_percent * len(s))
-            # words = ['banana', 'pie', 'Washington', 'book']
-            samples_by_mass = sorted(s, key=lambda s: s.region.mass, reverse=True)
-            samples = np.random.choice(samples_by_mass, augment_samples, replace=False)
-            new_samples = []
+    aug_percent = args.aug_percent
+    if aug_percent is not None:
+        for l, samples in train_set.samples_by_label.items():
+            track_dic = {}
             for s in samples:
-                new = s.copy()
-                new.augment = True
-                new_samples.append(new)
-            train_set.add_samples(new_samples)
-    print_counts(dataset, *datasets)
+                track_dic.setdefault(s.track_id, []).append(s)
+            # track_dic = dict((x.track_id, x) for x in samples)
+
+            for track, s in track_dic.items():
+                augment_samples = int(aug_percent * len(s))
+                # words = ['banana', 'pie', 'Washington', 'book']
+                samples_by_mass = sorted(s, key=lambda s: s.region.mass, reverse=True)
+                samples = np.random.choice(
+                    samples_by_mass, augment_samples, replace=False
+                )
+                new_samples = []
+                for s in samples:
+                    new = s.copy()
+                    new.augment = True
+                    new_samples.append(new)
+                train_set.add_samples(new_samples)
+        print("Count post augmentation")
+        print_counts(dataset, *datasets)
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
         create_tf_records(dataset, dir, datasets[0].labels, threshold, num_shards=5)

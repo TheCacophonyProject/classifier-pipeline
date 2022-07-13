@@ -103,8 +103,9 @@ class Dataset:
             self.segment_min_avg_mass = config.build.segment_min_avg_mass
             self.excluded_tags = config.load.excluded_tags
             self.min_frame_mass = config.build.min_frame_mass
-
+            self.filter_by_lq = config.build.filter_by_lq
         else:
+            self.filter_by_lq = True
             # number of seconds each segment should be
             self.segment_length = 25
             # number of seconds segments are spaced apart
@@ -299,7 +300,10 @@ class Dataset:
             else:
                 sample_frames = track_header.get_sample_frames()
                 for sample in sample_frames:
-                    if sample.region.mass > track_header.lower_mass:
+                    if (
+                        not self.filter_by_lq
+                        or sample.region.mass > track_header.lower_mass
+                    ):
                         self.add_clip_sample_mappings(sample)
             return True
 
