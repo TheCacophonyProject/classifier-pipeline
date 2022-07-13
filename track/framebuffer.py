@@ -83,9 +83,8 @@ class FrameBuffer:
         elif self.cache:
             return self.cache.get_frame(frame_number)
 
-        frames_ago = self.current_frame.frame_number - frame_number + 1
-        if len(self.frames) >= frames_ago:
-            return self.frames[-frames_ago]
+        if len(self.frames) > frame_number:
+            return self.frames[frame_number]
         return None
 
     def close_cache(self):
@@ -95,6 +94,13 @@ class FrameBuffer:
     def remove_cache(self):
         if self.cache:
             self.cache.delete()
+
+    def get_frame_ago(self, n=1):
+        if n == 1:
+            return self.get_last_frame()
+        if len(self.frames) >= n:
+            return self.frames[-n]
+        return None
 
     def get_last_frame(self):
         if self.prev_frame:
