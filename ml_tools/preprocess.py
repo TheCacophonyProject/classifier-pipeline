@@ -212,7 +212,7 @@ def preprocess_ir(
         region.enlarge(20, max=crop_rectangle)
         frame.crop_by_region(region, out=frame)
 
-    image = np.stack((frame.thermal, frame.thermal, frame.filtered), axis=2)
+    image = np.stack((frame.thermal, frame.thermal, frame.thermal), axis=2)
     image = np.float32(image)
 
     image = imageprocessing.resize_and_pad(
