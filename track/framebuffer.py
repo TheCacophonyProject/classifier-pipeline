@@ -22,6 +22,7 @@ from ml_tools.frame import Frame
 from ml_tools.tools import get_optical_flow_function
 
 import time
+import logging
 
 
 class FrameBuffer:
@@ -81,8 +82,10 @@ class FrameBuffer:
             return self.current_frame
         elif self.cache:
             return self.cache.get_frame(frame_number)
-        if len(self.frames) > frame_number:
-            return self.frames[frame_number]
+
+        frames_ago = self.current_frame.frame_number - frame_number + 1
+        if len(self.frames) >= frames_ago:
+            return self.frames[-frames_ago]
         return None
 
     def close_cache(self):

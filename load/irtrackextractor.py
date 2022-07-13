@@ -96,7 +96,11 @@ class IRTrackExtractor(ClipTracker):
             self.cache_to_disk,
             False,
             self.keep_frames,
+            max_frames=None
+            if self.keep_frames
+            else 51,  # enough to cover back comparison
         )
+
         _, ext = os.path.splitext(clip.source_file)
         count = 0
         background = None
