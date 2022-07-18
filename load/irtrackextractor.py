@@ -193,7 +193,7 @@ class IRTrackExtractor(ClipTracker):
                 r_mid_x = r_2[2] / 2.0 + r_2[0]
                 r_mid_y = r_2[3] / 2.0 + r_2[1]
                 distance = (mid_x - r_mid_x) ** 2 + (r_mid_y - mid_y) ** 2
-                distance = distance**0.5
+                distance = distance ** 0.5
 
                 # widest = max(rect[2], rect[3])
                 # hack short cut just take line from mid points as shortest distance subtract biggest width or hieght from each
@@ -351,7 +351,7 @@ class IRTrackExtractor(ClipTracker):
     def get_delta_frame(self, clip):
 
         frame = clip.frame_buffer.current_frame
-        prev_i = max(0, clip.current_frame - 50)
+        prev_i = max(0, min(50, clip.current_frame - 50))
         prev_frame = clip.frame_buffer.get_frame_ago(prev_i)
         if prev_i == frame.frame_number:
             return None, None
