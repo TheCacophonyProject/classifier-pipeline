@@ -90,7 +90,7 @@ class Dataset:
         self.label_caps = {}
         self.use_segments = True
         if config:
-
+            self.type = config.train.type
             if config.train.type == "IR":
                 self.use_segments = False
             else:
@@ -299,6 +299,10 @@ class Dataset:
                     self.add_clip_sample_mappings(segment)
             else:
                 sample_frames = track_header.get_sample_frames()
+                skip_x = None
+                if self.type == "IR":
+                    skip_last = int(len(sample_frames) * 0.1)
+                    sample_frames = sample_frames[:-skip_last]
                 for sample in sample_frames:
                     if (
                         not self.filter_by_lq
@@ -502,6 +506,10 @@ class Dataset:
                 self.add_clip_sample_mappings(segment)
         else:
             sample_frames = track_header.get_sample_frames()
+            skip_x = None
+            if self.type == "IR":
+                skip_last = int(len(sample_frames) * 0.1)
+                sample_frames = sample_frames[:-skip_last]
             for sample in sample_frames:
                 self.add_clip_sample_mappings(sample)
         return True
