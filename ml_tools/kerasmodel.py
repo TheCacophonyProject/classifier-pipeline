@@ -790,7 +790,7 @@ class KerasModel(Interpreter):
         segments = track.get_segments(
             clip.ffc_frames,
             thermal_median,
-            self.params.square_width**2,
+            self.params.square_width ** 2,
             repeats=4,
             segment_frames=segment_frames,
         )
@@ -811,6 +811,11 @@ class KerasModel(Interpreter):
         crop = True
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
         for i, region in enumerate(track.bounds_history):
+            if region.blank:
+                continue
+            if region.width == 0 or region.height == 0:
+                logging.warn("No width or height for frame %s", region.frame_number)
+                continue
             frame = clip.frame_buffer.get_frame(region.frame_number)
             if frame is None:
                 logging.error(
