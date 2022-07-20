@@ -183,7 +183,7 @@ class TrackingConfig(DefaultConfig):
             default_tracking.tracker = "RegionTracker"
             default_tracking.type = "IR"
             default_tracking.params = {
-                "base_distance_change": 11250,
+                "base_distance_change": 12000,
                 "min_mass_change": None,
                 "restrict_mass_after": 1.5,
                 "mass_change_percent": None,

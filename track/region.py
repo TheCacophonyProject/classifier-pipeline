@@ -20,7 +20,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
 import attr
-
+import logging
 import numpy as np
 
 
@@ -124,13 +124,24 @@ class Region(Rectangle):
         ), "calculating variance on incorrectly sized filtered"
         self.pixel_variance = tools.calculate_variance(filtered, prev_filtered)
 
-    def set_is_along_border(self, bounds):
+    def set_is_along_border(self, bounds, edge=0):
+        logging.info(
+            "Set is along border %s,%s,%s,%s bounds %s,%s,%s,%s",
+            self.x,
+            self.y,
+            self.right,
+            self.bottom,
+            bounds.x,
+            bounds.y,
+            bounds.width,
+            bounds.height,
+        )
         self.is_along_border = (
             self.was_cropped
-            or self.x == bounds.x
-            or self.y == bounds.y
-            or self.right == bounds.width
-            or self.bottom == bounds.height
+            or self.x <= bounds.x + edge
+            or self.y <= bounds.y + edge
+            or self.right >= bounds.width - edge
+            or self.bottom >= bounds.height - edge
         )
 
     def copy(self):

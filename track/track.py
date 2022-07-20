@@ -127,13 +127,14 @@ class RegionTracker(Tracker):
             max_mass_change = self.get_max_mass_change_percent(track, avg_mass)
 
             logging.debug(
-                "Track %s %s has max size change %s, distances %s to region %s size change %s",
+                "Track %s %s has max size change %s, distances %s to region %s size change %s max distance %s",
                 track,
                 track.last_bound,
                 max_size_change,
                 distances,
                 region,
                 size_change,
+                max_distances,
             )
             # only for thermal
             if type == "thermal":
@@ -250,18 +251,23 @@ class RegionTracker(Tracker):
 
     def get_max_distance_change(self, track):
         x, y = track.velocity
-        x = max(x, 2)
-        y = max(y, 2)
+        # x = max(x, 2)
+        # y = max(y, 2)
         if len(track) == 1:
             x = self.base_velocity
             y = self.base_velocity
         x = self.velocity_multiplier * x
         y = self.velocity_multiplier * y
+        logging.info("X %s and Y %s multiplier %s", x, y, self.velocity_multiplier)
         velocity_distance = x * x + y * y
 
         pred_vel = track.predicted_velocity()
         logging.debug(
-            "%s velo %s pred vel %s", track, track.velocity, track.predicted_velocity()
+            "%s velo %s pred vel %s vel distance %s",
+            track,
+            track.velocity,
+            track.predicted_velocity(),
+            velocity_distance,
         )
         pred_distance = pred_vel[0] * pred_vel[0] + pred_vel[1] * pred_vel[1]
         pred_distance = max(velocity_distance, pred_distance)
@@ -293,9 +299,14 @@ def get_max_size_change(track, region):
     if len(track) < 5:
         # may increase at first
         region_percent = 2
+    logging.info("Track %s entering %s exiting %s", track, entering, exiting)
+    vel = np.sum(np.abs(track.velocity))
     if entering or exiting:
         region_percent = 2
-
+        if vel > 10:
+            region_percent *= 3
+    elif vel > 10:
+        region_percent *= 2
     return region_percent
 
 
@@ -653,7 +664,7 @@ class Track:
             if region.blank or self.bounds_history[i - 1].blank:
                 continue
             if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
-                distance = (vx**2 + vy**2) ** 0.5
+                distance = (vx ** 2 + vy ** 2) ** 0.5
                 movement += distance
                 offset = eucl_distance(first_point, region.mid)
                 max_offset = max(max_offset, offset)
@@ -689,7 +700,7 @@ class Track:
                 else:
                     jitter_smaller += 1
 
-        movement_points = (movement**0.5) + max_offset
+        movement_points = (movement ** 0.5) + max_offset
         delta_points = delta_std * 25.0
         jitter_percent = int(
             round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))

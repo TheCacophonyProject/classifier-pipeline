@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import logging
 import time
-
+import math
 import cv2
 import numpy as np
 
@@ -241,7 +241,6 @@ class ClipTracker(ABC):
             old_region = region.copy()
             region.crop(clip.crop_rectangle)
             region.was_cropped = str(old_region) != str(region)
-            region.set_is_along_border(clip.crop_rectangle)
 
             if self.config.cropped_regions_strategy == "cautious":
                 crop_width_fraction = (
@@ -265,6 +264,8 @@ class ClipTracker(ABC):
                     )
                 )
             region.enlarge(padding, max=clip.crop_rectangle)
+            extra_edge = math.ceil(clip.crop_rectangle.width * 0.03)
+            region.set_is_along_border(clip.crop_rectangle, edge=extra_edge)
 
             # filter out regions that are probably just noise
 

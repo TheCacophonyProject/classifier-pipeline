@@ -271,7 +271,7 @@ def read_tfrecord(
 def decode_image(image, filtered, image_size, augment):
     image = tf.image.decode_jpeg(image, channels=1)
     filtered = tf.image.decode_jpeg(filtered, channels=1)
-    image = tf.concat((image, image, filtered), axis=2)
+    image = tf.concat((image, image, image), axis=2)
 
     image = tf.cast(image, tf.float32)
     image = tf.image.resize_with_pad(image, image_size[0], image_size[1])
