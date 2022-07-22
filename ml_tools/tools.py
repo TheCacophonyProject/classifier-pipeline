@@ -882,5 +882,5 @@ def get_timezone_str(lat, lng):
 
 def saveclassify_rgb(data, filename):
     Path(filename).parent.mkdir(parents=True, exist_ok=True)
-    r = Image.fromarray(np.uint8(data * 255))
+    r = Image.fromarray(np.uint8(data))
     r.save(filename + ".png")

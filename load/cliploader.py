@@ -265,7 +265,9 @@ class ClipLoader:
             process_background,
             tracker_version,
         )
-        if not track_extractor.parse_clip(clip, process_background=process_background):
+        if not track_extractor.parse_clip(
+            clip, process_background=process_background, tracking=False
+        ):
             logging.error("No valid clip found for %s", filename)
             return
 

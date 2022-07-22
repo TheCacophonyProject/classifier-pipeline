@@ -43,11 +43,44 @@ from ml_tools.imageprocessing import (
 from track.cliptracker import ClipTracker
 
 
+class Line:
+    def __init__(self, m, c):
+        self.m = m
+        self.c = c
+
+    def is_above(self, point):
+        y_value = self.y_res(point[0])
+        if point[1] > y_value:
+            return True
+        return False
+
+    def is_left(self, point):
+        x_value = self.x_res(point[1])
+        if point[0] < x_value:
+            return True
+        return False
+
+    def is_right(self, point):
+        return not self.is_left(point)
+
+    def y_res(self, x):
+        return x * self.m + self.c
+
+    def x_res(self, y):
+        return (y - self.c) / self.m
+        # return x * self.m + self.c
+
+
 class IRTrackExtractor(ClipTracker):
 
     PREVIEW = "preview"
     VERSION = 10
     TYPE = "IR"
+
+    LEFT_BOTTOM = Line(5 / 14, 160)
+    RIGHT_BOTTOM = Line(-5 / 12, 421.7)
+    # BACK_TOP = Line(0, 250)
+    # BACK_BOTTOM = Line(0, 170)
 
     @property
     def tracker_version(self):
@@ -120,7 +153,8 @@ class IRTrackExtractor(ClipTracker):
                 self.background = Background(gray)
                 clip.set_background(background)
             self.process_frame(clip, gray, track=track)
-
+            # if clip.current_frame > 400:
+            # break
         vidcap.release()
 
         if not clip.from_metadata and track:
@@ -266,7 +300,6 @@ class IRTrackExtractor(ClipTracker):
         cur_frame = clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
         self.background.update_background(cur_frame)
         clip.set_background(self.background.background)
-
         if not track:
             return
         threshold = 0
@@ -282,6 +315,7 @@ class IRTrackExtractor(ClipTracker):
             # for region in component_details:
             #     logging.info("region is %s", region)
             component_details = self.merge_components(component_details[1:])
+            # component_details = self.filter_components(component_details)
             # logging.info("at %s", clip.current_frame)
             # for region in component_details:
             #     logging.info("region becomes %s", region)
@@ -305,6 +339,38 @@ class IRTrackExtractor(ClipTracker):
                 self._apply_region_matchings(clip, regions)
 
             clip.region_history.append(regions)
+
+    def filter_components(self, component_details):
+        filtered = []
+        for component in component_details:
+            region = Region(
+                component[0],
+                component[1],
+                component[2],
+                component[3],
+            )
+            p = (region.right, 480 - region.bottom)
+
+            filter = (
+                IRTrackExtractor.LEFT_BOTTOM.is_above(p)
+                and IRTrackExtractor.LEFT_BOTTOM.is_left(p)
+                # or IRTrackExtractor.RIGHT_BOTTOM.is_above(region)
+                # or IRTrackExtractor.BACK_BOTTOM.is_above(region)
+            )
+            p = (region.left, 480 - region.bottom)
+
+            filter = filter or (
+                IRTrackExtractor.RIGHT_BOTTOM.is_above(p)
+                and IRTrackExtractor.RIGHT_BOTTOM.is_right(p)
+            )
+            p = (region.left, 480 - region.bottom)
+
+            # filter = filter or (IRTrackExtractor.BACK_TOP.is_above(p))
+            if not filter:
+                filtered.append(component)
+            else:
+                logging.info("Filtered components %s", region)
+        return filtered
 
     def filter_track(self, clip, track, stats):
         # return not track.stable

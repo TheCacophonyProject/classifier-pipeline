@@ -214,7 +214,6 @@ def preprocess_ir(
 
     image = np.stack((frame.thermal, frame.thermal, frame.thermal), axis=2)
     image = np.float32(image)
-
     image = imageprocessing.resize_and_pad(
         image,
         (frame_size[0], frame_size[1], 3),
@@ -222,12 +221,7 @@ def preprocess_ir(
         None,
         True,
     )
-    # image = tf.cast(image, tf.float32)
-    # image = tf.compat.v1.image.resize_image_with_pad(
-    #     image, frame_size[0], frame_size[1]
-    # )
-    # image = tf.image.resize_with_pad(image, frame_size[0], frame_size[1])
-
+    # tools.saveclassify_rgb(np.uint8(image), f"samples/{count}")
     if preprocess_fn:
         image = preprocess_fn(image)
     return image

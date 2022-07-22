@@ -18,7 +18,6 @@ def resize_and_pad(
     extra_h=0,
     extra_v=0,
 ):
-
     scale_percent = (new_dim[:2] / np.array(frame.shape[:2])).min()
     width = int(frame.shape[1] * scale_percent)
     height = int(frame.shape[0] * scale_percent)

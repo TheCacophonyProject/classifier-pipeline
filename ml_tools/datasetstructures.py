@@ -357,6 +357,12 @@ class TrackHeader:
                 )
                 self.sample_frames.append(f)
 
+    @property
+    def bounds_history(self):
+        regions = list(self.regions_by_frame.values())
+        regions = sorted(regions, key=lambda r: r.frame_number)
+        return regions
+
     def toJSON(self, clip_meta):
         meta_dict = {}
         ffc_frames = clip_meta.get("ffc_frames", [])
@@ -530,6 +536,7 @@ class TrackHeader:
                 r.blank = True
             regions[r.frame_number] = r
             f_i += 1
+
         header = TrackHeader(
             clip_id=int(clip_id),
             track_id=int(track_meta["id"]),
