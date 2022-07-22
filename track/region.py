@@ -70,7 +70,7 @@ class Region(Rectangle):
             mass = region_bounds[5]
         blank = False
         if len(region_bounds) > 6:
-            mass = region_bounds[6]
+            blank = region_bounds[6] == 1
         return cls(
             region_bounds[0],
             region_bounds[1],
@@ -88,7 +88,6 @@ class Region(Rectangle):
             frame = region_json.get("frameNumber")
         if frame is None:
             frame = region_json.get("order")
-
         return cls(
             region_json["x"],
             region_json["y"],

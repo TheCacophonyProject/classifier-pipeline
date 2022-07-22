@@ -102,6 +102,7 @@ class IRTrackExtractor(ClipTracker):
         calc_stats=True,
         verbose=False,
         scale=None,
+        do_tracking=True,
     ):
         super().__init__(
             config,
@@ -109,6 +110,7 @@ class IRTrackExtractor(ClipTracker):
             keep_frames,
             calc_stats,
             verbose,
+            do_tracking=do_tracking,
         )
         self.scale = scale
         self.saliency = None
@@ -117,7 +119,7 @@ class IRTrackExtractor(ClipTracker):
             self.min_dimension = int(scale * self.min_dimension)
         self.background = None
 
-    def parse_clip(self, clip, process_background=False, track=True):
+    def parse_clip(self, clip, process_background=False):
         """
         Loads a cptv file, and prepares for track extraction.
         """
@@ -152,7 +154,7 @@ class IRTrackExtractor(ClipTracker):
                 clip.set_video_stats(datetime.now())
                 self.background = Background(gray)
                 clip.set_background(background)
-            self.process_frame(clip, gray, track=track)
+            self.process_frame(clip, gray)
             # if clip.current_frame > 400:
             # break
         vidcap.release()
@@ -185,7 +187,7 @@ class IRTrackExtractor(ClipTracker):
         self.saliency.setImagesize(width, height)
         self.saliency.init()
 
-    def process_frame(self, clip, frame, ffc_affected=False, track=True):
+    def process_frame(self, clip, frame, ffc_affected=False):
         if self.saliency is None:
             if self.resie_dims is not None:
                 self.init_saliency(
@@ -198,7 +200,7 @@ class IRTrackExtractor(ClipTracker):
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
 
-        self._process_frame(clip, frame, ffc_affected, track=track)
+        self._process_frame(clip, frame, ffc_affected)
 
     def _get_filtered_frame_ir(self, thermal, repeats=1):
         for _ in range(repeats):
@@ -266,7 +268,7 @@ class IRTrackExtractor(ClipTracker):
                 rect_i += 1
         return rectangles
 
-    def _process_frame(self, clip, thermal, ffc_affected=False, track=True):
+    def _process_frame(self, clip, thermal, ffc_affected=False):
 
         wait = 1
         """
@@ -286,7 +288,7 @@ class IRTrackExtractor(ClipTracker):
             )
 
         saliencyMap = None
-        if track:
+        if self.do_tracking:
             saliencyMap, _ = self._get_filtered_frame_ir(
                 tracking_thermal, repeats=repeats
             )
@@ -300,7 +302,7 @@ class IRTrackExtractor(ClipTracker):
         cur_frame = clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
         self.background.update_background(cur_frame)
         clip.set_background(self.background.background)
-        if not track:
+        if not self.do_tracking:
             return
         threshold = 0
         if np.amin(saliencyMap) == 255:

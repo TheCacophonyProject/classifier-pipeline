@@ -58,6 +58,7 @@ class ClipTrackExtractor(ClipTracker):
         calc_stats=True,
         high_quality_optical_flow=False,
         verbose=False,
+        do_tracking=True,
     ):
         super().__init__(
             config,
@@ -65,6 +66,7 @@ class ClipTrackExtractor(ClipTracker):
             keep_frames=keep_frames,
             calc_stats=calc_stats,
             verbose=verbose,
+            do_tracking=do_tracking,
         )
         self.use_opt_flow = use_opt_flow
         self.high_quality_optical_flow = high_quality_optical_flow
@@ -81,7 +83,7 @@ class ClipTrackExtractor(ClipTracker):
         #     size = self.config.dilation_pixels * 2 + 1
         #     self.dilate_kernel = np.ones((size, size), np.uint8)
 
-    def parse_clip(self, clip, process_background=False, track=True):
+    def parse_clip(self, clip, process_background=False):
         """
         Loads a cptv file, and prepares for track extraction.
         """
@@ -122,9 +124,7 @@ class ClipTrackExtractor(ClipTracker):
             for frame in reader:
                 if not process_background and frame.background_frame:
                     continue
-                self.process_frame(
-                    clip, frame.pix, is_affected_by_ffc(frame), track=track
-                )
+                self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
 
         if not clip.from_metadata and track:
             self.apply_track_filtering(clip)
@@ -143,7 +143,7 @@ class ClipTrackExtractor(ClipTracker):
         for frame in frames[-9:]:
             self.process_frame(clip, frame.pix.copy())
 
-    def process_frame(self, clip, thermal, ffc_affected=False, track=True):
+    def process_frame(self, clip, thermal, ffc_affected=False):
         """
         Tracks objects through frame
         :param thermal: A numpy array of shape (height, width) and type uint16
@@ -154,12 +154,12 @@ class ClipTrackExtractor(ClipTracker):
         clip.ffc_affected = ffc_affected
         filtered, threshold = self._get_filtered_frame(clip, thermal)
         mask = None
-        if track:
+        if self.do_tracking:
             _, mask, component_details = detect_objects(
                 filtered.copy(), otsus=False, threshold=threshold, kernel=(5, 5)
             )
         cur_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
-        if not track:
+        if not self.do_tracking:
             return
 
         if clip.from_metadata:

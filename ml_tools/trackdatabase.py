@@ -214,7 +214,8 @@ class TrackDatabase:
             results = {}
             for clip_id in clips:
                 clip_start = clips[clip_id].attrs["start_time"]
-                if clip_start:
+                if clip_start is not None:
+                    clip_start = parse_date(clip_start)
                     if start_time is None or clip_start > start_time:
                         start_time = clip_start
 
@@ -554,14 +555,16 @@ class TrackDatabase:
                     if channels is None:
                         try:
                             frame = track_node[str(frame_number)][:, :, :]
-                            if frame.shape[0] == 3:
+                            if frame.shape[0] < 5:
+                                channels = [
+                                    TrackChannels.thermal,
+                                    TrackChannels.filtered,
+                                ]
+                                if len(frame.shape[0] == 3):
+                                    channels.append(TrackChannels.mask)
                                 f = Frame.from_channels(
                                     frame,
-                                    [
-                                        TrackChannels.thermal,
-                                        TrackChannels.filtered,
-                                        TrackChannels.mask,
-                                    ],
+                                    channels,
                                     frame_number + track_start,
                                     region=region,
                                 )
@@ -753,6 +756,7 @@ class TrackDatabase:
                     frame_node = cropped_frame.create_dataset(
                         str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
                     )
+
                     frame_node[:, :, :] = cropped_array
                 else:
                     skipped_frames.append(frame_i + track.start_frame)

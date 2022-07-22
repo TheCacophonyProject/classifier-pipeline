@@ -117,8 +117,11 @@ class Frame:
         )
 
     def as_array(self, split_flow=True):
+        data = [self.thermal, self.filtered]
         if self.flow is None:
-            return np.asarray([self.thermal, self.filtered, self.mask])
+            if self.mask is not None:
+                data.append(self.mask)
+            return np.asarray(data)
         if split_flow:
             return np.asarray(
                 [
@@ -129,7 +132,6 @@ class Frame:
                     self.mask,
                 ]
             )
-
         return np.asarray([self.thermal, self.filtered, self.flow, self.mask])
 
     def generate_optical_flow(self, opt_flow, prev_frame, flow_threshold=40):

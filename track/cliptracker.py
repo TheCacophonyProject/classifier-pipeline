@@ -18,9 +18,10 @@ class ClipTracker(ABC):
         keep_frames=True,
         calc_stats=True,
         verbose=False,
+        do_tracking=True,
     ):
         config = config.get(self.type)
-
+        self.do_tracking = do_tracking
         self.verbose = verbose
         self.config = config
         self.stats = None
@@ -65,7 +66,7 @@ class ClipTracker(ABC):
         ...
 
     @abstractmethod
-    def process_frame(self, clip, rawframe, ffc_affected=False, track=True):
+    def process_frame(self, clip, rawframe, ffc_affected=False):
         """Get all regions for this sample"""
         ...
 

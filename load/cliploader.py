@@ -207,12 +207,14 @@ class ClipLoader:
                 self.config.load.cache_to_disk,
                 high_quality_optical_flow=self.config.load.high_quality_optical_flow,
                 verbose=self.config.verbose,
+                do_tracking=False,
             )
         else:
             track_extractor = IRTrackExtractor(
                 self.config.tracking,
                 self.config.load.cache_to_disk,
                 verbose=self.config.verbose,
+                do_tracking=False,
             )
         return track_extractor
 
@@ -265,9 +267,7 @@ class ClipLoader:
             process_background,
             tracker_version,
         )
-        if not track_extractor.parse_clip(
-            clip, process_background=process_background, tracking=False
-        ):
+        if not track_extractor.parse_clip(clip, process_background=process_background):
             logging.error("No valid clip found for %s", filename)
             return
 
