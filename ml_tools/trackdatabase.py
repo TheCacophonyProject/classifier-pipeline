@@ -556,15 +556,15 @@ class TrackDatabase:
                         try:
                             frame = track_node[str(frame_number)][:, :, :]
                             if frame.shape[0] < 5:
-                                channels = [
+                                frame_channels = [
                                     TrackChannels.thermal,
                                     TrackChannels.filtered,
                                 ]
-                                if len(frame.shape[0] == 3):
-                                    channels.append(TrackChannels.mask)
+                                if frame.shape[0] == 3:
+                                    frame_channels.append(TrackChannels.mask)
                                 f = Frame.from_channels(
                                     frame,
-                                    channels,
+                                    frame_channels,
                                     frame_number + track_start,
                                     region=region,
                                 )

@@ -159,7 +159,7 @@ class IRTrackExtractor(ClipTracker):
             # break
         vidcap.release()
 
-        if not clip.from_metadata and track:
+        if not clip.from_metadata and self.do_tracking:
             self.apply_track_filtering(clip)
 
         if self.calc_stats:

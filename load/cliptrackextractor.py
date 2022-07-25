@@ -126,7 +126,7 @@ class ClipTrackExtractor(ClipTracker):
                     continue
                 self.process_frame(clip, frame.pix, is_affected_by_ffc(frame))
 
-        if not clip.from_metadata and track:
+        if not clip.from_metadata and self.do_tracking:
             self.apply_track_filtering(clip)
 
         if self.calc_stats:

@@ -147,7 +147,7 @@ class ClipClassifier:
             meta_data,
             self.config.load.tag_precedence,
         )
-        track_extractor.parse_clip(clip, track=False)
+        track_extractor.parse_clip(clip)
 
         predictions_per_model = {}
         if self.model:
