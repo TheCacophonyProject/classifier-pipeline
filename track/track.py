@@ -670,7 +670,7 @@ class Track:
             if region.blank or self.bounds_history[i - 1].blank:
                 continue
             if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
-                distance = (vx ** 2 + vy ** 2) ** 0.5
+                distance = (vx**2 + vy**2) ** 0.5
                 movement += distance
                 offset = eucl_distance(first_point, region.mid)
                 max_offset = max(max_offset, offset)
@@ -706,7 +706,7 @@ class Track:
                 else:
                     jitter_smaller += 1
 
-        movement_points = (movement ** 0.5) + max_offset
+        movement_points = (movement**0.5) + max_offset
         delta_points = delta_std * 25.0
         jitter_percent = int(
             round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))
@@ -781,12 +781,18 @@ class Track:
         Removes empty frames from start and end of track
         """
         mass_history = [int(bound.mass) for bound in self.bounds_history]
+        median_mass = np.median(mass_history)
+        filter_mass = 0.005 * median_mass
+        filter_mass = max(filter_mass, 2)
         start = 0
-        while start < len(self) and mass_history[start] <= 2:
+        logging.info(
+            "Triming track with median % and filter mass %s", median_mass, filter_mass
+        )
+        while start < len(self) and mass_history[start] <= filter_mass:
             start += 1
         end = len(self) - 1
         blanks = self.frames_since_target_seen
-        while end > 0 and mass_history[end] <= 2:
+        while end > 0 and mass_history[end] <= filter_mass:
             if blanks > 0:
                 blanks -= 1
                 self.tracker._blank_frames -= 1

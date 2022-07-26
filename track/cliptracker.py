@@ -231,6 +231,8 @@ class ClipTracker(ABC):
                     previous_delta_mass = len(
                         sub_delta[sub_delta > clip.background_thresh]
                     )
+                    # GP TEST NOt sure if this will work
+                    region.mass = previous_delta_mass
                     if previous_delta_mass == 0:
                         logging.info("No mass from previous so skipping")
                         continue
@@ -272,7 +274,7 @@ class ClipTracker(ABC):
 
             if (
                 region.pixel_variance < self.config.aoi_pixel_variance
-                and region.mass < self.config.aoi_min_mass
+                or region.mass < self.config.aoi_min_mass
             ):
                 logging.debug(
                     "%s filtering region %s because of variance %s and mass %s",
