@@ -156,7 +156,7 @@ class IRTrackExtractor(ClipTracker):
                 clip.set_background(background)
             self.process_frame(clip, gray)
             # if clip.current_frame > 400:
-            # break
+            #     break
         vidcap.release()
 
         if not clip.from_metadata and self.do_tracking:
@@ -212,7 +212,7 @@ class IRTrackExtractor(ClipTracker):
     # keep merging until no more merges are possible, tihs works paticularly well from the IR videos where
     # the filtered image is quite fragmented
     def merge_components(self, rectangles):
-        MAX_GAP = 40
+        MAX_GAP = 20
         rect_i = 0
         rectangles = list(rectangles)
         while rect_i < len(rectangles):
@@ -312,11 +312,11 @@ class IRTrackExtractor(ClipTracker):
             saliencyMap[:] = 0
         else:
             num, mask, component_details = theshold_saliency(saliencyMap)
-
+            component_details = component_details[1:]
             # logging.info("at %s", clip.current_frame)
             # for region in component_details:
             #     logging.info("region is %s", region)
-            component_details = self.merge_components(component_details[1:])
+            component_details = self.merge_components(component_details)
             # component_details = self.filter_components(component_details)
             # logging.info("at %s", clip.current_frame)
             # for region in component_details:
@@ -376,7 +376,6 @@ class IRTrackExtractor(ClipTracker):
 
     def filter_track(self, clip, track, stats):
         # return not track.stable
-        # return False
         # discard any tracks that are less min_duration
         # these are probably glitches anyway, or don't contain enough information.
         if len(track) < self.config.min_duration_secs * clip.frames_per_second:

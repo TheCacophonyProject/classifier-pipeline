@@ -139,7 +139,11 @@ class RegionTracker(Tracker):
             # only for thermal
             if type == "thermal":
                 # GP should figure out good values for the 3 distances rather than the mean
-                distances[0] = np.mean(distances)
+                distances = [np.mean(distances)]
+                max_distances = max_distances[:1]
+            else:
+                distances = [(distances[0] + distances[2]) / 2]
+                max_distances = max_distances[:1]
 
             if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
                 logging.info(
@@ -150,27 +154,21 @@ class RegionTracker(Tracker):
                     )
                 )
                 continue
-            if distances[0] > max_distances[0]:
-                logging.info(
-                    "track {} distance score {} bigger than max distance {}".format(
-                        track.get_id(), distances[0], max_distances[0]
-                    )
-                )
+            skip = False
+            for distance, max_distance in zip(distances, max_distances):
+                if max_distance is None:
+                    continue
+                if distance > max_distance:
 
-                continue
-            elif max_distances[1] and distances[1] > max_distances[1]:
-                logging.info(
-                    "track {} mid point change score {} bigger than max distance {}".format(
-                        track.get_id(), distances[1], max_distance[1]
+                    logging.info(
+                        "track {} distance score {} bigger than max distance {}".format(
+                            track.get_id(), distance, max_distance
+                        )
                     )
-                )
-                continue
-            elif max_distances[2] and distances[2] > max_distances[2]:
-                logging.info(
-                    "track {} width height change score {} bigger than max distance {}".format(
-                        track.get_id(), distances[2], max_distance[2]
-                    )
-                )
+                    skip = True
+                    break
+                    # continue
+            if skip:
                 continue
 
             if size_change > max_size_change:
@@ -180,7 +178,14 @@ class RegionTracker(Tracker):
                     )
                 )
                 continue
-            scores.append((np.mean(distances), track, region))
+            # only for thermal
+            if type == "ir":
+                distance_score = np.mean(distances)
+            else:
+                # GP should figure out good values for the 3 distances rather than the mean
+                distance_score = distances[0]
+
+            scores.append((distance_score, track, region))
         return scores
 
     def add_region(self, region):
@@ -272,7 +277,8 @@ class RegionTracker(Tracker):
         pred_distance = pred_vel[0] * pred_vel[0] + pred_vel[1] * pred_vel[1]
         pred_distance = max(velocity_distance, pred_distance)
         max_distance = self.base_distance_change + max(velocity_distance, pred_distance)
-        distances = [max_distance, None, None]
+        # max top left, max between predicted and region, max between right bottom
+        distances = [max_distance, None, max_distance]
         return distances
 
     def get_max_mass_change_percent(self, track, average_mass):
