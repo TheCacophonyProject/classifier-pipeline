@@ -345,7 +345,6 @@ class Dataset:
         if "tag" not in track_meta:
             self.filtered_stats["notags"] += 1
             return True
-        print("got tag", track_meta["tag"])
         if track_meta["tag"] not in self.included_labels:
             self.filtered_stats["tags"] += 1
             self.filtered_stats["tag_names"].add(track_meta["tag"])
