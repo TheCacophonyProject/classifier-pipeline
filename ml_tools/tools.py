@@ -321,6 +321,9 @@ def add_heat_number(img, frame, scale):
             # print("drawing the max at row", y, max, max_i * scale, y * scale)
 
 
+gzip_compression = {"compression": "gzip"}
+
+
 def eucl_distance(first, second):
     first_sq = first[0] - second[0]
     first_sq = first_sq * first_sq

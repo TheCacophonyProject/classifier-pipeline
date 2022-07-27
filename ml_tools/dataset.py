@@ -268,9 +268,9 @@ class Dataset:
                     skip_last = int(len(sample_frames) * 0.1)
                     sample_frames = sample_frames[:-skip_last]
                 for sample in sample_frames:
-                    if (
-                        not self.filter_by_lq
-                        or sample.region.mass > track_header.lower_mass
+                    if not self.filter_by_lq or (
+                        sample.mass >= track_header.lower_mass
+                        and sample.mass <= track_header.upper_mass
                     ):
                         self.add_clip_sample_mappings(sample)
             return True
@@ -286,7 +286,7 @@ class Dataset:
                 result += 1
         return result
 
-    def filter_frame_sample(self, sample):
+    def filter_sample(self, sample):
         if sample.label not in self.included_labels:
             self.filtered_stats["tags"] += 1
             return True
@@ -297,7 +297,7 @@ class Dataset:
 
     def add_clip_sample_mappings(self, sample):
 
-        if self.filter_frame_sample(sample):
+        if self.filter_sample(sample):
             return False
         self.samples.append(sample)
         if self.label_mapping and sample.label in self.label_mapping:
