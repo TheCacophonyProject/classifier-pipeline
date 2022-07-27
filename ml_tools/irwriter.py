@@ -310,7 +310,7 @@ def get_data(db, sample, cropped, back_thresh):
     f.filtered, _ = get_ir_back_filtered(background, f.thermal, back_thresh)
 
     assert f.thermal.shape == f.filtered.shape
-    # f.normalize()
+    f.normalize()
 
     if sample.augment:
         degrees = random.randint(-45, 45)
