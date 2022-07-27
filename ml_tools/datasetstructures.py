@@ -644,8 +644,8 @@ def get_movement_data(b_h, m_h):
     centrey = (b_h[:, 3] + b_h[:, 1]) / 2
     xv = np.hstack((0, centrex[1:] - centrex[:-1]))
     yv = np.hstack((0, centrey[1:] - centrey[:-1]))
-    axv = xv / areas ** 0.5
-    ayv = yv / areas ** 0.5
+    axv = xv / areas**0.5
+    ayv = yv / areas**0.5
     return np.hstack((b_h, np.vstack((m_h, xv, yv, axv, ayv)).T))
 
 

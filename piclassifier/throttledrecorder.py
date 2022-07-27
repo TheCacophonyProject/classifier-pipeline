@@ -7,11 +7,11 @@ from datetime import datetime
 
 
 class ThrottledRecorder(Recorder):
-    def __init__(self, thermal_config, headers, on_recording_stopping):
+    def __init__(self, recorder, thermal_config, headers, on_recording_stopping):
         self.bucket_size = thermal_config.throttler.bucket_size * headers.fps
         self.throttling = False
         self.tokens = self.bucket_size
-        self.recorder = CPTVRecorder(thermal_config, headers, on_recording_stopping)
+        self.recorder = recorder
         self.last_rec = None
         self.last_motion = None
         self.fps = headers.fps

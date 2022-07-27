@@ -20,7 +20,7 @@ class Service(dbus.service.Object):
         self.headers = headers
 
     @dbus.service.method(
-        "org.cacophony.thermalrecorder",
+        DBUS_NAME,
         in_signature="",
         out_signature="a{si}",
     )
@@ -41,7 +41,7 @@ class Service(dbus.service.Object):
         return headers
 
     @dbus.service.method(
-        "org.cacophony.thermalrecorder",
+        DBUS_NAME,
         in_signature="i",
         out_signature="(aaq(xsiqddxb)s)",
     )
@@ -72,6 +72,10 @@ class Service(dbus.service.Object):
             json.dumps(track_meta, cls=CustomJSONEncoder),
         )
 
+    @dbus.service.signal(DBUS_NAME, signature="siaib")
+    def Tracking(self, what, confidence, region, tracking):
+        pass
+
 
 class SnapshotService:
     def __init__(self, get_frame, headers):
@@ -82,6 +86,7 @@ class SnapshotService:
             args=(get_frame, headers),
         )
         self.t.start()
+        self.service = None
 
     def quit(self):
         self.loop.quit()
@@ -89,5 +94,20 @@ class SnapshotService:
     def run_server(self, get_frame, headers):
         session_bus = dbus.SystemBus()
         name = dbus.service.BusName(DBUS_NAME, session_bus)
-        object = Service(session_bus, get_frame, headers)
+        self.service = Service(session_bus, get_frame, headers)
+        # tracking_thread = threading.Thread(
+        #     target=self.send_tracks,
+        # )
+        # tracking_thread.start()
         self.loop.run()
+
+    def tracking(self, what, confidence, region, tracking):
+        logging.debug(
+            "Tracking %s animal %s confidence %s  at %s",
+            what,
+            round(100 * confidence),
+            region,
+            tracking,
+        )
+        self.service.Tracking(what, round(100 * confidence), region, tracking)
+        # time.sleep(10)

@@ -80,6 +80,7 @@ class TrackPrediction:
         self.keep_all = keep_all
         self.labels = labels
         self.classify_time = None
+        self.tracking = False
 
     def classified_clip(
         self,
@@ -107,7 +108,7 @@ class TrackPrediction:
 
     def classified_frames(self, frame_numbers, prediction, mass):
         self.num_frames_classified += len(frame_numbers)
-        smoothed_prediction = prediction ** 2 * mass
+        smoothed_prediction = prediction**2 * mass
         if self.keep_all:
             self.prediction_frames.append(frame_numbers)
             self.predictions.append(prediction)
@@ -117,9 +118,8 @@ class TrackPrediction:
             self.prediction_frames = [frame_numbers]
             self.predictions = [prediction]
             self.smoothed_predictions = [smoothed_prediction]
-
         if self.class_best_score is None:
-            self.class_best_score = smoothed_prediction
+            self.class_best_score = smoothed_prediction.copy()
         else:
             self.class_best_score += smoothed_prediction
 
@@ -127,7 +127,7 @@ class TrackPrediction:
         self.prediction_frames.append([frame_number])
         self.last_frame_classified = frame_number
         self.num_frames_classified += 1
-        smoothed_prediction = prediction ** 2 * mass
+        smoothed_prediction = prediction**2 * mass
         if self.keep_all:
             self.predictions.append(prediction)
             self.smoothed_predictions.append(smoothed_prediction)
@@ -142,6 +142,8 @@ class TrackPrediction:
             self.class_best_score += smoothed_prediction
 
     def get_priority(self, frame_number):
+        if self.tracking:
+            return 100
         if self.last_frame_classified:
             skipepd_frames = frame_number - self.last_frame_classified
         else:
@@ -170,14 +172,14 @@ class TrackPrediction:
     def get_classified_footer(self, frame_number=None):
         if len(self.smoothed_predictions) == 0:
             return "no classification"
-        if frame_number is None or frame_number >= len(self.smoothed_predictions):
-            score = round(self.max_score * 10)
-            label = self.labels[self.best_label_index]
-        else:
-            score = self.score_at_time(frame_number) * 10
-            label = self.labels[self.label_at_time(frame_number)]
+        score = self.score_at_time(frame_number) * 10
+        label = self.labels[self.label_at_time(frame_number)]
 
-        footer = "({:.1f} {})".format(score, label)
+        score_2 = self.score_at_time(frame_number, n=2) * 10
+        label_2 = self.labels[self.label_at_time(frame_number, n=2)]
+        footer = "({:.1f} {}) second guess ({:.1f} {})".format(
+            score, label, score_2, label_2
+        )
         return footer
 
     def get_result(self):
@@ -285,16 +287,42 @@ class TrackPrediction:
         average = np.mean(self.smoothed_predictions[:prediction_index], axis=0)
         return int(np.argsort(average)[-n])
 
-    def score_at_time(self, frame_number, n=-1):
+    def label_at_time(self, frame_number, n=1):
         """class prediction of nth best at a point in time."""
         if n is None:
             return None
+        predictions = []
+        class_best_score = None
+        for i, frames in enumerate(self.prediction_frames):
+            a_min = np.amin(frames)
+            a_max = np.amax(frames)
 
-        frames_per_prediction = len(self.smoothed_predictions) / self.num_frames
-        prediction_index = int(frame_number / frames_per_prediction) + 1
-        average = np.mean(self.smoothed_predictions[:prediction_index], axis=0)
-        average = average / np.sum(average)
-        return float(sorted(average)[-n])
+            if a_min <= frame_number:
+                predictions.append(self.smoothed_predictions[i])
+        class_best_score = np.sum(predictions, axis=0)
+        if len(predictions) == 0:
+            return 0
+        class_best_score = class_best_score / np.sum(class_best_score)
+        return int(np.argsort(class_best_score)[-n])
+
+    def score_at_time(self, frame_number, n=1):
+        """class prediction of nth best at a point in time."""
+        if n is None:
+            return None
+        predictions = []
+        class_best_score = None
+        for i, frames in enumerate(self.prediction_frames):
+            a_min = np.amin(frames)
+            a_max = np.amax(frames)
+
+            if a_min <= frame_number:
+                predictions.append(self.smoothed_predictions[i])
+        class_best_score = np.sum(predictions, axis=0)
+        if len(predictions) == 0:
+            return 0
+
+        class_best_score = class_best_score / np.sum(class_best_score)
+        return float(sorted(class_best_score)[-n])
 
     def print_prediction(self):
         logging.info(

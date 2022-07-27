@@ -108,6 +108,7 @@ def parse_cptv(cptv_file, config, thermal_config_file, preview_type):
         thermal_config = ThermalConfig.load_from_file(
             thermal_config_file, headers.model
         )
+        logging.debug(thermal_config)
         pi_classifier = PiClassifier(
             config,
             thermal_config,

@@ -286,43 +286,11 @@ class Previewer:
         draw.text((center[0], center[1]), text, font=font)
 
     def add_footer(self, draw, width, height, text, ffc_affected):
+        font = get_font()
         footer_text = "FFC {} {}".format(ffc_affected, text)
         footer_size = font.getsize(footer_text)
         center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
         draw.text((center[0], center[1]), footer_text, font=font)
-
-    def add_debug_text(
-        draw,
-        track,
-        region,
-        screen_bounds,
-        text=None,
-        v_offset=0,
-        frame_offset=0,
-        scale=1,
-    ):
-        font = get_font()
-        if text is None:
-            text = "id {}".format(track.get_id())
-            if region.pixel_variance:
-                text += "mass {} var {} vel ({},{})".format(
-                    region.mass,
-                    round(region.pixel_variance, 2),
-                    track.vel_x[frame_offset],
-                    track.vel_y[frame_offset],
-                )
-        footer_size = font.getsize(text)
-        footer_center = ((region.width * self.frame_scale) - footer_size[0]) / 2
-
-        footer_rect = Region(
-            region.right * scale - footer_center / 2.0,
-            (v_offset + region.bottom) * self.frame_scale,
-            footer_size[0],
-            footer_size[1],
-        )
-        fit_to_image(footer_rect, screen_bounds)
-
-        draw.text((footer_rect.x, footer_rect.y), text, font=font)
 
     def create_four_tracking_image(self, frame, min_temp, max_temp):
 
@@ -405,7 +373,9 @@ def add_class_results(
     if track_prediction is None:
         return
 
-    current_prediction_string = track_prediction.get_classified_footer(frame_offset)
+    current_prediction_string = track_prediction.get_classified_footer(
+        frame_offset + track.start_frame
+    )
     add_text_to_track(
         draw,
         rect,
@@ -578,3 +548,37 @@ def add_last_frame_tracking(
                 draw, track, region, screen_bounds, text=text, v_offset=v_offset
             )
     return image
+
+
+def add_debug_text(
+    draw,
+    track,
+    region,
+    screen_bounds,
+    text=None,
+    v_offset=0,
+    frame_offset=0,
+    scale=1,
+):
+    font = get_font()
+    if text is None:
+        text = "id {}".format(track.get_id())
+        if region.pixel_variance:
+            text += "mass {} var {} vel ({},{})".format(
+                region.mass,
+                round(region.pixel_variance, 2),
+                track.vel_x[frame_offset],
+                track.vel_y[frame_offset],
+            )
+    footer_size = font.getsize(text)
+    footer_center = ((region.width * self.frame_scale) - footer_size[0]) / 2
+
+    footer_rect = Region(
+        region.right * scale - footer_center / 2.0,
+        (v_offset + region.bottom) * self.frame_scale,
+        footer_size[0],
+        footer_size[1],
+    )
+    fit_to_image(footer_rect, screen_bounds)
+
+    draw.text((footer_rect.x, footer_rect.y), text, font=font)
