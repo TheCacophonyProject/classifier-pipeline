@@ -192,7 +192,6 @@ class PiClassifier(Processor):
         super().__init__()
         self.frame_num = 0
         self.clip = None
-        self.type = type
         self.enable_per_track_information = False
         self.rolling_track_classify = {}
         self.skip_classifying = 0
@@ -209,10 +208,7 @@ class PiClassifier(Processor):
         self.tracking_events = thermal_config.motion.tracking_events
         self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
-        edge = self.config.tracking.edge_pixels
-        self.crop_rectangle = tools.Rectangle(
-            edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
-        )
+
         self.fps_timer = SlidingWindow((9), np.float32)
         self.preview_type = preview_type
         self.max_keep_frames = None if preview_type else 0
@@ -223,7 +219,7 @@ class PiClassifier(Processor):
         if headers.model == "IR":
             logging.info("Running on IR")
             self.track_extractor = IRTrackExtractor(
-                config.tracking,
+                self.config.tracking,
                 config.use_opt_flow,
                 self.config.classify.cache_to_disk,
                 verbose=config.verbose,
@@ -248,7 +244,11 @@ class PiClassifier(Processor):
                 self.recorder = CPTVRecorder(
                     thermal_config, headers, on_recording_stopping
                 )
-
+        self.tracking_config = self.track_extractor.config
+        edge = self.tracking_config.edge_pixels
+        self.crop_rectangle = tools.Rectangle(
+            edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
+        )
         global track_extractor
         track_extractor = self.track_extractor
         self.motion = thermal_config.motion
@@ -267,7 +267,7 @@ class PiClassifier(Processor):
 
         self.motion_detector = MotionDetector(
             thermal_config,
-            self.config.tracking.motion.dynamic_thresh,
+            self.tracking_config.motion.dynamic_thresh,
             headers,
             detect_after=detect_after,
         )
@@ -333,7 +333,7 @@ class PiClassifier(Processor):
 
     def new_clip(self, preview_frames):
         self.clip = Clip(
-            self.config.tracking, "stream", model=self.headers.model, type=self.type
+            self.tracking_config, "stream", model=self.headers.model, type=self.type
         )
         global clip
         clip = self.clip
@@ -341,13 +341,13 @@ class PiClassifier(Processor):
         self.clip.num_preview_frames = self.preview_frames
         self.clip.set_res(self.res_x, self.res_y)
         self.clip.set_frame_buffer(
-            self.config.tracking.high_quality_optical_flow,
+            self.tracking_config.high_quality_optical_flow,
             self.config.classify.cache_to_disk,
             self.config.use_opt_flow,
             True,
             self.max_keep_frames,
         )
-        edge_pixels = self.config.tracking.edge_pixels
+        edge_pixels = self.tracking_config.edge_pixels
 
         self.clip.update_background(self.motion_detector.background.copy())
         self.clip._background_calculated()
@@ -499,6 +499,8 @@ class PiClassifier(Processor):
         params = self.classifier.params
 
         for frame, region in zip(frames, regions):
+            if region.blank:
+                continue
             refs.append(np.median(frame.thermal))
             thermal_reference = np.median(frame.thermal)
             f = frame.crop_by_region(region)

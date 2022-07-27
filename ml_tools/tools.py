@@ -357,3 +357,8 @@ def saveclassify_rgb(data, filename):
     Path(filename).parent.mkdir(parents=True, exist_ok=True)
     r = Image.fromarray(np.uint8(data))
     r.save(filename + ".png")
+
+
+def purge(dir, pattern):
+    for f in glob.glob(os.path.join(dir, pattern)):
+        os.remove(f)

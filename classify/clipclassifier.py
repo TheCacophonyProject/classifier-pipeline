@@ -214,7 +214,6 @@ class ClipClassifier:
             prediction = classifier.classify_track(
                 clip, track, segment_frames=segment_frames
             )
-
             predictions.prediction_per_track[track.get_id()] = prediction
             description = prediction.description()
             logging.info(

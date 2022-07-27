@@ -122,6 +122,7 @@ class Dataset:
             "no_data": 0,
             "not-confirmed": 0,
             "tag_names": set(),
+            "notags": 0,
         }
         self.lbl_p = None
         self.numpy_data = None
@@ -336,7 +337,7 @@ class Dataset:
         return True
 
     def filter_track(self, clip_meta, track_meta):
-        # some clips are banned for various reasons
+        # some clips are banned for various reasons4
         source = os.path.basename(clip_meta["filename"])
         if self.banned_clips and source in self.banned_clips:
             self.filtered_stats["banned"] += 1
@@ -344,6 +345,7 @@ class Dataset:
         if "tag" not in track_meta:
             self.filtered_stats["notags"] += 1
             return True
+        print("got tag", track_meta["tag"])
         if track_meta["tag"] not in self.included_labels:
             self.filtered_stats["tags"] += 1
             self.filtered_stats["tag_names"].add(track_meta["tag"])

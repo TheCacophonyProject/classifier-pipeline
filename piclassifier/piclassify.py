@@ -146,35 +146,38 @@ def parse_ir(file, config, thermal_config_file, preview_type):
 
 
 def parse_cptv(file, config, thermal_config_file, preview_type):
-    reader = CPTVReader(f)
+    with open(file, "rb") as f:
+        reader = CPTVReader(f)
 
-    headers = HeaderInfo(
-        res_x=reader.x_resolution,
-        res_y=reader.y_resolution,
-        fps=9,
-        brand=reader.brand.decode() if reader.brand else None,
-        model=reader.model.decode() if reader.model else None,
-        frame_size=reader.x_resolution * reader.y_resolution * 2,
-        pixel_bits=16,
-        serial="",
-        firmware="",
-    )
-    thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
-    pi_classifier = PiClassifier(
-        config,
-        thermal_config,
-        headers,
-        thermal_config.motion.run_classifier,
-        0,
-        preview_type,
-    )
-    for frame in reader:
-        if frame.background_frame:
-            pi_classifier.motion_detector.background = frame.pix
-            continue
-        frame.received_at = time.time()
-        pi_classifier.process_frame(frame)
-    pi_classifier.disconnected()
+        headers = HeaderInfo(
+            res_x=reader.x_resolution,
+            res_y=reader.y_resolution,
+            fps=9,
+            brand=reader.brand.decode() if reader.brand else None,
+            model=reader.model.decode() if reader.model else None,
+            frame_size=reader.x_resolution * reader.y_resolution * 2,
+            pixel_bits=16,
+            serial="",
+            firmware="",
+        )
+        thermal_config = ThermalConfig.load_from_file(
+            thermal_config_file, headers.model
+        )
+        pi_classifier = PiClassifier(
+            config,
+            thermal_config,
+            headers,
+            thermal_config.motion.run_classifier,
+            0,
+            preview_type,
+        )
+        for frame in reader:
+            if frame.background_frame:
+                pi_classifier.motion_detector.background = frame.pix
+                continue
+            frame.received_at = time.time()
+            pi_classifier.process_frame(frame)
+        pi_classifier.disconnected()
 
 
 def get_processor(process_queue, config, thermal_config, headers):
