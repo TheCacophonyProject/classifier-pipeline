@@ -13,7 +13,7 @@ import os
 import time
 import numpy as np
 import gc
-from ml_tools.datasetstructures import NumpyMeta, TrackHeader, TrackingSample
+from ml_tools.datasetstructures import TrackHeader, TrackingSample
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
 from track.region import Region
@@ -126,49 +126,12 @@ class Dataset:
         self.lbl_p = None
         self.numpy_data = None
 
-    # is much faster to read from numpy array when training
-    def saveto_numpy(self, path, frame_size):
-        file = os.path.join(path, self.name)
-        self.numpy_data = NumpyMeta(
-            f"{file}.npy",
-            self.enable_augmentation,
-            frame_size,
-        )
-        self.numpy_data.save_segments(self.db, self.tracks)
-        self.numpy_data.f = None
-
-    def clear_tracks(self):
-        del self.tracks
-        del self.tracks_by_label
-        del self.tracks_by_bin
-        del self.tracks_by_id
-
     def load_db(self):
         self.db = TrackDatabase(self.db_file)
-
-    def clear_samples(self):
-        self.samples_by_label = {}
-        self.samples_by_bin = {}
-        self.samples = []
-        self.sample_cdf = []
-        gc.collect()
 
     def set_read_only(self, read_only):
         if self.db is not None:
             self.db.set_read_only(read_only)
-
-    # def highest_mass_only(self):
-    #     # top_frames for i3d generates all segments above a  min average mass
-    #     # use this to take only the best
-    #     remove = [segment for segment in self.segments if not segment.best_mass]
-    #
-    #     for segment in remove:
-    #         segment.track.segments.remove(segment)
-    #         self.segments_by_label[segment.label].remove(segment)
-    #         del self.segments_by_id[segment.id]
-    #     self.segments = [segment for segment in self.segments if segment.best_mass]
-    #
-    #     self.rebuild_cdf()
 
     @property
     def sample_count(self):
@@ -311,83 +274,6 @@ class Dataset:
                         self.add_clip_sample_mappings(sample)
             return True
 
-    #
-    # def load_clip(self, clip_id, allow_multiple_labels=False):
-    #     # if self.use_segments:
-    #     return self.load_clip_segments(clip_id)
-    #
-    #     # GP DONT NEED THIS
-    #     clip_meta = self.db.get_clip_meta(clip_id)
-    #     # if "tag" not in clip_meta:
-    #     #     self.filtered_stats["not-confirmed"] += 1
-    #     #     return False
-    #     clip_id = int(clip_id)
-    #     samples = {}
-    #
-    #     # self.clip_samples[clip_id] = samples
-    #     tag_frames = clip_meta.get("tag_frames", {})
-    #     tag_regions = tag_frames.get("tag_regions")
-    #     tags_per_frames = {}
-    #     for label, frames in tag_frames.items():
-    #         if label == "tag_regions":
-    #             continue
-    #         if label == "nothing":
-    #             continue
-    #         for f in frames:
-    #             # gp needs to be fixed in db
-    #             if label in ["false-positve", "false-positives"]:
-    #                 label = "false-positive"
-    #             if f in tags_per_frames:
-    #                 tags_per_frames[f].add(label)
-    #             else:
-    #                 tags_per_frames[f] = set([label])
-    #     for label, frames in tag_frames.items():
-    #         if label in ["false-positve", "false-positives"]:
-    #             label = "false-positive"
-    #         if label in ["nothing", "tag_regions"]:
-    #             continue
-    #         regions_a = tag_regions.get(label)
-    #         regions = {}
-    #         if regions_a is None:
-    #             continue
-    #         for i in range(len(regions_a)):
-    #             region = Region.region_from_array(regions_a[i])
-    #             regions[region.frame_number] = region
-    #
-    #         for frame in frames:
-    #             if not allow_multiple_labels:
-    #                 if tags_per_frames and len(tags_per_frames.get(frame)) > 1:
-    #                     logging.info(
-    #                         "Skipping clip %s frame %s  as has multiple tags %s",
-    #                         clip_id,
-    #                         frame,
-    #                         tags_per_frames.get(frame),
-    #                     )
-    #                     continue
-    #
-    #             if frame not in regions:
-    #                 continue
-    #             samples_key = f"{clip_id}-None-{frame}"
-    #             if samples_key in samples:
-    #                 existing_sample = samples[samples_key]
-    #                 existing_sample.labels.append(label)
-    #             else:
-    #                 sample = TrackingSample(
-    #                     clip_id,
-    #                     None,
-    #                     frame,
-    #                     label,
-    #                     clip_meta["frame_temp_median"][frame],
-    #                     regions[frame],
-    #                     clip_meta["start_time"],
-    #                     clip_meta.get("device", "unknown"),
-    #                     clip_meta.get("filename", "unknown"),
-    #                 )
-    #                 samples[samples_key] = sample
-    #                 self.add_clip_sample_mappings(sample)
-    #
-    #     return True
-
     def add_samples(self, samples):
         """
         Adds list of samples to dataset
@@ -428,24 +314,6 @@ class Dataset:
         self.camera_names.add(sample.camera)
         return True
 
-    def load_tracks(self, shuffle=False, before_date=None, after_date=None, label=None):
-        """
-        Loads track headers from track database with optional filter
-        :return: [number of tracks added, total tracks].
-        """
-        counter = 0
-        track_ids = self.db.get_all_track_ids(
-            before_date=before_date, after_date=after_date, label=label
-        )
-        if shuffle:
-            np.random.shuffle(track_ids)
-        for clip_id, track_id in track_ids:
-            if self.load_track(clip_id, track_id):
-                counter += 1
-            if counter % 50 == 0:
-                logging.debug("Dataset loaded %s / %s", counter, len(track_ids))
-        return [counter, len(track_ids)]
-
     def add_tracks(self, tracks):
         """
         Adds list of tracks to dataset
@@ -465,53 +333,6 @@ class Dataset:
         self.tracks.append(track_header)
         self.add_track_to_mappings(track_header)
         self.segments.extend(track_header.segments)
-        return True
-
-    def load_track(self, clip_id, track_id):
-        """
-        Creates segments for track and adds them to the dataset
-        :param clip_id: id of tracks clip
-        :param track_id: track number
-        :param track_filter: if provided a function filter(clip_meta, track_meta) that returns true when a track should
-                be ignored)
-        :return: True if track was added, false if it was filtered out.
-        :return:
-        """
-
-        # make sure we don't already have this track
-        if "{}-{}".format(clip_id, track_id) in self.tracks_by_bin:
-            return False
-        clip_meta = self.db.get_clip_meta(clip_id)
-        track_meta = self.db.get_track_meta(clip_id, track_id)
-        if self.filter_track(clip_meta, track_meta):
-            logging.info("filtering track %s", track_meta["id"])
-            return False
-        track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
-        self.tracks.append(track_header)
-        if self.use_segments:
-            segment_frame_spacing = int(
-                round(self.segment_spacing * track_header.frames_per_second)
-            )
-            segment_width = self.segment_length
-
-            track_header.calculate_segments(
-                segment_frame_spacing,
-                segment_width,
-                self.segment_min_avg_mass,
-            )
-            self.filtered_stats["segment_mass"] += track_header.filtered_stats[
-                "segment_mass"
-            ]
-            for segment in track_header.segments:
-                self.add_clip_sample_mappings(segment)
-        else:
-            sample_frames = track_header.get_sample_frames()
-            skip_x = None
-            if self.type == "IR":
-                skip_last = int(len(sample_frames) * 0.1)
-                sample_frames = sample_frames[:-skip_last]
-            for sample in sample_frames:
-                self.add_clip_sample_mappings(sample)
         return True
 
     def filter_track(self, clip_meta, track_meta):

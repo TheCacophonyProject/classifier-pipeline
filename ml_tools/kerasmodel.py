@@ -16,7 +16,6 @@ import logging
 from sklearn.metrics import confusion_matrix
 import cv2
 from ml_tools import tools
-from ml_tools.datagenerator import DataGenerator
 from ml_tools.preprocess import preprocess_movement, preprocess_frame, preprocess_ir
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
@@ -534,94 +533,6 @@ class KerasModel(Interpreter):
 
         self.save(run_name, history=history, test_results=test_accuracy)
 
-    def train_model(self, epochs, run_name, weights=None):
-        logging.info(
-            "%s Training model for %s epochs with weights %s", run_name, epochs, weights
-        )
-
-        os.makedirs(self.log_base, exist_ok=True)
-        self.log_dir = os.path.join(self.log_base, run_name)
-        os.makedirs(self.log_base, exist_ok=True)
-        if not self.model:
-            self.build_model(
-                dense_sizes=self.params.dense_sizes,
-                retrain_from=self.params.retrain_layer,
-                dropout=self.params.dropout,
-            )
-        self.model.summary()
-        self.save()
-        if weights is not None:
-            self.model.load_weights(weights)
-        self.train = DataGenerator(
-            self.train_dataset,
-            self.labels,
-            self.params.output_dim,
-            augment=True,
-            cap_at="bird",
-            epochs=epochs,
-            model_preprocess=self.preprocess_fn,
-            preload=True,
-            **self.params,
-        )
-        self.validate = DataGenerator(
-            self.validation_dataset,
-            self.labels,
-            self.params.output_dim,
-            cap_at="bird",
-            model_preprocess=self.preprocess_fn,
-            epochs=epochs,
-            preload=True,
-            **self.params,
-        )
-
-        self.save_metadata(run_name)
-
-        weight_for_0 = 1
-        weight_for_1 = 1 / 4
-        class_weight = {}
-        for i, label in enumerate(self.labels):
-            if label == "bird":
-                class_weight[i] = 1.6
-            elif label == "wallaby":
-                # wallabies not so important better to predict birds
-                class_weight[i] = 0.6
-            else:
-                class_weight[i] = 1
-        logging.info("training with class wieghts %s", class_weight)
-        # give a bit of time for preloader to cache data
-        checkpoints = self.checkpoints(run_name)
-        history = self.model.fit(
-            self.train,
-            validation_data=self.validate,
-            epochs=epochs,
-            shuffle=False,
-            class_weight=class_weight,
-            callbacks=[
-                ClearMemory(),
-                *checkpoints,
-            ],  # log metricslast_stats
-        )
-        history = history.history
-        self.train.stop_load()
-        self.validate.stop_load()
-        test_accuracy = None
-        if self.test_dataset and self.test_dataset.has_data():
-            self.test = DataGenerator(
-                self.test_dataset,
-                self.train_dataset.labels,
-                self.params.output_dim,
-                model_preprocess=self.preprocess_fn,
-                epochs=1,
-                cap_at="bird",
-                preload=True,
-                **self.params,
-            )
-            logging.info("Evaluating test %s", len(self.test))
-            test_accuracy = self.model.evaluate(self.test)
-            logging.info("Test accuracy is %s", test_accuracy)
-            self.test.stop_load()
-        self.save(run_name, history=history, test_results=test_accuracy)
-
     def checkpoints(self, run_name):
         val_loss = os.path.join(self.checkpoint_folder, run_name, "val_loss")
 
@@ -790,7 +701,7 @@ class KerasModel(Interpreter):
         segments = track.get_segments(
             clip.ffc_frames,
             thermal_median,
-            self.params.square_width**2,
+            self.params.square_width ** 2,
             repeats=4,
             segment_frames=segment_frames,
         )
@@ -918,45 +829,6 @@ class KerasModel(Interpreter):
         cm = confusion_matrix(
             true_categories, predicted_categories, labels=np.arange(len(self.labels))
         )
-        # Log the confusion matrix as an image summary.
-        figure = plot_confusion_matrix(cm, class_names=self.labels)
-        plt.savefig(filename, format="png")
-
-    # Obselete
-    def confusion(self, dataset, filename="confusion.png"):
-        dataset.set_read_only(True)
-        dataset.use_segments = self.params.use_segments
-        test = DataGenerator(
-            dataset,
-            self.labels,
-            self.params.output_dim,
-            batch_size=self.params.batch_size,
-            channel=self.params.channel,
-            use_movement=self.params.use_movement,
-            shuffle=True,
-            model_preprocess=self.preprocess_fn,
-            epochs=1,
-            keep_epoch=True,
-            cap_samples=True,
-            cap_at="bird",
-            square_width=self.params.square_width,
-            type=self.params.type,
-            segment_type=self.params.segment_type,
-            keep_edge=self.params.keep_edge,
-            preload=True,
-        )
-        test_pred_raw = self.model.predict(test)
-        test.stop_load()
-        test_pred = np.argmax(test_pred_raw, axis=1)
-
-        batch_y = test.get_epoch_labels(0)
-        for i in range(len(batch_y)):
-            mapped_label = dataset.mapped_label(batch_y[i])
-            batch_y[i] = self.labels.index(mapped_label)
-        batch_y = np.int32(batch_y)
-        self.f1(batch_y, test_pred_raw)
-        # test.epoch_data = None
-        cm = confusion_matrix(batch_y, test_pred, labels=np.arange(len(self.labels)))
         # Log the confusion matrix as an image summary.
         figure = plot_confusion_matrix(cm, class_names=self.labels)
         plt.savefig(filename, format="png")
