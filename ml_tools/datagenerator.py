@@ -89,7 +89,7 @@ class DataGenerator(keras.utils.Sequence):
             self.cap_samples,
             self.epochs,
             self.params.__dict__,
-            psutil.Process(os.getpid()).memory_info().rss / 1024**2,
+            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
         )
 
     def stop_load(self):
@@ -429,7 +429,7 @@ def preloader(
         params.augment,
         numpy_meta.filename,
         params.maximum_preload,
-        psutil.Process(os.getpid()).memory_info().rss / 1024**2,
+        psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
     )
     epoch = 0
     # this does the data pre processing
@@ -450,7 +450,7 @@ def preloader(
             name,
             batches,
             epoch,
-            psutil.Process(os.getpid()).memory_info().rss / 1024**2,
+            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
         )
         total = 0
         # Once process_batch starts to back up
@@ -461,14 +461,22 @@ def preloader(
             while train_queue.qsize() > max_jobs:
                 time.sleep(5)
                 logging.debug(
-                    "Preload sleeping as too many %s jobs waiting", train_queue.qsize()
+                    "%s preloader got %s batches for epoch %s mem %s",
+                    name,
+                    len(batches),
+                    epoch,
+                    psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
                 )
-            start = time.time()
-            logger.info(
-                "%s preloader memory %s",
-                name,
-                psutil.Process(os.getpid()).memory_info().rss / 1024**2,
-            )
+                total = 0
+
+                # Once process_batch starts to back up
+                loaded_up_to = 0
+                while len(batches) > 0:
+                    logging.debug(
+                        "%s preloader memory %s",
+                        name,
+                        psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+                    )
 
             logger.info(
                 "%s preloader loading %s - %s  / %s",
@@ -503,7 +511,7 @@ def preloader(
             logger.debug(
                 "processing %s mem %s",
                 len(data),
-                psutil.Process(os.getpid()).memory_info().rss / 1024**2,
+                psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
             )
 
             if use_pool:

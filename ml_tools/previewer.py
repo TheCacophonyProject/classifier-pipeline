@@ -408,7 +408,9 @@ def add_class_results(
     if track_prediction is None:
         return
 
-    current_prediction_string = track_prediction.get_classified_footer(frame_offset)
+    current_prediction_string = track_prediction.get_classified_footer(
+        frame_offset + track.start_frame
+    )
     add_text_to_track(
         draw,
         rect,

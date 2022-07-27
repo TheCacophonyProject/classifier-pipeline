@@ -72,7 +72,7 @@ class LoadConfig(DefaultConfig):
         return cls(
             enable_compression=False,
             include_filtered_channel=False,
-            preview="tracking",
+            preview=None,
             tag_precedence=LoadConfig.DEFAULT_GROUPS,
             cache_to_disk=False,
             high_quality_optical_flow=True,

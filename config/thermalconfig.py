@@ -70,7 +70,9 @@ class CameraMotionConfig:
     edge_pixels = attr.ib()
     warmer_only = attr.ib()
     dynamic_thresh = attr.ib()
-    run_classifier = attr.ib()
+    run_classifier = attr.ib(default=True)
+    bluetooth_beacons = attr.ib(default=False)
+    tracking_events = attr.ib(default=False)
 
     @classmethod
     def defaults_for(cls, model):
@@ -85,7 +87,6 @@ class CameraMotionConfig:
                 edge_pixels=1,
                 warmer_only=True,
                 dynamic_thresh=True,
-                run_classifier=True,
             )
         else:
             return cls(
@@ -98,7 +99,6 @@ class CameraMotionConfig:
                 edge_pixels=1,
                 warmer_only=True,
                 dynamic_thresh=True,
-                run_classifier=True,
             )
 
     @classmethod
@@ -117,6 +117,10 @@ class CameraMotionConfig:
             warmer_only=motion.get("warmer-only", default.warmer_only),
             dynamic_thresh=motion.get("dynamic-thresh", default.dynamic_thresh),
             run_classifier=motion.get("run-classifier", default.run_classifier),
+            bluetooth_beacons=motion.get(
+                "bluetooth-beacons", default.bluetooth_beacons
+            ),
+            tracking_events=motion.get("tracking-events", default.tracking_events),
         )
         return motion
 
@@ -136,7 +140,7 @@ class RecorderConfig:
     @classmethod
     def load(cls, recorder, window):
         return cls(
-            disable_recordings=recorder.get("disable-recordings", False),
+            disable_recordings=recorder.get("disable_recordings", False),
             min_secs=recorder.get("min-secs", 10),
             max_secs=recorder.get("max-secs", 600),
             preview_secs=recorder.get("preview-secs", 5),

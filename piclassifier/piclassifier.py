@@ -3,9 +3,9 @@ import json
 import logging
 import os
 import time
-
 import psutil
 import numpy as np
+import logging
 from pathlib import Path
 
 from classify.trackprediction import Predictions
@@ -28,15 +28,17 @@ from .irrecorder import IRRecorder
 
 from .motiondetector import MotionDetector, SlidingWindow
 from .processor import Processor
-from PIL import ImageDraw
+from ml_tools.preprocess import (
+    preprocess_frame,
+    preprocess_movement,
+)
 
 from ml_tools.interpreter import Interpreter
-import logging
 from ml_tools.logs import init_logging
 from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
 from track.region import Region
-
+from . import beacon
 
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
@@ -56,8 +58,9 @@ class NeuralInterpreter(Interpreter):
         model_xml = model_name + ".xml"
         model_bin = os.path.splitext(model_xml)[0] + ".bin"
         ie = IECore()
-        net = IENetwork(model=model_xml, weights=model_bin)
-        self.input_blob = next(iter(net.inputs))
+        ie.set_config({}, device)
+        net = ie.read_network(model=model_xml, weights=model_bin)
+        self.input_blob = next(iter(net.input_info))
         self.out_blob = next(iter(net.outputs))
         net.batch_size = 1
         self.exec_net = ie.load_network(network=net, device_name=device)
@@ -65,6 +68,7 @@ class NeuralInterpreter(Interpreter):
     def predict(self, input_x):
         if input_x is None:
             return None
+        input_x = np.float32(input_x)
         rearranged_arr = np.transpose(input_x, axes=[2, 0, 1])
         input_x = np.array([[rearranged_arr]])
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
@@ -202,6 +206,8 @@ class PiClassifier(Processor):
         self.total_time = 0
         self.rec_time = 0
         self.tracking = None
+        self.tracking_events = thermal_config.motion.tracking_events
+        self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
         edge = self.config.tracking.edge_pixels
         self.crop_rectangle = tools.Rectangle(
@@ -246,7 +252,14 @@ class PiClassifier(Processor):
         global track_extractor
         track_extractor = self.track_extractor
         self.motion = thermal_config.motion
-
+        self.min_frames = thermal_config.recorder.min_secs * headers.fps
+        self.max_frames = thermal_config.recorder.max_secs * headers.fps
+        if thermal_config.recorder.disable_recordings:
+            self.recorder = DummyRecorder(
+                thermal_config, headers, on_recording_stopping
+            )
+        else:
+            self.recorder = CPTVRecorder(thermal_config, headers, on_recording_stopping)
         if thermal_config.throttler.activate:
             self.recorder = ThrottledRecorder(
                 self.recorder, thermal_config, headers, on_recording_stopping
@@ -353,7 +366,10 @@ class PiClassifier(Processor):
         """
         active_tracks = self.clip.active_tracks
         active_tracks = [track for track in active_tracks if len(track) > 10]
-        if len(active_tracks) <= PiClassifier.NUM_CONCURRENT_TRACKS:
+        if (
+            len(active_tracks) <= PiClassifier.NUM_CONCURRENT_TRACKS
+            or not self.classify
+        ):
             return active_tracks
         active_predictions = []
         for track in active_tracks:
@@ -393,7 +409,7 @@ class PiClassifier(Processor):
         novelty = 0.0
 
         active_tracks = self.get_active_tracks()
-
+        new_prediction = False
         for i, track in enumerate(active_tracks):
             regions = []
             track_prediction = self.predictions.get_or_create_prediction(
@@ -410,26 +426,38 @@ class PiClassifier(Processor):
             logging.debug(
                 "Track %s is predicted as %s", track, track_prediction.get_prediction()
             )
-            if track_prediction.predicted_tag() != "false-positive":
-                track_prediction.tracking = True
-                self.tracking = track
-                track_prediction.normalize_score()
-                self.service.tracking(
-                    track_prediction.predicted_tag(),
-                    track_prediction.max_score,
-                    track.bounds_history[-1].to_ltrb(),
-                    True,
-                )
-            elif track_prediction.tracking:
-                track_prediction.tracking = False
-                self.tracking = None
-                track_prediction.normalize_score()
-                self.service.tracking(
-                    track_prediction.predicted_tag(),
-                    track_prediction.max_score,
-                    track.bounds_history[-1].to_ltrb(),
-                    False,
-                )
+
+            if self.tracking_events:
+                if track_prediction.predicted_tag() != "false-positive":
+                    track_prediction.tracking = True
+                    self.tracking = track
+                    track_prediction.normalize_score()
+                    self.service.tracking(
+                        track_prediction.predicted_tag(),
+                        track_prediction.max_score,
+                        track.bounds_history[-1].to_ltrb(),
+                        True,
+                    )
+                elif track_prediction.tracking:
+                    track_prediction.tracking = False
+                    self.tracking = None
+                    track_prediction.normalize_score()
+                    self.service.tracking(
+                        track_prediction.predicted_tag(),
+                        track_prediction.max_score,
+                        track.bounds_history[-1].to_ltrb(),
+                        False,
+                    )
+
+            new_prediction = True
+        if self.bluetooth_beacons:
+            if new_prediction:
+                active_predictions = []
+                for track in self.clip.active_tracks:
+                    track_prediction = self.predictions.prediction_for(track.get_id())
+                    if track_prediction:
+                        active_predictions.append(track_prediction)
+                beacon.classification(active_predictions)
 
     def identify_ir(self, track):
         region = track.bounds_history[-1]
@@ -540,7 +568,6 @@ class PiClassifier(Processor):
 
         if not self.recorder.recording and self.motion_detector.movement_detected:
             s_r = time.time()
-            # skip last frame
             preview_frames = self.motion_detector.thermal_window.get_frames()[:-1]
 
             recording = self.recorder.start_recording(
@@ -551,6 +578,8 @@ class PiClassifier(Processor):
             )
             self.rec_time += time.time() - s_r
             if recording:
+                if self.bluetooth_beacons:
+                    beacon.recording()
                 t_start = time.time()
                 self.new_clip(preview_frames)
                 self.tracking_time += time.time() - t_start
@@ -608,7 +637,7 @@ class PiClassifier(Processor):
                         self.classified_consec = 0
                 else:
                     self.classified_consec = 0
-            elif self.tracking is None:
+            elif self.tracking is None and self.tracking_events:
                 active_tracks = self.get_active_tracks()
 
                 active_tracks = [
@@ -629,7 +658,7 @@ class PiClassifier(Processor):
 
                 if len(active_tracks) > 0:
                     logging.debug(
-                        "tracking by biggestd mass %s",
+                        "tracking by biggest mass %s",
                         active_tracks[0],
                     )
                     self.tracking = active_tracks[0]
