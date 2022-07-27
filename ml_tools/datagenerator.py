@@ -130,7 +130,7 @@ class DataGenerator(keras.utils.Sequence):
             self.cap_samples,
             self.epochs,
             self.params.__dict__,
-            psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+            psutil.Process(os.getpid()).memory_info().rss / 1024**2,
         )
 
     def stop_load(self):
@@ -496,7 +496,7 @@ def preloader(
         params.augment,
         numpy_meta.filename,
         params.maximum_preload,
-        psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+        psutil.Process(os.getpid()).memory_info().rss / 1024**2,
     )
     epoch = 0
 
@@ -529,7 +529,7 @@ def preloader(
                     name,
                     len(batches),
                     epoch,
-                    psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+                    psutil.Process(os.getpid()).memory_info().rss / 1024**2,
                 )
                 total = 0
 
@@ -539,7 +539,7 @@ def preloader(
                     logging.debug(
                         "%s preloader memory %s",
                         name,
-                        psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2,
+                        psutil.Process(os.getpid()).memory_info().rss / 1024**2,
                     )
 
                     while jobs > max_jobs:

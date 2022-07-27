@@ -13,6 +13,7 @@ import dbus.mainloop.glib
 import time
 import threading
 
+
 def catchall_tracking_signals_handler(what, confidence, region, tracking):
     print(
         "Received a trackng signal and it says " + what,
@@ -24,10 +25,9 @@ def catchall_tracking_signals_handler(what, confidence, region, tracking):
     )
 
 
-
 # helper class to run dbus in background
 class TrackingService:
-    def __init__(self,callback):
+    def __init__(self, callback):
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
         self.callback = callback
         self.loop = GLib.MainLoop()
@@ -54,9 +54,9 @@ class TrackingService:
         )
         self.loop.run()
 
+
 if __name__ == "__main__":
     tracking = TrackingService(catchall_tracking_signals_handler)
-
 
     # just to keep program alive
     # replace with your code

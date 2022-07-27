@@ -342,7 +342,7 @@ class Track:
             if region.blank or self.bounds_history[i - 1].blank:
                 continue
             if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
-                distance = (vx ** 2 + vy ** 2) ** 0.5
+                distance = (vx**2 + vy**2) ** 0.5
                 movement += distance
                 offset = eucl_distance(first_point, region.mid)
                 max_offset = max(max_offset, offset)
@@ -378,7 +378,7 @@ class Track:
                 else:
                     jitter_smaller += 1
 
-        movement_points = (movement ** 0.5) + max_offset
+        movement_points = (movement**0.5) + max_offset
         delta_points = delta_std * 25.0
         jitter_percent = int(
             round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))
