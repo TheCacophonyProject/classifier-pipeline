@@ -125,16 +125,38 @@ class ClipTracker(ABC):
         )
         scores.sort(key=lambda record: record[0])
         matched_tracks = set()
+        blanked_tracks = set()
+
         for (score, track, region) in scores:
-            if track in matched_tracks or region in used_regions:
+            if (
+                track in matched_tracks
+                or region in used_regions
+                or track in blanked_tracks
+            ):
                 continue
             logging.debug(
                 "matched %s with %s to track %s", clip.current_frame, region, track
             )
-            track.add_region(region)
-            matched_tracks.add(track)
             used_regions.add(region)
             unmatched_regions.remove(region)
+            if not self.config.filter_regions_pre_match and (
+                region.pixel_variance < self.config.aoi_pixel_variance
+                or region.mass < self.config.aoi_min_mass
+            ):
+                # this will force a blank frame to be added, rather than if we filter earlier
+                # and match this track to a different region
+                logging.debug(
+                    "%s filtering region %s because of variance %s and mass %s track %s",
+                    region.frame_number,
+                    region,
+                    region.pixel_variance,
+                    region.mass,
+                    track,
+                )
+                blanked_tracks.add(track)
+                continue
+            track.add_region(region)
+            matched_tracks.add(track)
 
         return unmatched_regions, matched_tracks
 
@@ -213,7 +235,6 @@ class ClipTracker(ABC):
         for i, component in enumerate(component_details):
 
             if component[2] < self.min_dimension or component[3] < self.min_dimension:
-                # use config for this
                 continue
             region = Region(
                 component[0],
@@ -224,6 +245,7 @@ class ClipTracker(ABC):
                 id=i,
                 frame_number=clip.current_frame,
             )
+            logging.info("Got region %s %s", region, region.frame_number)
             # GP this needs to be checked for themals 29/06/2022
             if clip.type == "IR":
                 if delta_thermal is not None:
@@ -233,9 +255,9 @@ class ClipTracker(ABC):
                     )
                     # GP TEST NOt sure if this will work
                     region.mass = previous_delta_mass
-                    if previous_delta_mass == 0:
-                        logging.info("No mass from previous so skipping")
-                        continue
+                    # if previous_delta_mass == 0:
+                    #     logging.info("No mass from previous so skipping")
+                    #     continue
                     region.pixel_variance = np.var(sub_delta)
 
             elif delta_filtered is not None:
@@ -266,13 +288,9 @@ class ClipTracker(ABC):
                         self.config.cropped_regions_strategy
                     )
                 )
-            region.enlarge(padding, max=clip.crop_rectangle)
-            extra_edge = math.ceil(clip.crop_rectangle.width * 0.03)
-            region.set_is_along_border(clip.crop_rectangle, edge=extra_edge)
 
             # filter out regions that are probably just noise
-
-            if (
+            if self.config.filter_regions_pre_match and (
                 region.pixel_variance < self.config.aoi_pixel_variance
                 or region.mass < self.config.aoi_min_mass
             ):
@@ -284,6 +302,10 @@ class ClipTracker(ABC):
                     region.mass,
                 )
                 continue
+
+            region.enlarge(padding, max=clip.crop_rectangle)
+            extra_edge = math.ceil(clip.crop_rectangle.width * 0.03)
+            region.set_is_along_border(clip.crop_rectangle, edge=extra_edge)
             regions.append(region)
         return regions
 

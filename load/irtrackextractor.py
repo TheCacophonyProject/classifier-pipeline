@@ -155,8 +155,6 @@ class IRTrackExtractor(ClipTracker):
                 self.background = Background(gray)
                 clip.set_background(background)
             self.process_frame(clip, gray)
-            # if clip.current_frame > 600:
-            # break
         vidcap.release()
 
         if not clip.from_metadata and self.do_tracking:

@@ -60,6 +60,8 @@ class TrackingConfig(DefaultConfig):
     # used to provide defaults
     filters = attr.ib()
     areas_of_interest = attr.ib()
+    # filter regions out by mass and variance before matching to a track
+    filter_regions_pre_match = attr.ib()
 
     @classmethod
     def load(cls, tracking):
@@ -109,6 +111,7 @@ class TrackingConfig(DefaultConfig):
             filters=tracking["filters"],
             areas_of_interest=tracking["areas_of_interest"],
             max_mass_std_percent=tracking["max_mass_std_percent"],
+            filter_regions_pre_match=tracking["filter_regions_pre_match"],
         )
 
     @classmethod
@@ -170,8 +173,10 @@ class TrackingConfig(DefaultConfig):
                 "velocity_multiplier": 2,
                 "base_velocity": 2,
             },
+            filter_regions_pre_match=True,
         )
         if type == "IR":
+            default_tracking.filter_regions_pre_match = False
             default_tracking.areas_of_interest["pixel_variance"] = 20
             default_tracking.areas_of_interest["min_mass"] = 50
             default_tracking.filters["track_min_offset"] = 16
