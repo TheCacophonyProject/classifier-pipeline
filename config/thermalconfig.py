@@ -72,7 +72,7 @@ class CameraMotionConfig:
     dynamic_thresh = attr.ib()
     run_classifier = attr.ib(default=True)
     bluetooth_beacons = attr.ib(default=False)
-    tracking_events = attr.ib(default=True)
+    tracking_events = attr.ib(default=False)
 
     @classmethod
     def defaults_for(cls, model):
