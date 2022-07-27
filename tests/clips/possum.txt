@@ -12,7 +12,7 @@
     "groupName": "ospri",
     "processing": false,
     "processingState": "FINISHED",
-    "recordingDateTime": "2022-07-05T10:36:23.109000+00:00",
+    "recordingDateTime": "2022-07-05T10:36:23.109Z",
     "stationId": 238,
     "stationName": "New station for ospri06_2019-09-29T09:01:41.715Z",
     "type": "thermalRaw",
@@ -434,6 +434,7 @@
                     "width": 8,
                     "height": 9,
                     "order": 42,
+                    "mass": 14,
                     "blank": false
                 },
                 {
@@ -442,6 +443,7 @@
                     "width": 10,
                     "height": 11,
                     "order": 43,
+                    "mass": 29,
                     "blank": false
                 },
                 {
@@ -450,6 +452,7 @@
                     "width": 16,
                     "height": 14,
                     "order": 44,
+                    "mass": 79,
                     "blank": false
                 },
                 {
@@ -458,6 +461,7 @@
                     "width": 24,
                     "height": 22,
                     "order": 45,
+                    "mass": 156,
                     "blank": false
                 },
                 {
@@ -466,6 +470,7 @@
                     "width": 25,
                     "height": 22,
                     "order": 46,
+                    "mass": 192,
                     "blank": false
                 },
                 {
@@ -474,6 +479,7 @@
                     "width": 26,
                     "height": 23,
                     "order": 47,
+                    "mass": 212,
                     "blank": false
                 },
                 {
@@ -482,6 +488,7 @@
                     "width": 28,
                     "height": 24,
                     "order": 48,
+                    "mass": 240,
                     "blank": false
                 },
                 {
@@ -490,6 +497,7 @@
                     "width": 31,
                     "height": 25,
                     "order": 49,
+                    "mass": 288,
                     "blank": false
                 },
                 {
@@ -498,6 +506,7 @@
                     "width": 33,
                     "height": 24,
                     "order": 50,
+                    "mass": 321,
                     "blank": false
                 },
                 {
@@ -506,6 +515,7 @@
                     "width": 35,
                     "height": 26,
                     "order": 51,
+                    "mass": 424,
                     "blank": false
                 },
                 {
@@ -514,6 +524,7 @@
                     "width": 37,
                     "height": 27,
                     "order": 52,
+                    "mass": 506,
                     "blank": false
                 },
                 {
@@ -522,6 +533,7 @@
                     "width": 40,
                     "height": 27,
                     "order": 53,
+                    "mass": 547,
                     "blank": false
                 },
                 {
@@ -530,6 +542,7 @@
                     "width": 42,
                     "height": 29,
                     "order": 54,
+                    "mass": 578,
                     "blank": false
                 },
                 {
@@ -538,6 +551,7 @@
                     "width": 39,
                     "height": 29,
                     "order": 55,
+                    "mass": 532,
                     "blank": false
                 },
                 {
@@ -546,6 +560,7 @@
                     "width": 39,
                     "height": 28,
                     "order": 56,
+                    "mass": 565,
                     "blank": false
                 },
                 {
@@ -554,6 +569,7 @@
                     "width": 41,
                     "height": 30,
                     "order": 57,
+                    "mass": 595,
                     "blank": false
                 },
                 {
@@ -562,6 +578,7 @@
                     "width": 43,
                     "height": 27,
                     "order": 58,
+                    "mass": 615,
                     "blank": false
                 },
                 {
@@ -570,6 +587,7 @@
                     "width": 45,
                     "height": 26,
                     "order": 59,
+                    "mass": 627,
                     "blank": false
                 },
                 {
@@ -578,6 +596,7 @@
                     "width": 48,
                     "height": 25,
                     "order": 60,
+                    "mass": 627,
                     "blank": false
                 },
                 {
@@ -586,6 +605,7 @@
                     "width": 47,
                     "height": 24,
                     "order": 61,
+                    "mass": 641,
                     "blank": false
                 },
                 {
@@ -594,6 +614,7 @@
                     "width": 45,
                     "height": 23,
                     "order": 62,
+                    "mass": 648,
                     "blank": false
                 },
                 {
@@ -602,6 +623,7 @@
                     "width": 40,
                     "height": 22,
                     "order": 63,
+                    "mass": 581,
                     "blank": false
                 },
                 {
@@ -610,6 +632,7 @@
                     "width": 39,
                     "height": 20,
                     "order": 64,
+                    "mass": 487,
                     "blank": false
                 },
                 {
@@ -618,6 +641,7 @@
                     "width": 32,
                     "height": 19,
                     "order": 65,
+                    "mass": 425,
                     "blank": false
                 },
                 {
@@ -626,6 +650,7 @@
                     "width": 30,
                     "height": 17,
                     "order": 66,
+                    "mass": 344,
                     "blank": false
                 },
                 {
@@ -634,199 +659,8 @@
                     "width": 23,
                     "height": 14,
                     "order": 67,
+                    "mass": 209,
                     "blank": false
-                }
-            ],
-            "predictions": [
-                {
-                    "classify_time": 2.5,
-                    "label": "possum",
-                    "confident_tag": "possum",
-                    "confidence": 1.0,
-                    "clarity": 1.0,
-                    "all_class_confidences": {
-                        "bird": 0.0,
-                        "cat": 0.0,
-                        "false-positive": 0.0,
-                        "hedgehog": 0.0,
-                        "human": 0.0,
-                        "insect": 0.0,
-                        "leporidae": 0.0,
-                        "mustelid": 0.0,
-                        "possum": 1.0,
-                        "rodent": 0.0,
-                        "vehicle": 0.0,
-                        "wallaby": 0.0
-                    },
-                    "prediction_frames": [
-                        [
-                            42,
-                            43,
-                            44,
-                            45,
-                            46,
-                            47,
-                            48,
-                            49,
-                            50,
-                            51,
-                            53,
-                            54,
-                            55,
-                            56,
-                            57,
-                            58,
-                            59,
-                            60,
-                            61,
-                            62,
-                            63,
-                            64,
-                            65,
-                            66,
-                            67
-                        ],
-                        [
-                            43,
-                            44,
-                            45,
-                            46,
-                            47,
-                            48,
-                            49,
-                            50,
-                            51,
-                            52,
-                            53,
-                            54,
-                            55,
-                            56,
-                            57,
-                            58,
-                            59,
-                            60,
-                            61,
-                            62,
-                            63,
-                            64,
-                            65,
-                            66,
-                            67
-                        ],
-                        [
-                            42,
-                            43,
-                            44,
-                            45,
-                            46,
-                            47,
-                            48,
-                            49,
-                            50,
-                            51,
-                            53,
-                            54,
-                            55,
-                            56,
-                            57,
-                            58,
-                            59,
-                            60,
-                            61,
-                            62,
-                            63,
-                            64,
-                            65,
-                            66,
-                            67
-                        ],
-                        [
-                            42,
-                            43,
-                            44,
-                            45,
-                            46,
-                            47,
-                            48,
-                            49,
-                            50,
-                            52,
-                            53,
-                            54,
-                            55,
-                            56,
-                            57,
-                            58,
-                            59,
-                            60,
-                            61,
-                            62,
-                            63,
-                            64,
-                            65,
-                            66,
-                            67
-                        ]
-                    ],
-                    "predictions": [
-                        [
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            9990,
-                            0,
-                            0,
-                            0
-                        ],
-                        [
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            10481,
-                            0,
-                            0,
-                            0
-                        ],
-                        [
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            9990,
-                            0,
-                            0,
-                            0
-                        ],
-                        [
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            10071,
-                            0,
-                            0,
-                            0
-                        ]
-                    ],
-                    "model_id": 1
                 }
             ]
         }
@@ -1255,6 +1089,7 @@
                     "width": 8,
                     "height": 9,
                     "order": 42,
+                    "mass": 14,
                     "blank": false
                 },
                 {
@@ -1263,6 +1098,7 @@
                     "width": 10,
                     "height": 11,
                     "order": 43,
+                    "mass": 29,
                     "blank": false
                 },
                 {
@@ -1271,6 +1107,7 @@
                     "width": 16,
                     "height": 14,
                     "order": 44,
+                    "mass": 79,
                     "blank": false
                 },
                 {
@@ -1279,6 +1116,7 @@
                     "width": 24,
                     "height": 22,
                     "order": 45,
+                    "mass": 156,
                     "blank": false
                 },
                 {
@@ -1287,6 +1125,7 @@
                     "width": 25,
                     "height": 22,
                     "order": 46,
+                    "mass": 192,
                     "blank": false
                 },
                 {
@@ -1295,6 +1134,7 @@
                     "width": 26,
                     "height": 23,
                     "order": 47,
+                    "mass": 212,
                     "blank": false
                 },
                 {
@@ -1303,6 +1143,7 @@
                     "width": 28,
                     "height": 24,
                     "order": 48,
+                    "mass": 240,
                     "blank": false
                 },
                 {
@@ -1311,6 +1152,7 @@
                     "width": 31,
                     "height": 25,
                     "order": 49,
+                    "mass": 288,
                     "blank": false
                 },
                 {
@@ -1319,6 +1161,7 @@
                     "width": 33,
                     "height": 24,
                     "order": 50,
+                    "mass": 321,
                     "blank": false
                 },
                 {
@@ -1327,6 +1170,7 @@
                     "width": 35,
                     "height": 26,
                     "order": 51,
+                    "mass": 424,
                     "blank": false
                 },
                 {
@@ -1335,6 +1179,7 @@
                     "width": 37,
                     "height": 27,
                     "order": 52,
+                    "mass": 506,
                     "blank": false
                 },
                 {
@@ -1343,6 +1188,7 @@
                     "width": 40,
                     "height": 27,
                     "order": 53,
+                    "mass": 547,
                     "blank": false
                 },
                 {
@@ -1351,6 +1197,7 @@
                     "width": 42,
                     "height": 29,
                     "order": 54,
+                    "mass": 578,
                     "blank": false
                 },
                 {
@@ -1359,6 +1206,7 @@
                     "width": 39,
                     "height": 29,
                     "order": 55,
+                    "mass": 532,
                     "blank": false
                 },
                 {
@@ -1367,6 +1215,7 @@
                     "width": 39,
                     "height": 28,
                     "order": 56,
+                    "mass": 565,
                     "blank": false
                 },
                 {
@@ -1375,6 +1224,7 @@
                     "width": 41,
                     "height": 30,
                     "order": 57,
+                    "mass": 595,
                     "blank": false
                 },
                 {
@@ -1383,6 +1233,7 @@
                     "width": 43,
                     "height": 27,
                     "order": 58,
+                    "mass": 615,
                     "blank": false
                 },
                 {
@@ -1391,6 +1242,7 @@
                     "width": 45,
                     "height": 26,
                     "order": 59,
+                    "mass": 627,
                     "blank": false
                 },
                 {
@@ -1399,6 +1251,7 @@
                     "width": 48,
                     "height": 25,
                     "order": 60,
+                    "mass": 627,
                     "blank": false
                 },
                 {
@@ -1407,6 +1260,7 @@
                     "width": 47,
                     "height": 24,
                     "order": 61,
+                    "mass": 641,
                     "blank": false
                 },
                 {
@@ -1415,6 +1269,7 @@
                     "width": 45,
                     "height": 23,
                     "order": 62,
+                    "mass": 648,
                     "blank": false
                 },
                 {
@@ -1423,6 +1278,7 @@
                     "width": 40,
                     "height": 22,
                     "order": 63,
+                    "mass": 581,
                     "blank": false
                 },
                 {
@@ -1431,6 +1287,7 @@
                     "width": 39,
                     "height": 20,
                     "order": 64,
+                    "mass": 487,
                     "blank": false
                 },
                 {
@@ -1439,6 +1296,7 @@
                     "width": 32,
                     "height": 19,
                     "order": 65,
+                    "mass": 425,
                     "blank": false
                 },
                 {
@@ -1447,6 +1305,7 @@
                     "width": 30,
                     "height": 17,
                     "order": 66,
+                    "mass": 344,
                     "blank": false
                 },
                 {
@@ -1455,35 +1314,11 @@
                     "width": 23,
                     "height": 14,
                     "order": 67,
+                    "mass": 209,
                     "blank": false
                 }
             ]
         }
     ],
-    "tracker_version": 10,
-    "models": [
-        {
-            "id": 1,
-            "name": "/home/gp//cacophony/classifier-data/thermal-training/20220603/inc32022-06-03/frozen_model/",
-            "model_file": "/home/gp//cacophony/classifier-data/thermal-training/20220603/inc32022-06-03/frozen_model/",
-            "model_weights": null,
-            "wallaby": false,
-            "tag_scores": {
-                "default": 0
-            },
-            "ignored_tags": [],
-            "thumbnail_model": false,
-            "classify_time": 24.2
-        }
-    ],
-    "thumbnail_region": {
-        "x": 26,
-        "y": 88,
-        "width": 42,
-        "height": 29,
-        "mass": 578,
-        "frame_number": 54,
-        "pixel_variance": 0.0,
-        "blank": false
-    }
+    "tracker_version": 10
 }

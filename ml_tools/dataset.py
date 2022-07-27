@@ -291,7 +291,7 @@ class Dataset:
             self.filtered_stats["tags"] += 1
             return True
 
-        if self.min_frame_mass and sample.track_bounds[0].mass < self.min_frame_mass:
+        if self.min_frame_mass and sample.mass < self.min_frame_mass:
             return True
         return False
 

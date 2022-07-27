@@ -765,7 +765,6 @@ class TrackDatabase:
             track_stats = track.get_stats()
             node_attrs = track_node.attrs
             node_attrs["id"] = track_id
-            print("track tag is", track.tag)
             if track.tags:
                 node_attrs["track_tags"] = json.dumps(track.tags)
             if sample_frames is not None:

@@ -57,6 +57,12 @@ class Sample(ABC):
         """Represent the unique identifier for this sample."""
         ...
 
+    @property
+    @abstractmethod
+    def mass(cls):
+        """Get mass for this sample"""
+        ...
+
 
 EDGE = 1
 
@@ -578,6 +584,10 @@ class FrameSample(Sample):
         return f
 
     @property
+    def mass(self):
+        return self.region.mass
+
+    @property
     def sample_weight(self):
         return self.weight
 
@@ -651,8 +661,12 @@ class SegmentHeader(Sample):
         # relative weight of the segment (higher is sampled more often)
         self.weight = np.float16(weight)
 
-        self.mass = np.uint16(mass)
+        self._mass = np.uint16(mass)
         self.camera = camera
+
+    @property
+    def mass(self):
+        return self._mass
 
     @property
     def sample_weight(self):
