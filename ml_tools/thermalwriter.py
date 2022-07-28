@@ -90,7 +90,7 @@ def create_tf_example(data, image_dir, sample, labels, filename):
     image_id = sample.id
 
     encoded_jpg_io = io.BytesIO()
-    image.save(encoded_jpg_io, format="JPEG")
+    image.save(encoded_jpg_io, format="JPEG", quality=100, subsampling=0)
 
     encoded_thermal = encoded_jpg_io.getvalue()
     thermal_key = hashlib.sha256(encoded_thermal).hexdigest()
@@ -99,7 +99,7 @@ def create_tf_example(data, image_dir, sample, labels, filename):
     image = ImageOps.grayscale(image)
 
     encoded_jpg_io = io.BytesIO()
-    image.save(encoded_jpg_io, format="JPEG")
+    image.save(encoded_jpg_io, format="JPEG", quality=100, subsampling=0)
     encoded_filtered = encoded_jpg_io.getvalue()
     filtered_key = hashlib.sha256(encoded_filtered).hexdigest()
 
