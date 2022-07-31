@@ -155,75 +155,6 @@ def preprocess(data):
     return tf.keras.applications.inception_v3.preprocess_input(x), y
 
 
-def get_dataset(
-    filenames,
-    batch_size,
-    image_size,
-    num_labels,
-    reshuffle=True,
-    deterministic=False,
-    labeled=True,
-    resample=True,
-    augment=False,
-):
-    dataset = load_dataset(
-        filenames,
-        image_size,
-        num_labels,
-        deterministic=deterministic,
-        labeled=labeled,
-        augment=augment,
-    )
-
-    if resample:
-        true_categories = [y for x, y in dataset]
-        if len(true_categories) == 0:
-            return None
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        c = Counter(list(true_categories))
-        dist = np.empty((num_labels), dtype=np.float32)
-        target_dist = np.empty((num_labels), dtype=np.float32)
-        for i in range(num_labels):
-            dist[i] = c[i]
-        logging.info("Count is %s", dist)
-        zeros = dist[dist == 0]
-        non_zero_labels = num_labels - len(zeros)
-        target_dist[:] = 1 / non_zero_labels
-
-        dist_max = np.max(dist)
-        dist_min = np.min(dist)
-        dist = dist / np.sum(dist)
-        # really this is what we want but when the values become too small they never get sampled
-        # so need to try reduce the large gaps in distribution
-        # can use class weights to adjust more, or just throw out some samples
-        max_range = target_dist[0] / 2
-        for i in range(num_labels):
-            if dist[i] == 0:
-                target_dist[i] = 0
-            if dist[i] - dist_min > max_range:
-                add_on = max_range
-                if dist[i] - dist_min > max_range * 2:
-                    add_on *= 2
-
-                target_dist[i] += add_on
-
-                dist[i] -= add_on
-            elif dist_max - dist[i] > max_range:
-                target_dist[i] -= max_range / 2.0
-
-        rej = dataset.rejection_resample(
-            class_func=class_func,
-            target_dist=target_dist,
-            initial_dist=dist,
-        )
-
-        dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
-    dataset = dataset.shuffle(2048, reshuffle_each_iteration=reshuffle)
-    dataset = dataset.prefetch(buffer_size=AUTOTUNE)
-    dataset = dataset.batch(batch_size)
-    return dataset
-
-
 def read_tfrecord(
     example, image_size, num_labels, labeled, augment, preprocess_fn=None
 ):
@@ -269,8 +200,7 @@ def read_tfrecord(
 
 
 def decode_image(image, filtered, image_size, augment):
-    image = tf.image.decode_jpeg(image, channels=1)
-    filtered = tf.image.decode_jpeg(filtered, channels=1)
+    image = tf.image.decode_png(image, channels=1)
     image = tf.concat((image, image, image), axis=2)
 
     image = tf.cast(image, tf.float32)
@@ -296,8 +226,8 @@ def main():
     datasets = []
     # weights = [0.5] * len(labels)
     resampled_ds = get_resampled(
-        f"{config.tracks_folder}/training-data/train",
-        32,
+        f"{config.tracks_folder}/training-data/test",
+        1,
         (160, 160),
         labels,
         # distribution=meta["counts"]["test"],
@@ -310,9 +240,12 @@ def main():
     with open(file, "w") as f:
         json.dump(meta, f)
 
-    for e in range(4):
+    for e in range(1):
         for x, y in resampled_ds:
-            show_batch(x, y, labels)
+            for x_2 in x:
+                print("max is", np.amax(x_2), x_2.shape)
+                assert np.amax(x_2) == 255
+            # show_batch(x, y, labels)
         # print("epoch", e)
         # true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
         # true_categories = np.int64(tf.argmax(true_categories, axis=1))
