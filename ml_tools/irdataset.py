@@ -242,19 +242,19 @@ def main():
     with open(file, "w") as f:
         json.dump(meta, f)
 
-    for e in range(1):
-        for x, y in resampled_ds:
-            for x_2 in x:
-                print("max is", np.amax(x_2), x_2.shape)
-                assert np.amax(x_2) == 255
-            # show_batch(x, y, labels)
-        # print("epoch", e)
-        # true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
-        # true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        # c = Counter(list(true_categories))
-        # print("epoch is size", len(true_categories))
-        # for i in range(len(labels)):
-        #     print("after have", labels[i], c[i])
+    for e in range(4):
+        # for x, y in resampled_ds:
+        # for x_2 in x:
+        #     print("max is", np.amax(x_2), x_2.shape)
+        #     assert np.amax(x_2) == 255
+        # show_batch(x, y, labels)
+        print("epoch", e)
+        true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        c = Counter(list(true_categories))
+        print("epoch is size", len(true_categories))
+        for i in range(len(labels)):
+            print("after have", labels[i], c[i])
 
 
 def show_batch(image_batch, label_batch, labels):
