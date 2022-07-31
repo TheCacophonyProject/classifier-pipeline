@@ -95,7 +95,7 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
     encoded_thermal = encoded_jpg_io.getvalue()
     thermal_key = hashlib.sha256(encoded_thermal).hexdigest()
 
-    image = Image.fromarray(frame.filtered)
+    image = Image.fromarray(np.uint8(frame.filtered))
 
     encoded_jpg_io = io.BytesIO()
     image.save(encoded_jpg_io, format="PNG", quality=100, subsampling=0)
