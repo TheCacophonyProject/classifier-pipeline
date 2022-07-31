@@ -86,7 +86,6 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
     image_height, image_width = frame.thermal.shape
 
     image = Image.fromarray(np.uint8(frame.thermal))
-    # image = ImageOps.grayscale(image)
 
     image_id = sample.unique_id
 
@@ -97,7 +96,6 @@ def create_tf_example(frame, image_dir, sample, labels, filename):
     thermal_key = hashlib.sha256(encoded_thermal).hexdigest()
 
     image = Image.fromarray(frame.filtered)
-    image = ImageOps.grayscale(image)
 
     encoded_jpg_io = io.BytesIO()
     image.save(encoded_jpg_io, format="PNG", quality=100, subsampling=0)
@@ -234,7 +232,6 @@ def create_tf_records(
                     loaded.append((f, sample))
                 except Exception as e:
                     logging.error("Got exception", exc_info=True)
-                    raise e
 
             loaded = np.array(loaded)
             np.random.shuffle(loaded)
@@ -260,11 +257,9 @@ def create_tf_records(
                         logging.info("saved %s", count)
                 except Exception as e:
                     logging.error("Error saving ", exc_info=True)
-                    raise e
             # break
     except:
         logging.error("Error saving track info", exc_info=True)
-        raise e
     for writer in writers:
         writer.close()
 
