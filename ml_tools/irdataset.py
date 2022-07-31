@@ -120,6 +120,8 @@ def get_resampled(
     r_l = list(remapped.keys())
     if "human" in r_l:
         weights[r_l.index("human")] = 0
+    if "rodent" in r_l:
+        weights[r_l.index("rodent")] = 0.04
 
     # weights[labels.index("cat")] = 0
 
