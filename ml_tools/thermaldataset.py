@@ -225,8 +225,8 @@ def read_tfrecord(example, image_size, num_labels, labeled, augment=False):
 
 
 def decode_image(image, filtered, image_size, augment=True):
-    image = tf.image.decode_jpeg(image, channels=1)
-    filtered = tf.image.decode_jpeg(filtered, channels=1)
+    image = tf.image.decode_png(image, channels=1)
+    filtered = tf.image.decode_png(filtered, channels=1)
 
     if augment:
         image = tf.image.random_brightness(image, 0.2)
