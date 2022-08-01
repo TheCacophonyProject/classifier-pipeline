@@ -220,21 +220,21 @@ def main():
     )
     print(get_distribution(resampled_ds))
     #
-    # for e in range(2):
-    #     print("epoch", e)
-    #     true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
-    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    #     c = Counter(list(true_categories))
-    #     print("epoch is size", len(true_categories))
-    #     for i in range(len(labels)):
-    #         print("after have", labels[i], c[i])
+    for e in range(2):
+        print("epoch", e)
+        true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        c = Counter(list(true_categories))
+        print("epoch is size", len(true_categories))
+        for i in range(len(labels)):
+            print("after have", labels[i], c[i])
 
     # return
-    image_batch, label_batch = next(iter(resampled_ds))
-    for e in range(2):
-        for x, y in resampled_ds:
-            print(y)
-            show_batch(x, y, labels)
+    # image_batch, label_batch = next(iter(resampled_ds))
+    # for e in range(2):
+    #     for x, y in resampled_ds:
+    #         print(y)
+    #         show_batch(x, y, labels)
 
 
 def show_batch(image_batch, label_batch, labels):
@@ -242,7 +242,6 @@ def show_batch(image_batch, label_batch, labels):
     print("images in batch", len(image_batch))
     num_images = min(len(image_batch), 25)
     for n in range(num_images):
-        print("imageas max is", np.amax(image_batch[n]), np.amin(image_batch[n]))
         ax = plt.subplot(5, 5, n + 1)
         plt.imshow(np.uint8(image_batch[n]))
         # plt.title("C-" + str(label_batch[n]))
