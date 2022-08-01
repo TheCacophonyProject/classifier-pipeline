@@ -30,7 +30,7 @@ from ml_tools.tools import Rectangle
 from track.framebuffer import FrameBuffer
 from track.track import Track
 from track.region import Region
-from piclassifier.motiondetector import is_affected_by_ffc
+from piclassifier.cptvmotiondetector import is_affected_by_ffc
 
 RES_X = 160
 RES_Y = 120

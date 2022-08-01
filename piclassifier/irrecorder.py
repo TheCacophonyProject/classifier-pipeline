@@ -11,10 +11,10 @@ from piclassifier.recorder import Recorder
 import cv2
 from pathlib import Path
 
-AVI_TEMP_EXT = ".avi"
+VIDEO_EXT = ".mp4"
 TEMP_DIR = "temp"
 
-fourcc = cv2.VideoWriter_fourcc(*"XVID")
+fourcc = cv2.VideoWriter_fourcc(*"avc1")
 
 
 class IRRecorder(Recorder):
@@ -134,6 +134,4 @@ class IRRecorder(Recorder):
 
 
 def new_temp_name(frame_time):
-    return datetime.fromtimestamp(frame_time).strftime(
-        "%Y%m%d.%H%M%S.%f" + AVI_TEMP_EXT
-    )
+    return datetime.fromtimestamp(frame_time).strftime("%Y%m%d.%H%M%S.%f" + VIDEO_EXT)

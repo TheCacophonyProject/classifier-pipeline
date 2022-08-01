@@ -32,7 +32,6 @@ from .clip import Clip
 from ml_tools.tools import Rectangle
 from track.region import Region
 from track.track import Track
-from piclassifier.motiondetector import is_affected_by_ffc
 from ml_tools.imageprocessing import (
     detect_objects,
     normalize,

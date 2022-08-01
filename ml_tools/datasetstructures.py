@@ -747,19 +747,23 @@ class SegmentHeader(Sample):
                 frame.resize_with_aspect((32, 32), crop_rectangle, keep_edge=True)
                 frame.thermal -= temp
                 np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
-
-                # frame.thermal, _ = imageprocessing.normalize(frame.thermal, new_max=255)
-                # frame.filtered, _ = imageprocessing.normalize(frame.filtered, new_max=255)
-
                 filtered[i] = frame.filtered
                 thermals[i] = frame.thermal
             thermal, success = imageprocessing.square_clip(thermals, 5, (32, 32))
             if not success:
-                logging.warn("Error making thermal square clip %s", self.clip_id)
+                logging.warn(
+                    "Error making thermal square clip (No valid frame data) %s frames %s",
+                    self.clip_id,
+                    [frame.frame_number for frame in frames],
+                )
                 return None
             filtered, success = imageprocessing.square_clip(filtered, 5, (32, 32))
             if not success:
-                logging.warn("Error making filtered square clip %s", filtered)
+                logging.warn(
+                    "Error making filtered square clip (No valid frame data ) %s frames %s",
+                    filtered,
+                    [frame.frame_number for frame in frames],
+                )
 
                 return None
         except:

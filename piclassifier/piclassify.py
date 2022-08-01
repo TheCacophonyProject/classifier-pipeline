@@ -173,7 +173,7 @@ def parse_cptv(file, config, thermal_config_file, preview_type):
         )
         for frame in reader:
             if frame.background_frame:
-                pi_classifier.motion_detector.background = frame.pix
+                pi_classifier.motion_detector.background._background = frame.pix
                 continue
             frame.received_at = time.time()
             pi_classifier.process_frame(frame)

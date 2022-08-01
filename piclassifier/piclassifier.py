@@ -25,8 +25,10 @@ from .cptvrecorder import CPTVRecorder
 from .throttledrecorder import ThrottledRecorder
 from .dummyrecorder import DummyRecorder
 from .irrecorder import IRRecorder
+from .irmotiondetector import IRMotionDetector
+from .cptvmotiondetector import CPTVMotionDetector
 
-from .motiondetector import MotionDetector, SlidingWindow
+from .motiondetector import SlidingWindow
 from .processor import Processor
 from ml_tools.preprocess import (
     preprocess_frame,
@@ -265,7 +267,7 @@ class PiClassifier(Processor):
                 self.recorder, thermal_config, headers, on_recording_stopping
             )
 
-        self.motion_detector = MotionDetector(
+        self.motion_detector = CPTVMotionDetector(
             thermal_config,
             self.tracking_config.motion.dynamic_thresh,
             headers,
@@ -588,9 +590,7 @@ class PiClassifier(Processor):
 
         if self.recorder.recording:
             t_start = time.time()
-            self.track_extractor.process_frame(
-                self.clip, lepton_frame.pix, self.motion_detector.ffc_affected
-            )
+            self.track_extractor.process_frame(self.clip, lepton_frame)
             self.tracking_time += time.time() - t_start
             s_r = time.time()
             if self.tracking is not None:
@@ -692,7 +692,6 @@ class PiClassifier(Processor):
             self.tracking_time = 0
             self.process_time = 0
             self.identify_time = 0
-            self.motion_detector.rec_time = 0
             self.total_time = 0
             self.rec_time = 0
         self.fps_timer.add(time.time() - start)
