@@ -123,6 +123,7 @@ class Dataset:
             "not-confirmed": 0,
             "tag_names": set(),
             "notags": 0,
+            "bad_track_json": 0,
         }
         self.lbl_p = None
         self.numpy_data = None
@@ -351,7 +352,18 @@ class Dataset:
             return True
         track_tags = track_meta.get("track_tags")
         if track_tags is not None:
-            track_tags = json.loads(track_tags)
+            try:
+                track_tags = json.loads(track_tags)
+            except:
+                logging.error(
+                    "Error loading track tags json for %s clip %s track %s",
+                    track_tags,
+                    clip_meta.get("id"),
+                    track_meta.get("id"),
+                )
+                self.filtered_stats["bad_track_json"] += 1
+
+                return True
             excluded_tags = [
                 tag["what"]
                 for tag in track_tags

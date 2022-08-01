@@ -254,7 +254,6 @@ class Frame:
                 self.region,
                 crop_rectangle,
                 keep_edge=keep_edge,
-                pad=0,
             )
         if self.flow is not None:
             flow_h = resize_and_pad(

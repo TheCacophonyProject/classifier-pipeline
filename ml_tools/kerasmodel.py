@@ -33,6 +33,7 @@ class KerasModel(Interpreter):
     def __init__(self, train_config=None, labels=None):
         self.model = None
         self.datasets = None
+        self.remapped = None
         # dictionary containing current hyper parameters
         self.params = HyperParams()
         self.type = None
@@ -332,6 +333,8 @@ class KerasModel(Interpreter):
         model_stats["mapped_labels"] = self.mapped_labels
         model_stats["label_probabilities"] = self.label_probabilities
         model_stats["type"] = self.type
+        if self.remapped is not None:
+            model_stats["remapped"] = self.remapped
         if self.class_weights is not None:
             model_stats["class_weights"] = self.class_weights
 
@@ -464,14 +467,15 @@ class KerasModel(Interpreter):
         train_files = base_dir + "/train"
         validate_files = base_dir + "/validation"
 
-        self.train = self.get_dataset(
+        self.train, remapped = self.get_dataset(
             train_files,
             augment=True,
             resample=resample,
             stop_on_empty_dataset=True,
             # dist=self.dataset_counts["train"],
         )
-        self.validate = self.get_dataset(
+        self.remapped = remapped
+        self.validate, remapped = self.get_dataset(
             validate_files,
             augment=False,
             resample=resample,

@@ -82,7 +82,6 @@ def get_resampled(
 ):
 
     num_labels = len(labels)
-    global remapped
     global remapped_y
     datasets = []
 
@@ -147,7 +146,7 @@ def get_resampled(
     resampled_ds = resampled_ds.shuffle(2048, reshuffle_each_iteration=reshuffle)
     resampled_ds = resampled_ds.prefetch(buffer_size=AUTOTUNE)
     resampled_ds = resampled_ds.batch(batch_size)
-    return resampled_ds
+    return resampled_ds, remapped
 
 
 #
@@ -227,7 +226,7 @@ def main():
     labels = meta.get("labels", [])
     datasets = []
     # weights = [0.5] * len(labels)
-    resampled_ds = get_resampled(
+    resampled_ds, remapped = get_resampled(
         f"{config.tracks_folder}/training-data/test",
         1,
         (160, 160),
@@ -237,7 +236,6 @@ def main():
         augment=False,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
-    global remapped
     meta["remapped"] = remapped
     with open(file, "w") as f:
         json.dump(meta, f)
