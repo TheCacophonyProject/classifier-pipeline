@@ -118,8 +118,10 @@ def get_resampled(
     weights = [1.0] * len(remapped)
     datasets = []
 
-    for l in labels:
-        filenames = tf.io.gfile.glob(f"{base_dir}/{l}*.tfrecord")
+    for k, v in remapped.items():
+        filenames = []
+        for label in v:
+            filenames.append(tf.io.gfile.glob(f"{base_dir}/{label}*.tfrecord"))
         dataset = load_dataset(
             filenames,
             image_size,
