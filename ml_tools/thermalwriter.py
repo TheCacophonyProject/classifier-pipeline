@@ -156,12 +156,12 @@ def create_tf_records(
     writers = []
     for label in labels:
         for i in range(num_shards):
-
+            safe_l = label.replace("/", "-")
             writers.append(
                 tf.io.TFRecordWriter(
                     str(
                         output_path
-                        / (f"{label}-%05d-of-%05d.tfrecord" % (i, num_shards))
+                        / (f"{safe_l}-%05d-of-%05d.tfrecord" % (i, num_shards))
                     )
                 )
             )
