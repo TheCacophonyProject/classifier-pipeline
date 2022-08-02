@@ -176,14 +176,14 @@ class WeightedBackground:
             return
         edgeless_back = self.crop_rectangle.subimage(self.background)
         new_background = np.where(
-            edgeless_back < cropped_thermal - self.background_weight,
+            edgeless_back < frame - self.background_weight,
             edgeless_back,
-            cropped_thermal,
+            frame,
         )
         # update weighting
         self.background_weight = np.where(
-            edgeless_back < cropped_thermal - self.background_weight,
-            self.background_weight + MotionDetector.BACKGROUND_WEIGHT_ADD,
+            edgeless_back < frame - self.background_weight,
+            self.background_weight + self.weight_add,
             0,
         )
         back_changed = new_background != edgeless_back
@@ -202,7 +202,7 @@ class WeightedBackground:
             self.set_background_edges()
 
     def set_background_edges(self):
-        for i in range(edge_pixels):
+        for i in range(self.edge_pixels):
             self._background[i] = self._background[self.edge_pixels]
             self._background[-i - 1] = self._background[-self.edge_pixels - 1]
             self._background[:, i] = self._background[:, self.edge_pixels]

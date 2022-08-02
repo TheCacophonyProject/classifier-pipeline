@@ -124,17 +124,6 @@ class Region(Rectangle):
         self.pixel_variance = tools.calculate_variance(filtered, prev_filtered)
 
     def set_is_along_border(self, bounds, edge=0):
-        logging.info(
-            "Set is along border %s,%s,%s,%s bounds %s,%s,%s,%s",
-            self.x,
-            self.y,
-            self.right,
-            self.bottom,
-            bounds.x,
-            bounds.y,
-            bounds.width,
-            bounds.height,
-        )
         self.is_along_border = (
             self.was_cropped
             or self.x <= bounds.x + edge

@@ -263,7 +263,6 @@ class RegionTracker(Tracker):
             y = self.base_velocity
         x = self.velocity_multiplier * x
         y = self.velocity_multiplier * y
-        logging.info("X %s and Y %s multiplier %s", x, y, self.velocity_multiplier)
         velocity_distance = x * x + y * y
 
         pred_vel = track.predicted_velocity()
@@ -305,7 +304,6 @@ def get_max_size_change(track, region):
     if len(track) < 5:
         # may increase at first
         region_percent = 2
-    logging.info("Track %s entering %s exiting %s", track, entering, exiting)
     vel = np.sum(np.abs(track.velocity))
     if entering or exiting:
         region_percent = 2

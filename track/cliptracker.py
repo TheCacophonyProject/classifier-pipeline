@@ -196,7 +196,7 @@ class ClipTracker(ABC):
             track.add_blank_frame()
             if track.tracking:
                 clip.active_tracks.add(track)
-                logging.info(
+                logging.debug(
                     "frame {} adding a blank frame to {} ".format(
                         clip.current_frame, track.get_id()
                     )
@@ -245,7 +245,6 @@ class ClipTracker(ABC):
                 id=i,
                 frame_number=clip.current_frame,
             )
-            logging.info("Got region %s %s", region, region.frame_number)
             # GP this needs to be checked for themals 29/06/2022
             if clip.type == "IR":
                 if delta_thermal is not None:

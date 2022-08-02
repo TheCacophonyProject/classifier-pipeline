@@ -573,7 +573,7 @@ class PiClassifier(Processor):
         if not self.recorder.recording and self.motion_detector.movement_detected:
             s_r = time.time()
             preview_frames = self.motion_detector.thermal_window.get_frames()[:-1]
-
+            bak = self.motion_detector.background
             recording = self.recorder.start_recording(
                 self.motion_detector.background,
                 preview_frames,

@@ -35,11 +35,11 @@ class CPTVRecorder(Recorder):
         if not self.recording:
             return
 
-        if self.has_minimum():
-            self.stop_recording(time.time())
-        else:
-            logging.info("Recording stopped early deleting short recording")
-            self.delete_recording()
+        # if self.has_minimum():
+        self.stop_recording(time.time())
+        # else:
+        #     logging.info("Recording stopped early deleting short recording")
+        #     self.delete_recording()
 
     def process_frame(self, movement_detected, cptv_frame):
         if self.recording:
@@ -89,7 +89,6 @@ class CPTVRecorder(Recorder):
         f.background_frame = True
         self.writer.background_frame = f
         # add brand model fps etc to cptv when python-cptv supports
-
         if self.device_config.name:
             self.writer.device_name = self.device_config.name.encode()
         if self.device_config.device_id:
