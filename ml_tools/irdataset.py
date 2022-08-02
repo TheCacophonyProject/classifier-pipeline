@@ -77,7 +77,6 @@ def get_resampled(
     augment=False,
     weights=None,
     stop_on_empty_dataset=True,
-    distribution=None,
     preprocess_fn=None,
 ):
 

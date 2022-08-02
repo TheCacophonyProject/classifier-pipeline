@@ -410,7 +410,6 @@ class KerasModel(Interpreter):
         resample=True,
         weights=None,
         stop_on_empty_dataset=True,
-        distribution=None,
     ):
         logging.info("Getting dataset %s", self.type)
         if self.type == "thermal":
@@ -425,7 +424,6 @@ class KerasModel(Interpreter):
                 resample=resample,
                 weights=weights,
                 stop_on_empty_dataset=stop_on_empty_dataset,
-                distribution=distribution,
                 preprocess_fn=self.preprocess_fn,
             )
         return get_ir_dataset(
@@ -439,7 +437,6 @@ class KerasModel(Interpreter):
             resample=resample,
             weights=weights,
             stop_on_empty_dataset=stop_on_empty_dataset,
-            distribution=distribution,
             preprocess_fn=self.preprocess_fn,
         )
 

@@ -8,6 +8,7 @@ import time
 from config.config import Config
 import json
 from ml_tools.logs import init_logging
+import logging
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -104,7 +105,6 @@ def get_resampled(
     if "false-positive" in labels and "insect" in labels:
         remapped["false-positive"].append("insect")
         values[labels.index("insect")] = labels.index("false-positive")
-        print("remapping insect")
         del remapped["insect"]
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
@@ -114,12 +114,14 @@ def get_resampled(
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-    print("keys are", keys, "values", values)
+    remapped = {"penguin": ["penguin"]}
     weights = [1.0] * len(remapped)
     datasets = []
 
-    for l in labels:
-        filenames = tf.io.gfile.glob(f"{base_dir}/{l}*.tfrecord")
+    for k, v in remapped.items():
+        filenames = []
+        for label in v:
+            filenames.append(tf.io.gfile.glob(f"{base_dir}/{label}*.tfrecord"))
         dataset = load_dataset(
             filenames,
             image_size,
@@ -168,6 +170,7 @@ def read_tfrecord(
         ]
     )
     if augment:
+        logging.info("Augmenting")
         image = data_augmentation(image)
     if preprocess_fn is not None:
         logging.info("Preprocessing with %s", preprocess_fn)
@@ -201,37 +204,38 @@ from collections import Counter
 def main():
     init_logging()
     config = Config.load_from_file()
-
+    # file = "/home/gp/cacophony/classifier-data/thermal-training/training-meta.json"
     file = f"{config.tracks_folder}/training-meta.json"
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     datasets = []
+    dir = "/home/gp/cacophony/classifier-data/thermal-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_resampled(
+        # dir,
         f"{config.tracks_folder}/training-data/validation",
         32,
         (160, 160),
         labels,
-        augment=False,
+        augment=True,
         stop_on_empty_dataset=False,
     )
-    print(get_distribution(resampled_ds))
+    # print(get_distribution(resampled_ds))
     #
-    # for e in range(2):
-    #     print("epoch", e)
-    #     true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
-    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    #     c = Counter(list(true_categories))
-    #     print("epoch is size", len(true_categories))
-    #     for i in range(len(labels)):
-    #         print("after have", labels[i], c[i])
+    for e in range(2):
+        print("epoch", e)
+        true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        c = Counter(list(true_categories))
+        print("epoch is size", len(true_categories))
+        for i in range(len(labels)):
+            print("after have", labels[i], c[i])
 
-    # return
+    return
     image_batch, label_batch = next(iter(resampled_ds))
     for e in range(2):
         for x, y in resampled_ds:
-            print(y)
             show_batch(x, y, labels)
 
 
@@ -240,7 +244,6 @@ def show_batch(image_batch, label_batch, labels):
     print("images in batch", len(image_batch))
     num_images = min(len(image_batch), 25)
     for n in range(num_images):
-        print("imageas max is", np.amax(image_batch[n]), np.amin(image_batch[n]))
         ax = plt.subplot(5, 5, n + 1)
         plt.imshow(np.uint8(image_batch[n]))
         # plt.title("C-" + str(label_batch[n]))
