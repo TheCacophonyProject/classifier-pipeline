@@ -8,6 +8,7 @@ import time
 from config.config import Config
 import json
 from ml_tools.logs import init_logging
+import logging
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -104,7 +105,6 @@ def get_resampled(
     if "false-positive" in labels and "insect" in labels:
         remapped["false-positive"].append("insect")
         values[labels.index("insect")] = labels.index("false-positive")
-        print("remapping insect")
         del remapped["insect"]
     remapped_y = tf.lookup.StaticHashTable(
         initializer=tf.lookup.KeyValueTensorInitializer(
@@ -114,7 +114,7 @@ def get_resampled(
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-    print("keys are", keys, "values", values)
+    remapped = {"penguin": ["penguin"]}
     weights = [1.0] * len(remapped)
     datasets = []
 
@@ -170,6 +170,7 @@ def read_tfrecord(
         ]
     )
     if augment:
+        logging.info("Augmenting")
         image = data_augmentation(image)
     if preprocess_fn is not None:
         logging.info("Preprocessing with %s", preprocess_fn)
@@ -203,22 +204,24 @@ from collections import Counter
 def main():
     init_logging()
     config = Config.load_from_file()
-
+    # file = "/home/gp/cacophony/classifier-data/thermal-training/training-meta.json"
     file = f"{config.tracks_folder}/training-meta.json"
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     datasets = []
+    dir = "/home/gp/cacophony/classifier-data/thermal-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_resampled(
+        # dir,
         f"{config.tracks_folder}/training-data/validation",
         32,
         (160, 160),
         labels,
-        augment=False,
+        augment=True,
         stop_on_empty_dataset=False,
     )
-    print(get_distribution(resampled_ds))
+    # print(get_distribution(resampled_ds))
     #
     for e in range(2):
         print("epoch", e)
@@ -229,12 +232,11 @@ def main():
         for i in range(len(labels)):
             print("after have", labels[i], c[i])
 
-    # return
-    # image_batch, label_batch = next(iter(resampled_ds))
-    # for e in range(2):
-    #     for x, y in resampled_ds:
-    #         print(y)
-    #         show_batch(x, y, labels)
+    return
+    image_batch, label_batch = next(iter(resampled_ds))
+    for e in range(2):
+        for x, y in resampled_ds:
+            show_batch(x, y, labels)
 
 
 def show_batch(image_batch, label_batch, labels):
