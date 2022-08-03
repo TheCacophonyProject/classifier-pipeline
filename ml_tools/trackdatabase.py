@@ -230,6 +230,8 @@ class TrackDatabase:
             results = {}
             for clip_id in clips:
                 clip = clips[clip_id]
+                if not clip.attrs.get("finished"):
+                    continue
                 date = parse_date(clip.attrs["start_time"])
                 if before_date and date >= before_date:
                     continue
