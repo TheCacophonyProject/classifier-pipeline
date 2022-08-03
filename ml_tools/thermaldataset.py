@@ -114,7 +114,6 @@ def get_resampled(
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-    remapped = {"penguin": ["penguin"]}
     weights = [1.0] * len(remapped)
     datasets = []
 
@@ -188,7 +187,7 @@ def read_tfrecord(
 def decode_image(image, filtered, image_size):
     image = tf.image.decode_png(image, channels=1)
     filtered = tf.image.decode_png(filtered, channels=1)
-    image = tf.concat((image, filtered, filtered), axis=2)
+    image = tf.concat((image, image, filtered), axis=2)
     image = tf.cast(image, tf.float32)
     return image
 
@@ -204,13 +203,13 @@ from collections import Counter
 def main():
     init_logging()
     config = Config.load_from_file()
-    # file = "/home/gp/cacophony/classifier-data/thermal-training/training-meta.json"
+    # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
     file = f"{config.tracks_folder}/training-meta.json"
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     datasets = []
-    dir = "/home/gp/cacophony/classifier-data/thermal-training/validation"
+    # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_resampled(
         # dir,
@@ -232,9 +231,8 @@ def main():
         for i in range(len(labels)):
             print("after have", labels[i], c[i])
 
-    return
-    image_batch, label_batch = next(iter(resampled_ds))
-    for e in range(2):
+    # return
+    for e in range(1):
         for x, y in resampled_ds:
             show_batch(x, y, labels)
 
@@ -246,7 +244,7 @@ def show_batch(image_batch, label_batch, labels):
     for n in range(num_images):
         ax = plt.subplot(5, 5, n + 1)
         plt.imshow(np.uint8(image_batch[n]))
-        # plt.title("C-" + str(label_batch[n]))
+        plt.title("C-" + str(label_batch[n]))
         plt.title(labels[np.argmax(label_batch[n])])
         plt.axis("off")
     plt.show()

@@ -118,7 +118,6 @@ class ClipLoader:
         # that we have processed it.
         self.database.create_clip(clip)
         for track in clip.tracks:
-
             start_time, end_time = clip.start_and_end_time_absolute(
                 track.start_s, track.end_s
             )
@@ -139,16 +138,25 @@ class ClipLoader:
                 self.config.build.segment_min_avg_mass,
                 cropped_data,
             )
-            self.database.add_track(
-                clip.get_id(),
-                track,
-                cropped_data,
-                sample_frames=sample_frames,
-                opts=self.compression,
-                original_thermal=original_thermal,
-                start_time=start_time,
-                end_time=end_time,
-            )
+            try:
+                self.database.add_track(
+                    clip.get_id(),
+                    track,
+                    cropped_data,
+                    sample_frames=sample_frames,
+                    opts=self.compression,
+                    original_thermal=original_thermal,
+                    start_time=start_time,
+                    end_time=end_time,
+                )
+            except:
+                self.database.remove_track(clip.get_id(), track.get_id())
+                logging.error(
+                    "Error adding track %s - %s",
+                    clip.get_id(),
+                    track.get_id(),
+                    exc_info=True,
+                )
         self.database.finished_processing(clip.get_id())
 
     def _filter_clip_tracks(self, clip_metadata, min_confidence):

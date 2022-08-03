@@ -608,6 +608,19 @@ class TrackDatabase:
 
         return result
 
+    def remove_track(self, clip_id, track_id):
+        with HDF5Manager(self.database, "a") as f:
+            clips = f["clips"]
+            clip_s = str(clip_id)
+            track_s = str(track_id)
+            if clip_s in clips:
+                clip = clips[clip_s]
+                if str(track_s) in clip:
+                    del clip[track_s]
+                return True
+            else:
+                return False
+
     def remove_clip(self, clip_id):
         """
         Deletes clip from database.
