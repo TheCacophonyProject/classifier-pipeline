@@ -741,6 +741,7 @@ class SegmentHeader(Sample):
             filtered = np.empty(len(frames), dtype=object)
 
             for i, frame in enumerate(frames):
+                frame.float_arrays()
                 frame.filtered = frame.thermal - frame.region.subimage(background)
                 temp_index = np.where(self.frame_numbers == frame.frame_number)[0][0]
                 temp = self.frame_temp_median[temp_index]
