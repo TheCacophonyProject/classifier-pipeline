@@ -349,24 +349,22 @@ def validate_datasets(datasets, test_clips, date):
         for track in dataset.tracks:
             assert track.start_time < date
 
-    for dataset in datasets:
-        clips = set([track.clip_id for track in dataset.tracks])
-        tracks = set([track.track_id for track in dataset.tracks])
+    for i, dataset in enumerate(datasets):
+        clips = set([sample.clip_id for sample in dataset.samples])
         if test_clips is not None and dataset.name != "test":
             assert (
                 len(clips.intersection(set(test_clips))) == 0
             ), "test clips should only be in test set"
         if len(clips) == 0:
             continue
-        if len(tracks) == 0:
-            continue
-        for other in datasets:
+        for other in datasets[(i + 1) :]:
             if dataset.name == other.name:
                 continue
-            other_clips = set([track.clip_id for track in other.tracks])
-            other_tracks = set([track.track_id for track in other.tracks])
+            other_clips = set([sample.clip_id for sample in other.samples])
+            # other_tracks = set([track.track_id for track in other.tracks])
+            print("validationg", clips)
+            print("Comparing", other_clips)
             assert clips != other_clips, "clips should only be in one set"
-            assert tracks != other_tracks, "tracks should only be in one set"
 
 
 def main():
