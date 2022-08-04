@@ -218,6 +218,7 @@ class PiClassifier(Processor):
             self.recorder = DummyRecorder(
                 thermal_config, headers, on_recording_stopping
             )
+
         if headers.model == "IR":
             logging.info("Running on IR")
             self.track_extractor = IRTrackExtractor(
@@ -228,11 +229,17 @@ class PiClassifier(Processor):
                 calc_stats=False,
                 scale=0.25,
             )
+            self.tracking_config = self.track_extractor.config
+
             self.type = "IR"
             if not thermal_config.recorder.disable_recordings:
                 self.recorder = IRRecorder(
                     thermal_config, headers, on_recording_stopping
                 )
+            self.motion_detector = IRMotionDetector(
+                thermal_config,
+                headers,
+            )
         else:
             logging.info("Running on Thermal")
             self.track_extractor = ClipTrackExtractor(
@@ -241,12 +248,20 @@ class PiClassifier(Processor):
                 self.config.classify.cache_to_disk,
                 calc_stats=False,
             )
+            self.tracking_config = self.track_extractor.config
+
             self.type = "thermal"
             if not thermal_config.recorder.disable_recordings:
                 self.recorder = CPTVRecorder(
                     thermal_config, headers, on_recording_stopping
                 )
-        self.tracking_config = self.track_extractor.config
+
+            self.motion_detector = CPTVMotionDetector(
+                thermal_config,
+                self.tracking_config.motion.dynamic_thresh,
+                headers,
+                detect_after=detect_after,
+            )
         edge = self.tracking_config.edge_pixels
         self.crop_rectangle = tools.Rectangle(
             edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
@@ -266,13 +281,6 @@ class PiClassifier(Processor):
             self.recorder = ThrottledRecorder(
                 self.recorder, thermal_config, headers, on_recording_stopping
             )
-
-        self.motion_detector = CPTVMotionDetector(
-            thermal_config,
-            self.tracking_config.motion.dynamic_thresh,
-            headers,
-            detect_after=detect_after,
-        )
         self.meta_dir = os.path.join(thermal_config.recorder.output_dir)
         if not os.path.exists(self.meta_dir):
             os.makedirs(self.meta_dir)

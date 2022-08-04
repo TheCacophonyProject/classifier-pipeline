@@ -31,12 +31,16 @@ class Background:
         return np.uint8(self._background)
 
 
+WINDOW_SIZE = 50
+
+
 class IRMotionDetector(MotionDetector):
     def __init__(self, thermal_config, headers):
         super().__init__(thermal_config, headers)
+        self.num_preview_frames = thermal_config.recorder.preview_secs * headers.fps
 
-        self.rgb_window = SlidingWindow(WINDOW_SIZE, np.uint8)
-        self.frames_gray = SlidingWindow(WINDOW_SIZE, np.uint8)
+        self.rgb_window = SlidingWindow(self.num_preview_frames)
+        self.frames_gray = SlidingWindow(self.num_preview_frames)
         self._background = Background()
         self.kernel_trigger = np.ones(
             (15, 15), "uint8"
@@ -47,6 +51,11 @@ class IRMotionDetector(MotionDetector):
         self.movement_detected = False
         self.triggered = 0
         self.show = False
+
+    def disconnected(self):
+        self.rgb_window.reset()
+        self.frames_gray.reset()
+        self.processed = 0
 
     @property
     def background(self):
@@ -67,25 +76,24 @@ class IRMotionDetector(MotionDetector):
     # Processes a frame returning True if there is motion.
     def process_frame(self, frame, force_process=False):
         if self.can_record() or force_process:
-
-            self.rgb_window.add(frame)
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            self.gray_window.add(frame)
+            frame_pix = frame.pix
+            self.rgb_window.add(frame_pix)
+            frame_pix = cv2.cvtColor(frame_pix, cv2.COLOR_BGR2GRAY)
+            self.gray_window.add(frame_pix)
 
             if self.gray_window.oldest is None:
                 return False
 
             # Filter and get diff from background
             delta = cv2.absdiff(
-                self.gray_window.oldest, frame
+                self.gray_window.oldest, frame_pix
             )  # Get delta from current frame and background
             threshold = cv2.threshold(delta, 25, 255, cv2.THRESH_BINARY)[1]
 
             erosion_image = cv2.erode(threshold, self.get_kernel())
             erosion_pixels = len(erosion_image[erosion_image > 0])
             # to do find a value that suites the number of pixesl we want to move
-            self.gray_window.add(frame)
-            self._background.process_frame(frame)
+            self._background.process_frame(frame_pix)
             # Calculate if there was motion in the current frame
             # TODO Chenage how much ioldests added to the triggered depending on how big the motion is
             if erosion_pixels > 0:

@@ -75,6 +75,7 @@ class SlidingWindow:
             if self.last_index is None:
                 self.oldest_index = 0
                 self.frames[0] = frame
+                print("setting last", self.last_index)
                 self.last_index = 0
                 if not ffc:
                     self.non_ffc_index = self.oldest_index
