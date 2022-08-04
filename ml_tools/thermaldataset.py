@@ -120,7 +120,9 @@ def get_resampled(
     for k, v in remapped.items():
         filenames = []
         for label in v:
-            filenames.append(tf.io.gfile.glob(f"{base_dir}/{label}*.tfrecord"))
+            safe_l = label.replace("/", "-")
+
+            filenames.append(tf.io.gfile.glob(f"{base_dir}/{safe_l}-0*.tfrecord"))
         dataset = load_dataset(
             filenames,
             image_size,
@@ -219,6 +221,7 @@ def main():
         labels,
         augment=True,
         stop_on_empty_dataset=False,
+        preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     # print(get_distribution(resampled_ds))
     #
@@ -234,7 +237,9 @@ def main():
     # return
     for e in range(1):
         for x, y in resampled_ds:
-            show_batch(x, y, labels)
+            print("max is", np.amax(x), np.amin(x))
+            return
+            # show_batch(x, y, labels)
 
 
 def show_batch(image_batch, label_batch, labels):

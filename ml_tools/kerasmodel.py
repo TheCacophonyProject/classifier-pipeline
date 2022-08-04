@@ -468,7 +468,7 @@ class KerasModel(Interpreter):
             train_files,
             augment=True,
             resample=resample,
-            stop_on_empty_dataset=True,
+            stop_on_empty_dataset=False,
             # dist=self.dataset_counts["train"],
         )
         self.remapped = remapped
@@ -476,7 +476,7 @@ class KerasModel(Interpreter):
             validate_files,
             augment=False,
             resample=resample,
-            stop_on_empty_dataset=True,
+            stop_on_empty_dataset=False,
             # dist=self.dataset_counts["validation"],
         )
         distribution = get_distribution(self.train)
