@@ -714,7 +714,7 @@ class SegmentHeader(Sample):
     @property
     def bin_id(self):
         """Unique name of this segments track."""
-        return self.unique_track_id
+        return self.clip_id
 
     def __str__(self):
         return "{0} label {1} offset:{2} weight:{3:.1f}".format(

@@ -233,8 +233,8 @@ class Dataset:
         if shuffle:
             np.random.shuffle(clip_ids)
         for clip_id in clip_ids:
-            if self.load_clip(clip_id):
-                counter += 1
+            self.load_clip(clip_id)
+            counter += 1
             if counter % 50 == 0:
                 logging.debug("Dataset loaded %s / %s", counter, len(clip_ids))
         return [counter, len(clip_ids)]
@@ -242,9 +242,11 @@ class Dataset:
     def load_clip(self, clip_id):
         clip_meta = self.db.get_clip_meta(clip_id)
         tracks = self.db.get_clip_tracks(clip_id)
+        filtered = 0
         for track_meta in tracks:
             if self.filter_track(clip_meta, track_meta):
-                return False
+                filtered += 1
+                continue
             track_header = TrackHeader.from_meta(clip_id, clip_meta, track_meta)
             if self.use_segments:
                 segment_frame_spacing = int(
@@ -274,7 +276,7 @@ class Dataset:
                         and sample.mass <= track_header.upper_mass
                     ):
                         self.add_clip_sample_mappings(sample)
-            return True
+        return filtered
 
     def add_samples(self, samples):
         """
