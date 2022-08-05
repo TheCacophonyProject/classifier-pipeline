@@ -42,6 +42,8 @@ from ml_tools.imageprocessing import (
 )
 from track.cliptracker import ClipTracker
 
+DO_SALIENCY = True
+
 
 class Line:
     def __init__(self, m, c):
@@ -145,7 +147,6 @@ class IRTrackExtractor(ClipTracker):
             if not success:
                 break
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
             if clip.current_frame == -1:
                 background = np.uint32(gray)
                 self.init_saliency(gray.shape[1], gray.shape[0])
@@ -181,13 +182,15 @@ class IRTrackExtractor(ClipTracker):
             self.process_frame(clip, frame.pix.copy())
 
     def init_saliency(self, width, height):
+        if not DO_SALIENCY:
+            return
         self.saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
         self.saliency.setImagesize(width, height)
         self.saliency.init()
 
     def process_frame(self, clip, frame, ffc_affected=False):
-        if self.saliency is None:
-            if self.resie_dims is not None:
+        if self.saliency is None and DO_SALIENCY:
+            if self.resize_dims is not None:
                 self.init_saliency(
                     int(self.res_x * self.scale), int(self.res_y * self.scale)
                 )
@@ -201,6 +204,8 @@ class IRTrackExtractor(ClipTracker):
         self._process_frame(clip, frame, ffc_affected)
 
     def _get_filtered_frame_ir(self, thermal, repeats=1):
+        if not DO_SALIENCY:
+            return thermal, 0
         for _ in range(repeats):
             (success, saliencyMap) = self.saliency.computeSaliency(thermal)
         saliencyMap = (saliencyMap * 255).astype("uint8")
@@ -297,11 +302,6 @@ class IRTrackExtractor(ClipTracker):
         backsub, _ = get_ir_back_filtered(
             self.background.background, thermal, clip.background_thresh
         )
-        cur_frame = clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
-        self.background.update_background(cur_frame)
-        clip.set_background(self.background.background)
-        if not self.do_tracking:
-            return
         threshold = 0
         if np.amin(saliencyMap) == 255:
             num = 0
@@ -309,16 +309,19 @@ class IRTrackExtractor(ClipTracker):
             component_details = []
             saliencyMap[:] = 0
         else:
-            num, mask, component_details = theshold_saliency(saliencyMap)
-            component_details = component_details[1:]
-            # logging.info("at %s", clip.current_frame)
-            # for region in component_details:
-            #     logging.info("region is %s", region)
-            component_details = self.merge_components(component_details)
-            # component_details = self.filter_components(component_details)
-            # logging.info("at %s", clip.current_frame)
-            # for region in component_details:
-            #     logging.info("region becomes %s", region)
+            backsub = np.where(saliencyMap > 0, saliencyMap, backsub)
+
+        cur_frame = clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
+        self.background.update_background(cur_frame)
+        clip.set_background(self.background.background)
+        if not self.do_tracking:
+            return
+
+        # else:
+
+        num, mask, component_details = theshold_saliency(backsub, threshold=0)
+        component_details = component_details[1:]
+        component_details = self.merge_components(component_details)
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.current_frame in track.frame_list:
