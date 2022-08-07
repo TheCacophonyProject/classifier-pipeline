@@ -117,6 +117,8 @@ class IRTrackExtractor(ClipTracker):
             self.frame_padding = int(scale * self.frame_padding)
             self.min_dimension = int(scale * self.min_dimension)
         self.background = None
+        self.res_x = None
+        self.res_y = None
 
     def parse_clip(self, clip, process_background=False):
         """
@@ -146,13 +148,12 @@ class IRTrackExtractor(ClipTracker):
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
             if clip.current_frame == -1:
-                background = np.uint32(gray)
-                self.init_saliency(gray.shape[1], gray.shape[0])
+                self.res_x = gray.shape[0]
+                self.res_y = gray.shape[1]
                 clip.set_res(gray.shape[1], gray.shape[0])
-                clip.set_model("IR")
-                clip.set_video_stats(datetime.now())
-                self.background = Background(gray)
-                clip.set_background(background)
+                background = np.uint32(gray)
+                self.start_tracking(clip, background=gray)
+
             self.process_frame(clip, gray)
         vidcap.release()
 
@@ -164,27 +165,35 @@ class IRTrackExtractor(ClipTracker):
         self._tracking_time = time.time() - start
         return True
 
-    def start_tracking(self, clip, frames):
-        if len(frames) == 0:
-            return
-        res_x = clip.res_x
-        res_y = clip.res_y
+    def start_tracking(self, clip, frames=None, background=None):
+
+        self.res_x = clip.res_x
+        self.res_y = clip.res_y
+
+        self.init_saliency()
+        clip.set_model("IR")
+        clip.set_video_stats(datetime.now())
+        self.background = Background()
+        if background is not None:
+            self.background.set_background(background)
+        self.init_saliency()
+        if frames is not None:
+            for frame in frames[-9:]:
+                self.process_frame(clip, frame)
+
+    def init_saliency(self):
+        res_x = self.res_x
+        res_y = self.res_y
         if self.scale is not None:
             res_x = int(self.res_x * self.scale)
             res_y = int(self.res_y * self.scale)
-
-            # clip.resized_background = cv2.resize(clip.background, self.resize_dims)
-            # logging.info("Resizing backgorund %s", clip.tracking_background.shape)
-        self.init_saliency(res_x, res_y)
-        for frame in frames[-9:]:
-            self.process_frame(clip, frame.pix.copy())
-
-    def init_saliency(self, width, height):
         self.saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
-        self.saliency.setImagesize(width, height)
+        self.saliency.setImagesize(res_x, res_y)
         self.saliency.init()
 
     def process_frame(self, clip, frame, ffc_affected=False):
+        if self.background._background is None:
+            self.background.set_background(frame.pix.copy())
         if self.saliency is None:
             if self.resie_dims is not None:
                 self.init_saliency(
@@ -280,6 +289,7 @@ class IRTrackExtractor(ClipTracker):
 
         tracking_thermal = thermal
         if self.scale:
+
             tracking_thermal = cv2.resize(
                 thermal, (int(self.res_x * self.scale), int(self.res_y * self.scale))
             )
@@ -449,9 +459,14 @@ def get_ir_back_filtered(background, thermal, back_thresh):
 
 
 class Background:
-    def __init__(self, frame):
-        self._background = np.float32(frame)
+    def __init__(self):
         self.frames = 1
+        self._background = None
+
+    def set_background(self, background):
+        self._background = np.float32(background)
+        self.frames = 1
+        return
 
     def update_background(self, frame):
         background = self.background

@@ -112,10 +112,10 @@ def parse_ir(file, config, thermal_config_file, preview_type):
         success, image = vidcap.read()
         if not success:
             break
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray = cv2.resize(gray, (640, 360))
+        # gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        # gray = cv2.resize(gray, (640, 480))
         if count == 0:
-            res_y, res_x = gray.shape
+            res_y, res_x = image.shape[:2]
             headers = HeaderInfo(
                 res_x=res_x,
                 res_y=res_y,
@@ -136,7 +136,7 @@ def parse_ir(file, config, thermal_config_file, preview_type):
                 0,
                 preview_type,
             )
-        frame = Frame(gray, None, None, None, None)
+        frame = Frame(image, None, None, None, None)
         frame.received_at = time.time()
 
         pi_classifier.process_frame(frame)

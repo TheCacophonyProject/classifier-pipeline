@@ -88,7 +88,7 @@ class IRRecorder(Recorder):
             self.write_frame(frame)
         self.write_until = self.frames + self.min_frames
 
-        logging.info("recording %s started temp_thresh: %d", self.filename, temp_thresh)
+        logging.info("recording %s started", self.filename)
 
         self.rec_time += time.time() - start
         return True

@@ -251,6 +251,7 @@ class PiClassifier(Processor):
             self.tracking_config = self.track_extractor.config
 
             self.type = "thermal"
+            print("using cptv recorder")
             if not thermal_config.recorder.disable_recordings:
                 self.recorder = CPTVRecorder(
                     thermal_config, headers, on_recording_stopping
@@ -275,8 +276,6 @@ class PiClassifier(Processor):
             self.recorder = DummyRecorder(
                 thermal_config, headers, on_recording_stopping
             )
-        else:
-            self.recorder = CPTVRecorder(thermal_config, headers, on_recording_stopping)
         if thermal_config.throttler.activate:
             self.recorder = ThrottledRecorder(
                 self.recorder, thermal_config, headers, on_recording_stopping
@@ -580,7 +579,7 @@ class PiClassifier(Processor):
 
         if not self.recorder.recording and self.motion_detector.movement_detected:
             s_r = time.time()
-            preview_frames = self.motion_detector.thermal_window.get_frames()[:-1]
+            preview_frames = self.motion_detector.preview_frames()
             bak = self.motion_detector.background
             recording = self.recorder.start_recording(
                 self.motion_detector.background,

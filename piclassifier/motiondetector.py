@@ -9,10 +9,10 @@ import numpy as np
 class SlidingWindow:
     def __init__(self, shape, dtype):
         self.lock = Lock()
-        if dtype == "O":
-            self.frames = [None] * shape[0]
-        else:
-            self.frames = np.empty(shape, dtype)
+        # if dtype == "O":
+        self.frames = [None] * shape
+        # else:
+        # self.frames = np.empty(shape, dtype)
         self.last_index = None
         self.size = len(self.frames)
         self.oldest_index = None
@@ -75,7 +75,6 @@ class SlidingWindow:
             if self.last_index is None:
                 self.oldest_index = 0
                 self.frames[0] = frame
-                print("setting last", self.last_index)
                 self.last_index = 0
                 if not ffc:
                     self.non_ffc_index = self.oldest_index

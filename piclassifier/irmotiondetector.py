@@ -1,6 +1,7 @@
 import numpy as np
-
+import cv2
 from .motiondetector import SlidingWindow, MotionDetector
+from cptv import Frame
 
 
 class Background:
@@ -39,8 +40,8 @@ class IRMotionDetector(MotionDetector):
         super().__init__(thermal_config, headers)
         self.num_preview_frames = thermal_config.recorder.preview_secs * headers.fps
 
-        self.rgb_window = SlidingWindow(self.num_preview_frames)
-        self.frames_gray = SlidingWindow(self.num_preview_frames)
+        self.rgb_window = SlidingWindow(self.num_preview_frames, dtype=np.uint8)
+        self.gray_window = SlidingWindow(self.num_preview_frames, dtype=np.uint8)
         self._background = Background()
         self.kernel_trigger = np.ones(
             (15, 15), "uint8"
@@ -54,7 +55,7 @@ class IRMotionDetector(MotionDetector):
 
     def disconnected(self):
         self.rgb_window.reset()
-        self.frames_gray.reset()
+        self.gray_window.reset()
         self.processed = 0
 
     @property
@@ -76,17 +77,17 @@ class IRMotionDetector(MotionDetector):
     # Processes a frame returning True if there is motion.
     def process_frame(self, frame, force_process=False):
         if self.can_record() or force_process:
-            frame_pix = frame.pix
-            self.rgb_window.add(frame_pix)
-            frame_pix = cv2.cvtColor(frame_pix, cv2.COLOR_BGR2GRAY)
-            self.gray_window.add(frame_pix)
+            self.rgb_window.add(frame)
+            frame_pix = cv2.cvtColor(frame.pix, cv2.COLOR_BGR2GRAY)
+            gray = Frame(frame_pix, None, None, None, None)
+            self.gray_window.add(gray)
 
             if self.gray_window.oldest is None:
                 return False
 
             # Filter and get diff from background
             delta = cv2.absdiff(
-                self.gray_window.oldest, frame_pix
+                self.gray_window.oldest.pix, frame_pix
             )  # Get delta from current frame and background
             threshold = cv2.threshold(delta, 25, 255, cv2.THRESH_BINARY)[1]
 
@@ -104,13 +105,16 @@ class IRMotionDetector(MotionDetector):
                 self.triggered = max(self.triggered, 0)
 
             # Check if motion has started or ended
-            if not self.motion and self.triggered > 10:
+            if not self.movement_detected and self.triggered > 10:
                 self.movement_detected = True
 
-            elif self.motion and self.triggered <= 0:
+            elif self.movement_detected and self.triggered <= 0:
                 self.movement_detected = False
         else:
             self.rgb_window.update_current_frame(frame)
-
         self.num_frames += 1
-        return self.motion
+        return self.movement_detected
+
+    @property
+    def temp_thresh(self):
+        return None
