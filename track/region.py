@@ -39,6 +39,10 @@ class Region(Rectangle):
     blank = attr.ib(default=False)
     is_along_border = attr.ib(default=False)
 
+    def rescale(self, factor):
+        self.width = self.width * factor
+        self.height = self.height * factor
+
     @staticmethod
     def from_ltwh(left, top, width, height):
         """Construct a rectangle from left, top, right, bottom co-ords."""

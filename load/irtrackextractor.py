@@ -309,18 +309,11 @@ class IRTrackExtractor(ClipTracker):
             saliencyMap, _ = self._get_filtered_frame_ir(
                 tracking_thermal, repeats=repeats
             )
-            if self.scale:
-                saliencyMap = cv2.resize(
-                    saliencyMap, (clip.res_x, clip.res_y), cv2.INTER_NEAREST
-                )
+
         backsub, _ = get_ir_back_filtered(
             self.background.background, tracking_thermal, clip.background_thresh
         )
-        cur_frame = clip.add_frame(tracking_thermal, backsub, saliencyMap, ffc_affected)
-        self.background.update_background(cur_frame)
-        clip.set_background(self.background.background)
-        if not self.do_tracking:
-            return
+
         threshold = 0
         if np.amin(saliencyMap) == 255:
             num = 0
@@ -330,17 +323,15 @@ class IRTrackExtractor(ClipTracker):
         else:
             backsub = np.where(saliencyMap > 0, saliencyMap, backsub)
 
-        cur_frame = clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
-        self.background.update_background(cur_frame)
+        cur_frame = clip.add_frame(frame, backsub, saliencyMap, ffc_affected)
+        self.background.update_background(tracking_thermal, backsub)
         clip.set_background(self.background.background)
         if not self.do_tracking:
             return
-
-        # else:
-
         num, mask, component_details = theshold_saliency(backsub, threshold=0)
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
+
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.current_frame in track.frame_list:
@@ -481,9 +472,9 @@ class Background:
         self.frames = 1
         return
 
-    def update_background(self, frame):
+    def update_background(self, thermal, filtered):
         background = self.background
-        new_thermal = np.where(frame.filtered > 0, background, frame.thermal)
+        new_thermal = np.where(filtered > 0, background, thermal)
         self._background += new_thermal
         self.frames += 1
 

@@ -47,6 +47,8 @@ SKIP_SIGNAL = "skip"
 track_extractor = None
 clip = None
 
+import cv2
+
 
 class NeuralInterpreter(Interpreter):
     def __init__(self, model_name):
@@ -470,7 +472,18 @@ class PiClassifier(Processor):
 
     def identify_ir(self, track):
         region = track.bounds_history[-1]
+        region = region.copy()
+        print("region is", region)
+        region.rescale(1 / self.track_extractor.scale)
+        print("rescale", region)
         frame = self.clip.frame_buffer.get_last_frame()
+        start_point = (int(region.left), 480 - int(region.top))
+        end_point = (int(region.right), 480 - int(region.bottom))
+        print("rect", start_point, end_point)
+        image = cv2.rectangle(frame, start_point, end_point, (255, 0, 0), 2)
+
+        cv2.imshow("id", image)
+        cv2.waitKey(3000)
         if frame is None:
             return
         params = self.classifier.params
@@ -632,7 +645,7 @@ class PiClassifier(Processor):
                     self.classified_consec = 0
                 elif (
                     self.classify
-                    and self.motion_detector.ffc_affected is False
+                    and self.motion_detector.calibrating is False
                     and self.clip.active_tracks
                     and self.skip_classifying <= 0
                     and not self.clip.on_preview()
