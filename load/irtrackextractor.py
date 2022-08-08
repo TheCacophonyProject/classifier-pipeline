@@ -27,6 +27,7 @@ from datetime import datetime
 
 from cptv import CPTVReader
 import cv2
+from cptv import Frame
 
 from .clip import Clip
 from ml_tools.tools import Rectangle
@@ -146,13 +147,13 @@ class IRTrackExtractor(ClipTracker):
             if not success:
                 break
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
             if clip.current_frame == -1:
                 self.res_x = gray.shape[0]
                 self.res_y = gray.shape[1]
                 clip.set_res(gray.shape[1], gray.shape[0])
                 background = np.uint32(gray)
                 self.start_tracking(clip, background=gray)
+            gray = Frame(gray)
 
             self.process_frame(clip, gray)
         vidcap.release()
@@ -175,6 +176,11 @@ class IRTrackExtractor(ClipTracker):
         clip.set_video_stats(datetime.now())
         self.background = Background()
         if background is not None:
+            if self.scale:
+                background = cv2.resize(
+                    background,
+                    (int(self.res_x * self.scale), int(self.res_y * self.scale)),
+                )
             self.background.set_background(background)
         self.init_saliency()
         if frames is not None:
@@ -192,8 +198,11 @@ class IRTrackExtractor(ClipTracker):
         self.saliency.init()
 
     def process_frame(self, clip, frame, ffc_affected=False):
-        if self.background._background is None:
-            self.background.set_background(frame.pix.copy())
+        if len(frame.pix.shape) == 3:
+            # in rgb so convert to gray
+            gray = cv2.cvtColor(frame.pix, cv2.COLOR_BGR2GRAY)
+            frame = Frame(gray, None, None, None, None)
+
         if self.saliency is None:
             if self.resie_dims is not None:
                 self.init_saliency(
@@ -274,7 +283,7 @@ class IRTrackExtractor(ClipTracker):
                 rect_i += 1
         return rectangles
 
-    def _process_frame(self, clip, thermal, ffc_affected=False):
+    def _process_frame(self, clip, frame, ffc_affected=False):
 
         wait = 1
         """
@@ -287,13 +296,14 @@ class IRTrackExtractor(ClipTracker):
             # helps init the saliency, when ir tracks have a 5 second preview this shouldnt be needed
             repeats = 6
 
-        tracking_thermal = thermal
+        tracking_thermal = frame.pix.copy()
         if self.scale:
-
             tracking_thermal = cv2.resize(
-                thermal, (int(self.res_x * self.scale), int(self.res_y * self.scale))
+                tracking_thermal,
+                (int(self.res_x * self.scale), int(self.res_y * self.scale)),
             )
-
+        if self.background._background is None:
+            self.background.set_background(tracking_thermal.copy())
         saliencyMap = None
         if self.do_tracking:
             saliencyMap, _ = self._get_filtered_frame_ir(
@@ -304,9 +314,9 @@ class IRTrackExtractor(ClipTracker):
                     saliencyMap, (clip.res_x, clip.res_y), cv2.INTER_NEAREST
                 )
         backsub, _ = get_ir_back_filtered(
-            self.background.background, thermal, clip.background_thresh
+            self.background.background, tracking_thermal, clip.background_thresh
         )
-        cur_frame = clip.add_frame(thermal, backsub, saliencyMap, ffc_affected)
+        cur_frame = clip.add_frame(tracking_thermal, backsub, saliencyMap, ffc_affected)
         self.background.update_background(cur_frame)
         clip.set_background(self.background.background)
         if not self.do_tracking:

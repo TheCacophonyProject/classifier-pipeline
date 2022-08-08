@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 from .motiondetector import SlidingWindow, MotionDetector
 from cptv import Frame
+import logging
 
 
 class Background:
@@ -69,7 +70,7 @@ class IRMotionDetector(MotionDetector):
             return self.kernel_trigger
 
     def preview_frames(self):
-        return self.gray_window.get_frames()[:-1]
+        return self.rgb_window.get_frames()[:-1]
 
     def get_recent_frame(self):
         return self.rgb_window.current
@@ -113,6 +114,7 @@ class IRMotionDetector(MotionDetector):
         else:
             self.rgb_window.update_current_frame(frame)
         self.num_frames += 1
+        logging.info("MOTION %s", self.movement_detected)
         return self.movement_detected
 
     @property

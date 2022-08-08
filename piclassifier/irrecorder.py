@@ -14,7 +14,10 @@ from pathlib import Path
 VIDEO_EXT = ".mp4"
 TEMP_DIR = "temp"
 
-fourcc = cv2.VideoWriter_fourcc(*"avc1")
+# fourcc = cv2.VideoWriter_fourcc(*"avc1")
+# FOURCC = cv2.VideoWriter_fourcc(*"avc1")
+# JUST FOR TEST
+FOURCC = cv2.VideoWriter_fourcc(*"XVID")
 
 
 class IRRecorder(Recorder):
@@ -47,7 +50,7 @@ class IRRecorder(Recorder):
             self.stop_recording(time.time())
         else:
             logging.info("Recording stopped early deleting short recording")
-            self.delete_recording()
+            # self.delete_recording()
 
     def process_frame(self, movement_detected, cptv_frame):
         if self.recording:
@@ -78,24 +81,26 @@ class IRRecorder(Recorder):
 
         self.filename = self.temp_dir / self.filename
         self.writer = cv2.VideoWriter(
-            str(self.filename), fourcc, self.fps, (self.res_x, self.res_y), 0
+            str(self.filename), FOURCC, self.fps, (self.res_x, self.res_y)
         )
         self.writer.write(background_frame)
         default_thresh = self.motion.temp_thresh
 
         self.recording = True
         for frame in preview_frames:
+            logging.info("Writing preview %s ", frame.pix.shape)
             self.write_frame(frame)
         self.write_until = self.frames + self.min_frames
 
         logging.info("recording %s started", self.filename)
-
         self.rec_time += time.time() - start
         return True
 
-    def write_frame(self, cptv_frame):
+    def write_frame(self, frame):
         start = time.time()
-        self.writer.write(cptv_frame.pix)
+        logging.info("Writing frame %s ", frame.pix.shape)
+
+        self.writer.write(frame.pix)
         self.frames += 1
         self.rec_time += time.time() - start
 
@@ -110,7 +115,6 @@ class IRRecorder(Recorder):
             self.rec_time / self.frames,
         )
         self.rec_time = 0
-
         self.write_until = 0
         if self.writer is None:
             return
@@ -120,7 +124,6 @@ class IRRecorder(Recorder):
             self.on_recording_stopping(final_name)
         self.writer.release()
         self.filename.rename(final_name)
-        # .rename(self.filename, final_name)
         self.writer = None
 
     def delete_recording(self):
@@ -134,4 +137,4 @@ class IRRecorder(Recorder):
 
 
 def new_temp_name(frame_time):
-    return datetime.fromtimestamp(frame_time).strftime("%Y%m%d.%H%M%S.%f" + VIDEO_EXT)
+    return datetime.fromtimestamp(frame_time).strftime("%Y%m%d-%H%M%S-%f" + VIDEO_EXT)
