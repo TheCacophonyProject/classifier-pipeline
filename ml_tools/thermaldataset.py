@@ -114,14 +114,15 @@ def get_resampled(
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-    remapped = {"penguin": ["penguin"]}
     weights = [1.0] * len(remapped)
     datasets = []
 
     for k, v in remapped.items():
         filenames = []
         for label in v:
-            filenames.append(tf.io.gfile.glob(f"{base_dir}/{label}*.tfrecord"))
+            safe_l = label.replace("/", "-")
+
+            filenames.append(tf.io.gfile.glob(f"{base_dir}/{safe_l}-0*.tfrecord"))
         dataset = load_dataset(
             filenames,
             image_size,
@@ -188,7 +189,7 @@ def read_tfrecord(
 def decode_image(image, filtered, image_size):
     image = tf.image.decode_png(image, channels=1)
     filtered = tf.image.decode_png(filtered, channels=1)
-    image = tf.concat((image, filtered, filtered), axis=2)
+    image = tf.concat((image, image, filtered), axis=2)
     image = tf.cast(image, tf.float32)
     return image
 
@@ -204,13 +205,13 @@ from collections import Counter
 def main():
     init_logging()
     config = Config.load_from_file()
-    # file = "/home/gp/cacophony/classifier-data/thermal-training/training-meta.json"
+    # file = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/training-meta.json"
     file = f"{config.tracks_folder}/training-meta.json"
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
     datasets = []
-    dir = "/home/gp/cacophony/classifier-data/thermal-training/validation"
+    # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_resampled(
         # dir,
@@ -220,6 +221,7 @@ def main():
         labels,
         augment=True,
         stop_on_empty_dataset=False,
+        preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     # print(get_distribution(resampled_ds))
     #
@@ -232,11 +234,12 @@ def main():
         for i in range(len(labels)):
             print("after have", labels[i], c[i])
 
-    return
-    image_batch, label_batch = next(iter(resampled_ds))
-    for e in range(2):
+    # return
+    for e in range(1):
         for x, y in resampled_ds:
-            show_batch(x, y, labels)
+            print("max is", np.amax(x), np.amin(x))
+            return
+            # show_batch(x, y, labels)
 
 
 def show_batch(image_batch, label_batch, labels):
@@ -246,7 +249,7 @@ def show_batch(image_batch, label_batch, labels):
     for n in range(num_images):
         ax = plt.subplot(5, 5, n + 1)
         plt.imshow(np.uint8(image_batch[n]))
-        # plt.title("C-" + str(label_batch[n]))
+        plt.title("C-" + str(label_batch[n]))
         plt.title(labels[np.argmax(label_batch[n])])
         plt.axis("off")
     plt.show()
