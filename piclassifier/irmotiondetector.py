@@ -79,8 +79,7 @@ class IRMotionDetector(MotionDetector):
     def process_frame(self, frame, force_process=False):
         if self.can_record() or force_process:
             self.rgb_window.add(frame)
-            frame_pix = cv2.cvtColor(frame.pix, cv2.COLOR_BGR2GRAY)
-            gray = Frame(frame_pix, None, None, None, None)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             self.gray_window.add(gray)
 
             if self.gray_window.oldest is None:
@@ -88,14 +87,14 @@ class IRMotionDetector(MotionDetector):
 
             # Filter and get diff from background
             delta = cv2.absdiff(
-                self.gray_window.oldest.pix, frame_pix
+                self.gray_window.oldest, gray
             )  # Get delta from current frame and background
             threshold = cv2.threshold(delta, 25, 255, cv2.THRESH_BINARY)[1]
 
             erosion_image = cv2.erode(threshold, self.get_kernel())
             erosion_pixels = len(erosion_image[erosion_image > 0])
             # to do find a value that suites the number of pixesl we want to move
-            self._background.process_frame(frame_pix)
+            self._background.process_frame(gray)
             # Calculate if there was motion in the current frame
             # TODO Chenage how much ioldests added to the triggered depending on how big the motion is
             if erosion_pixels > 0:
@@ -114,7 +113,6 @@ class IRMotionDetector(MotionDetector):
         else:
             self.rgb_window.update_current_frame(frame)
         self.num_frames += 1
-        logging.info("MOTION %s", self.movement_detected)
         return self.movement_detected
 
     @property

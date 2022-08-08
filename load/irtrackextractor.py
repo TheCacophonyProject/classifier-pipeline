@@ -27,7 +27,6 @@ from datetime import datetime
 
 from cptv import CPTVReader
 import cv2
-from cptv import Frame
 
 from .clip import Clip
 from ml_tools.tools import Rectangle
@@ -153,8 +152,6 @@ class IRTrackExtractor(ClipTracker):
                 clip.set_res(gray.shape[1], gray.shape[0])
                 background = np.uint32(gray)
                 self.start_tracking(clip, background=gray)
-            gray = Frame(gray)
-
             self.process_frame(clip, gray)
         vidcap.release()
 
@@ -198,10 +195,9 @@ class IRTrackExtractor(ClipTracker):
         self.saliency.init()
 
     def process_frame(self, clip, frame, ffc_affected=False):
-        if len(frame.pix.shape) == 3:
+        if len(frame.shape) == 3:
             # in rgb so convert to gray
-            gray = cv2.cvtColor(frame.pix, cv2.COLOR_BGR2GRAY)
-            frame = Frame(gray, None, None, None, None)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         if self.saliency is None:
             if self.resie_dims is not None:
@@ -296,7 +292,7 @@ class IRTrackExtractor(ClipTracker):
             # helps init the saliency, when ir tracks have a 5 second preview this shouldnt be needed
             repeats = 6
 
-        tracking_thermal = frame.pix.copy()
+        tracking_thermal = frame.copy()
         if self.scale:
             tracking_thermal = cv2.resize(
                 tracking_thermal,

@@ -139,7 +139,7 @@ def parse_ir(file, config, thermal_config_file, preview_type):
         # frame = Frame(image, None, None, None, None)
         # frame.received_at = time.time()
 
-        pi_classifier.process_frame(image)
+        pi_classifier.process_frame(image, time.time())
         count += 1
     vidcap.release()
     pi_classifier.disconnected()
@@ -265,7 +265,7 @@ def handle_connection(connection, config, thermal_config_file):
             elif read < 100:
                 process_queue.put(SKIP_SIGNAL)
             else:
-                process_queue.put(frame)
+                process_queue.put((frame, time.time))
     finally:
         time.sleep(5)
         # give it a moment to close down properly

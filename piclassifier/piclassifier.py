@@ -572,7 +572,7 @@ class PiClassifier(Processor):
         if self.clip:
             self.clip.current_frame += 1
 
-    def process_frame(self, lepton_frame):
+    def process_frame(self, lepton_frame, received_at):
         start = time.time()
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
@@ -585,7 +585,7 @@ class PiClassifier(Processor):
                 self.motion_detector.background,
                 preview_frames,
                 self.motion_detector.temp_thresh,
-                lepton_frame.received_at,
+                received_at,
             )
             self.rec_time += time.time() - s_r
             if recording:
@@ -623,7 +623,7 @@ class PiClassifier(Processor):
                     self.tracking = None
 
             self.recorder.process_frame(
-                self.motion_detector.movement_detected, lepton_frame
+                self.motion_detector.movement_detected, lepton_frame, received_at
             )
             self.rec_time += time.time() - s_r
             if self.classify:
@@ -685,16 +685,15 @@ class PiClassifier(Processor):
             average = np.mean(self.fps_timer.get_frames())
 
             logging.info(
-                "tracking {}% process {}%  identify {}% rec{}%s fps {}/sec  cpu % {} memory % {} behind by {} seconds".format(
-                    round(100 * self.tracking_time / self.total_time, 3),
-                    round(100 * self.process_time / self.total_time, 3),
-                    round(100 * self.identify_time / self.total_time, 3),
-                    round(100 * self.rec_time / self.total_time, 3),
-                    round(1 / average),
-                    psutil.cpu_percent(),
-                    psutil.virtual_memory()[2],
-                    time.time() - lepton_frame.received_at,
-                )
+                "tracking %s process %s  identify %s rec %s fps %s/sec  cpu %s memory %s behind by %s seconds",
+                round(100 * self.tracking_time / self.total_time, 3),
+                round(100 * self.process_time / self.total_time, 3),
+                round(100 * self.identify_time / self.total_time, 3),
+                round(100 * self.rec_time / self.total_time, 3),
+                round(1 / average),
+                psutil.cpu_percent(),
+                psutil.virtual_memory()[2],
+                time.time() - received_at,
             )
             self.tracking_time = 0
             self.process_time = 0

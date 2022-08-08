@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 class Recorder(ABC):
     @abstractmethod
-    def process_frame(self, movement_detected, cptv_frame):
+    def process_frame(self, movement_detected, cptv_frame, received_at):
         ...
 
     @abstractmethod

@@ -31,19 +31,19 @@ class ThrottledRecorder(Recorder):
             self.last_rec = time.time()
         self.recorder.force_stop()
 
-    def process_frame(self, movement_detected, cptv_frame):
+    def process_frame(self, movement_detected, cptv_frame, received_at):
         if movement_detected:
-            self.last_motion = cptv_frame.received_at
+            self.last_motion = received_at
 
         was_recording = self.recorder.recording
         self.recorder.process_frame(movement_detected, cptv_frame)
-        self.take_token(cptv_frame.received_at)
+        self.take_token(received_at)
         if was_recording and not self.recorder.recording:
-            self.last_rec = cptv_frame.received_at
+            self.last_rec = received_at
 
         if self.throttling and self.recorder.recording:
             logging.info("Throttling recording")
-            self.stop_recording(cptv_frame.received_at)
+            self.stop_recording(received_at)
 
     def update_tokens(self, frame_time):
         if self.last_motion is None:

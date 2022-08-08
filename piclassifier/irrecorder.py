@@ -88,7 +88,7 @@ class IRRecorder(Recorder):
 
         self.recording = True
         for frame in preview_frames:
-            logging.info("Writing preview %s ", frame.pix.shape)
+            logging.info("Writing preview %s ", frame.shape)
             self.write_frame(frame)
         self.write_until = self.frames + self.min_frames
 
@@ -98,9 +98,9 @@ class IRRecorder(Recorder):
 
     def write_frame(self, frame):
         start = time.time()
-        logging.info("Writing frame %s ", frame.pix.shape)
+        logging.info("Writing frame %s ", frame.shape)
 
-        self.writer.write(frame.pix)
+        self.writer.write(frame)
         self.frames += 1
         self.rec_time += time.time() - start
 
