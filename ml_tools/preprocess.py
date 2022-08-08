@@ -209,7 +209,6 @@ def preprocess_ir(
         crop_rectangle = tools.Rectangle(
             0, 0, frame.thermal.shape[1], frame.thermal.shape[0]
         )
-        # region.enlarge(20, max=crop_rectangle)
         frame.crop_by_region(region, out=frame)
     frame.normalize()
     image = np.stack((frame.thermal, frame.thermal, frame.thermal), axis=2)
@@ -221,7 +220,7 @@ def preprocess_ir(
         None,
         True,
     )
-    # tools.saveclassify_rgb(np.uint8(image), f"samples/{count}")
+
     if preprocess_fn:
         image = preprocess_fn(image)
     return image

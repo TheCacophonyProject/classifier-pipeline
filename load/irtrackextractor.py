@@ -352,6 +352,16 @@ class IRTrackExtractor(ClipTracker):
                 self._apply_region_matchings(clip, regions)
 
             clip.region_history.append(regions)
+            # image = frame.copy()
+            # for track in clip.active_tracks:
+            #     region = track.bounds_history[-1]
+            #     region.rescale(1 / self.scale)
+            #     start_point = (int(region.left), int(region.top))
+            #     end_point = (int(region.right), int(region.bottom))
+            #     image = cv2.rectangle(image, start_point, end_point, (255, 0, 0), 2)
+            #
+            # cv2.imshow("id", image)
+            # cv2.waitKey(100)
 
     def filter_components(self, component_details):
         filtered = []

@@ -180,7 +180,7 @@ class PiClassifier(Processor):
     MAX_CONSEC = 1
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
-    SKIP_FRAMES = 10
+    SKIP_FRAMES = 0
 
     def __init__(
         self,
@@ -434,7 +434,7 @@ class PiClassifier(Processor):
                 track_prediction.last_frame_classified = self.clip.current_frame
                 continue
             track_prediction.classified_frame(self.clip.current_frame, prediction, mass)
-            logging.debug(
+            logging.info(
                 "Track %s is predicted as %s", track, track_prediction.get_prediction()
             )
 
@@ -473,19 +473,18 @@ class PiClassifier(Processor):
     def identify_ir(self, track):
         region = track.bounds_history[-1]
         region = region.copy()
-        print("region is", region)
-        region.rescale(1 / self.track_extractor.scale)
-        print("rescale", region)
-        frame = self.clip.frame_buffer.get_last_frame()
-        start_point = (int(region.left), 480 - int(region.top))
-        end_point = (int(region.right), 480 - int(region.bottom))
-        print("rect", start_point, end_point)
-        image = cv2.rectangle(frame, start_point, end_point, (255, 0, 0), 2)
+        if self.track_extractor.scale and not region.blank:
+            region.rescale(1 / self.track_extractor.scale)
 
-        cv2.imshow("id", image)
-        cv2.waitKey(3000)
-        if frame is None:
-            return
+        frame = self.clip.frame_buffer.get_last_frame()
+        # start_point = (int(region.left), int(region.top))
+        # end_point = (int(region.right), int(region.bottom))
+        # image = cv2.rectangle(frame.thermal, start_point, end_point, (255, 0, 0), 2)
+        #
+        # cv2.imshow("id", image)
+        # cv2.waitKey(100)
+        if frame is None or region.width == 0 or region.height == 0 or region.blank:
+            return None, None
         params = self.classifier.params
         preprocessed = preprocess_ir(
             frame.copy(),

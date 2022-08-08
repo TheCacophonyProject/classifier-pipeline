@@ -40,8 +40,11 @@ class Region(Rectangle):
     is_along_border = attr.ib(default=False)
 
     def rescale(self, factor):
-        self.width = self.width * factor
-        self.height = self.height * factor
+        self.x = int(self.x * factor)
+        self.y = int(self.y * factor)
+
+        self.width = int(self.width * factor)
+        self.height = int(self.height * factor)
 
     @staticmethod
     def from_ltwh(left, top, width, height):
