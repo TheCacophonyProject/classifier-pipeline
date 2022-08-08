@@ -26,13 +26,11 @@ class CPTVMotionDetector(MotionDetector):
 
         if not self.config.one_diff_only:
             self.diff_window = SlidingWindow(
-                (self.compare_gap, headers.res_y - edge * 2, headers.res_x - edge * 2),
+                self.compare_gap,
                 np.int32,
             )
 
-        self.thermal_window = SlidingWindow(
-            (self.num_preview_frames + 1, headers.res_y, headers.res_x), "O"
-        )
+        self.thermal_window = SlidingWindow(self.num_preview_frames + 1, "O")
         self.processed = 0
         self.thermal_thresh = 0
         self.crop_rectangle = Rectangle(

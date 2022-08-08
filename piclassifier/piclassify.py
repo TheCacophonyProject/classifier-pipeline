@@ -175,8 +175,7 @@ def parse_cptv(file, config, thermal_config_file, preview_type):
             if frame.background_frame:
                 pi_classifier.motion_detector._background._background = frame.pix
                 continue
-            frame.received_at = time.time()
-            pi_classifier.process_frame(frame)
+            pi_classifier.process_frame(frame, time.time())
         pi_classifier.disconnected()
 
 

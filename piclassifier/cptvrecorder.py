@@ -43,18 +43,18 @@ class CPTVRecorder(Recorder):
             logging.info("Recording stopped early deleting short recording")
             self.delete_recording()
 
-    def process_frame(self, movement_detected, cptv_frame):
+    def process_frame(self, movement_detected, cptv_frame, received_at):
         if self.recording:
             self.write_frame(cptv_frame)
             if movement_detected:
                 self.write_until = self.frames + self.min_frames
             elif self.has_minimum():
 
-                self.stop_recording(cptv_frame.received_at)
+                self.stop_recording(received_at)
                 return
 
             if self.frames == self.max_frames:
-                self.stop_recording(cptv_frame.received_at)
+                self.stop_recording(received_at)
 
     def has_minimum(self):
         return self.frames > self.write_until

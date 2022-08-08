@@ -180,7 +180,7 @@ class PiClassifier(Processor):
     MAX_CONSEC = 1
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
-    SKIP_FRAMES = 0
+    SKIP_FRAMES = 10
 
     def __init__(
         self,
@@ -429,6 +429,7 @@ class PiClassifier(Processor):
             if self.type == "IR":
                 prediction, mass = self.identify_ir(track)
             else:
+                logging.info("identify thermal %s", track)
                 prediction, mass = self.identify_thermal(track)
             if prediction is None:
                 track_prediction.last_frame_classified = self.clip.current_frame
