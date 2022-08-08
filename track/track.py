@@ -347,7 +347,6 @@ class Track:
             self._id = id
         self.clip_id = clip_id
         self.start_frame = None
-        self.end_frame = None
         self.start_s = None
         self.end_s = None
         self.fps = fps
@@ -530,7 +529,7 @@ class Track:
 
             if self.start_frame is None:
                 self.start_frame = region.frame_number
-            self.end_frame = region.frame_number
+            # self.end_frame = region.frame_number
             self.bounds_history.append(region)
             self.frame_list.append(region.frame_number)
         self.current_frame_num = 0
@@ -561,7 +560,7 @@ class Track:
                 self.add_blank_frame()
         self.tracker.add_region(region)
         self.bounds_history.append(region)
-        self.end_frame = region.frame_number
+        # self.end_frame = region.frame_number
         self.prev_frame_num = region.frame_number
         self.update_velocity()
 
@@ -852,6 +851,12 @@ class Track:
 
     def predicted_velocity(self):
         return self.tracker.predicted_velocity()
+
+    @property
+    def end_frame(self):
+        if len(self.bounds_history) == 0:
+            return 0
+        return self.bounds_history[-1].frame_number
 
     @property
     def nonblank_frames(self):
