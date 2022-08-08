@@ -141,6 +141,10 @@ class MotionDetector(ABC):
     def disconnected(self):
         """Tracker type IR or Thermal"""
 
+    @abstractmethod
+    def calibrating(self):
+        """Tracker type IR or Thermal"""
+
     @property
     @abstractmethod
     def background(self):

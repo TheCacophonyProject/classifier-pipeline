@@ -15,7 +15,7 @@
   managementd = 80
 
 [thermal-motion]
-  run-classifier = false
+  run-classifier = true
   count-thresh = 3
   delta-thresh = 50
   edge-pixels = 1
@@ -29,7 +29,7 @@
   use-sunrise-sunset = false
   max-secs = 300
   min-disk-space-mb = 200
-  min-secs = 10
+  min-secs = 5
   output-dir = "/var/spool/cptv"
   preview-secs = 1
 

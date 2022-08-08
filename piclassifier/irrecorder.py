@@ -11,13 +11,13 @@ from piclassifier.recorder import Recorder
 import cv2
 from pathlib import Path
 
-VIDEO_EXT = ".mp4"
+VIDEO_EXT = ".avi"
 TEMP_DIR = "temp"
 
 # fourcc = cv2.VideoWriter_fourcc(*"avc1")
 # FOURCC = cv2.VideoWriter_fourcc(*"avc1")
 # JUST FOR TEST
-FOURCC = cv2.VideoWriter_fourcc(*"XVID")
+FOURCC = cv2.VideoWriter_fourcc(*"MPEG")
 
 
 class IRRecorder(Recorder):
@@ -34,6 +34,7 @@ class IRRecorder(Recorder):
         self.headers = headers
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
+        self.min_recording = self.preview_secs * headers.fps + self.min_frames
         self.res_x = headers.res_x
         self.res_y = headers.res_y
         self.fps = headers.fps
@@ -46,24 +47,24 @@ class IRRecorder(Recorder):
     def force_stop(self):
         if not self.recording:
             return
-        if self.has_minimum():
+        if self.frames > self.min_recording:
             self.stop_recording(time.time())
         else:
             logging.info("Recording stopped early deleting short recording")
-            # self.delete_recording()
+            # self.stop_recording(time.time())
+            self.delete_recording()
 
-    def process_frame(self, movement_detected, cptv_frame):
+    def process_frame(self, movement_detected, cptv_frame, received_at):
         if self.recording:
             self.write_frame(cptv_frame)
             if movement_detected:
                 self.write_until = self.frames + self.min_frames
             elif self.has_minimum():
-
-                self.stop_recording(cptv_frame.received_at)
+                self.stop_recording(received_at)
                 return
 
             if self.frames == self.max_frames:
-                self.stop_recording(cptv_frame.received_at)
+                self.stop_recording(received_at)
 
     def has_minimum(self):
         return self.frames > self.write_until
@@ -91,14 +92,13 @@ class IRRecorder(Recorder):
             logging.info("Writing preview %s ", frame.shape)
             self.write_frame(frame)
         self.write_until = self.frames + self.min_frames
-
         logging.info("recording %s started", self.filename)
         self.rec_time += time.time() - start
         return True
 
     def write_frame(self, frame):
         start = time.time()
-        logging.info("Writing frame %s ", frame.shape)
+        # logging.info("Writing frame %s dtype %s ", frame.shape, frame.dtype)
 
         self.writer.write(frame)
         self.frames += 1

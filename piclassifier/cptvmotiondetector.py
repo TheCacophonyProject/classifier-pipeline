@@ -57,6 +57,10 @@ class CPTVMotionDetector(MotionDetector):
         else:
             self.detect_after = detect_after
 
+    @property
+    def calibrating(self):
+        return self.ffc_affected
+
     def preview_frames(self):
         return self.thermal_window.get_frames()[:-1]
 

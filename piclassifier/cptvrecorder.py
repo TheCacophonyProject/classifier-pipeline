@@ -27,6 +27,8 @@ class CPTVRecorder(Recorder):
         self.headers = headers
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
+        self.min_recording = self.preview_secs * headers.fps + self.min_frames
+
         self.write_until = 0
         self.rec_time = 0
         self.on_recording_stopping = on_recording_stopping
@@ -35,11 +37,11 @@ class CPTVRecorder(Recorder):
         if not self.recording:
             return
 
-        # if self.has_minimum():
-        self.stop_recording(time.time())
-        # else:
-        #     logging.info("Recording stopped early deleting short recording")
-        #     self.delete_recording()
+        if self.frames > self.min_recording:
+            self.stop_recording(time.time())
+        else:
+            logging.info("Recording stopped early deleting short recording")
+            self.delete_recording()
 
     def process_frame(self, movement_detected, cptv_frame):
         if self.recording:

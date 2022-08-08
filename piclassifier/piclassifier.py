@@ -627,7 +627,7 @@ class PiClassifier(Processor):
             )
             self.rec_time += time.time() - s_r
             if self.classify:
-                if self.motion_detector.ffc_affected or self.clip.on_preview():
+                if self.motion_detector.calibrating or self.clip.on_preview():
                     self.skip_classifying = PiClassifier.SKIP_FRAMES
                     self.classified_consec = 0
                 elif (

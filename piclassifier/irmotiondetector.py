@@ -60,6 +60,10 @@ class IRMotionDetector(MotionDetector):
         self.processed = 0
 
     @property
+    def calibrating(self):
+        return False
+
+    @property
     def background(self):
         return self._background.background
 

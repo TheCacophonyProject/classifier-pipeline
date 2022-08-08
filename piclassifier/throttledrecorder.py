@@ -36,7 +36,7 @@ class ThrottledRecorder(Recorder):
             self.last_motion = received_at
 
         was_recording = self.recorder.recording
-        self.recorder.process_frame(movement_detected, cptv_frame)
+        self.recorder.process_frame(movement_detected, cptv_frame, received_at)
         self.take_token(received_at)
         if was_recording and not self.recorder.recording:
             self.last_rec = received_at
