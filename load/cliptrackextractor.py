@@ -140,7 +140,7 @@ class ClipTrackExtractor(ClipTracker):
 
     def start_tracking(self, clip, frames):
         # no need to retrack all of preview
-        for frame in frames[-9:]:
+        for frame in frames:
             self.process_frame(clip, frame)
 
     def process_frame(self, clip, frame):
