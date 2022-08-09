@@ -291,7 +291,7 @@ class ClipTracker(ABC):
             # filter out regions that are probably just noise
             if self.config.filter_regions_pre_match and (
                 region.pixel_variance < self.config.aoi_pixel_variance
-                or region.mass < self.config.aoi_min_mass
+                and region.mass < self.config.aoi_min_mass
             ):
                 logging.debug(
                     "%s filtering region %s because of variance %s and mass %s",
