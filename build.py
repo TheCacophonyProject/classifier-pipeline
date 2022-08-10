@@ -27,6 +27,7 @@ MAX_TEST_SAMPLES = 100
 
 MIN_SAMPLES = 100
 MIN_TRACKS = 100
+LOW_SAMPLES_LABELS = ["vehicle", "human", "bird/kiwi"]
 
 
 def load_config(config_file):
@@ -196,7 +197,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     total = len(samples)
     min_t = MIN_SAMPLES
 
-    if label in ["vehicle", "human"]:
+    if label in LOW_SAMPLES_LABELS:
         min_t = 10
     num_validate_samples = max(total * 0.15, min_t)
     num_test_samples = (
@@ -206,7 +207,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
 
     min_t = MIN_TRACKS
 
-    if label in ["vehicle", "human"]:
+    if label in LOW_SAMPLES_LABELS:
         min_t = 1
 
     num_validate_tracks = max(total_tracks * 0.15, min_t)
