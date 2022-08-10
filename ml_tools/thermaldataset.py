@@ -41,6 +41,7 @@ def load_dataset(
     dataset = dataset.with_options(
         ignore_order
     )  # uses data as soon as it streams in, rather than in its original order
+    dataset = dataset.apply(tf.data.experimental.ignore_errors())
     dataset = dataset.map(
         partial(
             read_tfrecord,
