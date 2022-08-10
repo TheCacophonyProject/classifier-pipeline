@@ -285,9 +285,7 @@ class TrackHeader:
             min_frames = segment_width / 4.0
 
         # in python3.7+ can just take the values and it guarantees order it was added to dict
-        regions = [None] * self.num_frames
-        for i in range(self.num_frames):
-            regions[i] = self.regions_by_frame[i + self.start_frame]
+        regions = self.bounds_history
         self.segments, self.filtered_stats = get_segments(
             self.clip_id,
             self.track_id,
@@ -964,8 +962,8 @@ def get_segments(
             temp_slice = frame_temp_median[relative_frames]
             region_slice = regions[relative_frames]
             movement_data = None
-            # for z, f in enumerate(frames):
-            #     assert region_slice[z].frame_number == f
+            for z, f in enumerate(frames):
+                assert region_slice[z].frame_number == f
             segment = SegmentHeader(
                 clip_id,
                 track_id,
