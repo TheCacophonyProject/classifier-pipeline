@@ -27,7 +27,7 @@ MAX_TEST_SAMPLES = 100
 
 MIN_SAMPLES = 100
 MIN_TRACKS = 100
-LOW_SAMPLES_LABELS = ["vehicle", "human", "bird/kiwi"]
+LOW_SAMPLES_LABELS = ["bird/kiwi"]
 
 
 def load_config(config_file):
@@ -232,7 +232,6 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
         "# num test samples",
         num_test_samples,
     )
-    print("bins are", sample_bins)
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:
