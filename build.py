@@ -364,8 +364,7 @@ def validate_datasets(datasets, test_clips, date):
                 continue
             other_clips = set([sample.clip_id for sample in other.samples])
             # other_tracks = set([track.track_id for track in other.tracks])
-            print("validationg", clips)
-            print("Comparing", other_clips)
+
             assert clips != other_clips, "clips should only be in one set"
 
 
