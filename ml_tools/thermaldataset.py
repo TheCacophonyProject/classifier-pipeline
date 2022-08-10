@@ -87,6 +87,99 @@ def get_resampled(
     reshuffle=True,
     deterministic=False,
     labeled=True,
+    augment=False,
+    resample=True,
+    preprocess_fn=None,
+):
+    num_labels = len(labels)
+    global remapped_y
+    remapped = {}
+    keys = []
+    values = []
+    for l in labels:
+        remapped[l] = [l]
+        keys.append(labels.index(l))
+        values.append(labels.index(l))
+    if "false-positive" in labels and "insect" in labels:
+        remapped["false-positive"].append("insect")
+        values[labels.index("insect")] = labels.index("false-positive")
+        del remapped["insect"]
+    remapped_y = tf.lookup.StaticHashTable(
+        initializer=tf.lookup.KeyValueTensorInitializer(
+            keys=tf.constant(keys),
+            values=tf.constant(values),
+        ),
+        default_value=tf.constant(-1),
+        name="remapped_y",
+    )
+    filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
+    dataset = load_dataset(
+        filenames,
+        image_size,
+        num_labels,
+        deterministic=deterministic,
+        labeled=labeled,
+        augment=augment,
+        preprocess_fn=preprocess_fn,
+    )
+
+    if resample:
+        true_categories = [y for x, y in dataset]
+        if len(true_categories) == 0:
+            return None
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        c = Counter(list(true_categories))
+        dist = np.empty((num_labels), dtype=np.float32)
+        target_dist = np.empty((num_labels), dtype=np.float32)
+        for i in range(num_labels):
+            dist[i] = c[i]
+        print("Count is", dist)
+        zeros = dist[dist == 0]
+        non_zero_labels = num_labels - len(zeros)
+        target_dist[:] = 1 / non_zero_labels
+
+        dist_max = np.max(dist)
+        dist_min = np.min(dist)
+        dist = dist / np.sum(dist)
+        # really this is what we want but when the values become too small they never get sampled
+        # so need to try reduce the large gaps in distribution
+        # can use class weights to adjust more, or just throw out some samples
+        max_range = target_dist[0] / 2
+        for i in range(num_labels):
+            if dist[i] == 0:
+                target_dist[i] = 0
+            if dist[i] - dist_min > max_range:
+                add_on = max_range
+                if dist[i] - dist_min > max_range * 2:
+                    add_on *= 2
+
+                target_dist[i] += add_on
+
+                dist[i] -= add_on
+            elif dist_max - dist[i] > max_range:
+                target_dist[i] -= max_range / 2.0
+
+        rej = dataset.rejection_resample(
+            class_func=class_func,
+            target_dist=target_dist,
+            initial_dist=dist,
+        )
+        dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
+
+    dataset = dataset.shuffle(2048, reshuffle_each_iteration=reshuffle)
+    dataset = dataset.prefetch(buffer_size=AUTOTUNE)
+    dataset = dataset.batch(batch_size)
+    return dataset, remapped
+
+
+def get_resampled_by_label(
+    base_dir,
+    batch_size,
+    image_size,
+    labels,
+    reshuffle=True,
+    deterministic=False,
+    labeled=True,
     resample=True,
     augment=False,
     weights=None,
@@ -210,19 +303,31 @@ def main():
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
+    by_label = meta.get("by_label", True)
     datasets = []
     # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
     # weights = [0.5] * len(labels)
-    resampled_ds, remapped = get_resampled(
-        # dir,
-        f"{config.tracks_folder}/training-data/validation",
-        32,
-        (160, 160),
-        labels,
-        augment=True,
-        stop_on_empty_dataset=False,
-        preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
-    )
+    if by_label:
+        resampled_ds, remapped = get_resampled(
+            # dir,
+            f"{config.tracks_folder}/training-data/validation",
+            32,
+            (160, 160),
+            labels,
+            augment=False,
+            stop_on_empty_dataset=False,
+            preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+        )
+    else:
+        resampled_ds, remapped = get_resampled(
+            # dir,
+            f"{config.tracks_folder}/training-data/validation",
+            32,
+            (160, 160),
+            labels,
+            augment=False,
+            preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+        )
     # print(get_distribution(resampled_ds))
     #
     for e in range(2):

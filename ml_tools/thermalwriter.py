@@ -128,7 +128,7 @@ def create_tf_example(data, image_dir, sample, labels, filename):
 
 
 def create_tf_records(
-    dataset, output_path, labels, back_thresh, num_shards=1, cropped=True
+    dataset, output_path, labels, back_thresh, num_shards=1, cropped=True, by_label=True
 ):
 
     output_path = Path(output_path)
@@ -156,16 +156,14 @@ def create_tf_records(
     writers = []
     for label in labels:
         for i in range(num_shards):
-            safe_l = label.replace("/", "-")
-            writers.append(
-                tf.io.TFRecordWriter(
-                    str(
-                        output_path
-                        / (f"{safe_l}-%05d-of-%05d.tfrecord" % (i, num_shards))
-                    )
-                )
-            )
-
+            if by_label:
+                safe_l = label.replace("/", "-")
+                name = f"{safe_l}-%05d-of-%05d.tfrecord" % (i, num_shards)
+            else:
+                name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
+            writers.append(tf.io.TFRecordWriter(str(output_path / name)))
+        if not by_label:
+            break
     load_first = 200
     try:
         count = 0
@@ -191,9 +189,13 @@ def create_tf_records(
                     )
                     total_num_annotations_skipped += num_annotations_skipped
                     l_i = labels.index(sample.label)
-                    writers[num_shards * l_i + lbl_counts[l_i] % num_shards].write(
-                        tf_example.SerializeToString()
-                    )
+                    if by_label:
+                        wrtier = writers[
+                            num_shards * l_i + lbl_counts[l_i] % num_shards
+                        ]
+                    else:
+                        writer = writers[count % num_shards]
+                    writer.write(tf_example.SerializeToString())
                     lbl_counts[l_i] += 1
                     # print("saving example", [count % num_shards])
                     count += 1

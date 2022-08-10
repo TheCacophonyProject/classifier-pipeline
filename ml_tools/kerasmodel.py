@@ -20,7 +20,10 @@ from ml_tools.preprocess import preprocess_movement, preprocess_frame, preproces
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
-from ml_tools.thermaldataset import get_resampled as get_thermal_dataset
+from ml_tools.thermaldataset import (
+    get_resampled_by_label as get_thermal_dataset_by_label,
+    get_resampled as get_thermal_dataset,
+)
 from ml_tools.thermaldataset import get_distribution
 from ml_tools.irdataset import get_resampled as get_ir_dataset
 
@@ -52,6 +55,7 @@ class KerasModel(Interpreter):
         self.mapped_labels = None
         self.label_probabilities = None
         self.class_weights = None
+        self.ds_by_label = True
 
     def load_training_meta(self, base_dir):
         file = f"{base_dir}/training-meta.json"
@@ -61,6 +65,7 @@ class KerasModel(Interpreter):
         self.labels = meta.get("labels", [])
         self.type = meta.get("type", "thermal")
         self.dataset_counts = meta.get("counts")
+        self.ds_by_label = meta.get("by_label", True)
 
     def shape(self):
         if self.model is None:
@@ -413,7 +418,11 @@ class KerasModel(Interpreter):
     ):
         logging.info("Getting dataset %s", self.type)
         if self.type == "thermal":
-            return get_thermal_dataset(
+            if self.ds_by_label:
+                get_ds = get_thermal_dataset_by_label
+            else:
+                get_ds = get_thermal_dataset
+            return get_ds(
                 pattern,
                 self.params.batch_size,
                 self.params.output_dim[:2],
@@ -422,8 +431,7 @@ class KerasModel(Interpreter):
                 reshuffle=reshuffle,
                 deterministic=deterministic,
                 resample=resample,
-                weights=weights,
-                stop_on_empty_dataset=stop_on_empty_dataset,
+                # stop_on_empty_dataset=stop_on_empty_dataset,
                 preprocess_fn=self.preprocess_fn,
             )
         return get_ir_dataset(
