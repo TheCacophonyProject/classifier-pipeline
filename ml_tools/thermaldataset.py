@@ -149,21 +149,22 @@ def get_resampled(
         for i in range(num_labels):
             if dist[i] == 0:
                 target_dist[i] = 0
-            if dist[i] - dist_min > max_range:
-                add_on = max_range
-                if dist[i] - dist_min > max_range * 2:
-                    add_on *= 2
-
-                target_dist[i] += add_on
-
-                dist[i] -= add_on
+            # if dist[i] - dist_min > max_range:
+            #     add_on = max_range
+            #     if dist[i] - dist_min > max_range * 2:
+            #         add_on *= 2
+            #
+            #     target_dist[i] += add_on
+            #
+            #     dist[i] -= add_on
             elif dist_max - dist[i] > max_range:
                 target_dist[i] -= max_range / 2.0
-
+            target_dist[i] = max(0, target_dist[i])
+        target_dist = target_dist / np.sum(target_dist)
         rej = dataset.rejection_resample(
             class_func=class_func,
             target_dist=target_dist,
-            initial_dist=dist,
+            # initial_dist=dist,
         )
         dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
 
