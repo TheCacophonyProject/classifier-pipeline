@@ -268,7 +268,9 @@ def read_tfrecord(
         logging.info("Augmenting")
         image = data_augmentation(image)
     if preprocess_fn is not None:
-        logging.info("Preprocessing with %s", preprocess_fn)
+        logging.info(
+            "Preprocessing with %s.%s", preprocess_fn.__module__, preprocess_fn.__name__
+        )
         image = preprocess_fn(image)
 
     if labeled:

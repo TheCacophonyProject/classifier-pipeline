@@ -534,11 +534,11 @@ class KerasModel(Interpreter):
         test_accuracy = None
         test_files = base_dir + "/test"
         if len(test_files) > 0:
-            self.test = self.get_dataset(
+            self.test, _ = self.get_dataset(
                 test_files, augment=False, reshuffle=False, resample=False
             )
             if self.test:
-                test_accuracy = self.model.evaluate(self.validate)
+                test_accuracy = self.model.evaluate(self.test)
 
         self.save(run_name, history=history, test_results=test_accuracy)
 
