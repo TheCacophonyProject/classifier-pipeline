@@ -153,7 +153,7 @@ class IRTrackExtractor(ClipTracker):
                 self.res_y = gray.shape[1]
                 clip.set_res(gray.shape[1], gray.shape[0])
                 background = np.uint32(gray)
-                self.start_tracking(clip, background=gray)
+                self.start_tracking(clip, background=gray, background_frames=50)
             self.process_frame(clip, gray)
         vidcap.release()
 
@@ -165,7 +165,7 @@ class IRTrackExtractor(ClipTracker):
         self._tracking_time = time.time() - start
         return True
 
-    def start_tracking(self, clip, frames=None, background=None):
+    def start_tracking(self, clip, frames=None, background=None, background_frames=1):
 
         self.res_x = clip.res_x
         self.res_y = clip.res_y
@@ -180,7 +180,7 @@ class IRTrackExtractor(ClipTracker):
                     background,
                     (int(self.res_x * self.scale), int(self.res_y * self.scale)),
                 )
-            self.background.set_background(background)
+            self.background.set_background(background, background_frames)
         self.init_saliency()
         if frames is not None:
             for frame in frames[-9:]:
@@ -478,9 +478,9 @@ class Background:
         self.frames = 1
         self._background = None
 
-    def set_background(self, background):
-        self._background = np.float32(background)
-        self.frames = 1
+    def set_background(self, background, frames=1):
+        self.frames = frames
+        self._background = np.float32(background) * self.frames
         return
 
     def update_background(self, thermal, filtered):
