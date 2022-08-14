@@ -41,7 +41,7 @@ from ml_tools.imageprocessing import (
 )
 from track.cliptracker import ClipTracker
 
-DO_SALIENCY = True
+DO_SALIENCY = False
 
 
 class Line:
@@ -321,7 +321,8 @@ class IRTrackExtractor(ClipTracker):
             component_details = []
             saliencyMap[:] = 0
         else:
-            backsub = np.where(saliencyMap > 0, saliencyMap, backsub)
+            pass
+            # backsub = np.where(saliencyMap > 0, saliencyMap, backsub)
 
         cur_frame = clip.add_frame(frame, backsub, saliencyMap, ffc_affected)
         self.background.update_background(tracking_thermal, backsub)
