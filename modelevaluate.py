@@ -121,7 +121,7 @@ if config.train.tfrecords:
     model.load_training_meta(base_dir)
 
     files = base_dir + f"/training-data/{args.dataset}"
-    dataset = model.get_dataset(
+    dataset, _ = model.get_dataset(
         files,
         augment=False,
         reshuffle=False,
