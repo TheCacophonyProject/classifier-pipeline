@@ -164,7 +164,7 @@ def run_classifier(
                 if frame == "skip":
                     pi_classifier.skip_frame()
             else:
-                pi_classifier.process_frame(frame)
+                pi_classifier.process_frame(frame[0], frame[1])
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)
 

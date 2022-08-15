@@ -52,7 +52,9 @@ def parse_args():
     parser.add_argument(
         "--thermal-config-file", help="Path to pi-config file (config.toml) to use"
     )
-
+    parser.add_argument(
+        "--ir", action="count", help="Path to pi-config file (config.toml) to use"
+    )
     args = parser.parse_args()
     return args
 
@@ -67,7 +69,14 @@ def main():
         return parse_file(
             args.file, config, args.thermal_config_file, args.preview_type
         )
-
+    if args.ir:
+        while True:
+            try:
+                ir_camera(config, args.thermal_config_file)
+            except:
+                logging.error("Error reading camera", exc_info=True)
+                time.sleep(10)
+        return
     try:
         os.unlink(SOCKET_NAME)
     except OSError:
@@ -207,6 +216,49 @@ def handle_headers(connection):
     return HeaderInfo.parse_header(headers), left_over
 
 
+def ir_camera(config, thermal_config_file):
+    logging.info("Starting ir video capture")
+    cap = cv2.VideoCapture(0)
+
+    try:
+        res_x = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        res_y = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        if fps == 0:
+            fps = 10
+        print("res_x", res_x, res_y)
+        headers = HeaderInfo(
+            res_x=int(res_x),
+            res_y=int(res_y),
+            fps=fps,
+            brand=None,
+            model="IR",
+            frame_size=res_y * res_x,
+            pixel_bits=8,
+            serial="",
+            firmware="",
+        )
+        thermal_config = ThermalConfig.load_from_file(
+            thermal_config_file, headers.model
+        )
+        process_queue = multiprocessing.Queue()
+
+        processor = get_processor(process_queue, config, thermal_config, headers)
+        processor.start()
+        while True:
+            returned, frame = cap.read()
+
+            if not returned:
+                logging.info("no frame from video capture")
+                process_queue.put(STOP_SIGNAL)
+
+                break
+            process_queue.put((frame, time.time()))
+    finally:
+        time.sleep(5)
+        processor.terminate()
+
+
 def handle_connection(connection, config, thermal_config_file):
     headers, extra_b = handle_headers(connection)
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
@@ -264,7 +316,7 @@ def handle_connection(connection, config, thermal_config_file):
             elif read < 100:
                 process_queue.put(SKIP_SIGNAL)
             else:
-                process_queue.put((frame, time.time))
+                process_queue.put((frame, time.time()))
     finally:
         time.sleep(5)
         # give it a moment to close down properly

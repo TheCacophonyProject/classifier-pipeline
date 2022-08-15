@@ -10,15 +10,17 @@ sklearn
 tables~=3.4
 h5py~=3.1.0
 pyyaml>=6.0
-pillow~=6.2.0
+pillow~=9.2.0
 attrs~=19.1
 filelock~=3.0.12
 Astral~=1.10.1
 timezonefinder~=4.1.0
 portalocker~=1.5.2
-toml~=0.10.0
+toml~=0.10.2
 cacophonyapi
+timezonefinder
 psutil~=5.6.7
-#used when running on the pi (Still under construction)
-PyGObject~=3.34.0
+#PyGObject~=3.34.0
 dbus-python
+vext
+vext.gi
