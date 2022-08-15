@@ -109,5 +109,7 @@ class SnapshotService:
             region,
             tracking,
         )
+        if self.service is None:
+            return
         self.service.Tracking(what, round(100 * confidence), region, tracking)
         # time.sleep(10)

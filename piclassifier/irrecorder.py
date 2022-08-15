@@ -17,7 +17,7 @@ TEMP_DIR = "temp"
 # fourcc = cv2.VideoWriter_fourcc(*"avc1")
 # FOURCC = cv2.VideoWriter_fourcc(*"avc1")
 # JUST FOR TEST
-FOURCC = cv2.VideoWriter_fourcc(*"MPEG")
+FOURCC = cv2.VideoWriter_fourcc("M", "J", "P", "G")
 
 
 class IRRecorder(Recorder):
@@ -42,6 +42,7 @@ class IRRecorder(Recorder):
         self.rec_time = 0
         self.on_recording_stopping = on_recording_stopping
         self.temp_dir = self.output_dir / TEMP_DIR
+
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
     def force_stop(self):
@@ -89,16 +90,14 @@ class IRRecorder(Recorder):
 
         self.recording = True
         for frame in preview_frames:
-            logging.info("Writing preview %s ", frame.shape)
             self.write_frame(frame)
         self.write_until = self.frames + self.min_frames
-        logging.info("recording %s started", self.filename)
+        logging.info("recording %s started", self.filename.resolve())
         self.rec_time += time.time() - start
         return True
 
     def write_frame(self, frame):
         start = time.time()
-        # logging.info("Writing frame %s dtype %s ", frame.shape, frame.dtype)
 
         self.writer.write(frame)
         self.frames += 1
@@ -108,8 +107,11 @@ class IRRecorder(Recorder):
         start = time.time()
         self.rec_time += time.time() - start
         self.recording = False
+        final_name = self.output_dir / self.filename.name
+
         logging.info(
-            "recording ended %s frames %s time recording %s per frame ",
+            "recording %s ended %s frames %s time recording %s per frame ",
+            final_name,
             self.frames,
             self.rec_time,
             self.rec_time / self.frames,
@@ -118,7 +120,6 @@ class IRRecorder(Recorder):
         self.write_until = 0
         if self.writer is None:
             return
-        final_name = self.output_dir / self.filename.name
 
         if self.on_recording_stopping is not None:
             self.on_recording_stopping(final_name)
