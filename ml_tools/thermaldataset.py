@@ -157,8 +157,8 @@ def get_resampled(
             #     target_dist[i] += add_on
             #
             #     dist[i] -= add_on
-            elif dist_max - dist[i] > max_range:
-                target_dist[i] = dist[i] * 2
+            elif dist_max - dist[i] > (max_range * 2):
+                target_dist[i] = dist[i]
                 # target_dist[i] -= max_range / 2.0
             target_dist[i] = max(0, target_dist[i])
         target_dist = target_dist / np.sum(target_dist)
@@ -322,7 +322,7 @@ def main():
             augment=False,
             stop_on_empty_dataset=False,
             preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
-            resasmple=True,
+            resample=True,
         )
     else:
         resampled_ds, remapped = get_resampled(
@@ -333,13 +333,14 @@ def main():
             labels,
             augment=False,
             preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
-            resasmple=True,
+            resample=True,
         )
     # print(get_distribution(resampled_ds))
     #
     for e in range(2):
         print("epoch", e)
-        true_categories = tf.concat([y for x, y in resampled_ds], axis=0)
+        true_categories = [y for x, y in resampled_ds]
+        true_categories = tf.concat(true_categories, axis=0)
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
         c = Counter(list(true_categories))
         print("epoch is size", len(true_categories))
