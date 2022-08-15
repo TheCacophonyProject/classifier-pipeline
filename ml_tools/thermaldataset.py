@@ -139,9 +139,9 @@ def get_resampled(
         non_zero_labels = num_labels - len(zeros)
         target_dist[:] = 1 / non_zero_labels
 
+        dist = dist / np.sum(dist)
         dist_max = np.max(dist)
         dist_min = np.min(dist)
-        dist = dist / np.sum(dist)
         # really this is what we want but when the values become too small they never get sampled
         # so need to try reduce the large gaps in distribution
         # can use class weights to adjust more, or just throw out some samples
@@ -158,7 +158,8 @@ def get_resampled(
             #
             #     dist[i] -= add_on
             elif dist_max - dist[i] > max_range:
-                target_dist[i] -= max_range / 2.0
+                target_dist[i] = dist[i] * 2
+                # target_dist[i] -= max_range / 2.0
             target_dist[i] = max(0, target_dist[i])
         target_dist = target_dist / np.sum(target_dist)
         rej = dataset.rejection_resample(
@@ -168,7 +169,7 @@ def get_resampled(
         )
         dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
 
-    dataset = dataset.shuffle(2048, reshuffle_each_iteration=reshuffle)
+    dataset = dataset.shuffle(32768, reshuffle_each_iteration=reshuffle)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     dataset = dataset.batch(batch_size)
     return dataset, remapped
@@ -314,23 +315,25 @@ def main():
     if by_label:
         resampled_ds, remapped = get_resampled(
             # dir,
-            f"{config.tracks_folder}/training-data/validation",
+            f"{config.tracks_folder}/training-data/test",
             32,
             (160, 160),
             labels,
             augment=False,
             stop_on_empty_dataset=False,
             preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+            resasmple=True,
         )
     else:
         resampled_ds, remapped = get_resampled(
             # dir,
-            f"{config.tracks_folder}/training-data/validation",
+            f"{config.tracks_folder}/training-data/test",
             32,
             (160, 160),
             labels,
             augment=False,
             preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+            resasmple=True,
         )
     # print(get_distribution(resampled_ds))
     #
