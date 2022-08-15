@@ -58,6 +58,7 @@ def train_model(
             run_name=run_name + "_" + "TEST",
             base_dir=conf.tracks_folder,
             weights=weights,
+            resample=True,
         )
     except KeyboardInterrupt:
         pass

@@ -487,7 +487,7 @@ class KerasModel(Interpreter):
             stop_on_empty_dataset=False,
             # dist=self.dataset_counts["validation"],
         )
-        distribution = get_distribution(self.train)
+        # distribution = get_distribution(self.train)
         if rebalance:
             self.class_weights = {}
             total = np.sum(distribution)
@@ -507,9 +507,8 @@ class KerasModel(Interpreter):
                 else:
                     self.class_weights[index] = 1 / distribution[index] * multiplier
         logging.info(
-            "%s Dist is %s giving weights %s",
+            "%s  giving weights %s",
             self.labels,
-            distribution,
             self.class_weights,
         )
 

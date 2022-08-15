@@ -169,7 +169,13 @@ def get_resampled(
         )
         dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
 
-    dataset = dataset.shuffle(32768, reshuffle_each_iteration=reshuffle)
+    dataset = dataset.shuffle(16384, reshuffle_each_iteration=reshuffle)
+    # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
+    # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
+    epoch_size = len([0 for x, y in dataset])
+    logging.info("Setting dataset size to %s", epoch_size)
+    dataset = dataset.repeat(2)
+    dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     dataset = dataset.batch(batch_size)
     return dataset, remapped
