@@ -223,6 +223,7 @@ class PiClassifier(Processor):
 
         if headers.model == "IR":
             logging.info("Running on IR")
+            PiClassifier.SKIP_FRAMES = 3
             self.track_extractor = IRTrackExtractor(
                 self.config.tracking,
                 config.use_opt_flow,

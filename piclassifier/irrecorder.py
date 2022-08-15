@@ -11,12 +11,14 @@ from piclassifier.recorder import Recorder
 import cv2
 from pathlib import Path
 
-VIDEO_EXT = ".avi"
 TEMP_DIR = "temp"
 
+VIDEO_EXT = ".mp4"
+FOURCC = cv2.VideoWriter_fourcc(*"avc1")
 # fourcc = cv2.VideoWriter_fourcc(*"avc1")
 # FOURCC = cv2.VideoWriter_fourcc(*"avc1")
 # JUST FOR TEST
+VIDEO_EXT = ".avi"
 FOURCC = cv2.VideoWriter_fourcc("M", "J", "P", "G")
 
 
