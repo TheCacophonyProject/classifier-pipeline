@@ -371,9 +371,7 @@ class IRTrackExtractor(ClipTracker):
                 clip.active_tracks = set()
             else:
                 s = time.time()
-                regions = self._get_regions_of_interest(
-                    clip, component_details, time_spent
-                )
+                regions = self._get_regions_of_interest(clip, component_details)
                 time_spent["t_interest"] += time.time() - s
                 s = time.time()
 

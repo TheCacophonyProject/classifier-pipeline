@@ -216,18 +216,16 @@ class ClipTracker(ABC):
         delta_thermal = np.abs(np.float32(thermal) - np.float32(prev_thermal))
         return delta_thermal, delta_filtered
 
-    def _get_regions_of_interest(self, clip, component_details, time_spent):
+    def _get_regions_of_interest(self, clip, component_details):
         """
         Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
         rectangles.
         :param filtered: The filtered frame
         :return: regions of interest, mask frame
         """
-        s = time.time()
         delta_thermal, delta_filtered = self.get_delta_frame(
             clip,
         )
-        time_spent["delta"] += time.time() - s
 
         # we enlarge the rects a bit, partly because we eroded them previously, and partly because we want some context.
         padding = self.frame_padding
@@ -248,7 +246,6 @@ class ClipTracker(ABC):
             )
             # GP this needs to be checked for themals 29/06/2022
             if clip.type == "IR":
-                s = time.time()
                 if delta_thermal is not None:
                     sub_delta = region.subimage(delta_thermal)
                     previous_delta_mass = len(
@@ -260,7 +257,6 @@ class ClipTracker(ABC):
                     #     logging.info("No mass from previous so skipping")
                     #     continue
                     region.pixel_variance = np.var(sub_delta)
-                time_spent["delta2"] += time.time() - s
 
             elif delta_filtered is not None:
                 region_difference = region.subimage(delta_filtered)
