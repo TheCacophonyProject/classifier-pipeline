@@ -42,7 +42,14 @@ from ml_tools.imageprocessing import (
 from track.cliptracker import ClipTracker
 
 DO_SALIENCY = False
-time_spent = {"process": 0, "components": 0, "tracks": 0, "total": 0}
+time_spent = {
+    "process": 0,
+    "components": 0,
+    "tracks": 0,
+    "total": 0,
+    "t_interest": 0,
+    "t_match": 0,
+}
 
 
 class Line:
@@ -364,11 +371,15 @@ class IRTrackExtractor(ClipTracker):
             if ffc_affected:
                 clip.active_tracks = set()
             else:
+                s = time.time()
                 regions = self._get_regions_of_interest(
                     clip,
                     component_details,
                 )
+                time_spent["t_interest"] += time.time() - start
+
                 self._apply_region_matchings(clip, regions)
+                time_spent["t_match"] += time.time() - start
 
             clip.region_history.append(regions)
             # image = frame.copy()

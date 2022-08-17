@@ -574,6 +574,8 @@ class PiClassifier(Processor):
             )
 
     def disconnected(self):
+        logging.warn("time spent is %s", time_spent)
+
         self.motion_detector.disconnected()
         self.recorder.force_stop()
         self.end_clip()
