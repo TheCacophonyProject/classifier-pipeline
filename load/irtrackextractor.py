@@ -42,6 +42,7 @@ from ml_tools.imageprocessing import (
 from track.cliptracker import ClipTracker
 
 DO_SALIENCY = False
+time_spent = {}
 
 
 class Line:
@@ -169,8 +170,8 @@ class IRTrackExtractor(ClipTracker):
 
         self.res_x = clip.res_x
         self.res_y = clip.res_y
-
-        self.init_saliency()
+        if DO_SALIENCY:
+            self.init_saliency()
         clip.set_model("IR")
         clip.set_video_stats(datetime.now())
         self.background = Background()
@@ -197,6 +198,7 @@ class IRTrackExtractor(ClipTracker):
         self.saliency.init()
 
     def process_frame(self, clip, frame, ffc_affected=False):
+        start = time.time()
         if len(frame.shape) == 3:
             # in rgb so convert to gray
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -212,8 +214,10 @@ class IRTrackExtractor(ClipTracker):
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
-
+        logging.warn("Time to pre frame process is %s", time.time() - start)
+        start = time.time()
         self._process_frame(clip, frame, ffc_affected)
+        logging.warn("Time to proccess process is %s", time.time() - start)
 
     def _get_filtered_frame_ir(self, thermal, repeats=1):
         if not DO_SALIENCY:
@@ -295,7 +299,7 @@ class IRTrackExtractor(ClipTracker):
         if clip.current_frame < 6:
             # helps init the saliency, when ir tracks have a 5 second preview this shouldnt be needed
             repeats = 6
-
+        start = time.time()
         tracking_thermal = frame.copy()
         if self.scale:
             tracking_thermal = cv2.resize(
@@ -309,10 +313,13 @@ class IRTrackExtractor(ClipTracker):
             saliencyMap, _ = self._get_filtered_frame_ir(
                 tracking_thermal, repeats=repeats
             )
+        logging.warn("Time to re scale etc %s", time.time() - start)
+        start = time.time()
 
         backsub, _ = get_ir_back_filtered(
             self.background.background, tracking_thermal, clip.background_thresh
         )
+        logging.warn("Time to back filter etc %s", time.time() - start)
 
         threshold = 0
         if np.amin(saliencyMap) == 255:
@@ -325,13 +332,20 @@ class IRTrackExtractor(ClipTracker):
             # backsub = np.where(saliencyMap > 0, saliencyMap, backsub)
 
         cur_frame = clip.add_frame(frame, backsub, saliencyMap, ffc_affected)
+        start = time.time()
         self.background.update_background(tracking_thermal, backsub)
         clip.set_background(self.background.background)
+        logging.warn("Time to update background  etc %s", time.time() - start)
+
         if not self.do_tracking:
             return
+        start = time.time()
+
         num, mask, component_details = theshold_saliency(backsub, threshold=0)
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
+        logging.warn("Time to get components  etc %s", time.time() - start)
+        start = time.time()
 
         if clip.from_metadata:
             for track in clip.tracks:
@@ -363,6 +377,9 @@ class IRTrackExtractor(ClipTracker):
             #
             # cv2.imshow("id", image)
             # cv2.waitKey(100)
+        logging.warn(
+            "Time to update tracks %s  etc %s", len(clip.tracks), time.time() - start
+        )
 
     def filter_components(self, component_details):
         filtered = []
