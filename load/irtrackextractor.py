@@ -49,6 +49,11 @@ time_spent = {
     "total": 0,
     "t_interest": 0,
     "t_match": 0,
+    "delta": 0,
+    "delta2": 0,
+    "fago": 0,
+    "normsub": 0,
+    "sub": 0,
 }
 
 
@@ -221,12 +226,10 @@ class IRTrackExtractor(ClipTracker):
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
-        logging.warn("Time to pre frame process is %s", time.time() - start)
         s = time.time()
         self._process_frame(clip, frame, ffc_affected)
         time_spent["process"] += time.time() - s
 
-        logging.warn("Time to proccess process is %s", time.time() - s)
         time_spent["total"] += time.time() - start
 
     def _get_filtered_frame_ir(self, thermal, repeats=1):
@@ -323,13 +326,11 @@ class IRTrackExtractor(ClipTracker):
             saliencyMap, _ = self._get_filtered_frame_ir(
                 tracking_thermal, repeats=repeats
             )
-        logging.warn("Time to re scale etc %s", time.time() - start)
         start = time.time()
 
         backsub, _ = get_ir_back_filtered(
             self.background.background, tracking_thermal, clip.background_thresh
         )
-        logging.warn("Time to back filter etc %s", time.time() - start)
 
         threshold = 0
         if np.amin(saliencyMap) == 255:
@@ -345,7 +346,6 @@ class IRTrackExtractor(ClipTracker):
         start = time.time()
         self.background.update_background(tracking_thermal, backsub)
         clip.set_background(self.background.background)
-        logging.warn("Time to update background  etc %s", time.time() - start)
 
         if not self.do_tracking:
             return
@@ -355,7 +355,6 @@ class IRTrackExtractor(ClipTracker):
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
         time_spent["components"] += time.time() - start
-        logging.warn("Time to get components  etc %s", time.time() - start)
         start = time.time()
 
         if clip.from_metadata:
@@ -373,13 +372,13 @@ class IRTrackExtractor(ClipTracker):
             else:
                 s = time.time()
                 regions = self._get_regions_of_interest(
-                    clip,
-                    component_details,
+                    clip, component_details, time_spent
                 )
-                time_spent["t_interest"] += time.time() - start
+                time_spent["t_interest"] += time.time() - s
+                s = time.time()
 
                 self._apply_region_matchings(clip, regions)
-                time_spent["t_match"] += time.time() - start
+                time_spent["t_match"] += time.time() - s
 
             clip.region_history.append(regions)
             # image = frame.copy()
@@ -392,9 +391,7 @@ class IRTrackExtractor(ClipTracker):
             #
             # cv2.imshow("id", image)
             # cv2.waitKey(100)
-        logging.warn(
-            "Time to update tracks %s  etc %s", len(clip.tracks), time.time() - start
-        )
+
         time_spent["tracks"] += time.time() - start
 
     def filter_components(self, component_details):
@@ -474,16 +471,19 @@ class IRTrackExtractor(ClipTracker):
         # GP used to be 50 frames ago
         frame = clip.frame_buffer.current_frame
         prev_i = max(0, min(10, clip.current_frame - 10))
+        s = time.time()
         prev_frame = clip.frame_buffer.get_frame_ago(prev_i)
+        time_spent["fago"] += time.time() - s
+
         if prev_i == frame.frame_number:
             return None, None
-        filtered, _ = normalize(frame.filtered, new_max=255)
-        prev_filtered, _ = normalize(prev_frame.filtered, new_max=255)
-        delta_filtered = np.abs(np.float32(filtered) - np.float32(prev_filtered))
 
-        thermal, _ = normalize(frame.thermal, new_max=255)
-        prev_thermal, _ = normalize(prev_frame.thermal, new_max=255)
-        delta_thermal = np.abs(np.float32(thermal) - np.float32(prev_thermal))
+        s = time.time()
+
+        delta_filtered = np.abs(frame.filtered - prev_frame.filtered)
+        delta_thermal = np.abs(frame.thermal - prev_frame.thermal)
+        time_spent["sub"] += time.time() - s
+
         return delta_thermal, delta_filtered
 
 

@@ -726,6 +726,7 @@ class PiClassifier(Processor):
         )
 
     def end_clip(self):
+        logging.warn("time spent is %s", time_spent)
         if self.clip:
             if self.preview_type:
                 self.create_mp4()
