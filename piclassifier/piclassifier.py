@@ -10,7 +10,7 @@ from pathlib import Path
 
 from classify.trackprediction import Predictions
 from load.clip import Clip
-from load.irtrackextractor import IRTrackExtractor
+from load.irtrackextractor import IRTrackExtractor, time_spent
 
 from load.cliptrackextractor import ClipTrackExtractor
 
@@ -760,6 +760,7 @@ class PiClassifier(Processor):
 
 def on_recording_stopping(filename):
     global clip, track_extractor, predictions
+    logging.warn("time spent is %s", time_spent)
     if predictions is not None:
         for track_prediction in predictions.prediction_per_track.values():
             track_prediction.normalize_score()

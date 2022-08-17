@@ -42,7 +42,7 @@ from ml_tools.imageprocessing import (
 from track.cliptracker import ClipTracker
 
 DO_SALIENCY = False
-time_spent = {}
+time_spent = {"process": 0, "components": 0, "tracks": 0, "total": 0}
 
 
 class Line:
@@ -215,9 +215,12 @@ class IRTrackExtractor(ClipTracker):
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
         logging.warn("Time to pre frame process is %s", time.time() - start)
-        start = time.time()
+        s = time.time()
         self._process_frame(clip, frame, ffc_affected)
-        logging.warn("Time to proccess process is %s", time.time() - start)
+        time_spent["process"] += time.time() - s
+
+        logging.warn("Time to proccess process is %s", time.time() - s)
+        time_spent["total"] += time.time() - start
 
     def _get_filtered_frame_ir(self, thermal, repeats=1):
         if not DO_SALIENCY:
@@ -344,6 +347,7 @@ class IRTrackExtractor(ClipTracker):
         num, mask, component_details = theshold_saliency(backsub, threshold=0)
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
+        time_spent["components"] += time.time() - start
         logging.warn("Time to get components  etc %s", time.time() - start)
         start = time.time()
 
@@ -380,6 +384,7 @@ class IRTrackExtractor(ClipTracker):
         logging.warn(
             "Time to update tracks %s  etc %s", len(clip.tracks), time.time() - start
         )
+        time_spent["tracks"] += time.time() - start
 
     def filter_components(self, component_details):
         filtered = []

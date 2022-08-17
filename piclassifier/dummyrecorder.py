@@ -39,7 +39,7 @@ class DummyRecorder(Recorder):
         for f in preview_frames:
             self.write_frame(f)
         self.write_until = self.frames + self.min_frames
-        logging.info("Dummy recording started temp_thresh: %d", temp_thresh)
+        logging.info("Dummy recording started temp_thresh: %s", temp_thresh)
 
         return True
 
