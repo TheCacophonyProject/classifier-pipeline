@@ -698,7 +698,7 @@ class PiClassifier(Processor):
             average = np.mean(self.fps_timer.get_frames())
 
             logging.info(
-                "tracking %s process %s  identify %s rec %s fps %s/sec  cpu %s memory %s behind by %s seconds",
+                "tracking %s %% process %s %%  identify %s %% rec %s %% fps %s/sec  cpu %s memory %s behind by %s seconds",
                 round(100 * self.tracking_time / self.total_time, 3),
                 round(100 * self.process_time / self.total_time, 3),
                 round(100 * self.identify_time / self.total_time, 3),

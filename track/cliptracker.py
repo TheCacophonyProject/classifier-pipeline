@@ -135,7 +135,7 @@ class ClipTracker(ABC):
             ):
                 continue
             logging.debug(
-                "matched %s with %s to track %s", clip.current_frame, region, track
+                "frame# %s matched %s to track %s", clip.current_frame, region, track
             )
             used_regions.add(region)
             unmatched_regions.remove(region)

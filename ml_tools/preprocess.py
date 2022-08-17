@@ -4,7 +4,6 @@ from ml_tools import tools
 from ml_tools.frame import TrackChannels
 import logging
 from ml_tools import imageprocessing
-import enum
 import tensorflow as tf
 from track.region import Region
 import cv2
