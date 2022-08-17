@@ -30,17 +30,14 @@ class MPEGCreator:
         if self._ffmpeg is None:
             height, width, _ = frame.shape
             self._ffmpeg = self._start(width, height)
-        print("frame type", frame.dtype)
         self._ffmpeg.stdin.write(frame.tobytes())
 
     def close(self):
         if not self._ffmpeg:
             return
-        print("CLOSING")
         self._ffmpeg.stdin.close()
 
         return_code = self._ffmpeg.wait(timeout=60)
-        print("Waiting??", return_code)
         if return_code:
             self._collect_output()
             raise Exception(
