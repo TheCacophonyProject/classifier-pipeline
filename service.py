@@ -60,7 +60,6 @@ class Service(dbus.service.Object):
         )
         if not isinstance(last_frame, Frame):
             last_frame = last_frame[:, :, 0]
-
             return (
                 last_frame,
                 (0, "", f_num, 0, 0, 0, 0, 0),  # count

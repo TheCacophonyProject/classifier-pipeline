@@ -42,19 +42,6 @@ from ml_tools.imageprocessing import (
 from track.cliptracker import ClipTracker
 
 DO_SALIENCY = False
-time_spent = {
-    "process": 0,
-    "components": 0,
-    "tracks": 0,
-    "total": 0,
-    "t_interest": 0,
-    "t_match": 0,
-    "delta": 0,
-    "delta2": 0,
-    "fago": 0,
-    "normsub": 0,
-    "sub": 0,
-}
 
 
 class Line:
@@ -226,11 +213,7 @@ class IRTrackExtractor(ClipTracker):
         if ffc_affected:
             self.print_if_verbose("{} ffc_affected".format(clip.current_frame))
         clip.ffc_affected = ffc_affected
-        s = time.time()
         self._process_frame(clip, frame, ffc_affected)
-        time_spent["process"] += time.time() - s
-
-        time_spent["total"] += time.time() - start
 
     def _get_filtered_frame_ir(self, thermal, repeats=1):
         if not DO_SALIENCY:
@@ -354,8 +337,6 @@ class IRTrackExtractor(ClipTracker):
         num, mask, component_details = theshold_saliency(backsub, threshold=0)
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
-        time_spent["components"] += time.time() - start
-        start = time.time()
 
         if clip.from_metadata:
             for track in clip.tracks:
@@ -372,11 +353,7 @@ class IRTrackExtractor(ClipTracker):
             else:
                 s = time.time()
                 regions = self._get_regions_of_interest(clip, component_details)
-                time_spent["t_interest"] += time.time() - s
-                s = time.time()
-
                 self._apply_region_matchings(clip, regions)
-                time_spent["t_match"] += time.time() - s
 
             clip.region_history.append(regions)
             # image = frame.copy()
@@ -389,8 +366,6 @@ class IRTrackExtractor(ClipTracker):
             #
             # cv2.imshow("id", image)
             # cv2.waitKey(100)
-
-        time_spent["tracks"] += time.time() - start
 
     def filter_components(self, component_details):
         filtered = []
@@ -471,8 +446,6 @@ class IRTrackExtractor(ClipTracker):
         prev_i = max(0, min(10, clip.current_frame - 10))
         s = time.time()
         prev_frame = clip.frame_buffer.get_frame_ago(prev_i)
-        time_spent["fago"] += time.time() - s
-
         if prev_i == frame.frame_number:
             return None, None
 
@@ -480,8 +453,6 @@ class IRTrackExtractor(ClipTracker):
 
         delta_filtered = np.abs(frame.filtered - prev_frame.filtered)
         delta_thermal = np.abs(frame.thermal - prev_frame.thermal)
-        time_spent["sub"] += time.time() - s
-
         return delta_thermal, delta_filtered
 
 

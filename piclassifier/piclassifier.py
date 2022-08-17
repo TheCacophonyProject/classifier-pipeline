@@ -10,7 +10,7 @@ from pathlib import Path
 
 from classify.trackprediction import Predictions
 from load.clip import Clip
-from load.irtrackextractor import IRTrackExtractor, time_spent
+from load.irtrackextractor import IRTrackExtractor
 
 from load.cliptrackextractor import ClipTrackExtractor
 
@@ -551,8 +551,8 @@ class PiClassifier(Processor):
         return prediction, mass
 
     def get_recent_frame(self):
+        last_frame = self.motion_detector.get_recent_frame()
         if self.clip:
-            last_frame = self.motion_detector.get_recent_frame()
             if last_frame is None:
                 return None
             track_meta = []
@@ -562,20 +562,21 @@ class PiClassifier(Processor):
                 if self.predictions:
                     pred = {self.predictions.model.id: self.predictions}
                 meta = track.get_metadata(pred)
-                meta["positions"] = meta["positions"][-1:]
+                last_pos = meta["positions"][-1].copy()
+                if self.track_extractor.scale is not None:
+                    last_pos.rescale(1 / self.track_extractor.scale)
+                meta["positions"] = [last_pos]
                 track_meta.append(meta)
 
             return last_frame, track_meta, self.motion_detector.num_frames
         else:
             return (
-                self.motion_detector.get_recent_frame(),
+                last_frame,
                 {},
                 self.motion_detector.num_frames,
             )
 
     def disconnected(self):
-        logging.warn("time spent is %s", time_spent)
-
         self.motion_detector.disconnected()
         self.recorder.force_stop()
         self.end_clip()
@@ -591,7 +592,6 @@ class PiClassifier(Processor):
         start = time.time()
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
-
         if not self.recorder.recording and self.motion_detector.movement_detected:
             s_r = time.time()
             preview_frames = self.motion_detector.preview_frames()
@@ -726,7 +726,6 @@ class PiClassifier(Processor):
         )
 
     def end_clip(self):
-        logging.warn("time spent is %s", time_spent)
         if self.clip:
             if self.preview_type:
                 self.create_mp4()
@@ -763,7 +762,6 @@ class PiClassifier(Processor):
 
 def on_recording_stopping(filename):
     global clip, track_extractor, predictions
-    logging.warn("time spent is %s", time_spent)
     if predictions is not None:
         for track_prediction in predictions.prediction_per_track.values():
             track_prediction.normalize_score()
