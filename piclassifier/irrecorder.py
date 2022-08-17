@@ -1,3 +1,4 @@
+import numpy as np
 from datetime import datetime
 import logging
 import os
@@ -10,6 +11,7 @@ import psutil
 from piclassifier.recorder import Recorder
 import cv2
 from pathlib import Path
+from ml_tools.mpeg_creator import MPEGCreator
 
 TEMP_DIR = "temp"
 
@@ -82,10 +84,15 @@ class IRRecorder(Recorder):
         self.filename = new_temp_name(frame_time)
 
         self.filename = self.temp_dir / self.filename
-        self.writer = cv2.VideoWriter(
-            str(self.filename), FOURCC, self.fps, (self.res_x, self.res_y)
-        )
-        self.writer.write(background_frame)
+        self.writer = MPEGCreator(self.filename, fps=self.fps)  # , codec="h264_omx")
+        # self.writer = cv2.VideoWriter(
+        #     str(self.filename), FOURCC, self.fps, (self.res_x, self.res_y)
+        # )
+        print(background_frame.shape)
+        back = background_frame[:, :, np.newaxis]
+        back = np.repeat(back, 3, axis=2)
+        print(back.shape)
+        self.writer.next_frame(back)
         default_thresh = self.motion.temp_thresh
 
         self.recording = True
@@ -99,7 +106,7 @@ class IRRecorder(Recorder):
     def write_frame(self, frame):
         start = time.time()
 
-        self.writer.write(frame)
+        self.writer.next_frame(frame)
         self.frames += 1
         self.rec_time += time.time() - start
 
@@ -123,7 +130,8 @@ class IRRecorder(Recorder):
 
         if self.on_recording_stopping is not None:
             self.on_recording_stopping(final_name)
-        self.writer.release()
+        # self.writer.release()
+        self.writer.close()
         self.filename.rename(final_name)
         self.writer = None
 
@@ -131,8 +139,9 @@ class IRRecorder(Recorder):
         self.recording = False
         if self.writer is None:
             return
+        self.writer.close()
 
-        self.writer.release()
+        # self.writer.release()
         self.filename.unlink()
         self.writer = None
 
