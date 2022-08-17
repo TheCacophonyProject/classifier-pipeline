@@ -8,6 +8,7 @@ import dbus.service
 import dbus.mainloop.glib
 from gi.repository import GLib
 from ml_tools.tools import CustomJSONEncoder
+from cptv import Frame
 
 DBUS_NAME = "org.cacophony.thermalrecorder"
 DBUS_PATH = "/org/cacophony/thermalrecorder"
@@ -54,9 +55,17 @@ class Service(dbus.service.Object):
             f_num,
             time.time() - s,
         )
-
         if f_num == last_num or last_frame is None:
             return (np.empty((0, 0)), (0, "", f_num, 0, 0, 0, 0, False), "")
+
+        if not isinstance(last_frame, Frame):
+            last_frame = last_frame[:, :, 0]
+
+            return (
+                last_frame,
+                (0, "", f_num, 0, 0, 0, 0, 0),  # count
+                json.dumps(track_meta, cls=CustomJSONEncoder),
+            )
         return (
             last_frame.pix,
             (

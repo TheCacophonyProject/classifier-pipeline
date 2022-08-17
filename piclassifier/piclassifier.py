@@ -13,12 +13,7 @@ from load.clip import Clip
 from load.irtrackextractor import IRTrackExtractor
 
 from load.cliptrackextractor import ClipTrackExtractor
-from ml_tools.preprocess import (
-    preprocess_segment,
-    preprocess_ir,
-    preprocess_frame,
-    preprocess_movement,
-)
+
 from ml_tools.previewer import Previewer, add_last_frame_tracking
 from ml_tools import tools
 from .cptvrecorder import CPTVRecorder
@@ -30,10 +25,6 @@ from .cptvmotiondetector import CPTVMotionDetector
 
 from .motiondetector import SlidingWindow
 from .processor import Processor
-from ml_tools.preprocess import (
-    preprocess_frame,
-    preprocess_movement,
-)
 
 from ml_tools.interpreter import Interpreter
 from ml_tools.logs import init_logging
@@ -473,6 +464,10 @@ class PiClassifier(Processor):
                 beacon.classification(active_predictions)
 
     def identify_ir(self, track):
+        from ml_tools.preprocess import (
+            preprocess_ir,
+        )
+
         region = track.bounds_history[-1]
         region = region.copy()
         if self.track_extractor.scale and not region.blank:
@@ -503,6 +498,10 @@ class PiClassifier(Processor):
         return prediction, 1
 
     def identify_thermal(self, track):
+        from ml_tools.preprocess import (
+            preprocess_movement,
+        )
+
         regions = track.bounds_history[-self.frames_per_classify * 2 :]
         frames = self.clip.frame_buffer.get_last_x(len(regions))
         if frames is None:

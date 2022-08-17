@@ -1,6 +1,6 @@
 from ml_tools.frame import TrackChannels
 from ml_tools.dataset import SegmentType
-from ml_tools.preprocess import FrameTypes
+from ml_tools.tools import FrameTypes
 
 
 class HyperParams(dict):

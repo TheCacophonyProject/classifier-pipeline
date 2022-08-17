@@ -16,6 +16,7 @@ import binascii
 import datetime
 import glob
 import cv2
+import enum
 import timezonefinder
 from matplotlib.colors import LinearSegmentedColormap
 import subprocess
@@ -28,6 +29,20 @@ EPISON = 1e-5
 
 LOCAL_RESOURCES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources")
 GLOBAL_RESOURCES = "/usr/lib/classifier-pipeline/resources"
+
+
+class FrameTypes(enum.Enum):
+    """Types of frames"""
+
+    thermal_tiled = 0
+    filtered_tiled = 1
+    flow_tiled = 2
+    overlay = 3
+    flow_rgb = 4
+
+    @staticmethod
+    def is_valid(name):
+        return name in FrameTypes.__members__.keys()
 
 
 @attr.s(eq=False)

@@ -219,6 +219,7 @@ def handle_headers(connection):
 def ir_camera(config, thermal_config_file):
     logging.info("Starting ir video capture")
     cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FPS, 10)
 
     try:
         res_x = cap.get(cv2.CAP_PROP_FRAME_WIDTH)

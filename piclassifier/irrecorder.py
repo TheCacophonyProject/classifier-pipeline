@@ -18,8 +18,8 @@ FOURCC = cv2.VideoWriter_fourcc(*"avc1")
 # fourcc = cv2.VideoWriter_fourcc(*"avc1")
 # FOURCC = cv2.VideoWriter_fourcc(*"avc1")
 # JUST FOR TEST
-VIDEO_EXT = ".avi"
-FOURCC = cv2.VideoWriter_fourcc("M", "J", "P", "G")
+# VIDEO_EXT = ".avi"
+# FOURCC = cv2.VideoWriter_fourcc("M", "J", "P", "G")
 
 
 class IRRecorder(Recorder):

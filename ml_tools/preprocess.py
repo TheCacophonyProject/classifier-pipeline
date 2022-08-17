@@ -8,6 +8,7 @@ import enum
 import tensorflow as tf
 from track.region import Region
 import cv2
+from ml_tools.tools import FrameTypes
 
 # size to scale each frame to when loaded.
 
@@ -41,20 +42,6 @@ def augement_frame(frame, frame_size, dim):
     image = tf.minimum(image, 1.0)
     image = tf.maximum(image, 0.0)
     return image.numpy()
-
-
-class FrameTypes(enum.Enum):
-    """Types of frames"""
-
-    thermal_tiled = 0
-    filtered_tiled = 1
-    flow_tiled = 2
-    overlay = 3
-    flow_rgb = 4
-
-    @staticmethod
-    def is_valid(name):
-        return name in FrameTypes.__members__.keys()
 
 
 def preprocess_segment(
