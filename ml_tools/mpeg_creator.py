@@ -94,6 +94,8 @@ class MPEGCreator:
             "-an",  # Tells FFMPEG not to expect any audio
             "-c:v",
             self.codec,
+            "-b:v",
+            "1000k",
             "-preset",
             "veryfast",
             str(self.filename),

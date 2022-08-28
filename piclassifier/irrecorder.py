@@ -84,7 +84,7 @@ class IRRecorder(Recorder):
         self.filename = new_temp_name(frame_time)
 
         self.filename = self.temp_dir / self.filename
-        self.writer = MPEGCreator(self.filename, fps=self.fps)  # , codec="h264_omx")
+        self.writer = MPEGCreator(self.filename, fps=self.fps, codec="h264_v4l2m2m")
         # self.writer = cv2.VideoWriter(
         #     str(self.filename), FOURCC, self.fps, (self.res_x, self.res_y)
         # )
