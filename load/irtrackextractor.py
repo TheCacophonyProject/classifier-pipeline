@@ -146,11 +146,12 @@ class IRTrackExtractor(ClipTracker):
         while True:
             success, image = vidcap.read()
             if not success:
-                if fail_count == 0:
+                if fail_count < 1:
                     fail_count += 1
                     # try once more if its first fail as the mp4s from pi have errors at key frames
                     continue
                 break
+            fail_count = 0
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             if clip.current_frame == -1:
                 self.res_x = gray.shape[0]
