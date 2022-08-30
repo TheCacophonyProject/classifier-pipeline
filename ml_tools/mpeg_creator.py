@@ -1,6 +1,7 @@
 import locale
 import os
 import subprocess
+import logging
 
 
 class MPEGCreator:
@@ -53,7 +54,7 @@ class MPEGCreator:
 
     def _start(self, width, height):
         command = self.get_ffmpeg_command(width, height)
-        print("command is", " ".join(command))
+        logging.debug("command is %s", " ".join(command))
         proc = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,

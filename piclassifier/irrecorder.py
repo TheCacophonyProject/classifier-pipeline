@@ -85,9 +85,7 @@ class IRRecorder(Recorder):
 
         self.filename = self.temp_dir / self.filename
         self.writer = MPEGCreator(self.filename, fps=self.fps, codec="h264_v4l2m2m")
-        # self.writer = cv2.VideoWriter(
-        #     str(self.filename), FOURCC, self.fps, (self.res_x, self.res_y)
-        # )
+
         print(background_frame.shape)
         back = background_frame[:, :, np.newaxis]
         back = np.repeat(back, 3, axis=2)
@@ -147,4 +145,4 @@ class IRRecorder(Recorder):
 
 
 def new_temp_name(frame_time):
-    return datetime.fromtimestamp(frame_time).strftime("%Y%m%d-%H%M%S-%f" + VIDEO_EXT)
+    return datetime.fromtimestamp(frame_time).strftime("%Y%m%d-%H%M%S.%f" + VIDEO_EXT)
