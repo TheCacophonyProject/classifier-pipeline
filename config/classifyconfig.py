@@ -79,6 +79,8 @@ class ModelConfig:
     DEFAULT_SCORE = 0
     id = attr.ib()
     name = attr.ib()
+    type = attr.ib()
+
     model_file = attr.ib()
     model_weights = attr.ib()
 
@@ -92,6 +94,7 @@ class ModelConfig:
         model = cls(
             id=raw["id"],
             name=raw["name"],
+            type=raw.get("type", "keras"),
             model_file=raw["model_file"],
             model_weights=raw.get("model_weights"),
             wallaby=raw.get("wallaby", False),

@@ -15,12 +15,12 @@ class Interpreter(ABC):
         """Loads model and parameters from file."""
         filename = Path(filename)
         filename = filename.with_suffix(".txt")
-        logging.info("Loading metadata from %s.txt", filename)
+        logging.info("Loading metadata from %s", filename)
         stats = json.load(open(filename, "r"))
 
         self.labels = stats["labels"]
         self.params = HyperParams()
-        self.params.update(stats["hyperparams"])
+        self.params.update(stats.get("hyperparams", {}))
 
     @abstractmethod
     def shape(self):

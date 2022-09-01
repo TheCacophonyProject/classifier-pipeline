@@ -27,6 +27,8 @@ from ml_tools.imageprocessing import (
     theshold_saliency,
 )
 
+from ml_tools.forestmodel import ForestModel
+
 
 class ClipClassifier:
     """Classifies tracks within CPTV files."""
@@ -60,10 +62,13 @@ class ClipClassifier:
             return self.models[model.id]
         load_start = time.time()
         logging.info("classifier loading %s", model.model_file)
-        classifier = KerasModel(self.config.train)
-        classifier.load_model(model.model_file, weights=model.model_weights)
+        if model.type == ForestModel.TYPE:
+            classifier = ForestModel(model.model_file)
+        else:
+            classifier = KerasModel(self.config.train)
+            classifier.load_model(model.model_file, weights=model.model_weights)
+            classifier.model.summary()
         logging.info("classifier loaded (%s)", time.time() - load_start)
-        classifier.model.summary()
         self.models[model.id] = classifier
 
         return classifier
