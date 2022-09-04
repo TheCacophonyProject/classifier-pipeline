@@ -17,9 +17,11 @@ TEMP_DIR = "temp"
 
 VIDEO_EXT = ".mp4"
 FOURCC = cv2.VideoWriter_fourcc(*"avc1")
+CODEC = "h264_v4l2m2m"
 # JUST FOR TEST
 # VIDEO_EXT = ".avi"
 # FOURCC = cv2.VideoWriter_fourcc("M", "J", "P", "G")
+# CODEC = "h264"
 
 
 class IRRecorder(Recorder):
@@ -84,12 +86,10 @@ class IRRecorder(Recorder):
         self.filename = new_temp_name(frame_time)
 
         self.filename = self.temp_dir / self.filename
-        self.writer = MPEGCreator(self.filename, fps=self.fps, codec="h264_v4l2m2m")
+        self.writer = MPEGCreator(self.filename, fps=self.fps, codec=CODEC)
 
-        print(background_frame.shape)
         back = background_frame[:, :, np.newaxis]
         back = np.repeat(back, 3, axis=2)
-        print(back.shape)
         self.writer.next_frame(back)
         default_thresh = self.motion.temp_thresh
 

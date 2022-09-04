@@ -762,6 +762,11 @@ class PiClassifier(Processor):
 
 def on_recording_stopping(filename):
     global clip, track_extractor, predictions
+    if track_extractor.scale is not None:
+        for track in clip.tracks:
+            for r in track.bounds_history:
+                # bring back to orignal size
+                r.rescale(1 / track_extractor.scale)
     if predictions is not None:
         for track_prediction in predictions.prediction_per_track.values():
             track_prediction.normalize_score()

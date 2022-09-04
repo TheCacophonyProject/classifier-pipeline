@@ -45,6 +45,7 @@ class Region(Rectangle):
 
         self.width = int(self.width * factor)
         self.height = int(self.height * factor)
+        self.mass = self.mass * (factor ** 2)
 
     @staticmethod
     def from_ltwh(left, top, width, height):
