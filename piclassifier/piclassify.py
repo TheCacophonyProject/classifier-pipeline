@@ -225,10 +225,6 @@ def ir_camera(config, thermal_config_file):
     try:
         res_x = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
         res_y = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        # fps = int(cap.get(cv2.CAP_PROP_FPS))
-        # if fps == 0:
-        # fps = 10
-        print("res_x", res_x, res_y)
         headers = HeaderInfo(
             res_x=int(res_x),
             res_y=int(res_y),
