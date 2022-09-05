@@ -21,7 +21,7 @@ CODEC = "h264_v4l2m2m"
 # JUST FOR TEST
 # VIDEO_EXT = ".avi"
 # FOURCC = cv2.VideoWriter_fourcc("M", "J", "P", "G")
-# CODEC = "h264"
+CODEC = "h264"
 
 
 class IRRecorder(Recorder):

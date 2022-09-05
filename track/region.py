@@ -38,6 +38,7 @@ class Region(Rectangle):
     was_cropped = attr.ib(default=False)
     blank = attr.ib(default=False)
     is_along_border = attr.ib(default=False)
+    in_trap = attr.ib(default=False)
 
     def rescale(self, factor):
         self.x = int(self.x * factor)

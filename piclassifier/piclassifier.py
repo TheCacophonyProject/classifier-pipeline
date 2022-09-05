@@ -33,6 +33,8 @@ from ml_tools.tools import CustomJSONEncoder
 from track.region import Region
 from . import beacon
 
+from piclassifier.eventreporter import trapped_event
+
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
 track_extractor = None
@@ -222,6 +224,7 @@ class PiClassifier(Processor):
                 verbose=config.verbose,
                 calc_stats=False,
                 scale=0.25,
+                on_trapped=on_track_trapped,
             )
             self.tracking_config = self.track_extractor.config
 
@@ -758,6 +761,11 @@ class PiClassifier(Processor):
     @property
     def output_dir(self):
         return self._output_dir
+
+
+def on_track_trapped(track):
+    logging.warn("Trapped track %s", track)
+    trapped_event()
 
 
 def on_recording_stopping(filename):

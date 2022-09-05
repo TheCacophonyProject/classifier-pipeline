@@ -339,7 +339,9 @@ class Track:
         Creates a new Track.
         :param id: id number for track, if not specified is provided by an auto-incrementer
         """
-
+        self.in_trap = False
+        self.trap_reported = False
+        self.direction = 0
         if not id:
             self._id = Track._track_id
             Track._track_id += 1
@@ -852,6 +854,15 @@ class Track:
     def predicted_velocity(self):
         return self.tracker.predicted_velocity()
 
+    def update_trapped_state(self):
+        if self.in_trap:
+            return self.in_trap
+        min_frames = 3
+        if len(self.bounds_history) < min_frames:
+            return False
+        self.in_trap = all(r.in_trap for r in self.bounds_history[-3:])
+        return self.in_trap
+
     @property
     def end_frame(self):
         if len(self.bounds_history) == 0:
@@ -895,6 +906,7 @@ class Track:
         start_s, end_s = self.start_and_end_in_secs()
 
         track_info["id"] = self.get_id()
+        track_info["trap_triggered"] = self.in_trap
         track_info["tracker_version"] = self.tracker_version
         track_info["start_s"] = round(start_s, 2)
         track_info["end_s"] = round(end_s, 2)

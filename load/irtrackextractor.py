@@ -42,6 +42,7 @@ from ml_tools.imageprocessing import (
 from track.cliptracker import ClipTracker
 
 DO_SALIENCY = False
+DEBUG_TRAP = False
 
 
 class Line:
@@ -54,6 +55,9 @@ class Line:
         if point[1] > y_value:
             return True
         return False
+
+    def is_below(self, point):
+        return not self.is_above(point)
 
     def is_left(self, point):
         x_value = self.x_res(point[1])
@@ -104,6 +108,7 @@ class IRTrackExtractor(ClipTracker):
         verbose=False,
         scale=None,
         do_tracking=True,
+        on_trapped=None,
     ):
         super().__init__(
             config,
@@ -114,6 +119,7 @@ class IRTrackExtractor(ClipTracker):
             do_tracking=do_tracking,
         )
         self.scale = scale
+        self.on_trapped = on_trapped
         self.saliency = None
         if self.scale:
             self.frame_padding = int(scale * self.frame_padding)
@@ -357,19 +363,70 @@ class IRTrackExtractor(ClipTracker):
             else:
                 s = time.time()
                 regions = self._get_regions_of_interest(clip, component_details)
-                self._apply_region_matchings(clip, regions)
 
+                self._apply_region_matchings(clip, regions)
+            for track in clip.active_tracks:
+                if track.trap_reported:
+                    continue
+                inside_trap(track, self.scale)
+                if track.in_trap:
+                    filtered = self.filter_track(clip, track, track.get_stats())
+                    if not filtered:
+                        # fire trapping event
+                        if self.on_trapped is not None:
+                            track.trap_reported = True
+                            self.on_trapped(track)
             clip.region_history.append(regions)
-            # image = frame.copy()
-            # for track in clip.active_tracks:
-            #     region = track.bounds_history[-1]
-            #     region.rescale(1 / self.scale)
-            #     start_point = (int(region.left), int(region.top))
-            #     end_point = (int(region.right), int(region.bottom))
-            #     image = cv2.rectangle(image, start_point, end_point, (255, 0, 0), 2)
-            #
-            # cv2.imshow("id", image)
-            # cv2.waitKey(100)
+            if DEBUG_TRAP:
+                if len(clip.tracks) > 0:
+                    self.show_trap_info(clip, frame)
+
+    def show_trap_info(self, clip, frame):
+        image = frame.copy()
+        in_trap = False
+        wait = 100
+        start = (0, 480 - int(IRTrackExtractor.LEFT_BOTTOM.y_res(0)))
+        end = (int(IRTrackExtractor.LEFT_BOTTOM.x_res(240)), 480 - 240)
+        image = cv2.line(image, start, end, (0, 255, 0), 10)
+        start = (640, 480 - int(IRTrackExtractor.RIGHT_BOTTOM.y_res(640)))
+        end = (int(IRTrackExtractor.RIGHT_BOTTOM.x_res(240)), 480 - 240)
+
+        image = cv2.line(image, start, end, (0, 255, 0), 10)
+
+        for track in clip.active_tracks:
+            filtered = self.filter_track(clip, track, track.get_stats())
+            in_trap = in_trap or (track.in_trap and not filtered)
+            region = track.bounds_history[-1]
+            if self.scale:
+                region = region.copy()
+                region.rescale(1 / self.scale)
+                region.in_trap = track.last_bound.in_trap
+            start_point = (int(region.left), int(region.top))
+            end_point = (int(region.right), int(region.bottom))
+            image = cv2.rectangle(image, start_point, end_point, (255, 0, 0), 2)
+            if region.in_trap:
+                image = cv2.putText(
+                    image,
+                    f"Trapped?{ track.in_trap} f?{filtered}",
+                    start_point,
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (255, 0, 0),
+                )
+                # wait = 300
+        if in_trap:
+            image = cv2.putText(
+                image,
+                f"CAUGHT EM",
+                (50, 50),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 0, 0),
+            )
+            # wait = 300
+        cv2.imshow("id", image)
+        cv2.waitKey(wait)
+        # 1 / 0
 
     def filter_components(self, component_details):
         filtered = []
@@ -498,3 +555,96 @@ class Background:
     @property
     def background(self):
         return self._background / self.frames
+
+
+LEFT = 1
+BOTTOM = 2
+RIGHT = 4
+TOP = 8
+MIDDLE = 16
+
+
+def inside_trap(track, scale=None):
+    region = track.last_bound.copy()
+    if scale:
+        region.rescale(1 / scale)
+    if region.width < 60 or region.height < 40:
+        # dont want small regions
+        return False
+    if track.direction == 0:
+        if region.left < 100:
+            track.direction |= LEFT
+        if region.right > (640 - 100):
+            track.direction |= RIGHT
+        if region.bottom > (480 - 100):
+            track.direction |= BOTTOM
+        if track.direction == 0:
+            if region.bottom < 300:
+                track.direction |= TOP
+            else:
+                track.direction = MIDDLE
+    p = (region.right, 480 - region.top)
+
+    inside = (
+        IRTrackExtractor.LEFT_BOTTOM.is_below(p)
+        and IRTrackExtractor.LEFT_BOTTOM.is_right(p)
+        # or IRTrackExtractor.RIGHT_BOTTOM.is_above(region)
+        # or IRTrackExtractor.BACK_BOTTOM.is_above(region)
+    )
+    x_pos = IRTrackExtractor.LEFT_BOTTOM.x_res(p[1])
+    x_diff = abs(p[0] - x_pos)
+    left_percent = x_diff / region.width
+
+    p = (region.left, 480 - region.top)
+
+    inside = inside and (
+        IRTrackExtractor.RIGHT_BOTTOM.is_below(p)
+        and IRTrackExtractor.RIGHT_BOTTOM.is_left(p)
+    )
+    x_pos = IRTrackExtractor.RIGHT_BOTTOM.x_res(p[1])
+    # could try using bottom  rather than region.top here
+    x_diff = abs(p[0] - x_pos)
+    right_percent = x_diff / region.width
+    #
+    # print(
+    #     f"checking direction of {region.left}x{region.top} - {region.right}x{region.bottom}",
+    #     "from dir",
+    #     track.direction,
+    #     "x pos",
+    #     x_pos,
+    #     "distance",
+    #     x_diff,
+    #     " regin.width",
+    #     region.width,
+    #     "l percent",
+    #     left_percent,
+    #     "r percent",
+    #     right_percent,
+    # )
+
+    if not inside:
+        return False
+    in_trap = False
+    if left_percent < 0.5 and right_percent < 0.5:
+        return False
+    if track.direction & LEFT and region.left > 40 and left_percent > 0.5:
+        # print("Track from left")
+        in_trap = True
+
+    elif track.direction & RIGHT and region.right < 580 and right_percent > 0.5:
+        # print("track from rgiht")
+        in_trap = True
+
+    if track.direction == TOP and region.bottom > 300:
+        # print("track from top")
+        in_trap = True
+    if track.direction == BOTTOM and region.bottom < 480 - 50:
+        # print("track from bottom")
+        in_trap = True
+
+    if track.direction == MIDDLE and region.left > 40 and region.right < 580:
+        # print("MIDDLE PASS")
+        in_trap = True
+    track.last_bound.in_trap = in_trap
+    track.update_trapped_state()
+    return in_trap
