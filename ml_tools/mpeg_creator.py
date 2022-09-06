@@ -19,13 +19,14 @@ class MPEGCreator:
     The output from ffmpeg is available via the `output` property.
     """
 
-    def __init__(self, filename, quality=21, fps=9, codec="libx264"):
+    def __init__(self, filename, quality=21, fps=9, codec="libx264", bitrate="400K"):
         self.filename = filename
         self.quality = quality
         self._ffmpeg = None
         self._output = []
         self.fps = fps
         self.codec = codec
+        self.bitrate = bitrate
 
     def next_frame(self, frame):
         if self._ffmpeg is None:

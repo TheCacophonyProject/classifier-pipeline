@@ -3,25 +3,32 @@ from datetime import datetime
 import logging
 import os
 import yaml
-from load.cliptrackextractor import ClipTrackExtractor
-
+import multiprocessing
 from datetime import timedelta
 import time
 import psutil
-from piclassifier.recorder import Recorder
 import cv2
 from pathlib import Path
+
 from ml_tools.mpeg_creator import MPEGCreator
+from piclassifier.recorder import Recorder
+from load.cliptrackextractor import ClipTrackExtractor
+from ml_tools.logs import init_logging
 
 TEMP_DIR = "temp"
-
 VIDEO_EXT = ".mp4"
-FOURCC = cv2.VideoWriter_fourcc(*"avc1")
-CODEC = "h264_v4l2m2m"
+
+# FOURCC = cv2.VideoWriter_fourcc(*"avc1")
 # JUST FOR TEST
 # VIDEO_EXT = ".avi"
 # FOURCC = cv2.VideoWriter_fourcc("M", "J", "P", "G")
+
+# gp this should work on pi, but causing lots of headaches
+# wont set bitrate, wont play back on ubuntu, should check again in future
+# as is very fast
+# CODEC = "h264_v4l2m2m"
 CODEC = "h264"
+BITRATE = "1M"
 
 
 class IRRecorder(Recorder):
@@ -31,7 +38,7 @@ class IRRecorder(Recorder):
         self.output_dir = Path(thermal_config.recorder.output_dir)
         self.motion = thermal_config.motion
         self.preview_secs = thermal_config.recorder.preview_secs
-        self.writer = None
+        # self.writer = None
         self.filename = None
         self.recording = False
         self.frames = 0
@@ -48,6 +55,8 @@ class IRRecorder(Recorder):
         self.temp_dir = self.output_dir / TEMP_DIR
 
         self.temp_dir.mkdir(parents=True, exist_ok=True)
+        self.frame_q = multiprocessing.Queue()
+        self.rec_p = None
 
     def force_stop(self):
         if not self.recording:
@@ -57,6 +66,10 @@ class IRRecorder(Recorder):
         else:
             logging.info("Recording stopped early deleting short recording")
             # self.stop_recording(time.time())
+            self.frame_q.put(0)
+            self.rec_p.join()
+            self.frame_q = multiprocessing.Queue()
+            self.rec_p = None
             self.delete_recording()
 
     def process_frame(self, movement_detected, cptv_frame, received_at):
@@ -86,16 +99,23 @@ class IRRecorder(Recorder):
         self.filename = new_temp_name(frame_time)
 
         self.filename = self.temp_dir / self.filename
-        self.writer = MPEGCreator(self.filename, fps=self.fps, codec=CODEC)
+
+        # self.writer = MPEGCreator(self.filename, fps=self.fps, codec=CODEC)
 
         back = background_frame[:, :, np.newaxis]
         back = np.repeat(back, 3, axis=2)
-        self.writer.next_frame(back)
-        default_thresh = self.motion.temp_thresh
+        preview_frames.insert(0, back)
+
+        self.rec_p = multiprocessing.Process(
+            target=record,
+            args=(self.frame_q, self.filename, self.fps, preview_frames),
+        )
+        self.rec_p.start()
+        # self.writer.next_frame(back)
 
         self.recording = True
-        for frame in preview_frames:
-            self.write_frame(frame)
+        # for frame in preview_frames:
+        #     self.write_frame(frame)
         self.write_until = self.frames + self.min_frames
         logging.info("recording %s started", self.filename.resolve())
         self.rec_time += time.time() - start
@@ -103,8 +123,8 @@ class IRRecorder(Recorder):
 
     def write_frame(self, frame):
         start = time.time()
-
-        self.writer.next_frame(frame)
+        self.frame_q.put(frame)
+        # self.writer.next_frame(frame)
         self.frames += 1
         self.rec_time += time.time() - start
 
@@ -113,7 +133,11 @@ class IRRecorder(Recorder):
         self.rec_time += time.time() - start
         self.recording = False
         final_name = self.output_dir / self.filename.name
-
+        logging.info("Waiting for recorder to finish")
+        self.frame_q.put(0)
+        self.rec_p.join()
+        self.frame_q = multiprocessing.Queue()
+        self.rec_p = None
         logging.info(
             "recording %s ended %s frames %s time recording %s per frame ",
             final_name,
@@ -123,26 +147,51 @@ class IRRecorder(Recorder):
         )
         self.rec_time = 0
         self.write_until = 0
-        if self.writer is None:
-            return
 
         if self.on_recording_stopping is not None:
             self.on_recording_stopping(final_name)
         # self.writer.release()
-        self.writer.close()
+        # self.writer.close()
         self.filename.rename(final_name)
-        self.writer = None
+        # self.writer = None
 
     def delete_recording(self):
         self.recording = False
-        if self.writer is None:
-            return
-        self.writer.close()
+        # if self.writer is None:
+        #     return
+        # self.writer.close()
 
         # self.writer.release()
         self.filename.unlink()
-        self.writer = None
+        # self.writer = None
 
 
 def new_temp_name(frame_time):
     return datetime.fromtimestamp(frame_time).strftime("%Y%m%d-%H%M%S.%f" + VIDEO_EXT)
+
+
+def record(queue, filename, fps, init_frames=None):
+    init_logging()
+    frames = 0
+    try:
+        logging.info("Recorder %s started", filename.resolve())
+
+        writer = MPEGCreator(filename, fps=fps, codec=CODEC, bitrate=BITRATE)
+        for frame in init_frames:
+            writer.next_frame(frame)
+            frames += 1
+        while True:
+            frame = queue.get()
+            if isinstance(frame, int) and frame == 0:
+                writer.close()
+                logging.info("Recorder Received end")
+                break
+            writer.next_frame(frame)
+
+    except:
+        logging.error("Error Recording", exc_info=True)
+        try:
+            writer.close()
+        except:
+            pass
+    logging.info("Recorder Written %s", frames)
