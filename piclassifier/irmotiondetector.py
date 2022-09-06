@@ -34,6 +34,7 @@ class Background:
 
 
 WINDOW_SIZE = 50
+MIN_FRAMES = 10 * 10  # 10seconds
 
 
 class IRMotionDetector(MotionDetector):
@@ -88,31 +89,32 @@ class IRMotionDetector(MotionDetector):
             if self.gray_window.oldest is None:
                 return False
 
-            # Filter and get diff from background
-            delta = cv2.absdiff(
-                self.gray_window.oldest, gray
-            )  # Get delta from current frame and background
-            threshold = cv2.threshold(delta, 25, 255, cv2.THRESH_BINARY)[1]
-
-            erosion_image = cv2.erode(threshold, self.get_kernel())
-            erosion_pixels = len(erosion_image[erosion_image > 0])
-            # to do find a value that suites the number of pixesl we want to move
             self._background.process_frame(gray)
-            # Calculate if there was motion in the current frame
-            # TODO Chenage how much ioldests added to the triggered depending on how big the motion is
-            if erosion_pixels > 0:
-                self.triggered += 1
-                self.triggered = min(self.triggered, 30)
-            else:
-                self.triggered -= 1
-                self.triggered = max(self.triggered, 0)
+            if self.num_frames > MIN_FRAMES:
+                # Filter and get diff from background
+                delta = cv2.absdiff(
+                    self.gray_window.oldest, gray
+                )  # Get delta from current frame and background
+                threshold = cv2.threshold(delta, 25, 255, cv2.THRESH_BINARY)[1]
 
-            # Check if motion has started or ended
-            if not self.movement_detected and self.triggered > 10:
-                self.movement_detected = True
+                erosion_image = cv2.erode(threshold, self.get_kernel())
+                erosion_pixels = len(erosion_image[erosion_image > 0])
+                # to do find a value that suites the number of pixesl we want to move
+                # Calculate if there was motion in the current frame
+                # TODO Chenage how much ioldests added to the triggered depending on how big the motion is
+                if erosion_pixels > 0:
+                    self.triggered += 1
+                    self.triggered = min(self.triggered, 30)
+                else:
+                    self.triggered -= 1
+                    self.triggered = max(self.triggered, 0)
 
-            elif self.movement_detected and self.triggered <= 0:
-                self.movement_detected = False
+                # Check if motion has started or ended
+                if not self.movement_detected and self.triggered > 10:
+                    self.movement_detected = True
+
+                elif self.movement_detected and self.triggered <= 0:
+                    self.movement_detected = False
         else:
             self.rgb_window.update_current_frame(frame)
         self.num_frames += 1

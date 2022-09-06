@@ -184,14 +184,14 @@ def record(queue, filename, fps, init_frames=None):
             frame = queue.get()
             if isinstance(frame, int) and frame == 0:
                 writer.close()
-                logging.info("Recorder Received end")
                 break
             writer.next_frame(frame)
+            frames += 1
 
     except:
-        logging.error("Error Recording", exc_info=True)
+        logging.error("Error Recording %s", filename.resolve(), exc_info=True)
         try:
             writer.close()
         except:
             pass
-    logging.info("Recorder Written %s", frames)
+    logging.info("Recorder %s Written %s", filename.resolve(), frames)
