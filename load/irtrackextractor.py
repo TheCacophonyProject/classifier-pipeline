@@ -163,6 +163,9 @@ class IRTrackExtractor(ClipTracker):
                 self.res_x = gray.shape[0]
                 self.res_y = gray.shape[1]
                 clip.set_res(gray.shape[1], gray.shape[0])
+                if clip.from_metadata:
+                    for track in clip.tracks:
+                        track.crop_regions()
                 background = np.uint32(gray)
                 self.start_tracking(clip, background=gray, background_frames=50)
             self.process_frame(clip, gray)
