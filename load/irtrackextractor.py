@@ -166,7 +166,9 @@ class IRTrackExtractor(ClipTracker):
                 if clip.from_metadata:
                     for track in clip.tracks:
                         track.crop_regions()
-                background = np.uint32(gray)
+                background = np.uint8(gray)
+                # cv2.imshow("bak", np.uint8(background))
+                # cv2.waitKey(1000)
                 self.start_tracking(clip, background=gray, background_frames=50)
             self.process_frame(clip, gray)
         vidcap.release()
@@ -240,6 +242,15 @@ class IRTrackExtractor(ClipTracker):
     # keep merging until no more merges are possible, tihs works paticularly well from the IR videos where
     # the filtered image is quite fragmented
     def merge_components(self, rectangles):
+        min_mass = 10
+        min_size = 4
+        rectangles = [
+            r
+            for r in rectangles
+            if r[4] > min_mass or (r[2] > min_size and r[3] > min_size)
+        ]
+        # filter out regions with small mass  and samll width / height
+        #  numbers may need adjusting
         MAX_GAP = 20
         rect_i = 0
         rectangles = list(rectangles)
@@ -465,6 +476,7 @@ class IRTrackExtractor(ClipTracker):
         return filtered
 
     def filter_track(self, clip, track, stats):
+        # return False
         # return not track.stable
         # discard any tracks that are less min_duration
         # these are probably glitches anyway, or don't contain enough information.

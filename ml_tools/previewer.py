@@ -323,6 +323,7 @@ class Previewer:
             filtered = np.uint8(filtered)
             thermal = thermal[..., np.newaxis]
             thermal = np.repeat(thermal, 3, axis=2)
+            filtered[filtered > 0] = 255
             filtered = filtered[..., np.newaxis]
             filtered = np.repeat(filtered, 3, axis=2)
             thermal = Image.fromarray(thermal)
