@@ -375,6 +375,7 @@ class IRTrackExtractor(ClipTracker):
                 if track.in_trap:
                     filtered = self.filter_track(clip, track, track.get_stats())
                     if not filtered:
+                        track.trigger_frame = cur_frame.frame_number
                         # fire trapping event
                         if self.on_trapped is not None:
                             track.trap_reported = True

@@ -341,6 +341,7 @@ class Track:
         """
         self.in_trap = False
         self.trap_reported = False
+        self.trigger_frame = None
         self.direction = 0
         if not id:
             self._id = Track._track_id
@@ -906,7 +907,10 @@ class Track:
         start_s, end_s = self.start_and_end_in_secs()
 
         track_info["id"] = self.get_id()
-        track_info["trap_triggered"] = self.in_trap
+        if self.in_trap:
+            track_info["trap_triggered"] = self.in_trap
+            track_info["trigger_frame"] = self.trigger_frame
+
         track_info["tracker_version"] = self.tracker_version
         track_info["start_s"] = round(start_s, 2)
         track_info["end_s"] = round(end_s, 2)

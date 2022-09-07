@@ -101,12 +101,14 @@ class MotionDetector(ABC):
         self.movement_detected = False
         self.num_frames = 0
         self.rec_window = thermal_config.recorder.rec_window
+        self.location_config = thermal_config.location
         self.use_sunrise = self.rec_window.use_sunrise_sunset()
         self.last_sunrise_check = None
         self.location = None
         self.sunrise = None
         self.sunset = None
         self.recording = False
+
         if self.rec_window.use_sunrise_sunset():
             self.rec_window.set_location(
                 *self.location_config.get_lat_long(use_default=True),
