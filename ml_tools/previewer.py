@@ -328,7 +328,6 @@ class Previewer:
             thermal = Image.fromarray(thermal)
             filtered = Image.fromarray(filtered)
         else:
-            print("filtered is", np.amax(filtered), np.amin(filtered))
             filtered, _ = normalize(filtered, new_max=255)
             filtered = Image.fromarray(filtered)
             filtered = filtered.convert("RGB")
