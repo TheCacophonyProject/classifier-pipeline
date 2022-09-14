@@ -781,6 +781,9 @@ class KerasModel(Interpreter):
         start = time.time()
         predictions = []
         smoothed_predictions = []
+        predict_me = []
+        prediction_frames = []
+        mass = []
         for segment in segments:
             segment_frames = []
             median = np.zeros((len(segment.frame_indices)))
@@ -801,13 +804,17 @@ class KerasModel(Interpreter):
             if frames is None:
                 logging.warn("No frames to predict on")
                 continue
-            output = self.model.predict(frames[np.newaxis, :])
+            predict_me.append(frames)
+            prediction_frames.append(segment.frame_indices)
+            mass.append(segment.mass)
+        mass = np.array(mass)
+        mass = mass[:, None]
+        output = self.model.predict(np.array(predict_me))
+        track_prediction.classified_clip(
+            output, output * output * mass, prediction_frames
+        )
 
-            track_prediction.classified_frames(
-                segment.frame_indices, output[0], max(1, segment.mass)
-            )
         track_prediction.classify_time = time.time() - start
-        track_prediction.normalize_score()
         return track_prediction
 
     def predict(self, frame):
