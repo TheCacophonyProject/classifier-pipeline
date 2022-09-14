@@ -24,9 +24,12 @@ class ForestModel(Interpreter):
         track_prediction = TrackPrediction(track.get_id(), self.labels)
 
         x = process_track(clip, track)
+        if x is None:
+            logging.warning("Random forest could not classify track")
+            return None
         x = x[np.newaxis, :]
-        predictions = self.model.predict_proba(x)[0]
-        track_prediction.classified_frames([-1], predictions, 1)
+        predictions = self.model.predict_proba(x)
+        track_prediction.classified_clip(predictions, predictions * 100, [-1])
         return track_prediction
 
     def shape(self):
@@ -45,6 +48,7 @@ def process_track(
     f_count = 0
     prev_count = 0
     background = clip.background
+    # return None
     if len(track) <= buf_len:
         return None
     for i, region in enumerate(track.bounds_history):
@@ -57,11 +61,11 @@ def process_track(
         frame.float_arrays()
         t_median = np.median(frame.thermal)
         cropped_frame = frame.crop_by_region(region)
-        thermal = cropped_frame.thermal
+        thermal = cropped_frame.thermal.copy()
         f_count += 1
         thermal = thermal + np.median(background) - t_median
 
-        sub_back = region.subimage(background)
+        sub_back = region.subimage(background).copy()
         filtered = thermal - sub_back
         feature = FrameFeatures(region)
 
@@ -100,9 +104,6 @@ def process_track(
     X = np.hstack(
         (avg_features, std_features, maximum_features, np.array([len(track)]))
     )
-    #
-    # for a in X:
-    #     print(a)
     return X
 
 

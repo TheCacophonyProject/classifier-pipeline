@@ -219,11 +219,14 @@ class ClipClassifier:
             prediction = classifier.classify_track(
                 clip, track, segment_frames=segment_frames
             )
-            predictions.prediction_per_track[track.get_id()] = prediction
-            description = prediction.description()
-            logging.info(
-                " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
-            )
+            if prediction is not None:
+                predictions.prediction_per_track[track.get_id()] = prediction
+                description = prediction.description()
+                logging.info(
+                    " - [{}/{}] prediction: {}".format(
+                        i + 1, len(clip.tracks), description
+                    )
+                )
         if self.config.verbose:
             ms_per_frame = (
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
@@ -254,9 +257,12 @@ class ClipClassifier:
             prediction_info = []
             for model_id, predictions in predictions_per_model.items():
                 prediction = predictions.prediction_for(track.get_id())
-                prediciont_meta = prediction.get_metadata()
-                prediciont_meta["model_id"] = model_id
-                prediction_info.append(prediciont_meta)
+                if prediction is None:
+                    continue
+
+                prediction_meta = prediction.get_metadata()
+                prediction_meta["model_id"] = model_id
+                prediction_info.append(prediction_meta)
             meta_track["predictions"] = prediction_info
 
         model_dictionaries = []
