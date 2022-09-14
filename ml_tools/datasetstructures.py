@@ -285,11 +285,9 @@ class TrackHeader:
         self,
         segment_frame_spacing,
         segment_width,
+        segment_type,
         segment_min_mass=None,
         use_important=False,
-        random_frames=True,
-        top_frames=False,
-        random_sections=False,
         repeats=1,
     ):
         min_frames = segment_width
@@ -309,8 +307,6 @@ class TrackHeader:
             frame_temp_median=self.frame_temp_median,
             segment_min_mass=segment_min_mass,
             sample_frames=self.sample_frames if use_important else None,
-            top_frames=top_frames,
-            random_sections=random_sections,
             ffc_frames=self.ffc_frames,
             lower_mass=self.lower_mass,
             repeats=repeats,
@@ -318,6 +314,7 @@ class TrackHeader:
             camera=self.camera,
             skipped_frames=self.skipped_frames,
             start_time=self.start_time,
+            segment_type=segment_type,
         )
 
     @property

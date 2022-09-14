@@ -90,6 +90,8 @@ class Dataset:
             self.excluded_tags = config.load.excluded_tags
             self.min_frame_mass = config.build.min_frame_mass
             self.filter_by_lq = config.build.filter_by_lq
+            self.segment_type = SegmentType.ALL_RANDOM
+
         else:
             self.filter_by_lq = True
             # number of seconds each segment should be
@@ -98,6 +100,7 @@ class Dataset:
             self.segment_spacing = 1
             self.segment_min_avg_mass = None
             self.min_frame_mass = 16
+            self.segment_type = SegmentType.ALL_RANDOM
         self.filtered_stats = {
             "confidence": 0,
             "trap": 0,
@@ -239,10 +242,10 @@ class Dataset:
                     round(self.segment_spacing * track_header.frames_per_second)
                 )
                 segment_width = self.segment_length
-
                 track_header.calculate_segments(
                     segment_frame_spacing,
                     segment_width,
+                    self.segment_type,
                     self.segment_min_avg_mass,
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
@@ -591,6 +594,7 @@ class Dataset:
             track.calculate_segments(
                 segment_frame_spacing,
                 segment_width,
+                segment_type,
                 segment_min_mass=segment_min_avg_mass,
             )
             filtered_stats = filtered_stats + track.filtered_stats["segment_mass"]
