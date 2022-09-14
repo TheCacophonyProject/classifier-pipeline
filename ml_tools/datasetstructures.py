@@ -11,6 +11,7 @@ from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pa
 from ml_tools.frame import Frame, TrackChannels
 from ml_tools import imageprocessing
 import datetime
+from enum import Enum
 
 FRAMES_PER_SECOND = 9
 
@@ -18,6 +19,17 @@ CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
 FRAME_SIZE = 32
 MIN_SIZE = 4
+
+
+class SegmentType(Enum):
+    IMPORTANT_RANDOM = 0
+    ALL_RANDOM = 1
+    IMPORTANT_SEQUENTIAL = 2
+    ALL_SEQUENTIAL = 3
+    TOP_SEQUENTIAL = 4
+    ALL_SECTIONS = 5
+    TOP_RANDOM = 6
+    ALL_RANDOM_NOMIN = 7
 
 
 class Sample(ABC):
@@ -780,8 +792,8 @@ def get_movement_data(regions):
     centrey = np.array([region.mid_y for region in regions])
     xv = np.hstack((0, centrex[1:] - centrex[:-1]))
     yv = np.hstack((0, centrey[1:] - centrey[:-1]))
-    axv = xv / areas ** 0.5
-    ayv = yv / areas ** 0.5
+    axv = xv / areas**0.5
+    ayv = yv / areas**0.5
     bounds = np.array([region.to_ltrb() for region in regions])
     mass = np.array([region.mass for region in regions])
 
@@ -800,9 +812,6 @@ def get_segments(
     label=None,
     segment_min_mass=None,
     sample_frames=None,
-    random_frames=True,
-    top_frames=False,
-    random_sections=False,
     ffc_frames=[],
     lower_mass=0,
     repeats=1,
@@ -812,7 +821,11 @@ def get_segments(
     ignore_mass=False,
     camera=None,
     start_time=None,
+    segment_type=SegmentType.ALL_RANDOM,
 ):
+
+    if segment_type == SegmentType.ALL_RANDOM_NOMIN:
+        segment_min_mass = None
     if min_frames is None:
         min_frames = 25
     segments = []
@@ -839,7 +852,7 @@ def get_segments(
             segment_min_mass = 1
             # remove blank frames
 
-        if top_frames and random_frames:
+        if segment_type == SegmentType.TOP_RANDOM:
             # take top 50 mass frames
             frame_indices = sorted(
                 frame_indices,
@@ -848,7 +861,8 @@ def get_segments(
             )
             frame_indices = frame_indices[:50]
             frame_indices.sort()
-    if top_frames and not random_frames:
+    # 1 / 0
+    if segment_type == SegmentType.TOP_SEQUENTIAL:
         return get_top_mass_segments(
             clip_id,
             track_id,
@@ -872,53 +886,41 @@ def get_segments(
     frame_indices = np.array(frame_indices)
     segment_count = max(1, len(frame_indices) // segment_frame_spacing)
     segment_count = int(segment_count)
-    # i3d segments get all segments above min mass sequentially
-    if top_frames and not random_frames:
-        segment_mass = []
-
-        for i in range(max(1, len(mass_history) - segment_width)):
-            contains_ffc = False
-            for z in range(segment_width):
-                if (z + i + start_frame) in ffc_frames:
-                    contains_ffc = True
-                    break
-            if contains_ffc:
-                continue
-            mass = np.sum(mass_history[i : i + segment_width])
-            segment_mass.append((i, mass))
-
-        sorted_mass = sorted(segment_mass, key=lambda x: x[1], reverse=True)
-        best_mass = True
 
     # take any segment_width frames, this could be done each epoch
     whole_indices = frame_indices
+    random_frames = segment_type in [
+        SegmentType.IMPORTANT_RANDOM,
+        SegmentType.ALL_RANDOM,
+        SegmentType.ALL_RANDOM_NOMIN,
+        SegmentType.TOP_RANDOM,
+        None,
+    ]
     for _ in range(repeats):
 
         frame_indices = whole_indices.copy()
-        np.random.shuffle(frame_indices)
+        if random_frames:
+            # random_frames and not random_sections:
+            np.random.shuffle(frame_indices)
         for i in range(segment_count):
             if (len(frame_indices) < segment_width and len(segments) > 1) or len(
                 frame_indices
             ) < (segment_width / 4.0):
                 break
 
-            if random_frames:
-                if random_sections:
-                    # random frames from section 2.2 * segment_width
-                    section = frame_indices[: int(segment_width * 2.2)]
-                    indices = np.random.choice(
-                        len(section),
-                        min(segment_width, len(section)),
-                        replace=False,
-                    )
-                    frames = section[indices]
-
-                    frame_indices = frame_indices[
-                        frame_indices > frames[0] + segment_frame_spacing
-                    ]
-                else:
-                    frames = frame_indices[:segment_width]
-                    frame_indices = frame_indices[segment_width:]
+            if segment_type == SegmentType.ALL_SECTIONS:
+                # random frames from section 2.2 * segment_width
+                section = frame_indices[: int(segment_width * 2.2)]
+                indices = np.random.choice(
+                    len(section),
+                    min(segment_width, len(section)),
+                    replace=False,
+                )
+                frames = section[indices]
+                frame_indices = frame_indices[segment_frame_spacing:]
+            elif random_frames:
+                frames = frame_indices[:segment_width]
+                frame_indices = frame_indices[segment_width:]
             else:
                 segment_start = i * segment_frame_spacing
                 segment_end = segment_start + segment_width

@@ -25,7 +25,7 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance
-from ml_tools.datasetstructures import get_segments, SegmentHeader
+from ml_tools.datasetstructures import get_segments, SegmentHeader, SegmentType
 import cv2
 import logging
 from track.tracker import Tracker
@@ -427,6 +427,7 @@ class Track:
         repeats=1,
         min_frames=0,
         segment_frames=None,
+        segment_type=SegmentType.ALL_RANDOM,
     ):
 
         regions = np.array(self.bounds_history)
@@ -449,6 +450,7 @@ class Track:
                     regions=regions[relative_frames],
                     frame_temp_median=frame_temp_median[relative_frames],
                     frame_indices=frames,
+                    segment_type=segment_type,
                 )
                 segments.append(segment)
         else:
@@ -466,6 +468,7 @@ class Track:
                 min_frames=min_frames,
                 segment_frames=None,
                 ignore_mass=not has_mass,
+                segment_type=segment_type,
             )
         return segments
 

@@ -106,13 +106,9 @@ class Previewer:
         if self.preview_type == self.PREVIEW_TRACKING:
             res_x *= 2
             res_y *= 2
-        out = cv2.VideoWriter(
-            filename,
-            cv2.VideoWriter_fourcc("M", "J", "P", "G"),
-            clip.frames_per_second,
-            (res_x, res_y),
-        )
-        frame_scale = 1
+
+        mpeg = MPEGCreator(filename)
+        frame_scale = 4
         for frame_number, frame in enumerate(clip.frame_buffer):
             if self.preview_type == self.PREVIEW_RAW:
                 image = self.convert_and_resize(
@@ -121,7 +117,11 @@ class Previewer:
                 draw = ImageDraw.Draw(image)
             elif self.preview_type == self.PREVIEW_TRACKING:
                 image = self.create_four_tracking_image(
-                    frame, clip.stats.min_temp, clip.stats.max_temp, clip.type
+                    frame,
+                    clip.stats.min_temp,
+                    clip.stats.max_temp,
+                    clip.type,
+                    frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
                 self.add_tracks(
@@ -183,12 +183,12 @@ class Previewer:
                     draw, image.width, image.height, f"Frame {frame.frame_number}"
                 )
 
-            out.write(np.uint8(image))
+            mpeg.next_frame(np.asarray(image))
             # we store the entire video in memory so we need to cap the frame count at some point.
             if frame_number > clip.frames_per_second * 60 * 10:
                 break
         clip.frame_buffer.close_cache()
-        out.release()
+        mpeg.close()
 
     def create_individual_track_previews(self, filename, clip: Clip):
         # resolution of video file.
@@ -315,7 +315,7 @@ class Previewer:
         center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
         draw.text((center[0], center[1]), footer_text, font=font)
 
-    def create_four_tracking_image(self, frame, min_temp, max_temp, type):
+    def create_four_tracking_image(self, frame, min_temp, max_temp, type, frame_scale):
 
         thermal = frame.thermal
         filtered = frame.filtered
@@ -328,9 +328,10 @@ class Previewer:
             thermal = Image.fromarray(thermal)
             filtered = Image.fromarray(filtered)
         else:
-            filtered = tools.convert_heat_to_img(
-                filtered, self.colourmap, min_temp, max_temp
-            )
+            print("filtered is", np.amax(filtered), np.amin(filtered))
+            filtered, _ = normalize(filtered, new_max=255)
+            filtered = Image.fromarray(filtered)
+            filtered = filtered.convert("RGB")
             thermal = tools.convert_heat_to_img(
                 thermal, self.colourmap, min_temp, max_temp
             )
@@ -364,14 +365,13 @@ class Previewer:
             (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
         )
         image = Image.fromarray(image)
-
-        # image = image.resize(
-        #     (
-        #         int(image.width * 4),
-        #         int(image.height * 4),
-        #     ),
-        #     Image.BILINEAR,
-        # )
+        image = image.resize(
+            (
+                int(image.width * frame_scale),
+                int(image.height * frame_scale),
+            ),
+            Image.BILINEAR,
+        )
         return image
 
     @staticmethod
@@ -514,7 +514,7 @@ def get_font():
     """gets default font."""
     if not globs._previewer_font:
         globs._previewer_font = ImageFont.truetype(
-            tools.resource_path("Ubuntu-R.ttf"), 8
+            tools.resource_path("Ubuntu-R.ttf"), 12
         )
     return globs._previewer_font
 

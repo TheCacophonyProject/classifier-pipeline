@@ -710,8 +710,9 @@ class KerasModel(Interpreter):
             clip.ffc_frames,
             thermal_median,
             self.params.square_width ** 2,
-            repeats=4,
+            repeats=1,
             segment_frames=segment_frames,
+            segment_type=self.params.segment_type,
         )
         return self.classify_track_data(
             track.get_id(),

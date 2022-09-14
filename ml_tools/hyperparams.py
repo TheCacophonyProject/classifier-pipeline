@@ -1,5 +1,5 @@
 from ml_tools.frame import TrackChannels
-from ml_tools.dataset import SegmentType
+from ml_tools.datasetstructures import SegmentType
 from ml_tools.preprocess import FrameTypes
 
 
@@ -54,7 +54,10 @@ class HyperParams(dict):
     @property
     def segment_type(self):
         segment_type = self.get("segment_type", SegmentType.ALL_RANDOM.name)
-        return SegmentType[segment_type]
+        if isinstance(segment_type, str):
+            return SegmentType[segment_type]
+        else:
+            return segment_type
 
     # Model hyper paramters
     @property
