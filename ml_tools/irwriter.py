@@ -39,7 +39,6 @@ from absl import logging
 import numpy as np
 from PIL import Image, ImageOps
 
-from pycocotools import mask
 import tensorflow as tf
 from . import tfrecord_util
 from ml_tools import tools
