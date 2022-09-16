@@ -5,4 +5,4 @@ classify:
     models:
       - name: "Inc3"
         id: 2
-        model_file: "/home/gp//cacophony/classifier-data/thermal-training/20220603/inc32022-06-03/frozen_model/"
+        model_file: "model/val_acc/saved_model.pb"

@@ -21,7 +21,6 @@ from matplotlib.colors import LinearSegmentedColormap
 import subprocess
 from PIL import Image, ImageFont, ImageDraw
 from pathlib import Path
-import ml_tools.tools as tools
 
 
 EPISON = 1e-5
@@ -73,7 +72,7 @@ class Rectangle:
             width == self.width and height == self.height
         ), "calculating variance on incorrectly sized filtered"
 
-        self.mass = tools.calculate_mass(filtered, threshold)
+        self.mass = calculate_mass(filtered, threshold)
 
     @property
     def mid_y(self):
