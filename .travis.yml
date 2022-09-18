@@ -1,23 +1,27 @@
+# require the branch name to be master (note for PRs this is the base branch name)
 dist: bionic
 language: python
 python:
 - '3.6'
+
 install:
 - sudo apt-get update
 - sudo apt -y install ffmpeg
 - sudo apt-get -y install libgirepository1.0-dev python3-dbus
 - sudo apt install -y build-essential libdbus-glib-1-dev libgirepository1.0-dev
+
 - pip install -r requirements.txt
+
 before_script:
 - pip install black --upgrade
 - pip install gdown
+
 script:
 - pytest -s
-- "./check-style"
+- ./check-style
 - python3 load.py -r -c tests/test-config.yaml
 - python3 build.py -c tests/test-config.yaml
-- python3 motiontest.py --thermal-config-file tests/config.toml -c tests/test-config.yaml
-  tests/clips/possum.cptv
+- python3 motiontest.py --thermal-config-file tests/config.toml -c tests/test-config.yaml tests/clips/possum.cptv
 - sudo mkdir /var/spool/cptv
 - sudo chmod -R 777 /var/spool/cptv
 - |
@@ -26,21 +30,22 @@ script:
 - mkdir model
 - tar -C model -xvf model_hq.tar
 - python3 classify.py -c tests/test-config.yaml ./tests/clips/
-- python3 piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml
-  -c tests/test-config.yaml
+- python3 piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml -c tests/test-config.yaml
+
+
+
 before_deploy:
-- pip install pex
-- mkdir -p /tmp/x
-- curl -sL https://github.com/goreleaser/nfpm/releases/download/v0.9.5/nfpm_0.9.5_Linux_x86_64.tar.gz
-  | tar -C /tmp/x -xzf -
-- PATH=/tmp/x:$PATH _release/build ${TRAVIS_TAG}
+- "pip install pex"
+- "mkdir -p /tmp/x"
+- "curl -sL https://github.com/goreleaser/nfpm/releases/download/v0.9.5/nfpm_0.9.5_Linux_x86_64.tar.gz | tar -C /tmp/x -xzf -"
+- "PATH=/tmp/x:$PATH _release/build ${TRAVIS_TAG}"
+
 deploy:
   provider: releases
+  github_token: $GITHUB_TOKEN  
   skip_cleanup: true
   file_glob: true
-  file: dist/*.deb
+  file: "dist/*.deb"
   on:
     repo: TheCacophonyProject/classifier-pipeline
     tags: true
-  api_key:
-    secure: QyuB5OHOt0E02BIF+pfph4VMqWD6pwqtuBf8vaEA3c/MIC4Q6b1SjKq2PrYPQ3eljzrxPBRaWwEDbpej3EJbtNFQPoZHuEgz4sok4jPh2viJ2hFsJk/n+01FhNR0uxhzdKQWCuHU6dILUtA20vi+jZM1OkOZHFXlGXY7a/aMzQZWShV8kMiDVHCBacre/t0NF7R05AEnbm5yie6n0biFMGnjvVh2CvEX/xsRNsjgUkHKWUMxnHtxztGFOpWsUMrs9QbQ/GrDXARyObJ6S2QOH/18O8xoSLjwHssyOzLbkbIwyGq+xMxTHZWbkJwe3U7huspcIXyrJAA7if0L4sErAAyNUTlxkoei8VyKMpOa8qBxzy+xFY/CK8AsRa/M+vwwUyT/0Lyrgwv4RyPOIO8DFXjUOw4a6b57IX+eGSP7KdAx1x4vrDqX2+w4TvXpOlrBRsvtMV108XsvcVzMLklJ4YKraiK54ecJIisl2AdPPGh1vtbmoNnDXy7pS1g7EV2FzQvYQwmdUlvivLjn80Q1pK+aibdqPZBVLyQ+4P4pZLa3jE2WtcShwI6DReqxV4YNtfqUxpJPfygywkY9kFgL6uP80YRWEDhIqINnWLB5E9/JLDP15Tqw8w+hV8l++U45lw5P8tvGRG95P+6Y3yPsCIOMATX5Zm2X884Ccg+1bIs=
