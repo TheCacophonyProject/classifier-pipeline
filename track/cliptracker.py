@@ -374,13 +374,6 @@ class ClipTracker(ABC):
             stats.max_offset < self.config.track_min_offset
             or stats.frames_moved < self.config.min_moving_frames
         ):
-            print(
-                "track didnt move",
-                stats.max_offset,
-                stats.frames_moved,
-                self.config.track_min_offset,
-                self.config.min_moving_frames,
-            )
             self.print_if_verbose(
                 "Track filtered.  Didn't move {}".format(stats.max_offset)
             )

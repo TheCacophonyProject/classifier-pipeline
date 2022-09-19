@@ -709,7 +709,7 @@ class KerasModel(Interpreter):
         segments = track.get_segments(
             clip.ffc_frames,
             thermal_median,
-            self.params.square_width**2,
+            self.params.square_width ** 2,
             repeats=1,
             segment_frames=segment_frames,
             segment_type=self.params.segment_type,

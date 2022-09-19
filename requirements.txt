@@ -24,3 +24,4 @@ dbus-python
 PyGObject~=3.34.0
 multiprocess
 pathos
+joblib
