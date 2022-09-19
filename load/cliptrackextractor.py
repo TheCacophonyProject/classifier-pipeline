@@ -43,7 +43,9 @@ class ClipTrackExtractor(ClipTracker):
 
     @property
     def tracker_version(self):
-        return f"ClipTrackExtractor-{ClipTrackExtractor.VERSION}"
+        return ClipTrackExtractor.VERSION
+        # until api takes a string
+        # return f"ClipTrackExtractor-{ClipTrackExtractor.VERSION}"
 
     @property
     def type(self):

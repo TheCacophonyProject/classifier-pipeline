@@ -86,7 +86,9 @@ class IRTrackExtractor(ClipTracker):
 
     @property
     def tracker_version(self):
-        return f"IRTrackExtractor-{IRTrackExtractor.VERSION}"
+        return IRTrackExtractor.VERSION
+        #  GPuntil api takes a string
+        # return f"IRTrackExtractor-{IRTrackExtractor.VERSION}"
 
     @property
     def type(self):
