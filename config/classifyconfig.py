@@ -88,6 +88,8 @@ class ModelConfig:
     tag_scores = attr.ib()
     ignored_tags = attr.ib()
     thumbnail_model = attr.ib()
+    reclassify = attr.ib()
+    submodel = attr.ib()
 
     @classmethod
     def load(cls, raw):
@@ -101,6 +103,8 @@ class ModelConfig:
             tag_scores=load_scores(raw.get("tag_scores", {})),
             ignored_tags=raw.get("ignored_tags", []),
             thumbnail_model=raw.get("thumbnail_model", False),
+            reclassify=raw.get("reclassify", None),
+            submodel=raw.get("submodel", False),
         )
         return model
 

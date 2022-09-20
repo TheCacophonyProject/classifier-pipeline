@@ -170,7 +170,7 @@ class ClipClassifier:
         dirname = destination_folder
 
         if self.previewer:
-            mpeg_filename = os.path.join(dirname, base_filename + "-classify.avi")
+            mpeg_filename = os.path.join(dirname, base_filename + "-classify.mp4")
 
             logging.info("Exporting preview to '{}'".format(mpeg_filename))
 

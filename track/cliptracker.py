@@ -245,7 +245,6 @@ class ClipTracker(ABC):
                 id=i,
                 frame_number=clip.current_frame,
             )
-            logging.info("Got region %s %s", region, region.frame_number)
             # GP this needs to be checked for themals 29/06/2022
             if clip.type == "IR":
                 if delta_thermal is not None:
@@ -292,7 +291,7 @@ class ClipTracker(ABC):
             # filter out regions that are probably just noise
             if self.config.filter_regions_pre_match and (
                 region.pixel_variance < self.config.aoi_pixel_variance
-                or region.mass < self.config.aoi_min_mass
+                and region.mass < self.config.aoi_min_mass
             ):
                 logging.debug(
                     "%s filtering region %s because of variance %s and mass %s",
