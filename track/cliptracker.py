@@ -406,19 +406,21 @@ class ClipTracker(ABC):
             clip.filtered_tracks.append(("Track filtered.  Mass too small", track))
 
             return True
-
-        highest_ratio = 0
-        for other in clip.tracks:
-            if track == other:
-                continue
-            highest_ratio = max(track.get_overlap_ratio(other), highest_ratio)
-
-        if highest_ratio > self.config.track_overlap_ratio:
-            self.print_if_verbose(
-                "Track filtered.  Too much overlap {}".format(highest_ratio)
-            )
-            clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
-            return True
+        # GP Removed as dont think this does much but filter good tracks, if the tracking
+        # chose 2 tracks lets keep them, perhaps usefull for short tracks where 90% overlaps
+        # but these will probably be filtered by being too short
+        # highest_ratio = 0
+        # for other in clip.tracks:
+        #     if track == other:
+        #         continue
+        #     highest_ratio = max(track.get_overlap_ratio(other), highest_ratio)
+        #
+        # if highest_ratio > self.config.track_overlap_ratio:
+        #     self.print_if_verbose(
+        #         "Track filtered.  Too much overlap {}".format(highest_ratio)
+        #     )
+        #     clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
+        #     return True
 
         return False
 
