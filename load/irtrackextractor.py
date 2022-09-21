@@ -285,7 +285,7 @@ class IRTrackExtractor(ClipTracker):
                 r_mid_x = r_2[2] / 2.0 + r_2[0]
                 r_mid_y = r_2[3] / 2.0 + r_2[1]
                 distance = (mid_x - r_mid_x) ** 2 + (r_mid_y - mid_y) ** 2
-                distance = distance ** 0.5
+                distance = distance**0.5
 
                 # widest = max(rect[2], rect[3])
                 # hack short cut just take line from mid points as shortest distance subtract biggest width or hieght from each
@@ -400,7 +400,7 @@ class IRTrackExtractor(ClipTracker):
             for track in clip.active_tracks:
                 if track.trap_reported:
                     continue
-                inside_trap(track, self.scale)
+                inside_trap_top(track, self.scale)
                 if track.in_trap:
                     filtered = self.filter_track(clip, track, track.get_stats())
                     if not filtered:
@@ -600,7 +600,7 @@ TOP = 8
 MIDDLE = 16
 
 
-def inside_trap(track, scale=None):
+def inside_trap_bottom(track, scale=None):
     region = track.last_bound.copy()
     if scale:
         region.rescale(1 / scale)
@@ -642,3 +642,65 @@ def inside_trap(track, scale=None):
     track.last_bound.in_trap = inside
     track.update_trapped_state()
     return inside
+
+
+def inside_trap_top(track, scale=None):
+    region = track.last_bound.copy()
+    if scale:
+        region.rescale(1 / scale)
+    if region.width < 60 or region.height < 40:
+        # dont want small regions
+        return False
+    if track.direction == 0:
+        if region.left < 100:
+            track.direction |= LEFT
+        if region.right > (640 - 100):
+            track.direction |= RIGHT
+        if region.bottom > (480 - 100):
+            track.direction |= BOTTOM
+        if track.direction == 0:
+            if region.bottom < 300:
+                track.direction |= TOP
+            else:
+                track.direction = MIDDLE
+    p = (region.right, 480 - region.top)
+
+    inside = IRTrackExtractor.LEFT_BOTTOM.is_below(
+        p
+    ) and IRTrackExtractor.LEFT_BOTTOM.is_right(p)
+    x_pos = IRTrackExtractor.LEFT_BOTTOM.x_res(p[1])
+    x_diff = abs(p[0] - x_pos)
+    left_percent = x_diff / region.width
+
+    p = (region.left, 480 - region.top)
+
+    inside = inside and (
+        IRTrackExtractor.RIGHT_BOTTOM.is_below(p)
+        and IRTrackExtractor.RIGHT_BOTTOM.is_left(p)
+    )
+    x_pos = IRTrackExtractor.RIGHT_BOTTOM.x_res(p[1])
+    # could try using bottom  rather than region.top here
+    x_diff = abs(p[0] - x_pos)
+    right_percent = x_diff / region.width
+
+    if not inside:
+        return False
+    in_trap = False
+    if left_percent < 0.5 and right_percent < 0.5:
+        return False
+    if track.direction & LEFT and region.left > 40 and left_percent > 0.5:
+        in_trap = True
+
+    elif track.direction & RIGHT and region.right < 580 and right_percent > 0.5:
+        in_trap = True
+
+    if track.direction == TOP and region.bottom > 300:
+        in_trap = True
+    if track.direction == BOTTOM and region.bottom < 480 - 50:
+        in_trap = True
+
+    if track.direction == MIDDLE and region.left > 40 and region.right < 580:
+        in_trap = True
+    track.last_bound.in_trap = in_trap
+    track.update_trapped_state()
+    return in_trap
