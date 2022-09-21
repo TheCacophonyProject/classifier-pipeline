@@ -81,9 +81,11 @@ class IRTrackExtractor(ClipTracker):
     PREVIEW = "preview"
     VERSION = 10
     TYPE = "IR"
+    LEFT_BOTTOM = Line(1.28, 180)
+    RIGHT_BOTTOM = Line(-1.2, 979)
 
-    LEFT_BOTTOM = Line(5 / 14, 160)
-    RIGHT_BOTTOM = Line(-5 / 12, 421.7)
+    # LEFT_BOTTOM = Line(5 / 14, 160)
+    # RIGHT_BOTTOM = Line(-5 / 12, 421.7)
     # BACK_TOP = Line(0, 250)
     # BACK_BOTTOM = Line(0, 170)
 
@@ -208,16 +210,16 @@ class IRTrackExtractor(ClipTracker):
         if self.scale is not None:
             res_x = int(self.res_x * self.scale)
             res_y = int(self.res_y * self.scale)
-        self.saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
-        self.saliency.setImagesize(res_x, res_y)
-        self.saliency.init()
+        if DO_SALIENCY:
+            self.saliency = cv2.saliency.MotionSaliencyBinWangApr2014_create()
+            self.saliency.setImagesize(res_x, res_y)
+            self.saliency.init()
 
     def process_frame(self, clip, frame, ffc_affected=False):
         start = time.time()
         if len(frame.shape) == 3:
             # in rgb so convert to gray
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
         if self.saliency is None and DO_SALIENCY:
             if self.resize_dims is not None:
                 self.init_saliency(
@@ -269,7 +271,7 @@ class IRTrackExtractor(ClipTracker):
                 r_mid_x = r_2[2] / 2.0 + r_2[0]
                 r_mid_y = r_2[3] / 2.0 + r_2[1]
                 distance = (mid_x - r_mid_x) ** 2 + (r_mid_y - mid_y) ** 2
-                distance = distance**0.5
+                distance = distance ** 0.5
 
                 # widest = max(rect[2], rect[3])
                 # hack short cut just take line from mid points as shortest distance subtract biggest width or hieght from each
@@ -402,10 +404,11 @@ class IRTrackExtractor(ClipTracker):
         in_trap = False
         wait = 100
         start = (0, 480 - int(IRTrackExtractor.LEFT_BOTTOM.y_res(0)))
-        end = (int(IRTrackExtractor.LEFT_BOTTOM.x_res(240)), 480 - 240)
+        end = (int(IRTrackExtractor.LEFT_BOTTOM.x_res(480)), 0)
+
         image = cv2.line(image, start, end, (0, 255, 0), 10)
-        start = (640, 480 - int(IRTrackExtractor.RIGHT_BOTTOM.y_res(640)))
-        end = (int(IRTrackExtractor.RIGHT_BOTTOM.x_res(240)), 480 - 240)
+        start = (int(IRTrackExtractor.RIGHT_BOTTOM.x_res(480)), 0)
+        end = (int(IRTrackExtractor.RIGHT_BOTTOM.x_res(0)), 480)
 
         image = cv2.line(image, start, end, (0, 255, 0), 10)
 
