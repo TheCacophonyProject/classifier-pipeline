@@ -339,7 +339,11 @@ class PiClassifier(Processor):
 
     def new_clip(self, preview_frames):
         self.clip = Clip(
-            self.tracking_config, "stream", model=self.headers.model, type=self.type
+            self.tracking_config,
+            "stream",
+            model=self.headers.model,
+            type=self.type,
+            calc_stats=False,
         )
         global clip
         clip = self.clip
@@ -358,7 +362,9 @@ class PiClassifier(Processor):
         self.clip.update_background(self.motion_detector.background.copy())
         self.clip._background_calculated()
         # no need to retrack all of preview
-        self.track_extractor.start_tracking(self.clip, preview_frames)
+        self.track_extractor.start_tracking(
+            self.clip, preview_frames, track_frames=False
+        )
 
     def startup_classifier(self):
         # classifies an empty frame to force loading of the model into memory

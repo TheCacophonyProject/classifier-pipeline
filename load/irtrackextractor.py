@@ -50,21 +50,25 @@ class Line:
         self.m = m
         self.c = c
 
+    # check point is above live
     def is_above(self, point):
         y_value = self.y_res(point[0])
         if point[1] > y_value:
             return True
         return False
 
+    # check point is below line
     def is_below(self, point):
         return not self.is_above(point)
 
+    # check point is to the left of line
     def is_left(self, point):
         x_value = self.x_res(point[1])
         if point[0] < x_value:
             return True
         return False
 
+    # check point is to the right of line
     def is_right(self, point):
         return not self.is_left(point)
 
@@ -84,8 +88,8 @@ class IRTrackExtractor(ClipTracker):
     LEFT_BOTTOM = Line(1.28, 180)
     RIGHT_BOTTOM = Line(-1.2, 979)
 
-    # LEFT_BOTTOM = Line(5 / 14, 160)
-    # RIGHT_BOTTOM = Line(-5 / 12, 421.7)
+    LEFT_BOTTOM = Line(5 / 14, 160)
+    RIGHT_BOTTOM = Line(-5 / 12, 421.7)
     # BACK_TOP = Line(0, 250)
     # BACK_BOTTOM = Line(0, 170)
 
@@ -183,7 +187,14 @@ class IRTrackExtractor(ClipTracker):
         self._tracking_time = time.time() - start
         return True
 
-    def start_tracking(self, clip, frames=None, background=None, background_frames=1):
+    def start_tracking(
+        self,
+        clip,
+        frames=None,
+        background=None,
+        background_frames=1,
+        track_frames=True,
+    ):
 
         self.res_x = clip.res_x
         self.res_y = clip.res_y
@@ -201,8 +212,11 @@ class IRTrackExtractor(ClipTracker):
             self.background.set_background(background, background_frames)
         self.init_saliency()
         if frames is not None:
+            do_tracking = self.do_tracking
+            self.do_tracking = self.do_tracking and track_frames
             for frame in frames:
                 self.process_frame(clip, frame)
+            self.do_tracking = do_tracking
 
     def init_saliency(self):
         res_x = self.res_x
@@ -323,24 +337,27 @@ class IRTrackExtractor(ClipTracker):
             # helps init the saliency, when ir tracks have a 5 second preview this shouldnt be needed
             repeats = 6
         start = time.time()
-        tracking_thermal = frame.copy()
-        if self.scale:
-            tracking_thermal = cv2.resize(
-                tracking_thermal,
-                (int(self.res_x * self.scale), int(self.res_y * self.scale)),
-            )
-        if self.background._background is None:
-            self.background.set_background(tracking_thermal.copy())
+
         saliencyMap = None
+        filtered = None
         if self.do_tracking:
+            tracking_thermal = frame.copy()
+            if self.scale:
+                tracking_thermal = cv2.resize(
+                    tracking_thermal,
+                    (int(self.res_x * self.scale), int(self.res_y * self.scale)),
+                )
+            if self.background._background is None:
+                self.background.set_background(tracking_thermal.copy())
             saliencyMap, _ = self._get_filtered_frame_ir(
                 tracking_thermal, repeats=repeats
             )
+            filtered, _ = get_ir_back_filtered(
+                self.background.background, tracking_thermal, clip.background_thresh
+            )
+            self.background.update_background(tracking_thermal, filtered)
+            clip.set_background(self.background.background)
         start = time.time()
-
-        backsub, _ = get_ir_back_filtered(
-            self.background.background, tracking_thermal, clip.background_thresh
-        )
 
         threshold = 0
         if np.amin(saliencyMap) == 255:
@@ -352,16 +369,14 @@ class IRTrackExtractor(ClipTracker):
             pass
             # backsub = np.where(saliencyMap > 0, saliencyMap, backsub)
 
-        cur_frame = clip.add_frame(frame, backsub, saliencyMap, ffc_affected)
+        cur_frame = clip.add_frame(frame, filtered, saliencyMap, ffc_affected)
         start = time.time()
-        self.background.update_background(tracking_thermal, backsub)
-        clip.set_background(self.background.background)
 
         if not self.do_tracking:
             return
         start = time.time()
 
-        num, mask, component_details = theshold_saliency(backsub, threshold=0)
+        num, mask, component_details = theshold_saliency(filtered, threshold=0)
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
 
@@ -442,7 +457,8 @@ class IRTrackExtractor(ClipTracker):
                 1,
                 (255, 0, 0),
             )
-            # wait = 300
+            wait = 300
+
         cv2.imshow("id", image)
         cv2.waitKey(wait)
         # 1 / 0
@@ -527,7 +543,7 @@ class IRTrackExtractor(ClipTracker):
         prev_i = max(0, min(10, clip.current_frame - 10))
         s = time.time()
         prev_frame = clip.frame_buffer.get_frame_ago(prev_i)
-        if prev_i == frame.frame_number:
+        if prev_i == frame.frame_number or prev_frame.filtered is None:
             return None, None
 
         s = time.time()
@@ -603,68 +619,26 @@ def inside_trap(track, scale=None):
                 track.direction |= TOP
             else:
                 track.direction = MIDDLE
-    p = (region.right, 480 - region.top)
+    p = (region.left, 480 - region.bottom)
+    # bottom left region below left Line
+    # bottom right region below right line
 
-    inside = (
-        IRTrackExtractor.LEFT_BOTTOM.is_below(p)
-        and IRTrackExtractor.LEFT_BOTTOM.is_right(p)
-        # or IRTrackExtractor.RIGHT_BOTTOM.is_above(region)
-        # or IRTrackExtractor.BACK_BOTTOM.is_above(region)
-    )
-    x_pos = IRTrackExtractor.LEFT_BOTTOM.x_res(p[1])
-    x_diff = abs(p[0] - x_pos)
-    left_percent = x_diff / region.width
-
-    p = (region.left, 480 - region.top)
-
+    # alternative method is to use
+    # top right is below and rigth of left line
+    # top left is below and left of right line
+    # this fixes problem when animal comes from behind trap towards camera
+    # this triggerrs early for bottom areas
+    inside = IRTrackExtractor.LEFT_BOTTOM.is_below(
+        p
+    ) and IRTrackExtractor.LEFT_BOTTOM.is_right(p)
+    p = (region.right, 480 - region.bottom)
     inside = inside and (
         IRTrackExtractor.RIGHT_BOTTOM.is_below(p)
         and IRTrackExtractor.RIGHT_BOTTOM.is_left(p)
     )
-    x_pos = IRTrackExtractor.RIGHT_BOTTOM.x_res(p[1])
-    # could try using bottom  rather than region.top here
-    x_diff = abs(p[0] - x_pos)
-    right_percent = x_diff / region.width
-    #
-    # print(
-    #     f"checking direction of {region.left}x{region.top} - {region.right}x{region.bottom}",
-    #     "from dir",
-    #     track.direction,
-    #     "x pos",
-    #     x_pos,
-    #     "distance",
-    #     x_diff,
-    #     " regin.width",
-    #     region.width,
-    #     "l percent",
-    #     left_percent,
-    #     "r percent",
-    #     right_percent,
-    # )
 
-    if not inside:
-        return False
-    in_trap = False
-    if left_percent < 0.5 and right_percent < 0.5:
-        return False
-    if track.direction & LEFT and region.left > 40 and left_percent > 0.5:
-        # print("Track from left")
-        in_trap = True
-
-    elif track.direction & RIGHT and region.right < 580 and right_percent > 0.5:
-        # print("track from rgiht")
-        in_trap = True
-
-    if track.direction == TOP and region.bottom > 300:
-        # print("track from top")
-        in_trap = True
-    if track.direction == BOTTOM and region.bottom < 480 - 50:
-        # print("track from bottom")
-        in_trap = True
-
-    if track.direction == MIDDLE and region.left > 40 and region.right < 580:
-        # print("MIDDLE PASS")
-        in_trap = True
-    track.last_bound.in_trap = in_trap
+    x_diff = p[0] - IRTrackExtractor.RIGHT_BOTTOM.x_res(p[1])
+    inside = inside and abs(x_diff) > 150
+    track.last_bound.in_trap = inside
     track.update_trapped_state()
-    return in_trap
+    return inside
