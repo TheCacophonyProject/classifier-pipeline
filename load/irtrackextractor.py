@@ -184,6 +184,7 @@ class IRTrackExtractor(ClipTracker):
 
         if self.calc_stats:
             clip.stats.completed(clip.current_frame, clip.res_y, clip.res_x)
+
         self._tracking_time = time.time() - start
         return True
 
@@ -352,9 +353,19 @@ class IRTrackExtractor(ClipTracker):
             saliencyMap, _ = self._get_filtered_frame_ir(
                 tracking_thermal, repeats=repeats
             )
-            filtered, _ = get_ir_back_filtered(
-                self.background.background, tracking_thermal, clip.background_thresh
+            filtered, adjusted_thresh = get_ir_back_filtered(
+                self.background.background,
+                tracking_thermal,
+                clip.background_thresh,
             )
+            active_track = False
+            for track in clip.active_tracks:
+                if len(track) > 5:
+                    active_track = True
+                    break
+            if active_track:
+                logging.info("Updating thresth to %s", adjusted_thresh)
+                clip.background_thresh = adjusted_thresh
             self.background.update_background(tracking_thermal, filtered)
             clip.set_background(self.background.background)
         start = time.time()
@@ -565,11 +576,14 @@ def get_ir_back_filtered(background, thermal, back_thresh):
 
     avg_change = 0
     filtered = abs(filtered - background)
+    mean = np.mean(filtered)
     filtered[filtered < back_thresh] = 0
+    if mean < 0.2:
+        back_thresh -= 1
+        #
+    logging.info("Mean is %s", mean)
     filtered, stats = normalize(filtered, new_max=255)
-
-    # filtered[filtered > 10] += 30
-    return filtered, 0
+    return filtered, back_thresh
 
 
 class Background:
