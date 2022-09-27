@@ -146,12 +146,12 @@ class RegionTracker(Tracker):
                 max_distances = max_distances[:1]
 
             if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
-                logging.info(
-                    "track {} region mass {} deviates too much from {}".format(
-                        track.get_id(),
-                        region.mass,
-                        avg_mass,
-                    )
+                logging.debug(
+                    "track %s region mass %s deviates too much from %s for region %s",
+                    track.get_id(),
+                    region.mass,
+                    avg_mass,
+                    region,
                 )
                 continue
             skip = False
@@ -159,11 +159,12 @@ class RegionTracker(Tracker):
                 if max_distance is None:
                     continue
                 if distance > max_distance:
-
-                    logging.info(
-                        "track {} distance score {} bigger than max distance {}".format(
-                            track.get_id(), distance, max_distance
-                        )
+                    logging.debug(
+                        "track %s distance score %s bigger than max distance %s for region %s",
+                        track.get_id(),
+                        distance,
+                        max_distance,
+                        region,
                     )
                     skip = True
                     break
@@ -172,10 +173,12 @@ class RegionTracker(Tracker):
                 continue
 
             if size_change > max_size_change:
-                logging.info(
-                    "track {} size_change {} bigger than max size_change {}".format(
-                        track.get_id(), size_change, max_size_change
-                    )
+                logging.debug(
+                    "track % size_change %s bigger than max size_change %s for region %s",
+                    track.get_id(),
+                    size_change,
+                    max_size_change,
+                    region,
                 )
                 continue
             # only for thermal

@@ -175,7 +175,7 @@ class IRTrackExtractor(ClipTracker):
                 background = np.uint8(gray)
                 # cv2.imshow("bak", np.uint8(background))
                 # cv2.waitKey(1000)
-                self.start_tracking(clip, background=gray, background_frames=50)
+                self.start_tracking(clip, background=gray, background_frames=1000)
                 continue
             self.process_frame(clip, gray)
         vidcap.release()
@@ -286,7 +286,7 @@ class IRTrackExtractor(ClipTracker):
                 r_mid_x = r_2[2] / 2.0 + r_2[0]
                 r_mid_y = r_2[3] / 2.0 + r_2[1]
                 distance = (mid_x - r_mid_x) ** 2 + (r_mid_y - mid_y) ** 2
-                distance = distance**0.5
+                distance = distance ** 0.5
 
                 # widest = max(rect[2], rect[3])
                 # hack short cut just take line from mid points as shortest distance subtract biggest width or hieght from each
@@ -353,19 +353,12 @@ class IRTrackExtractor(ClipTracker):
             saliencyMap, _ = self._get_filtered_frame_ir(
                 tracking_thermal, repeats=repeats
             )
-            filtered, adjusted_thresh = get_ir_back_filtered(
+            filtered = get_ir_back_filtered(
                 self.background.background,
                 tracking_thermal,
                 clip.background_thresh,
             )
-            active_track = False
-            for track in clip.active_tracks:
-                if len(track) > 5:
-                    active_track = True
-                    break
-            if active_track:
-                logging.info("Updating thresth to %s", adjusted_thresh)
-                clip.background_thresh = adjusted_thresh
+
             self.background.update_background(tracking_thermal, filtered)
             clip.set_background(self.background.background)
         start = time.time()
@@ -406,7 +399,6 @@ class IRTrackExtractor(ClipTracker):
             else:
                 s = time.time()
                 regions = self._get_regions_of_interest(clip, component_details)
-
                 self._apply_region_matchings(clip, regions)
             for track in clip.active_tracks:
                 if track.trap_reported:
@@ -573,17 +565,10 @@ def get_ir_back_filtered(background, thermal, back_thresh):
     """
 
     filtered = np.float32(thermal.copy())
-
-    avg_change = 0
     filtered = abs(filtered - background)
-    mean = np.mean(filtered)
     filtered[filtered < back_thresh] = 0
-    if mean < 0.2:
-        back_thresh -= 1
-        #
-    logging.info("Mean is %s", mean)
     filtered, stats = normalize(filtered, new_max=255)
-    return filtered, back_thresh
+    return filtered
 
 
 class Background:
@@ -598,6 +583,7 @@ class Background:
 
     def update_background(self, thermal, filtered):
         background = self.background
+
         new_thermal = np.where(filtered > 0, background, thermal)
         self._background += new_thermal
         self.frames += 1

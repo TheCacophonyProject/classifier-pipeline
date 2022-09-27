@@ -13,7 +13,6 @@ class Background:
         self.frames = 0
 
     def process_frame(self, frame):
-        self.frames += 1
         if self._background is None:
             self._background = np.float32(frame.copy())
             return
