@@ -203,11 +203,9 @@ def create_tf_records(
                     # count += 1
                 except Exception as e:
                     logging.error("Error saving ", exc_info=True)
-                    raise e
             # break
     except:
         logging.error("Error saving track info", exc_info=True)
-        raise "EX"
     for writer in writers:
         writer.close()
 

@@ -602,7 +602,7 @@ class TrackDatabase:
                                 "trying to get clip %s track %s frame %s",
                                 clip_id,
                                 track_id,
-                                frame_number + track_start,
+                                frame_number,
                                 exc_info=True,
                             )
 
