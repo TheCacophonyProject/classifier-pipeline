@@ -28,6 +28,7 @@ import numpy as np
 class Region(Rectangle):
     """Region is a rectangle extended to support mass."""
 
+    centroid = attr.ib()
     mass = attr.ib(default=0)
     # how much pixels in this region have changed since last frame
     frame_number = attr.ib(default=0)
@@ -149,6 +150,7 @@ class Region(Rectangle):
             self.y,
             self.width,
             self.height,
+            self.centroid,
             self.mass,
             self.frame_number,
             self.pixel_variance,

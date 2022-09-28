@@ -494,6 +494,39 @@ def add_track(
             scale=scale,
         )
     if debug:
+
+        points = np.uint16(
+            [
+                region.centroid[0] - 1,
+                region.centroid[1] - 1,
+                region.centroid[0] + 1,
+                region.centroid[1] + 1,
+            ]
+        )
+        points = points * scale
+        draw.ellipse(
+            [(points[0], points[1]), (points[2], points[3])],
+            fill=colour,
+            width=20,
+        )
+
+        # region mid
+        points = np.uint16(
+            [
+                region.mid_x - 1,
+                region.mid_y - 1,
+                region.mid_x + 1,
+                region.mid_y + 1,
+            ]
+        )
+
+        points = points * scale
+        draw.ellipse(
+            [(points[0], points[1]), (points[2], points[3])],
+            fill=Previewer.TRACK_COLOURS[1],
+            width=20,
+        )
+
         text = None
         if tracks_text and len(tracks_text) > index:
             text = tracks_text[index]
@@ -608,7 +641,7 @@ def add_debug_text(
     footer_size = font.getsize(text)
     footer_center = ((region.width * scale) - footer_size[0]) / 2
 
-    footer_rect = Region(
+    footer_rect = tools.Rectangle(
         region.right * scale - footer_center / 2.0,
         (v_offset + region.bottom) * scale,
         footer_size[0],
