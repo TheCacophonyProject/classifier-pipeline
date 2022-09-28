@@ -216,7 +216,7 @@ class ClipTracker(ABC):
         delta_thermal = np.abs(np.float32(thermal) - np.float32(prev_thermal))
         return delta_thermal, delta_filtered
 
-    def _get_regions_of_interest(self, clip, component_details, centroids):
+    def _get_regions_of_interest(self, clip, component_details, centroids=None):
         """
         Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
         rectangles.
@@ -236,6 +236,13 @@ class ClipTracker(ABC):
 
             if component[2] < self.min_dimension or component[3] < self.min_dimension:
                 continue
+            if centroids is None:
+                centroid = [
+                    int(component[0] + component[2] / 2),
+                    int(component[1] + component[3] / 2.0),
+                ]
+            else:
+                centroid = centroids[i]
             region = Region(
                 component[0],
                 component[1],
@@ -244,7 +251,7 @@ class ClipTracker(ABC):
                 mass=component[4],
                 id=i,
                 frame_number=clip.current_frame,
-                centroid=centroids[i],
+                centroid=centroid,
             )
             # GP this needs to be checked for themals 29/06/2022
             if clip.type == "IR":
