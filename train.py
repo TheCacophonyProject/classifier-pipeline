@@ -64,7 +64,7 @@ def main():
         args.name,
         conf,
         conf.train.hyper_params,
-        grid_search=args.grid,
+        do_grid_search=args.grid,
         weights=args.weights,
         ignore=args.ignore,
     )

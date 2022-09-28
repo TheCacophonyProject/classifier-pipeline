@@ -406,48 +406,6 @@ class KerasModel(Interpreter):
         del self.test
         gc.collect()
 
-    def get_dataset(
-        self,
-        pattern,
-        augment=False,
-        reshuffle=True,
-        deterministic=False,
-        resample=True,
-        weights=None,
-        stop_on_empty_dataset=True,
-    ):
-        logging.info("Getting dataset %s", self.type)
-        if self.type == "thermal":
-            if self.ds_by_label:
-                get_ds = get_thermal_dataset_by_label
-            else:
-                get_ds = get_thermal_dataset
-            return get_ds(
-                pattern,
-                self.params.batch_size,
-                self.params.output_dim[:2],
-                self.labels,
-                augment=augment,
-                reshuffle=reshuffle,
-                deterministic=deterministic,
-                resample=resample,
-                # stop_on_empty_dataset=stop_on_empty_dataset,
-                preprocess_fn=self.preprocess_fn,
-            )
-        return get_ir_dataset(
-            pattern,
-            self.params.batch_size,
-            self.params.output_dim[:2],
-            self.labels,
-            augment=augment,
-            reshuffle=reshuffle,
-            deterministic=deterministic,
-            resample=resample,
-            weights=weights,
-            stop_on_empty_dataset=stop_on_empty_dataset,
-            preprocess_fn=self.preprocess_fn,
-        )
-
     def train_model_tfrecords(
         self, epochs, run_name, base_dir, weights=None, rebalance=False, resample=False
     ):
@@ -472,7 +430,8 @@ class KerasModel(Interpreter):
         train_files = base_dir + "/train"
         validate_files = base_dir + "/validation"
 
-        self.train, remapped = self.get_dataset(
+        self.train, remapped = get_dataset(
+            self,
             train_files,
             augment=True,
             resample=resample,
@@ -480,7 +439,8 @@ class KerasModel(Interpreter):
             # dist=self.dataset_counts["train"],
         )
         self.remapped = remapped
-        self.validate, remapped = self.get_dataset(
+        self.validate, remapped = get_dataset(
+            self,
             validate_files,
             augment=False,
             resample=resample,
@@ -533,8 +493,8 @@ class KerasModel(Interpreter):
         test_accuracy = None
         test_files = base_dir + "/test"
         if len(test_files) > 0:
-            self.test, _ = self.get_dataset(
-                test_files, augment=False, reshuffle=False, resample=False
+            self.test, _ = get_dataset(
+                self, test_files, augment=False, reshuffle=False, resample=False
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
@@ -709,7 +669,7 @@ class KerasModel(Interpreter):
         segments = track.get_segments(
             clip.ffc_frames,
             thermal_median,
-            self.params.square_width**2,
+            self.params.square_width ** 2,
             repeats=1,
             segment_frames=segment_frames,
             segment_type=self.params.segment_type,
@@ -992,22 +952,17 @@ def plot_confusion_matrix(cm, class_names):
 def log_confusion_matrix(epoch, logs, model, dataset, writer):
     # Use the model to predict the values from the validation dataset.
 
-    dataset.reload_samples()
-    test_pred_raw = model.predict(dataset)
-    dataset.cur_epoch -= 1
-    batch_y = dataset.get_epoch_labels(epoch=dataset.cur_epoch)
+    true_categories = tf.concat([y for x, y in dataset], axis=0)
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    y_pred = model.model.predict(dataset)
 
-    y = []
-    for batch in batch_y:
-        y.extend(np.argmax(batch, axis=1))
+    predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
 
-    # reset validation generator will be 1 epoch ahead
-    test_pred = np.argmax(test_pred_raw, axis=1)
-
-    cm = confusion_matrix(y, test_pred, labels=np.arange(len(dataset.labels)))
-
+    cm = confusion_matrix(
+        true_categories, predicted_categories, labels=np.arange(len(model.labels))
+    )
     # Log the confusion matrix as an image summary.
-    figure = plot_confusion_matrix(cm, class_names=dataset.labels)
+    figure = plot_confusion_matrix(cm, class_names=model.labels)
     cm_image = plot_to_image(figure)
 
     # Log the confusion matrix as an image summary.
@@ -1068,65 +1023,45 @@ def validate_model(model_file):
 # HYPER PARAM TRAINING OF A MODEL
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
-HP_TYPE = hp.HParam("type", hp.Discrete([1]))
 
-HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
+HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([8, 16, 32, 64]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
-HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.01]))
+HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([1.0, 0.01, 0.001]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
 HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
-HP_SEGMENT_TYPE = hp.HParam("segment_type", hp.Discrete([0, 1, 2, 3, 4, 5, 6]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
 
 
 # GRID SEARCH
-def train_test_model(model, hparams, params, log_dir, writer, epochs=15):
+def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
     # if not self.model:
-    learning_rate = hparams[HP_SEGMENT_TYPE]
-    # note gp this means we need to keep tracks in dataset file in build step
-    keras_model.train_dataset.recalculate_segments(segment_type=segment_type)
-    keras_model.validation_dataset.recalculate_segments(segment_type=segment_type)
-    keras_model.test_dataset.recalculate_segments(segment_type=segment_type)
-    labels = keras_model.train_dataset.labels
-    train = DataGenerator(
-        keras_model.train_dataset,
-        labels,
-        params.output_dim,
-        batch_size=batch_size,
-        model_preprocess=preprocess_fn,
-        epochs=epochs,
-        shuffle=True,
-        cap_at="bird",
-        type=type,
-        **params,
+    base_dir = os.path.join(base_dir, "training-data")
+    train_files = base_dir + "/train"
+    validate_files = base_dir + "/validation"
+    test_files = base_dir + "/test"
+
+    train, remapped = get_dataset(
+        model,
+        train_files,
+        augment=True,
+        stop_on_empty_dataset=False,
     )
-    validate = DataGenerator(
-        keras_model.validation_dataset,
-        labels,
-        params.output_dim,
-        batch_size=batch_size,
-        model_preprocess=preprocess_fn,
-        epochs=epochs,
-        shuffle=True,
-        cap_at="bird",
-        type=type,
-        **params,
+    validate, remapped = get_dataset(
+        model,
+        validate_files,
+        augment=False,
+        stop_on_empty_dataset=False,
     )
-    test = DataGenerator(
-        keras_model.test_dataset,
-        labels,
-        params.output_dim,
-        batch_size=batch_size,
-        model_preprocess=preprocess_fn,
-        epochs=1,
-        shuffle=True,
-        cap_at="bird",
-        type=type,
-        **params,
+
+    test, _ = get_dataset(
+        model, test_files, augment=False, reshuffle=False, resample=False
     )
+
+    labels = model.labels
+
     opt = None
     learning_rate = hparams[HP_LEARNING_RATE]
     epsilon = hparams[HP_EPSILON]
@@ -1135,28 +1070,22 @@ def train_test_model(model, hparams, params, log_dir, writer, epochs=15):
         opt = tf.keras.optimizers.Adam(learning_rate=learning_rate, epsilon=epsilon)
     else:
         opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, epsilon=epsilon)
-    model.compile(
-        optimizer=opt, loss=loss(params), metrics=["accuracy"], run_eagerly=True
+    model.model.compile(
+        optimizer=opt, loss=loss(model.params), metrics=["accuracy"], run_eagerly=True
     )
-    cm_callback = keras.callbacks.LambdaCallback(
+    cm_callback = tf.keras.callbacks.LambdaCallback(
         on_epoch_end=lambda epoch, logs: log_confusion_matrix(
             epoch, logs, model, test, writer
         )
     )
-    history = model.fit(
+    history = model.model.fit(
         train,
+        validation_data=validate,
         epochs=epochs,
         shuffle=False,
-        validation_data=validate,
         callbacks=[cm_callback],
         verbose=2,
     )
-    train.stop_load()
-    validate.stop_load()
-    test.stop_load()
-    validate = None
-    test = None
-    train = None
     tf.keras.backend.clear_session()
     gc.collect()
     del model
@@ -1167,12 +1096,12 @@ def train_test_model(model, hparams, params, log_dir, writer, epochs=15):
     return history
 
 
-def test_hparams(keras_model, log_dir):
+def grid_search(keras_model, base_dir):
 
     epochs = 15
     batch_size = 32
 
-    dir = log_dir + "/hparam_tuning"
+    dir = keras_model.log_dir + "/hparam_tuning"
     with tf.summary.create_file_writer(dir).as_default():
         hp.hparams_config(
             hparams=[
@@ -1181,10 +1110,8 @@ def test_hparams(keras_model, log_dir):
                 HP_LEARNING_RATE,
                 HP_OPTIMIZER,
                 HP_EPSILON,
-                HP_TYPE,
                 HP_RETRAIN,
                 HP_DROPOUT,
-                HP_SEGMENT_TYPE,
             ],
             metrics=[
                 hp.Metric(METRIC_ACCURACY, display_name="Accuracy"),
@@ -1197,52 +1124,49 @@ def test_hparams(keras_model, log_dir):
         for dense_size in HP_DENSE_SIZES.domain.values:
             for retrain_layer in HP_RETRAIN.domain.values:
                 for learning_rate in HP_LEARNING_RATE.domain.values:
-                    for type in HP_TYPE.domain.values:
-                        for optimizer in HP_OPTIMIZER.domain.values:
-                            for epsilon in HP_EPSILON.domain.values:
-                                for dropout in HP_DROPOUT.domain.values:
-                                    for segment_type in HP_SEGMENT_TYPE.domain.values:
-                                        hparams = {
-                                            HP_DENSE_SIZES: dense_size,
-                                            HP_BATCH_SIZE: batch_size,
-                                            HP_LEARNING_RATE: learning_rate,
-                                            HP_OPTIMIZER: optimizer,
-                                            HP_EPSILON: epsilon,
-                                            HP_TYPE: type,
-                                            HP_RETRAIN: retrain_layer,
-                                            HP_DROPOUT: dropout,
-                                            HP_SEGMENT_TYPE: segment_type,
-                                        }
+                    for optimizer in HP_OPTIMIZER.domain.values:
+                        for epsilon in HP_EPSILON.domain.values:
+                            for dropout in HP_DROPOUT.domain.values:
+                                hparams = {
+                                    HP_DENSE_SIZES: dense_size,
+                                    HP_BATCH_SIZE: batch_size,
+                                    HP_LEARNING_RATE: learning_rate,
+                                    HP_OPTIMIZER: optimizer,
+                                    HP_EPSILON: epsilon,
+                                    HP_RETRAIN: retrain_layer,
+                                    HP_DROPOUT: dropout,
+                                }
 
-                                        dense_layers = []
-                                        if dense_size != "":
-                                            for i, size in enumerate(dense_size):
-                                                dense_layers[i] = int(size)
-                                        keras_model.build_model(
-                                            dense_sizes=dense_layers,
-                                            retrain_from=None
-                                            if retrain_layer == -1
-                                            else retrain_layer,
-                                            dropout=None if dropout == 0.0 else dropout,
-                                        )
+                                dense_layers = []
+                                if dense_size != "":
+                                    for i, size in enumerate(dense_size):
+                                        dense_layers[i] = int(size)
+                                keras_model.build_model(
+                                    dense_sizes=dense_layers,
+                                    retrain_from=None
+                                    if retrain_layer == -1
+                                    else retrain_layer,
+                                    dropout=None if dropout == 0.0 else dropout,
+                                )
 
-                                        run_name = "run-%d" % session_num
-                                        print("--- Starting trial: %s" % run_name)
-                                        print({h.name: hparams[h] for h in hparams})
-                                        self.run(
-                                            keras_model,
-                                            dir + "/" + run_name,
-                                            hparams,
-                                            epochs,
-                                        )
-                                        session_num += 1
+                                run_name = "run-%d" % session_num
+                                print("--- Starting trial: %s" % run_name)
+                                print({h.name: hparams[h] for h in hparams})
+                                run(
+                                    keras_model,
+                                    dir + "/" + run_name,
+                                    hparams,
+                                    epochs,
+                                    base_dir,
+                                )
+                                session_num += 1
 
 
-def run(keras_model, log_dir, hparams, params, epochs):
+def run(keras_model, log_dir, hparams, epochs, base_dir):
     with tf.summary.create_file_writer(log_dir).as_default() as w:
         hp.hparams(hparams)  # record the values used in this trial
         history = train_test_model(
-            keras_model, hparams, params, log_dir, w, epochs=epochs
+            keras_model, hparams, log_dir, w, base_dir, epochs=epochs
         )
         val_accuracy = history.history["val_accuracy"]
         val_loss = history.history["val_loss"]
@@ -1262,3 +1186,46 @@ class ClearMemory(Callback):
         print("epoch edned", epoch)
         gc.collect()
         tf.keras.backend.clear_session()
+
+
+def get_dataset(
+    model,
+    pattern,
+    augment=False,
+    reshuffle=True,
+    deterministic=False,
+    resample=True,
+    weights=None,
+    stop_on_empty_dataset=False,
+):
+    logging.info("Getting dataset %s", model.type)
+    if model.type == "thermal":
+        if model.ds_by_label:
+            get_ds = get_thermal_dataset_by_label
+        else:
+            get_ds = get_thermal_dataset
+        return get_ds(
+            pattern,
+            model.params.batch_size,
+            model.params.output_dim[:2],
+            model.labels,
+            augment=augment,
+            reshuffle=reshuffle,
+            deterministic=deterministic,
+            resample=resample,
+            # stop_on_empty_dataset=stop_on_empty_dataset,
+            preprocess_fn=model.preprocess_fn,
+        )
+    return get_ir_dataset(
+        pattern,
+        model.params.batch_size,
+        model.params.output_dim[:2],
+        model.labels,
+        augment=augment,
+        reshuffle=reshuffle,
+        deterministic=deterministic,
+        resample=resample,
+        weights=weights,
+        stop_on_empty_dataset=stop_on_empty_dataset,
+        preprocess_fn=model.preprocess_fn,
+    )
