@@ -1,5 +1,124 @@
+import math
 import numpy as np
 from track.region import Region
+import cv2
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+
+def display_track(mass_frames, contour_frames, id):
+    rows = 2
+    columns = 10
+    fig = plt.figure(figsize=(50, 50))
+
+    fig.suptitle(
+        f"{id}  Suggested thumbnails",
+        fontsize=16,
+    )
+
+    for i, frame in enumerate(mass_frames):
+
+        plt.subplot(rows, columns, i + 1)
+        remove_axes(f"#{frame[2].frame_number} - mass {frame[1]} - pts {frame[0]}")
+        plt.imshow(frame[3].subimage(frame[2].thermal))
+
+    for i, frame in enumerate(contour_frames):
+
+        plt.subplot(rows, columns, 10 + i + 1)
+        remove_axes(f"#{frame[2].frame_number} -mass {frame[1]} - pts {frame[0]}")
+        plt.imshow(frame[3].subimage(frame[2].thermal))
+
+    plt.subplots_adjust(0, 0, 0.99, 0.99, 0, 0)
+    plt.show()
+    plt.clf()
+
+
+def remove_axes(title):
+
+    ax = plt.gca()
+    # hide x-axis
+    ax.get_xaxis().set_visible(False)
+    # ax.title.set_visible(False)
+    ax.set_xticklabels(())
+    plt.subplots_adjust(hspace=0.001)
+    ax.margins(y=0)
+    # hide y-axis
+    ax.get_yaxis().set_visible(False)
+    ax.set_title(title)
+
+
+def thumbnail_for_track(clip):
+    for track in clip.tracks:
+        contour_points = []
+        for region in track.bounds_history:
+            frame = clip.frame_buffer.get_frame(region.frame_number)
+            contours, heirechy = cv2.findContours(
+                np.uint8(region.subimage(frame.mask)),
+                cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_TC89_KCOS,
+            )
+            if len(contours) == 0:
+                contour_points.append(0)
+                continue
+            points = len(contours[0])
+            contour_points.append(points)
+
+        mass_history = [int(bound.mass) for bound in track.bounds_history]
+        segment_mass = []
+        sorted_mass = np.argsort(mass_history)
+        upperq_i = sorted_mass[int(len(sorted_mass) * 3 / 4)]
+        mass_frames = []
+
+        num_frames = len(mass_history) - 1 - upperq_i
+        gap = int(math.ceil(num_frames / 5))
+        index = int(len(sorted_mass) * 3 / 4)
+        for i in sorted_mass:
+            print(
+                "mass in sorted is",
+                mass_history[i],
+                track.bounds_history[i].frame_number,
+            )
+        for i in range(5):
+            if index >= len(sorted_mass):
+                index = len(sorted_mass) - 1
+                # break
+            actual_index = sorted_mass[index]
+            print("getting index", index, len(sorted_mass))
+            region = track.bounds_history[actual_index]
+            frame = clip.frame_buffer.get_frame(
+                track.bounds_history[actual_index].frame_number
+            )
+            mass_frames.append(
+                (
+                    contour_points[actual_index],
+                    mass_history[actual_index],
+                    frame,
+                    region,
+                )
+            )
+            if gap == 0:
+                break
+            index += gap
+        contour_frames = []
+        sorted_contours = np.argsort(contour_points)[::-1]
+        for index in sorted_contours[:10]:
+            region = track.bounds_history[index]
+            frame = clip.frame_buffer.get_frame(region.frame_number)
+            contour_frames.append(
+                (contour_points[index], mass_history[index], frame, region)
+            )
+        print(
+            "have",
+            len(mass_frames),
+            len(contour_frames),
+            track.start_frame,
+            track.end_frame,
+        )
+        display_track(
+            mass_frames,
+            contour_frames,
+            f"{clip.get_id()}-{track.start_frame}-{track.end_frame}",
+        )
 
 
 def visit_tag(clip, predictions_per_model):

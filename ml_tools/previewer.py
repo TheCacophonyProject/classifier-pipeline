@@ -334,18 +334,46 @@ class Previewer:
             thermal = tools.convert_heat_to_img(
                 thermal, self.colourmap, min_temp, max_temp
             )
-        if self.debug:
-            tools.add_heat_number(thermal, frame.thermal, 1)
+        # if self.debug:
+        # tools.add_heat_number(thermal, frame.thermal, 1)
         if frame.mask is None:
             mask = np.zeros((np.array(thermal).shape), dtype=np.uint8)
+            mask = Image.fromarray(mask)
         else:
             mask, _ = normalize(frame.mask, new_max=255)
             mask = np.uint8(mask)
 
             mask = mask[..., np.newaxis]
             mask = np.repeat(mask, 3, axis=2)
+            if self.debug:
+
+                contours, heirechy = cv2.findContours(
+                    np.uint8(frame.mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+                )
+                mask = cv2.drawContours(mask, contours, -1, (0, 255, 0), 3)
+
+                mask = Image.fromarray(mask)
+                draw = ImageDraw.Draw(mask)
+                for contour in contours:
+
+                    first_point = contour[0][0]
+                    first_point[0] = min(first_point[0], 140)
+                    first_point[1] = min(first_point[1], 100)
+
+                    points = len(contour)
+
+                    draw.text(
+                        (first_point[0], first_point[1]),
+                        f"{points}pts",
+                        font=get_font(10),
+                        fill=(255, 0, 0, 128),
+                    )
+
+                # img = cv2.drawContours(mask, contours, -1, (0, 255, 0), 3)
+                # cv2.imshow("mask", img)
+                # cv2.waitKey(100)
         #
-        mask = Image.fromarray(mask)
+        # mask = Image.fromarray(mask)
         flow_h, flow_v = frame.get_flow_split(clip_flow=True)
         if flow_h is None and flow_v is None:
             flow_magnitude = Image.fromarray(
@@ -509,11 +537,11 @@ def add_track(
         )
 
 
-def get_font():
+def get_font(font_size=12):
     """gets default font."""
     if not globs._previewer_font:
         globs._previewer_font = ImageFont.truetype(
-            tools.resource_path("Ubuntu-R.ttf"), 12
+            tools.resource_path("Ubuntu-R.ttf"), font_size
         )
     return globs._previewer_font
 

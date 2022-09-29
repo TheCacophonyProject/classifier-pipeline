@@ -18,7 +18,7 @@ from ml_tools import tools
 from ml_tools.previewer import Previewer
 from track.track import Track
 
-from classify.thumbnail import get_thumbnail
+from classify.thumbnail import get_thumbnail, thumbnail_for_track
 
 
 class TrackExtractor:
@@ -151,12 +151,12 @@ def extract_file(filename):
         os.makedirs(destination_folder)
     meta_filename = out_file + ".txt"
 
+    thumbnail_for_track(clip)
     if previewer:
         base_name = os.path.basename(out_file)
         mpeg_filename = destination_folder + "/" + base_name + "-tracking.mp4"
 
         previewer.export_clip_preview(mpeg_filename, clip)
-
     logging.info("saving meta data %s", meta_filename)
 
     save_metadata(filename, meta_filename, clip, track_extractor, config)
