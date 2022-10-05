@@ -48,7 +48,7 @@ class Service(dbus.service.Object):
     )
     def TakeSnapshot(self, last_num):
         s = time.time()
-        last_frame, track_meta, f_num = self.get_frame()
+        last_frame, track_meta, f_num = self.get_frame(last_num)
 
         if f_num == last_num or last_frame is None:
             return (np.empty((0, 0)), (0, "", f_num, 0, 0, 0, 0, False), "")

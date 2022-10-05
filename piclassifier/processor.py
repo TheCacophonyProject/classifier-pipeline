@@ -33,7 +33,7 @@ class Processor(ABC):
         ...
 
     @abstractmethod
-    def get_recent_frame(self):
+    def get_recent_frame(self, last_frame=None):
         ...
 
     @abstractmethod

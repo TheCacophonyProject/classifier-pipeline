@@ -559,7 +559,10 @@ class PiClassifier(Processor):
         prediction = self.classifier.predict(preprocessed)
         return prediction, mass
 
-    def get_recent_frame(self):
+    def get_recent_frame(self, last_frame=None):
+        # save us having to lock if we dont have a different frame
+        if last_frame is not None and self.motion_detector.num_frames == last_frame:
+            return None, None, last_frame
         last_frame = self.motion_detector.get_recent_frame()
         if self.clip:
             if last_frame is None:
