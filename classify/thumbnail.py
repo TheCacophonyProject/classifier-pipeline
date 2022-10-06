@@ -40,26 +40,6 @@ def display_track(h_data, titles, id):
 
             plt.imshow(region.subimage(frame.thermal))
         offset += columns
-    #
-    # for i, frame in enumerate(contour_frames):
-    #
-    #     plt.subplot(rows, columns, 10 + i + 1)
-    #     region = frame[3]
-    #     centroid_mid = tools.eucl_distance(region.centroid, region.mid) ** 0.5
-    #     remove_axes(
-    #         f"#{frame[2].frame_number} -mass {frame[1]} - pts {frame[0]}\n- centroid-mid {round(centroid_mid)} - sum {round(frame[4])}"
-    #     )
-    #     plt.imshow(frame[3].subimage(frame[2].thermal))
-    #
-    # for i, frame in enumerate(sum_frames):
-    #
-    #     plt.subplot(rows, columns, 20 + i + 1)
-    #     region = frame[3]
-    #     centroid_mid = tools.eucl_distance(region.centroid, region.mid) ** 0.5
-    #     remove_axes(
-    #         f"#{frame[2].frame_number} -mass {frame[1]} - pts {frame[0]}\n- centroid-mid {round(centroid_mid)} - sum {round(frame[4])}"
-    #     )
-    #     plt.imshow(frame[3].subimage(frame[2].thermal))
 
     plt.subplots_adjust(0, 0, 0.99, 0.99, 0, 0)
     plt.show()
@@ -84,12 +64,11 @@ def remove_axes(title):
 def thumbnail_for_track(clip):
     for track in clip.tracks:
         contour_points = []
-        sum_frames = []
-        noise_frames = []
-        background_noise = []
+        median_diffs = []
+        noises = []
         velocity = []
         f_i = 0
-        max_sum = 0
+        max_median_diff = 0
         max_contour = 0
         for region in track.bounds_history:
             frame = clip.frame_buffer.get_frame(region.frame_number)
@@ -114,16 +93,15 @@ def thumbnail_for_track(clip):
                 sub_mask = filtered_sub > 0
                 thermal_sub = region.subimage(frame.thermal)
                 masked_thermal = thermal_sub[sub_mask]
-                sum_pix = np.sum(masked_thermal)
-                pix_per = sum_pix / masked_thermal.size
-                whole_mean = np.median(frame.thermal)
-                pix_per = np.median(masked_thermal)
+                t_median = np.median(frame.thermal)
+                masked_median = np.median(masked_thermal)
+                median_diff = masked_median - t_median
 
-                pix_per = pix_per - whole_mean
                 # pix_per = pix_per / 20
                 # - np.amin(masked_thermal)
-                if pix_per > max_sum:
-                    max_sum = pix_per
+                if median_diff > max_median_diff:
+                    max_median_diff = median_diff
+
                 noise_mask = filtered_sub == 0
                 raw_filtered = thermal_sub.copy()
                 avg_change = int(
@@ -137,20 +115,13 @@ def thumbnail_for_track(clip):
                 )
 
                 masked_thermal = raw_filtered[noise_mask]
-                # masked_thermal = masked_thermal - np.median(frame.thermal)
-                # masked_thermal[masked_thermal < 0] = 0
                 noise_ratio = np.mean(masked_thermal)
             vel = track.vel_x[f_i] ** 2 + track.vel_y[f_i] ** 2
             vel = vel**0.5
-            # if vel < 1:
-            #     vel = 999
-            # if region.is_along_border:
-            # vel = 999
-
             velocity.append(vel)
-            noise_frames.append(noise_ratio * 100)
+            noises.append(noise_ratio)
             f_i += 1
-            sum_frames.append(pix_per)
+            median_diffs.append(median_diff)
         mass_history = [int(bound.mass) for bound in track.bounds_history]
         segment_mass = []
         sorted_mass = np.argsort(mass_history)
@@ -176,8 +147,8 @@ def thumbnail_for_track(clip):
                     region,
                     mass_history[actual_index],
                     contour_points[actual_index],
-                    sum_frames[index],
-                    noise_frames[index],
+                    median_diffs[index],
+                    noises[index],
                     velocity[index],
                 )
             )
@@ -195,13 +166,13 @@ def thumbnail_for_track(clip):
                     region,
                     mass_history[index],
                     contour_points[index],
-                    sum_frames[index],
-                    noise_frames[index],
+                    median_diffs[index],
+                    noises[index],
                     velocity[index],
                 )
             )
         sub_frames = []
-        sorted_sub = np.argsort(sum_frames)[::-1]
+        sorted_sub = np.argsort(median_diffs)[::-1]
         for index in sorted_sub[:10]:
             region = track.bounds_history[index]
             frame = clip.frame_buffer.get_frame(region.frame_number)
@@ -211,25 +182,8 @@ def thumbnail_for_track(clip):
                     region,
                     mass_history[index],
                     contour_points[index],
-                    sum_frames[index],
-                    noise_frames[index],
-                    velocity[index],
-                )
-            )
-
-        vel_frames = []
-        sorted_vel = np.argsort(velocity)
-        for index in sorted_vel[:10]:
-            region = track.bounds_history[index]
-            frame = clip.frame_buffer.get_frame(region.frame_number)
-            vel_frames.append(
-                (
-                    frame,
-                    region,
-                    mass_history[index],
-                    contour_points[index],
-                    sum_frames[index],
-                    noise_frames[index],
+                    median_diffs[index],
+                    noises[index],
                     velocity[index],
                 )
             )
@@ -237,7 +191,7 @@ def thumbnail_for_track(clip):
 
         scored_frames = sorted(
             contour_frames,
-            key=lambda s: score(s, max_mass, max_sum, max_contour),
+            key=lambda s: score(s, max_mass, max_median_diff, max_contour),
             reverse=True,
         )
 
@@ -262,8 +216,10 @@ def thumbnail_for_track(clip):
         )
 
 
-def score(h_data, max_mass, max_sum, max_contour):
+def score(h_data, max_mass, max_median_diff, max_contour):
     region = h_data[1]
+    if region.blank:
+        return -999
     is_along_border = (
         region.x <= 1 or region.y <= 1 or region.bottom >= 119 or region.right >= 159
     )
@@ -274,16 +230,13 @@ def score(h_data, max_mass, max_sum, max_contour):
     velocity = h_data[6] * 2
     score = mass_percent + pts
     centroid_mid = tools.eucl_distance(region.centroid, region.mid) ** 0.5
-    # this will be probably between 1-10 could be worth * 1.5
     centroid_mid *= 2
-    if region.blank:
-        return -999
+    # this will be probably between 1-10 could be worth * 1.5
     if is_along_border:
         score = score - 1000
-    diff = h_data[4] / max_sum
+    diff = h_data[4] / max_median_diff
     diff = diff * 40
     score = score + diff
-    print("pts", pts, " score", mass_percent, " diff", diff)
     return score - centroid_mid
 
 
