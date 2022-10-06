@@ -194,3 +194,20 @@ by adding a valid cacophny api user and password to trackingtest.py
 
 Results for tests/tracking-tests.yml on tracking algorithms are located here
 https://drive.google.com/drive/u/1/folders/1uGU9FhKaypadUVcIvItBZuZebZa_Z7MG
+
+## IR Videos
+- Ir videos are built with build.py and saved as tf records
+- https://github.com/sulc/tfrecord-viewer is very useful for vieweing the images stored in these files
+- `python3 tfviewer.py <config.base_data_folder>/<config.tracks_folder>/training-data/<set to see train/vaidation/train>/*.tfrecord --overlay classification --image-key image/thermalencoded`
+
+## TF Lite Conversion
+- Use tfliteconverter.py `python3 tfliteconvert.py -m <path to saved model> -w <weights to use> -c`
+Will save to <path to saved model>/tflite/converted_model.tflite
+- Can test running new model by using `python3 tfliteconvert.py -m <path to tf lite model>` -r`
+- Can test save weights into model file new model by using  `python3 tfliteconvert.py -m <path to saved model> -w <weights to use> -f`
+
+
+## Neural Compute Conversion
+- Will need the intel tools from `https://www.intel.com/content/www/us/en/developer/articles/guide/get-started-with-neural-compute-stick.html`
+- Tested on Inceptionv3 models `python3 ~/intel/openvino_<VERSION>/deployment_tools/model_optimizer/mo_tf.py --saved_model_dir <Path to dir with weights saved to saved_model.pb> --input_shape [1,<width>,<height>,3]`
+- Make sure to also copy the metadata.txt to go with this converted file, this should be renamed to the same as te converted model .txt, by default it saves as saved_model.xml so metadata.txt should be copied to saved_model.txt

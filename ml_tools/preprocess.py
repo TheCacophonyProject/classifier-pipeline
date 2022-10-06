@@ -6,6 +6,8 @@ import logging
 from ml_tools import imageprocessing
 import enum
 import tensorflow as tf
+from track.region import Region
+import cv2
 
 # size to scale each frame to when loaded.
 
@@ -84,6 +86,10 @@ def preprocess_segment(
 
     # -------------------------------------------
     # first we scale to the standard size
+    top_offset = 0
+    bottom_offset = 0
+    left_offset = 0
+    right_offset = 0
     data = []
     flip = False
     chance = random.random()
@@ -100,63 +106,29 @@ def preprocess_segment(
             contrast_adjust = float(tools.random_log(0.9, (1 / 0.9)))
         if chance <= 0.50:
             flip = True
+
     for i, frame in enumerate(frames):
         frame.float_arrays()
         frame_height, frame_width = frame.thermal.shape
         # adjusting the corners makes the algorithm robust to tracking differences.
         # gp changed to 0,1 maybe should be a percent of the frame size
-        max_height_offset = int(np.clip(frame_height * 0.1, 1, 2))
-        max_width_offset = int(np.clip(frame_width * 0.1, 1, 2))
-        top_offset = (
-            int(random.random() * max_height_offset) if augment else default_inset
-        )
-        bottom_offset = (
-            int(random.random() * max_height_offset) if augment else default_inset
-        )
-        left_offset = (
-            int(random.random() * max_width_offset) if augment else default_inset
-        )
-        right_offset = (
-            int(random.random() * max_width_offset) if augment else default_inset
-        )
-        if frame_height < MIN_SIZE or frame_width < MIN_SIZE:
-            continue
-
-        frame_bounds = tools.Rectangle(0, 0, frame_width, frame_height)
-        # rotate then crop
+        if augment or frame_height > frame_size or frame_width > frame_size:
+            max_height_offset = frame_height - frame_size
+            max_width_offset = frame_width - frame_size
+            top_offset = int(random.random() * max_height_offset)
+            # bottom_offset = int(random.random() * max_height_offset)
+            left_offset = int(random.random() * max_width_offset)
+            # right_offset = int(random.random() * max_width_offset)
+            crop_region = tools.Rectangle(
+                left_offset, top_offset, frame_size, frame_size
+            )
+            frame.crop_by_region(crop_region, out=frame)
         if augment and chance <= 0.75:
             # degress = 0
 
             degrees = int(chance * 40) - 20
             frame.rotate(degrees)
-
-        # set up a cropping frame
-        crop_region = tools.Rectangle.from_ltrb(
-            left_offset,
-            top_offset,
-            frame_width - right_offset,
-            frame_height - bottom_offset,
-        )
-
-        # if the frame is too small we make it a little larger
-        while crop_region.width < MIN_SIZE:
-            crop_region.left -= 1
-            crop_region.right += 1
-            crop_region.crop(frame_bounds)
-        while crop_region.height < MIN_SIZE:
-            crop_region.top -= 1
-            crop_region.bottom += 1
-            crop_region.crop(frame_bounds)
-        frame.crop_by_region(crop_region, out=frame)
-        # if frame.mask is not None:
-        #     assert np.all(np.mod(frame.mask, 1) == 0), "Mask isn't integer"
-
-        try:
-            frame.resize_with_aspect(
-                (frame_size, frame_size), crop_rectangle, keep_edge=keep_edge
-            )
-        except Exception as e:
-            logging.error("Error resizing frame %s exception %s", frame, e)
+        if frame_height < MIN_SIZE or frame_width < MIN_SIZE:
             continue
         if reference_level is not None:
             frame.thermal -= reference_level[i]
@@ -222,6 +194,39 @@ def preprocess_frame(
     return data
 
 
+index = 0
+
+
+def preprocess_ir(
+    frame,
+    frame_size,
+    crop=True,
+    region=None,
+    preprocess_fn=None,
+    save_info="",
+):
+    if crop:
+        crop_rectangle = tools.Rectangle(
+            0, 0, frame.thermal.shape[1], frame.thermal.shape[0]
+        )
+        # region.enlarge(20, max=crop_rectangle)
+        frame.crop_by_region(region, out=frame)
+    frame.normalize()
+    image = np.stack((frame.thermal, frame.thermal, frame.thermal), axis=2)
+    image = np.float32(image)
+    image = imageprocessing.resize_and_pad(
+        image,
+        (frame_size[0], frame_size[1], 3),
+        frame.region,
+        None,
+        True,
+    )
+    # tools.saveclassify_rgb(np.uint8(image), f"samples/{count}")
+    if preprocess_fn:
+        image = preprocess_fn(image)
+    return image
+
+
 def preprocess_movement(
     segment,
     frames_per_row,
@@ -277,7 +282,6 @@ def preprocess_movement(
                 channel = TrackChannels.thermal
             else:
                 channel = TrackChannels.filtered
-
             channel_segment = [frame.get_channel(channel) for frame in segment]
             channel_data, success = imageprocessing.square_clip(
                 channel_segment, frames_per_row, (frame_size, frame_size)
@@ -291,10 +295,13 @@ def preprocess_movement(
     data = np.stack(
         (frame_types[red_type], frame_types[green_type], frame_types[blue_type]), axis=2
     )
-    # for testing
+    #
+    # global index
+    # index += 1
+    # # # # for testing
     # tools.saveclassify_image(
     #     data,
-    #     f"samples/{sample}",
+    #     f"samples/{index}",
     # )
     if preprocess_fn:
         data = data * 255

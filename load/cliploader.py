@@ -1,4 +1,4 @@
-"""
+"" """
 classifier-pipeline - this is a server side component that manipulates cptv
 files and to create a classification model of animals present
 Copyright (C) 2018, The Cacophony Project
@@ -27,26 +27,28 @@ from ml_tools import tools
 from ml_tools.previewer import Previewer
 from ml_tools.trackdatabase import TrackDatabase
 from .clip import Clip
+from .irtrackextractor import IRTrackExtractor
 from .cliptrackextractor import ClipTrackExtractor
 from ml_tools.imageprocessing import clear_frame
 from track.track import Track
 import numpy as np
+import json
 
 
 def process_job(loader, queue):
     i = 0
     while True:
         i += 1
-        clip_id = queue.get()
+        filename, clip_id = queue.get()
         try:
-            if clip_id == "DONE":
+            if filename == "DONE":
                 break
             else:
-                loader.process_file(str(clip_id))
+                loader.process_file(str(filename), clip_id)
             if i % 50 == 0:
                 logging.info("%s jobs left", queue.qsize())
         except Exception as e:
-            logging.error("Process_job error %s %s", clip_id, e)
+            logging.error("Process_job error %s %s", filename, e)
             traceback.print_exc()
 
 
@@ -62,20 +64,12 @@ class ClipLoader:
         self.compression = (
             tools.gzip_compression if self.config.load.enable_compression else None
         )
-        self.track_config = config.tracking
         # number of threads to use when processing jobs.
         self.workers_threads = config.worker_threads
         self.previewer = Previewer.create_if_required(config, config.load.preview)
-        self.track_extractor = ClipTrackExtractor(
-            self.config.tracking,
-            self.config.use_opt_flow
-            or config.load.preview == Previewer.PREVIEW_TRACKING,
-            self.config.load.cache_to_disk,
-            high_quality_optical_flow=self.config.load.high_quality_optical_flow,
-            verbose=config.verbose,
-        )
 
     def process_all(self, root):
+        clip_id = self.database.get_unique_clip_id()
         job_queue = Queue()
         processes = []
         for i in range(max(1, self.workers_threads)):
@@ -90,17 +84,18 @@ class ClipLoader:
         file_paths = []
         for folder_path, _, files in os.walk(root):
             for name in files:
-                if os.path.splitext(name)[1] == ".cptv":
+                if os.path.splitext(name)[1] in [".mp4", ".avi", ".cptv"]:
                     full_path = os.path.join(folder_path, name)
                     file_paths.append(full_path)
         # allows us know the order of processing
         file_paths.sort()
         for file_path in file_paths:
-            job_queue.put(file_path)
+            job_queue.put((file_path, clip_id))
+            clip_id += 1
 
         logging.info("Processing %d", job_queue.qsize())
         for i in range(len(processes)):
-            job_queue.put("DONE")
+            job_queue.put(("DONE", 0))
         for process in processes:
             try:
                 process.join()
@@ -123,7 +118,6 @@ class ClipLoader:
         # that we have processed it.
         self.database.create_clip(clip)
         for track in clip.tracks:
-
             start_time, end_time = clip.start_and_end_time_absolute(
                 track.start_s, track.end_s
             )
@@ -144,68 +138,101 @@ class ClipLoader:
                 self.config.build.segment_min_avg_mass,
                 cropped_data,
             )
-            self.database.add_track(
-                clip.get_id(),
-                track,
-                cropped_data,
-                sample_frames=sample_frames,
-                opts=self.compression,
-                original_thermal=original_thermal,
-                start_time=start_time,
-                end_time=end_time,
-            )
+            try:
+                self.database.add_track(
+                    clip.get_id(),
+                    track,
+                    cropped_data,
+                    sample_frames=sample_frames,
+                    opts=self.compression,
+                    original_thermal=original_thermal,
+                    start_time=start_time,
+                    end_time=end_time,
+                )
+            except:
+                self.database.remove_track(clip.get_id(), track.get_id())
+                logging.error(
+                    "Error adding track %s - %s",
+                    clip.get_id(),
+                    track.get_id(),
+                    exc_info=True,
+                )
         self.database.finished_processing(clip.get_id())
 
-    def _filter_clip_tracks(self, clip_metadata):
+    def _filter_clip_tracks(self, clip_metadata, min_confidence):
         """
         Removes track metadata for tracks which are invalid. Tracks are invalid
         if they aren't confident or they are in the excluded_tags list.
         Returns valid tracks
         """
 
-        tracks_meta = clip_metadata.get("Tracks", [])
+        tracks_meta = clip_metadata.get("Tracks")
+        if tracks_meta is None:
+            tracks_meta = clip_metadata.get("tracks", [])
         valid_tracks = [
-            track for track in tracks_meta if self._track_meta_is_valid(track)
+            track
+            for track in tracks_meta
+            if self._track_meta_is_valid(track, min_confidence)
         ]
+
         clip_metadata["Tracks"] = valid_tracks
         return valid_tracks
 
-    def _track_meta_is_valid(self, track_meta):
+    def _track_meta_is_valid(self, track_meta, min_confidence):
         """
         Tracks are valid if their confidence meets the threshold and they are
         not in the excluded_tags list, defined in the config.
         """
-        min_confidence = self.track_config.min_tag_confidence
-        track_data = track_meta.get("data")
-        if not track_data:
-            return False
-
         track_tags = []
-        if "TrackTags" in track_meta:
-            track_tags = track_meta["TrackTags"]
+        if "tags" in track_meta:
+            track_tags = track_meta["tags"]
         excluded_tags = [
             tag
             for tag in track_tags
-            if not tag.get("automatic", False) and tag in self.config.load.excluded_tags
+            if not tag.get("automatic", False)
+            and tag.get("what") in self.config.load.excluded_tags
         ]
-
         if len(excluded_tags) > 0:
             return False
 
         track_tag = Track.get_best_human_tag(
             track_tags, self.config.load.tag_precedence, min_confidence
         )
+
         if track_tag is None:
             return False
         tag = track_tag.get("what")
         confidence = track_tag.get("confidence", 0)
         return tag and tag not in excluded_tags and confidence >= min_confidence
 
-    def process_file(self, filename, classifier=None):
+    def get_track_extractor(self, filename):
+        ext = os.path.splitext(filename)[1]
+        if ext == ".cptv":
+            track_extractor = ClipTrackExtractor(
+                self.config.tracking,
+                self.config.use_opt_flow
+                or self.config.load.preview == Previewer.PREVIEW_TRACKING,
+                self.config.load.cache_to_disk,
+                high_quality_optical_flow=self.config.load.high_quality_optical_flow,
+                verbose=self.config.verbose,
+                do_tracking=False,
+            )
+        else:
+            track_extractor = IRTrackExtractor(
+                self.config.tracking,
+                self.config.load.cache_to_disk,
+                verbose=self.config.verbose,
+                do_tracking=False,
+            )
+        return track_extractor
+
+    def process_file(self, filename, clip_id=None, classifier=None):
         start = time.time()
         base_filename = os.path.splitext(os.path.basename(filename))[0]
 
         logging.info(f"processing %s", filename)
+
+        track_extractor = self.get_track_extractor(filename)
 
         destination_folder = self._get_dest_folder(base_filename)
         # delete any previous files
@@ -221,49 +248,38 @@ class ClipLoader:
             return
 
         metadata = tools.load_clip_metadata(metadata_filename)
+        if "id" not in metadata and clip_id is not None:
+            metadata["id"] = clip_id
+            logging.info("Using clip id %s", clip_id)
+            with open(metadata_filename, "w") as f:
+                json.dump(metadata, f, indent=4, cls=tools.CustomJSONEncoder)
         if not self.reprocess and self.database.has_clip(str(metadata["id"])):
             logging.warning("Already loaded %s", filename)
             return
+        valid_tracks = self._filter_clip_tracks(
+            metadata, track_extractor.config.min_tag_confidence
+        )
 
-        valid_tracks = self._filter_clip_tracks(metadata)
         if not valid_tracks or len(valid_tracks) == 0:
             logging.error("No valid track data found for %s", filename)
             return
-
-        clip = Clip(self.track_config, filename)
+        clip = Clip(track_extractor.config, filename)
         clip.load_metadata(
             metadata,
             self.config.load.tag_precedence,
         )
-        tracker_versions = set(
-            [
-                t.get("data", {}).get("tracker_version", 0)
-                for t in metadata.get("Tracks", [])
-            ]
-        )
-        if len(tracker_versions) > 1:
-            logginer.error(
-                "Tracks with different tracking versions cannot process %s versions %s",
-                filename,
-                tracker_versions,
-            )
-            return
-        tracker_version = tracker_versions.pop()
+        tracker_version = metadata.get("tracker_version", 0)
         process_background = tracker_version < 10
         logging.debug(
-            "Processing background? %s tracker_versions %s",
+            "Processing background? %s tracker_version %s",
             process_background,
             tracker_version,
         )
-        if not self.track_extractor.parse_clip(
-            clip, process_background=process_background
-        ):
+        if not track_extractor.parse_clip(clip, process_background=process_background):
             logging.error("No valid clip found for %s", filename)
             return
 
-        # , self.config.load.cache_to_disk, self.config.use_opt_flow
-        if self.track_config.enable_track_output:
-            self._export_tracks(filename, clip)
+        self._export_tracks(filename, clip)
 
         # write a preview
         if self.previewer:
@@ -286,7 +302,7 @@ class ClipLoader:
     def _log_message(self, message):
         """Record message in stdout.  Will be printed if verbose is enabled."""
         # note, python has really good logging... I should probably make use of this.
-        if self.track_config.verbose:
+        if self.config.verbose:
             logging.info(message)
 
 

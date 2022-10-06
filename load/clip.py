@@ -46,7 +46,13 @@ class Clip:
     MIN_ORIGIN_OVERLAP = 0.80
 
     def __init__(
-        self, trackconfig, sourcefile, background=None, calc_stats=True, model=None
+        self,
+        trackconfig,
+        sourcefile,
+        background=None,
+        calc_stats=True,
+        model=None,
+        type="thermal",
     ):
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
@@ -64,7 +70,7 @@ class Clip:
         self.location = None
         self.frame_buffer = None
         self.device = None
-        self.background = None
+        self._background = None
         self.background_calculated = False
         self.res_x = None
         self.res_y = None
@@ -82,12 +88,16 @@ class Clip:
         self.background_thresh = None
         self.ffc_frames = []
         self.tags = None
-
+        self.type = type
         # sets defaults
         self.set_model(model)
         if background is not None:
-            self.background = background
+            self._background = background
             self._background_calculated()
+
+    @property
+    def background(self):
+        return self._background
 
     def set_model(self, camera_model):
         logging.debug("set model %s", camera_model)
@@ -106,19 +116,23 @@ class Clip:
         self.track_max_delta = threshold.track_max_delta
 
     def _background_calculated(self):
-        self.stats.mean_background_value = np.average(self.background)
+        self.stats.mean_background_value = np.average(self._background)
         self.set_temp_thresh()
         self.background_calculated = True
 
     def on_preview(self):
         return not self.background_calculated
 
+    def set_background(self, frame):
+        self._background = frame
+        self._background_calculated()
+
     def update_background(self, frame):
-        """updates the clip background"""
-        if self.background is None:
-            self.background = frame
+        """updates the clip _background"""
+        if self._background is None:
+            self._background = frame
         else:
-            self.background = np.minimum(self.background, frame)
+            self._background = np.minimum(self._background, frame)
         self.background_frames += 1
 
     def calculate_initial_diff(self, frame, initial_frames, initial_diff):
@@ -314,7 +328,10 @@ class Clip:
         self.tracks = set(tracks)
 
     def load_tracks_meta(self, metadata, tag_precedence):
-        tracks_meta = metadata.get("tracks", [])
+        if "Tracks" in metadata:
+            tracks_meta = metadata.get("Tracks", [])
+        else:
+            tracks_meta = metadata.get("tracks", [])
         tracks = []
         # get track data
         for track_meta in tracks_meta:
@@ -383,11 +400,13 @@ class Clip:
         if ffc_affected:
             self.ffc_frames.append(self.current_frame)
 
-        self.frame_buffer.add_frame(
+        f = self.frame_buffer.add_frame(
             thermal, filtered, mask, self.current_frame, ffc_affected
         )
+
         if self.calc_stats:
             self.stats.add_frame(thermal, filtered)
+        return f
 
     def get_metadata(self, predictions_per_model=None):
         meta_data = {}

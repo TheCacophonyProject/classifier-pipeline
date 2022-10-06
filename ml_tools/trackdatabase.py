@@ -20,7 +20,13 @@ from dateutil.parser import parse as parse_date
 import numpy as np
 from track.region import Region
 
-special_datasets = ["background_frame", "predictions", "overlay"]
+special_datasets = [
+    "tag_frames",
+    "original_frames",
+    "background_frame",
+    "predictions",
+    "overlay",
+]
 
 
 class HDF5Manager:
@@ -94,28 +100,33 @@ class TrackDatabase:
             return clip.attrs.get("has_prediction", False)
         return False
 
-    def add_prediction_data(
-        self, clip_id, track, predictions, predicted_tag, score, labels=None
-    ):
-        """
-        Add prediction data as a dataset to the track
-        data should be  an array of int16 array
-        """
-        track_attrs = track.attrs
-        if predicted_tag is not None:
-            track_attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
-            track_attrs["predicted"] = predicted_tag
-        track_attrs["predicted_confidence"] = int(round(100 * score))
-
-        pred_data = track.create_dataset(
-            "predictions",
-            predictions.shape,
-            chunks=predictions.shape,
-            dtype=predictions.dtype,
-        )
-        pred_data[:, :] = predictions
-        if labels is not None:
-            track_attrs["prediction_classes"] = labels
+    #
+    # def add_prediction_data(self, clip_id, track, predictions, labels=None):
+    #     """
+    #     Add prediction data as a dataset to the track
+    #     data should be  an array of int16 array
+    #     """
+    #     logging.info("Add pre data %s", predictions)
+    #     track_attrs = track.attrs
+    #     prediction = predictions[0]
+    #     predicted_tag = prediction.get("label")
+    #     score = prediction.get("confidence")
+    #     print("tag is", predicted_tag), prediction
+    #     if predicted_tag is not None:
+    #         track_attrs["correct_prediction"] = track_attrs.get("tag") == predicted_tag
+    #         track_attrs["predicted"] = predicted_tag
+    #         print("predicted", predicted_tag)
+    #     track_attrs["predicted_confidence"] = int(round(100 * score))
+    #
+    #     pred_data = track.create_dataset(
+    #         "predictions",
+    #         predictions.shape,
+    #         chunks=predictions.shape,
+    #         dtype=predictions.dtype,
+    #     )
+    #     pred_data[:, :] = predictions
+    #     if labels is not None:
+    #         track_attrs["prediction_classes"] = labels
 
     def finished_processing(self, clip_id):
         with HDF5Manager(self.database, "a") as f:
@@ -203,26 +214,38 @@ class TrackDatabase:
             results = {}
             for clip_id in clips:
                 clip_start = clips[clip_id].attrs["start_time"]
-                if clip_start:
+                if clip_start is not None:
+                    clip_start = parse_date(clip_start)
                     if start_time is None or clip_start > start_time:
                         start_time = clip_start
 
         return start_time
 
-    def get_all_clip_ids(self):
+    def get_all_clip_ids(self, before_date=None, after_date=None, label=None):
         """
-        Returns a list of clip_id, track_number pairs.
+        Returns a list of clip_id, track_id pairs.
         """
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             results = {}
             for clip_id in clips:
-                results[clip_id] = [track_id for track_id in clips[clip_id]]
+                clip = clips[clip_id]
+                if not clip.attrs.get("finished"):
+                    continue
+                date = parse_date(clip.attrs["start_time"])
+                if before_date and date >= before_date:
+                    continue
+                if after_date and date < after_date:
+                    continue
+                if label is not None:
+                    if clip.attrs.get("tag") != label:
+                        continue
+                results[clip_id] = [track_id for track_id in clip]
         return results
 
     def get_clip_tracks_ids(self, clip_id):
         """
-        Returns a list of clip_id, track_number pairs.
+        Returns a list of clip_id, track_id pairs.
         """
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
@@ -235,9 +258,9 @@ class TrackDatabase:
                     tracks.append(track)
         return tracks
 
-    def get_all_track_ids(self, before_date=None, after_date=None):
+    def get_all_track_ids(self, before_date=None, after_date=None, label=None):
         """
-        Returns a list of clip_id, track_number pairs.
+        Returns a list of clip_id, track_id pairs.
         """
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
@@ -252,32 +275,132 @@ class TrackDatabase:
                 if after_date and date < after_date:
                     continue
                 for track in clip:
+                    if label is not None:
+                        if label != clip[track].attrs.get("tag"):
+                            continue
                     if track not in special_datasets:
                         result.append((clip_id, track))
         return result
 
-    def get_track_meta(self, clip_id, track_number):
+    def remove_tag_info(self, clip_id, track_id):
+        with HDF5Manager(self.database, "a") as f:
+            clip = f["clips"][clip_id]
+            try:
+                del clip["tag_frames"]
+            except:
+                pass
+
+            if "tag" in clip.attrs:
+                del clip.attrs["tag"]
+
+            track = clip[track_id]
+            track.attrs["tag_confirmed"] = False
+
+    def update_tag(self, clip_id, track_id, frames, clip_tag, track_tag, regions=None):
+        logging.info(
+            "Tagging clip %s as %s and track %s as %s",
+            clip_id,
+            clip_tag,
+            track_id,
+            track_tag,
+        )
+        with HDF5Manager(self.database, "a") as f:
+            clip = f["clips"][clip_id]
+            clip_tags = clip.get("tag_frames")
+            if clip_tags is None:
+                clip_tags = clip.create_group("tag_frames")
+                print("creating clip tags")
+            tag_regions = clip_tags.get("tag_regions")
+            if tag_regions is None:
+                tag_regions = clip_tags.create_group("tag_regions")
+            print("clip tag", clip_tag)
+            if clip_tag in clip_tags.attrs:
+                clip_frames = list(clip_tags.attrs[clip_tag])
+            else:
+                clip_frames = set()
+
+            clip_frames = set(clip_frames)
+            add_regions = clip_tag == track_tag
+            label_regions = []
+            if add_regions:
+                if clip_tag in tag_regions.attrs:
+                    label_regions = list(tag_regions.attrs[clip_tag])
+                    for i in range(len(label_regions)):
+                        r = label_regions[i]
+                        r[6] = 1 if r[6] else 0
+                        r = np.uint16(r)
+                        label_regions[i] = r
+            for f in frames:
+                if f.frame_number not in clip_frames:
+                    clip_frames.add(f.frame_number)
+                if add_regions:
+                    if f.region.blank:
+                        continue
+                    r_array = f.region.to_array()
+
+                    unique_region = True
+                    for other in label_regions:
+                        diff = False
+                        for i in range(len(other)):
+                            if other[i] != r_array[i]:
+                                diff = True
+                                break
+                        if not diff:
+                            unique_region = False
+                            break
+                    if unique_region:
+                        label_regions.append(r_array)
+
+            if add_regions:
+                tag_regions.attrs[clip_tag] = label_regions
+                # for k, v in tag_regions.attrs.items():
+                #     print("K", k, v)
+
+            clip_frames = list(clip_frames)
+            clip_frames.sort()
+            clip_tags.attrs[clip_tag] = np.array(clip_frames)
+
+            # clip.attrs["tag_frames"] = clip_tags
+            clip.attrs["tag"] = clip_tag
+            track = clip[track_id]
+            if track_tag is not None:
+                track.attrs["tag"] = track_tag
+                track.attrs["tag_confirmed"] = True
+
+    def get_track_meta(self, clip_id, track_id):
         """
         Gets metadata for given track
         :param clip_id:
-        :param track_number:
+        :param track_id:
         :return:
         """
         with HDF5Manager(self.database) as f:
-            dataset = f["clips"][str(clip_id)][str(track_number)]
-            result = hdf5_attributes_dictionary(dataset)
-            result["id"] = track_number
+            dataset = f["clips"][str(clip_id)][str(track_id)]
+            result = self.dataset_track(dataset, track_id)
+
         return result
 
-    def get_track_predictions(self, clip_id, track_number):
+    def dataset_track(self, dataset, track_id):
+        result = hdf5_attributes_dictionary(dataset)
+        preds = dataset.get("model_predictions")
+        if preds is not None:
+            result["model_predictions"] = {}
+            for model in preds:
+                model_preds = hdf5_attributes_dictionary(preds[model])
+                result["model_predictions"][model] = model_preds
+        result["id"] = track_id
+
+        return result
+
+    def get_track_predictions(self, clip_id, track_id):
         """
         Gets metadata for given track
         :param clip_id:
-        :param track_number:
+        :param track_id:
         :return:
         """
         with HDF5Manager(self.database) as f:
-            track = f["clips"][clip_id][str(track_number)]
+            track = f["clips"][clip_id][str(track_id)]
             if "predictions" in track:
                 return track["predictions"][:]
         return None
@@ -300,6 +423,17 @@ class TrackDatabase:
             dataset = f["clips"][str(clip_id)]
             result = hdf5_attributes_dictionary(dataset)
             result["tracks"] = len(dataset)
+            tag_frames = dataset.get("tag_frames")
+            if tag_frames:
+                result["tag_frames"] = {}
+                for key, value in tag_frames.attrs.items():
+                    result["tag_frames"][key] = value
+
+                tag_regions = tag_frames.get("tag_regions")
+                if tag_regions is not None:
+                    result["tag_frames"]["tag_regions"] = {}
+                    for key, value in tag_regions.attrs.items():
+                        result["tag_frames"]["tag_regions"][key] = value
         return result
 
     def get_clip_tracks(self, clip_id):
@@ -310,17 +444,18 @@ class TrackDatabase:
         """
         tracks = []
         with HDF5Manager(self.database) as f:
-            dataset = f["clips"][str(clip_id)]
-            for track_id in dataset:
+            clip = f["clips"][str(clip_id)]
+            for track_id in clip:
                 if track_id in special_datasets:
                     continue
-                tracks.append(hdf5_attributes_dictionary(dataset[track_id]))
+                track = self.dataset_track(clip[track_id], track_id)
+                tracks.append(track)
         return tracks
 
-    def get_tag(self, clip_id, track_number):
+    def get_tag(self, clip_id, track_id):
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
-            track_node = clips[str(clip_id)][str(track_number)]
+            track_node = clips[str(clip_id)][str(track_id)]
             return track_node.attrs["tag"]
 
     def get_frame(self, clip_id, track_id, frame, original=False):
@@ -331,10 +466,37 @@ class TrackDatabase:
             return frames[0]
         return None
 
+    def get_clip(
+        self,
+        clip_id,
+        frame_numbers=None,
+        channels=None,
+    ):
+        frames = []
+        with HDF5Manager(self.database) as f:
+            clip = f["clips"][str(clip_id)]
+            if "original_frames" not in clip:
+                return None
+            frames_node = clip["original_frames"]
+            if frame_numbers is None:
+                frame_numbers = []
+                for f_i in frames_node:
+                    frame_numbers.append(int(f_i))
+                frame_numbers.sort()
+            frame_iter = iter(frame_numbers)
+
+            for frame_number in frame_iter:
+
+                frame = frames_node[str(frame_number)][:, :]
+                frames.append(
+                    Frame.from_channels([frame], [TrackChannels.thermal], frame_number)
+                )
+        return frames
+
     def get_track(
         self,
         clip_id,
-        track_number,
+        track_id,
         start_frame=None,
         end_frame=None,
         original=False,
@@ -344,14 +506,15 @@ class TrackDatabase:
         """
         Fetches a track data from database with optional slicing.
         :param clip_id: id of the clip
-        :param track_number: id of the track
+        :param track_id: id of the track
         :param start_frame: first frame of slice to return (inclusive).
         :param end_frame: last frame of slice to return (exclusive).
         :return: a list of numpy arrays of shape [channels, height, width] and of type np.int16
         """
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
-            track_node = clips[str(clip_id)][str(track_number)]
+            clip_node = clips[str(clip_id)]
+            track_node = clip_node[str(track_id)]
 
             bounds = track_node.attrs["bounds_history"]
             if start_frame is None:
@@ -362,7 +525,7 @@ class TrackDatabase:
             bad_frames = track_node.attrs.get("skipepd_frames", [])
             result = []
             if original:
-                track_node = track_node["original"]
+                track_node = clip_node["original_frames"]
             else:
                 if "cropped" in track_node:
                     track_node = track_node["cropped"]
@@ -375,10 +538,16 @@ class TrackDatabase:
             for frame_number in frame_iter:
 
                 if original:
-                    frame = track_node[str(frame_number)][:, :]
+
+                    region = Region.region_from_array(bounds[frame_number])
+                    region.frame_number = frame_number + track_start
+                    frame = track_node[str(frame_number + track_start)][:, :]
                     result.append(
                         Frame.from_channels(
-                            [frame], [TrackChannels.thermal], frame_number
+                            [frame],
+                            [TrackChannels.thermal],
+                            frame_number + track_start,
+                            region=region,
                         )
                     )
                 else:
@@ -388,19 +557,32 @@ class TrackDatabase:
                     if channels is None:
                         try:
                             frame = track_node[str(frame_number)][:, :, :]
-                            result.append(
-                                Frame.from_array(
+                            if frame.shape[0] < 5:
+                                frame_channels = [
+                                    TrackChannels.thermal,
+                                    TrackChannels.filtered,
+                                ]
+                                if frame.shape[0] == 3:
+                                    frame_channels.append(TrackChannels.mask)
+                                f = Frame.from_channels(
+                                    frame,
+                                    frame_channels,
+                                    frame_number + track_start,
+                                    region=region,
+                                )
+                            else:
+                                f = Frame.from_array(
                                     frame,
                                     frame_number + track_start,
                                     flow_clipped=True,
                                     region=region,
                                 )
-                            )
+                            result.append(f)
                         except:
-                            logging.error(
+                            logging.debug(
                                 "trying to get clip %s track %s frame %s",
                                 clip_id,
-                                track_number,
+                                track_id,
                                 frame_number + track_start,
                                 exc_info=True,
                             )
@@ -416,15 +598,28 @@ class TrackDatabase:
                                 )
                             )
                         except:
-                            logging.error(
+                            logging.debug(
                                 "trying to get clip %s track %s frame %s",
                                 clip_id,
-                                track_number,
-                                frame_number + track_start,
+                                track_id,
+                                frame_number,
                                 exc_info=True,
                             )
 
         return result
+
+    def remove_track(self, clip_id, track_id):
+        with HDF5Manager(self.database, "a") as f:
+            clips = f["clips"]
+            clip_s = str(clip_id)
+            track_s = str(track_id)
+            if clip_s in clips:
+                clip = clips[clip_s]
+                if str(track_s) in clip:
+                    del clip[track_s]
+                return True
+            else:
+                return False
 
     def remove_clip(self, clip_id):
         """
@@ -480,7 +675,7 @@ class TrackDatabase:
 
         model_group = track.create_group("model_predictions")
         for prediction in model_predictions:
-            key = f'{prediction.get("model_id", "unnamed")}-{prediction.get("model_id", 0)}'
+            key = f'{prediction.get("model_id", 0)}'
             if key in model_group:
                 continue
             pred_g = model_group.create_group(key)
@@ -488,7 +683,9 @@ class TrackDatabase:
             if predicted_tag is not None:
                 pred_g.attrs["correct_prediction"] = track_attrs["tag"] == predicted_tag
                 pred_g.attrs["predicted"] = predicted_tag
-            track_attrs["predicted_confidence"] = prediction.get("confidence", 0)
+                pred_g.attrs["confidence"] = prediction.get("confidence", 0)
+            # track_attrs["predicted_confidence"] = prediction.get("confidence", 0)
+
             prediction_data = np.int16(prediction.get("predictions"))
             raw_predictions = pred_g.create_dataset(
                 "predictions",
@@ -501,6 +698,14 @@ class TrackDatabase:
             if labels is not None:
                 pred_g.attrs["prediction_classes"] = labels
             track_attrs["has_prediction"] = True
+
+    def get_unique_clip_id(self):
+        clip_ids = list(self.get_all_clip_ids().keys())
+        clip_ids = np.array(clip_ids).astype(np.int)
+        if len(clip_ids) == 0:
+            return 1
+        max_clip = np.amax(clip_ids)
+        return max_clip + 1
 
     def add_track(
         self,
@@ -524,6 +729,7 @@ class TrackDatabase:
         """
 
         track_id = str(track.get_id())
+        logging.info("Adding track %s", track_id)
         if opts is None:
             opts = {}
         with HDF5Manager(self.database, "a") as f:
@@ -532,7 +738,10 @@ class TrackDatabase:
             has_prediction = False
             track_node = clip_node.create_group(track_id)
             cropped_frame = track_node.create_group("cropped")
-            thermal_frame = track_node.create_group("original")
+            if "original_frames" in clip_node:
+                original_group = clip_node["original_frames"]
+            else:
+                original_group = clip_node.create_group("original_frames")
             skipped_frames = []
             # write each frame out individually, as they will probably be different sizes.
             original = None
@@ -540,32 +749,39 @@ class TrackDatabase:
                 if original_thermal is not None:
                     original = original_thermal[frame_i]
                 # using a chunk size of 1 for channels has the advantage that we can quickly load just one channel
-                if cropped.thermal.size > 0:
-                    height, width = cropped.shape
-                    chunks = (1, height, width)
-                    dims = (5, height, width)
-                    frame_node = cropped_frame.create_dataset(
-                        str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
-                    )
 
-                    frame_node[:, :, :] = cropped.as_array()
-                else:
-                    skipped_frames.append(frame_i)
-                if original is not None:
-                    thermal_node = thermal_frame.create_dataset(
-                        str(frame_i),
+                if (
+                    original is not None
+                    and str(frame_i + track.start_frame) not in original_group
+                ):
+                    thermal_node = original_group.create_dataset(
+                        str(frame_i + track.start_frame),
                         original.shape,
                         chunks=original.shape,
                         **opts,
                         dtype=np.int16,
                     )
                     thermal_node[:, :] = original
+                # if original is not None:
+                if cropped.thermal.size > 0:
+                    height, width = cropped.shape
+                    chunks = (1, height, width)
+                    cropped_array = cropped.as_array()
+                    dims = cropped_array.shape
+                    frame_node = cropped_frame.create_dataset(
+                        str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
+                    )
+
+                    frame_node[:, :, :] = cropped_array
+                else:
+                    skipped_frames.append(frame_i + track.start_frame)
+
             # write out attributes
             track_stats = track.get_stats()
             node_attrs = track_node.attrs
             node_attrs["id"] = track_id
-            if track.track_tags:
-                node_attrs["track_tags"] = json.dumps(track.track_tags)
+            if track.tags:
+                node_attrs["track_tags"] = json.dumps(track.tags)
             if sample_frames is not None:
                 node_attrs["sample_frames"] = np.uint16(sample_frames)
             node_attrs["tag"] = track.tag
@@ -593,10 +809,7 @@ class TrackDatabase:
                 [bounds.mass for bounds in track.bounds_history]
             )
             node_attrs["bounds_history"] = np.int16(
-                [
-                    [bounds.left, bounds.top, bounds.right, bounds.bottom]
-                    for bounds in track.bounds_history
-                ]
+                [bounds.to_array() for bounds in track.bounds_history]
             )
             f.flush()
 

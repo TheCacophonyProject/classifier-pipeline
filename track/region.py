@@ -20,7 +20,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import ml_tools.tools as tools
 from ml_tools.tools import Rectangle
 import attr
-
+import logging
 import numpy as np
 
 
@@ -39,30 +39,61 @@ class Region(Rectangle):
     blank = attr.ib(default=False)
     is_along_border = attr.ib(default=False)
 
+    @staticmethod
+    def from_ltwh(left, top, width, height):
+        """Construct a rectangle from left, top, right, bottom co-ords."""
+        return Region(left, top, width=width, height=height)
+
+    def to_array(self):
+        """Return rectangle as left, top, right, bottom co-ords."""
+        return np.uint16(
+            [
+                self.left,
+                self.top,
+                self.right,
+                self.bottom,
+                self.frame_number,
+                self.mass,
+                1 if self.blank else 0,
+            ]
+        )
+
     @classmethod
-    def region_from_array(cls, region_bounds, frame_number=0):
+    def region_from_array(cls, region_bounds):
         width = region_bounds[2] - region_bounds[0]
         height = region_bounds[3] - region_bounds[1]
+        frame_number = None
+        if len(region_bounds) > 4:
+            frame_number = region_bounds[4]
+        mass = 0
+        if len(region_bounds) > 5:
+            mass = region_bounds[5]
+        blank = False
+        if len(region_bounds) > 6:
+            blank = region_bounds[6] == 1
         return cls(
             region_bounds[0],
             region_bounds[1],
             width,
             height,
-            frame_number=np.uint16(frame_number),
+            frame_number=np.uint16(frame_number) if frame_number is not None else None,
+            mass=mass,
+            blank=blank,
         )
 
     @classmethod
     def region_from_json(cls, region_json):
-        if "frame_number" in region_json:
-            frame_key = "frame_number"
-        else:
-            frame_key = "order"
+        frame = region_json.get("frame_number")
+        if frame is None:
+            frame = region_json.get("frameNumber")
+        if frame is None:
+            frame = region_json.get("order")
         return cls(
             region_json["x"],
             region_json["y"],
             region_json["width"],
             region_json["height"],
-            frame_number=region_json[frame_key],
+            frame_number=frame,
             mass=region_json.get("mass", 0),
             blank=region_json.get("blank", False),
             pixel_variance=region_json.get("pixel_variance", 0),
@@ -81,18 +112,6 @@ class Region(Rectangle):
             self.y != region.y and self.bottom != region.bottom
         )
 
-    def calculate_mass(self, filtered, threshold):
-        """
-        calculates mass on this frame for this region
-        filtered is assumed to be cropped to the region
-        """
-        height, width = filtered.shape
-        assert (
-            width == self.width and height == self.height
-        ), "calculating variance on incorrectly sized filtered"
-
-        self.mass = tools.calculate_mass(filtered, threshold)
-
     def calculate_variance(self, filtered, prev_filtered):
         """
         calculates variance on this frame for this region
@@ -104,13 +123,24 @@ class Region(Rectangle):
         ), "calculating variance on incorrectly sized filtered"
         self.pixel_variance = tools.calculate_variance(filtered, prev_filtered)
 
-    def set_is_along_border(self, bounds):
+    def set_is_along_border(self, bounds, edge=0):
+        logging.info(
+            "Set is along border %s,%s,%s,%s bounds %s,%s,%s,%s",
+            self.x,
+            self.y,
+            self.right,
+            self.bottom,
+            bounds.x,
+            bounds.y,
+            bounds.width,
+            bounds.height,
+        )
         self.is_along_border = (
             self.was_cropped
-            or self.x == bounds.x
-            or self.y == bounds.y
-            or self.right == bounds.width
-            or self.bottom == bounds.height
+            or self.x <= bounds.x + edge
+            or self.y <= bounds.y + edge
+            or self.right >= bounds.width - edge
+            or self.bottom >= bounds.height - edge
         )
 
     def copy(self):
@@ -132,20 +162,40 @@ class Region(Rectangle):
         """Calculates the distance between 2 regions by using the distance between
         (top, left), mid points and (bottom,right) of each region
         """
+        distances = []
+
+        expected_x = int(other.x)
+        expected_y = int(other.y)
+        distance = tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
+        distances.append(distance)
+
         expected_x = int(other.mid_x)
         expected_y = int(other.mid_y)
         distance = tools.eucl_distance(
             (expected_x, expected_y), (self.mid_x, self.mid_y)
         )
-        expected_x = int(other.x)
-        expected_y = int(other.y)
-        distance += tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
-        distance += tools.eucl_distance(
+        distances.append(distance)
+
+        distance = tools.eucl_distance(
             (
                 other.right,
                 other.bottom,
             ),
             (self.right, self.bottom),
         )
-        distance /= 3.0
-        return distance
+        # expected_x = int(other.right)
+        # expected_y = int(other.bottom)
+        # distance = tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
+        distances.append(distance)
+
+        return distances
+
+    def on_height_edge(self, crop_region):
+        if self.top == crop_region.top or self.bottom == crop_region.bottom:
+            return True
+        return False
+
+    def on_width_edge(self, crop_region):
+        if self.left == crop_region.left or self.right == crop_region.right:
+            return True
+        return False

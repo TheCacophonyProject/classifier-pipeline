@@ -1,27 +1,23 @@
-# require the branch name to be master (note for PRs this is the base branch name)
 dist: bionic
 language: python
 python:
 - '3.6'
-
 install:
 - sudo apt-get update
 - sudo apt -y install ffmpeg
 - sudo apt-get -y install libgirepository1.0-dev python3-dbus
 - sudo apt install -y build-essential libdbus-glib-1-dev libgirepository1.0-dev
-
 - pip install -r requirements.txt
-
 before_script:
 - pip install black --upgrade
 - pip install gdown
-
 script:
 - pytest -s
-- ./check-style
+- "./check-style"
 - python3 load.py -r -c tests/test-config.yaml
 - python3 build.py -c tests/test-config.yaml
-- python3 motiontest.py --thermal-config-file tests/config.toml -c tests/test-config.yaml tests/clips/hedgehog.cptv
+- python3 motiontest.py --thermal-config-file tests/config.toml -c tests/test-config.yaml
+  tests/clips/possum.cptv
 - sudo mkdir /var/spool/cptv
 - sudo chmod -R 777 /var/spool/cptv
 - |
@@ -29,24 +25,22 @@ script:
   gdown.download(\"https://drive.google.com/u/1/uc?id=1CQoQLYbfX9NzRo2_BlpNE_I3c0iG6ZFd\", \"model_hq.tar\", quiet=False)"
 - mkdir model
 - tar -C model -xvf model_hq.tar
-- python3 classify.py all -c tests/test-config.yaml -m model/val_acc/saved_model.pb
-- python3 piclassify.py --cptv tests/clips/hedgehog.cptv  --thermal-config-file tests/config.toml -c tests/test-config.yaml
-
-
-
+- python3 classify.py -c tests/test-config.yaml ./tests/clips/
+- python3 piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml
+  -c tests/test-config.yaml
 before_deploy:
-- "pip install pex"
-- "mkdir -p /tmp/x"
-- "curl -sL https://github.com/goreleaser/nfpm/releases/download/v0.9.5/nfpm_0.9.5_Linux_x86_64.tar.gz | tar -C /tmp/x -xzf -"
-- "PATH=/tmp/x:$PATH _release/build ${TRAVIS_TAG}"
-
+- pip install pex
+- mkdir -p /tmp/x
+- curl -sL https://github.com/goreleaser/nfpm/releases/download/v0.9.5/nfpm_0.9.5_Linux_x86_64.tar.gz
+  | tar -C /tmp/x -xzf -
+- PATH=/tmp/x:$PATH _release/build ${TRAVIS_TAG}
 deploy:
   provider: releases
   api_key:
-    secure: WrrLauinQh68r3+fjSh6WePNB4MoaUcriUhLFioYaxC1SiLzyt6qysFT9MNx4r+Tp94prEkFIMJpljfFlwvS6rPEOqkiTdIsjJnbzmcrjAMCwSyP6sGeiyMfO+VYCJPaDqmjBp056tehUtDl8Gtz5esXFygchAOfZ6v7g/+HvwMIB8Tq+3GZQIzYM80jKjPfAeHMwSV0bXmoQ04m3s2z5ysjEDGtZTaKDEFMZOYOUmDIU74HZsUiDrDxfk5H2UR4mNt2+1JSdJogcpRF1OCzVIG1R5GSTAaC9pprzXsQFUueRS0tQRCeHS5ktRbmnIgOBIws2bMkGZIWys7R9MjWwqnLnPv0JUp2Aza0JBlQuh8imEEt9Hlxm8vdXn2RQwQSKaOBME+ng3izhgdBIYM+U9Ti/kaB7SF/LfYmGx1xhdYVxhYXeD5SLpVTJJYggCn+qVawFAdPxOTxiQmjIgZF9ZnuKbhC1VbLl9dxx4NE3aJTJq5UI6m1UZBvA9zRWrgdmeUN/En+ijvjGzuUm8IFOwwR86Aua8VUQvR/H9U5UBXZAfRA+b468jfjQ2cVdzz0r/1j+v9SAkqX487odFX8i0udy5GRoBnvN9NtTo+duqdMQev+l2u47n/R7x1Q0/stdjgVC4ZZ/JiZTSR0QK5E9stu0Gpxq2cDwlcjaz3gDXw=
-  skip_cleanup: true
+    secure: qU6R5e6ReNdRv5DsMOSxEiHRXsvzimeT1QCb3+WMy9R2S7hX6fPBqZyx5cyDyVlkw6n+625YbhLZLWxQP4dzBCHtQVla5hcmR4/f9DfQhOwb+1nQ+71pSVPyiUreYF9wX8f7j09reTStgNGBKsnPSRr/qrWbuZoeLVOaFc0f8GBzNcPOtEaFldlGNl8CPcgROu2LAbfstMfWZDIY0seeJs6HJZOI+RFiDuDsj7qM99CrZCVmRXAoi9ba41VO0A7u6A0oknOrPvWy0DUhR7MukLLvv126vldwbdXUFOK7PbGo91Q0CwMcG3BLsekDFPx0oWbAT8TFUl3qgW6kxL4cGGvT7w9CYW8/vj0Eec/cTef/KkhedYU+aJ/NKPrUe9WPOlpHrxtPBy3ltk2aSi19LibV245sPqCsAg48zKQo75fY3+nj/AO389hUDI4B2l2st66hxVOVzm8HjZSoOtM9YmFw//f1xE6mmtFXgUDdtXJLZcXplEZ4GGP7BiLfXcmET0rTPa9ptaOeBAbHouLV+65p2niblw3ODZqNnF7AlR0TI2UiP4sNk0SkmOs7+i3m5mm5q8Ry18NQCWzqhi4O7UYLEaQQ6ZRGcmPfhgqQPri8BBuzDsK4KY9mtmo0Ir//q1VBAlUw/AuSQlaB2rnVCPH2tfkQ8gVzInznhlojXEE=
   file_glob: true
-  file: "dist/*.deb"
+  file: dist/*.deb
   on:
     repo: TheCacophonyProject/classifier-pipeline
     tags: true
+  skip_cleanup: 'true'

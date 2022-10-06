@@ -1,3 +1,6 @@
+from multiprocessing import Pool
+
+import cv2
 import gc
 import json
 import logging
@@ -9,6 +12,8 @@ import numpy as np
 from classify.trackprediction import Predictions
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
+from load.irtrackextractor import IRTrackExtractor
+
 from ml_tools import tools
 from ml_tools.previewer import Previewer
 from track.track import Track
@@ -23,24 +28,12 @@ class TrackExtractor:
         """Create an instance of a clip classifier"""
 
         self.config = config
-
-        self.previewer = Previewer.create_if_required(config, config.classify.preview)
+        self.worker_threads = config.worker_threads
 
         if cache_to_disk is None:
             self.cache_to_disk = self.config.classify.cache_to_disk
         else:
             self.cache_to_disk = cache_to_disk
-        # enables exports detailed information for each track.  If preview mode is enabled also enables track previews.
-        self.enable_per_track_information = False
-        self.track_extractor = ClipTrackExtractor(
-            self.config.tracking,
-            self.config.use_opt_flow
-            or config.classify.preview == Previewer.PREVIEW_TRACKING,
-            self.cache_to_disk,
-            high_quality_optical_flow=self.config.tracking.high_quality_optical_flow,
-            verbose=self.config.verbose,
-            keep_frames=False if self.previewer is None else True,
-        )
 
     def get_meta_data(self, filename):
         """Reads meta-data for a given cptv file."""
@@ -70,79 +63,120 @@ class TrackExtractor:
         else:
             return None
 
-    def get_output_file(self, input_filename):
-        return os.path.splitext(input_filename)[0]
-
     def extract(self, base):
         # IF passed a dir extract all cptv files, if a cptv just extract this cptv file
-        if os.path.splitext(base)[1] == ".cptv":
-            self.extract_file(base)
+        if os.path.isfile(base):
+            init_worker(self.config, self.cache_to_disk)
+            extract_file(base)
             return
+        data = []
         for folder_path, _, files in os.walk(base):
             for name in files:
-                if os.path.splitext(name)[1] == ".cptv":
+                if os.path.splitext(name)[1] in [".mp4", ".avi", ".cptv"]:
                     full_path = os.path.join(folder_path, name)
-                    self.extract_file(full_path)
+                    data.append(full_path)
+        with Pool(
+            self.worker_threads, init_worker, (self.config, self.cache_to_disk)
+        ) as pool:
+            pool.map(extract_file, data)
 
-    def extract_file(self, filename):
-        """
-        Process a file extracting tracks and identifying them.
-        :param filename: filename to process
-        :param enable_preview: if true an MPEG preview file is created.
-        """
 
-        clip = self.extract_tracks(filename)
+config = None
+cache_to_disk = None
 
-        out_file = self.get_output_file(filename)
-        destination_folder = os.path.dirname(out_file)
-        if not os.path.exists(destination_folder):
-            logging.info("Creating folder {}".format(destination_folder))
-            os.makedirs(destination_folder)
-        meta_filename = out_file + ".txt"
 
-        if self.previewer:
-            mpeg_filename = out_file + ".mp4"
-            logging.info("Exporting preview to '{}'".format(mpeg_filename))
-            self.previewer.export_clip_preview(mpeg_filename, clip)
-        logging.info("saving meta data %s", meta_filename)
-        self.save_metadata(
-            filename,
-            meta_filename,
-            clip,
-            self.track_extractor.tracking_time,
+def get_output_file(input_filename):
+    return os.path.splitext(input_filename)[0]
+
+
+def init_worker(c, cache):
+    global config
+    global cache_to_disk
+    config = c
+    cache_to_disk = cache
+
+
+def extract_file(filename):
+    """
+    Process a file extracting tracks and identifying them.
+    :param filename: filename to process
+    :param enable_preview: if true an MPEG preview file is created.
+    """
+    global config
+    global cache_to_disk
+    if not os.path.exists(filename):
+        raise Exception("File {} not found.".format(filename))
+    logging.info("Processing file '{}'".format(filename))
+    previewer = Previewer.create_if_required(config, config.classify.preview)
+    extension = os.path.splitext(filename)[1]
+    if extension == ".cptv":
+        track_extractor = ClipTrackExtractor(
+            config.tracking,
+            config.use_opt_flow,
+            cache_to_disk,
+            high_quality_optical_flow=config.tracking[
+                "thermal"
+            ].high_quality_optical_flow,
+            verbose=config.verbose,
+            keep_frames=False if previewer is None else True,
+        )
+        logging.info("Using cptv extractor")
+
+    else:
+        track_extractor = IRTrackExtractor(
+            config.tracking,
+            cache_to_disk,
+            verbose=config.verbose,
+            keep_frames=False if previewer is None else True,
         )
 
-    def extract_tracks(self, filename):
-        if not os.path.exists(filename):
-            raise Exception("File {} not found.".format(filename))
-        logging.info("Processing file '{}'".format(filename))
+        logging.info("Using ir extractor")
+    clip = Clip(track_extractor.config, filename)
+    if extension == ".cptv":
+        clip.frames_per_second = 9
+    else:
+        clip.frames_per_second = 10
 
-        start = time.time()
-        clip = Clip(self.config.tracking, filename)
-        self.track_extractor.parse_clip(clip)
-        return clip
+    start = time.time()
+    success = track_extractor.parse_clip(clip)
 
-    def save_metadata(
-        self,
-        filename,
-        meta_filename,
-        clip,
-        tracking_time,
-    ):
+    # clip, success, tracking_time = extract_tracks(filename, config, cache_to_disk)
+    if not success:
+        logging.error("Could not parse %s", filename)
+        return
+    out_file = get_output_file(filename)
+    destination_folder = os.path.dirname(out_file)
+    if not os.path.exists(destination_folder):
+        logging.info("Creating folder {}".format(destination_folder))
+        os.makedirs(destination_folder)
+    meta_filename = out_file + ".txt"
 
-        # record results in text file.
-        save_file = clip.get_metadata()
-        save_file["source"] = filename
+    if previewer:
+        base_name = os.path.basename(out_file)
+        mpeg_filename = destination_folder + "/" + base_name + "-tracking.mp4"
 
-        save_file["tracking_time"] = round(tracking_time, 1)
-        save_file["algorithm"] = {}
-        save_file["algorithm"]["tracker_version"] = ClipTrackExtractor.VERSION
-        save_file["algorithm"]["tracker_config"] = self.config.tracking.as_dict()
+        previewer.export_clip_preview(mpeg_filename, clip)
 
-        if self.config.classify.meta_to_stdout:
-            print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
-        else:
-            with open(meta_filename, "w") as f:
-                json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
-        if self.cache_to_disk:
-            clip.frame_buffer.remove_cache()
+    logging.info("saving meta data %s", meta_filename)
+
+    save_metadata(filename, meta_filename, clip, track_extractor, config)
+    if cache_to_disk:
+        clip.frame_buffer.remove_cache()
+
+
+def save_metadata(filename, meta_filename, clip, track_extractor, config):
+
+    # record results in text file.
+    save_file = clip.get_metadata()
+    save_file["source"] = filename
+
+    save_file["tracking_time"] = round(track_extractor.tracking_time, 1)
+    save_file["algorithm"] = {}
+    save_file["algorithm"]["tracker_version"] = track_extractor.tracker_version
+    save_file["algorithm"]["tracker_config"] = track_extractor.config.as_dict()
+
+    if config.classify.meta_to_stdout:
+        print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
+    else:
+        with open(meta_filename, "w") as f:
+            json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)

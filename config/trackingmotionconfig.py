@@ -43,6 +43,16 @@ class TrackingMotionConfig(DefaultConfig):
             track_min_delta=1.0,
             track_max_delta=150,
         )
+        thresholds["IR"] = ThresholdConfig(
+            camera_model="IR",
+            temp_thresh=None,
+            background_thresh=15,
+            default=False,
+            min_temp_thresh=None,
+            max_temp_thresh=None,
+            track_min_delta=1.0,
+            track_max_delta=150,
+        )
         return cls(
             camera_thresholds=thresholds,
             dynamic_thresh=True,

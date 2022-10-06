@@ -1,5 +1,5 @@
 from ml_tools.frame import TrackChannels
-from ml_tools.dataset import SegmentType
+from ml_tools.datasetstructures import SegmentType
 from ml_tools.preprocess import FrameTypes
 
 
@@ -22,7 +22,6 @@ class HyperParams(dict):
         self["use_movement"] = self.use_movement
         self["use_segments"] = self.use_segments
         self["square_width"] = self.square_width
-        self["buffer_size"] = self.buffer_size
         self["frame_size"] = self.frame_size
 
         self["shuffle"] = self.shuffle
@@ -32,14 +31,13 @@ class HyperParams(dict):
 
     @property
     def output_dim(self):
-        output_dim = (self.frame_size, self.frame_size, 3)
         if self.use_movement:
-            output_dim = (
-                output_dim[0] * self.square_width,
-                output_dim[1] * self.square_width,
+            return (
+                self.frame_size * self.square_width,
+                self.frame_size * self.square_width,
                 3,
             )
-        return output_dim
+        return (self.frame_size, self.frame_size, 3)
 
     @property
     def keep_aspect(self):
@@ -56,7 +54,10 @@ class HyperParams(dict):
     @property
     def segment_type(self):
         segment_type = self.get("segment_type", SegmentType.ALL_RANDOM.name)
-        return SegmentType[segment_type]
+        if isinstance(segment_type, str):
+            return SegmentType[segment_type]
+        else:
+            return segment_type
 
     # Model hyper paramters
     @property
@@ -122,11 +123,10 @@ class HyperParams(dict):
 
     @property
     def square_width(self):
-        return self.get("square_width", 5)
-
-    @property
-    def buffer_size(self):
-        return self.get("buffer_size", 128)
+        default = 1
+        if self.use_segments:
+            default = 5
+        return self.get("square_width", default)
 
     @property
     def frame_size(self):
@@ -137,8 +137,8 @@ class HyperParams(dict):
         return self.get("shuffle", True)
 
     @property
-    def maximum_train_preload(self):
-        return self.get("maximum_train_preload", 1000)
+    def maximum_preload(self):
+        return self.get("maximum_preload", 1000)
 
     @property
     def red_type(self):

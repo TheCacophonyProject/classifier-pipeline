@@ -9,7 +9,6 @@ from PIL import Image
 
 def resize_and_pad(
     frame,
-    resize_dim,
     new_dim,
     region,
     crop_region,
@@ -19,6 +18,13 @@ def resize_and_pad(
     extra_h=0,
     extra_v=0,
 ):
+    scale_percent = (new_dim[:2] / np.array(frame.shape[:2])).min()
+    width = int(frame.shape[1] * scale_percent)
+    height = int(frame.shape[0] * scale_percent)
+    if len(frame.shape) == 3:
+        resize_dim = (width, height, frame.shape[2])
+    else:
+        resize_dim = (width, height)
     if pad is None:
         pad = np.min(frame)
     else:
@@ -30,7 +36,7 @@ def resize_and_pad(
     frame_height, frame_width = frame_resized.shape[:2]
     offset_x = (new_dim[1] - frame_width) // 2
     offset_y = (new_dim[0] - frame_height) // 2
-    if keep_edge:
+    if keep_edge and crop_region is not None:
         if region.left == crop_region.left:
             offset_x = 0
 
@@ -149,12 +155,14 @@ def normalize(data, min=None, max=None, new_max=1):
         max = np.amax(data)
     if min is None:
         min = np.amin(data)
+    # print("normalizing with", max, min, new_max)
     if max == min:
         if max == 0:
             return np.zeros((data.shape)), (False, max, min)
         data = data / max
         return data, (True, max, min)
-    data = new_max * (data - min) / (max - min)
+
+    data = new_max * (np.float32(data) - min) / (max - min)
     return data, (True, max, min)
 
 
@@ -168,7 +176,77 @@ def save_image_channels(data, filename):
     img.save(filename + ".png")
 
 
-def detect_objects(image, otsus=True, threshold=0, kernel=(5, 5)):
+index = 0
+
+
+def theshold_saliency(image, otsus=False, threshold=100, kernel=(15, 15)):
+    image = np.uint8(image)
+    # image = cv2.fastNlMeansDenoising(np.uint8(image), None)
+
+    image = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
+
+    # image = cv2.GaussianBlur(image, kernel, 0)
+    flags = cv2.THRESH_BINARY
+    if otsus:
+        flags += cv2.THRESH_OTSU
+
+    _, image = cv2.threshold(image, threshold, 255, flags)
+
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
+    return components, small_mask, stats
+
+
+def detect_objects_ir(image, otsus=True, threshold=0, kernel=(15, 15)):
+
+    image = np.uint8(image)
+    image = cv2.Canny(image, 100, 200)
+    image = cv2.dilate(image, kernel, iterations=1)
+    image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
+    return components, small_mask, stats
+
+
+def detect_objects_both(
+    salicencyMap, backsub, threshold=30, kernel=(15, 15), otsus=False
+):
+    if salicencyMap is not None:
+        salicencyMap = np.uint8(salicencyMap)
+        # image = cv2.fastNlMeansDenoising(np.uint8(image), None)
+
+        salicencyMap = cv2.morphologyEx(salicencyMap, cv2.MORPH_OPEN, kernel)
+
+        flags = cv2.THRESH_BINARY
+        if otsus:
+            flags += cv2.THRESH_OTSU
+
+        _, salicencyMap = cv2.threshold(salicencyMap, threshold, 255, flags)
+
+    backsub = np.uint8(backsub)
+    backsub = cv2.GaussianBlur(backsub, kernel, 0)
+    flags = cv2.THRESH_BINARY
+    if otsus:
+        flags += cv2.THRESH_OTSU
+    _, backsub = cv2.threshold(backsub, threshold, 255, flags)
+    # cv2.imshow("theshold", image)
+    backsub = cv2.dilate(backsub, kernel, iterations=1)
+
+    backsub = cv2.morphologyEx(backsub, cv2.MORPH_CLOSE, kernel)
+    # cv2.imshow("backsub.png", np.uint8(backsub))
+    both = backsub
+    if salicencyMap is not None:
+
+        # cv2.imshow("salicencyMap.png", np.uint8(salicencyMap))
+        both = backsub | salicencyMap
+        # cv2.imshow("both.png", np.uint8(both))
+
+    # cv2.waitKey(10)
+
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(both)
+    return components, small_mask, stats
+
+
+def detect_objects(image, otsus=False, threshold=30, kernel=(15, 15)):
+
     image = np.uint8(image)
     image = cv2.GaussianBlur(image, kernel, 0)
     flags = cv2.THRESH_BINARY

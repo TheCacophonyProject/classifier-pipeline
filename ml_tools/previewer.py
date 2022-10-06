@@ -21,7 +21,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import logging
 from os import path
 import numpy as np
-
+import cv2
 from PIL import Image, ImageDraw, ImageFont
 
 from load.clip import Clip
@@ -67,10 +67,7 @@ class Previewer:
 
     @classmethod
     def create_if_required(self, config, preview_type):
-        if (
-            preview_type is not None
-            and not preview_type.lower() == Previewer.PREVIEW_NONE
-        ):
+        if preview_type and not preview_type.lower() == Previewer.PREVIEW_NONE:
             return Previewer(config, preview_type)
 
     def _load_colourmap(self):
@@ -85,7 +82,6 @@ class Previewer:
         """
 
         logging.info("creating clip preview %s", filename)
-
         # increased resolution of video file.
         # videos look much better scaled up
         if not clip.stats:
@@ -104,12 +100,19 @@ class Previewer:
             thermals = [frame.thermal for frame in clip.frame_buffer.frames]
             clip.stats.min_temp = np.amin(thermals)
             clip.stats.max_temp = np.amax(thermals)
+
+        res_x = clip.res_x
+        res_y = clip.res_y
+        if self.preview_type == self.PREVIEW_TRACKING:
+            res_x *= 2
+            res_y *= 2
+
         mpeg = MPEGCreator(filename)
-        frame_scale = 4.0
+        frame_scale = 4
         for frame_number, frame in enumerate(clip.frame_buffer):
             if self.preview_type == self.PREVIEW_RAW:
                 image = self.convert_and_resize(
-                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp
+                    frame.thermal, clip.stats.min_temp, clip.stats.max_temp, clip.type
                 )
                 draw = ImageDraw.Draw(image)
             elif self.preview_type == self.PREVIEW_TRACKING:
@@ -117,6 +120,8 @@ class Previewer:
                     frame,
                     clip.stats.min_temp,
                     clip.stats.max_temp,
+                    clip.type,
+                    frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
                 self.add_tracks(
@@ -132,6 +137,7 @@ class Previewer:
                     frame.thermal,
                     clip.stats.min_temp,
                     clip.stats.max_temp,
+                    clip.type,
                     frame_scale=frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
@@ -149,6 +155,7 @@ class Previewer:
                     frame.thermal,
                     clip.stats.min_temp,
                     clip.stats.max_temp,
+                    clip.type,
                     frame_scale=frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
@@ -165,10 +172,18 @@ class Previewer:
                 self.add_header(draw, image.width, image.height, "Calibrating ...")
             if self.debug and draw:
                 self.add_footer(
-                    draw, image.width, image.height, footer, frame.ffc_affected
+                    draw,
+                    image.width,
+                    image.height,
+                    footer,
+                    frame.ffc_affected,
+                    frame_number,
                 )
-            mpeg.next_frame(np.asarray(image))
+                self.add_header(
+                    draw, image.width, image.height, f"Frame {frame.frame_number}"
+                )
 
+            mpeg.next_frame(np.asarray(image))
             # we store the entire video in memory so we need to cap the frame count at some point.
             if frame_number > clip.frames_per_second * 60 * 10:
                 break
@@ -203,18 +218,26 @@ class Previewer:
             tools.write_mpeg(filename_format.format(id + 1), video_frames)
 
     def convert_and_resize(
-        self, frame, h_min, h_max, size=None, mode=Image.BILINEAR, frame_scale=1
+        self, frame, h_min, h_max, type, size=None, mode=Image.BILINEAR, frame_scale=1
     ):
         """Converts the image to colour using colour map and resize"""
-        thermal = frame[:120, :160].copy()
-        image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
-        image = image.resize(
-            (
-                int(image.width * frame_scale),
-                int(image.height * frame_scale),
-            ),
-            mode,
-        )
+        thermal = frame.copy()
+        if type == "IR":
+            thermal = thermal[..., np.newaxis]
+            thermal = np.repeat(thermal, 3, axis=2)
+            image = Image.fromarray(thermal)
+        else:
+            image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
+
+        # image.save("test" + ".thumbnail", "JPEG")
+        if frame_scale != 1:
+            image = image.resize(
+                (
+                    int(image.width * frame_scale),
+                    int(image.height * frame_scale),
+                ),
+                mode,
+            )
 
         if self.debug:
             tools.add_heat_number(image, thermal, frame_scale)
@@ -285,21 +308,32 @@ class Previewer:
         center = (width / 2 - footer_size[0] / 2.0, 5)
         draw.text((center[0], center[1]), text, font=font)
 
-    def add_footer(self, draw, width, height, text, ffc_affected):
+    def add_footer(self, draw, width, height, text, ffc_affected, frame_number):
         font = get_font()
-        footer_text = "FFC {} {}".format(ffc_affected, text)
+        footer_text = "{} FFC {} {}".format(frame_number, ffc_affected, text)
         footer_size = font.getsize(footer_text)
         center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
         draw.text((center[0], center[1]), footer_text, font=font)
 
-    def create_four_tracking_image(self, frame, min_temp, max_temp):
+    def create_four_tracking_image(self, frame, min_temp, max_temp, type, frame_scale):
 
         thermal = frame.thermal
-        filtered = frame.filtered + min_temp
-        filtered = tools.convert_heat_to_img(
-            filtered, self.colourmap, min_temp, max_temp
-        )
-        thermal = tools.convert_heat_to_img(thermal, self.colourmap, min_temp, max_temp)
+        filtered = frame.filtered
+        if type == "IR":
+            filtered = np.uint8(filtered)
+            thermal = thermal[..., np.newaxis]
+            thermal = np.repeat(thermal, 3, axis=2)
+            filtered = filtered[..., np.newaxis]
+            filtered = np.repeat(filtered, 3, axis=2)
+            thermal = Image.fromarray(thermal)
+            filtered = Image.fromarray(filtered)
+        else:
+            filtered, _ = normalize(filtered, new_max=255)
+            filtered = Image.fromarray(filtered)
+            filtered = filtered.convert("RGB")
+            thermal = tools.convert_heat_to_img(
+                thermal, self.colourmap, min_temp, max_temp
+            )
         if self.debug:
             tools.add_heat_number(thermal, frame.thermal, 1)
         if frame.mask is None:
@@ -310,7 +344,7 @@ class Previewer:
 
             mask = mask[..., np.newaxis]
             mask = np.repeat(mask, 3, axis=2)
-
+        #
         mask = Image.fromarray(mask)
         flow_h, flow_v = frame.get_flow_split(clip_flow=True)
         if flow_h is None and flow_v is None:
@@ -325,15 +359,15 @@ class Previewer:
             flow_magnitude = tools.convert_heat_to_img(
                 flow_magnitude, self.colourmap, min_temp, max_temp
             )
+
         image = np.hstack(
             (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
         )
         image = Image.fromarray(image)
-
         image = image.resize(
             (
-                int(image.width * 4),
-                int(image.height * 4),
+                int(image.width * frame_scale),
+                int(image.height * frame_scale),
             ),
             Image.BILINEAR,
         )
@@ -563,19 +597,20 @@ def add_debug_text(
     font = get_font()
     if text is None:
         text = "id {}".format(track.get_id())
-        if region.pixel_variance:
-            text += "mass {} var {} vel ({},{})".format(
-                region.mass,
-                round(region.pixel_variance, 2),
-                track.vel_x[frame_offset],
-                track.vel_y[frame_offset],
-            )
+
+        text += "mass {} var {} vel ({},{}) blank? {}".format(
+            region.mass,
+            round(region.pixel_variance, 2),
+            track.vel_x[frame_offset],
+            track.vel_y[frame_offset],
+            region.blank,
+        )
     footer_size = font.getsize(text)
-    footer_center = ((region.width * self.frame_scale) - footer_size[0]) / 2
+    footer_center = ((region.width * scale) - footer_size[0]) / 2
 
     footer_rect = Region(
         region.right * scale - footer_center / 2.0,
-        (v_offset + region.bottom) * self.frame_scale,
+        (v_offset + region.bottom) * scale,
         footer_size[0],
         footer_size[1],
     )

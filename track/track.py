@@ -16,6 +16,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
+import logging
 import math
 import numpy as np
 from collections import namedtuple
@@ -24,7 +25,294 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance
-from ml_tools.datasetstructures import get_segments, SegmentHeader
+from ml_tools.datasetstructures import get_segments, SegmentHeader, SegmentType
+import cv2
+import logging
+from track.tracker import Tracker
+
+
+class RegionTracker(Tracker):
+    # number of frames required before using kalman estimation
+    MIN_KALMAN_FRAMES = 18
+
+    # THERMAL VALUES
+    # GP Need to put in config per camera type
+    # MAX_DISTANCE = 2000
+    #
+    # TRACKER_VERSION = 1
+    # BASE_DISTANCE_CHANGE = 450
+    # # minimum region mass change
+    # MIN_MASS_CHANGE = 20
+    # # enforce mass growth after X seconds
+    # RESTRICT_MASS_AFTER = 1.5
+    # # amount region mass can change
+    # MASS_CHANGE_PERCENT = 0.55
+
+    # IR VALUES
+    BASE_DISTANCE_CHANGE = 11250
+
+    # minimum region mass change
+    MIN_MASS_CHANGE = 20 * 4
+    # enforce mass growth after X seconds
+    RESTRICT_MASS_AFTER = 1.5
+    # amount region mass can change
+    MASS_CHANGE_PERCENT = 0.55
+
+    # MAX_DISTANCE = 2000
+    MAX_DISTANCE = 30752
+    BASE_VELOCITY = 8
+    VELOCITY_MULTIPLIER = 10
+
+    def __init__(self, id, tracking_config, crop_rectangle=None):
+        self.track_id = id
+        self.kalman_tracker = Kalman()
+        self._frames_since_target_seen = 0
+        self.frames = 0
+        self._blank_frames = 0
+        self._last_bound = None
+        self.crop_rectangle = crop_rectangle
+        self._tracking = False
+        self.type = tracking_config.type
+        self.min_mass_change = tracking_config.params.get(
+            "min_mass_change", RegionTracker.MIN_MASS_CHANGE
+        )
+        self.max_distance = tracking_config.params.get(
+            "max_distance", RegionTracker.MAX_DISTANCE
+        )
+        self.base_distance_change = tracking_config.params.get(
+            "base_distance_change", RegionTracker.BASE_DISTANCE_CHANGE
+        )
+        self.restrict_mass_after = tracking_config.params.get(
+            "restrict_mass_after", RegionTracker.RESTRICT_MASS_AFTER
+        )
+        self.mass_change_percent = tracking_config.params.get(
+            "mass_change_percent", RegionTracker.MASS_CHANGE_PERCENT
+        )
+        self.velocity_multiplier = tracking_config.params.get(
+            "velocity_multiplier", RegionTracker.VELOCITY_MULTIPLIER
+        )
+        self.base_velocity = tracking_config.params.get(
+            "base_velocity", RegionTracker.BASE_VELOCITY
+        )
+        self.max_blanks = tracking_config.params.get("max_blanks", 18)
+
+    @property
+    def tracking(self):
+        return self._tracking
+
+    @property
+    def last_bound(self):
+        return self._last_bound
+
+    def get_size_change(self, current_area, region: Region):
+        """
+        Gets a value representing the difference in regions sizes
+        """
+
+        # ratio of 1.0 = 20 points, ratio of 2.0 = 10 points, ratio of 3.0 = 0 points.
+        # area is padded with 50 pixels so small regions don't change too much
+        size_difference = abs(region.area - current_area) / (current_area + 50)
+
+        return size_difference
+
+    def match(self, regions, track):
+        scores = []
+        avg_mass = track.average_mass()
+        max_distances = self.get_max_distance_change(track)
+        for region in regions:
+            size_change = self.get_size_change(track.average_area(), region)
+            distances = self.last_bound.average_distance(region)
+
+            max_size_change = get_max_size_change(track, region)
+            max_mass_change = self.get_max_mass_change_percent(track, avg_mass)
+
+            logging.debug(
+                "Track %s %s has max size change %s, distances %s to region %s size change %s max distance %s",
+                track,
+                track.last_bound,
+                max_size_change,
+                distances,
+                region,
+                size_change,
+                max_distances,
+            )
+            # only for thermal
+            if type == "thermal":
+                # GP should figure out good values for the 3 distances rather than the mean
+                distances = [np.mean(distances)]
+                max_distances = max_distances[:1]
+            else:
+                distances = [(distances[0] + distances[2]) / 2]
+                max_distances = max_distances[:1]
+
+            if max_mass_change and abs(avg_mass - region.mass) > max_mass_change:
+                logging.info(
+                    "track {} region mass {} deviates too much from {}".format(
+                        track.get_id(),
+                        region.mass,
+                        avg_mass,
+                    )
+                )
+                continue
+            skip = False
+            for distance, max_distance in zip(distances, max_distances):
+                if max_distance is None:
+                    continue
+                if distance > max_distance:
+
+                    logging.info(
+                        "track {} distance score {} bigger than max distance {}".format(
+                            track.get_id(), distance, max_distance
+                        )
+                    )
+                    skip = True
+                    break
+                    # continue
+            if skip:
+                continue
+
+            if size_change > max_size_change:
+                logging.info(
+                    "track {} size_change {} bigger than max size_change {}".format(
+                        track.get_id(), size_change, max_size_change
+                    )
+                )
+                continue
+            # only for thermal
+            if type == "ir":
+                distance_score = np.mean(distances)
+            else:
+                # GP should figure out good values for the 3 distances rather than the mean
+                distance_score = distances[0]
+
+            scores.append((distance_score, track, region))
+        return scores
+
+    def add_region(self, region):
+        self.frames += 1
+        if region.blank:
+            self._blank_frames += 1
+            self._frames_since_target_seen += 1
+            stop_tracking = min(
+                2 * (self.frames - self.blank_frames),
+                self.max_blanks,
+            )
+            self._tracking = self._frames_since_target_seen < stop_tracking
+
+        else:
+            self._tracking = True
+            self.kalman_tracker.correct(region)
+            self._frames_since_target_seen = 0
+
+        prediction = self.kalman_tracker.predict()
+        self.predicted_mid = (prediction[0][0], prediction[1][0])
+        self._last_bound = region
+
+    @property
+    def blank_frames(self):
+        return self._blank_frames
+
+    @property
+    def frames_since_target_seen(self):
+        return self._frames_since_target_seen
+
+    @property
+    def nonblank_frames(self):
+        return self.frames - self._blank_frames
+
+    def predicted_velocity(self):
+        if (
+            self.last_bound is None
+            or self.nonblank_frames <= RegionTracker.MIN_KALMAN_FRAMES
+        ):
+            return (0, 0)
+        pred_vel_x = self.predicted_mid[0] - self.last_bound.mid_x
+        pred_vel_y = self.predicted_mid[1] - self.last_bound.mid_y
+
+        return (pred_vel_x, pred_vel_y)
+
+    def add_blank_frame(self):
+        if self.frames > RegionTracker.MIN_KALMAN_FRAMES:
+            region = Region(
+                int(self.predicted_mid[0] - self.last_bound.width / 2.0),
+                int(self.predicted_mid[1] - self.last_bound.height / 2.0),
+                self.last_bound.width,
+                self.last_bound.height,
+            )
+            if self.crop_rectangle:
+                region.crop(self.crop_rectangle)
+        else:
+            region = self.last_bound.copy()
+        region.blank = True
+        region.mass = 0
+        region.pixel_variance = 0
+        region.frame_number = self.last_bound.frame_number + 1
+
+        self.add_region(region)
+        return region
+
+    def tracker_version(self):
+        return f"RegionTracker-{RegionTracker.TRACKER_VERSION}"
+
+    def get_max_distance_change(self, track):
+        x, y = track.velocity
+        # x = max(x, 2)
+        # y = max(y, 2)
+        if len(track) == 1:
+            x = self.base_velocity
+            y = self.base_velocity
+        x = self.velocity_multiplier * x
+        y = self.velocity_multiplier * y
+        velocity_distance = x * x + y * y
+
+        pred_vel = track.predicted_velocity()
+        logging.debug(
+            "%s velo %s pred vel %s vel distance %s",
+            track,
+            track.velocity,
+            track.predicted_velocity(),
+            velocity_distance,
+        )
+        pred_distance = pred_vel[0] * pred_vel[0] + pred_vel[1] * pred_vel[1]
+        pred_distance = max(velocity_distance, pred_distance)
+        max_distance = self.base_distance_change + max(velocity_distance, pred_distance)
+        # max top left, max between predicted and region, max between right bottom
+        distances = [max_distance, None, max_distance]
+        return distances
+
+    def get_max_mass_change_percent(self, track, average_mass):
+        if self.mass_change_percent is None:
+            return None
+        if len(track) > self.restrict_mass_after * track.fps:
+            vel = track.velocity
+            mass_percent = self.mass_change_percent
+            if np.sum(np.abs(vel)) > 5:
+                # faster tracks can be a bit more deviant
+                mass_percent = mass_percent + 0.1
+            return max(
+                self.min_mass_change,
+                average_mass * mass_percent,
+            )
+        else:
+            return None
+
+
+def get_max_size_change(track, region):
+    exiting = region.is_along_border and not track.last_bound.is_along_border
+    entering = not exiting and track.last_bound.is_along_border
+    region_percent = 1.5
+    if len(track) < 5:
+        # may increase at first
+        region_percent = 2
+    logging.info("Track %s entering %s exiting %s", track, entering, exiting)
+    vel = np.sum(np.abs(track.velocity))
+    if entering or exiting:
+        region_percent = 2
+        if vel > 10:
+            region_percent *= 3
+    elif vel > 10:
+        region_percent *= 2
+    return region_percent
 
 
 class Track:
@@ -32,8 +320,7 @@ class Track:
 
     # keeps track of which id number we are up to.
     _track_id = 1
-    # number of frames required before using kalman estimation
-    MIN_KALMAN_FRAMES = 18
+
     # Percentage increase that is considered jitter, e.g. if a region gets
     # 30% bigger or smaller
     JITTER_THRESHOLD = 0.3
@@ -41,7 +328,13 @@ class Track:
     MIN_JITTER_CHANGE = 5
 
     def __init__(
-        self, clip_id, id=None, fps=9, crop_rectangle=None, tracker_version=None
+        self,
+        clip_id,
+        id=None,
+        fps=9,
+        tracking_config=None,
+        crop_rectangle=None,
+        tracker_version=None,
     ):
         """
         Creates a new Track.
@@ -53,7 +346,6 @@ class Track:
             Track._track_id += 1
         else:
             self._id = id
-
         self.clip_id = clip_id
         self.start_frame = None
         self.end_frame = None
@@ -65,8 +357,6 @@ class Track:
         # our bounds over time
         self.bounds_history = []
         # number frames since we lost target.
-        self.frames_since_target_seen = 0
-        self.blank_frames = 0
 
         self.vel_x = []
         self.vel_y = []
@@ -78,8 +368,7 @@ class Track:
         self.avg_novelty = None
 
         self.from_metadata = False
-        self.track_tags = None
-        self.kalman_tracker = Kalman()
+        self.tags = None
         self.predictions = None
         self.predicted_class = None
         self.predicted_confidence = None
@@ -87,7 +376,6 @@ class Track:
         self.all_class_confidences = None
         self.prediction_classes = None
 
-        self.predicted_mid = None
         self.crop_rectangle = crop_rectangle
 
         self.predictions = None
@@ -98,6 +386,37 @@ class Track:
         self.prediction_classes = None
         self.tracker_version = tracker_version
 
+        self.tracker = None
+        if tracking_config is not None:
+            self.tracker = self.get_tracker(tracking_config)
+        # self.tracker = RegionTracker(
+        #     self.get_id(), tracking_config, self.crop_rectangle
+        # )
+
+    def get_tracker(self, tracking_config):
+        tracker = tracking_config.tracker
+        if tracker == "RegionTracker":
+            return RegionTracker(self.get_id(), tracking_config, self.crop_rectangle)
+        else:
+            raise Exception(f"Cant find for tracker {tracker}")
+
+    @property
+    def blank_frames(self):
+        if self.tracker is None:
+            return 0
+        return self.tracker.blank_frames
+
+    @property
+    def tracking(self):
+        return self.tracker.tracking
+
+    @property
+    def frames_since_target_seen(self):
+        return self.tracker.frames_since_target_seen
+
+    def match(self, regions):
+        return self.tracker.match(regions, self)
+
     def get_segments(
         self,
         ffc_frames,
@@ -107,6 +426,7 @@ class Track:
         repeats=1,
         min_frames=0,
         segment_frames=None,
+        segment_type=SegmentType.ALL_RANDOM,
     ):
 
         regions = np.array(self.bounds_history)
@@ -129,6 +449,7 @@ class Track:
                     regions=regions[relative_frames],
                     frame_temp_median=frame_temp_median[relative_frames],
                     frame_indices=frames,
+                    segment_type=segment_type,
                 )
                 segments.append(segment)
         else:
@@ -146,16 +467,18 @@ class Track:
                 min_frames=min_frames,
                 segment_frames=None,
                 ignore_mass=not has_mass,
+                segment_type=segment_type,
             )
         return segments
 
     @classmethod
-    def from_region(cls, clip, region, tracker_version=None):
+    def from_region(cls, clip, region, tracker_version=None, tracking_config=None):
         track = cls(
             clip.get_id(),
             fps=clip.frames_per_second,
             tracker_version=tracker_version,
             crop_rectangle=clip.crop_rectangle,
+            tracking_config=tracking_config,
         )
         track.start_frame = region.frame_number
         track.start_s = region.frame_number / float(clip.frames_per_second)
@@ -188,26 +511,24 @@ class Track:
             self.start_s = extra_info["start"]
             self.end_s = extra_info["end"]
         self.fps = frames_per_second
-        self.predicted_tag = extra_info.get("tag")
-        self.all_class_confidences = extra_info.get("all_class_confidences", None)
-        self.predictions = extra_info.get("predictions")
 
-        self.track_tags = track_meta.get("TrackTags")
-        self.prediction_classes = extra_info.get("classes")
-        tag = Track.get_best_human_tag(self.track_tags, tag_precedence, min_confidence)
+        self.tags = track_meta.get("tags")
+        tag = Track.get_best_human_tag(self.tags, tag_precedence, min_confidence)
         if tag:
             self.tag = tag["what"]
             self.confidence = tag["confidence"]
 
-        positions = extra_info.get("positions")
+        positions = track_meta.get("positions")
         if not positions:
             return False
         self.bounds_history = []
         self.frame_list = []
         for position in positions:
             if isinstance(position, list):
-                frame_number = round(position[0] * frames_per_second)
-                region = Region.region_from_array(position[1], frame_number)
+                region = Region.region_from_array(position[1])
+                if region.frame_number is None:
+                    frame_number = round(position[0] * frames_per_second)
+                    region.frame_number = frame_number
             else:
                 region = Region.region_from_json(position)
 
@@ -219,21 +540,34 @@ class Track:
         self.current_frame_num = 0
         return True
 
+    #
+    # def add_frame(self, frame):
+    #     if self.stable:
+    #         ok, bbox = self.tracker.update(frame.thermal)
+    #         if ok:
+    #             r = Region.from_ltwh(bbox[0], bbox[1], bbox[2], bbox[3])
+    #
+    #             r.crop(self.crop_rectangle)
+    #
+    #             sub_filtered = r.subimage(frame.filtered)
+    #             r.calculate_mass(sub_filtered, 1)
+    #             r.frame_number = frame.frame_number
+    #             self.add_region(r, frame)
+    #
+    #         else:
+    #             self.add_blank_frame()
+    #
     def add_region(self, region):
+
         if self.prev_frame_num and region.frame_number:
             frame_diff = region.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
-
+        self.tracker.add_region(region)
         self.bounds_history.append(region)
         self.end_frame = region.frame_number
         self.prev_frame_num = region.frame_number
         self.update_velocity()
-        self.frames_since_target_seen = 0
-        self.kalman_tracker.correct(region)
-        prediction = self.kalman_tracker.predict()
-
-        self.predicted_mid = (prediction[0][0], prediction[1][0])
 
     def update_velocity(self):
         if len(self.bounds_history) >= 2:
@@ -265,14 +599,30 @@ class Track:
             frame_diff = frame.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
                 self.add_blank_frame()
+        if self.tracker:
+            self.tracker.add_region(region)
+
         self.update_velocity()
         self.prev_frame_num = frame.frame_number
         self.current_frame_num += 1
-        self.frames_since_target_seen = 0
-        self.kalman_tracker.correct(region)
+
+    def average_area(self):
+        """Average mass of last 5 frames that weren't blank"""
+        avg_area = 0
+        count = 0
+        for i in range(len(self.bounds_history)):
+            bound = self.bounds_history[-i - 1]
+            if not bound.blank:
+                avg_area += bound.area
+                count += 1
+            if count == 5:
+                break
+        if count == 0:
+            return 0
+        return avg_area / count
 
     def average_mass(self):
-        """Average mass of last 3 frames that weren't blank"""
+        """Average mass of last 5 frames that weren't blank"""
         avg_mass = 0
         count = 0
         for i in range(len(self.bounds_history)):
@@ -280,36 +630,19 @@ class Track:
             if not bound.blank:
                 avg_mass += bound.mass
                 count += 1
-            if count == 3:
+            if count == 5:
                 break
         if count == 0:
             return 0
         return avg_mass / count
 
-    def add_blank_frame(self, buffer_frame=None):
+    def add_blank_frame(self):
         """Maintains same bounds as previously, does not reset framce_since_target_seen counter"""
-        if self.frames > Track.MIN_KALMAN_FRAMES:
-            region = Region(
-                int(self.predicted_mid[0] - self.last_bound.width / 2.0),
-                int(self.predicted_mid[1] - self.last_bound.height / 2.0),
-                self.last_bound.width,
-                self.last_bound.height,
-            )
-            if self.crop_rectangle:
-                region.crop(self.crop_rectangle)
-        else:
-            region = self.last_bound.copy()
-        region.blank = True
-        region.mass = 0
-        region.pixel_variance = 0
-        region.frame_number = self.last_bound.frame_number + 1
+        if self.tracker:
+            region = self.tracker.add_blank_frame()
         self.bounds_history.append(region)
         self.prev_frame_num = region.frame_number
         self.update_velocity()
-        self.blank_frames += 1
-        self.frames_since_target_seen += 1
-        prediction = self.kalman_tracker.predict()
-        self.predicted_mid = (prediction[0][0], prediction[1][0])
 
     def get_stats(self):
         """
@@ -383,6 +716,7 @@ class Track:
         jitter_percent = int(
             round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))
         )
+
         blank_percent = int(round(100.0 * self.blank_frames / self.frames))
         score = (
             min(movement_points, 100)
@@ -452,21 +786,29 @@ class Track:
         Removes empty frames from start and end of track
         """
         mass_history = [int(bound.mass) for bound in self.bounds_history]
+        median_mass = np.median(mass_history)
+        filter_mass = 0.005 * median_mass
+        filter_mass = max(filter_mass, 2)
         start = 0
-        while start < len(self) and mass_history[start] <= 2:
+        logging.info(
+            "Triming track with median % and filter mass %s", median_mass, filter_mass
+        )
+        while start < len(self) and mass_history[start] <= filter_mass:
             start += 1
         end = len(self) - 1
-        while end > 0 and mass_history[end] <= 2:
-            if self.frames_since_target_seen > 0:
-                self.frames_since_target_seen -= 1
-                self.blank_frames -= 1
+        blanks = self.frames_since_target_seen
+        while end > 0 and mass_history[end] <= filter_mass:
+            if blanks > 0:
+                blanks -= 1
+                self.tracker._blank_frames -= 1
             end -= 1
+        self.tracker._frames_since_target_seen = 0
         if end < start:
             self.start_frame = 0
             self.bounds_history = []
             self.vel_x = []
             self.vel_y = []
-            self.blank_frames = 0
+            self.tracker._blank_frames = 0
         else:
             self.start_frame += start
             self.bounds_history = self.bounds_history[start : end + 1]
@@ -513,13 +855,7 @@ class Track:
         self.end_s = (self.end_frame + 1) / fps
 
     def predicted_velocity(self):
-        prev = self.last_bound
-        if prev is None or self.nonblank_frames <= Track.MIN_KALMAN_FRAMES:
-            return (0, 0)
-        pred_vel_x = self.predicted_mid[0] - prev.mid_x
-        pred_vel_y = self.predicted_mid[1] - prev.mid_y
-
-        return (pred_vel_x, pred_vel_y)
+        return self.tracker.predicted_velocity()
 
     @property
     def nonblank_frames(self):
@@ -586,7 +922,7 @@ class Track:
             tag
             for tag in track_tags
             if not tag.get("automatic", False)
-            and tag.get("confidence") > min_confidence
+            and tag.get("confidence") >= min_confidence
         ]
 
         if not track_tags:

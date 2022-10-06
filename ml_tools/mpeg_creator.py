@@ -68,7 +68,7 @@ class MPEGCreator:
             self._output.append(buf)
 
 
-def get_ffmpeg_command(filename, width, height, quality=21):
+def get_ffmpeg_command(filename, width, height, quality=18):
     if os.name == "nt":
         FFMPEG_BIN = "ffmpeg.exe"  # on Windows
     else:
@@ -100,6 +100,8 @@ def get_ffmpeg_command(filename, width, height, quality=21):
         str(quality),  # quality, lower is better
         "-pix_fmt",
         "yuv420p",  # window thumbnails require yuv420p for some reason
+        "-preset",
+        "veryfast",
         filename,
     ]
     return command

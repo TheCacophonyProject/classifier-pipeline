@@ -6,6 +6,7 @@ import os
 import psutil
 import socket
 import time
+import cv2
 
 # fixes logging not showing up in tensorflow
 
@@ -22,7 +23,10 @@ from ml_tools import tools
 from .motiondetector import MotionDetector
 from .piclassifier import PiClassifier, run_classifier
 from .cameras import lepton3
+from .cameras.irframe import IRFrame
 import multiprocessing
+from cptv import Frame
+
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -37,7 +41,7 @@ SKIP_SIGNAL = "skip"
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cptv", help="a CPTV file to send", default=None)
+    parser.add_argument("--file", help="a test file to send", default=None)
     parser.add_argument(
         "-p",
         "--preview-type",
@@ -59,9 +63,9 @@ def main():
     args = parse_args()
 
     config = Config.load_from_file(args.config_file)
-    if args.cptv:
-        return parse_cptv(
-            args.cptv, config, args.thermal_config_file, args.preview_type
+    if args.file:
+        return parse_file(
+            args.file, config, args.thermal_config_file, args.preview_type
         )
 
     try:
@@ -90,8 +94,59 @@ def main():
                 pass
 
 
-def parse_cptv(cptv_file, config, thermal_config_file, preview_type):
-    with open(cptv_file, "rb") as f:
+def parse_file(file, config, thermal_config_file, preview_type):
+    _, ext = os.path.splitext(file)
+
+    if ext == ".cptv":
+        parse_cptv(file, config, thermal_config_file, preview_type)
+    else:
+        parse_ir(file, config, thermal_config_file, preview_type)
+
+
+def parse_ir(file, config, thermal_config_file, preview_type):
+
+    thermal_config = ThermalConfig.load_from_file(thermal_config_file, "IR")
+    count = 0
+    vidcap = cv2.VideoCapture(file)
+    while True:
+        success, image = vidcap.read()
+        if not success:
+            break
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray = cv2.resize(gray, (640, 360))
+        if count == 0:
+            res_y, res_x = gray.shape
+            headers = HeaderInfo(
+                res_x=res_x,
+                res_y=res_y,
+                fps=10,
+                brand=None,
+                model="IR",
+                frame_size=res_y * res_x,
+                pixel_bits=8,
+                serial="",
+                firmware="",
+            )
+
+            pi_classifier = PiClassifier(
+                config,
+                thermal_config,
+                headers,
+                thermal_config.motion.run_classifier,
+                0,
+                preview_type,
+            )
+        frame = Frame(gray, None, None, None, None)
+        frame.received_at = time.time()
+
+        pi_classifier.process_frame(frame)
+        count += 1
+    vidcap.release()
+    pi_classifier.disconnected()
+
+
+def parse_cptv(file, config, thermal_config_file, preview_type):
+    with open(file, "rb") as f:
         reader = CPTVReader(f)
 
         headers = HeaderInfo(
@@ -108,7 +163,6 @@ def parse_cptv(cptv_file, config, thermal_config_file, preview_type):
         thermal_config = ThermalConfig.load_from_file(
             thermal_config_file, headers.model
         )
-        logging.debug(thermal_config)
         pi_classifier = PiClassifier(
             config,
             thermal_config,

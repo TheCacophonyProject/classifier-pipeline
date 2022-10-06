@@ -28,6 +28,7 @@ class Frame:
     scaled_thermal = attr.ib(default=None)
     ffc_affected = attr.ib(default=False)
     region = attr.ib(default=None)
+    frame_temp_median = attr.ib(default=None)
 
     def get_channel(self, channel):
         if channel == TrackChannels.thermal:
@@ -96,11 +97,18 @@ class Frame:
                 (frame_arr[TrackChannels.flow_h], frame_arr[TrackChannels.flow_v]),
                 axis=2,
             )
-
+            t = frame_arr[TrackChannels.thermal]
+            f = frame_arr[TrackChannels.filtered]
+            m = frame_arr[TrackChannels.mask]
+        elif len(frame_arr) == 3:
+            # no flow so mask is at position 2
+            t = frame_arr[TrackChannels.thermal]
+            f = frame_arr[TrackChannels.filtered]
+            m = frame_arr[2]
         return cls(
-            frame_arr[TrackChannels.thermal],
-            frame_arr[TrackChannels.filtered],
-            frame_arr[TrackChannels.mask],
+            t,
+            f,
+            m,
             frame_number,
             flow=flow,
             flow_clipped=flow_clipped,
@@ -109,8 +117,11 @@ class Frame:
         )
 
     def as_array(self, split_flow=True):
+        data = [self.thermal, self.filtered]
         if self.flow is None:
-            return np.asarray([self.thermal, self.filtered, self.mask])
+            if self.mask is not None:
+                data.append(self.mask)
+            return np.asarray(data)
         if split_flow:
             return np.asarray(
                 [
@@ -121,7 +132,6 @@ class Frame:
                     self.mask,
                 ]
             )
-
         return np.asarray([self.thermal, self.filtered, self.flow, self.mask])
 
     def generate_optical_flow(self, opt_flow, prev_frame, flow_threshold=40):
@@ -219,14 +229,9 @@ class Frame:
         return frame
 
     def resize_with_aspect(self, dim, crop_rectangle, keep_edge=False):
-        scale_percent = (dim / np.array(self.thermal.shape)).min()
-        width = int(self.thermal.shape[1] * scale_percent)
-        height = int(self.thermal.shape[0] * scale_percent)
-        resize_dim = (width, height)
         if self.thermal is not None:
             self.thermal = resize_and_pad(
                 self.thermal,
-                resize_dim,
                 dim,
                 self.region,
                 crop_rectangle,
@@ -235,7 +240,6 @@ class Frame:
         if self.mask is not None:
             self.mask = resize_and_pad(
                 self.mask,
-                resize_dim,
                 dim,
                 self.region,
                 crop_rectangle,
@@ -246,7 +250,6 @@ class Frame:
         if self.filtered is not None:
             self.filtered = resize_and_pad(
                 self.filtered,
-                resize_dim,
                 dim,
                 self.region,
                 crop_rectangle,
@@ -256,7 +259,6 @@ class Frame:
         if self.flow is not None:
             flow_h = resize_and_pad(
                 self.flow[:, :, 0],
-                resize_dim,
                 dim,
                 self.region,
                 crop_rectangle,
@@ -265,7 +267,6 @@ class Frame:
             )
             flow_v = resize_and_pad(
                 self.flow[:, :, 1],
-                resize_dim,
                 dim,
                 self.region,
                 crop_rectangle,
@@ -303,14 +304,14 @@ class Frame:
 
     def copy(self):
         return Frame(
-            self.thermal,
-            self.filtered,
-            self.mask,
+            None if self.thermal is None else self.thermal.copy(),
+            None if self.filtered is None else self.filtered.copy(),
+            None if self.mask is None else self.mask.copy(),
             self.frame_number,
-            flow=self.flow,
+            flow=None if self.flow is None else self.flow.copy(),
             flow_clipped=self.flow_clipped,
             ffc_affected=self.ffc_affected,
-            region=self.region,
+            region=None if self.region is None else self.region.copy(),
         )
 
     def flip(self):

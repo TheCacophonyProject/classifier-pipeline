@@ -1,3 +1,5 @@
+import math
+import cv2
 import json
 import dateutil
 import numpy as np
@@ -5,11 +7,29 @@ import logging
 from ml_tools import tools
 from track.region import Region
 from abc import ABC, abstractmethod
+from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pad
+from ml_tools.frame import Frame, TrackChannels
+from ml_tools import imageprocessing
+import datetime
+from enum import Enum
 
 FRAMES_PER_SECOND = 9
 
 CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
+FRAME_SIZE = 32
+MIN_SIZE = 4
+
+
+class SegmentType(Enum):
+    IMPORTANT_RANDOM = 0
+    ALL_RANDOM = 1
+    IMPORTANT_SEQUENTIAL = 2
+    ALL_SEQUENTIAL = 3
+    TOP_SEQUENTIAL = 4
+    ALL_SECTIONS = 5
+    TOP_RANDOM = 6
+    ALL_RANDOM_NOMIN = 7
 
 
 class Sample(ABC):
@@ -31,82 +51,35 @@ class Sample(ABC):
         """Represent the unique identifier for this track."""
         ...
 
+    @property
+    @abstractmethod
+    def unique_id(self):
+        """Represent the unique identifier for this sample."""
+        ...
 
-class NumpyMeta:
-    # Save track data to a numpy file this is much faster for trianing off than
-    #  the h5py file
-    # track_info contains the file read locations for each track
-    def __init__(self, filename):
-        self.filename = filename
-        self.track_info = {}
-        self.f = None
-        self.mode = "rb"
+    @property
+    @abstractmethod
+    def bin_id(self):
+        """Represent the unique identifier for this sample."""
+        ...
 
-    def __enter__(self):
-        self.open(self.mode)
-        return self.f
+    @property
+    @abstractmethod
+    def sample_weight(self):
+        """Represent the unique identifier for this sample."""
+        ...
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+    @property
+    @abstractmethod
+    def mass(cls):
+        """Get mass for this sample"""
+        ...
 
-    def open(self, mode="rb"):
-        if self.f is not None:
-            return
-        self.f = open(self.filename, mode)
 
-    def close(self):
-        if self.f is not None:
-            self.f.close()
-        self.f = None
+EDGE = 1
 
-    def save_tracks(self, db, tracks):
-        logging.info("Writing %s tracks to %s", len(tracks), self.filename)
-        self.open(mode="wb")
-        try:
-            count = 0
-            for count, track in enumerate(tracks):
-                self.add_track(db, track, save_flow=False)
-                if count % 50 == 0:
-                    logging.debug("%s saved %s / %s", self.filename, count, len(tracks))
-            logging.debug("%s saved %s", self.filename, count)
-
-        except:
-            logging.error("Error saving track info", exc_info=True)
-        finally:
-            self.close()
-
-    def add_track(self, db, track, save_flow=True):
-        try:
-            background = db.get_clip_background(track.clip_id)
-            track_info = {}
-            self.track_info[track.unique_id] = track_info
-            frames = db.get_track(
-                track.clip_id,
-                track.track_id,
-                original=False,
-            )
-            index = 0
-            track_info["frames"] = {}
-            for frame in frames:
-                track_info["frames"][frame.frame_number] = index
-                index += 1
-
-            track_frames = np.arange(track.num_frames) + track.start_frame
-            data_frames = track_info["frames"].keys()
-            skipped = [f_i for f_i in track_frames if f_i not in data_frames]
-            track.skipped_frames = np.uint16(skipped)
-            track_info["data"] = self.f.tell()
-            thermals = np.empty(len(frames), dtype=object)
-            filtered = np.empty(len(frames), dtype=object)
-
-            for i, frame in enumerate(frames):
-                thermals[i] = frame.thermal
-                filtered[i] = frame.thermal - frame.region.subimage(background)
-            data = np.stack((thermals, filtered))
-            np.save(self.f, data, allow_pickle=True)
-
-        except:
-            logging.error("Error saving %s", track, exc_info=True)
+res_x = 120
+res_y = 160
 
 
 class TrackHeader:
@@ -162,13 +135,13 @@ class TrackHeader:
         # tracking frame movements for each frame, array of tuples (x-vel, y-vel)
         self.frame_velocity = None
         # original tracking bounds
-        self.regions = np.array(regions)
+        self.regions_by_frame = regions
         # what fraction of pixels are from out of bounds
         self.frame_crop = None
         self.num_frames = num_frames
         self.frames_per_second = frames_per_second
         self.important_predicted = 0
-        mass_history = [region.mass for region in self.regions]
+        mass_history = [region.mass for region in self.regions_by_frame.values()]
         self.lower_mass = np.uint16(np.percentile(mass_history, q=25))
         self.upper_mass = np.uint16(np.percentile(mass_history, q=75))
         self.median_mass = np.uint16(np.median(mass_history))
@@ -176,10 +149,14 @@ class TrackHeader:
         self.ffc_frames = np.uint16(ffc_frames)
         self.skipped_frames = skipped_frames
         self.sample_frames = []
+        sample_frames_indices is None
         if sample_frames_indices is not None:
-            for region, frame_num, frame_temp in zip(
-                regions, sample_frames_indices, self.frame_temp_median
+            # shouldnt need to use this ever
+            for frame_num, frame_temp in zip(
+                sample_frames_indices, self.frame_temp_median
             ):
+                region = self.regions_by_frame[frame_num]
+                assert region.frame_number == frame_num
                 f = FrameSample(
                     self.clip_id,
                     self.track_id,
@@ -188,11 +165,26 @@ class TrackHeader:
                     frame_temp,
                     None,
                     region,
+                    weight=1,
+                    camera=self.camera,
+                    start_time=self.start_time
+                    + datetime.timedelta(seconds=frame_num / self.frames_per_second),
                 )
                 self.sample_frames.append(f)
         else:
-            for region, frame_temp in zip(regions, self.frame_temp_median):
-                if region.mass == 0:
+            frame_numbers = list(self.regions_by_frame.keys())
+            frame_numbers = [
+                frame
+                for frame in frame_numbers
+                if (skipped_frames is None or frame not in skipped_frames)
+                and (ffc_frames is None or frame not in ffc_frames)
+            ]
+            frame_numbers.sort()
+
+            for frame_num, frame_temp in zip(frame_numbers, self.frame_temp_median):
+
+                region = self.regions_by_frame[frame_num]
+                if region.mass == 0 or region.blank:
                     continue
                 f = FrameSample(
                     self.clip_id,
@@ -202,8 +194,18 @@ class TrackHeader:
                     frame_temp,
                     None,
                     region,
+                    weight=1,
+                    camera=self.camera,
+                    start_time=self.start_time
+                    + datetime.timedelta(seconds=frame_num / self.frames_per_second),
                 )
                 self.sample_frames.append(f)
+
+    @property
+    def bounds_history(self):
+        regions = list(self.regions_by_frame.values())
+        regions = sorted(regions, key=lambda r: r.frame_number)
+        return regions
 
     def toJSON(self, clip_meta):
         meta_dict = {}
@@ -283,16 +285,17 @@ class TrackHeader:
         self,
         segment_frame_spacing,
         segment_width,
+        segment_type,
         segment_min_mass=None,
         use_important=False,
-        random_frames=True,
-        top_frames=False,
-        random_sections=False,
         repeats=1,
     ):
         min_frames = segment_width
         if self.label == "vehicle" or self.label == "human":
             min_frames = segment_width / 4.0
+
+        # in python3.7+ can just take the values and it guarantees order it was added to dict
+        regions = self.bounds_history
         self.segments, self.filtered_stats = get_segments(
             self.clip_id,
             self.track_id,
@@ -300,16 +303,18 @@ class TrackHeader:
             segment_frame_spacing,
             segment_width,
             label=self.label,
-            regions=self.regions,
+            regions=np.array(regions),
             frame_temp_median=self.frame_temp_median,
             segment_min_mass=segment_min_mass,
             sample_frames=self.sample_frames if use_important else None,
-            top_frames=top_frames,
-            random_sections=random_sections,
             ffc_frames=self.ffc_frames,
             lower_mass=self.lower_mass,
             repeats=repeats,
             min_frames=min_frames,
+            camera=self.camera,
+            skipped_frames=self.skipped_frames,
+            start_time=self.start_time,
+            segment_type=segment_type,
         )
 
     @property
@@ -320,7 +325,7 @@ class TrackHeader:
     @property
     def bin_id(self):
         """Unique name of this track."""
-        return "{}".format(self.clip_id)
+        return "{}-{}".format(self.clip_id, self.track_id)
 
     @property
     def weight(self):
@@ -351,19 +356,26 @@ class TrackHeader:
         )
 
         ffc_frames = clip_meta.get("ffc_frames", [])
-        sample_frames = track_meta.get("sample_frames")
+        sample_frames = None
+        # sample_frames = track_meta.get("sample_frames")
+        # if sample_frames is not None:
+        #     sample_frames = sample_frames + track_start_frame
         skipped_frames = track_meta.get("skipped_frames")
-        regions = [None] * len(track_meta["bounds_history"])
+        regions = {}
         f_i = 0
         for bounds, mass in zip(
             track_meta["bounds_history"], track_meta["mass_history"]
         ):
-            r = Region.region_from_array(bounds, np.uint16(f_i + track_start_frame))
+            r = Region.region_from_array(bounds)
+            if r.frame_number is None:
+                r.frame_number = np.uint16(f_i + track_start_frame)
             r.mass = np.uint16(mass)
+
             if r.mass == 0:
                 r.blank = True
-            regions[f_i] = r
+            regions[r.frame_number] = r
             f_i += 1
+
         header = TrackHeader(
             clip_id=int(clip_id),
             track_id=int(track_meta["id"]),
@@ -396,6 +408,7 @@ class Camera:
     def __init__(self, camera):
         self.label_to_bins = {}
         self.label_to_tracks = {}
+        self.label_to_samples = {}
 
         self.bins = {}
         self.camera = camera
@@ -506,12 +519,44 @@ class Camera:
         self.segment_sum += segment_length
         self.segments += 1
 
+    def remove_sample(self, sample):
+        del self.label_to_samples[sample.label][sample.unique_id]
+        if track.bin_id in self.label_to_bins[sample.label]:
+            self.label_to_bins[sample.label].remove(sample.bin_id)
+        self.label_frames[sample.label] -= len(sample.sample_frames)
+
+    def add_sample(self, sample):
+        samples = self.label_to_samples.setdefault(sample.label, {})
+        samples[sample.unique_id] = sample
+        if sample.bin_id not in self.bins:
+            self.bins[sample.bin_id] = []
+
+        if sample.label not in self.label_to_bins:
+            self.label_to_bins[sample.label] = []
+            self.label_frames[sample.label] = 0
+
+        if sample.bin_id not in self.label_to_bins[sample.label]:
+            self.label_to_bins[sample.label].append(sample.bin_id)
+
+        self.bins[sample.bin_id].append(sample)
+
 
 class FrameSample(Sample):
     _frame_id = 1
 
     def __init__(
-        self, clip_id, track_id, frame_num, label, temp_median, velocity, region
+        self,
+        clip_id,
+        track_id,
+        frame_num,
+        label,
+        temp_median,
+        velocity,
+        region,
+        weight,
+        camera,
+        start_time,
+        augment=False,
     ):
         self.id = FrameSample._frame_id
         FrameSample._frame_id += 1
@@ -522,6 +567,36 @@ class FrameSample(Sample):
         self.temp_median = temp_median
         self.velocity = velocity
         self.region = region
+        self.weight = weight
+        self.camera = camera
+        self.start_time = start_time
+        self.augment = augment
+
+    def copy(self):
+        f = FrameSample(
+            clip_id=self.clip_id,
+            track_id=self.track_id,
+            frame_num=self.frame_number,
+            label=self.label,
+            temp_median=self.temp_median,
+            velocity=self.velocity,
+            region=self.region,
+            weight=self.weight,
+            camera=self.camera,
+            start_time=self.start_time,
+            augment=self.augment,
+        )
+        FrameSample._frame_id += 1
+
+        return f
+
+    @property
+    def mass(self):
+        return self.region.mass
+
+    @property
+    def sample_weight(self):
+        return self.weight
 
     @property
     def unique_track_id(self):
@@ -534,6 +609,17 @@ class FrameSample(Sample):
     @property
     def frame_indices(self):
         return [self.frame_number]
+
+    @property
+    def unique_id(self):
+        return f"{self.clip_id}-{self.track_id}-{self.frame_number}"
+
+    @property
+    def bin_id(self):
+        """Unique name of this segments track."""
+        # break into 50 frame keys, since we dont have much data this means multiple sets can have same clip
+        i = int(self.frame_number / 50)
+        return f"{self.clip_id}-{self.track_id}-{i}"
 
 
 class SegmentHeader(Sample):
@@ -556,6 +642,8 @@ class SegmentHeader(Sample):
         movement_data=None,
         best_mass=False,
         top_mass=False,
+        start_time=None,
+        camera=None,
     ):
         self.movement_data = movement_data
         self.top_mass = top_mass
@@ -566,7 +654,7 @@ class SegmentHeader(Sample):
         self.clip_id = clip_id
         self.track_id = track_id
         self.frame_numbers = np.uint16(frame_indices)
-
+        self.start_time = start_time
         self.regions = regions
         self.frame_temp_median = np.uint16(frame_temp_median)
         # for i, frame in enumerate(frame_indices):
@@ -580,7 +668,16 @@ class SegmentHeader(Sample):
         # relative weight of the segment (higher is sampled more often)
         self.weight = np.float16(weight)
 
-        self.mass = np.uint16(mass)
+        self._mass = np.uint16(mass)
+        self.camera = camera
+
+    @property
+    def mass(self):
+        return self._mass
+
+    @property
+    def sample_weight(self):
+        return self.weight
 
     @property
     def track_bounds(self):
@@ -622,14 +719,62 @@ class SegmentHeader(Sample):
         return self.start_frame + self.frames
 
     @property
-    def track_bin(self):
+    def bin_id(self):
         """Unique name of this segments track."""
-        return self.track.bin_id
+        return self.clip_id
 
     def __str__(self):
         return "{0} label {1} offset:{2} weight:{3:.1f}".format(
             self.unique_track_id, self.label, self.start_frame, self.weight
         )
+
+    @property
+    def unique_id(self):
+        return self.id
+
+    def get_data(self, db):
+        crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+
+        try:
+            background = db.get_clip_background(self.clip_id)
+            frames = db.get_track(
+                self.clip_id,
+                self.track_id,
+                original=False,
+                frame_numbers=self.frame_numbers - self.start_frame,
+            )
+
+            thermals = np.empty(len(frames), dtype=object)
+            filtered = np.empty(len(frames), dtype=object)
+
+            for i, frame in enumerate(frames):
+                frame.float_arrays()
+                frame.filtered = frame.thermal - frame.region.subimage(background)
+                temp_index = np.where(self.frame_numbers == frame.frame_number)[0][0]
+                temp = self.frame_temp_median[temp_index]
+                frame.resize_with_aspect((32, 32), crop_rectangle, keep_edge=True)
+                frame.thermal -= temp
+                np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
+
+                # frame.thermal, _ = imageprocessing.normalize(frame.thermal, new_max=255)
+                # frame.filtered, _ = imageprocessing.normalize(frame.filtered, new_max=255)
+
+                filtered[i] = frame.filtered
+                thermals[i] = frame.thermal
+            thermal, success = imageprocessing.square_clip(thermals, 5, (32, 32))
+            if not success:
+                logging.warn("Error making thermal square clip %s", self.clip_id)
+                return None
+            filtered, success = imageprocessing.square_clip(filtered, 5, (32, 32))
+            if not success:
+                logging.warn("Error making filtered square clip %s", filtered)
+
+                return None
+        except:
+            logging.error("Cant get segment %s", self, exc_info=True)
+            raise "EX"
+            return None
+        return thermal, filtered
 
 
 def get_cropped_fraction(region: tools.Rectangle, width, height):
@@ -638,17 +783,21 @@ def get_cropped_fraction(region: tools.Rectangle, width, height):
     return 1 - (bounds.overlap_area(region) / region.area)
 
 
-def get_movement_data(b_h, m_h):
-    areas = (b_h[:, 2] - b_h[:, 0]) * (b_h[:, 3] - b_h[:, 1])
-    centrex = (b_h[:, 2] + b_h[:, 0]) / 2
-    centrey = (b_h[:, 3] + b_h[:, 1]) / 2
+def get_movement_data(regions):
+    areas = np.array([region.area for region in regions])
+    centrex = np.array([region.mid_x for region in regions])
+    centrey = np.array([region.mid_y for region in regions])
     xv = np.hstack((0, centrex[1:] - centrex[:-1]))
     yv = np.hstack((0, centrey[1:] - centrey[:-1]))
     axv = xv / areas**0.5
     ayv = yv / areas**0.5
-    return np.hstack((b_h, np.vstack((m_h, xv, yv, axv, ayv)).T))
+    bounds = np.array([region.to_ltrb() for region in regions])
+    mass = np.array([region.mass for region in regions])
+
+    return np.hstack((bounds, np.vstack((mass, xv, yv, axv, ayv)).T))
 
 
+# should use trackheader / track in creationg interface out common properties
 def get_segments(
     clip_id,
     track_id,
@@ -660,9 +809,6 @@ def get_segments(
     label=None,
     segment_min_mass=None,
     sample_frames=None,
-    random_frames=True,
-    top_frames=False,
-    random_sections=False,
     ffc_frames=[],
     lower_mass=0,
     repeats=1,
@@ -670,7 +816,13 @@ def get_segments(
     skipped_frames=None,
     segment_frames=None,
     ignore_mass=False,
+    camera=None,
+    start_time=None,
+    segment_type=SegmentType.ALL_RANDOM,
 ):
+
+    if segment_type == SegmentType.ALL_RANDOM_NOMIN:
+        segment_min_mass = None
     if min_frames is None:
         min_frames = 25
     segments = []
@@ -685,8 +837,8 @@ def get_segments(
             if (ignore_mass or region.mass > 0)
             and region.frame_number not in ffc_frames
             and (skipped_frames is None or region.frame_number not in skipped_frames)
+            and not region.blank
         ]
-
         if segment_min_mass is not None:
             if len(frame_indices) > 0:
                 segment_min_mass = min(
@@ -697,114 +849,78 @@ def get_segments(
             segment_min_mass = 1
             # remove blank frames
 
-        if top_frames and random_frames:
+        if segment_type == SegmentType.TOP_RANDOM:
             # take top 50 mass frames
             frame_indices = sorted(
-                frame_indices, key=lambda f_i: mass_history[f_i], reverse=True
+                frame_indices,
+                key=lambda f_i: mass_history[f_i - start_frame],
+                reverse=True,
             )
             frame_indices = frame_indices[:50]
             frame_indices.sort()
-
+    # 1 / 0
+    if segment_type == SegmentType.TOP_SEQUENTIAL:
+        return get_top_mass_segments(
+            clip_id,
+            track_id,
+            label,
+            frame_temp_median,
+            camera,
+            segment_width,
+            segment_frame_spacing,
+            mass_history,
+            ffc_frames,
+            regions,
+            start_frame,
+            start_time,
+            lower_mass,
+            segment_min_mass,
+            ignore_mass,
+        )
     if len(frame_indices) < min_frames:
         filtered_stats["too short"] += 1
         return segments, filtered_stats
     frame_indices = np.array(frame_indices)
     segment_count = max(1, len(frame_indices) // segment_frame_spacing)
     segment_count = int(segment_count)
-    # i3d segments get all segments above min mass sequentially
-    if top_frames and not random_frames:
-        segment_mass = []
-
-        for i in range(max(1, len(mass_history) - segment_width)):
-            contains_ffc = False
-            for z in range(segment_width):
-                if (z + i + start_frame) in ffc_frames:
-                    contains_ffc = True
-                    break
-            if contains_ffc:
-                continue
-            mass = np.sum(mass_history[i : i + segment_width])
-            segment_mass.append((i, mass))
-
-        sorted_mass = sorted(segment_mass, key=lambda x: x[1], reverse=True)
-        best_mass = True
-
-        for _ in range(segment_count):
-            segment_info = sorted_mass[0]
-            index = segment_info[0]
-            avg_mass = segment_info[1] / segment_width
-            if not best_mass and (
-                ignore_mass or (avg_mass < lower_mass or avg_mass < segment_min_mass)
-            ):
-                break
-            movement_data = get_movement_data(regions[index : index + segment_width])
-            frames = np.arange(segment_width) + index
-            segment = SegmentHeader(
-                clip_id,
-                track_id,
-                start_frame=index,
-                frames=segment_width,
-                weight=1,
-                avg_mass=avg_mass,
-                label=label,
-                regions=regions[frames],
-                frame_temp_median=frame_temp_median[frames],
-                frame_indices=frames + start_frame,
-                movement_data=movement_data,
-                best_mass=best_mass,
-                top_mass=True,
-            )
-            best_mass = False
-            segments.append(segment)
-            sorted_mass = [
-                mass_info
-                for mass_info in sorted_mass
-                if mass_info[0] <= (index - segment_width / 3 * 2)
-                or mass_info[0] >= (index + segment_width / 3 * 2)
-            ]
-            if len(segments) == segment_count or len(sorted_mass) == 0:
-                break
-        return segments, filtered_stats
-    # give it slightly more than segment_width frames to choose some from
-    extra_frames = 2
 
     # take any segment_width frames, this could be done each epoch
     whole_indices = frame_indices
+    random_frames = segment_type in [
+        SegmentType.IMPORTANT_RANDOM,
+        SegmentType.ALL_RANDOM,
+        SegmentType.ALL_RANDOM_NOMIN,
+        SegmentType.TOP_RANDOM,
+        None,
+    ]
     for _ in range(repeats):
 
         frame_indices = whole_indices.copy()
-        np.random.shuffle(frame_indices)
-
+        if random_frames:
+            # random_frames and not random_sections:
+            np.random.shuffle(frame_indices)
         for i in range(segment_count):
             if (len(frame_indices) < segment_width and len(segments) > 1) or len(
                 frame_indices
             ) < (segment_width / 4.0):
                 break
 
-            if random_frames:
-                if random_sections:
-                    section = frame_indices[: int(segment_width * 2.2)]
-                    indices = np.random.choice(
-                        len(section),
-                        min(segment_width, len(section)),
-                        replace=False,
-                    )
-                    frames = section[indices]
-                    frame_indices = [
-                        f_num
-                        for f_num in frame_indices
-                        if f_num > frames[0] + segment_frame_spacing
-                    ]
-                else:
-                    frames = frame_indices[:segment_width]
-                    frame_indices = frame_indices[segment_width:]
+            if segment_type == SegmentType.ALL_SECTIONS:
+                # random frames from section 2.2 * segment_width
+                section = frame_indices[: int(segment_width * 2.2)]
+                indices = np.random.choice(
+                    len(section),
+                    min(segment_width, len(section)),
+                    replace=False,
+                )
+                frames = section[indices]
+                frame_indices = frame_indices[segment_frame_spacing:]
+            elif random_frames:
+                frames = frame_indices[:segment_width]
+                frame_indices = frame_indices[segment_width:]
             else:
                 segment_start = i * segment_frame_spacing
-                segment_end = segment_start + segment_width + extra_frames
-                if i > 0:
-                    segment_start -= extra_frames
-                else:
-                    segment_end += extra_frames
+                segment_end = segment_start + segment_width
                 segment_end = min(len(frame_indices), segment_end)
                 frames = frame_indices[segment_start:segment_end]
 
@@ -842,10 +958,11 @@ def get_segments(
             #     self.track_bounds[frames],
             #     mass_history[frames],
             # )
-
             temp_slice = frame_temp_median[relative_frames]
             region_slice = regions[relative_frames]
             movement_data = None
+            for z, f in enumerate(frames):
+                assert region_slice[z].frame_number == f
             segment = SegmentHeader(
                 clip_id,
                 track_id,
@@ -858,6 +975,179 @@ def get_segments(
                 frame_temp_median=temp_slice,
                 frame_indices=frames,
                 movement_data=movement_data,
+                camera=camera,
+                start_time=start_time,
             )
             segments.append(segment)
     return segments, filtered_stats
+
+
+def get_top_mass_segments(
+    clip_id,
+    track_id,
+    label,
+    frame_temp_median,
+    camera,
+    segment_width,
+    segment_frame_spacing,
+    mass_history,
+    ffc_frames,
+    regions,
+    start_frame,
+    start_time,
+    lower_mass,
+    segment_min_mass,
+    ignore_mass=False,
+):
+    filtered_stats = {"segment_mass": 0, "too short": 0}
+
+    segments = []
+    segment_count = max(1, len(regions) // segment_frame_spacing)
+    segment_count = int(segment_count)
+
+    segment_mass = []
+    for i in range(max(1, len(mass_history) - segment_width)):
+        contains_ffc = False
+        for z in range(segment_width):
+            if (z + i + start_frame) in ffc_frames:
+                contains_ffc = True
+                break
+        if contains_ffc:
+            continue
+        mass = np.sum(mass_history[i : i + segment_width])
+        segment_mass.append((i, mass))
+
+    sorted_mass = sorted(segment_mass, key=lambda x: x[1], reverse=True)
+    best_mass = True
+    segment_count = max(1, len(regions) // segment_frame_spacing)
+    segment_count = int(min(len(sorted_mass), segment_count))
+
+    for _ in range(segment_count):
+        segment_info = sorted_mass[0]
+        index = segment_info[0]
+        avg_mass = segment_info[1] / segment_width
+        if not best_mass and (
+            ignore_mass or (avg_mass < lower_mass or avg_mass < segment_min_mass)
+        ):
+            break
+        movement_data = get_movement_data(regions[index : index + segment_width])
+        width = min(segment_width, len(regions))
+        frames = np.arange(width) + index
+        segment = SegmentHeader(
+            clip_id,
+            track_id,
+            start_frame=start_frame,
+            frames=segment_width,
+            weight=1,
+            mass=segment_info[1],
+            label=label,
+            regions=regions[frames],
+            frame_temp_median=frame_temp_median[frames],
+            frame_indices=frames + start_frame,
+            movement_data=movement_data,
+            best_mass=best_mass,
+            top_mass=True,
+            camera=camera,
+            start_time=start_time,
+        )
+        best_mass = False
+        segments.append(segment)
+        # remove those that start within this segment
+        sorted_mass = [
+            mass_info
+            for mass_info in sorted_mass
+            if mass_info[0] <= (index - segment_width / 3 * 2)
+            or mass_info[0] >= (index + segment_width / 3 * 2)
+        ]
+        if len(segments) == segment_count or len(sorted_mass) == 0:
+            break
+    return segments, filtered_stats
+
+
+# GP Not using at the moment, but handy for more complex training
+
+
+class TrackingSample(Sample):
+    _s_id = 1
+
+    def __init__(
+        self,
+        clip_id,
+        track_id,
+        frame_num,
+        labels,
+        temp_median,
+        region,
+        start_time,
+        camera,
+        filename,
+    ):
+        self.id = TrackingSample._s_id
+        TrackingSample._s_id += 1
+        self.clip_id = clip_id
+        self.filename = filename
+        self.track_id = track_id
+        self.start_time = dateutil.parser.parse(start_time)
+        # needed for original frame will change this GP
+        self.frame_number = frame_num
+        self.camera = camera
+        if isinstance(labels, str):
+            self.labels = [labels]
+        else:
+            self.labels = labels
+        self.temp_median = temp_median
+        if region is None:
+            self.regions = []
+        else:
+            self.regions = [region]
+
+    # asusming only one label for now GP should change
+    @property
+    def label(self):
+        return self.labels[0]
+
+    @property
+    def region(self):
+        return self.regions[0]
+
+    def add_sample(self, f):
+        self.labels.append(f.label)
+        self.regions.append(f.region)
+
+    def filename(self):
+        return f"{self.clip_id}-{self.track_id}-{self.frame_number}"
+
+    @classmethod
+    def from_sample(cls, f):
+        return cls(
+            f.clip_id, f.track_id, f.frame_number, [f.label], f.temp_median, [f.region]
+        )
+
+    @property
+    def unique_track_id(self):
+        return "{}-{}".format(self.clip_id, self.track_id)
+
+    @property
+    def track_bounds(self):
+        return self.regions
+
+    @property
+    def frame_indices(self):
+        return [self.frame_number]
+
+    @property
+    def sample_weight(self):
+        return 1
+
+    @property
+    def unique_id(self):
+        return f"{self.clip_id}-{self.track_id}-{self.frame_number}"
+
+    @property
+    def bin_id(self):
+        """Unique name of this segments track."""
+        frames_numbers = int(self.frame_number / 20)
+        # try and segment framesso 20 frames are in the same bin
+        return f"{self.clip_id}-{self.track_id}-{frames_numbers}"
+        # this should be used but dont have much data
+        # return f"{self.clip_id}-{self.track_id}"

@@ -28,6 +28,7 @@ def main():
     config = Config.load_from_file(args.config_file)
     thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
     print("detecting on  " + args.cptv)
+
     with open(args.cptv, "rb") as f:
         reader = CPTVReader(f)
 
@@ -44,7 +45,7 @@ def main():
         )
 
         motion_detector = MotionDetector(
-            thermal_config, config.tracking.motion.dynamic_thresh, headers
+            thermal_config, config.tracking["thermal"].motion.dynamic_thresh, headers
         )
         for i, frame in enumerate(reader):
             motion_detector.process_frame(frame)

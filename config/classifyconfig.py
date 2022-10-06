@@ -20,7 +20,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import os.path as path
 
 import attr
-
+import logging
 
 from config import config
 from .defaultconfig import DefaultConfig
@@ -79,6 +79,8 @@ class ModelConfig:
     DEFAULT_SCORE = 0
     id = attr.ib()
     name = attr.ib()
+    type = attr.ib()
+
     model_file = attr.ib()
     model_weights = attr.ib()
 
@@ -86,24 +88,30 @@ class ModelConfig:
     tag_scores = attr.ib()
     ignored_tags = attr.ib()
     thumbnail_model = attr.ib()
+    reclassify = attr.ib()
+    submodel = attr.ib()
 
     @classmethod
     def load(cls, raw):
         model = cls(
             id=raw["id"],
             name=raw["name"],
+            type=raw.get("type", "keras"),
             model_file=raw["model_file"],
             model_weights=raw.get("model_weights"),
             wallaby=raw.get("wallaby", False),
             tag_scores=load_scores(raw.get("tag_scores", {})),
             ignored_tags=raw.get("ignored_tags", []),
             thumbnail_model=raw.get("thumbnail_model", False),
+            reclassify=raw.get("reclassify", None),
+            submodel=raw.get("submodel", False),
         )
         return model
 
     def validate(self):
         if not path.exists(self.model_file):
-            raise ValueError(f"{self.model_file} does not exist")
+            logging.warn(f"{self.model_file} does not exist")
+            # raise ValueError(f"{self.model_file} does not exist")
 
     def as_dict(self):
         return attr.asdict(self)

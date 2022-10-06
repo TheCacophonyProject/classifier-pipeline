@@ -71,7 +71,7 @@ class SlidingWindow:
                 return self.frames[self.oldest_index]
             return None
 
-    def add(self, frame, ffc):
+    def add(self, frame, ffc=False):
         with self.lock:
             if self.last_index is None:
                 self.oldest_index = 0
