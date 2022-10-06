@@ -61,7 +61,7 @@ def remove_axes(title):
     ax.set_title(title)
 
 
-def thumbnail_for_track(clip):
+def thumbnail_debug(clip):
     for track in clip.tracks:
         contour_points = []
         median_diffs = []
