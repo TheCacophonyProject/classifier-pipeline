@@ -34,7 +34,6 @@ def load_dataset(
     ignore_order.experimental_deterministic = (
         deterministic  # disable order, increase speed
     )
-
     dataset = tf.data.TFRecordDataset(filenames)
     # dataset = dataset.interleave(tf.data.TFRecordDataset, cycle_length=4)
     # automatically interleaves reads from multiple files
@@ -195,6 +194,7 @@ def get_resampled_by_label(
     stop_on_empty_dataset=True,
     preprocess_fn=None,
 ):
+
     num_labels = len(labels)
     global remapped_y
     remapped = {}
@@ -250,37 +250,47 @@ def read_tfrecord(
     example, image_size, num_labels, labeled, augment=False, preprocess_fn=None
 ):
     tfrecord_format = {
-        "image/thermalencoded": tf.io.FixedLenFeature([], tf.string),
-        "image/filteredencoded": tf.io.FixedLenFeature([], tf.string),
+        "image/thermalencoded": tf.io.FixedLenFeature([25 * 32 * 32], dtype=tf.float32),
+        "image/filteredencoded": tf.io.FixedLenFeature(
+            [25 * 32 * 32], dtype=tf.float32
+        ),
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
-        # "image/clip_id": tf.io.FixedLenFeature([], tf.int64),
     }
 
     example = tf.io.parse_single_example(example, tfrecord_format)
-    thermalencoded = tf.cast(example["image/thermalencoded"], tf.string)
-    image = decode_image(
-        example["image/thermalencoded"],
-        example["image/filteredencoded"],
-        image_size,
-    )
-    # image = decode_image image_size)
-    # source_id = tf.cast(example["image/clip_id"], tf.int64)
-    data_augmentation = tf.keras.Sequential(
+    thermalencoded = example["image/thermalencoded"]
+    filteredencoded = example["image/filteredencoded"]
+
+    thermals = tf.reshape(thermalencoded, [25, 32, 32, 1])
+    filtered = tf.reshape(filteredencoded, [25, 32, 32, 1])
+    rgb_images = tf.concat((thermals, thermals, filtered), axis=3)
+    rotation_augmentation = tf.keras.Sequential(
         [
-            tf.keras.layers.RandomFlip("horizontal"),
-            tf.keras.layers.RandomBrightness(0.2),
-            tf.keras.layers.RandomContrast(0.1),
+            tf.keras.layers.RandomRotation(0.1, fill_mode="nearest", fill_value=0),
         ]
     )
+    # rotation augmentation before tiling
     if augment:
         logging.info("Augmenting")
+        rgb_images = rotation_augmentation(rgb_images)
+    image = tile_images(rgb_images)
+
+    if augment:
+        data_augmentation = tf.keras.Sequential(
+            [
+                tf.keras.layers.RandomFlip("horizontal"),
+                tf.keras.layers.RandomBrightness(
+                    0.2
+                ),  # better per frame or per sequence??
+                tf.keras.layers.RandomContrast(0.5),
+            ]
+        )
         image = data_augmentation(image)
     if preprocess_fn is not None:
         logging.info(
             "Preprocessing with %s.%s", preprocess_fn.__module__, preprocess_fn.__name__
         )
         image = preprocess_fn(image)
-
     if labeled:
         label = tf.cast(example["image/class/label"], tf.int32)
         global remapped_y
@@ -290,11 +300,30 @@ def read_tfrecord(
     return image
 
 
-def decode_image(image, filtered, image_size):
-    image = tf.image.decode_png(image, channels=1)
-    filtered = tf.image.decode_png(filtered, channels=1)
-    image = tf.concat((image, image, filtered), axis=2)
-    image = tf.cast(image, tf.float32)
+def decode_image(thermals, filtereds, image_size):
+    deoced_thermals = []
+    decoded_filtered = []
+    for thermal, filtered in zip(thermals, filtereds):
+        image = tf.image.decode_png(image, channels=1)
+        filtered = tf.image.decode_png(filtered, channels=1)
+        decoded_thermal.append(image)
+        decoded_filtered.append(filtered)
+        # image = tf.concat((image, image, filtered), axis=2)
+        # image = tf.cast(image, tf.float32)
+    return decoded_thermal, decoded_filtered
+
+
+def tile_images(images):
+    index = 0
+    image = None
+    for x in range(5):
+        t_row = tf.concat(tf.unstack(images[index : index + 5]), axis=1)
+        if image is None:
+            image = t_row
+        else:
+            image = tf.concat([image, t_row], 0)
+
+        index += 5
     return image
 
 
@@ -331,34 +360,36 @@ def main():
             resample=True,
         )
     else:
+
         resampled_ds, remapped = get_resampled(
             # dir,
-            f"{config.tracks_folder}/training-data/test",
+            f"{config.tracks_folder}/training-data/validation",
             32,
             (160, 160),
             labels,
-            augment=False,
-            preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+            augment=True,
+            # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             resample=True,
         )
     # print(get_distribution(resampled_ds))
     #
-    for e in range(2):
-        print("epoch", e)
-        true_categories = [y for x, y in resampled_ds]
-        true_categories = tf.concat(true_categories, axis=0)
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        c = Counter(list(true_categories))
-        print("epoch is size", len(true_categories))
-        for i in range(len(labels)):
-            print("after have", labels[i], c[i])
-
+    # for e in range(2):
+    #     print("epoch", e)
+    #     true_categories = [y for x, y in resampled_ds]
+    #     true_categories = tf.concat(true_categories, axis=0)
+    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    #     c = Counter(list(true_categories))
+    #     print("epoch is size", len(true_categories))
+    #     for i in range(len(labels)):
+    #         print("after have", labels[i], c[i])
+    #
     # return
     for e in range(1):
         for x, y in resampled_ds:
-            print("max is", np.amax(x), np.amin(x))
-            return
-            # show_batch(x, y, labels)
+            # print("max is", x.shape)
+            # continue
+            # return
+            show_batch(x, y, labels)
 
 
 def show_batch(image_batch, label_batch, labels):
@@ -368,9 +399,10 @@ def show_batch(image_batch, label_batch, labels):
     for n in range(num_images):
         ax = plt.subplot(5, 5, n + 1)
         plt.imshow(np.uint8(image_batch[n]))
-        plt.title("C-" + str(label_batch[n]))
+        plt.title("C-" + str(image_batch[n]))
         plt.title(labels[np.argmax(label_batch[n])])
         plt.axis("off")
+    # return
     plt.show()
 
 

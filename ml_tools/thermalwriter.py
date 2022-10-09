@@ -80,26 +80,18 @@ def create_tf_example(data, image_dir, sample, labels, filename):
     """
     average_dim = [r.area for r in sample.regions]
     average_dim = int(round(np.mean(average_dim) ** 0.5))
-    thermal = data[0] * 255
-    filtered = data[1] * 255
-    image_height, image_width = thermal.shape
-    image = Image.fromarray(np.uint8(thermal))
-
-    image_id = sample.id
-
-    encoded_jpg_io = io.BytesIO()
-    image.save(encoded_jpg_io, format="PNG", quality=100, subsampling=0)
-
-    encoded_thermal = encoded_jpg_io.getvalue()
-    thermal_key = hashlib.sha256(encoded_thermal).hexdigest()
-
-    image = Image.fromarray(np.uint8(filtered))
-    image = ImageOps.grayscale(image)
-
-    encoded_jpg_io = io.BytesIO()
-    image.save(encoded_jpg_io, format="PNG", quality=100, subsampling=0)
-    encoded_filtered = encoded_jpg_io.getvalue()
-    filtered_key = hashlib.sha256(encoded_filtered).hexdigest()
+    thermals = list(data[0])
+    filtereds = list(data[1])
+    image_id = sample.unique_track_id
+    image_height, image_width = thermals[0].shape
+    while len(thermals) < 25:
+        # ensure 25 frames even if 0s
+        thermals.append(np.zeros((thermals[0].shape)))
+        filtereds.append(np.zeros((filtereds[0].shape)))
+    thermals = np.array(thermals)
+    filtereds = np.array(filtereds)
+    thermal_key = hashlib.sha256(thermals).hexdigest()
+    filtered_key = hashlib.sha256(filtereds).hexdigest()
 
     feature_dict = {
         "image/avg_dim": tfrecord_util.int64_feature(average_dim),
@@ -109,8 +101,8 @@ def create_tf_example(data, image_dir, sample, labels, filename):
         "image/track_id": tfrecord_util.int64_feature(sample.track_id),
         "image/filename": tfrecord_util.bytes_feature(filename.encode("utf8")),
         "image/source_id": tfrecord_util.bytes_feature(str(image_id).encode("utf8")),
-        "image/thermalencoded": tfrecord_util.bytes_feature(encoded_thermal),
-        "image/filteredencoded": tfrecord_util.bytes_feature(encoded_filtered),
+        "image/thermalencoded": tfrecord_util.float_list_feature(thermals.ravel()),
+        "image/filteredencoded": tfrecord_util.float_list_feature(filtereds.ravel()),
         "image/filteredkey/sha256": tfrecord_util.bytes_feature(
             filtered_key.encode("utf8")
         ),
