@@ -164,6 +164,8 @@ class Rectangle:
             filter=lambda attr, value: attr.name
             not in ["is_along_border", "was_cropped", "id"],
         )
+        region_info["centroid"][0] = round(region_info["centroid"][0], 1)
+        region_info["centroid"][1] = round(region_info["centroid"][1], 1)
         region_info["pixel_variance"] = round(region_info["pixel_variance"], 2)
         return region_info
 

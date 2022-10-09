@@ -17,7 +17,6 @@ from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer
 from track.track import Track
 
-from classify.thumbnail import get_thumbnail
 from cptv import CPTVReader
 from datetime import datetime
 from ml_tools.imageprocessing import (
@@ -275,8 +274,8 @@ class ClipClassifier:
             model_dictionaries.append(model_dic)
 
         meta_data["models"] = model_dictionaries
-        thumbnail_region = get_thumbnail(clip, predictions_per_model)
-        meta_data["thumbnail_region"] = thumbnail_region
+        # thumbnail_region = get_thumbnail(clip, predictions_per_model)
+        # meta_data["thumbnail_region"] = thumbnail_region
         if self.config.classify.meta_to_stdout:
             print(json.dumps(meta_data, cls=tools.CustomJSONEncoder))
         else:

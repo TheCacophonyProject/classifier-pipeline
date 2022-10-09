@@ -18,7 +18,7 @@ from ml_tools import tools
 from ml_tools.previewer import Previewer
 from track.track import Track
 
-from classify.thumbnail import get_thumbnail, thumbnail_debug
+from classify.thumbnail import get_thumbanil_info, thumbnail_debug, best_trackless_thumb
 
 
 class TrackExtractor:
@@ -118,7 +118,7 @@ def extract_file(filename):
                 "thermal"
             ].high_quality_optical_flow,
             verbose=config.verbose,
-            keep_frames=False if previewer is None else True,
+            keep_frames=True,
         )
         logging.info("Using cptv extractor")
 
@@ -167,16 +167,30 @@ def extract_file(filename):
 def save_metadata(filename, meta_filename, clip, track_extractor, config):
 
     # record results in text file.
-    save_file = clip.get_metadata()
-    save_file["source"] = filename
-
-    save_file["tracking_time"] = round(track_extractor.tracking_time, 1)
-    save_file["algorithm"] = {}
-    save_file["algorithm"]["tracker_version"] = track_extractor.tracker_version
-    save_file["algorithm"]["tracker_config"] = track_extractor.config.as_dict()
-
+    metadata = clip.get_metadata()
+    for i, track in enumerate(clip.tracks):
+        best_thumb, best_score = get_thumbanil_info(clip, track)
+        if best_thumb is None:
+            metadata["tracks"][i]["thumbanil"] = None
+            continue
+        thumbnail_info = {
+            "region": best_thumb.region,
+            "contours": best_thumb.contours,
+            "median_diff": best_thumb.median_diff,
+            "score": round(best_score),
+        }
+        metadata["tracks"][i]["thumbnail"] = thumbnail_info
+    if len(clip.tracks) == 0:
+        # if no tracks choose a clip thumb
+        region = best_trackless_thumb(clip)
+        metadata["thumbnail"] = region
+    metadata["source"] = filename
+    metadata["tracking_time"] = round(track_extractor.tracking_time, 1)
+    metadata["algorithm"] = {}
+    metadata["algorithm"]["tracker_version"] = track_extractor.tracker_version
+    metadata["algorithm"]["tracker_config"] = track_extractor.config.as_dict()
     if config.classify.meta_to_stdout:
-        print(json.dumps(save_file, cls=tools.CustomJSONEncoder))
+        print(json.dumps(metadata, cls=tools.CustomJSONEncoder))
     else:
         with open(meta_filename, "w") as f:
-            json.dump(save_file, f, indent=4, cls=tools.CustomJSONEncoder)
+            json.dump(metadata, f, indent=4, cls=tools.CustomJSONEncoder)
