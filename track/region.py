@@ -72,6 +72,10 @@ class Region(Rectangle):
         blank = False
         if len(region_bounds) > 6:
             blank = region_bounds[6] == 1
+        centroid = [
+            int(region_bounds[0] + width / 2),
+            int(region_bounds[1] + height / 2),
+        ]
         return cls(
             region_bounds[0],
             region_bounds[1],
@@ -89,6 +93,13 @@ class Region(Rectangle):
             frame = region_json.get("frameNumber")
         if frame is None:
             frame = region_json.get("order")
+        if "centroid" in region_json:
+            centroid = region_json["centroid"]
+        else:
+            centroid = [
+                int(region_bounds[0] + width / 2),
+                int(region_bounds[1] + height / 2),
+            ]
         return cls(
             region_json["x"],
             region_json["y"],
@@ -98,6 +109,7 @@ class Region(Rectangle):
             mass=region_json.get("mass", 0),
             blank=region_json.get("blank", False),
             pixel_variance=region_json.get("pixel_variance", 0),
+            centroid=centroid,
         )
 
     @staticmethod

@@ -239,7 +239,7 @@ class ClipTracker(ABC):
             if centroids is None:
                 centroid = [
                     int(component[0] + component[2] / 2),
-                    int(component[1] + component[3] / 2.0),
+                    int(component[1] + component[3] / 2),
                 ]
             else:
                 centroid = centroids[i]
