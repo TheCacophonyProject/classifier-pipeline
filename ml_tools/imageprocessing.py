@@ -246,7 +246,6 @@ def detect_objects_both(
 
 
 def detect_objects(image, otsus=False, threshold=30, kernel=(15, 15)):
-    orig = image.copy()
     image = np.uint8(image)
     image = cv2.GaussianBlur(image, kernel, 0)
     flags = cv2.THRESH_BINARY
