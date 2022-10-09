@@ -311,8 +311,9 @@ class ClipTracker(ABC):
                 continue
 
             region.enlarge(padding, max=clip.crop_rectangle)
-            # gp dunno about this
-            extra_edge = 0  # math.ceil(clip.crop_rectangle.width * 0.03)
+            # gp dunno if we should use this feels like we already have the edge
+            # extra_edge = 0
+            extra_edge = math.ceil(clip.crop_rectangle.width * 0.03)
             region.set_is_along_border(clip.crop_rectangle, edge=extra_edge)
             regions.append(region)
         return regions
