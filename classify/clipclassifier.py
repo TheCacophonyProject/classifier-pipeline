@@ -274,8 +274,6 @@ class ClipClassifier:
             model_dictionaries.append(model_dic)
 
         meta_data["models"] = model_dictionaries
-        # thumbnail_region = get_thumbnail(clip, predictions_per_model)
-        # meta_data["thumbnail_region"] = thumbnail_region
         if self.config.classify.meta_to_stdout:
             print(json.dumps(meta_data, cls=tools.CustomJSONEncoder))
         else:
