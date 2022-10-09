@@ -151,7 +151,7 @@ def extract_file(filename):
         os.makedirs(destination_folder)
     meta_filename = out_file + ".txt"
 
-    thumbnail_debug(clip)
+    # thumbnail_debug(clip)
     if previewer:
         base_name = os.path.basename(out_file)
         mpeg_filename = destination_folder + "/" + base_name + "-tracking.mp4"

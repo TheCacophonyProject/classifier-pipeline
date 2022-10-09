@@ -334,8 +334,8 @@ class Previewer:
             thermal = tools.convert_heat_to_img(
                 thermal, self.colourmap, min_temp, max_temp
             )
-        # if self.debug:
-        # tools.add_heat_number(thermal, frame.thermal, 1)
+        if self.debug:
+            tools.add_heat_number(thermal, frame.thermal, 1)
         if frame.mask is None:
             mask = np.zeros((np.array(thermal).shape), dtype=np.uint8)
             mask = Image.fromarray(mask)

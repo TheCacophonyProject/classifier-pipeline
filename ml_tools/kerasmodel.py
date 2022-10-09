@@ -807,12 +807,13 @@ class KerasModel(Interpreter):
             predict_me.append(frames)
             prediction_frames.append(segment.frame_indices)
             mass.append(segment.mass)
-        mass = np.array(mass)
-        mass = mass[:, None]
-        output = self.model.predict(np.array(predict_me))
-        track_prediction.classified_clip(
-            output, output * output * mass, prediction_frames
-        )
+        if len(predict_me) > 0:
+            mass = np.array(mass)
+            mass = mass[:, None]
+            output = self.model.predict(np.array(predict_me))
+            track_prediction.classified_clip(
+                output, output * output * mass, prediction_frames
+            )
 
         track_prediction.classify_time = time.time() - start
         return track_prediction

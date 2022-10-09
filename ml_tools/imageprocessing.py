@@ -176,10 +176,74 @@ def save_image_channels(data, filename):
     img.save(filename + ".png")
 
 
-index = 0
-
-
 def theshold_saliency(image, otsus=False, threshold=100, kernel=(15, 15)):
+    image = np.uint8(image)
+    # image = cv2.fastNlMeansDenoising(np.uint8(image), None)
+
+    image = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
+
+    # image = cv2.GaussianBlur(image, kernel, 0)
+    flags = cv2.THRESH_BINARY
+    if otsus:
+        flags += cv2.THRESH_OTSU
+
+    _, image = cv2.threshold(image, threshold, 255, flags)
+
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
+    return components, small_mask, stats
+
+
+def detect_objects_ir(image, otsus=True, threshold=0, kernel=(15, 15)):
+
+    image = np.uint8(image)
+    image = cv2.Canny(image, 100, 200)
+    image = cv2.dilate(image, kernel, iterations=1)
+    image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
+    return components, small_mask, stats
+
+
+def detect_objects_both(
+    salicencyMap, backsub, threshold=30, kernel=(15, 15), otsus=False
+):
+    if salicencyMap is not None:
+        salicencyMap = np.uint8(salicencyMap)
+        # image = cv2.fastNlMeansDenoising(np.uint8(image), None)
+
+        salicencyMap = cv2.morphologyEx(salicencyMap, cv2.MORPH_OPEN, kernel)
+
+        flags = cv2.THRESH_BINARY
+        if otsus:
+            flags += cv2.THRESH_OTSU
+
+        _, salicencyMap = cv2.threshold(salicencyMap, threshold, 255, flags)
+
+    backsub = np.uint8(backsub)
+    backsub = cv2.GaussianBlur(backsub, kernel, 0)
+    flags = cv2.THRESH_BINARY
+    if otsus:
+        flags += cv2.THRESH_OTSU
+    _, backsub = cv2.threshold(backsub, threshold, 255, flags)
+    # cv2.imshow("theshold", image)
+    backsub = cv2.dilate(backsub, kernel, iterations=1)
+
+    backsub = cv2.morphologyEx(backsub, cv2.MORPH_CLOSE, kernel)
+    # cv2.imshow("backsub.png", np.uint8(backsub))
+    both = backsub
+    if salicencyMap is not None:
+
+        # cv2.imshow("salicencyMap.png", np.uint8(salicencyMap))
+        both = backsub | salicencyMap
+        # cv2.imshow("both.png", np.uint8(both))
+
+    # cv2.waitKey(10)
+
+    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(both)
+    return components, small_mask, stats
+
+
+def detect_objects(image, otsus=False, threshold=30, kernel=(15, 15)):
+
     image = np.uint8(image)
     # image = cv2.fastNlMeansDenoising(np.uint8(image), None)
 
