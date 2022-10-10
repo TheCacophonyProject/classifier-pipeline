@@ -183,7 +183,7 @@ def save_metadata(filename, meta_filename, clip, track_extractor, config):
     if len(clip.tracks) == 0:
         # if no tracks choose a clip thumb
         region = best_trackless_thumb(clip)
-        metadata["thumbnail"] = region
+        metadata["thumbnail_region"] = region
     metadata["source"] = filename
     metadata["tracking_time"] = round(track_extractor.tracking_time, 1)
     metadata["algorithm"] = {}

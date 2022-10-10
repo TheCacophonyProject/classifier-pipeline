@@ -97,8 +97,8 @@ class Region(Rectangle):
             centroid = region_json["centroid"]
         else:
             centroid = [
-                int(region_bounds[0] + width / 2),
-                int(region_bounds[1] + height / 2),
+                int(region_json["x"] + region_json["width"] / 2),
+                int(region_json["y"] + region_json["height"] / 2),
             ]
         return cls(
             region_json["x"],
