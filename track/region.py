@@ -84,6 +84,7 @@ class Region(Rectangle):
             frame_number=np.uint16(frame_number) if frame_number is not None else None,
             mass=mass,
             blank=blank,
+            centroid=centroid,
         )
 
     @classmethod
