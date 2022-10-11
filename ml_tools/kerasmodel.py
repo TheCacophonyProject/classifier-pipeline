@@ -16,6 +16,8 @@ import logging
 from sklearn.metrics import confusion_matrix
 import cv2
 from ml_tools import tools
+from ml_tools.datasetstructures import SegmentType
+
 from ml_tools.preprocess import preprocess_movement, preprocess_frame, preprocess_ir
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
@@ -214,7 +216,6 @@ class KerasModel(Interpreter):
         return None
 
     def build_model(self, dense_sizes=None, retrain_from=None, dropout=None):
-
         # width = self.params.frame_size
         width = self.params.output_dim[0]
         inputs = tf.keras.Input(shape=(width, width, 3), name="input")
@@ -240,11 +241,11 @@ class KerasModel(Interpreter):
                 mvm_features = Flatten()(mvm_inputs)
                 x = Concatenate()([x, mvm_features])
                 x = tf.keras.layers.Dense(2048, activation="relu")(x)
-            for i in dense_sizes:
-                x = tf.keras.layers.Dense(i, activation="relu")(x)
-                if dropout:
-                    x = tf.keras.layers.Dropout(dropout)(x)
-
+            if dense_sizes is not None:
+                for i in dense_sizes:
+                    x = tf.keras.layers.Dense(i, activation="relu")(x)
+            if dropout:
+                x = tf.keras.layers.Dropout(dropout)(x)
             preds = tf.keras.layers.Dense(
                 len(self.labels), activation="softmax", name="prediction"
             )(x)
@@ -364,6 +365,7 @@ class KerasModel(Interpreter):
                 "w",
             ),
             indent=4,
+            cls=MetaJSONEncoder,
         )
         best_loss = os.path.join(run_dir, "val_loss")
         if os.path.exists(best_loss):
@@ -374,6 +376,7 @@ class KerasModel(Interpreter):
                     "w",
                 ),
                 indent=4,
+                cls=MetaJSONEncoder,
             )
         best_acc = os.path.join(run_dir, "val_acc")
         if os.path.exists(best_acc):
@@ -384,6 +387,7 @@ class KerasModel(Interpreter):
                     "w",
                 ),
                 indent=4,
+                cls=MetaJSONEncoder,
             )
 
     def close(self):
@@ -996,15 +1000,14 @@ def loss(params):
 
 
 def optimizer(params):
-    if params.learning_rate_decay != 1.0:
-        learning_rate = tf.compat.v1.train.exponential_decay(
-            self.params.learning_rate,
-            self.global_step,
-            1000,
-            self.params["learning_rate_decay"],
+    if params.learning_rate_decay is not None:
+        learning_rate = tf.keras.optimizers.schedules.ExponentialDecay(
+            params.learning_rate,
+            decay_steps=100000,
+            decay_rate=params.learning_rate_decay,
             staircase=True,
         )
-        tf.compat.v1.summary.scalar("params/learning_rate", learning_rate)
+        print("APPLYING DEACAY")
     else:
         learning_rate = params.learning_rate  # setup optimizer
     if learning_rate:
@@ -1025,12 +1028,13 @@ def validate_model(model_file):
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
 
-HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([8, 16, 32, 64]))
+HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
-HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([1.0, 0.01, 0.001]))
+HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
-HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
+HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0, 0.3, 0.5, 0.8]))
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
+HP_LEARNING_RATE_DECAY = hp.HParam("learning_rate_decay", hp.Discrete([1.0, 0.96]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -1113,6 +1117,7 @@ def grid_search(keras_model, base_dir):
                 HP_EPSILON,
                 HP_RETRAIN,
                 HP_DROPOUT,
+                HP_LEARNING_RATE_DECAY,
             ],
             metrics=[
                 hp.Metric(METRIC_ACCURACY, display_name="Accuracy"),
@@ -1128,39 +1133,51 @@ def grid_search(keras_model, base_dir):
                     for optimizer in HP_OPTIMIZER.domain.values:
                         for epsilon in HP_EPSILON.domain.values:
                             for dropout in HP_DROPOUT.domain.values:
-                                hparams = {
-                                    HP_DENSE_SIZES: dense_size,
-                                    HP_BATCH_SIZE: batch_size,
-                                    HP_LEARNING_RATE: learning_rate,
-                                    HP_OPTIMIZER: optimizer,
-                                    HP_EPSILON: epsilon,
-                                    HP_RETRAIN: retrain_layer,
-                                    HP_DROPOUT: dropout,
-                                }
+                                for (
+                                    learning_rate_decay
+                                ) in HP_LEARNING_RATE_DECAY.domain.values:
+                                    hparams = {
+                                        HP_DENSE_SIZES: dense_size,
+                                        HP_BATCH_SIZE: batch_size,
+                                        HP_LEARNING_RATE: learning_rate,
+                                        HP_OPTIMIZER: optimizer,
+                                        HP_EPSILON: epsilon,
+                                        HP_RETRAIN: retrain_layer,
+                                        HP_DROPOUT: dropout,
+                                        HP_LEARNING_RATE_DECAY: learning_rate_decay,
+                                    }
 
-                                dense_layers = []
-                                if dense_size != "":
-                                    for i, size in enumerate(dense_size):
-                                        dense_layers[i] = int(size)
-                                keras_model.build_model(
-                                    dense_sizes=dense_layers,
-                                    retrain_from=None
-                                    if retrain_layer == -1
-                                    else retrain_layer,
-                                    dropout=None if dropout == 0.0 else dropout,
-                                )
+                                    dense_layers = []
+                                    if dense_size != "":
+                                        for i, size in enumerate(dense_size):
+                                            dense_layers[i] = int(size)
 
-                                run_name = "run-%d" % session_num
-                                print("--- Starting trial: %s" % run_name)
-                                print({h.name: hparams[h] for h in hparams})
-                                run(
-                                    keras_model,
-                                    dir + "/" + run_name,
-                                    hparams,
-                                    epochs,
-                                    base_dir,
-                                )
-                                session_num += 1
+                                    # for some reason cant have None values in hyper params array
+                                    if learning_rate_decay == 1.0:
+                                        learning_rate_decay = None
+                                    keras_model.params[
+                                        "learning_rate_decay"
+                                    ] = learning_rate_decay
+                                    keras_model.build_model(
+                                        dense_sizes=dense_layers,
+                                        retrain_from=None
+                                        if retrain_layer == -1
+                                        else retrain_layer,
+                                        dropout=None if dropout == 0.0 else dropout,
+                                    )
+                                    keras_model.model.summary()
+
+                                    run_name = "run-%d" % session_num
+                                    print("--- Starting trial: %s" % run_name)
+                                    print({h.name: hparams[h] for h in hparams})
+                                    run(
+                                        keras_model,
+                                        dir + "/" + run_name,
+                                        hparams,
+                                        epochs,
+                                        base_dir,
+                                    )
+                                    session_num += 1
 
 
 def run(keras_model, log_dir, hparams, epochs, base_dir):
@@ -1230,3 +1247,10 @@ def get_dataset(
         stop_on_empty_dataset=stop_on_empty_dataset,
         preprocess_fn=model.preprocess_fn,
     )
+
+
+class MetaJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, SegmentType):
+            return obj.name
+        return json.JSONEncoder.default(self, obj)
