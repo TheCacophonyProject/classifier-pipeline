@@ -1,5 +1,5 @@
 import logging
-from ml_tools.kerasmodel import KerasModel
+from ml_tools.kerasmodel import KerasModel, grid_search
 import pickle
 import os
 import faulthandler
@@ -31,7 +31,7 @@ def remove_fp_segments(datasets, ignore_file):
 
 
 def train_model(
-    run_name, conf, hyper_params, weights=None, grid_search=None, ignore=None
+    run_name, conf, hyper_params, weights=None, do_grid_search=None, ignore=None
 ):
     """Trains a model with the given hyper parameters."""
     init_logging()
@@ -40,9 +40,9 @@ def train_model(
     logging.info("Importing datasets from %s ", conf.tracks_folder)
     model.load_training_meta(conf.tracks_folder)
 
-    if grid_search:
+    if do_grid_search:
         print("Searching hparams")
-        test_hparams(model)
+        grid_search(model, base_dir=conf.tracks_folder)
         model.close()
         return
     print()
