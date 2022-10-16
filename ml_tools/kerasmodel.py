@@ -702,7 +702,7 @@ class KerasModel(Interpreter):
         segments = track.get_segments(
             clip.ffc_frames,
             thermal_median,
-            self.params.square_width ** 2,
+            self.params.square_width**2,
             repeats=4,
             segment_frames=segment_frames,
         )
@@ -722,6 +722,7 @@ class KerasModel(Interpreter):
         data = []
         crop = True
         thermal_median = np.empty(len(track.bounds_history), dtype=np.uint16)
+        frames_used = []
         for i, region in enumerate(track.bounds_history):
             if region.blank:
                 continue
@@ -753,13 +754,13 @@ class KerasModel(Interpreter):
                 self.preprocess_fn,
                 save_info=f"{region.frame_number} - {region}",
             )
-
+            frames_used.append(region.frame_number)
             data.append(preprocessed)
         data = np.float32(data)
         output = self.model.predict(data)
         track_prediction = TrackPrediction(track.get_id(), self.labels)
 
-        track_prediction.classified_clip(output, output, None)
+        track_prediction.classified_clip(output, output, np.array(frames_used))
         track_prediction.normalize_score()
         return track_prediction
 
