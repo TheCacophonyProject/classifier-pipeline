@@ -329,9 +329,15 @@ class Previewer:
             thermal = Image.fromarray(thermal)
             filtered = Image.fromarray(filtered)
         else:
-            filtered = tools.convert_heat_to_img(
-                filtered, self.colourmap, min_temp, max_temp
-            )
+            # filtered = tools.convert_heat_to_img(
+            #     filtered, self.colourmap, min_temp, max_temp
+            # )
+            filtered = filtered[..., np.newaxis]
+            filtered = np.repeat(filtered, 3, axis=2)
+            filtered = Image.fromarray(filtered)
+
+            # cv2.imshow("f", frame.filtered)
+            # cv2.waitKey(100)
             thermal = tools.convert_heat_to_img(
                 thermal, self.colourmap, min_temp, max_temp
             )
@@ -340,7 +346,8 @@ class Previewer:
         if frame.mask is None:
             mask = np.zeros((np.array(thermal).shape), dtype=np.uint8)
         else:
-            mask, _ = normalize(frame.mask, new_max=255)
+            mask = frame.mask * 255
+            # mask, _ = normalize(frame.mask, new_max=255)
             mask = np.uint8(mask)
 
             mask = mask[..., np.newaxis]

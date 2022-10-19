@@ -414,18 +414,18 @@ class ClipTracker(ABC):
 
             return True
 
-        highest_ratio = 0
-        for other in clip.tracks:
-            if track == other:
-                continue
-            highest_ratio = max(track.get_overlap_ratio(other), highest_ratio)
-
-        if highest_ratio > self.config.track_overlap_ratio:
-            self.print_if_verbose(
-                "Track filtered.  Too much overlap {}".format(highest_ratio)
-            )
-            clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
-            return True
+        # highest_ratio = 0
+        # for other in clip.tracks:
+        #     if track == other:
+        #         continue
+        #     highest_ratio = max(track.get_overlap_ratio(other), highest_ratio)
+        #
+        # if highest_ratio > self.config.track_overlap_ratio:
+        #     self.print_if_verbose(
+        #         "Track filtered.  Too much overlap {}".format(highest_ratio)
+        #     )
+        #     clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
+        #     return True
 
         return False
 
@@ -433,3 +433,80 @@ class ClipTracker(ABC):
 
         if self.verbose:
             logging.info(info_string)
+
+
+class Background(ABC):
+    @abstractmethod
+    def set_background(self, background, frames=1):
+        """set_background version"""
+        ...
+
+    @abstractmethod
+    def update_background(self, thermal, filtered):
+        """update_background version"""
+        ...
+
+    @abstractmethod
+    def compute_filtered(self, thermal, threshold):
+        """compute_filtered version"""
+        ...
+
+    @property
+    @abstractmethod
+    def background(self):
+        """Background image"""
+        ...
+
+
+class MogBackground(Background):
+    def __init__(self):
+        self.algorithm = cv2.createBackgroundSubtractorMOG2()
+        self.frames = 0
+        self._background = None
+
+    def set_background(self, background, frames=1):
+        self._background = self.algorithm.apply(background, learningRate=1.0)
+        return
+
+    def update_background(self, thermal, filtered=None):
+        self._background = self.algorithm.apply(thermal)
+        self.frames += 1
+
+    @property
+    def background(self):
+        return self._background
+
+    def compute_filtered(self, thermal, background_thresh):
+        self.update_background(thermal)
+        return self.background
+
+
+class DiffBackground(Background):
+    def __init__(self):
+        self.frames = 1
+        self._background = None
+
+    def set_background(self, background, frames=1):
+        self.frames = frames
+        self._background = np.float32(background) * self.frames
+        return
+
+    def update_background(self, thermal, filtered):
+        background = self.background
+
+        new_thermal = np.where(filtered > 0, background, thermal)
+        self._background += new_thermal
+        self.frames += 1
+
+    def compute_filtered(self, thermal, background_thresh):
+        filtered = get_ir_back_filtered(
+            self.background,
+            thermal,
+            background_thresh,
+        )
+        self.update_background(thermal, filtered)
+        return filtered
+
+    @property
+    def background(self):
+        return self._background / self.frames

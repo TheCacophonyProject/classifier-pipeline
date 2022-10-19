@@ -39,7 +39,7 @@ from ml_tools.imageprocessing import (
     theshold_saliency,
     detect_objects_both,
 )
-from track.cliptracker import ClipTracker
+from track.cliptracker import ClipTracker, MogBackground, DiffBackground
 
 DO_SALIENCY = False
 DEBUG_TRAP = False
@@ -203,7 +203,7 @@ class IRTrackExtractor(ClipTracker):
             self.init_saliency()
         clip.set_model("IR")
         clip.set_video_stats(datetime.now())
-        self.background = Background()
+        self.background = MogBackground()
         if background is not None:
             if self.scale:
                 background = cv2.resize(
@@ -353,13 +353,12 @@ class IRTrackExtractor(ClipTracker):
             saliencyMap, _ = self._get_filtered_frame_ir(
                 tracking_thermal, repeats=repeats
             )
-            filtered = get_ir_back_filtered(
-                self.background.background,
-                tracking_thermal,
-                clip.background_thresh,
+
+            filtered = self.background.compute_filtered(
+                tracking_thermal, clip.background_thresh
             )
 
-            self.background.update_background(tracking_thermal, filtered)
+            # self.background.update_background(tracking_thermal, filtered)
             clip.set_background(self.background.background)
         start = time.time()
 
@@ -569,28 +568,6 @@ def get_ir_back_filtered(background, thermal, back_thresh):
     filtered[filtered < back_thresh] = 0
     filtered, stats = normalize(filtered, new_max=255)
     return filtered
-
-
-class Background:
-    def __init__(self):
-        self.frames = 1
-        self._background = None
-
-    def set_background(self, background, frames=1):
-        self.frames = frames
-        self._background = np.float32(background) * self.frames
-        return
-
-    def update_background(self, thermal, filtered):
-        background = self.background
-
-        new_thermal = np.where(filtered > 0, background, thermal)
-        self._background += new_thermal
-        self.frames += 1
-
-    @property
-    def background(self):
-        return self._background / self.frames
 
 
 LEFT = 1
