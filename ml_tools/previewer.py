@@ -347,35 +347,7 @@ class Previewer:
 
             mask = mask[..., np.newaxis]
             mask = np.repeat(mask, 3, axis=2)
-            if self.debug:
 
-                contours, heirechy = cv2.findContours(
-                    np.uint8(frame.mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
-                )
-                mask = cv2.drawContours(mask, contours, -1, (0, 255, 0), 3)
-
-                mask = Image.fromarray(mask)
-                draw = ImageDraw.Draw(mask)
-                for contour in contours:
-
-                    first_point = contour[0][0]
-                    first_point[0] = min(first_point[0], 140)
-                    first_point[1] = min(first_point[1], 100)
-
-                    points = len(contour)
-
-                    draw.text(
-                        (first_point[0], first_point[1]),
-                        f"{points}pts",
-                        font=get_font(10),
-                        fill=(255, 0, 0, 128),
-                    )
-
-                # img = cv2.drawContours(mask, contours, -1, (0, 255, 0), 3)
-                # cv2.imshow("mask", img)
-                # cv2.waitKey(100)
-        #
-        # mask = Image.fromarray(mask)
         flow_h, flow_v = frame.get_flow_split(clip_flow=True)
         if flow_h is None and flow_v is None:
             flow_magnitude = Image.fromarray(
@@ -523,40 +495,8 @@ def add_track(
             v_offset=v_offset,
             scale=scale,
         )
+
     if debug:
-
-        points = np.uint16(
-            [
-                region.centroid[0] - 1,
-                region.centroid[1] - 1,
-                region.centroid[0] + 1,
-                region.centroid[1] + 1,
-            ]
-        )
-        points = points * scale
-        draw.ellipse(
-            [(points[0], points[1]), (points[2], points[3])],
-            fill=colour,
-            width=20,
-        )
-
-        # region mid
-        points = np.uint16(
-            [
-                region.mid_x - 1,
-                region.mid_y - 1,
-                region.mid_x + 1,
-                region.mid_y + 1,
-            ]
-        )
-
-        points = points * scale
-        draw.ellipse(
-            [(points[0], points[1]), (points[2], points[3])],
-            fill=Previewer.TRACK_COLOURS[1],
-            width=20,
-        )
-
         text = None
         if tracks_text and len(tracks_text) > index:
             text = tracks_text[index]
