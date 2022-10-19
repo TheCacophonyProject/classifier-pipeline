@@ -347,6 +347,7 @@ class Previewer:
 
             mask = mask[..., np.newaxis]
             mask = np.repeat(mask, 3, axis=2)
+            mask = Image.fromarray(mask)
 
         flow_h, flow_v = frame.get_flow_split(clip_flow=True)
         if flow_h is None and flow_v is None:
