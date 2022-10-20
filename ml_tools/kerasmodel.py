@@ -1061,9 +1061,9 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
         stop_on_empty_dataset=False,
     )
 
-    test, _ = get_dataset(
-        model, test_files, augment=False, reshuffle=False, resample=False
-    )
+    # test, _ = get_dataset(
+    #     model, test_files, augment=False, reshuffle=False, resample=False
+    # )
 
     labels = model.labels
 
@@ -1078,17 +1078,17 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
     model.model.compile(
         optimizer=opt, loss=loss(model.params), metrics=["accuracy"], run_eagerly=True
     )
-    cm_callback = tf.keras.callbacks.LambdaCallback(
-        on_epoch_end=lambda epoch, logs: log_confusion_matrix(
-            epoch, logs, model, test, writer
-        )
-    )
+    # cm_callback = tf.keras.callbacks.LambdaCallback(
+    #     on_epoch_end=lambda epoch, logs: log_confusion_matrix(
+    #         epoch, logs, model, test, writer
+    #     )
+    # )
     history = model.model.fit(
         train,
         validation_data=validate,
         epochs=epochs,
         shuffle=False,
-        callbacks=[cm_callback],
+        # callbacks=[cm_callback],
         verbose=2,
     )
     tf.keras.backend.clear_session()
