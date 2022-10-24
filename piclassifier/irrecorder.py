@@ -104,11 +104,11 @@ class IRRecorder(Recorder):
 
         back = background_frame[:, :, np.newaxis]
         back = np.repeat(back, 3, axis=2)
-        preview_frames.insert(0, back)
+        # preview_frames.insert(0, back)
 
         self.rec_p = multiprocessing.Process(
             target=record,
-            args=(self.frame_q, self.filename, self.fps, preview_frames),
+            args=(self.frame_q, self.filename, self.fps, back, preview_frames),
         )
         self.rec_p.start()
         # self.writer.next_frame(back)
@@ -170,16 +170,20 @@ def new_temp_name(frame_time):
     return datetime.fromtimestamp(frame_time).strftime("%Y%m%d-%H%M%S.%f" + VIDEO_EXT)
 
 
-def record(queue, filename, fps, init_frames=None):
+def record(queue, filename, fps, background=None, init_frames=None):
     init_logging()
     frames = 0
     try:
         logging.info("Recorder %s started", filename.resolve())
 
         writer = MPEGCreator(filename, fps=fps, codec=CODEC, bitrate=BITRATE)
-        for frame in init_frames:
-            writer.next_frame(frame)
+        if background is not None:
+            writer.next_frame(background)
             frames += 1
+        if init_frames is not None:
+            for frame in init_frames:
+                writer.next_frame(frame)
+                frames += 1
         while True:
             frame = queue.get()
             if isinstance(frame, int) and frame == 0:
