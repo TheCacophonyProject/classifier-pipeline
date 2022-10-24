@@ -203,7 +203,7 @@ class IRTrackExtractor(ClipTracker):
             self.init_saliency()
         clip.set_model("IR")
         clip.set_video_stats(datetime.now())
-        self.background = MogBackground()
+        self.background = DiffBackground()
         if background is not None:
             if self.scale:
                 background = cv2.resize(
@@ -553,21 +553,6 @@ class IRTrackExtractor(ClipTracker):
         delta_filtered = np.abs(frame.filtered - prev_frame.filtered)
         delta_thermal = np.abs(frame.thermal - prev_frame.thermal)
         return delta_thermal, delta_filtered
-
-
-def get_ir_back_filtered(background, thermal, back_thresh):
-    """
-    Calculates filtered frame from thermal
-    :param thermal: the thermal frame
-    :param background: (optional) used for background subtraction
-    :return: uint8 filtered frame and adjusted clip threshold for normalized frame
-    """
-
-    filtered = np.float32(thermal.copy())
-    filtered = abs(filtered - background)
-    filtered[filtered < back_thresh] = 0
-    filtered, stats = normalize(filtered, new_max=255)
-    return filtered
 
 
 LEFT = 1

@@ -510,3 +510,18 @@ class DiffBackground(Background):
     @property
     def background(self):
         return self._background / self.frames
+
+
+def get_ir_back_filtered(background, thermal, back_thresh):
+    """
+    Calculates filtered frame from thermal
+    :param thermal: the thermal frame
+    :param background: (optional) used for background subtraction
+    :return: uint8 filtered frame and adjusted clip threshold for normalized frame
+    """
+
+    filtered = np.float32(thermal.copy())
+    filtered = abs(filtered - background)
+    filtered[filtered < back_thresh] = 0
+    filtered, stats = normalize(filtered, new_max=255)
+    return filtered
