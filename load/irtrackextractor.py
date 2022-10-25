@@ -441,10 +441,11 @@ class IRTrackExtractor(ClipTracker):
             end_point = (int(region.right), int(region.bottom))
             image = cv2.rectangle(image, start_point, end_point, (255, 0, 0), 2)
             if region.in_trap:
+                text_point = (start_point[0], start_point[1] + 50)
                 image = cv2.putText(
                     image,
-                    f"Trapped?{ track.in_trap} f?{filtered}",
-                    start_point,
+                    f"Trapped?{ track.in_trap} f?{filtered} {track.direction}",
+                    text_point,
                     cv2.FONT_HERSHEY_SIMPLEX,
                     1,
                     (255, 0, 0),
@@ -607,47 +608,62 @@ def inside_trap_bottom(track, scale=None):
 
 
 def inside_trap_top(track, scale=None):
+    SIDE_ALLOWANCE = 150
+    TOP_ALLOWANCE = 300
+    BOTTOM_ALLOWANCE = 100
     region = track.last_bound.copy()
     if scale:
         region.rescale(1 / scale)
     if region.width < 60 or region.height < 40:
         # dont want small regions
         return False
+
+    # Set direction track is coming from
+    # this should help filter out some FPS
     if track.direction == 0:
-        if region.left < 100:
+        if region.left < SIDE_ALLOWANCE:
             track.direction |= LEFT
-        if region.right > (640 - 100):
+        if region.right > (640 - SIDE_ALLOWANCE):
             track.direction |= RIGHT
-        if region.bottom > (480 - 100):
+        if region.bottom > (480 - BOTTOM_ALLOWANCE):
             track.direction |= BOTTOM
         if track.direction == 0:
-            if region.bottom < 300:
+            if region.bottom < TOP_ALLOWANCE:
                 track.direction |= TOP
             else:
                 track.direction = MIDDLE
-    p = (region.right, 480 - region.top)
 
+    # check top right is to the left and below left trap boundary line
+    p = (region.right, 480 - region.top)
     inside = IRTrackExtractor.LEFT_BOTTOM.is_below(
         p
     ) and IRTrackExtractor.LEFT_BOTTOM.is_right(p)
     x_pos = IRTrackExtractor.LEFT_BOTTOM.x_res(p[1])
     x_diff = abs(p[0] - x_pos)
+    # amount of animal inside trap from left
     left_percent = x_diff / region.width
 
     p = (region.left, 480 - region.top)
 
-    inside = inside and (
-        IRTrackExtractor.RIGHT_BOTTOM.is_below(p)
+    # check top left is to the right and below right trap boundary line
+    inside = (
+        inside
+        and IRTrackExtractor.RIGHT_BOTTOM.is_below(p)
         and IRTrackExtractor.RIGHT_BOTTOM.is_left(p)
     )
+
     x_pos = IRTrackExtractor.RIGHT_BOTTOM.x_res(p[1])
     # could try using bottom  rather than region.top here
     x_diff = abs(p[0] - x_pos)
+    # amount of animal inside trap from right
     right_percent = x_diff / region.width
 
     if not inside:
         return False
     in_trap = False
+
+    # atleast half the animal should be inside the trap, sometimes tails etc
+    # can be outside trap so best to trigger a bit early than not at all
     if left_percent < 0.5 and right_percent < 0.5:
         return False
     if track.direction & LEFT and region.left > 40 and left_percent > 0.5:
