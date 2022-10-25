@@ -7,7 +7,7 @@ import numpy as np
 
 from track.track import Track
 from track.region import Region
-from ml_tools.imageprocessing import detect_objects, normalize
+from ml_tools.imageprocessing import detect_objects, normalize, hist_diff
 
 
 class ClipTracker(ABC):
@@ -127,7 +127,7 @@ class ClipTracker(ABC):
         scores.sort(key=lambda record: record[0])
         matched_tracks = set()
         blanked_tracks = set()
-
+        cur_frame = clip.frame_buffer.current_frame
         for (score, track, region) in scores:
             if (
                 track in matched_tracks
@@ -140,22 +140,36 @@ class ClipTracker(ABC):
             )
             used_regions.add(region)
             unmatched_regions.remove(region)
-            if not self.config.filter_regions_pre_match and (
-                region.pixel_variance < self.config.aoi_pixel_variance
-                or region.mass < self.config.aoi_min_mass
-            ):
-                # this will force a blank frame to be added, rather than if we filter earlier
-                # and match this track to a different region
-                logging.debug(
-                    "%s filtering region %s because of variance %s and mass %s track %s",
-                    region.frame_number,
-                    region,
-                    region.pixel_variance,
-                    region.mass,
-                    track,
-                )
-                blanked_tracks.add(track)
-                continue
+            if not self.config.filter_regions_pre_match:
+                if self.config.min_hist_diff is not None:
+                    hist_v = hist_diff(region, clip.background, cur_frame.thermal)
+                    if hist_v > self.config.min_hist_diff:
+                        logging.warn(
+                            "%s filtering region %s because of hist diff %s track %s ",
+                            region.frame_number,
+                            region,
+                            hist_v,
+                            track,
+                        )
+
+                        blanked_tracks.add(track)
+                        continue
+                if (
+                    region.pixel_variance < self.config.aoi_pixel_variance
+                    or region.mass < self.config.aoi_min_mass
+                ):
+                    # this will force a blank frame to be added, rather than if we filter earlier
+                    # and match this track to a different region
+                    logging.debug(
+                        "%s filtering region %s because of variance %s and mass %s track %s",
+                        region.frame_number,
+                        region,
+                        region.pixel_variance,
+                        region.mass,
+                        track,
+                    )
+                    blanked_tracks.add(track)
+                    continue
             track.add_region(region)
             matched_tracks.add(track)
 

@@ -62,6 +62,7 @@ class TrackingConfig(DefaultConfig):
     areas_of_interest = attr.ib()
     # filter regions out by mass and variance before matching to a track
     filter_regions_pre_match = attr.ib()
+    min_hist_diff = attr.ib()
 
     @classmethod
     def load(cls, tracking):
@@ -112,6 +113,7 @@ class TrackingConfig(DefaultConfig):
             areas_of_interest=tracking["areas_of_interest"],
             max_mass_std_percent=tracking["max_mass_std_percent"],
             filter_regions_pre_match=tracking["filter_regions_pre_match"],
+            min_hist_diff=tracking["min_hist_diff"],
         )
 
     @classmethod
@@ -174,8 +176,10 @@ class TrackingConfig(DefaultConfig):
                 "base_velocity": 2,
             },
             filter_regions_pre_match=True,
+            min_hist_diff=None,
         )
         if type == "IR":
+            default_tracking.min_hist_diff = 0.75
             default_tracking.filter_regions_pre_match = False
             default_tracking.areas_of_interest["pixel_variance"] = 0
             default_tracking.areas_of_interest["min_mass"] = 0
