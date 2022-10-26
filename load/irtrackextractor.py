@@ -360,9 +360,7 @@ class IRTrackExtractor(ClipTracker):
             filtered = self.background.compute_filtered(
                 tracking_thermal, clip.background_thresh
             )
-            _ = self.diff_background.compute_filtered(
-                tracking_thermal, clip.background_thresh
-            )
+            _ = self.diff_background.update_background(tracking_thermal, filtered)
             # self.background.update_background(tracking_thermal, filtered)
             clip.set_background(self.diff_background.background)
         start = time.time()
