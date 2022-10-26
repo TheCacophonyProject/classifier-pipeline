@@ -39,7 +39,7 @@ from ml_tools.imageprocessing import (
     theshold_saliency,
     detect_objects_both,
 )
-from track.cliptracker import ClipTracker, MogBackground, DiffBackground
+from track.cliptracker import ClipTracker, CVBackground, DiffBackground
 
 DO_SALIENCY = False
 DEBUG_TRAP = False
@@ -175,7 +175,7 @@ class IRTrackExtractor(ClipTracker):
                 background = np.uint8(gray)
                 # cv2.imshow("bak", np.uint8(background))
                 # cv2.waitKey(1000)
-                self.start_tracking(clip, background=gray, background_frames=1000)
+                self.start_tracking(clip, background=gray, background_frames=500)
                 continue
             self.process_frame(clip, gray)
         vidcap.release()
@@ -203,7 +203,8 @@ class IRTrackExtractor(ClipTracker):
             self.init_saliency()
         clip.set_model("IR")
         clip.set_video_stats(datetime.now())
-        self.background = DiffBackground()
+        self.background = CVBackground()
+        self.diff_background = DiffBackground()
         if background is not None:
             if self.scale:
                 background = cv2.resize(
@@ -211,6 +212,8 @@ class IRTrackExtractor(ClipTracker):
                     (int(self.res_x * self.scale), int(self.res_y * self.scale)),
                 )
             self.background.set_background(background, background_frames)
+            self.diff_background.set_background(background, background_frames)
+
         self.init_saliency()
         if frames is not None:
             do_tracking = self.do_tracking
@@ -357,9 +360,11 @@ class IRTrackExtractor(ClipTracker):
             filtered = self.background.compute_filtered(
                 tracking_thermal, clip.background_thresh
             )
-
+            _ = self.diff_background.compute_filtered(
+                tracking_thermal, clip.background_thresh
+            )
             # self.background.update_background(tracking_thermal, filtered)
-            clip.set_background(self.background.background)
+            clip.set_background(self.diff_background.background)
         start = time.time()
 
         threshold = 0

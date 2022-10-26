@@ -65,6 +65,7 @@ class RegionTracker(Tracker):
 
     def __init__(self, id, tracking_config, crop_rectangle=None):
         self.track_id = id
+        self.clear_run = 0
         self.kalman_tracker = Kalman()
         self._frames_since_target_seen = 0
         self.frames = 0
@@ -197,12 +198,14 @@ class RegionTracker(Tracker):
             self._blank_frames += 1
             self._frames_since_target_seen += 1
             stop_tracking = min(
-                2 * (self.frames - self.blank_frames),
+                2 * (self.frames - self._frames_since_target_seen),
                 self.max_blanks,
             )
             self._tracking = self._frames_since_target_seen < stop_tracking
-
         else:
+            if self._frames_since_target_seen != 0:
+                self.clear_run = 0
+            self.clear_run += 1
             self._tracking = True
             self.kalman_tracker.correct(region)
             self._frames_since_target_seen = 0
@@ -676,7 +679,7 @@ class Track:
             if region.blank or self.bounds_history[i - 1].blank:
                 continue
             if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
-                distance = (vx ** 2 + vy ** 2) ** 0.5
+                distance = (vx**2 + vy**2) ** 0.5
                 movement += distance
                 offset = eucl_distance(first_point, region.mid)
                 max_offset = max(max_offset, offset)
@@ -712,7 +715,7 @@ class Track:
                 else:
                     jitter_smaller += 1
 
-        movement_points = (movement ** 0.5) + max_offset
+        movement_points = (movement**0.5) + max_offset
         delta_points = delta_std * 25.0
         jitter_percent = int(
             round(100 * (jitter_bigger + jitter_smaller) / float(self.frames))

@@ -472,14 +472,21 @@ class Background(ABC):
         ...
 
 
-class MogBackground(Background):
+class CVBackground(Background):
     def __init__(self):
-        self.algorithm = cv2.createBackgroundSubtractorMOG2()
+        # seems to be better than MOG2
+        self.algorithm = cv2.createBackgroundSubtractorKNN(
+            history=1000, detectShadows=False
+        )
+        self.algorithm.setkNNSamples(3)
         self.frames = 0
         self._background = None
 
     def set_background(self, background, frames=1):
-        self._background = self.algorithm.apply(background, learningRate=1.0)
+        # seems to be better to do x times rather than just set background
+        # self._background = self.algorithm.apply(background, learningRate=1.0)
+        for _ in range(frames):
+            self.update_background(background)
         return
 
     def update_background(self, thermal, filtered=None):
