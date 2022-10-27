@@ -34,6 +34,7 @@ class Background:
 
 WINDOW_SIZE = 50
 MIN_FRAMES = 10 * 10  # 10 * 10  # 10seconds
+THRESHOLD = 15
 
 
 class IRMotionDetector(MotionDetector):
@@ -94,7 +95,7 @@ class IRMotionDetector(MotionDetector):
                 delta = cv2.absdiff(
                     self.gray_window.oldest, gray
                 )  # Get delta from current frame and background
-                threshold = cv2.threshold(delta, 25, 255, cv2.THRESH_BINARY)[1]
+                threshold = cv2.threshold(delta, THRESHOLD, 255, cv2.THRESH_BINARY)[1]
 
                 erosion_image = cv2.erode(threshold, self.get_kernel())
                 erosion_pixels = len(erosion_image[erosion_image > 0])
@@ -104,7 +105,19 @@ class IRMotionDetector(MotionDetector):
                 if erosion_pixels > 0:
                     self.triggered += 1
                     self.triggered = min(self.triggered, 30)
+                    logging.info(
+                        "Got erosion pixel %s triggered %s",
+                        self.num_frames,
+                        self.triggered,
+                    )
                 else:
+                    if self.triggered > 0:
+                        logging.info(
+                            "Lost erosion %s triggered %s",
+                            self.num_frames,
+                            self.triggered - 1,
+                        )
+
                     self.triggered -= 1
                     self.triggered = max(self.triggered, 0)
 
