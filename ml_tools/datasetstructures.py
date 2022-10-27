@@ -896,6 +896,7 @@ def get_segments(
     frame_indices = np.array(frame_indices)
     segment_count = max(1, len(frame_indices) // segment_frame_spacing)
     segment_count = int(segment_count)
+    segment_count = max(5, segment_count)
 
     # take any segment_width frames, this could be done each epoch
     whole_indices = frame_indices
