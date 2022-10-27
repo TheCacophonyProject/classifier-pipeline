@@ -53,6 +53,7 @@ class Clip:
         calc_stats=True,
         model=None,
         type="thermal",
+        fps=FRAMES_PER_SECOND,
     ):
         self._id = Clip.CLIP_ID
         Clip.CLIP_ID += 1
@@ -76,7 +77,7 @@ class Clip:
         self.res_y = None
         self.background_frames = 0
         self.config = trackconfig
-        self.frames_per_second = Clip.FRAMES_PER_SECOND
+        self.frames_per_second = fps
 
         self.calc_stats = calc_stats
         self.source_file = sourcefile

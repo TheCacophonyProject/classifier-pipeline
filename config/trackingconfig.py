@@ -219,6 +219,22 @@ class TrackingConfig(DefaultConfig):
     def as_dict(self):
         return attr.asdict(self)
 
+    def rescale(self, scale):
+        # adjust numbers if we rescale frame sizes
+        self.frame_padding = int(scale * self.frame_padding)
+        self.min_dimension = int(scale * self.min_dimension)
+        if self.params["base_distance_change"]:
+            self.params["base_distance_change"] *= scale
+        if self.params["min_mass_change"]:
+            self.params["min_mass_change"] *= scale
+        if self.params["max_distance"]:
+            self.params["max_distance"] *= scale
+        if self.params["base_velocity"]:
+            self.params["base_velocity"] *= scale
+        self.track_min_offset *= scale
+        self.track_min_mass *= scale
+        self.aoi_min_mass *= scale
+
 
 #
 #

@@ -33,7 +33,7 @@ class Background:
 
 
 WINDOW_SIZE = 50
-MIN_FRAMES = 10 * 10  # 10seconds
+MIN_FRAMES = 10 * 10  # 10 * 10  # 10seconds
 
 
 class IRMotionDetector(MotionDetector):

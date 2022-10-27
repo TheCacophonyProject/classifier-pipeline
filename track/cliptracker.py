@@ -19,8 +19,12 @@ class ClipTracker(ABC):
         calc_stats=True,
         verbose=False,
         do_tracking=True,
+        scale=None,
     ):
         config = config.get(self.type)
+        self.scale = scale
+        if scale:
+            config.rescale(scale)
         self.do_tracking = do_tracking
         self.verbose = verbose
         self.config = config
@@ -35,7 +39,6 @@ class ClipTracker(ABC):
         self.calc_stats = calc_stats
         self._tracking_time = None
         self.min_dimension = config.min_dimension
-        self.scale = None
         # if self.config.dilation_pixels > 0:
         #     size = self.config.dilation_pixels * 2 + 1
         #     self.dilate_kernel = np.ones((size, size), np.uint8)

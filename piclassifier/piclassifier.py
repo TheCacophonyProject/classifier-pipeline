@@ -344,6 +344,7 @@ class PiClassifier(Processor):
             model=self.headers.model,
             type=self.type,
             calc_stats=False,
+            fps=self.headers.fps,
         )
         global clip
         clip = self.clip
@@ -749,7 +750,7 @@ class PiClassifier(Processor):
             if self.preview_type:
                 self.create_mp4()
             logging.debug(
-                "Ending clip with %s tracks pre filtering", len(self.clip.tracks)
+                "Ending clip with %s tracks post filtering", len(self.clip.tracks)
             )
             if self.classify:
                 for _, prediction in self.predictions.prediction_per_track.items():
@@ -786,17 +787,20 @@ def on_track_trapped(track):
 
 def on_recording_stopping(filename):
     global clip, track_extractor, predictions
-    if track_extractor.scale is not None:
-        for track in clip.tracks:
-            for r in track.bounds_history:
-                # bring back to orignal size
-                r.rescale(1 / track_extractor.scale)
+
     if predictions is not None:
         for track_prediction in predictions.prediction_per_track.values():
             track_prediction.normalize_score()
 
     if clip and track_extractor:
         track_extractor.apply_track_filtering(clip)
+        # filter criteria has been scaled so resize after
+        if track_extractor.scale is not None:
+            for track in clip.tracks:
+                for r in track.bounds_history:
+                    # bring back to orignal size
+                    r.rescale(1 / track_extractor.scale)
+
         meta_name = os.path.splitext(filename)[0] + ".txt"
         logging.debug("saving meta to %s", meta_name)
         predictions_per_model = None

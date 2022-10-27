@@ -123,13 +123,10 @@ class IRTrackExtractor(ClipTracker):
             calc_stats,
             verbose,
             do_tracking=do_tracking,
+            scale=scale,
         )
-        self.scale = scale
         self.on_trapped = on_trapped
         self.saliency = None
-        if self.scale:
-            self.frame_padding = int(scale * self.frame_padding)
-            self.min_dimension = int(scale * self.min_dimension)
         self.background = None
         self.res_x = None
         self.res_y = None
@@ -213,7 +210,6 @@ class IRTrackExtractor(ClipTracker):
                 )
             self.background.set_background(background, background_frames)
             self.diff_background.set_background(background, background_frames)
-
         self.init_saliency()
         if frames is not None:
             do_tracking = self.do_tracking
@@ -264,7 +260,12 @@ class IRTrackExtractor(ClipTracker):
     # the filtered image is quite fragmented
     def merge_components(self, rectangles):
         min_mass = 10
-        min_size = 4
+        min_size = 16
+        MAX_GAP = 20
+        if self.scale:
+            min_mass = int(min_mass * self.scale)
+            min_size = int(min_size * self.scale)
+            MAX_GAP *= self.scale
         rectangles = [
             r
             for r in rectangles
@@ -272,7 +273,6 @@ class IRTrackExtractor(ClipTracker):
         ]
         # filter out regions with small mass  and samll width / height
         #  numbers may need adjusting
-        MAX_GAP = 20
         rect_i = 0
         rectangles = list(rectangles)
         while rect_i < len(rectangles):
