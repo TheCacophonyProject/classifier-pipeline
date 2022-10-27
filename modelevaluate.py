@@ -15,7 +15,7 @@ import os
 import json
 import pickle
 from config.config import Config
-from ml_tools.kerasmodel import KerasModel, plot_confusion_matrix
+from ml_tools.kerasmodel import KerasModel, plot_confusion_matrix, get_dataset
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 import tensorflow as tf
@@ -206,7 +206,8 @@ def main():
         model.load_training_meta(base_dir)
 
         files = base_dir + f"/training-data/{args.dataset}"
-        dataset, _ = model.get_dataset(
+        dataset, _ = get_dataset(
+            model,
             files,
             augment=False,
             reshuffle=False,

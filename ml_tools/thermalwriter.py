@@ -43,6 +43,7 @@ import tensorflow as tf
 from . import tfrecord_util
 from ml_tools import tools
 from ml_tools.imageprocessing import normalize
+from ml_tools.forestmodel import forest_features
 
 crop_rectangle = tools.Rectangle(0, 0, 640, 480)
 
@@ -80,6 +81,8 @@ def create_tf_example(data, image_dir, sample, labels, filename):
     """
     average_dim = [r.area for r in sample.regions]
     average_dim = int(round(np.mean(average_dim) ** 0.5))
+    features = data[1]
+    data = data[0]
     thermals = list(data[0])
     filtereds = list(data[1])
     image_id = sample.unique_track_id
@@ -103,6 +106,7 @@ def create_tf_example(data, image_dir, sample, labels, filename):
         "image/source_id": tfrecord_util.bytes_feature(str(image_id).encode("utf8")),
         "image/thermalencoded": tfrecord_util.float_list_feature(thermals.ravel()),
         "image/filteredencoded": tfrecord_util.float_list_feature(filtereds.ravel()),
+        "image/features": tfrecord_util.float_list_feature(features),
         "image/filteredkey/sha256": tfrecord_util.bytes_feature(
             filtered_key.encode("utf8")
         ),
@@ -165,10 +169,11 @@ def create_tf_records(
 
             for sample in local_set:
                 data = sample.get_data(db)
+                features = forest_features(db, sample.clip_id, sample.track_id)
                 if data is None:
                     continue
 
-                loaded.append((data, sample))
+                loaded.append(((data, features), sample))
 
             loaded = np.array(loaded)
             np.random.shuffle(loaded)
