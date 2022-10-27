@@ -34,7 +34,8 @@ class Background:
 
 WINDOW_SIZE = 50
 MIN_FRAMES = 10 * 10  # 10 * 10  # 10seconds
-THRESHOLD = 15
+THRESHOLD = 25
+TRIGGER_FRAMES = 2
 
 
 class IRMotionDetector(MotionDetector):
@@ -122,7 +123,7 @@ class IRMotionDetector(MotionDetector):
                     self.triggered = max(self.triggered, 0)
 
                 # Check if motion has started or ended
-                if not self.movement_detected and self.triggered > 10:
+                if not self.movement_detected and self.triggered > TRIGGER_FRAMES:
                     self.movement_detected = True
 
                 elif self.movement_detected and self.triggered <= 0:
