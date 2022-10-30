@@ -1027,14 +1027,15 @@ def validate_model(model_file):
 # HYPER PARAM TRAINING OF A MODEL
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
+HP_MVM = hp.HParam("mvm", hp.Discrete([1.0]))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
-HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001]))
+HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.1]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
-HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0, 0.3, 0.5, 0.8]))
+HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
-HP_LEARNING_RATE_DECAY = hp.HParam("learning_rate_decay", hp.Discrete([1.0, 0.96]))
+HP_LEARNING_RATE_DECAY = hp.HParam("learning_rate_decay", hp.Discrete([1.0]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
@@ -1047,18 +1048,27 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
     train_files = base_dir + "/train"
     validate_files = base_dir + "/validation"
     test_files = base_dir + "/test"
+    mvm = hparams[HP_MVM]
+    if mvm == 1.0:
+        mvm = True
+    else:
+        mvm = False
 
     train, remapped = get_dataset(
         model,
         train_files,
         augment=True,
         stop_on_empty_dataset=False,
+        mvm=mvm,
+        scale_epoch=4,
     )
     validate, remapped = get_dataset(
         model,
         validate_files,
         augment=False,
         stop_on_empty_dataset=False,
+        mvm=mvm,
+        scale_epoch=4,
     )
 
     # test, _ = get_dataset(
@@ -1110,6 +1120,7 @@ def grid_search(keras_model, base_dir):
     with tf.summary.create_file_writer(dir).as_default():
         hp.hparams_config(
             hparams=[
+                HP_MVM,
                 HP_BATCH_SIZE,
                 HP_DENSE_SIZES,
                 HP_LEARNING_RATE,
@@ -1126,58 +1137,66 @@ def grid_search(keras_model, base_dir):
         )
     session_num = 0
     hparams = {}
-    for batch_size in HP_BATCH_SIZE.domain.values:
-        for dense_size in HP_DENSE_SIZES.domain.values:
-            for retrain_layer in HP_RETRAIN.domain.values:
-                for learning_rate in HP_LEARNING_RATE.domain.values:
-                    for optimizer in HP_OPTIMIZER.domain.values:
-                        for epsilon in HP_EPSILON.domain.values:
-                            for dropout in HP_DROPOUT.domain.values:
-                                for (
-                                    learning_rate_decay
-                                ) in HP_LEARNING_RATE_DECAY.domain.values:
-                                    hparams = {
-                                        HP_DENSE_SIZES: dense_size,
-                                        HP_BATCH_SIZE: batch_size,
-                                        HP_LEARNING_RATE: learning_rate,
-                                        HP_OPTIMIZER: optimizer,
-                                        HP_EPSILON: epsilon,
-                                        HP_RETRAIN: retrain_layer,
-                                        HP_DROPOUT: dropout,
-                                        HP_LEARNING_RATE_DECAY: learning_rate_decay,
-                                    }
+    for mvm in HP_MVM.domain.values:
+        for batch_size in HP_BATCH_SIZE.domain.values:
+            for dense_size in HP_DENSE_SIZES.domain.values:
+                for retrain_layer in HP_RETRAIN.domain.values:
+                    for learning_rate in HP_LEARNING_RATE.domain.values:
+                        for optimizer in HP_OPTIMIZER.domain.values:
+                            for epsilon in HP_EPSILON.domain.values:
+                                for dropout in HP_DROPOUT.domain.values:
+                                    for (
+                                        learning_rate_decay
+                                    ) in HP_LEARNING_RATE_DECAY.domain.values:
+                                        hparams = {
+                                            HP_MVM: mvm,
+                                            HP_DENSE_SIZES: dense_size,
+                                            HP_BATCH_SIZE: batch_size,
+                                            HP_LEARNING_RATE: learning_rate,
+                                            HP_OPTIMIZER: optimizer,
+                                            HP_EPSILON: epsilon,
+                                            HP_RETRAIN: retrain_layer,
+                                            HP_DROPOUT: dropout,
+                                            HP_LEARNING_RATE_DECAY: learning_rate_decay,
+                                        }
 
-                                    dense_layers = []
-                                    if dense_size != "":
-                                        for i, size in enumerate(dense_size):
-                                            dense_layers[i] = int(size)
+                                        dense_layers = []
+                                        if dense_size != "":
+                                            for i, size in enumerate(dense_size):
+                                                dense_layers[i] = int(size)
 
-                                    # for some reason cant have None values in hyper params array
-                                    if learning_rate_decay == 1.0:
-                                        learning_rate_decay = None
-                                    keras_model.params[
-                                        "learning_rate_decay"
-                                    ] = learning_rate_decay
-                                    keras_model.build_model(
-                                        dense_sizes=dense_layers,
-                                        retrain_from=None
-                                        if retrain_layer == -1
-                                        else retrain_layer,
-                                        dropout=None if dropout == 0.0 else dropout,
-                                    )
-                                    keras_model.model.summary()
+                                        # for some reason cant have None values in hyper params array
+                                        if learning_rate_decay == 1.0:
+                                            learning_rate_decay = None
+                                        keras_model.params[
+                                            "learning_rate_decay"
+                                        ] = learning_rate_decay
+                                        if mvm == 1.0:
+                                            keras_model.params["mvm"] = True
+                                            print("using mvm")
+                                        else:
+                                            keras_model.params["mvm"] = False
 
-                                    run_name = "run-%d" % session_num
-                                    print("--- Starting trial: %s" % run_name)
-                                    print({h.name: hparams[h] for h in hparams})
-                                    run(
-                                        keras_model,
-                                        dir + "/" + run_name,
-                                        hparams,
-                                        epochs,
-                                        base_dir,
-                                    )
-                                    session_num += 1
+                                        keras_model.build_model(
+                                            dense_sizes=dense_layers,
+                                            retrain_from=None
+                                            if retrain_layer == -1
+                                            else retrain_layer,
+                                            dropout=None if dropout == 0.0 else dropout,
+                                        )
+                                        keras_model.model.summary()
+
+                                        run_name = "run-%d" % session_num
+                                        print("--- Starting trial: %s" % run_name)
+                                        print({h.name: hparams[h] for h in hparams})
+                                        run(
+                                            keras_model,
+                                            dir + "/" + run_name,
+                                            hparams,
+                                            epochs,
+                                            base_dir,
+                                        )
+                                        session_num += 1
 
 
 def run(keras_model, log_dir, hparams, epochs, base_dir):
@@ -1215,6 +1234,8 @@ def get_dataset(
     resample=True,
     weights=None,
     stop_on_empty_dataset=False,
+    mvm=False,
+    scale_epoch=None,
 ):
     logging.info("Getting dataset %s", model.type)
     if model.type == "thermal":
@@ -1233,6 +1254,8 @@ def get_dataset(
             resample=resample,
             # stop_on_empty_dataset=stop_on_empty_dataset,
             preprocess_fn=model.preprocess_fn,
+            mvm=mvm,
+            scale_epoch=scale_epoch,
         )
     return get_ir_dataset(
         pattern,

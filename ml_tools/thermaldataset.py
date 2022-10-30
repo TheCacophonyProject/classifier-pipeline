@@ -31,6 +31,7 @@ def load_dataset(
     labeled=True,
     augment=False,
     preprocess_fn=None,
+    mvm=False,
 ):
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = (
@@ -51,6 +52,7 @@ def load_dataset(
             labeled=labeled,
             augment=augment,
             preprocess_fn=preprocess_fn,
+            mvm=mvm,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -92,6 +94,8 @@ def get_resampled(
     augment=False,
     resample=True,
     preprocess_fn=None,
+    mvm=False,
+    scale_epoch=None,
 ):
     num_labels = len(labels)
     global remapped_y
@@ -123,6 +127,7 @@ def get_resampled(
         labeled=labeled,
         augment=augment,
         preprocess_fn=preprocess_fn,
+        mvm=mvm,
     )
 
     if resample:
@@ -180,6 +185,8 @@ def get_resampled(
     epoch_size = len([0 for x, y in dataset])
     logging.info("Setting dataset size to %s", epoch_size)
     dataset = dataset.repeat(2)
+    if scale_epoch:
+        epoch_size = epoch_size // scale_epoch
     dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     dataset = dataset.batch(batch_size)
@@ -253,7 +260,13 @@ def get_resampled_by_label(
 
 
 def read_tfrecord(
-    example, image_size, num_labels, labeled, augment=False, preprocess_fn=None
+    example,
+    image_size,
+    num_labels,
+    labeled,
+    augment=False,
+    preprocess_fn=None,
+    mvm=False,
 ):
     tfrecord_format = {
         "image/thermalencoded": tf.io.FixedLenFeature([25 * 32 * 32], dtype=tf.float32),
@@ -262,14 +275,13 @@ def read_tfrecord(
         ),
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
-    if USE_MVM:
+    if mvm:
         tfrecord_format["image/features"] = tf.io.FixedLenFeature(
             [36 * 5 + 1], dtype=tf.float32
         )
     example = tf.io.parse_single_example(example, tfrecord_format)
     thermalencoded = example["image/thermalencoded"]
     filteredencoded = example["image/filteredencoded"]
-    features = example["image/features"]
 
     thermals = tf.reshape(thermalencoded, [25, 32, 32, 1])
     filtered = tf.reshape(filteredencoded, [25, 32, 32, 1])
@@ -306,8 +318,13 @@ def read_tfrecord(
         global remapped_y
         label = remapped_y.lookup(label)
         onehot_label = tf.one_hot(label, num_labels)
-        return (image, features), onehot_label
-    return (image, features)
+        if mvm:
+            features = example["image/features"]
+            return (image, features), onehot_label
+        return image, onehot_label
+    if mvm:
+        return (image, features)
+    return image
 
 
 def decode_image(thermals, filtereds, image_size):
@@ -373,7 +390,7 @@ def main():
 
         resampled_ds, remapped = get_resampled(
             # dir,
-            f"{config.tracks_folder}/training-data/validation",
+            f"{config.tracks_folder}/training-data/test",
             32,
             (160, 160),
             labels,
@@ -383,16 +400,16 @@ def main():
         )
     # print(get_distribution(resampled_ds))
     #
-    # for e in range(2):
-    #     print("epoch", e)
-    #     true_categories = [y for x, y in resampled_ds]
-    #     true_categories = tf.concat(true_categories, axis=0)
-    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    #     c = Counter(list(true_categories))
-    #     print("epoch is size", len(true_categories))
-    #     for i in range(len(labels)):
-    #         print("after have", labels[i], c[i])
-    #
+    for e in range(2):
+        print("epoch", e)
+        true_categories = [y for x, y in resampled_ds]
+        true_categories = tf.concat(true_categories, axis=0)
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        c = Counter(list(true_categories))
+        print("epoch is size", len(true_categories))
+        for i in range(len(labels)):
+            print("after have", labels[i], c[i])
+
     # return
     for e in range(1):
         for x, y in resampled_ds:
@@ -404,6 +421,7 @@ def main():
 
 def show_batch(image_batch, label_batch, labels):
     features = image_batch[1]
+
     image_batch = image_batch[0]
     print("features are", features.shape, image_batch.shape)
     plt.figure(figsize=(10, 10))
