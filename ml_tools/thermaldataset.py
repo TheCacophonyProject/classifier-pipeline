@@ -163,6 +163,10 @@ def get_resampled(
                 # target_dist[i] -= max_range / 2.0
             target_dist[i] = max(0, target_dist[i])
         target_dist = target_dist / np.sum(target_dist)
+
+        if "sheep" in labels:
+            sheep_i = labels.index("sheep")
+            target_dist[sheep_i] = 0
         rej = dataset.rejection_resample(
             class_func=class_func,
             target_dist=target_dist,
@@ -170,7 +174,7 @@ def get_resampled(
         )
         dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
 
-    dataset = dataset.shuffle(16384, reshuffle_each_iteration=reshuffle)
+    dataset = dataset.shuffle(4096, reshuffle_each_iteration=reshuffle)
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     epoch_size = len([0 for x, y in dataset])
