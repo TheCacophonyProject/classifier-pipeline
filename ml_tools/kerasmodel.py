@@ -235,11 +235,11 @@ class KerasModel(Interpreter):
         else:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             if self.params.mvm:
-                mvm_inputs = Input((25, 9))
+                mvm_inputs = tf.keras.layers.Input((36 * 5 + 1))
                 inputs = [inputs, mvm_inputs]
 
-                mvm_features = Flatten()(mvm_inputs)
-                x = Concatenate()([x, mvm_features])
+                mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
+                x = tf.keras.layers.Concatenate()([x, mvm_features])
                 x = tf.keras.layers.Dense(2048, activation="relu")(x)
             if dense_sizes is not None:
                 for i in dense_sizes:

@@ -20,6 +20,8 @@ AUTOTUNE = tf.data.AUTOTUNE
 insect = None
 fp = None
 
+USE_MVM = True
+
 
 def load_dataset(
     filenames,
@@ -256,10 +258,14 @@ def read_tfrecord(
         ),
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
-
+    if USE_MVM:
+        tfrecord_format["image/features"] = tf.io.FixedLenFeature(
+            [36 * 5 + 1], dtype=tf.float32
+        )
     example = tf.io.parse_single_example(example, tfrecord_format)
     thermalencoded = example["image/thermalencoded"]
     filteredencoded = example["image/filteredencoded"]
+    features = example["image/features"]
 
     thermals = tf.reshape(thermalencoded, [25, 32, 32, 1])
     filtered = tf.reshape(filteredencoded, [25, 32, 32, 1])
@@ -296,8 +302,8 @@ def read_tfrecord(
         global remapped_y
         label = remapped_y.lookup(label)
         onehot_label = tf.one_hot(label, num_labels)
-        return image, onehot_label
-    return image
+        return (image, features), onehot_label
+    return (image, features)
 
 
 def decode_image(thermals, filtereds, image_size):
@@ -393,6 +399,9 @@ def main():
 
 
 def show_batch(image_batch, label_batch, labels):
+    features = image_batch[1]
+    image_batch = image_batch[0]
+    print("features are", features.shape, image_batch.shape)
     plt.figure(figsize=(10, 10))
     print("images in batch", len(image_batch))
     num_images = min(len(image_batch), 25)
