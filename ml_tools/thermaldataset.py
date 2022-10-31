@@ -190,7 +190,7 @@ def get_resampled(
         epoch_size = epoch_size // scale_epoch
     dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
-    dataset = dataset.batch(batch_size)
+    # dataset = dataset.batch(batch_size)
     return dataset, remapped
 
 
@@ -404,30 +404,57 @@ def main():
         )
     # print(get_distribution(resampled_ds))
     #
-    for e in range(2):
-        print("epoch", e)
-        true_categories = [y for x, y in resampled_ds]
-        true_categories = tf.concat(true_categories, axis=0)
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
-        c = Counter(list(true_categories))
-        print("epoch is size", len(true_categories))
-        for i in range(len(labels)):
-            print("after have", labels[i], c[i])
-
-    # return
+    #
+    # for e in range(2):
+    #     print("epoch", e)
+    #     true_categories = [y for x, y in resampled_ds]
+    #     true_categories = tf.concat(true_categories, axis=0)
+    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    #     c = Counter(list(true_categories))
+    #     print("epoch is size", len(true_categories))
+    #     for i in range(len(labels)):
+    #         print("after have", labels[i], c[i])
+    #
+    # # return
     for e in range(1):
+        minimum_features = None
+        max_features = None
+        mean_features = None
+        count = 0
         for x, y in resampled_ds:
+            features = x[1]
+            for f in features:
+                count += 1
+                if minimum_features is None:
+                    minimum_features = f
+                    max_features = f
+                    mean_features = f
+                else:
+                    minimum_features = np.minimum(f, minimum_features)
+                    max_features = np.maximum(f, max_features)
+                    mean_features += f
+        print("Min Features:")
+        for v in minimum_features:
+            print(v)
+        print("max Features:")
+        for v in max_features:
+            print(v)
+        mean_features /= count
+        for v in mean_features:
+            print(v)
             # print("max is", x.shape)
             # continue
             # return
-            show_batch(x, y, labels)
+            # show_batch(x, y, labels)
 
 
 def show_batch(image_batch, label_batch, labels):
     features = image_batch[1]
-    # for f in features:
-    #     print(f)
-    #     return
+    for f in features:
+        for v in f:
+            print(v)
+        # print(f.shape, f.dtype)
+        return
     image_batch = image_batch[0]
     print("features are", features.shape, image_batch.shape)
     plt.figure(figsize=(10, 10))
