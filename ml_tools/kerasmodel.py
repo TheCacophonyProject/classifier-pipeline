@@ -237,8 +237,12 @@ class KerasModel(Interpreter):
             if self.params.mvm:
                 mvm_inputs = tf.keras.layers.Input((26))
                 inputs = [inputs, mvm_inputs]
+                # mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
+                #
+                # mvm_features = tf.keras.layers.Dense(32)(mvm_inputs)
+                # mvm_features = tf.keras.layers.Dense(64)(mvm_inputs)
+                # mvm_features = tf.keras.layers.Dense(64)(mvm_inputs)
 
-                mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
                 x = tf.keras.layers.Concatenate()([x, mvm_features])
                 x = tf.keras.layers.Dense(2048, activation="relu")(x)
             if dense_sizes is not None:
@@ -1056,7 +1060,7 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
 
     train, remapped = get_dataset(
         model,
-        validate_files,
+        train_files,
         augment=True,
         stop_on_empty_dataset=False,
         mvm=mvm,
