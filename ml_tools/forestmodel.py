@@ -12,6 +12,104 @@ from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 import cv2
 
+FEAT_LABELS = [
+    "sqrt_area",
+    "elongation",
+    "peak_snr",
+    "mean_snr",
+    "fill_factor",
+    "move_1",
+    "rel_move_1",
+    "rel_x_move_1",
+    "rel_y_move_1",
+    "move_3",
+    "rel_move_3",
+    "rel_x_move_3",
+    "rel_y_move_3",
+    "move_5",
+    "rel_move_5",
+    "rel_x_move_5",
+    "rel_y_move_5",
+    "max_speed",
+    "min_speed",
+    "avg_speed",
+    "max_speed_x",
+    "min_speed_x",
+    "avg_speed_x",
+    "max_speed_y",
+    "min_speed_y",
+    "avg_speed_y",
+    "max_rel_speed",
+    "min_rel_speed",
+    "avg_rel_speed",
+    "max_rel_speed_x",
+    "min_rel_speed_x",
+    "avg_rel_speed_x",
+    "max_rel_speed_y",
+    "min_rel_speed_y",
+    "avg_rel_speed_y",
+    "hist_diff",
+]
+# EXTRA_FEATURES = [
+#     "speed_distance_ratio",
+#     "speed_ratio",
+#     "burst_min",
+#     "burst_max",
+#     "birst_mean",
+#     "burst_chance",
+#     "burst_per_frame",
+#     "total frames",
+# ]
+
+EXTRA = ["avg", "std", "max", "min", "diff"]
+
+ALL_FEATURES = []
+for extra_lbl in EXTRA:
+    for f in FEAT_LABELS:
+        ALL_FEATURES.append(f"{extra_lbl}-{f}")
+# ALL_FEATURES.extend(EXTRA_FEATURES)
+
+important_features = [
+    "std-fill_factor",
+    "max-peak_snr",
+    "std-move_1",
+    "max-fill_factor",
+    "std-hist_diff",
+    "diff-hist_diff",
+    "max-hist_diff",
+    "min-hist_diff",
+    "diff-fill_factor",
+    "max-sqrt_area",
+    "std-mean_snr",
+    "max-min_rel_speed",
+    "min-fill_factor",
+    "std-rel_move_1",
+    "diff-rel_x_move_1",
+    "diff-move_1",
+    "std-sqrt_area",
+    "avg-move_3",
+    "diff-elongation",
+    "diff-move_5",
+    "std-min_speed_x",
+    "max-max_speed_x",
+    "avg-max_speed_y",
+    "max-elongation",
+    "diff-move_3",
+    "max-rel_x_move_3",
+]
+
+
+def feature_mask():
+    mask = np.arange(len(ALL_FEATURES) + 1)
+    mask[:] = False
+    # = mask != -1
+    feature_indexes = []
+    for f in important_features:
+        feature_indexes.append(ALL_FEATURES.index(f))
+    feature_indexes = np.array(feature_indexes)
+    mask[feature_indexes] = True
+    return mask
+
 
 class ForestModel(Interpreter):
     TYPE = "RandomForest"

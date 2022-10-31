@@ -9,6 +9,7 @@ from config.config import Config
 import json
 from ml_tools.logs import init_logging
 import logging
+from ml_tools.forestmodel import feature_mask
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -320,6 +321,8 @@ def read_tfrecord(
         onehot_label = tf.one_hot(label, num_labels)
         if mvm:
             features = example["image/features"]
+            mask = feature_mask()
+            features = tf.boolean_mask(features, mask)
             return (image, features), onehot_label
         return image, onehot_label
     if mvm:
@@ -397,6 +400,7 @@ def main():
             augment=True,
             # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
             resample=True,
+            mvm=True,
         )
     # print(get_distribution(resampled_ds))
     #
@@ -421,7 +425,9 @@ def main():
 
 def show_batch(image_batch, label_batch, labels):
     features = image_batch[1]
-
+    for f in features:
+        print(f)
+        return
     image_batch = image_batch[0]
     print("features are", features.shape, image_batch.shape)
     plt.figure(figsize=(10, 10))

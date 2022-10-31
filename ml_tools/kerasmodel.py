@@ -235,7 +235,7 @@ class KerasModel(Interpreter):
         else:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             if self.params.mvm:
-                mvm_inputs = tf.keras.layers.Input((36 * 5 + 1))
+                mvm_inputs = tf.keras.layers.Input((26))
                 inputs = [inputs, mvm_inputs]
 
                 mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
@@ -1056,7 +1056,7 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
 
     train, remapped = get_dataset(
         model,
-        train_files,
+        validate_files,
         augment=True,
         stop_on_empty_dataset=False,
         mvm=mvm,
