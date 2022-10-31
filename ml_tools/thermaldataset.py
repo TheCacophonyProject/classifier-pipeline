@@ -425,9 +425,9 @@ def main():
 
 def show_batch(image_batch, label_batch, labels):
     features = image_batch[1]
-    for f in features:
-        print(f)
-        return
+    # for f in features:
+    #     print(f)
+    #     return
     image_batch = image_batch[0]
     print("features are", features.shape, image_batch.shape)
     plt.figure(figsize=(10, 10))
