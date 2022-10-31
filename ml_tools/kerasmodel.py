@@ -239,9 +239,13 @@ class KerasModel(Interpreter):
                 inputs = [inputs, mvm_inputs]
                 # mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
                 #
-                mvm_features = tf.keras.layers.Dense(64)(mvm_inputs)
-                mvm_features = tf.keras.layers.Dense(32)(mvm_features)
-                mvm_features = tf.keras.layers.Dense(32)(mvm_features)
+                mvm_features = tf.keras.layers.Dense(64, activation="relu")(mvm_inputs)
+                mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                    mvm_features
+                )
+                mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                    mvm_features
+                )
                 W = tf.Variable(0.0, trainable=True)
 
                 x = tf.keras.layers.Concatenate()([x, W * mvm_features])
