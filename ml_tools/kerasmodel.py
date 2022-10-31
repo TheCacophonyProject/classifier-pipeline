@@ -239,12 +239,12 @@ class KerasModel(Interpreter):
                 inputs = [inputs, mvm_inputs]
                 # mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
                 #
-                # mvm_features = tf.keras.layers.Dense(32)(mvm_inputs)
-                # mvm_features = tf.keras.layers.Dense(64)(mvm_inputs)
-                # mvm_features = tf.keras.layers.Dense(64)(mvm_inputs)
+                mvm_features = tf.keras.layers.Dense(64)(mvm_inputs)
+                mvm_features = tf.keras.layers.Dense(32)(mvm_inputs)
+                mvm_features = tf.keras.layers.Dense(32)(mvm_inputs)
 
                 x = tf.keras.layers.Concatenate()([x, mvm_features])
-                x = tf.keras.layers.Dense(2048, activation="relu")(x)
+                # x = tf.keras.layers.Dense(1028, activation="relu")(x)
             if dense_sizes is not None:
                 for i in dense_sizes:
                     x = tf.keras.layers.Dense(i, activation="relu")(x)
