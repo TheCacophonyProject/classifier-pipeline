@@ -11,6 +11,66 @@ from ml_tools.logs import init_logging
 import logging
 from ml_tools.forestmodel import feature_mask
 
+
+mean_v = [
+    0.058490578,
+    0.038204964,
+    7.4425936,
+    4.7920947,
+    1.0412979,
+    1.0230657,
+    0.16372658,
+    0.7525377,
+    0,
+    10.318023,
+    2.1682348,
+    36.300232,
+    1.4874498,
+    1.5263922,
+    12.650131,
+    1.0403844,
+    0.45160577,
+    0.012650883,
+    -0.10378975,
+    2.1496308,
+    1.4747808,
+    6.465994,
+    0.8433721,
+    11.38621,
+    14.642979,
+    0.55539894,
+]
+
+std_v = [
+    0.33010894,
+    0.1990348,
+    5.117308,
+    3.5965276,
+    0.3059699,
+    1.0528976,
+    0.17207752,
+    0.8468552,
+    1,
+    7.8997636,
+    0.89097166,
+    27.489365,
+    0.39993584,
+    1.6026465,
+    12.699268,
+    1.0943583,
+    0.3201715,
+    0.018906306,
+    0.112067714,
+    0.8889591,
+    0.40037858,
+    5.9949546,
+    0.9455366,
+    10.673864,
+    13.96866,
+    0.2524548,
+]
+
+
 # seed = 1341
 # tf.random.set_seed(seed)
 # np.random.seed(seed)
@@ -190,7 +250,7 @@ def get_resampled(
         epoch_size = epoch_size // scale_epoch
     dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
-    # dataset = dataset.batch(batch_size)
+    dataset = dataset.batch(batch_size)
     return dataset, remapped
 
 
@@ -256,7 +316,7 @@ def get_resampled_by_label(
     )
     resampled_ds = resampled_ds.shuffle(2048, reshuffle_each_iteration=reshuffle)
     resampled_ds = resampled_ds.prefetch(buffer_size=AUTOTUNE)
-    resampled_ds = resampled_ds.batch(batch_size)
+    # resampled_ds = resampled_ds.batch(batch_size)
     return resampled_ds, remapped
 
 
@@ -269,6 +329,8 @@ def read_tfrecord(
     preprocess_fn=None,
     mvm=False,
 ):
+    tf_mean = tf.constant(mean_v)
+    tf_std = tf.constant(std_v)
     tfrecord_format = {
         "image/thermalencoded": tf.io.FixedLenFeature([25 * 32 * 32], dtype=tf.float32),
         "image/filteredencoded": tf.io.FixedLenFeature(
@@ -323,6 +385,8 @@ def read_tfrecord(
             features = example["image/features"]
             mask = feature_mask()
             features = tf.boolean_mask(features, mask)
+            features = features - tf_mean
+            features = features / tf_std
             return (image, features), onehot_label
         return image, onehot_label
     if mvm:
@@ -421,6 +485,15 @@ def main():
         max_features = None
         mean_features = None
         count = 0
+        a = [x[1] for x, y in resampled_ds]
+        std = np.std(a, axis=1)
+        print("STD is")
+        print(
+            std,
+        )
+        print("MEAN")
+        print(np.mean(a, axis=1))
+        # ?        1 / 0
         for x, y in resampled_ds:
             features = x[1]
             for f in features:
