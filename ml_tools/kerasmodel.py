@@ -240,8 +240,8 @@ class KerasModel(Interpreter):
                 # mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
                 #
                 mvm_features = tf.keras.layers.Dense(64)(mvm_inputs)
-                mvm_features = tf.keras.layers.Dense(32)(mvm_inputs)
-                mvm_features = tf.keras.layers.Dense(32)(mvm_inputs)
+                mvm_features = tf.keras.layers.Dense(32)(mvm_features)
+                mvm_features = tf.keras.layers.Dense(32)(mvm_features)
 
                 x = tf.keras.layers.Concatenate()([x, mvm_features])
                 # x = tf.keras.layers.Dense(1028, activation="relu")(x)
@@ -1117,7 +1117,7 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
 
 def grid_search(keras_model, base_dir):
 
-    epochs = 15
+    epochs = 8
     batch_size = 32
 
     dir = keras_model.log_dir + "/hparam_tuning"
