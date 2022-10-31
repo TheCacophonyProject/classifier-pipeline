@@ -1110,7 +1110,6 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
     del model
     del train
     del validate
-    del test
     gc.collect()
     return history
 
