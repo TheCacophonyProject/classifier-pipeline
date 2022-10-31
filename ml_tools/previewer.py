@@ -26,9 +26,11 @@ from PIL import Image, ImageDraw, ImageFont
 
 from load.clip import Clip
 from ml_tools import tools
+from ml_tools.tools import Rectangle
 import ml_tools.globals as globs
 from ml_tools.mpeg_creator import MPEGCreator
-from track.region import Region
+
+# from track.region import Region
 from ml_tools.imageprocessing import normalize
 
 
@@ -141,7 +143,7 @@ class Previewer:
                     frame_scale=frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
-                screen_bounds = Region(0, 0, image.width, image.height)
+                screen_bounds = Rectangle(0, 0, image.width, image.height)
                 self.add_tracks(
                     draw,
                     clip.tracks,
@@ -159,7 +161,7 @@ class Previewer:
                     frame_scale=frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
-                screen_bounds = Region(0, 0, image.width, image.height)
+                screen_bounds = Rectangle(0, 0, image.width, image.height)
                 self.add_tracks(
                     draw,
                     clip.tracks,
@@ -338,14 +340,15 @@ class Previewer:
             tools.add_heat_number(thermal, frame.thermal, 1)
         if frame.mask is None:
             mask = np.zeros((np.array(thermal).shape), dtype=np.uint8)
+            mask = Image.fromarray(mask)
         else:
             mask, _ = normalize(frame.mask, new_max=255)
             mask = np.uint8(mask)
 
             mask = mask[..., np.newaxis]
             mask = np.repeat(mask, 3, axis=2)
-        #
-        mask = Image.fromarray(mask)
+            mask = Image.fromarray(mask)
+
         flow_h, flow_v = frame.get_flow_split(clip_flow=True)
         if flow_h is None and flow_v is None:
             flow_magnitude = Image.fromarray(
@@ -429,14 +432,14 @@ def add_text_to_track(
     header_size = font_title.getsize(header_text)
     footer_size = font.getsize(footer_text)
     # figure out where to draw everything
-    header_rect = Region(
+    header_rect = Rectangle(
         rect.left * scale,
         (v_offset + rect.top) * scale - header_size[1],
         header_size[0],
         header_size[1],
     )
     footer_center = ((rect.width * scale) - footer_size[0]) / 2
-    footer_rect = Region(
+    footer_rect = Rectangle(
         rect.left * scale + footer_center,
         (v_offset + rect.bottom) * scale,
         footer_size[0],
@@ -450,7 +453,7 @@ def add_text_to_track(
     draw.text((footer_rect.x, footer_rect.y), footer_text, font=font)
 
 
-def fit_to_image(rect: Region, screen_bounds: Region):
+def fit_to_image(rect: Rectangle, screen_bounds: Rectangle):
     """Modifies rect so that rect is visible within bounds."""
     if screen_bounds is None:
         return
@@ -493,6 +496,7 @@ def add_track(
             v_offset=v_offset,
             scale=scale,
         )
+
     if debug:
         text = None
         if tracks_text and len(tracks_text) > index:
@@ -509,11 +513,11 @@ def add_track(
         )
 
 
-def get_font():
+def get_font(font_size=12):
     """gets default font."""
     if not globs._previewer_font:
         globs._previewer_font = ImageFont.truetype(
-            tools.resource_path("Ubuntu-R.ttf"), 12
+            tools.resource_path("Ubuntu-R.ttf"), font_size
         )
     return globs._previewer_font
 
@@ -608,7 +612,7 @@ def add_debug_text(
     footer_size = font.getsize(text)
     footer_center = ((region.width * scale) - footer_size[0]) / 2
 
-    footer_rect = Region(
+    footer_rect = tools.Rectangle(
         region.right * scale - footer_center / 2.0,
         (v_offset + region.bottom) * scale,
         footer_size[0],
