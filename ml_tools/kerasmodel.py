@@ -239,14 +239,21 @@ class KerasModel(Interpreter):
                 inputs = [inputs, mvm_inputs]
                 # mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
                 #
-                mvm_features = tf.keras.layers.Dense(32, activation="relu")(mvm_inputs)
-                mvm_features = tf.keras.layers.Dense(32, activation="relu")(
-                    mvm_features
-                )
-                mvm_features = tf.keras.layers.Dense(16, activation="relu")(
-                    mvm_features
-                )
-
+                if self.params["hq_mvm"]:
+                    print("HQ")
+                    mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                        mvm_inputs
+                    )
+                    mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                        mvm_features
+                    )
+                    mvm_features = tf.keras.layers.Dense(16, activation="relu")(
+                        mvm_features
+                    )
+                else:
+                    mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                        mvm_inputs
+                    )
                 x = tf.keras.layers.Concatenate()([x, mvm_features])
                 # x = tf.keras.layers.Dense(1028, activation="relu")(x)
             if dense_sizes is not None:
@@ -1035,7 +1042,7 @@ def validate_model(model_file):
 # HYPER PARAM TRAINING OF A MODEL
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
-HP_MVM = hp.HParam("mvm", hp.Discrete([1.0, 0.0]))
+HP_MVM = hp.HParam("mvm", hp.Discrete([2.0, 1.0, 0.0]))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
@@ -1057,7 +1064,7 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
     validate_files = base_dir + "/validation"
     test_files = base_dir + "/test"
     mvm = hparams[HP_MVM]
-    if mvm == 1.0:
+    if mvm >= 1.0:
         mvm = True
     else:
         mvm = False
@@ -1120,7 +1127,7 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
 
 def grid_search(keras_model, base_dir):
 
-    epochs = 8
+    epochs = 15
     batch_size = 32
 
     dir = keras_model.log_dir + "/hparam_tuning"
@@ -1178,8 +1185,9 @@ def grid_search(keras_model, base_dir):
                                         keras_model.params[
                                             "learning_rate_decay"
                                         ] = learning_rate_decay
-                                        if mvm == 1.0:
+                                        if mvm >= 1.0:
                                             keras_model.params["mvm"] = True
+                                            keras_model.params["hq_mvm"] = mvm > 1
                                             print("using mvm")
                                         else:
                                             keras_model.params["mvm"] = False
