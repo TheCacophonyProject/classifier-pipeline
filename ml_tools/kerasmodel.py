@@ -248,7 +248,6 @@ class KerasModel(Interpreter):
                 )
 
                 x = tf.keras.layers.Concatenate()([x, mvm_features])
-                x = mvm_features
                 # x = tf.keras.layers.Dense(1028, activation="relu")(x)
             if dense_sizes is not None:
                 for i in dense_sizes:
@@ -1036,13 +1035,13 @@ def validate_model(model_file):
 # HYPER PARAM TRAINING OF A MODEL
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
-HP_MVM = hp.HParam("mvm", hp.Discrete([1.0]))
+HP_MVM = hp.HParam("mvm", hp.Discrete([1.0, 0.0]))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
-HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.1]))
+HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001, 0.01]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
-HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
+HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0, 0.3]))
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
 HP_LEARNING_RATE_DECAY = hp.HParam("learning_rate_decay", hp.Discrete([1.0]))
 
@@ -1065,7 +1064,7 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
 
     train, remapped = get_dataset(
         model,
-        validate_files,
+        train_files,
         augment=True,
         stop_on_empty_dataset=False,
         mvm=mvm,
