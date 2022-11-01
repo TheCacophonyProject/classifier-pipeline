@@ -11,7 +11,34 @@ from ml_tools.logs import init_logging
 import logging
 from ml_tools.forestmodel import feature_mask
 
-
+max_v = [
+    55.990376,
+    57.888,
+    10.103797,
+    10.595947,
+    4.6359787,
+    14.004379,
+    16.872267,
+    15.090072,
+    1,
+    9.00735,
+    10.160552,
+    14.971666,
+    3.8627255,
+    11.299641,
+    9.566891,
+    11.620289,
+    1.7128139,
+    21.84973,
+    2.0132241,
+    9.559188,
+    3.8427675,
+    11.813642,
+    12.488583,
+    9.508464,
+    8.809811,
+    2.9139967,
+]
 mean_v = [
     0.058490578,
     0.038204964,
@@ -99,6 +126,7 @@ def load_dataset(
         deterministic  # disable order, increase speed
     )
     dataset = tf.data.TFRecordDataset(filenames)
+
     # dataset = dataset.interleave(tf.data.TFRecordDataset, cycle_length=4)
     # automatically interleaves reads from multiple files
     dataset = dataset.with_options(
@@ -118,6 +146,8 @@ def load_dataset(
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
+    filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[1]))
+    dataset = dataset.filter(filter_nan)
     # dataset = dataset.map(preprocess, num_parallel_calls=AUTOTUNE)
     # dataset = dataset.map(tf.keras.applications.inception_v3.preprocess_input)
     # returns a dataset of (image, label) pairs if labeled=True or just images if labeled=False
@@ -250,7 +280,8 @@ def get_resampled(
         epoch_size = epoch_size // scale_epoch
     dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
-    dataset = dataset.batch(batch_size)
+    if batch_size is not None:
+        dataset = dataset.batch(batch_size)
     return dataset, remapped
 
 
@@ -458,7 +489,7 @@ def main():
         resampled_ds, remapped = get_resampled(
             # dir,
             f"{config.tracks_folder}/training-data/test",
-            32,
+            None,
             (160, 160),
             labels,
             augment=True,
@@ -486,39 +517,27 @@ def main():
         mean_features = None
         count = 0
         a = [x[1] for x, y in resampled_ds]
-        std = np.std(a, axis=1)
-        print("STD is")
-        print(
-            std,
-        )
+        std = np.std(a, axis=0)
+        mean_v = np.mean(a, axis=0)
+        max_v = np.max(a, axis=0)
+        min_v = np.min(a, axis=0)
+        print("STD", std.shape)
+        for v in std:
+            print(v)
         print("MEAN")
-        print(np.mean(a, axis=1))
-        # ?        1 / 0
-        for x, y in resampled_ds:
-            features = x[1]
-            for f in features:
-                count += 1
-                if minimum_features is None:
-                    minimum_features = f
-                    max_features = f
-                    mean_features = f
-                else:
-                    minimum_features = np.minimum(f, minimum_features)
-                    max_features = np.maximum(f, max_features)
-                    mean_features += f
-        print("Min Features:")
-        for v in minimum_features:
+        for v in mean_v:
             print(v)
-        print("max Features:")
-        for v in max_features:
-            print(v)
-        mean_features /= count
-        for v in mean_features:
-            print(v)
-            # print("max is", x.shape)
-            # continue
-            # return
-            # show_batch(x, y, labels)
+        print("Min")
+        for m in min_v:
+            print(m)
+
+        #
+        # print("STD is", std.shape)
+        # print(
+        #     std,
+        # )
+        # print("MEAN")
+        # print(np.mean(a, axis=1))
 
 
 def show_batch(image_batch, label_batch, labels):

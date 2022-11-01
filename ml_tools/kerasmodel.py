@@ -248,6 +248,7 @@ class KerasModel(Interpreter):
                 )
 
                 x = tf.keras.layers.Concatenate()([x, mvm_features])
+                x = mvm_features
                 # x = tf.keras.layers.Dense(1028, activation="relu")(x)
             if dense_sizes is not None:
                 for i in dense_sizes:
@@ -1064,7 +1065,7 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
 
     train, remapped = get_dataset(
         model,
-        train_files,
+        validate_files,
         augment=True,
         stop_on_empty_dataset=False,
         mvm=mvm,
