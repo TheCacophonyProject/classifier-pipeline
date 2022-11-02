@@ -235,25 +235,23 @@ class KerasModel(Interpreter):
         else:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             if self.params.mvm:
-                mvm_inputs = tf.keras.layers.Input((26))
+                mvm_inputs = tf.keras.layers.Input((181))
                 inputs = [inputs, mvm_inputs]
                 # mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
                 #
-                if self.params["hq_mvm"]:
-                    print("HQ")
-                    mvm_features = tf.keras.layers.Dense(32, activation="relu")(
-                        mvm_inputs
-                    )
-                    mvm_features = tf.keras.layers.Dense(32, activation="relu")(
-                        mvm_features
-                    )
-                    mvm_features = tf.keras.layers.Dense(16, activation="relu")(
-                        mvm_features
-                    )
-                else:
-                    mvm_features = tf.keras.layers.Dense(32, activation="relu")(
-                        mvm_inputs
-                    )
+                # if self.params["hq_mvm"]:
+                # print("HQ")
+                mvm_features = tf.keras.layers.Dense(32, activation="relu")(mvm_inputs)
+                mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                    mvm_features
+                )
+                mvm_features = tf.keras.layers.Dense(16, activation="relu")(
+                    mvm_features
+                )
+                # else:
+                #     mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                #         mvm_inputs
+                #     )
                 x = tf.keras.layers.Concatenate()([x, mvm_features])
                 # x = tf.keras.layers.Dense(1028, activation="relu")(x)
             if dense_sizes is not None:
@@ -1042,13 +1040,13 @@ def validate_model(model_file):
 # HYPER PARAM TRAINING OF A MODEL
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
-HP_MVM = hp.HParam("mvm", hp.Discrete([2.0, 1.0, 0.0]))
+HP_MVM = hp.HParam("mvm", hp.Discrete([2.0]))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
-HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001, 0.01]))
+HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
-HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0, 0.3]))
+HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
 HP_LEARNING_RATE_DECAY = hp.HParam("learning_rate_decay", hp.Discrete([1.0]))
 
@@ -1086,9 +1084,15 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
         scale_epoch=4,
     )
 
-    # test, _ = get_dataset(
-    #     model, test_files, augment=False, reshuffle=False, resample=False
-    # )
+    test, _ = get_dataset(
+        model,
+        test_files,
+        augment=False,
+        reshuffle=False,
+        resample=False,
+        deterministic=True,
+        mvm=mvm,
+    )
 
     labels = model.labels
 
@@ -1103,11 +1107,11 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
     model.model.compile(
         optimizer=opt, loss=loss(model.params), metrics=["accuracy"], run_eagerly=True
     )
-    # cm_callback = tf.keras.callbacks.LambdaCallback(
-    #     on_epoch_end=lambda epoch, logs: log_confusion_matrix(
-    #         epoch, logs, model, test, writer
-    #     )
-    # )
+    cm_callback = tf.keras.callbacks.LambdaCallback(
+        on_epoch_end=lambda epoch, logs: log_confusion_matrix(
+            epoch, logs, model, test, writer
+        )
+    )
     history = model.model.fit(
         train,
         validation_data=validate,
@@ -1127,7 +1131,7 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
 
 def grid_search(keras_model, base_dir):
 
-    epochs = 15
+    epochs = 1
     batch_size = 32
 
     dir = keras_model.log_dir + "/hparam_tuning"
