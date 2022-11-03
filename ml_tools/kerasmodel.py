@@ -29,6 +29,8 @@ from ml_tools.thermaldataset import (
 from ml_tools.thermaldataset import get_distribution
 from ml_tools.irdataset import get_resampled as get_ir_dataset
 
+import tensorflow_decision_forests as tfdf
+
 
 class KerasModel(Interpreter):
     """Defines a deep learning model"""
@@ -241,18 +243,46 @@ class KerasModel(Interpreter):
                 #
                 # if self.params["hq_mvm"]:
                 # print("HQ")
-                mvm_features = tf.keras.layers.Dense(32, activation="relu")(mvm_inputs)
-                mvm_features = tf.keras.layers.Dense(32, activation="relu")(
-                    mvm_features
-                )
-                mvm_features = tf.keras.layers.Dense(16, activation="relu")(
-                    mvm_features
-                )
-                # else:
-                #     mvm_features = tf.keras.layers.Dense(32, activation="relu")(
-                #         mvm_inputs
-                #     )
-                x = tf.keras.layers.Concatenate()([x, mvm_features])
+                if self.params["forest"]:
+                    # base_dir = os.path.join(base_dir, "training-data")
+
+                    train_files = (
+                        "/home/gp/cacophony/classifier-data/tracks/training-data"
+                        + "/train"
+                    )
+                    train, remapped = get_dataset(
+                        self,
+                        train_files,
+                        augment=True,
+                        resample=False,
+                        stop_on_empty_dataset=False,
+                        mvm=True,
+                        scale_epoch=4,
+                        tree_mode=True,
+                    )
+
+                    rf = tfdf.keras.RandomForestModel()
+                    # model.summary()
+                    rf.fit(train)
+
+                    rf = rf(mvm_inputs)
+                    x = tf.keras.layers.Concatenate()([x, rf])
+
+                else:
+                    mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                        mvm_inputs
+                    )
+                    mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                        mvm_features
+                    )
+                    mvm_features = tf.keras.layers.Dense(16, activation="relu")(
+                        mvm_features
+                    )
+                    # else:
+                    #     mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                    #         mvm_inputs
+                    #     )
+                    x = tf.keras.layers.Concatenate()([x, mvm_features])
                 # x = tf.keras.layers.Dense(1028, activation="relu")(x)
             if dense_sizes is not None:
                 for i in dense_sizes:
@@ -1040,7 +1070,7 @@ def validate_model(model_file):
 # HYPER PARAM TRAINING OF A MODEL
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
-HP_MVM = hp.HParam("mvm", hp.Discrete([2.0]))
+HP_MVM = hp.HParam("mvm", hp.Discrete([3.0]))
 
 HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
@@ -1131,7 +1161,7 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
 
 def grid_search(keras_model, base_dir):
 
-    epochs = 1
+    epochs = 15
     batch_size = 32
 
     dir = keras_model.log_dir + "/hparam_tuning"
@@ -1192,6 +1222,8 @@ def grid_search(keras_model, base_dir):
                                         if mvm >= 1.0:
                                             keras_model.params["mvm"] = True
                                             keras_model.params["hq_mvm"] = mvm > 1
+                                            keras_model.params["forest"] = mvm > 2
+
                                             print("using mvm")
                                         else:
                                             keras_model.params["mvm"] = False
@@ -1255,6 +1287,7 @@ def get_dataset(
     stop_on_empty_dataset=False,
     mvm=False,
     scale_epoch=None,
+    tree_mode=False,
 ):
     logging.info("Getting dataset %s", model.type)
     if model.type == "thermal":
@@ -1275,6 +1308,7 @@ def get_dataset(
             preprocess_fn=model.preprocess_fn,
             mvm=mvm,
             scale_epoch=scale_epoch,
+            tree_mode=tree_mode,
         )
     return get_ir_dataset(
         pattern,

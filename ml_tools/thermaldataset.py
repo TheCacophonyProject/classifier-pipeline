@@ -767,6 +767,7 @@ def load_dataset(
     augment=False,
     preprocess_fn=None,
     mvm=False,
+    tree_mode=False,
 ):
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = (
@@ -789,6 +790,7 @@ def load_dataset(
             augment=augment,
             preprocess_fn=preprocess_fn,
             mvm=mvm,
+            tree_mode=tree_mode,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -834,6 +836,7 @@ def get_resampled(
     preprocess_fn=None,
     mvm=False,
     scale_epoch=None,
+    tree_mode=False,
 ):
     num_labels = len(labels)
     global remapped_y
@@ -866,13 +869,14 @@ def get_resampled(
         augment=augment,
         preprocess_fn=preprocess_fn,
         mvm=mvm,
+        tree_mode=tree_mode,
     )
-
     if resample:
         true_categories = [y for x, y in dataset]
         if len(true_categories) == 0:
             return None
         true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        print(true_categories)
         c = Counter(list(true_categories))
         dist = np.empty((num_labels), dtype=np.float32)
         target_dist = np.empty((num_labels), dtype=np.float32)
@@ -917,12 +921,13 @@ def get_resampled(
         )
         dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
 
-    dataset = dataset.shuffle(4096, reshuffle_each_iteration=reshuffle)
+    # dataset = dataset.shuffle(4096, reshuffle_each_iteration=reshuffle)
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     epoch_size = len([0 for x, y in dataset])
     logging.info("Setting dataset size to %s", epoch_size)
-    dataset = dataset.repeat(2)
+    if not tree_mode:
+        dataset = dataset.repeat(2)
     if scale_epoch:
         epoch_size = epoch_size // scale_epoch
     dataset = dataset.take(epoch_size)
@@ -1006,6 +1011,7 @@ def read_tfrecord(
     augment=False,
     preprocess_fn=None,
     mvm=False,
+    tree_mode=False,
 ):
     tf_mean = tf.constant(mean_v)
     tf_std = tf.constant(std_v)
@@ -1061,10 +1067,13 @@ def read_tfrecord(
         onehot_label = tf.one_hot(label, num_labels)
         if mvm:
             features = example["image/features"]
-            mask = feature_mask()
-            features = tf.boolean_mask(features, mask)
+            # mask = feature_mask()
+            # features = tf.boolean_mask(features, mask)
             features = features - tf_mean
             features = features / tf_std
+            if tree_mode:
+                return features, label
+
             return (image, features), onehot_label
         return image, onehot_label
     if mvm:
