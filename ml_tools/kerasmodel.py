@@ -269,15 +269,14 @@ class KerasModel(Interpreter):
                     x = tf.keras.layers.Concatenate()([x, rf])
 
                 else:
-                    mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                    mvm_features = tf.keras.layers.Dense(128, activation="relu")(
                         mvm_inputs
                     )
-                    mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                    mvm_features = tf.keras.layers.Dense(128, activation="relu")(
                         mvm_features
                     )
-                    mvm_features = tf.keras.layers.Dense(16, activation="relu")(
-                        mvm_features
-                    )
+                    mvm_features = tf.keras.layers.Dropout(0.1)(mvm_features)
+
                     # else:
                     #     mvm_features = tf.keras.layers.Dense(32, activation="relu")(
                     #         mvm_inputs
