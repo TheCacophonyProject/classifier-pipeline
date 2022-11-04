@@ -1072,7 +1072,7 @@ def read_tfrecord(
             features = features - tf_mean
             features = features / tf_std
             if tree_mode:
-                return features, label
+                return features, onehot_label
 
             return (image, features), onehot_label
         return image, onehot_label

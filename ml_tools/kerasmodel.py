@@ -243,7 +243,7 @@ class KerasModel(Interpreter):
                 #
                 # if self.params["hq_mvm"]:
                 # print("HQ")
-                if self.params["forest"]:
+                if True or self.params["forest"]:
                     # base_dir = os.path.join(base_dir, "training-data")
 
                     train_files = (
@@ -254,13 +254,54 @@ class KerasModel(Interpreter):
                         self,
                         train_files,
                         augment=True,
-                        resample=False,
+                        resample=True,
+                        stop_on_empty_dataset=False,
+                        mvm=True,
+                        scale_epoch=4,
+                        tree_mode=True,
+                    )
+                    train_files = (
+                        "/home/gp/cacophony/classifier-data/tracks/training-data"
+                        + "/validation"
+                    )
+                    validate, remapped = get_dataset(
+                        self,
+                        train_files,
+                        augment=False,
+                        resample=True,
                         stop_on_empty_dataset=False,
                         mvm=True,
                         scale_epoch=4,
                         tree_mode=True,
                     )
 
+                    mvm_features = tf.keras.layers.Dense(128, activation="relu")(
+                        mvm_inputs
+                    )
+                    mvm_features = tf.keras.layers.Dense(128, activation="relu")(
+                        mvm_features
+                    )
+                    mvm_features = tf.keras.layers.Dropout(0.1)(mvm_features)
+                    preds = tf.keras.layers.Dense(
+                        len(self.labels), activation="softmax", name="prediction"
+                    )(mvm_features)
+                    model = tf.keras.models.Model(mvm_inputs, outputs=preds)
+                    model.compile(
+                        optimizer=optimizer(self.params),
+                        loss=loss(self.params),
+                        metrics=[
+                            "accuracy",
+                            tf.keras.metrics.AUC(),
+                            tf.keras.metrics.Recall(),
+                            tf.keras.metrics.Precision(),
+                        ],
+                    )
+                    model.summary()
+                    history = model.fit(
+                        train,
+                        validation_data=validate,
+                        epochs=15,
+                    )
                     rf = tfdf.keras.RandomForestModel()
                     # model.summary()
                     rf.fit(train)
