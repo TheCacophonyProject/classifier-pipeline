@@ -271,15 +271,15 @@ def clear_frame(frame):
     return True
 
 
-def hist_diff(region, background, thermal):
+def hist_diff(region, background, thermal, normalize_images=False):
     track_back = region.subimage(background).copy()
     track_thermal = region.subimage(thermal).copy()
-    track_back, _ = normalize(track_back, new_max=255)
-    track_thermal, _ = normalize(track_thermal, new_max=255)
-
-    # track_back = track_back[..., np.newaxis]
-    # track_thermal = track_thermal[..., np.newaxis]
-    h_bins = 50
+    if normalize_images:
+        track_back, _ = normalize(track_back, new_max=255)
+        track_thermal, _ = normalize(track_thermal, new_max=255)
+        track_back = np.float32(track_back)
+        track_thermal = np.float32(track_thermal)
+    h_bins = 60
     # s_bins = 60
     histSize = [h_bins]
 
@@ -292,7 +292,6 @@ def hist_diff(region, background, thermal):
         accumulate=False,
     )
     cv2.normalize(hist_base, hist_base, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
-
     hist_track = cv2.calcHist(
         [track_thermal],
         None,

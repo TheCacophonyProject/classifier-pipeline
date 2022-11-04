@@ -145,7 +145,16 @@ class ClipTracker(ABC):
             unmatched_regions.remove(region)
             if not self.config.filter_regions_pre_match:
                 if self.config.min_hist_diff is not None:
-                    hist_v = hist_diff(region, clip.background, cur_frame.thermal)
+                    background = clip.background
+                    if self.scale:
+                        background = cv2.resize(
+                            background,
+                            (
+                                int(self.res_x),
+                                int(self.res_y),
+                            ),
+                        )
+                    hist_v = hist_diff(region, background, cur_frame.thermal)
                     if hist_v > self.config.min_hist_diff:
                         logging.warn(
                             "%s filtering region %s because of hist diff %s track %s ",
