@@ -69,6 +69,10 @@ class HyperParams(dict):
         return self.get("mvm", False)
 
     @property
+    def mvm_forest(self):
+        return self.get("mvm_forest", False)
+
+    @property
     def model_name(self):
         return self.get("model_name", "resnetv2")
 

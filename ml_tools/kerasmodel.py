@@ -24,7 +24,7 @@ from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
 from ml_tools.thermaldataset import (
     get_resampled_by_label as get_thermal_dataset_by_label,
-    get_resampled as get_thermal_dataset,
+    get_dataset as get_thermal_dataset,
 )
 from ml_tools.thermaldataset import get_distribution
 from ml_tools.irdataset import get_resampled as get_ir_dataset
@@ -37,14 +37,14 @@ class KerasModel(Interpreter):
 
     VERSION = 1
 
-    def __init__(self, train_config=None, labels=None):
+    def __init__(self, train_config=None, labels=None, data_dir=None):
         self.model = None
         self.datasets = None
         self.remapped = None
         # dictionary containing current hyper parameters
         self.params = HyperParams()
         self.type = None
-
+        self.data_dir = data_dir
         if train_config:
             self.log_base = os.path.join(train_config.train_dir, "logs")
             self.log_dir = self.log_base
@@ -217,6 +217,23 @@ class KerasModel(Interpreter):
         )
         return None
 
+    def get_forest_model(self):
+        train_files = os.path.join(self.data_dir, "train")
+        train, remapped = get_dataset(
+            self,
+            train_files,
+            augment=True,
+            resample=False,
+            stop_on_empty_dataset=False,
+            mvm=True,
+            tree_mode=True,
+            one_hot=False,
+        )
+        # have to run fit firest
+        rf = tfdf.keras.RandomForestModel()
+        rf.fit(train)
+        return rf
+
     def build_model(self, dense_sizes=None, retrain_from=None, dropout=None):
         # width = self.params.frame_size
         width = self.params.output_dim[0]
@@ -243,71 +260,11 @@ class KerasModel(Interpreter):
                 #
                 # if self.params["hq_mvm"]:
                 # print("HQ")
-                if True or self.params["forest"]:
-                    # base_dir = os.path.join(base_dir, "training-data")
-                    #
-                    # train_files = (
-                    #     "/home/gp/cacophony/classifier-data/tracks/training-data"
-                    #     + "/train"
-                    # )
-                    # train, remapped = get_dataset(
-                    #     self,
-                    #     train_files,
-                    #     augment=True,
-                    #     resample=True,
-                    #     stop_on_empty_dataset=False,
-                    #     mvm=True,
-                    #     scale_epoch=4,
-                    #     tree_mode=True,
-                    # )
-                    # train_files = (
-                    #     "/home/gp/cacophony/classifier-data/tracks/training-data"
-                    #     + "/validation"
-                    # )
-                    # validate, remapped = get_dataset(
-                    #     self,
-                    #     train_files,
-                    #     augment=False,
-                    #     resample=True,
-                    #     stop_on_empty_dataset=False,
-                    #     mvm=True,
-                    #     scale_epoch=4,
-                    #     tree_mode=True,
-                    # )
+                if self.params.mvm_forest:
+                    rf = self.get_forest_model()
 
-                    mvm_features = tf.keras.layers.Dense(128, activation="relu")(
-                        mvm_inputs
-                    )
-                    mvm_features = tf.keras.layers.Dense(128, activation="relu")(
-                        mvm_features
-                    )
-                    mvm_features = tf.keras.layers.Dropout(0.1)(mvm_features)
-                    # preds = tf.keras.layers.Dense(
-                    #     len(self.labels), activation="softmax", name="prediction"
-                    # )(mvm_features)
-                    # model = tf.keras.models.Model(mvm_inputs, outputs=preds)
-                    # model.compile(
-                    #     optimizer=optimizer(self.params),
-                    #     loss=loss(self.params),
-                    #     metrics=[
-                    #         "accuracy",
-                    #         tf.keras.metrics.AUC(),
-                    #         tf.keras.metrics.Recall(),
-                    #         tf.keras.metrics.Precision(),
-                    #     ],
-                    # )
-                    # model.summary()
-                    # history = model.fit(
-                    #     train,
-                    #     validation_data=validate,
-                    #     epochs=15,
-                    # )
-                    # rf = tfdf.keras.RandomForestModel()
-                    # # model.summary()
-                    # rf.fit(train)
-                    #
-                    # rf = rf(mvm_inputs)
-                    x = tf.keras.layers.Concatenate()([x, mvm_features])
+                    rf = rf(mvm_inputs)
+                    x = tf.keras.layers.Concatenate()([x, rf])
 
                 else:
                     mvm_features = tf.keras.layers.Dense(128, activation="relu")(
@@ -494,7 +451,7 @@ class KerasModel(Interpreter):
         gc.collect()
 
     def train_model_tfrecords(
-        self, epochs, run_name, base_dir, weights=None, rebalance=False, resample=False
+        self, epochs, run_name, weights=None, rebalance=False, resample=False
     ):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
@@ -513,10 +470,8 @@ class KerasModel(Interpreter):
         self.model.summary()
         if weights is not None:
             self.model.load_weights(weights)
-        base_dir = os.path.join(base_dir, "training-data")
-        train_files = base_dir + "/train"
-        validate_files = base_dir + "/validation"
-
+        train_files = os.path.join(self.data_dir, "train")
+        validate_files = os.path.join(self.data_dir, "validation")
         self.train, remapped = get_dataset(
             self,
             train_files,
@@ -1324,52 +1279,21 @@ class ClearMemory(Callback):
 
 
 def get_dataset(
-    model,
     pattern,
-    augment=False,
-    reshuffle=True,
-    deterministic=False,
-    resample=True,
-    weights=None,
-    stop_on_empty_dataset=False,
-    mvm=False,
-    scale_epoch=None,
-    tree_mode=False,
+    type,
+    **args,
 ):
     logging.info("Getting dataset %s", model.type)
-    if model.type == "thermal":
-        if model.ds_by_label:
+    if type == "thermal":
+        if args.get("ds_by_label", False):
             get_ds = get_thermal_dataset_by_label
         else:
             get_ds = get_thermal_dataset
         return get_ds(
             pattern,
-            model.params.batch_size,
-            model.params.output_dim[:2],
-            model.labels,
-            augment=augment,
-            reshuffle=reshuffle,
-            deterministic=deterministic,
-            resample=resample,
-            # stop_on_empty_dataset=stop_on_empty_dataset,
-            preprocess_fn=model.preprocess_fn,
-            mvm=mvm,
-            scale_epoch=scale_epoch,
-            tree_mode=tree_mode,
+            args,
         )
-    return get_ir_dataset(
-        pattern,
-        model.params.batch_size,
-        model.params.output_dim[:2],
-        model.labels,
-        augment=augment,
-        reshuffle=reshuffle,
-        deterministic=deterministic,
-        resample=resample,
-        weights=weights,
-        stop_on_empty_dataset=stop_on_empty_dataset,
-        preprocess_fn=model.preprocess_fn,
-    )
+    return get_ir_dataset(pattern, args)
 
 
 class MetaJSONEncoder(json.JSONEncoder):

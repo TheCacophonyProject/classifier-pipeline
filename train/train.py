@@ -35,7 +35,11 @@ def train_model(
 ):
     """Trains a model with the given hyper parameters."""
     init_logging()
-    model = KerasModel(train_config=conf.train, labels=conf.labels)
+    model = KerasModel(
+        train_config=conf.train,
+        labels=conf.labels,
+        data_dir=os.path.join(conf.tracks_folder, "training-data"),
+    )
 
     logging.info("Importing datasets from %s ", conf.tracks_folder)
     model.load_training_meta(conf.tracks_folder)
@@ -56,7 +60,6 @@ def train_model(
         model.train_model_tfrecords(
             epochs=conf.train.epochs,
             run_name=run_name + "_" + "TEST",
-            base_dir=conf.tracks_folder,
             weights=weights,
             resample=True,
         )
