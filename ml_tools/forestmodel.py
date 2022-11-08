@@ -99,9 +99,9 @@ important_features = [
 ]
 
 
-def feature_mask():
+def feature_mask(features_used):
     feature_indexes = []
-    for f in important_features:
+    for f in features_used:
         feature_indexes.append(ALL_FEATURES.index(f))
     feature_indexes = np.array(feature_indexes)
     return feature_indexes
@@ -114,11 +114,15 @@ class ForestModel(Interpreter):
         super().__init__(model_file)
         self.model = joblib.load(model_file)
         self.buffer_length = 5
+        self.features_used = self.params.get("features_used")
 
     def classify_track(self, clip, track, segment_frames=None):
         track_prediction = TrackPrediction(track.get_id(), self.labels)
 
         x = process_track(clip, track)
+        if self.features_used is not None:
+            f_mask = feature_mask(self.features_used)
+            x = np.take(x, f_mask)
         if x is None:
             logging.warning("Random forest could not classify track")
             return None
@@ -329,8 +333,6 @@ def forest_features(
             np.array([len(track_frames)]),
         )
     )
-    f_mask = feature_mask()
-    X = np.take(X, f_mask)
 
     return X
 
