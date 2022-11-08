@@ -45,12 +45,26 @@ def load_dataset(filenames, num_labels, args):
     dataset = dataset.with_options(
         ignore_order
     )  # uses data as soon as it streams in, rather than in its original order
+
+    image_size = args["image_size"]
+    labeled = args.get("labeled", True)
+    augment = args.get("augment", False)
+    preprocess_fn = args.get("preprocess_fn")
+    include_features = args.get("include_features", False)
+    only_features = args.get("only_features", False)
+    one_hot = args.get("one_hot", True)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
     dataset = dataset.map(
         partial(
             read_tfrecord,
-            num_labels,
-            **args,
+            num_labels=num_labels,
+            image_size=image_size,
+            labeled=labeled,
+            augment=augment,
+            preprocess_fn=preprocess_fn,
+            include_features=include_features,
+            only_features=only_features,
+            one_hot=one_hot,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -117,19 +131,23 @@ def get_dataset(base_dir, labels, args):
     )
     filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
     dataset = load_dataset(filenames, num_labels, args)
-    if resample:
-        resample(dataset, labels)
+    resample_data = args.get("resample", True)
+    if resample_data:
+        logging.info("Resampling data")
+        dataset = resample(dataset, labels)
     # dataset = dataset.shuffle(4096, reshuffle_each_iteration=reshuffle)
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     epoch_size = len([0 for x, y in dataset])
     logging.info("Setting dataset size to %s", epoch_size)
-    if not only_features:
+    if not args.get("only_features", False):
         dataset = dataset.repeat(2)
+    scale_epoch = args.get("scale_epoch", None)
     if scale_epoch:
         epoch_size = epoch_size // scale_epoch
     dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
+    batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
     return dataset, remapped
@@ -245,17 +263,28 @@ def get_resampled_by_label(
     return resampled_ds, remapped
 
 
-def read_tfrecord(example, num_labels, image_size=32):
-    logging.info("Example is %s", args.get("example"))
-    return
-    image_size = args["image_size"]
-    labeled = args.get("labeled", True)
-    augment = args.get("augment", False)
-    preprocess_fn = args.get("preprocess_fn")
-    include_features = args.get("include_features", False)
-    only_features = args.get("only_features", False)
-    one_hot = args.get("one_hot", True)
-
+def read_tfrecord(
+    example,
+    image_size,
+    num_labels,
+    labeled,
+    augment=False,
+    preprocess_fn=None,
+    only_features=False,
+    one_hot=True,
+    include_features=False,
+):
+    logging.info(
+        "Read tf record with image %s lbls %s labeld %s aug  %s  prepr %s only features %s one hot %s include fetures %s",
+        image_size,
+        num_labels,
+        labeled,
+        augment,
+        preprocess_fn,
+        only_features,
+        one_hot,
+        include_features,
+    )
     load_images = not only_features
     # tf_mean = tf.constant(mean_v)
     # tf_std = tf.constant(std_v)
@@ -316,15 +345,16 @@ def read_tfrecord(example, num_labels, image_size=32):
         label = tf.cast(example["image/class/label"], tf.int32)
         global remapped_y
         label = remapped_y.lookup(label)
-        onehot_label = tf.one_hot(label, num_labels)
-        if include_features:
+        if one_hot:
+            label = tf.one_hot(label, num_labels)
+        if include_features or only_features:
             features = example["image/features"]
             # features = features - tf_mean
             # features = features / tf_std
             if only_features:
-                return features, onehot_label
-            return (image, features), onehot_label
-        return image, onehot_label
+                return features, label
+            return (image, features), label
+        return image, label
     if only_features:
         return example["image/features"]
     elif include_features:

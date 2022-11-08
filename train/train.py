@@ -46,7 +46,7 @@ def train_model(
 
     if do_grid_search:
         print("Searching hparams")
-        grid_search(model, base_dir=conf.tracks_folder)
+        grid_search(model)
         model.close()
         return
     print()

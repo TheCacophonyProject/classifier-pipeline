@@ -220,13 +220,16 @@ class KerasModel(Interpreter):
     def get_forest_model(self):
         train_files = os.path.join(self.data_dir, "train")
         train, remapped = get_dataset(
-            self,
             train_files,
-            augment=True,
+            self.type,
+            self.labels,
+            batch_size=self.params.batch_size,
+            image_size=self.params.output_dim[:2],
+            preprocess_fn=self.preprocess_fn,
+            augment=False,
             resample=False,
             stop_on_empty_dataset=False,
-            mvm=True,
-            tree_mode=True,
+            only_features=True,
             one_hot=False,
         )
         # have to run fit firest
@@ -473,26 +476,29 @@ class KerasModel(Interpreter):
         train_files = os.path.join(self.data_dir, "train")
         validate_files = os.path.join(self.data_dir, "validation")
         self.train, remapped = get_dataset(
+            train_files,
+            self.type,
+            self.labels,
+            batch_size=self.params.batch_size,
+            image_size=self.params.output_dim[:2],
+            preprocess_fn=self.preprocess_fn,
+            resample=resample,
+            stop_on_empty_dataset=False,
+            include_features=self.params.mvm,
+            augment=True,
+            # dist=self.dataset_counts["train"],
+        )
+        self.remapped = remapped
+        self.validate, remapped = get_dataset(
             validate_files,
             self.type,
             self.labels,
             batch_size=self.params.batch_size,
             image_size=self.params.output_dim[:2],
-            augment=True,
             preprocess_fn=self.preprocess_fn,
             resample=resample,
             stop_on_empty_dataset=False,
-            mvm=self.params.mvm,
-            # dist=self.dataset_counts["train"],
-        )
-        self.remapped = remapped
-        self.validate, remapped = get_dataset(
-            self,
-            validate_files,
-            augment=False,
-            resample=resample,
-            stop_on_empty_dataset=False,
-            mvm=self.params.mvm,
+            include_features=self.params.mvm,
             # dist=self.dataset_counts["validation"],
         )
         # distribution = get_distribution(self.train)
@@ -539,15 +545,19 @@ class KerasModel(Interpreter):
         )
         history = history.history
         test_accuracy = None
-        test_files = base_dir + "/test"
+        test_files = self.base_dir + "/test"
         if len(test_files) > 0:
             self.test, _ = get_dataset(
-                self,
                 test_files,
-                augment=False,
+                self.type,
+                self.labels,
+                batch_size=self.params.batch_size,
+                image_size=self.params.output_dim[:2],
+                preprocess_fn=self.preprocess_fn,
+                stop_on_empty_dataset=False,
+                include_features=self.params.mvm,
                 reshuffle=False,
                 resample=False,
-                mvm=self.params.mvm,
             )
             if self.test:
                 test_accuracy = self.model.evaluate(self.test)
@@ -1091,43 +1101,49 @@ METRIC_LOSS = "loss"
 
 
 # GRID SEARCH
-def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
+def train_test_model(model, hparams, log_dir, writer, epochs):
     # if not self.model:
-    base_dir = os.path.join(base_dir, "training-data")
-    train_files = base_dir + "/train"
-    validate_files = base_dir + "/validation"
-    test_files = base_dir + "/test"
+    train_files = model.data_dir + "/train"
+    validate_files = model.data_dir + "/validation"
+    test_files = model.data_dir + "/test"
     mvm = hparams[HP_MVM]
     if mvm >= 1.0:
         mvm = True
     else:
         mvm = False
-
     train, remapped = get_dataset(
-        model,
         train_files,
+        model.type,
+        model.labels,
+        batch_size=model.params.batch_size,
+        image_size=model.params.output_dim[:2],
+        preprocess_fn=model.preprocess_fn,
+        include_features=mvm,
         augment=True,
-        stop_on_empty_dataset=False,
-        mvm=mvm,
         scale_epoch=4,
     )
     validate, remapped = get_dataset(
-        model,
         validate_files,
+        model.type,
+        model.labels,
+        batch_size=model.params.batch_size,
+        image_size=model.params.output_dim[:2],
+        preprocess_fn=model.preprocess_fn,
+        include_features=mvm,
         augment=False,
-        stop_on_empty_dataset=False,
-        mvm=mvm,
         scale_epoch=4,
     )
 
     test, _ = get_dataset(
-        model,
         test_files,
-        augment=False,
-        reshuffle=False,
-        resample=False,
+        model.type,
+        model.labels,
+        batch_size=model.params.batch_size,
+        image_size=model.params.output_dim[:2],
+        preprocess_fn=model.preprocess_fn,
+        include_features=mvm,
         deterministic=True,
-        mvm=mvm,
+        augment=False,
     )
 
     labels = model.labels
@@ -1165,11 +1181,7 @@ def train_test_model(model, hparams, log_dir, writer, base_dir, epochs=15):
     return history
 
 
-def grid_search(keras_model, base_dir):
-
-    epochs = 15
-    batch_size = 32
-
+def grid_search(keras_model, epochs=1):
     dir = keras_model.log_dir + "/hparam_tuning"
     with tf.summary.create_file_writer(dir).as_default():
         hp.hparams_config(
@@ -1230,7 +1242,6 @@ def grid_search(keras_model, base_dir):
                                             keras_model.params["hq_mvm"] = mvm > 1
                                             keras_model.params["forest"] = mvm > 2
 
-                                            print("using mvm")
                                         else:
                                             keras_model.params["mvm"] = False
 
@@ -1251,17 +1262,14 @@ def grid_search(keras_model, base_dir):
                                             dir + "/" + run_name,
                                             hparams,
                                             epochs,
-                                            base_dir,
                                         )
                                         session_num += 1
 
 
-def run(keras_model, log_dir, hparams, epochs, base_dir):
+def run(keras_model, log_dir, hparams, epochs):
     with tf.summary.create_file_writer(log_dir).as_default() as w:
         hp.hparams(hparams)  # record the values used in this trial
-        history = train_test_model(
-            keras_model, hparams, log_dir, w, base_dir, epochs=epochs
-        )
+        history = train_test_model(keras_model, hparams, log_dir, w, epochs=epochs)
         val_accuracy = history.history["val_accuracy"]
         val_loss = history.history["val_loss"]
         # log_confusion_matrix(epochs, None, self.model, self.validate, None)
@@ -1293,8 +1301,6 @@ def get_dataset(
             get_ds = get_thermal_dataset_by_label
         else:
             get_ds = get_thermal_dataset
-        print(get_ds)
-        print("caling with", pattern, labels, args)
         return get_ds(
             pattern,
             labels,
