@@ -473,9 +473,13 @@ class KerasModel(Interpreter):
         train_files = os.path.join(self.data_dir, "train")
         validate_files = os.path.join(self.data_dir, "validation")
         self.train, remapped = get_dataset(
-            self,
-            train_files,
+            validate_files,
+            self.type,
+            self.labels,
+            batch_size=self.params.batch_size,
+            image_size=self.params.output_dim[:2],
             augment=True,
+            preprocess_fn=self.preprocess_fn,
             resample=resample,
             stop_on_empty_dataset=False,
             mvm=self.params.mvm,
@@ -1281,19 +1285,22 @@ class ClearMemory(Callback):
 def get_dataset(
     pattern,
     type,
+    labels,
     **args,
 ):
-    logging.info("Getting dataset %s", model.type)
     if type == "thermal":
         if args.get("ds_by_label", False):
             get_ds = get_thermal_dataset_by_label
         else:
             get_ds = get_thermal_dataset
+        print(get_ds)
+        print("caling with", pattern, labels, args)
         return get_ds(
             pattern,
+            labels,
             args,
         )
-    return get_ir_dataset(pattern, args)
+    return get_ir_dataset(pattern, labels, args)
 
 
 class MetaJSONEncoder(json.JSONEncoder):

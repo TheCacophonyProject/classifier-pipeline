@@ -23,18 +23,17 @@ insect = None
 fp = None
 
 
-def load_dataset(
-    filenames,
-    image_size,
-    num_labels,
-    deterministic=False,
-    labeled=True,
-    augment=False,
-    preprocess_fn=None,
-    include_features=False,
-    only_features=False,
-    one_hot=True,
-):
+def load_dataset(filenames, num_labels, args):
+    #
+    #     image_size,
+    deterministic = args.get("deterministic", False)
+    #     labeled=True,
+    #     augment=False,
+    #     preprocess_fn=None,
+    #     include_features=False,
+    #     only_features=False,
+    #     one_hot=True,
+    # ):
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = (
         deterministic  # disable order, increase speed
@@ -50,14 +49,8 @@ def load_dataset(
     dataset = dataset.map(
         partial(
             read_tfrecord,
-            image_size=image_size,
-            num_labels=num_labels,
-            labeled=labeled,
-            augment=augment,
-            preprocess_fn=preprocess_fn,
-            include_features=include_features,
-            only_features=only_features,
-            one_hot=one_hot,
+            num_labels,
+            **args,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
@@ -87,22 +80,20 @@ def get_distribution(dataset):
     return dist
 
 
-def get_dataset(
-    base_dir,
-    batch_size,
-    image_size,
-    labels,
-    reshuffle=True,
-    deterministic=False,
-    labeled=True,
-    augment=False,
-    resample=True,
-    preprocess_fn=None,
-    mvm=False,
-    scale_epoch=None,
-    only_features=False,
-    one_hot=True,
-):
+def get_dataset(base_dir, labels, args):
+    #     batch_size,
+    #     image_size,
+    #     reshuffle=True,
+    #     deterministic=False,
+    #     labeled=True,
+    #     augment=False,
+    #     resample=True,
+    #     preprocess_fn=None,
+    #     mvm=False,
+    #     scale_epoch=None,
+    #     only_features=False,
+    #     one_hot=True,
+    # ):
     num_labels = len(labels)
     global remapped_y
     remapped = {}
@@ -125,20 +116,9 @@ def get_dataset(
         name="remapped_y",
     )
     filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
-    dataset = load_dataset(
-        filenames,
-        image_size,
-        num_labels,
-        deterministic=deterministic,
-        labeled=labeled,
-        augment=augment,
-        preprocess_fn=preprocess_fn,
-        mvm=mvm,
-        only_features=only_features,
-        one_hot=one_hot,
-    )
+    dataset = load_dataset(filenames, num_labels, args)
     if resample:
-        resample(dataset)
+        resample(dataset, labels)
     # dataset = dataset.shuffle(4096, reshuffle_each_iteration=reshuffle)
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
@@ -265,22 +245,20 @@ def get_resampled_by_label(
     return resampled_ds, remapped
 
 
-def read_tfrecord(
-    example,
-    image_size,
-    num_labels,
-    labeled,
-    augment=False,
-    preprocess_fn=None,
-    mvm=False,
-    tree_mode=False,
-    include_features=False,
-    only_features=False,
-    one_hot=True,
-):
+def read_tfrecord(example, num_labels, image_size=32):
+    logging.info("Example is %s", args.get("example"))
+    return
+    image_size = args["image_size"]
+    labeled = args.get("labeled", True)
+    augment = args.get("augment", False)
+    preprocess_fn = args.get("preprocess_fn")
+    include_features = args.get("include_features", False)
+    only_features = args.get("only_features", False)
+    one_hot = args.get("one_hot", True)
+
     load_images = not only_features
-    tf_mean = tf.constant(mean_v)
-    tf_std = tf.constant(std_v)
+    # tf_mean = tf.constant(mean_v)
+    # tf_std = tf.constant(std_v)
     tfrecord_format = {
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
