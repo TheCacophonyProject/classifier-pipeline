@@ -10,6 +10,7 @@ import json
 from ml_tools.logs import init_logging
 import logging
 
+from ml_tools.forestmodel import mean_v, std_v
 
 # seed = 1341
 # tf.random.set_seed(seed)
@@ -285,8 +286,8 @@ def read_tfrecord(
         include_features,
     )
     load_images = not only_features
-    # tf_mean = tf.constant(mean_v)
-    # tf_std = tf.constant(std_v)
+    tf_mean = tf.constant(mean_v)
+    tf_std = tf.constant(std_v)
     tfrecord_format = {
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
@@ -348,8 +349,8 @@ def read_tfrecord(
             label = tf.one_hot(label, num_labels)
         if include_features or only_features:
             features = example["image/features"]
-            # features = features - tf_mean
-            # features = features / tf_std
+            features = features - tf_mean
+            features = features / tf_std
             if only_features:
                 return features, label
             return (image, features), label
