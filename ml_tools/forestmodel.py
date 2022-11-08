@@ -100,15 +100,11 @@ important_features = [
 
 
 def feature_mask():
-    mask = np.arange(len(ALL_FEATURES) + 1)
-    mask[:] = False
-    # = mask != -1
     feature_indexes = []
     for f in important_features:
         feature_indexes.append(ALL_FEATURES.index(f))
     feature_indexes = np.array(feature_indexes)
-    mask[feature_indexes] = True
-    return mask
+    return feature_indexes
 
 
 class ForestModel(Interpreter):
@@ -141,9 +137,15 @@ def process_track(
     buf_len=5,
 ):
     background = clip.background
-    frames = [f for f in clip.frame_buffer]
-    frame_temp_medain = [np.median(f.thermal) for f in frames]
-    return forest_features(frames, background, frame_temp_medain)
+    frames = []
+    frame_temp_median = {}
+    for r in track.bounds_history:
+        frame = clip.frame_buffer.get_frame(r.frame_number)
+        frames.append(frame)
+        frame_temp_median[r.frame_number] = np.median(frame.thermal)
+    return forest_features(
+        frames, background, frame_temp_median, track.bounds_history, cropped=False
+    )
     # # return None
     # if len(track) <= buf_len:
     #     return None
@@ -203,7 +205,9 @@ def process_track(
     # return X
 
 
-def forest_features(track_frames, background, frame_temp_median, buf_len=5):
+def forest_features(
+    track_frames, background, frame_temp_median, regions, buf_len=5, cropped=True
+):
     frame_features = []
     avg_features = None
     std_features = None
@@ -216,7 +220,7 @@ def forest_features(track_frames, background, frame_temp_median, buf_len=5):
         return None
 
     for i, frame in enumerate(track_frames):
-        region = frame.region
+        region = regions[i]
         if region.blank or region.width == 0 or region.height == 0:
             prev_count = 0
             continue
@@ -226,9 +230,13 @@ def forest_features(track_frames, background, frame_temp_median, buf_len=5):
         sub_back = region.subimage(background).copy()
         feature.calc_histogram(sub_back, frame.thermal)
         t_median = frame_temp_median[frame.frame_number]
-        cropped_frame = frame
+        if cropped:
+            cropped_frame = frame
+        else:
+            cropped_frame = frame.crop_by_region(region)
         thermal = cropped_frame.thermal.copy()
         f_count += 1
+
         thermal = thermal + np.median(background) - t_median
         filtered = thermal - sub_back
 
@@ -321,6 +329,9 @@ def forest_features(track_frames, background, frame_temp_median, buf_len=5):
             np.array([len(track_frames)]),
         )
     )
+    f_mask = feature_mask()
+    X = np.take(X, f_mask)
+
     return X
 
 

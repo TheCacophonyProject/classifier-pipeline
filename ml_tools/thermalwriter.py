@@ -220,7 +220,8 @@ def get_data(sample, db):
         track_frames = db.get_track(sample.clip_id, sample.track_id, original=False)
         clip_meta = db.get_clip_meta(sample.clip_id)
         frame_temp_median = clip_meta["frame_temp_median"]
-        features = forest_features(track_frames, background, frame_temp_median)
+        regions = [f.region for f in track_frames]
+        features = forest_features(track_frames, background, frame_temp_median, regions)
         thermals = []  # np.empty(len(frames), dtype=object)
         filtered = []  # np.empty(len(frames), dtype=object)
         # sample_frames = sample.frame_numbers - sample.start_frame

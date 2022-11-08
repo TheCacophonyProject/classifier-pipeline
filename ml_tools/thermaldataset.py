@@ -9,7 +9,6 @@ from config.config import Config
 import json
 from ml_tools.logs import init_logging
 import logging
-from ml_tools.forestmodel import feature_mask
 
 
 # seed = 1341

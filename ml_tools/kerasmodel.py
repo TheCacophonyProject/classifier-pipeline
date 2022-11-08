@@ -862,7 +862,8 @@ class KerasModel(Interpreter):
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        if len(true_categories) > 1:
+            true_categories = np.int64(tf.argmax(true_categories, axis=1))
         y_pred = self.model.predict(dataset)
 
         predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
