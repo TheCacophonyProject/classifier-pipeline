@@ -207,13 +207,18 @@ def main():
 
         files = base_dir + f"/training-data/{args.dataset}"
         dataset, _ = get_dataset(
-            model,
             files,
+            model.type,
+            model.labels,
+            batch_size=model.params.batch_size,
+            image_size=model.params.output_dim[:2],
+            preprocess_fn=model.preprocess_fn,
             augment=False,
-            reshuffle=False,
-            deterministic=True,
             resample=False,
-            stop_on_empty_dataset=False,
+            only_features=model.params.mvm,
+            one_hot=False,
+            deterministic=True,
+            reshuffle=False,
         )
         logging.info(
             "Dataset loaded %s, using labels %s",

@@ -1304,9 +1304,9 @@ def get_dataset(
         return get_ds(
             pattern,
             labels,
-            args,
+            **args,
         )
-    return get_ir_dataset(pattern, labels, args)
+    return get_ir_dataset(pattern, labels, **args)
 
 
 class MetaJSONEncoder(json.JSONEncoder):

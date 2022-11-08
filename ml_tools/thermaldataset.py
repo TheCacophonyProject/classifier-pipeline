@@ -94,7 +94,7 @@ def get_distribution(dataset):
     return dist
 
 
-def get_dataset(base_dir, labels, args):
+def get_dataset(base_dir, labels, **args):
     #     batch_size,
     #     image_size,
     #     reshuffle=True,
@@ -405,35 +405,19 @@ def main():
     with open(file, "r") as f:
         meta = json.load(f)
     labels = meta.get("labels", [])
-    by_label = meta.get("by_label", True)
     datasets = []
-    # dir = "/home/gp/cacophony/classifier-data/thermal-training/cp-training/validation"
-    # weights = [0.5] * len(labels)
-    if by_label:
-        resampled_ds, remapped = get_resampled(
-            # dir,
-            f"{config.tracks_folder}/training-data/test",
-            32,
-            (160, 160),
-            labels,
-            augment=False,
-            stop_on_empty_dataset=False,
-            preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
-            resample=True,
-        )
-    else:
 
-        resampled_ds, remapped = get_resampled(
-            # dir,
-            f"{config.tracks_folder}/training-data/test",
-            None,
-            (160, 160),
-            labels,
-            augment=True,
-            # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
-            resample=True,
-            mvm=True,
-        )
+    resampled_ds, remapped = get_dataset(
+        # dir,
+        f"{config.tracks_folder}/training-data/test",
+        labels,
+        batch_size=None,
+        image_size=(160, 160),
+        augment=True,
+        # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
+        resample=True,
+        include_features=True,
+    )
     # print(get_distribution(resampled_ds))
     #
     #
