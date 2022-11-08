@@ -44,6 +44,7 @@ from . import tfrecord_util
 from ml_tools import tools
 from ml_tools.imageprocessing import normalize
 from ml_tools.forestmodel import forest_features
+from ml_tools import imageprocessing
 
 crop_rectangle = tools.Rectangle(0, 0, 640, 480)
 
@@ -168,14 +169,14 @@ def create_tf_records(
             loaded = []
 
             for sample in local_set:
-                data = sample.get_data(db)
-                features = forest_features(db, sample.clip_id, sample.track_id)
+                data, features = get_data(sample, db)
+                # features = forest_features(db, sample.clip_id, sample.track_id)
                 if data is None:
                     continue
 
                 loaded.append(((data, features), sample))
 
-            loaded = np.array(loaded)
+            loaded = np.array(loaded, dtype=object)
             np.random.shuffle(loaded)
 
             for data, sample in loaded:
@@ -209,3 +210,46 @@ def create_tf_records(
     logging.info(
         "Finished writing, skipped %d annotations.", total_num_annotations_skipped
     )
+
+
+def get_data(sample, db):
+    # prepare the sample data for saving
+    crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+    try:
+        background = db.get_clip_background(sample.clip_id)
+        track_frames = db.get_track(sample.clip_id, sample.track_id, original=False)
+        clip_meta = db.get_clip_meta(sample.clip_id)
+        frame_temp_median = clip_meta["frame_temp_median"]
+        features = forest_features(track_frames, background, frame_temp_median)
+        thermals = []  # np.empty(len(frames), dtype=object)
+        filtered = []  # np.empty(len(frames), dtype=object)
+        # sample_frames = sample.frame_numbers - sample.start_frame
+        for i, frame in enumerate(track_frames):
+            if frame.frame_number not in sample.frame_numbers:
+                continue
+            frame.float_arrays()
+            frame.filtered = frame.thermal - frame.region.subimage(background)
+            temp = frame_temp_median[i]
+            frame.resize_with_aspect((32, 32), crop_rectangle, keep_edge=True)
+            frame.thermal -= temp
+            np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
+
+            frame.thermal, stats = imageprocessing.normalize(frame.thermal, new_max=255)
+            if not stats[0]:
+                frame.thermal = np.zeros((frame.thermal.shape))
+                # continue
+            frame.filtered, stats = imageprocessing.normalize(
+                frame.filtered, new_max=255
+            )
+            if not stats[0]:
+                frame.filtered = np.zeros((frame.filtered.shape))
+
+            filtered.append(frame.filtered)
+            thermals.append(frame.thermal)
+        thermals = np.array(thermals)
+        filtered = np.array(filtered)
+    except:
+        logging.error("Cant get segment %s", sample, exc_info=True)
+        raise "EX"
+        return None
+    return (thermals, filtered), features

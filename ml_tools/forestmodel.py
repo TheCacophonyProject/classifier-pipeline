@@ -140,73 +140,70 @@ def process_track(
     track,
     buf_len=5,
 ):
-    frame_features = []
-    avg_features = None
-    std_features = None
-    maximum_features = None
-    f_count = 0
-    prev_count = 0
     background = clip.background
-    # return None
-    if len(track) <= buf_len:
-        return None
-    for i, region in enumerate(track.bounds_history):
+    frames = [f for f in clip.frame_buffer]
+    frame_temp_medain = [np.median(f.thermal) for f in frames]
+    return forest_features(frames, background, frame_temp_medain)
+    # # return None
+    # if len(track) <= buf_len:
+    #     return None
+    # for i, region in enumerate(track.bounds_history):
+    #
+    #     if region.blank or region.width == 0 or region.height == 0:
+    #         prev_count = 0
+    #         continue
+    #
+    #     frame = clip.frame_buffer.get_frame(region.frame_number)
+    #     frame.float_arrays()
+    #     t_median = np.median(frame.thermal)
+    #     cropped_frame = frame.crop_by_region(region)
+    #     thermal = cropped_frame.thermal.copy()
+    #     f_count += 1
+    #     thermal = thermal + np.median(background) - t_median
+    #
+    #     sub_back = region.subimage(background).copy()
+    #     filtered = thermal - sub_back
+    #     feature = FrameFeatures(region)
+    #
+    #     feature.calculate(thermal, sub_back)
+    #     count_back = min(buf_len, prev_count)
+    #     for i in range(count_back):
+    #         prev = frame_features[-i - 1]
+    #         vel = feature.cent - prev.cent
+    #         feature.speed[i] = np.sqrt(np.sum(vel * vel))
+    #         feature.rel_speed[i] = feature.speed[i] / feature.sqrt_area
+    #         feature.rel_speed_x[i] = np.abs(vel[0]) / feature.sqrt_area
+    #         feature.rel_speed_y[i] = np.abs(vel[1]) / feature.sqrt_area
+    #
+    #     # if count_back >= 5:
+    #     # 1 / 0
+    #     frame_features.append(feature)
+    #     features = feature.features()
+    #     prev_count += 1
+    #     if maximum_features is None:
+    #         maximum_features = features
+    #         avg_features = features
+    #         std_features = features * features
+    #     else:
+    #         maximum_features = np.maximum(features, maximum_features)
+    #         # Aggregate
+    #         avg_features += features
+    #         std_features += features * features
+    #
+    # # Compute statistics for all tracks that have the min required duration
+    # valid_counter = 0
+    # N = len(track) - np.array(
+    #     [0, 0, 0, 0, 0, 1, 1, 1, 1, 3, 3, 3, 3, 5, 5, 5, 5]
+    # )  # Normalise each measure by however many samples went into it
+    # avg_features /= N
+    # std_features = np.sqrt(std_features / N - avg_features**2)
+    # X = np.hstack(
+    #     (avg_features, std_features, maximum_features, np.array([len(track)]))
+    # )
+    # return X
 
-        if region.blank or region.width == 0 or region.height == 0:
-            prev_count = 0
-            continue
 
-        frame = clip.frame_buffer.get_frame(region.frame_number)
-        frame.float_arrays()
-        t_median = np.median(frame.thermal)
-        cropped_frame = frame.crop_by_region(region)
-        thermal = cropped_frame.thermal.copy()
-        f_count += 1
-        thermal = thermal + np.median(background) - t_median
-
-        sub_back = region.subimage(background).copy()
-        filtered = thermal - sub_back
-        feature = FrameFeatures(region)
-
-        feature.calculate(thermal, sub_back)
-        count_back = min(buf_len, prev_count)
-        for i in range(count_back):
-            prev = frame_features[-i - 1]
-            vel = feature.cent - prev.cent
-            feature.speed[i] = np.sqrt(np.sum(vel * vel))
-            feature.rel_speed[i] = feature.speed[i] / feature.sqrt_area
-            feature.rel_speed_x[i] = np.abs(vel[0]) / feature.sqrt_area
-            feature.rel_speed_y[i] = np.abs(vel[1]) / feature.sqrt_area
-
-        # if count_back >= 5:
-        # 1 / 0
-        frame_features.append(feature)
-        features = feature.features()
-        prev_count += 1
-        if maximum_features is None:
-            maximum_features = features
-            avg_features = features
-            std_features = features * features
-        else:
-            maximum_features = np.maximum(features, maximum_features)
-            # Aggregate
-            avg_features += features
-            std_features += features * features
-
-    # Compute statistics for all tracks that have the min required duration
-    valid_counter = 0
-    N = len(track) - np.array(
-        [0, 0, 0, 0, 0, 1, 1, 1, 1, 3, 3, 3, 3, 5, 5, 5, 5]
-    )  # Normalise each measure by however many samples went into it
-    avg_features /= N
-    std_features = np.sqrt(std_features / N - avg_features**2)
-    X = np.hstack(
-        (avg_features, std_features, maximum_features, np.array([len(track)]))
-    )
-    return X
-
-
-def forest_features(db, clip_id, track_id, buf_len=5):
+def forest_features(track_frames, background, frame_temp_median, buf_len=5):
     frame_features = []
     avg_features = None
     std_features = None
@@ -215,11 +212,6 @@ def forest_features(db, clip_id, track_id, buf_len=5):
 
     f_count = 0
     prev_count = 0
-    # return None
-    track_frames = db.get_track(clip_id, track_id, original=False)
-    background = db.get_clip_background(clip_id)
-    clip_meta = db.get_clip_meta(clip_id)
-    frame_temp_median = clip_meta["frame_temp_median"]
     if len(track_frames) <= buf_len:
         return None
 
@@ -232,7 +224,7 @@ def forest_features(db, clip_id, track_id, buf_len=5):
         feature = FrameFeatures(region)
 
         sub_back = region.subimage(background).copy()
-        feature.histogram(sub_back, frame.thermal)
+        feature.calc_histogram(sub_back, frame.thermal)
         t_median = frame_temp_median[frame.frame_number]
         cropped_frame = frame
         thermal = cropped_frame.thermal.copy()
@@ -470,7 +462,7 @@ class FrameFeatures:
             ]
         )
 
-    def histogram(self, sub_back, crop_t):
+    def calc_histogram(self, sub_back, crop_t):
         max_v = np.amax(sub_back)
         min_v = np.amin(sub_back)
         sub_back = (np.float32(sub_back) - min_v) / (max_v - min_v)

@@ -218,19 +218,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     sample_limit = num_validate_samples
     tracks = set()
     print(
-        label,
-        "looking for val tracks",
-        num_validate_tracks,
-        "  out of tracks",
-        total_tracks,
-        "and # samples",
-        num_validate_samples,
-        "from total samples",
-        total,
-        "# test tracks",
-        num_test_tracks,
-        "# num test samples",
-        num_test_samples,
+        f"{label} - looking for val {num_validate_tracks} tracks out of {total_tracks} tracks and {num_validate_samples} samples from a total of {total} samples  with {num_test_tracks} test tracks and {num_test_samples} test samples"
     )
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]

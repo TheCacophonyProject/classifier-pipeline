@@ -545,7 +545,8 @@ class KerasModel(Interpreter):
         )
         history = history.history
         test_accuracy = None
-        test_files = self.base_dir + "/test"
+        test_files = os.path.join(self.data_dir, "test")
+
         if len(test_files) > 0:
             self.test, _ = get_dataset(
                 test_files,
