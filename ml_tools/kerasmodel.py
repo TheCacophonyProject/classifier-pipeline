@@ -851,9 +851,6 @@ class KerasModel(Interpreter):
             if self.params.mvm:
                 features = features[np.newaxis, :]
                 features = np.repeat(features, len(predict_me), axis=0)
-                logging.info(
-                    "Using features %swith %s", features.shape, predict_me.shape
-                )
                 output = self.model.predict([predict_me, features])
             else:
                 output = self.model.predict(predict_me)
