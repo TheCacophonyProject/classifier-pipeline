@@ -30,6 +30,7 @@ from ml_tools.thermaldataset import get_distribution
 from ml_tools.irdataset import get_resampled as get_ir_dataset
 
 import tensorflow_decision_forests as tfdf
+from ml_tools import forestmodel
 
 
 class KerasModel(Interpreter):
@@ -738,10 +739,15 @@ class KerasModel(Interpreter):
             segment_frames=segment_frames,
             segment_type=self.params.segment_type,
         )
+        features = None
+        if self.params.mvm:
+            features = forestmodel.process_track(clip, track)
+            features = forestmodel.normalize(features)
         return self.classify_track_data(
             track.get_id(),
             track_data,
             segments,
+            features,
         )
 
     def classify_track(self, clip, track, keep_all=True, segment_frames=None):
@@ -800,6 +806,7 @@ class KerasModel(Interpreter):
         track_id,
         data,
         segments,
+        features=None,
     ):
         track_prediction = TrackPrediction(track_id, self.labels)
         start = time.time()
@@ -828,13 +835,24 @@ class KerasModel(Interpreter):
             if frames is None:
                 logging.warn("No frames to predict on")
                 continue
+
             predict_me.append(frames)
             prediction_frames.append(segment.frame_indices)
             mass.append(segment.mass)
         if len(predict_me) > 0:
             mass = np.array(mass)
             mass = mass[:, None]
-            output = self.model.predict(np.array(predict_me))
+            predict_me = np.array(predict_me)
+            if self.params.mvm:
+                features = features[np.newaxis, :]
+                features = np.repeat(features, len(predict_me), axis=0)
+                logging.info(
+                    "Using features %swith %s", features.shape, predict_me.shape
+                )
+                output = self.model.predict([predict_me, features])
+            else:
+                output = self.model.predict(predict_me)
+
             track_prediction.classified_clip(
                 output, output * output * mass, prediction_frames
             )

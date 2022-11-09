@@ -216,7 +216,7 @@ def main():
             augment=False,
             resample=False,
             include_features=model.params.mvm,
-            one_hot=False,
+            one_hot=True,
             deterministic=True,
             reshuffle=False,
         )

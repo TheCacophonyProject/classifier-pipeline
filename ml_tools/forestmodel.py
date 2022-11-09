@@ -107,6 +107,12 @@ def feature_mask(features_used):
     return feature_indexes
 
 
+def normalize(features):
+    features -= mean_v
+    features /= mean_v
+    return features
+
+
 class ForestModel(Interpreter):
     TYPE = "RandomForest"
 
