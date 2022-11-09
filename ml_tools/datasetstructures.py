@@ -289,6 +289,7 @@ class TrackHeader:
         segment_min_mass=None,
         use_important=False,
         repeats=1,
+        max_segments=None,
     ):
         min_frames = segment_width
         if self.label == "vehicle" or self.label == "human":
@@ -315,6 +316,7 @@ class TrackHeader:
             skipped_frames=self.skipped_frames,
             start_time=self.start_time,
             segment_type=segment_type,
+            max_segments=max_segments,
         )
 
     @property
@@ -832,6 +834,7 @@ def get_segments(
     camera=None,
     start_time=None,
     segment_type=SegmentType.ALL_RANDOM,
+    max_segments=None,
 ):
 
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
@@ -896,7 +899,8 @@ def get_segments(
     frame_indices = np.array(frame_indices)
     segment_count = max(1, len(frame_indices) // segment_frame_spacing)
     segment_count = int(segment_count)
-    segment_count = max(5, segment_count)
+    if max_segments is not None:
+        segment_count = max(max_segments, segment_count)
 
     # take any segment_width frames, this could be done each epoch
     whole_indices = frame_indices

@@ -91,6 +91,7 @@ class Dataset:
             self.min_frame_mass = config.build.min_frame_mass
             self.filter_by_lq = config.build.filter_by_lq
             self.segment_type = SegmentType.ALL_RANDOM
+            self.max_segments = config.build.max_segments
 
         else:
             self.filter_by_lq = True
@@ -247,6 +248,7 @@ class Dataset:
                     segment_width,
                     self.segment_type,
                     self.segment_min_avg_mass,
+                    max_segments=self.max_segments,
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
                     "segment_mass"
