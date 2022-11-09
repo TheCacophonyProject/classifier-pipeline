@@ -42,7 +42,7 @@ def parse_args():
     parser.add_argument(
         "-m",
         "--min-samples",
-        default=MIN_SAMPLES,
+        default=None,
         type=int,
         help="Min tracks per dataset (Default 100)",
     )
@@ -85,7 +85,15 @@ def parse_args():
     else:
         if args.date is None:
             args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=30)
-            # args.date = datetime.datetime.now() - datetime.timedelta(days=30)
+
+    if args.min_samples is not None:
+        global MAX_TEST_TRACKS, MAX_TEST_SAMPLES, MIN_SAMPLES, MIN_TRACKS
+        MAX_TEST_TRACKS = args.min_samples
+        MAX_TEST_SAMPLES = args.min_samples
+
+        MIN_SAMPLES = args.min_samples
+        MIN_TRACKS = args.min_samples
+        # args.date = datetime.datetime.now() - datetime.timedelta(days=30)
 
     logging.info("Loading training set up to %s", args.date)
     return args
