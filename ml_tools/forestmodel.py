@@ -156,63 +156,6 @@ def process_track(
     return forest_features(
         frames, background, frame_temp_median, track.bounds_history, cropped=False
     )
-    # # return None
-    # if len(track) <= buf_len:
-    #     return None
-    # for i, region in enumerate(track.bounds_history):
-    #
-    #     if region.blank or region.width == 0 or region.height == 0:
-    #         prev_count = 0
-    #         continue
-    #
-    #     frame = clip.frame_buffer.get_frame(region.frame_number)
-    #     frame.float_arrays()
-    #     t_median = np.median(frame.thermal)
-    #     cropped_frame = frame.crop_by_region(region)
-    #     thermal = cropped_frame.thermal.copy()
-    #     f_count += 1
-    #     thermal = thermal + np.median(background) - t_median
-    #
-    #     sub_back = region.subimage(background).copy()
-    #     filtered = thermal - sub_back
-    #     feature = FrameFeatures(region)
-    #
-    #     feature.calculate(thermal, sub_back)
-    #     count_back = min(buf_len, prev_count)
-    #     for i in range(count_back):
-    #         prev = frame_features[-i - 1]
-    #         vel = feature.cent - prev.cent
-    #         feature.speed[i] = np.sqrt(np.sum(vel * vel))
-    #         feature.rel_speed[i] = feature.speed[i] / feature.sqrt_area
-    #         feature.rel_speed_x[i] = np.abs(vel[0]) / feature.sqrt_area
-    #         feature.rel_speed_y[i] = np.abs(vel[1]) / feature.sqrt_area
-    #
-    #     # if count_back >= 5:
-    #     # 1 / 0
-    #     frame_features.append(feature)
-    #     features = feature.features()
-    #     prev_count += 1
-    #     if maximum_features is None:
-    #         maximum_features = features
-    #         avg_features = features
-    #         std_features = features * features
-    #     else:
-    #         maximum_features = np.maximum(features, maximum_features)
-    #         # Aggregate
-    #         avg_features += features
-    #         std_features += features * features
-    #
-    # # Compute statistics for all tracks that have the min required duration
-    # valid_counter = 0
-    # N = len(track) - np.array(
-    #     [0, 0, 0, 0, 0, 1, 1, 1, 1, 3, 3, 3, 3, 5, 5, 5, 5]
-    # )  # Normalise each measure by however many samples went into it
-    # avg_features /= N
-    # std_features = np.sqrt(std_features / N - avg_features**2)
-    # X = np.hstack(
-    #     (avg_features, std_features, maximum_features, np.array([len(track)]))
-    # )
-    # return X
 
 
 def forest_features(
@@ -338,6 +281,7 @@ def forest_features(
             np.array([len(track_frames)]),
         )
     )
+
     return X
 
 
