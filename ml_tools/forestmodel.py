@@ -108,8 +108,10 @@ def feature_mask(features_used):
 
 
 def normalize(features):
+    from ml_tools.featurenorms import mean_v, std_v
+
     features -= mean_v
-    features /= mean_v
+    features /= std_v
     return features
 
 
