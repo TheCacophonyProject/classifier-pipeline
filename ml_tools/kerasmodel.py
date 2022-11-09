@@ -218,7 +218,7 @@ class KerasModel(Interpreter):
         )
         return None
 
-    def get_forest_model(self):
+    def get_forest_model(self, run_name):
         train_files = os.path.join(self.data_dir, "train")
         train, remapped = get_dataset(
             train_files,
@@ -236,9 +236,13 @@ class KerasModel(Interpreter):
         # have to run fit firest
         rf = tfdf.keras.RandomForestModel()
         rf.fit(train)
+        rf.save(os.path.join(self.checkpoint_folder, run_name, "rf"))
+
         return rf
 
-    def build_model(self, dense_sizes=None, retrain_from=None, dropout=None):
+    def build_model(
+        self, dense_sizes=None, retrain_from=None, dropout=None, run_name=None
+    ):
         # width = self.params.frame_size
         width = self.params.output_dim[0]
         inputs = tf.keras.Input(shape=(width, width, 3), name="input")
@@ -265,7 +269,7 @@ class KerasModel(Interpreter):
                 # if self.params["hq_mvm"]:
                 # print("HQ")
                 if self.params.mvm_forest:
-                    rf = self.get_forest_model()
+                    rf = self.get_forest_model(run_name)
 
                     rf = rf(mvm_inputs)
                     x = tf.keras.layers.Concatenate()([x, rf])
@@ -470,6 +474,7 @@ class KerasModel(Interpreter):
                 dense_sizes=self.params.dense_sizes,
                 retrain_from=self.params.retrain_layer,
                 dropout=self.params.dropout,
+                run_name=run_name,
             )
         self.model.summary()
         if weights is not None:
@@ -742,7 +747,7 @@ class KerasModel(Interpreter):
         features = None
         if self.params.mvm:
             features = forestmodel.process_track(clip, track)
-            features = forestmodel.normalize(features)
+            # features = forestmodel.normalize(features)
         return self.classify_track_data(
             track.get_id(),
             track_data,

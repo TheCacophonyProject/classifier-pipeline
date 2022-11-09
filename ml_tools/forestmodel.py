@@ -236,7 +236,6 @@ def forest_features(
             continue
         frame.float_arrays()
         feature = FrameFeatures(region)
-
         sub_back = region.subimage(background).copy()
         feature.calc_histogram(sub_back, frame.thermal)
         t_median = frame_temp_median[frame.frame_number]
@@ -339,7 +338,6 @@ def forest_features(
             np.array([len(track_frames)]),
         )
     )
-
     return X
 
 
