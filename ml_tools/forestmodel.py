@@ -165,10 +165,9 @@ def forest_features(
 ):
     frame_features = []
     avg_features = None
-    std_features = None
     maximum_features = None
     minimum_features = None
-
+    all_features = []
     f_count = 0
     prev_count = 0
     if len(track_frames) <= buf_len:
@@ -209,13 +208,13 @@ def forest_features(
         # 1 / 0
         frame_features.append(feature)
         features = feature.features()
+        all_features.append(features.copy())
         prev_count += 1
         if maximum_features is None:
-            maximum_features = features
-            minimum_features = features
+            maximum_features = features.copy()
+            minimum_features = features.copy()
 
-            avg_features = features
-            std_features = features * features
+            avg_features = features.copy()
         else:
             maximum_features = np.maximum(features, maximum_features)
             for i, (new, min_f) in enumerate(zip(features, minimum_features)):
@@ -225,7 +224,6 @@ def forest_features(
                     minimum_features[i] = new
             # Aggregate
             avg_features += features
-            std_features += features * features
 
     # Compute statistics for all tracks that have the min required duration
     valid_counter = 0
@@ -270,8 +268,9 @@ def forest_features(
         ]
     )  # Normalise each measure by however many samples went into it
     avg_features /= N
-    std_features = np.sqrt(std_features / N - avg_features**2)
+    std_features = np.sqrt(np.sum((all_features - avg_features) ** 2, axis=0) / N)
     diff_features = maximum_features - minimum_features
+    burst_features = calculate_burst_features(frame_features)
 
     X = np.hstack(
         (
@@ -280,11 +279,76 @@ def forest_features(
             maximum_features,
             minimum_features,
             diff_features,
+            burst_features,
             np.array([len(track_frames)]),
         )
     )
-
     return X
+
+
+def calculate_burst_features(frames):
+    #
+    avg_speeds = np.array([f.speed[0] for f in frames])
+    mean_speed = np.mean(avg_speeds)
+    cut_off = max(2, (1 + mean_speed))
+    speed_above = len([f for f in frames if f.speed[0] > cut_off])
+    speed_below = len([f for f in frames if f.speed[0] <= cut_off])
+
+    burst_frames = 0
+    burst_ratio = []
+    burst_history = []
+    total_birst_frames = 0
+    low_speed_distance = 0
+    high_speed_distance = 0
+    for i, frame in enumerate(frames):
+        if frame.speed[0] < cut_off:
+            low_speed_distance += frame.speed[0]
+        else:
+            high_speed_distance += frame.speed[0]
+        if i > 0:
+            prev = frames[i - 1]
+            if prev.speed[0] > cut_off and frame.speed[0] > cut_off:
+                burst_frames += 1
+            else:
+                if burst_frames > 0:
+                    burst_start = i - burst_frames - 1
+                    if len(burst_history) > 0:
+                        # length of non burst frames is from previous burst end
+                        prev = burst_history[-1]
+                        burst_start -= prev[0] + prev[1]
+                    burst_history.append((i - burst_frames - 1, burst_frames + 1))
+                    burst_ratio.append(burst_start / (burst_frames + 1))
+                    total_birst_frames += burst_frames + 1
+                    burst_frames = 0
+    burst_ratio = np.array(burst_ratio)
+    if speed_above == 0:
+        speed_ratio = 0
+        speed_distance_ratio = 0
+    else:
+        speed_distance_ratio = low_speed_distance / high_speed_distance
+        speed_ratio = speed_below / speed_above
+
+    if len(burst_ratio) == 0:
+        burst_min = 0
+        burst_max = 0
+        burst_mean = 0
+    else:
+        burst_min = np.amin(burst_ratio)
+        burst_max = np.amax(burst_ratio)
+        burst_mean = np.mean(burst_ratio)
+    burst_chance = len(burst_ratio) / len(frames)
+    burst_per_frame = total_birst_frames / len(frames)
+    return np.array(
+        [
+            speed_distance_ratio,
+            speed_ratio,
+            burst_min,
+            burst_max,
+            burst_mean,
+            burst_chance,
+            burst_per_frame,
+        ]
+    )
 
 
 class FrameFeatures:
@@ -440,10 +504,9 @@ class FrameFeatures:
         # crop_t = np.uint8(crop_t)
         sub_back = sub_back[..., np.newaxis]
         crop_t = crop_t[..., np.newaxis]
-        h_bins = 50
+        h_bins = 60
         histSize = [h_bins]
         channels = [0]
-
         hist_base = cv2.calcHist(
             [sub_back],
             channels,
