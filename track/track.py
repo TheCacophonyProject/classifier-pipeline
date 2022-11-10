@@ -226,8 +226,8 @@ class RegionTracker(Tracker):
             or self.nonblank_frames <= RegionTracker.MIN_KALMAN_FRAMES
         ):
             return (0, 0)
-        pred_vel_x = self.predicted_mid[0] - self.last_bound.mid_x
-        pred_vel_y = self.predicted_mid[1] - self.last_bound.mid_y
+        pred_vel_x = self.predicted_mid[0] - self.last_bound.centroid[0]
+        pred_vel_y = self.predicted_mid[1] - self.last_bound.centroid[1]
 
         return (pred_vel_x, pred_vel_y)
 
@@ -238,6 +238,7 @@ class RegionTracker(Tracker):
                 int(self.predicted_mid[1] - self.last_bound.height / 2.0),
                 self.last_bound.width,
                 self.last_bound.height,
+                centroid=[self.predicted_mid[0], self.predicted_mid[1]],
             )
             if self.crop_rectangle:
                 region.crop(self.crop_rectangle)
@@ -572,10 +573,12 @@ class Track:
     def update_velocity(self):
         if len(self.bounds_history) >= 2:
             self.vel_x.append(
-                self.bounds_history[-1].mid_x - self.bounds_history[-2].mid_x
+                self.bounds_history[-1].centroid[0]
+                - self.bounds_history[-2].centroid[0]
             )
             self.vel_y.append(
-                self.bounds_history[-1].mid_y - self.bounds_history[-2].mid_y
+                self.bounds_history[-1].centroid[1]
+                - self.bounds_history[-2].centroid[1]
             )
         else:
             self.vel_x.append(0)
@@ -761,8 +764,8 @@ class Track:
             current_frame = self.bounds_history[i]
             next_frame = self.bounds_history[min(len(self.bounds_history) - 1, i + 1)]
 
-            frame_x = current_frame.mid_x
-            frame_y = current_frame.mid_y
+            frame_x = current_frame.centroid[0]
+            frame_y = current_frame.centroid[1]
             frame_width = (
                 prev_frame.width + current_frame.width + next_frame.width
             ) / 3

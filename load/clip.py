@@ -227,11 +227,19 @@ class Clip:
         initial_diff = np.uint8(initial_diff)
         initial_diff = cv2.fastNlMeansDenoising(initial_diff, None)
 
-        _, lower_mask, lower_objects = detect_objects(initial_diff, otsus=True)
+        _, lower_mask, lower_objects, centroids = detect_objects(
+            initial_diff, otsus=True
+        )
 
-        max_region = Region(0, 0, self.res_x, self.res_y)
-        for component in lower_objects[1:]:
-            region = Region(component[0], component[1], component[2], component[3])
+        max_region = Rectangle(0, 0, self.res_x, self.res_y)
+        for component, centroid in zip(lower_objects[1:], centroids[1:]):
+            region = Region(
+                component[0],
+                component[1],
+                component[2],
+                component[3],
+                centoird=centroid,
+            )
             region.enlarge(2, max=max_region)
             if region.width >= self.res_x or region.height >= self.res_y:
                 logging.info(
