@@ -10,7 +10,7 @@ import json
 from ml_tools.logs import init_logging
 import logging
 
-from ml_tools.forestmodel import mean_v, std_v
+from ml_tools.featurenorms import mean_v, std_v
 
 # seed = 1341
 # tf.random.set_seed(seed)
