@@ -238,7 +238,7 @@ class Clip:
                 component[1],
                 component[2],
                 component[3],
-                centoird=centroid,
+                centroid=centroid,
             )
             region.enlarge(2, max=max_region)
             if region.width >= self.res_x or region.height >= self.res_y:
