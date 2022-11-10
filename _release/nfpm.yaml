@@ -11,7 +11,7 @@ license: "GPLv3"
 overrides:
   deb:
     depends:
-      - python3.6
+      - python3.9
 
 files:
   dist/classifier-pipeline.pex: "/usr/bin/classifier-pipeline.pex"
