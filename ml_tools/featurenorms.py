@@ -1,4 +1,3 @@
-
 # normalization values for features probably not needed
 std_v = [
     0.15178847,
