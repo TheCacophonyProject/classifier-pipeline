@@ -353,13 +353,19 @@ class IRTrackExtractor(ClipTracker):
                 )
             if self.background._background is None:
                 self.background.set_background(tracking_thermal.copy())
-            saliencyMap, _ = self._get_filtered_frame_ir(
-                tracking_thermal, repeats=repeats
-            )
+            if DO_SALIENCY:
+                saliencyMap, _ = self._get_filtered_frame_ir(
+                    tracking_thermal, repeats=repeats
+                )
 
             filtered = self.background.compute_filtered(
                 tracking_thermal, clip.background_thresh
             )
+            #
+            # saliencyMap = self.diff_background.compute_filtered(
+            #     tracking_thermal, clip.background_thresh
+            # )
+
             _ = self.diff_background.update_background(tracking_thermal, filtered)
             # self.background.update_background(tracking_thermal, filtered)
             clip.set_background(self.diff_background.background)

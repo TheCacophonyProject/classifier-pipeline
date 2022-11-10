@@ -128,7 +128,6 @@ def extract_file(filename):
             cache_to_disk,
             verbose=config.verbose,
             keep_frames=False if previewer is None else True,
-            scale=0.25,
         )
 
         logging.info("Using ir extractor")

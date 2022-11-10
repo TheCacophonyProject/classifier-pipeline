@@ -179,11 +179,11 @@ class TrackingConfig(DefaultConfig):
             min_hist_diff=None,
         )
         if type == "IR":
-            default_tracking.min_hist_diff = 0.85
+            # default_tracking.min_hist_diff = 0.95
             default_tracking.filter_regions_pre_match = False
             default_tracking.areas_of_interest["pixel_variance"] = 0
             default_tracking.areas_of_interest["min_mass"] = 0
-            default_tracking.filters["track_min_offset"] = 20
+            default_tracking.filters["track_min_offset"] = 7
             default_tracking.track_min_offset = 20
             default_tracking.min_dimension = 10
             default_tracking.min_tracks = None

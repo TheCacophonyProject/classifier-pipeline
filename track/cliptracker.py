@@ -490,6 +490,9 @@ class CVBackground(Background):
         self.algorithm = cv2.createBackgroundSubtractorKNN(
             history=1000, detectShadows=False
         )
+        self.algorithm.setDist2Threshold(200)
+        # i think this is more sensitive than default 400
+        # works better on hedgehog videos
         self.algorithm.setkNNSamples(3)
         self.frames = 0
         self._background = None
