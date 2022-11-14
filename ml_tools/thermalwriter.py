@@ -45,8 +45,10 @@ from ml_tools import tools
 from ml_tools.imageprocessing import normalize
 from ml_tools.forestmodel import forest_features
 from ml_tools import imageprocessing
+from ml_tools.frame import TrackChannels
 
 crop_rectangle = tools.Rectangle(0, 0, 640, 480)
+from functools import lru_cache
 
 
 def create_tf_example(data, image_dir, sample, labels, filename):
@@ -139,6 +141,7 @@ def create_tf_records(
     np.random.shuffle(samples)
 
     dataset.load_db()
+    dataset.set_read_only(True)
     db = dataset.db
     total_num_annotations_skipped = 0
     num_labels = len(labels)
@@ -167,7 +170,7 @@ def create_tf_records(
             local_set = samples[:load_first]
             samples = samples[load_first:]
             loaded = []
-
+            start = time.time()
             for sample in local_set:
                 data, features = get_data(sample, db)
                 # features = forest_features(db, sample.clip_id, sample.track_id)
@@ -175,7 +178,6 @@ def create_tf_records(
                     continue
 
                 loaded.append(((data, features), sample))
-
             loaded = np.array(loaded, dtype=object)
             np.random.shuffle(loaded)
 
@@ -201,7 +203,7 @@ def create_tf_records(
                     # count += 1
                 except Exception as e:
                     logging.error("Error saving ", exc_info=True)
-            # break
+
     except:
         logging.error("Error saving track info", exc_info=True)
     for writer in writers:
@@ -212,19 +214,34 @@ def create_tf_records(
     )
 
 
+@lru_cache(maxsize=10000)
+def get_track_data(clip_id, track_id, db):
+    background = db.get_clip_background(clip_id)
+
+    track_frames = db.get_track(
+        clip_id,
+        track_id,
+        original=False,
+        channels=[TrackChannels.thermal],
+    )
+    clip_meta = db.get_clip_meta(clip_id)
+    frame_temp_median = clip_meta["frame_temp_median"]
+    regions = [f.region for f in track_frames]
+    features = forest_features(track_frames, background, frame_temp_median, regions)
+    return background, track_frames, features, frame_temp_median
+
+
 def get_data(sample, db):
+
     # prepare the sample data for saving
     crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
     try:
-        background = db.get_clip_background(sample.clip_id)
-        track_frames = db.get_track(sample.clip_id, sample.track_id, original=False)
-        clip_meta = db.get_clip_meta(sample.clip_id)
-        frame_temp_median = clip_meta["frame_temp_median"]
-        regions = [f.region for f in track_frames]
-        features = forest_features(track_frames, background, frame_temp_median, regions)
+        background, track_frames, features, frame_temp_median = get_track_data(
+            sample.clip_id, sample.track_id, db
+        )
+
         thermals = []  # np.empty(len(frames), dtype=object)
         filtered = []  # np.empty(len(frames), dtype=object)
-        # sample_frames = sample.frame_numbers - sample.start_frame
         for i, frame in enumerate(track_frames):
             if frame.frame_number not in sample.frame_numbers:
                 continue
