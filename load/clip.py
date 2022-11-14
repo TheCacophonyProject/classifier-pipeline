@@ -251,7 +251,7 @@ class Clip:
             background_region = region.subimage(initial_frame)
             norm_back = background_region.copy()
             norm_back, _ = normalize(norm_back, new_max=255)
-            sub_components, sub_connected, sub_stats = detect_objects(
+            sub_components, sub_connected, sub_stats, centroids = detect_objects(
                 norm_back, otsus=True
             )
 
