@@ -180,14 +180,14 @@ def forest_features(
             continue
         frame.float_arrays()
         feature = FrameFeatures(region)
-        sub_back = region.subimage(background).copy()
+        sub_back = region.subimage(background)
         feature.calc_histogram(sub_back, frame.thermal)
         t_median = frame_temp_median[frame.frame_number]
         if cropped:
             cropped_frame = frame
         else:
             cropped_frame = frame.crop_by_region(region)
-        thermal = cropped_frame.thermal.copy()
+        thermal = cropped_frame.thermal
         f_count += 1
 
         thermal = thermal + np.median(background) - t_median
@@ -204,11 +204,10 @@ def forest_features(
             feature.rel_speed_y[i] = np.abs(vel[1]) / feature.sqrt_area
             feature.speed_x[i] = np.abs(vel[0])
             feature.speed_y[i] = np.abs(vel[1])
-        # if count_back >= 5:
-        # 1 / 0
+
         frame_features.append(feature)
         features = feature.features()
-        all_features.append(features.copy())
+        all_features.append(features)
         prev_count += 1
         if maximum_features is None:
             maximum_features = features.copy()
@@ -270,7 +269,7 @@ def forest_features(
     avg_features /= N
     std_features = np.sqrt(np.sum((all_features - avg_features) ** 2, axis=0) / N)
     diff_features = maximum_features - minimum_features
-    burst_features = calculate_burst_features(frame_features)
+    burst_features = calculate_burst_features(frame_features, avg_features[5])
 
     X = np.hstack(
         (
@@ -286,10 +285,9 @@ def forest_features(
     return X
 
 
-def calculate_burst_features(frames):
+def calculate_burst_features(frames, mean_speed):
     #
-    avg_speeds = np.array([f.speed[0] for f in frames])
-    mean_speed = np.mean(avg_speeds)
+
     cut_off = max(2, (1 + mean_speed))
     speed_above = len([f for f in frames if f.speed[0] > cut_off])
     speed_below = len([f for f in frames if f.speed[0] <= cut_off])
