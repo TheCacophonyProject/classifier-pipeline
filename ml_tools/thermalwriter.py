@@ -251,6 +251,5 @@ def get_data(sample, db):
         filtered = np.array(filtered)
     except:
         logging.error("Cant get segment %s", sample, exc_info=True)
-        raise "EX"
         return None
     return (thermals, filtered), features
