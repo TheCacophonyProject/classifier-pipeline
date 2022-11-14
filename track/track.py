@@ -537,7 +537,6 @@ class Track:
                     if "frameTime" in position:
                         if i == 0:
                             region.frame_number = position["frameTime"] * 9
-                            print("setting inital frame to", region.frame_number)
                         else:
                             region.frame_number = (
                                 self.bounds_history[0].frame_number + i
