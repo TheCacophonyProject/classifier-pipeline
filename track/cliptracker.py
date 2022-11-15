@@ -488,7 +488,7 @@ class CVBackground(Background):
     def __init__(self):
         # seems to be better than MOG2
         self.algorithm = cv2.createBackgroundSubtractorKNN(
-            history=1000, detectShadows=False
+            history=500, detectShadows=False
         )
         self.algorithm.setDist2Threshold(200)
         # i think this is more sensitive than default 400

@@ -207,6 +207,7 @@ class IRTrackExtractor(ClipTracker):
                 background = cv2.resize(
                     background,
                     (int(self.res_x * self.scale), int(self.res_y * self.scale)),
+                    interpolation=cv2.INTER_AREA,
                 )
             self.background.set_background(background, background_frames)
             self.diff_background.set_background(background, background_frames)
@@ -261,7 +262,7 @@ class IRTrackExtractor(ClipTracker):
     def merge_components(self, rectangles):
         min_mass = 10
         min_size = 16
-        MAX_GAP = 20
+        MAX_GAP = 40
         if self.scale:
             min_mass = int(min_mass * self.scale)
             min_size = int(min_size * self.scale)
@@ -271,6 +272,8 @@ class IRTrackExtractor(ClipTracker):
             for r in rectangles
             if r[4] > min_mass or (r[2] > min_size and r[3] > min_size)
         ]
+        rectangles = sorted(rectangles, key=lambda s: s[4], reverse=False)
+
         # filter out regions with small mass  and samll width / height
         #  numbers may need adjusting
         rect_i = 0
@@ -350,6 +353,7 @@ class IRTrackExtractor(ClipTracker):
                 tracking_thermal = cv2.resize(
                     tracking_thermal,
                     (int(self.res_x * self.scale), int(self.res_y * self.scale)),
+                    interpolation=cv2.INTER_AREA,
                 )
             if self.background._background is None:
                 self.background.set_background(tracking_thermal.copy())
