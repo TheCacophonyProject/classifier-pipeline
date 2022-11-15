@@ -170,7 +170,6 @@ def create_tf_records(
             local_set = samples[:load_first]
             samples = samples[load_first:]
             loaded = []
-            start = time.time()
             for sample in local_set:
                 data, features = get_data(sample, db)
                 # features = forest_features(db, sample.clip_id, sample.track_id)
