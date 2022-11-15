@@ -26,18 +26,6 @@ class Dataset:
     disk.
     """
 
-    # Number of threads to use for async loading
-    WORKER_THREADS = 2
-
-    # If true uses processes instead of threads.  Threads do not scale as well due to the GIL, however there is no
-    # transfer time required per segment.  Processes scale much better but require ~1ms to pickling the segments
-    # across processes.
-    # In general if worker threads is one set this to False, if it is two or more set it to True.
-    PROCESS_BASED = True
-
-    # number of pixels to inset from frame edges by default
-    DEFAULT_INSET = 2
-
     def __init__(
         self,
         db_file,
