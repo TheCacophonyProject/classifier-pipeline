@@ -24,7 +24,7 @@ import logging
 import numpy as np
 
 
-@attr.s(eq=False)
+@attr.s(eq=False, slots=True)
 class Region(Rectangle):
     """Region is a rectangle extended to support mass."""
 

@@ -206,8 +206,9 @@ class Dataset:
         :return: [number of tracks added, total tracks].
         """
         counter = 0
+        logging.info("Loading clips")
         clip_ids = self.db.get_all_clip_ids(before_date, after_date, label)
-
+        logging.info("loaded")
         if shuffle:
             np.random.shuffle(clip_ids)
         for clip_id in clip_ids:
