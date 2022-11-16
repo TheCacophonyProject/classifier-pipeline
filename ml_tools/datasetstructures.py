@@ -900,8 +900,7 @@ def get_segments(
     segment_count = max(1, len(frame_indices) // segment_frame_spacing)
     segment_count = int(segment_count)
     if max_segments is not None:
-        segment_count = max(max_segments, segment_count)
-
+        segment_count = min(max_segments, segment_count)
     # take any segment_width frames, this could be done each epoch
     whole_indices = frame_indices
     random_frames = segment_type in [
