@@ -415,53 +415,23 @@ def main():
         image_size=(160, 160),
         augment=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
-        resample=True,
-        include_features=True,
+        # resample=True,
+        # include_features=True,
     )
     # print(get_distribution(resampled_ds))
     #
     #
-    # for e in range(2):
-    #     print("epoch", e)
-    #     true_categories = [y for x, y in resampled_ds]
-    #     true_categories = tf.concat(true_categories, axis=0)
-    #     true_categories = np.int64(tf.argmax(true_categories, axis=1))
-    #     c = Counter(list(true_categories))
-    #     print("epoch is size", len(true_categories))
-    #     for i in range(len(labels)):
-    #         print("after have", labels[i], c[i])
-    #
-    # # return
-    for e in range(1):
-        minimum_features = None
-        max_features = None
-        mean_features = None
-        count = 0
-        a = [x[1] for x, y in resampled_ds]
-        std = np.std(a, axis=0)
-        mean_v = np.mean(a, axis=0)
-        max_v = np.max(a, axis=0)
-        min_v = np.min(a, axis=0)
-        print("STD", std.shape)
-        for v in std:
-            print(v)
-        print("MEAN")
-        for v in mean_v:
-            print(v)
-        print("MAX")
-        for m in max_v:
-            print(m)
-        print("Min")
-        for m in min_v:
-            print(m)
+    for e in range(2):
+        print("epoch", e)
+        true_categories = [y for x, y in resampled_ds]
+        true_categories = tf.concat(true_categories, axis=0)
+        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        c = Counter(list(true_categories))
+        print("epoch is size", len(true_categories))
+        for i in range(len(labels)):
+            print("after have", labels[i], c[i])
 
-        #
-        # print("STD is", std.shape)
-        # print(
-        #     std,
-        # )
-        # print("MEAN")
-        # print(np.mean(a, axis=1))
+    # return
 
 
 def show_batch(image_batch, label_batch, labels):
