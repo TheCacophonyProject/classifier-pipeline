@@ -135,7 +135,10 @@ def get_dataset(base_dir, labels, **args):
     if resample_data:
         logging.info("Resampling data")
         dataset = resample(dataset, labels)
-    # dataset = dataset.shuffle(4096, reshuffle_each_iteration=reshuffle)
+
+    if not args.get("only_features"):
+        logging.info("shuffling data")
+        dataset = dataset.shuffle(4096, reshuffle_each_iteration=args.get("reshuffle"))
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     epoch_size = len([0 for x, y in dataset])
@@ -154,6 +157,7 @@ def get_dataset(base_dir, labels, **args):
 
 
 def resample(dataset, labels):
+    excluded_labels = ["sheep"]
     num_labels = len(labels)
     true_categories = [y for x, y in dataset]
     if len(true_categories) == 0:
@@ -163,8 +167,12 @@ def resample(dataset, labels):
     dist = np.empty((num_labels), dtype=np.float32)
     target_dist = np.empty((num_labels), dtype=np.float32)
     for i in range(num_labels):
-        dist[i] = c[i]
-        logging.info("Have %s for %s", dist[i], labels[i])
+        if labels[i] in excluded_labels:
+            logging.info("Excluding %s for %s", c[i], labels[i])
+            dist[i] = 0
+        else:
+            dist[i] = c[i]
+            logging.info("Have %s for %s", dist[i], labels[i])
     zeros = dist[dist == 0]
     non_zero_labels = num_labels - len(zeros)
     target_dist[:] = 1 / non_zero_labels
@@ -184,9 +192,6 @@ def resample(dataset, labels):
         target_dist[i] = max(0, target_dist[i])
     target_dist = target_dist / np.sum(target_dist)
 
-    if "sheep" in labels:
-        sheep_i = labels.index("sheep")
-        target_dist[sheep_i] = 0
     rej = dataset.rejection_resample(
         class_func=class_func,
         target_dist=target_dist,
