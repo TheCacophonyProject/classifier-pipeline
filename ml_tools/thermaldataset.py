@@ -138,7 +138,9 @@ def get_dataset(base_dir, labels, **args):
 
     if not args.get("only_features"):
         logging.info("shuffling data")
-        dataset = dataset.shuffle(4096, reshuffle_each_iteration=args.get("reshuffle"))
+        dataset = dataset.shuffle(
+            4096, reshuffle_each_iteration=args.get("reshuffle", True)
+        )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
     epoch_size = len([0 for x, y in dataset])
