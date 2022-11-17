@@ -302,7 +302,7 @@ def read_tfrecord(
 
     if include_features or only_features:
         tfrecord_format["image/features"] = tf.io.FixedLenFeature(
-            [36 * 5 + 1], dtype=tf.float32
+            [36 * 5 + 8], dtype=tf.float32
         )
     example = tf.io.parse_single_example(example, tfrecord_format)
     if load_images:
@@ -413,10 +413,10 @@ def main():
         labels,
         batch_size=None,
         image_size=(160, 160),
-        augment=True,
+        # augment=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         # resample=True,
-        # include_features=True,
+        include_features=True,
     )
     # print(get_distribution(resampled_ds))
     #

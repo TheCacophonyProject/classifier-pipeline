@@ -262,7 +262,7 @@ class KerasModel(Interpreter):
         else:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             if self.params.mvm:
-                mvm_inputs = tf.keras.layers.Input((181))
+                mvm_inputs = tf.keras.layers.Input((188))
                 inputs = [inputs, mvm_inputs]
                 # mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
                 #
