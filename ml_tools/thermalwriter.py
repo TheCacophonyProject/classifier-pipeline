@@ -213,7 +213,7 @@ def create_tf_records(
     )
 
 
-@lru_cache(maxsize=10000)
+@lru_cache(maxsize=1000)
 def get_track_data(clip_id, track_id, db):
     background = db.get_clip_background(clip_id)
 
