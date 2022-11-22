@@ -1,5 +1,5 @@
 tensorflow-addons
-tensorflow_decision_forests
+tensorflow_decision_forests~=1.0.1
 tensorflow~=2.10.0
 matplotlib~=3.0
 pytz
