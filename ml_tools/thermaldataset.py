@@ -332,6 +332,7 @@ def read_tfrecord(
         if augment:
             logging.info("Augmenting")
             rgb_images = rotation_augmentation(rgb_images)
+        rgb_images = tf.ensure_shape(25, 32, 32, 3)
         image = tile_images(rgb_images)
 
         if augment:
@@ -424,7 +425,7 @@ def main():
         labels,
         batch_size=None,
         image_size=(160, 160),
-        # augment=True,
+        augment=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
         # resample=True,
         include_features=True,
