@@ -69,7 +69,11 @@ def load_dataset(filenames, num_labels, args):
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
-    filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[1]))
+    if only_features:
+        filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x))
+    else:
+        filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[0]))
+
     dataset = dataset.filter(filter_nan)
     return dataset
 
