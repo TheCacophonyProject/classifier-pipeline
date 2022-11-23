@@ -332,7 +332,7 @@ def read_tfrecord(
         if augment:
             logging.info("Augmenting")
             rgb_images = rotation_augmentation(rgb_images)
-        rgb_images = tf.ensure_shape(25, 32, 32, 3)
+        rgb_images = tf.ensure_shape(rgb_images, (25, 32, 32, 3))
         image = tile_images(rgb_images)
 
         if augment:
