@@ -147,14 +147,14 @@ def get_dataset(base_dir, labels, **args):
         )
     # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
     # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
-    epoch_size = len([0 for x, y in dataset])
-    logging.info("Setting dataset size to %s", epoch_size)
-    if not args.get("only_features", False):
-        dataset = dataset.repeat(2)
-    scale_epoch = args.get("scale_epoch", None)
-    if scale_epoch:
-        epoch_size = epoch_size // scale_epoch
-    dataset = dataset.take(epoch_size)
+    # epoch_size = len([0 for x, y in dataset])
+    # logging.info("Setting dataset size to %s", epoch_size)
+    # if not args.get("only_features", False):
+    # dataset = dataset.repeat(2)
+    # scale_epoch = args.get("scale_epoch", None)
+    # if scale_epoch:
+    # epoch_size = epoch_size // scale_epoch
+    # dataset = dataset.take(epoch_size)
     dataset = dataset.prefetch(buffer_size=AUTOTUNE)
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
