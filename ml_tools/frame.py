@@ -117,7 +117,12 @@ class Frame:
         )
 
     def as_array(self, split_flow=True):
-        data = [self.thermal, self.filtered]
+        data = [self.thermal]
+        if self.filtered is not None:
+            data.append(self.filtered)
+        else:
+            # if no filtered return now as second array must be filtered
+            return np.array(data)
         if self.flow is None:
             if self.mask is not None:
                 data.append(self.mask)

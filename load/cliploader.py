@@ -132,18 +132,17 @@ class ClipLoader:
                     cropped.filtered = np.zeros(cropped.thermal.shape)
                 cropped_data.append(cropped)
 
-            sample_frames = get_sample_frames(
-                clip.ffc_frames,
-                [bounds.mass for bounds in track.bounds_history],
-                self.config.build.segment_min_avg_mass,
-                cropped_data,
-            )
+            # sample_frames = get_sample_frames(
+            #     clip.ffc_frames,
+            #     [bounds.mass for bounds in track.bounds_history],
+            #     self.config.build.segment_min_avg_mass,
+            #     cropped_data,
+            # )
             try:
                 self.database.add_track(
                     clip.get_id(),
                     track,
                     cropped_data,
-                    sample_frames=sample_frames,
                     opts=self.compression,
                     original_thermal=original_thermal,
                     start_time=start_time,
@@ -222,7 +221,7 @@ class ClipLoader:
                 self.config.tracking,
                 self.config.load.cache_to_disk,
                 verbose=self.config.verbose,
-                do_tracking=False,
+                do_tracking=True,
             )
         return track_extractor
 

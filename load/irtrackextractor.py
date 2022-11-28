@@ -384,7 +384,6 @@ class IRTrackExtractor(ClipTracker):
         else:
             pass
             # backsub = np.where(saliencyMap > 0, saliencyMap, backsub)
-
         cur_frame = clip.add_frame(frame, filtered, saliencyMap, ffc_affected)
         start = time.time()
 

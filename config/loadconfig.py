@@ -71,7 +71,7 @@ class LoadConfig(DefaultConfig):
     def get_defaults(cls):
         return cls(
             enable_compression=False,
-            include_filtered_channel=False,
+            include_filtered_channel=True,
             preview=None,
             tag_precedence=LoadConfig.DEFAULT_GROUPS,
             cache_to_disk=False,

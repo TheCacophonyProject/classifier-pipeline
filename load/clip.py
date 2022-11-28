@@ -458,7 +458,8 @@ class ClipStats:
         self.frame_stats_max.append(f_max)
         self.frame_stats_median.append(f_median)
         self.frame_stats_mean.append(f_mean)
-        self.filtered_sum += np.sum(np.abs(filtered))
+        if filtered is not None:
+            self.filtered_sum += np.sum(np.abs(filtered))
 
     def completed(self, num_frames, height, width):
         if num_frames == 0:

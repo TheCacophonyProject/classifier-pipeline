@@ -771,7 +771,6 @@ class TrackDatabase:
                     frame_node = cropped_frame.create_dataset(
                         str(frame_i), dims, chunks=chunks, **opts, dtype=np.int16
                     )
-
                     frame_node[:, :, :] = cropped_array
                 else:
                     skipped_frames.append(frame_i + track.start_frame)
