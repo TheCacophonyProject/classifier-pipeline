@@ -161,6 +161,7 @@ class IRTrackExtractor(ClipTracker):
                     continue
                 break
             fail_count = 0
+
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             if background is None:
                 self.res_x = gray.shape[0]
@@ -172,9 +173,18 @@ class IRTrackExtractor(ClipTracker):
                 background = np.uint8(gray)
                 # cv2.imshow("bak", np.uint8(background))
                 # cv2.waitKey(1000)
-                self.start_tracking(clip, background=gray, background_frames=500)
-                continue
+                # if this is grey scale it is the tracking backgorund frame
+                is_background_frame = np.all(
+                    image[:, :, 0] == image[:, :, 1]
+                ) and np.all(image[:, :, 1] == image[:, :, 2])
+                background_frames = 500 if is_background_frame else 1
+                self.start_tracking(
+                    clip, background=gray, background_frames=background_frames
+                )
+                if is_background_frame:
+                    continue
             self.process_frame(clip, gray)
+
         vidcap.release()
         if not clip.from_metadata and self.do_tracking:
             self.apply_track_filtering(clip)
