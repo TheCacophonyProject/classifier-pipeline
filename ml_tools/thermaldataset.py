@@ -24,24 +24,14 @@ fp = None
 
 
 def load_dataset(filenames, num_labels, args):
-    #
-    #     image_size,
     deterministic = args.get("deterministic", False)
-    #     labeled=True,
-    #     augment=False,
-    #     preprocess_fn=None,
-    #     include_features=False,
-    #     only_features=False,
-    #     one_hot=True,
-    # ):
+
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = (
         deterministic  # disable order, increase speed
     )
     dataset = tf.data.TFRecordDataset(filenames)
 
-    # dataset = dataset.interleave(tf.data.TFRecordDataset, cycle_length=4)
-    # automatically interleaves reads from multiple files
     dataset = dataset.with_options(
         ignore_order
     )  # uses data as soon as it streams in, rather than in its original order
@@ -95,19 +85,6 @@ def get_distribution(dataset):
 
 
 def get_dataset(base_dir, labels, **args):
-    #     batch_size,
-    #     image_size,
-    #     reshuffle=True,
-    #     deterministic=False,
-    #     labeled=True,
-    #     augment=False,
-    #     resample=True,
-    #     preprocess_fn=None,
-    #     mvm=False,
-    #     scale_epoch=None,
-    #     only_features=False,
-    #     one_hot=True,
-    # ):
     num_labels = len(labels)
     global remapped_y
     remapped = {}
@@ -293,8 +270,6 @@ def read_tfrecord(
         include_features,
     )
     load_images = not only_features
-    # tf_mean = tf.constant(mean_v)
-    # tf_std = tf.constant(std_v)
     tfrecord_format = {
         "image/class/label": tf.io.FixedLenFeature((), tf.int64, -1),
     }
@@ -356,8 +331,6 @@ def read_tfrecord(
             label = tf.one_hot(label, num_labels)
         if include_features or only_features:
             features = example["image/features"]
-            # features = features - tf_mean
-            # features = features / tf_std
             if only_features:
                 return features, label
             return (image, features), label
@@ -377,8 +350,6 @@ def decode_image(thermals, filtereds, image_size):
         filtered = tf.image.decode_png(filtered, channels=1)
         decoded_thermal.append(image)
         decoded_filtered.append(filtered)
-        # image = tf.concat((image, image, filtered), axis=2)
-        # image = tf.cast(image, tf.float32)
     return decoded_thermal, decoded_filtered
 
 
