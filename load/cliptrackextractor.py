@@ -43,7 +43,9 @@ class ClipTrackExtractor(ClipTracker):
 
     @property
     def tracker_version(self):
-        return f"ClipTrackExtractor-{ClipTrackExtractor.VERSION}"
+        return ClipTrackExtractor.VERSION
+        # until api takes a string
+        # return f"ClipTrackExtractor-{ClipTrackExtractor.VERSION}"
 
     @property
     def type(self):
@@ -157,7 +159,7 @@ class ClipTrackExtractor(ClipTracker):
         filtered, threshold = self._get_filtered_frame(clip, thermal)
         mask = None
         if self.do_tracking:
-            _, mask, component_details = detect_objects(
+            _, mask, component_details, centroids = detect_objects(
                 filtered.copy(), otsus=False, threshold=threshold, kernel=(5, 5)
             )
         cur_frame = clip.add_frame(thermal, filtered, mask, ffc_affected)
@@ -177,9 +179,10 @@ class ClipTrackExtractor(ClipTracker):
             if ffc_affected:
                 clip.active_tracks = set()
             else:
-                regions = self._get_regions_of_interest(clip, component_details[1:])
+                regions = self._get_regions_of_interest(
+                    clip, component_details[1:], centroids[1:]
+                )
                 self._apply_region_matchings(clip, regions)
-
             clip.region_history.append(regions)
 
 

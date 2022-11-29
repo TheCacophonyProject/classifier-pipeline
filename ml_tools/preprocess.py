@@ -289,9 +289,9 @@ def preprocess_movement(
     #
     # global index
     # index += 1
-    # # # # for testing
+    # # # # # for testing
     # tools.saveclassify_image(
-    #     data,
+    #     data * 255,
     #     f"samples/{index}",
     # )
     if preprocess_fn:

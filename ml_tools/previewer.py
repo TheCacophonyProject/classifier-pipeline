@@ -26,9 +26,11 @@ from PIL import Image, ImageDraw, ImageFont
 
 from load.clip import Clip
 from ml_tools import tools
+from ml_tools.tools import Rectangle
 import ml_tools.globals as globs
 from ml_tools.mpeg_creator import MPEGCreator
-from track.region import Region
+
+# from track.region import Region
 from ml_tools.imageprocessing import normalize
 
 
@@ -106,13 +108,9 @@ class Previewer:
         if self.preview_type == self.PREVIEW_TRACKING:
             res_x *= 2
             res_y *= 2
-        out = cv2.VideoWriter(
-            filename,
-            cv2.VideoWriter_fourcc("M", "J", "P", "G"),
-            clip.frames_per_second,
-            (res_x, res_y),
-        )
-        frame_scale = 1
+
+        mpeg = MPEGCreator(filename)
+        frame_scale = 4
         for frame_number, frame in enumerate(clip.frame_buffer):
             if self.preview_type == self.PREVIEW_RAW:
                 image = self.convert_and_resize(
@@ -121,7 +119,11 @@ class Previewer:
                 draw = ImageDraw.Draw(image)
             elif self.preview_type == self.PREVIEW_TRACKING:
                 image = self.create_four_tracking_image(
-                    frame, clip.stats.min_temp, clip.stats.max_temp, clip.type
+                    frame,
+                    clip.stats.min_temp,
+                    clip.stats.max_temp,
+                    clip.type,
+                    frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
                 self.add_tracks(
@@ -141,7 +143,7 @@ class Previewer:
                     frame_scale=frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
-                screen_bounds = Region(0, 0, image.width, image.height)
+                screen_bounds = Rectangle(0, 0, image.width, image.height)
                 self.add_tracks(
                     draw,
                     clip.tracks,
@@ -159,7 +161,7 @@ class Previewer:
                     frame_scale=frame_scale,
                 )
                 draw = ImageDraw.Draw(image)
-                screen_bounds = Region(0, 0, image.width, image.height)
+                screen_bounds = Rectangle(0, 0, image.width, image.height)
                 self.add_tracks(
                     draw,
                     clip.tracks,
@@ -183,12 +185,12 @@ class Previewer:
                     draw, image.width, image.height, f"Frame {frame.frame_number}"
                 )
 
-            out.write(np.uint8(image))
+            mpeg.next_frame(np.asarray(image))
             # we store the entire video in memory so we need to cap the frame count at some point.
             if frame_number > clip.frames_per_second * 60 * 10:
                 break
         clip.frame_buffer.close_cache()
-        out.release()
+        mpeg.close()
 
     def create_individual_track_previews(self, filename, clip: Clip):
         # resolution of video file.
@@ -315,7 +317,7 @@ class Previewer:
         center = (width / 2 - footer_size[0] / 2.0, height - footer_size[1])
         draw.text((center[0], center[1]), footer_text, font=font)
 
-    def create_four_tracking_image(self, frame, min_temp, max_temp, type):
+    def create_four_tracking_image(self, frame, min_temp, max_temp, type, frame_scale):
 
         thermal = frame.thermal
         filtered = frame.filtered
@@ -329,15 +331,9 @@ class Previewer:
             thermal = Image.fromarray(thermal)
             filtered = Image.fromarray(filtered)
         else:
-            # filtered = tools.convert_heat_to_img(
-            #     filtered, self.colourmap, min_temp, max_temp
-            # )
-            filtered = filtered[..., np.newaxis]
-            filtered = np.repeat(filtered, 3, axis=2)
+            filtered, _ = normalize(filtered, new_max=255)
             filtered = Image.fromarray(filtered)
-
-            # cv2.imshow("f", frame.filtered)
-            # cv2.waitKey(100)
+            filtered = filtered.convert("RGB")
             thermal = tools.convert_heat_to_img(
                 thermal, self.colourmap, min_temp, max_temp
             )
@@ -345,6 +341,7 @@ class Previewer:
             tools.add_heat_number(thermal, frame.thermal, 1)
         if frame.mask is None:
             mask = np.zeros((np.array(thermal).shape), dtype=np.uint8)
+            mask = Image.fromarray(mask)
         else:
             mask = frame.mask * 255
             # mask, _ = normalize(frame.mask, new_max=255)
@@ -352,8 +349,8 @@ class Previewer:
 
             mask = mask[..., np.newaxis]
             mask = np.repeat(mask, 3, axis=2)
-        #
-        mask = Image.fromarray(mask)
+            mask = Image.fromarray(mask)
+
         flow_h, flow_v = frame.get_flow_split(clip_flow=True)
         if flow_h is None and flow_v is None:
             flow_magnitude = Image.fromarray(
@@ -372,14 +369,13 @@ class Previewer:
             (np.vstack((thermal, mask)), np.vstack((filtered, flow_magnitude)))
         )
         image = Image.fromarray(image)
-
-        # image = image.resize(
-        #     (
-        #         int(image.width * 4),
-        #         int(image.height * 4),
-        #     ),
-        #     Image.BILINEAR,
-        # )
+        image = image.resize(
+            (
+                int(image.width * frame_scale),
+                int(image.height * frame_scale),
+            ),
+            Image.BILINEAR,
+        )
         return image
 
     @staticmethod
@@ -438,14 +434,14 @@ def add_text_to_track(
     header_size = font_title.getsize(header_text)
     footer_size = font.getsize(footer_text)
     # figure out where to draw everything
-    header_rect = Region(
+    header_rect = Rectangle(
         rect.left * scale,
         (v_offset + rect.top) * scale - header_size[1],
         header_size[0],
         header_size[1],
     )
     footer_center = ((rect.width * scale) - footer_size[0]) / 2
-    footer_rect = Region(
+    footer_rect = Rectangle(
         rect.left * scale + footer_center,
         (v_offset + rect.bottom) * scale,
         footer_size[0],
@@ -459,7 +455,7 @@ def add_text_to_track(
     draw.text((footer_rect.x, footer_rect.y), footer_text, font=font)
 
 
-def fit_to_image(rect: Region, screen_bounds: Region):
+def fit_to_image(rect: Rectangle, screen_bounds: Rectangle):
     """Modifies rect so that rect is visible within bounds."""
     if screen_bounds is None:
         return
@@ -502,6 +498,7 @@ def add_track(
             v_offset=v_offset,
             scale=scale,
         )
+
     if debug:
         text = None
         if tracks_text and len(tracks_text) > index:
@@ -518,11 +515,11 @@ def add_track(
         )
 
 
-def get_font():
+def get_font(font_size=12):
     """gets default font."""
     if not globs._previewer_font:
         globs._previewer_font = ImageFont.truetype(
-            tools.resource_path("Ubuntu-R.ttf"), 8
+            tools.resource_path("Ubuntu-R.ttf"), font_size
         )
     return globs._previewer_font
 
@@ -617,7 +614,7 @@ def add_debug_text(
     footer_size = font.getsize(text)
     footer_center = ((region.width * scale) - footer_size[0]) / 2
 
-    footer_rect = Region(
+    footer_rect = tools.Rectangle(
         region.right * scale - footer_center / 2.0,
         (v_offset + region.bottom) * scale,
         footer_size[0],

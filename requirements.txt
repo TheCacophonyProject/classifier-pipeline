@@ -1,14 +1,16 @@
 tensorflow-addons
-tensorflow~=2.6.0
+tensorflow_decision_forests~=1.0.1
+tensorflow~=2.10.0
 matplotlib~=3.0
 pytz
-cptv~=1.5.3
-opencv-contrib-python
-opencv-contrib-python-headless~=4.5.1.48
-numpy~=1.19.2
-scipy~=1.4.1
+cptv~=1.5.4
+opencv-contrib-python-headless~=4.6.0.66
+numpy~=1.23.2
+scipy~=1.9.3
 python-dateutil
-sklearn
+#sklearn
+#requires py3.9
+scikit-learn~=1.1.3
 tables~=3.4
 h5py~=3.1.0
 pyyaml>=4.2b1
@@ -25,3 +27,4 @@ dbus-python
 PyGObject~=3.34.0
 multiprocess
 pathos
+joblib

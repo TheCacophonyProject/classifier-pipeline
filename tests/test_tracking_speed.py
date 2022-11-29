@@ -8,9 +8,9 @@ from ml_tools.previewer import Previewer
 
 class TestTrackingSpeed:
     CPTV_FILE_NO_BACKGROUND = "clips/hedgehog.cptv"
-    CPTV_FILE_BACKGROUND = "clips/background.cptv"
+    CPTV_FILE_BACKGROUND = "clips/possum.cptv"
 
-    MAX_FRAME_MS = 30
+    MAX_FRAME_MS = 40
 
     def test_tracking_speed(self):
         config = Config.get_defaults()
@@ -25,7 +25,7 @@ class TestTrackingSpeed:
             verbose=config.verbose,
         )
         start = time.time()
-        clip = Clip(config.tracking, file_name)
+        clip = Clip(config.tracking["thermal"], file_name)
         track_extractor.parse_clip(clip)
         ms_per_frame = (
             (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
@@ -36,7 +36,7 @@ class TestTrackingSpeed:
         file_name = os.path.join(dir_name, TestTrackingSpeed.CPTV_FILE_BACKGROUND)
         print("Tracking cptv with background ", file_name)
         start = time.time()
-        clip = Clip(config.tracking, file_name)
+        clip = Clip(config.tracking["thermal"], file_name)
         track_extractor.parse_clip(clip)
         ms_per_frame = (
             (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))

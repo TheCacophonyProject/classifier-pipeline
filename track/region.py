@@ -24,10 +24,11 @@ import logging
 import numpy as np
 
 
-@attr.s(eq=False)
+@attr.s(eq=False, slots=True)
 class Region(Rectangle):
     """Region is a rectangle extended to support mass."""
 
+    centroid = attr.ib()
     mass = attr.ib(default=0)
     # how much pixels in this region have changed since last frame
     frame_number = attr.ib(default=0)
@@ -80,6 +81,10 @@ class Region(Rectangle):
         blank = False
         if len(region_bounds) > 6:
             blank = region_bounds[6] == 1
+        centroid = [
+            int(region_bounds[0] + width / 2),
+            int(region_bounds[1] + height / 2),
+        ]
         return cls(
             region_bounds[0],
             region_bounds[1],
@@ -88,6 +93,7 @@ class Region(Rectangle):
             frame_number=np.uint16(frame_number) if frame_number is not None else None,
             mass=mass,
             blank=blank,
+            centroid=centroid,
         )
 
     @classmethod
@@ -97,6 +103,13 @@ class Region(Rectangle):
             frame = region_json.get("frameNumber")
         if frame is None:
             frame = region_json.get("order")
+        if "centroid" in region_json:
+            centroid = region_json["centroid"]
+        else:
+            centroid = [
+                int(region_json["x"] + region_json["width"] / 2),
+                int(region_json["y"] + region_json["height"] / 2),
+            ]
         return cls(
             region_json["x"],
             region_json["y"],
@@ -106,6 +119,7 @@ class Region(Rectangle):
             mass=region_json.get("mass", 0),
             blank=region_json.get("blank", False),
             pixel_variance=region_json.get("pixel_variance", 0),
+            centroid=centroid,
         )
 
     @staticmethod
@@ -147,6 +161,7 @@ class Region(Rectangle):
             self.y,
             self.width,
             self.height,
+            self.centroid,
             self.mass,
             self.frame_number,
             self.pixel_variance,

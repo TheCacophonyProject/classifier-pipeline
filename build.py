@@ -27,6 +27,7 @@ MAX_TEST_SAMPLES = 100
 
 MIN_SAMPLES = 100
 MIN_TRACKS = 100
+LOW_SAMPLES_LABELS = ["bird/kiwi"]
 
 
 def load_config(config_file):
@@ -41,7 +42,7 @@ def parse_args():
     parser.add_argument(
         "-m",
         "--min-samples",
-        default=MIN_SAMPLES,
+        default=None,
         type=int,
         help="Min tracks per dataset (Default 100)",
     )
@@ -84,7 +85,15 @@ def parse_args():
     else:
         if args.date is None:
             args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=30)
-            # args.date = datetime.datetime.now() - datetime.timedelta(days=30)
+
+    if args.min_samples is not None:
+        global MAX_TEST_TRACKS, MAX_TEST_SAMPLES, MIN_SAMPLES, MIN_TRACKS
+        MAX_TEST_TRACKS = args.min_samples
+        MAX_TEST_SAMPLES = args.min_samples
+
+        MIN_SAMPLES = args.min_samples
+        MIN_TRACKS = args.min_samples
+        # args.date = datetime.datetime.now() - datetime.timedelta(days=30)
 
     logging.info("Loading training set up to %s", args.date)
     return args
@@ -196,7 +205,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     total = len(samples)
     min_t = MIN_SAMPLES
 
-    if label in ["vehicle", "human"]:
+    if label in LOW_SAMPLES_LABELS:
         min_t = 10
     num_validate_samples = max(total * 0.15, min_t)
     num_test_samples = (
@@ -206,7 +215,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
 
     min_t = MIN_TRACKS
 
-    if label in ["vehicle", "human"]:
+    if label in LOW_SAMPLES_LABELS:
         min_t = 1
 
     num_validate_tracks = max(total_tracks * 0.15, min_t)
@@ -217,21 +226,8 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     sample_limit = num_validate_samples
     tracks = set()
     print(
-        label,
-        "looking for val tracks",
-        num_validate_tracks,
-        "  out of tracks",
-        total_tracks,
-        "and # samples",
-        num_validate_samples,
-        "from total samples",
-        total,
-        "# test tracks",
-        num_test_tracks,
-        "# num test samples",
-        num_test_samples,
+        f"{label} - looking for val {num_validate_tracks} tracks out of {total_tracks} tracks and {num_validate_samples} samples from a total of {total} samples  with {num_test_tracks} test tracks and {num_test_samples} test samples"
     )
-    print("bins are", sample_bins)
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]
         for sample in samples:
@@ -364,8 +360,7 @@ def validate_datasets(datasets, test_clips, date):
                 continue
             other_clips = set([sample.clip_id for sample in other.samples])
             # other_tracks = set([track.track_id for track in other.tracks])
-            print("validationg", clips)
-            print("Comparing", other_clips)
+
             assert clips != other_clips, "clips should only be in one set"
 
 
@@ -448,7 +443,9 @@ def main():
         print_counts(dataset, *datasets)
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
-        create_tf_records(dataset, dir, datasets[0].labels, threshold, num_shards=5)
+        create_tf_records(
+            dataset, dir, datasets[0].labels, threshold, num_shards=100, by_label=False
+        )
         counts = {}
         for label in dataset.labels:
             count = len(dataset.samples_by_label.get(label, []))
@@ -461,6 +458,7 @@ def main():
         "labels": datasets[0].labels,
         "type": config.train.type,
         "counts": dataset_counts,
+        "by_label": False,
     }
 
     with open(meta_filename, "w") as f:

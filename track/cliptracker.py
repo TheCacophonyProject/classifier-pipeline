@@ -243,7 +243,7 @@ class ClipTracker(ABC):
         delta_thermal = np.abs(np.float32(thermal) - np.float32(prev_thermal))
         return delta_thermal, delta_filtered
 
-    def _get_regions_of_interest(self, clip, component_details):
+    def _get_regions_of_interest(self, clip, component_details, centroids=None):
         """
         Calculates pixels of interest mask from filtered image, and returns both the labeled mask and their bounding
         rectangles.
@@ -262,6 +262,13 @@ class ClipTracker(ABC):
 
             if component[2] < self.min_dimension or component[3] < self.min_dimension:
                 continue
+            if centroids is None:
+                centroid = [
+                    int(component[0] + component[2] / 2),
+                    int(component[1] + component[3] / 2),
+                ]
+            else:
+                centroid = centroids[i]
             region = Region(
                 component[0],
                 component[1],
@@ -270,6 +277,7 @@ class ClipTracker(ABC):
                 mass=component[4],
                 id=i,
                 frame_number=clip.current_frame,
+                centroid=centroid,
             )
             # GP this needs to be checked for themals 29/06/2022
             if clip.type == "IR":
@@ -329,6 +337,8 @@ class ClipTracker(ABC):
                 continue
 
             region.enlarge(padding, max=clip.crop_rectangle)
+            # gp dunno if we should use this feels like we already have the edge
+            # extra_edge = 0
             extra_edge = math.ceil(clip.crop_rectangle.width * 0.03)
             region.set_is_along_border(clip.crop_rectangle, edge=extra_edge)
             regions.append(region)
@@ -399,13 +409,6 @@ class ClipTracker(ABC):
             stats.max_offset < self.config.track_min_offset
             or stats.frames_moved < self.config.min_moving_frames
         ):
-            print(
-                "track didnt move",
-                stats.max_offset,
-                stats.frames_moved,
-                self.config.track_min_offset,
-                self.config.min_moving_frames,
-            )
             self.print_if_verbose(
                 "Track filtered.  Didn't move {}".format(stats.max_offset)
             )
@@ -439,7 +442,9 @@ class ClipTracker(ABC):
             clip.filtered_tracks.append(("Track filtered.  Mass too small", track))
 
             return True
-
+        # GP Removed as dont think this does much but filter good tracks, if the tracking
+        # chose 2 tracks lets keep them, perhaps usefull for short tracks where 90% overlaps
+        # but these will probably be filtered by being too short
         # highest_ratio = 0
         # for other in clip.tracks:
         #     if track == other:

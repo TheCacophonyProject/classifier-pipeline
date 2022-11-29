@@ -13,25 +13,11 @@ import os
 import time
 import numpy as np
 import gc
-from ml_tools.datasetstructures import TrackHeader, TrackingSample
+from ml_tools.datasetstructures import TrackHeader, TrackingSample, SegmentType
 from ml_tools.trackdatabase import TrackDatabase
 from ml_tools import tools
 from track.region import Region
 import json
-
-# from ml_tools.kerasmodel import KerasModel
-from enum import Enum
-
-
-class SegmentType(Enum):
-    IMPORTANT_RANDOM = 0
-    ALL_RANDOM = 1
-    IMPORTANT_SEQUENTIAL = 2
-    ALL_SEQUENTIAL = 3
-    TOP_SEQUENTIAL = 4
-    ALL_RANDOM_SECTIONS = 5
-    TOP_RANDOM = 6
-    ALL_RANDOM_NOMIN = 7
 
 
 class Dataset:
@@ -39,18 +25,6 @@ class Dataset:
     Stores visit, clip, track, and segment information headers in memory, and allows track / segment streaming from
     disk.
     """
-
-    # Number of threads to use for async loading
-    WORKER_THREADS = 2
-
-    # If true uses processes instead of threads.  Threads do not scale as well due to the GIL, however there is no
-    # transfer time required per segment.  Processes scale much better but require ~1ms to pickling the segments
-    # across processes.
-    # In general if worker threads is one set this to False, if it is two or more set it to True.
-    PROCESS_BASED = True
-
-    # number of pixels to inset from frame edges by default
-    DEFAULT_INSET = 2
 
     def __init__(
         self,
@@ -104,6 +78,9 @@ class Dataset:
             self.excluded_tags = config.load.excluded_tags
             self.min_frame_mass = config.build.min_frame_mass
             self.filter_by_lq = config.build.filter_by_lq
+            self.segment_type = SegmentType.ALL_RANDOM
+            self.max_segments = config.build.max_segments
+
         else:
             self.filter_by_lq = True
             # number of seconds each segment should be
@@ -112,6 +89,7 @@ class Dataset:
             self.segment_spacing = 1
             self.segment_min_avg_mass = None
             self.min_frame_mass = 16
+            self.segment_type = SegmentType.ALL_RANDOM
         self.filtered_stats = {
             "confidence": 0,
             "trap": 0,
@@ -228,8 +206,8 @@ class Dataset:
         :return: [number of tracks added, total tracks].
         """
         counter = 0
+        logging.info("Loading clips")
         clip_ids = self.db.get_all_clip_ids(before_date, after_date, label)
-
         if shuffle:
             np.random.shuffle(clip_ids)
         for clip_id in clip_ids:
@@ -253,11 +231,12 @@ class Dataset:
                     round(self.segment_spacing * track_header.frames_per_second)
                 )
                 segment_width = self.segment_length
-
                 track_header.calculate_segments(
                     segment_frame_spacing,
                     segment_width,
+                    self.segment_type,
                     self.segment_min_avg_mass,
+                    max_segments=self.max_segments,
                 )
                 self.filtered_stats["segment_mass"] += track_header.filtered_stats[
                     "segment_mass"
@@ -602,50 +581,11 @@ class Dataset:
                 round(self.segment_spacing * track.frames_per_second)
             )
             segment_width = self.segment_length
-            use_important = True
-            random_frames = True
-            top_frames = False
-            random_sections = False
-            segment_min_avg_mass = self.segment_min_avg_mass
-            if segment_type == SegmentType.IMPORTANT_RANDOM:
-                use_important = True
-                random_frames = True
-                segment_min_avg_mass = self.segment_min_avg_mass
-            elif segment_type == SegmentType.ALL_RANDOM:
-                use_important = False
-                random_frames = True
-                segment_min_avg_mass = self.segment_min_avg_mass
-            elif segment_type == SegmentType.IMPORTANT_SEQUENTIAL:
-                use_important = True
-                random_frames = False
-            elif segment_type == SegmentType.ALL_SEQUENTIAL:
-                use_important = False
-                random_frames = False
-                segment_min_avg_mass = self.segment_min_avg_mass
-            elif segment_type == SegmentType.TOP_SEQUENTIAL:
-                random_frames = False
-                top_frames = True
-            elif segment_type == SegmentType.ALL_RANDOM_SECTIONS:
-                use_important = False
-                random_frames = True
-                segment_min_avg_mass = self.segment_min_avg_mass
-                random_sections = True
-            elif segment_type == SegmentType.ALL_RANDOM_NOMIN:
-                use_important = False
-                random_frames = False
-                segment_min_avg_mass = None
-            elif segment_type == SegmentType.TOP_RANDOM:
-                use_important = False
-                random_frames = True
-                top_frames = True
             track.calculate_segments(
                 segment_frame_spacing,
                 segment_width,
-                random_frames=random_frames,
-                use_important=use_important,
-                top_frames=top_frames,
+                segment_type,
                 segment_min_mass=segment_min_avg_mass,
-                random_sections=random_sections,
             )
             filtered_stats = filtered_stats + track.filtered_stats["segment_mass"]
             if len(track.segments) == 0:

@@ -25,7 +25,7 @@ from ml_tools.tools import Rectangle
 from track.region import Region
 from kalman.kalman import Kalman
 from ml_tools.tools import eucl_distance
-from ml_tools.datasetstructures import get_segments, SegmentHeader
+from ml_tools.datasetstructures import get_segments, SegmentHeader, SegmentType
 import cv2
 import logging
 from track.tracker import Tracker
@@ -232,8 +232,8 @@ class RegionTracker(Tracker):
             or self.nonblank_frames <= RegionTracker.MIN_KALMAN_FRAMES
         ):
             return (0, 0)
-        pred_vel_x = self.predicted_mid[0] - self.last_bound.mid_x
-        pred_vel_y = self.predicted_mid[1] - self.last_bound.mid_y
+        pred_vel_x = self.predicted_mid[0] - self.last_bound.centroid[0]
+        pred_vel_y = self.predicted_mid[1] - self.last_bound.centroid[1]
 
         return (pred_vel_x, pred_vel_y)
 
@@ -244,6 +244,7 @@ class RegionTracker(Tracker):
                 int(self.predicted_mid[1] - self.last_bound.height / 2.0),
                 self.last_bound.width,
                 self.last_bound.height,
+                centroid=[self.predicted_mid[0], self.predicted_mid[1]],
             )
             if self.crop_rectangle:
                 region.crop(self.crop_rectangle)
@@ -433,6 +434,7 @@ class Track:
         repeats=1,
         min_frames=0,
         segment_frames=None,
+        segment_type=SegmentType.ALL_RANDOM,
     ):
 
         regions = np.array(self.bounds_history)
@@ -455,6 +457,7 @@ class Track:
                     regions=regions[relative_frames],
                     frame_temp_median=frame_temp_median[relative_frames],
                     frame_indices=frames,
+                    segment_type=segment_type,
                 )
                 segments.append(segment)
         else:
@@ -472,6 +475,7 @@ class Track:
                 min_frames=min_frames,
                 segment_frames=None,
                 ignore_mass=not has_mass,
+                segment_type=segment_type,
             )
         return segments
 
@@ -527,15 +531,25 @@ class Track:
             return False
         self.bounds_history = []
         self.frame_list = []
-        for position in positions:
+        for i, position in enumerate(positions):
             if isinstance(position, list):
                 region = Region.region_from_array(position[1])
                 if region.frame_number is None:
                     frame_number = round(position[0] * frames_per_second)
+
                     region.frame_number = frame_number
             else:
                 region = Region.region_from_json(position)
-
+                if region.frame_number is None:
+                    if "frameTime" in position:
+                        if i == 0:
+                            region.frame_number = position["frameTime"] * 9
+                        else:
+                            region.frame_number = (
+                                self.bounds_history[0].frame_number + i
+                            )
+                    else:
+                        raise Exception("No frame number info for track")
             if self.start_frame is None:
                 self.start_frame = region.frame_number
             # self.end_frame = region.frame_number
@@ -576,10 +590,12 @@ class Track:
     def update_velocity(self):
         if len(self.bounds_history) >= 2:
             self.vel_x.append(
-                self.bounds_history[-1].mid_x - self.bounds_history[-2].mid_x
+                self.bounds_history[-1].centroid[0]
+                - self.bounds_history[-2].centroid[0]
             )
             self.vel_y.append(
-                self.bounds_history[-1].mid_y - self.bounds_history[-2].mid_y
+                self.bounds_history[-1].centroid[1]
+                - self.bounds_history[-2].centroid[1]
             )
         else:
             self.vel_x.append(0)
@@ -765,8 +781,8 @@ class Track:
             current_frame = self.bounds_history[i]
             next_frame = self.bounds_history[min(len(self.bounds_history) - 1, i + 1)]
 
-            frame_x = current_frame.mid_x
-            frame_y = current_frame.mid_y
+            frame_x = current_frame.centroid[0]
+            frame_y = current_frame.centroid[1]
             frame_width = (
                 prev_frame.width + current_frame.width + next_frame.width
             ) / 3

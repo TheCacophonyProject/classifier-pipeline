@@ -222,7 +222,7 @@ class TrackDatabase:
 
     def get_all_clip_ids(self, before_date=None, after_date=None, label=None):
         """
-        Returns a list of clip_id, track_number pairs.
+        Returns a list of clip_id, track_id pairs.
         """
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
@@ -244,7 +244,7 @@ class TrackDatabase:
 
     def get_clip_tracks_ids(self, clip_id):
         """
-        Returns a list of clip_id, track_number pairs.
+        Returns a list of clip_id, track_id pairs.
         """
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
@@ -259,7 +259,7 @@ class TrackDatabase:
 
     def get_all_track_ids(self, before_date=None, after_date=None, label=None):
         """
-        Returns a list of clip_id, track_number pairs.
+        Returns a list of clip_id, track_id pairs.
         """
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
@@ -370,7 +370,7 @@ class TrackDatabase:
         """
         Gets metadata for given track
         :param clip_id:
-        :param track_number:
+        :param track_id:
         :return:
         """
         with HDF5Manager(self.database) as f:
@@ -391,15 +391,15 @@ class TrackDatabase:
 
         return result
 
-    def get_track_predictions(self, clip_id, track_number):
+    def get_track_predictions(self, clip_id, track_id):
         """
         Gets metadata for given track
         :param clip_id:
-        :param track_number:
+        :param track_id:
         :return:
         """
         with HDF5Manager(self.database) as f:
-            track = f["clips"][clip_id][str(track_number)]
+            track = f["clips"][clip_id][str(track_id)]
             if "predictions" in track:
                 return track["predictions"][:]
         return None
@@ -451,10 +451,10 @@ class TrackDatabase:
                 tracks.append(track)
         return tracks
 
-    def get_tag(self, clip_id, track_number):
+    def get_tag(self, clip_id, track_id):
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
-            track_node = clips[str(clip_id)][str(track_number)]
+            track_node = clips[str(clip_id)][str(track_id)]
             return track_node.attrs["tag"]
 
     def get_frame(self, clip_id, track_id, frame, original=False):
@@ -495,7 +495,7 @@ class TrackDatabase:
     def get_track(
         self,
         clip_id,
-        track_number,
+        track_id,
         start_frame=None,
         end_frame=None,
         original=False,
@@ -505,7 +505,7 @@ class TrackDatabase:
         """
         Fetches a track data from database with optional slicing.
         :param clip_id: id of the clip
-        :param track_number: id of the track
+        :param track_id: id of the track
         :param start_frame: first frame of slice to return (inclusive).
         :param end_frame: last frame of slice to return (exclusive).
         :return: a list of numpy arrays of shape [channels, height, width] and of type np.int16
@@ -513,7 +513,7 @@ class TrackDatabase:
         with HDF5Manager(self.database) as f:
             clips = f["clips"]
             clip_node = clips[str(clip_id)]
-            track_node = clip_node[str(track_number)]
+            track_node = clip_node[str(track_id)]
 
             bounds = track_node.attrs["bounds_history"]
             if start_frame is None:
@@ -581,7 +581,7 @@ class TrackDatabase:
                             logging.debug(
                                 "trying to get clip %s track %s frame %s",
                                 clip_id,
-                                track_number,
+                                track_id,
                                 frame_number + track_start,
                                 exc_info=True,
                             )
@@ -600,8 +600,8 @@ class TrackDatabase:
                             logging.debug(
                                 "trying to get clip %s track %s frame %s",
                                 clip_id,
-                                track_number,
-                                frame_number + track_start,
+                                track_id,
+                                frame_number,
                                 exc_info=True,
                             )
 

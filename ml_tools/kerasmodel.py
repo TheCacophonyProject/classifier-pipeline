@@ -16,13 +16,21 @@ import logging
 from sklearn.metrics import confusion_matrix
 import cv2
 from ml_tools import tools
+from ml_tools.datasetstructures import SegmentType
+
 from ml_tools.preprocess import preprocess_movement, preprocess_frame, preprocess_ir
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 from ml_tools.hyperparams import HyperParams
-from ml_tools.thermaldataset import get_resampled as get_thermal_dataset
+from ml_tools.thermaldataset import (
+    get_resampled_by_label as get_thermal_dataset_by_label,
+    get_dataset as get_thermal_dataset,
+)
 from ml_tools.thermaldataset import get_distribution
 from ml_tools.irdataset import get_resampled as get_ir_dataset
+
+import tensorflow_decision_forests as tfdf
+from ml_tools import forestmodel
 
 
 class KerasModel(Interpreter):
@@ -30,14 +38,14 @@ class KerasModel(Interpreter):
 
     VERSION = 1
 
-    def __init__(self, train_config=None, labels=None):
+    def __init__(self, train_config=None, labels=None, data_dir=None):
         self.model = None
         self.datasets = None
         self.remapped = None
         # dictionary containing current hyper parameters
         self.params = HyperParams()
         self.type = None
-
+        self.data_dir = data_dir
         if train_config:
             self.log_base = os.path.join(train_config.train_dir, "logs")
             self.log_dir = self.log_base
@@ -52,6 +60,7 @@ class KerasModel(Interpreter):
         self.mapped_labels = None
         self.label_probabilities = None
         self.class_weights = None
+        self.ds_by_label = True
 
     def load_training_meta(self, base_dir):
         file = f"{base_dir}/training-meta.json"
@@ -61,6 +70,7 @@ class KerasModel(Interpreter):
         self.labels = meta.get("labels", [])
         self.type = meta.get("type", "thermal")
         self.dataset_counts = meta.get("counts")
+        self.ds_by_label = meta.get("by_label", True)
 
     def shape(self):
         if self.model is None:
@@ -208,8 +218,31 @@ class KerasModel(Interpreter):
         )
         return None
 
-    def build_model(self, dense_sizes=None, retrain_from=None, dropout=None):
+    def get_forest_model(self, run_name):
+        train_files = os.path.join(self.data_dir, "train")
+        train, remapped = get_dataset(
+            train_files,
+            self.type,
+            self.labels,
+            batch_size=self.params.batch_size,
+            image_size=self.params.output_dim[:2],
+            preprocess_fn=self.preprocess_fn,
+            augment=False,
+            resample=False,
+            stop_on_empty_dataset=False,
+            only_features=True,
+            one_hot=False,
+        )
+        # have to run fit firest
+        rf = tfdf.keras.RandomForestModel()
+        rf.fit(train)
+        rf.save(os.path.join(self.checkpoint_folder, run_name, "rf"))
 
+        return rf
+
+    def build_model(
+        self, dense_sizes=None, retrain_from=None, dropout=None, run_name=None
+    ):
         # width = self.params.frame_size
         width = self.params.output_dim[0]
         inputs = tf.keras.Input(shape=(width, width, 3), name="input")
@@ -229,17 +262,38 @@ class KerasModel(Interpreter):
         else:
             x = tf.keras.layers.GlobalAveragePooling2D()(x)
             if self.params.mvm:
-                mvm_inputs = Input((25, 9))
+                mvm_inputs = tf.keras.layers.Input((188))
                 inputs = [inputs, mvm_inputs]
+                # mvm_features = tf.keras.layers.Flatten()(mvm_inputs)
+                #
+                # if self.params["hq_mvm"]:
+                # print("HQ")
+                if self.params.mvm_forest:
+                    rf = self.get_forest_model(run_name)
 
-                mvm_features = Flatten()(mvm_inputs)
-                x = Concatenate()([x, mvm_features])
-                x = tf.keras.layers.Dense(2048, activation="relu")(x)
-            for i in dense_sizes:
-                x = tf.keras.layers.Dense(i, activation="relu")(x)
-                if dropout:
-                    x = tf.keras.layers.Dropout(dropout)(x)
+                    rf = rf(mvm_inputs)
+                    x = tf.keras.layers.Concatenate()([x, rf])
 
+                else:
+                    mvm_features = tf.keras.layers.Dense(128, activation="relu")(
+                        mvm_inputs
+                    )
+                    mvm_features = tf.keras.layers.Dense(128, activation="relu")(
+                        mvm_features
+                    )
+                    mvm_features = tf.keras.layers.Dropout(0.1)(mvm_features)
+
+                    # else:
+                    #     mvm_features = tf.keras.layers.Dense(32, activation="relu")(
+                    #         mvm_inputs
+                    #     )
+                    x = tf.keras.layers.Concatenate()([x, mvm_features])
+                # x = tf.keras.layers.Dense(1028, activation="relu")(x)
+            if dense_sizes is not None:
+                for i in dense_sizes:
+                    x = tf.keras.layers.Dense(i, activation="relu")(x)
+            if dropout:
+                x = tf.keras.layers.Dropout(dropout)(x)
             preds = tf.keras.layers.Dense(
                 len(self.labels), activation="softmax", name="prediction"
             )(x)
@@ -359,6 +413,7 @@ class KerasModel(Interpreter):
                 "w",
             ),
             indent=4,
+            cls=MetaJSONEncoder,
         )
         best_loss = os.path.join(run_dir, "val_loss")
         if os.path.exists(best_loss):
@@ -369,6 +424,7 @@ class KerasModel(Interpreter):
                     "w",
                 ),
                 indent=4,
+                cls=MetaJSONEncoder,
             )
         best_acc = os.path.join(run_dir, "val_acc")
         if os.path.exists(best_acc):
@@ -379,6 +435,7 @@ class KerasModel(Interpreter):
                     "w",
                 ),
                 indent=4,
+                cls=MetaJSONEncoder,
             )
 
     def close(self):
@@ -401,47 +458,8 @@ class KerasModel(Interpreter):
         del self.test
         gc.collect()
 
-    def get_dataset(
-        self,
-        pattern,
-        augment=False,
-        reshuffle=True,
-        deterministic=False,
-        resample=True,
-        weights=None,
-        stop_on_empty_dataset=True,
-    ):
-        logging.info("Getting dataset %s", self.type)
-        if self.type == "thermal":
-            return get_thermal_dataset(
-                pattern,
-                self.params.batch_size,
-                self.params.output_dim[:2],
-                self.labels,
-                augment=augment,
-                reshuffle=reshuffle,
-                deterministic=deterministic,
-                resample=resample,
-                weights=weights,
-                stop_on_empty_dataset=stop_on_empty_dataset,
-                preprocess_fn=self.preprocess_fn,
-            )
-        return get_ir_dataset(
-            pattern,
-            self.params.batch_size,
-            self.params.output_dim[:2],
-            self.labels,
-            augment=augment,
-            reshuffle=reshuffle,
-            deterministic=deterministic,
-            resample=resample,
-            weights=weights,
-            stop_on_empty_dataset=stop_on_empty_dataset,
-            preprocess_fn=self.preprocess_fn,
-        )
-
     def train_model_tfrecords(
-        self, epochs, run_name, base_dir, weights=None, rebalance=False, resample=False
+        self, epochs, run_name, weights=None, rebalance=False, resample=False
     ):
         logging.info(
             "%s Training model for %s epochs with weights %s", run_name, epochs, weights
@@ -456,30 +474,40 @@ class KerasModel(Interpreter):
                 dense_sizes=self.params.dense_sizes,
                 retrain_from=self.params.retrain_layer,
                 dropout=self.params.dropout,
+                run_name=run_name,
             )
         self.model.summary()
         if weights is not None:
             self.model.load_weights(weights)
-        base_dir = os.path.join(base_dir, "training-data")
-        train_files = base_dir + "/train"
-        validate_files = base_dir + "/validation"
-
-        self.train, remapped = self.get_dataset(
+        train_files = os.path.join(self.data_dir, "train")
+        validate_files = os.path.join(self.data_dir, "validation")
+        self.train, remapped = get_dataset(
             train_files,
-            augment=True,
+            self.type,
+            self.labels,
+            batch_size=self.params.batch_size,
+            image_size=self.params.output_dim[:2],
+            preprocess_fn=self.preprocess_fn,
             resample=resample,
             stop_on_empty_dataset=False,
+            include_features=self.params.mvm,
+            augment=True,
             # dist=self.dataset_counts["train"],
         )
         self.remapped = remapped
-        self.validate, remapped = self.get_dataset(
+        self.validate, remapped = get_dataset(
             validate_files,
-            augment=False,
+            self.type,
+            self.labels,
+            batch_size=self.params.batch_size,
+            image_size=self.params.output_dim[:2],
+            preprocess_fn=self.preprocess_fn,
             resample=resample,
             stop_on_empty_dataset=False,
+            include_features=self.params.mvm,
             # dist=self.dataset_counts["validation"],
         )
-        distribution = get_distribution(self.train)
+        # distribution = get_distribution(self.train)
         if rebalance:
             self.class_weights = {}
             total = np.sum(distribution)
@@ -499,9 +527,8 @@ class KerasModel(Interpreter):
                 else:
                     self.class_weights[index] = 1 / distribution[index] * multiplier
         logging.info(
-            "%s Dist is %s giving weights %s",
+            "%s  giving weights %s",
             self.labels,
-            distribution,
             self.class_weights,
         )
 
@@ -524,13 +551,23 @@ class KerasModel(Interpreter):
         )
         history = history.history
         test_accuracy = None
-        test_files = base_dir + "/test"
+        test_files = os.path.join(self.data_dir, "test")
+
         if len(test_files) > 0:
-            self.test = self.get_dataset(
-                test_files, augment=False, reshuffle=False, resample=False
+            self.test, _ = get_dataset(
+                test_files,
+                self.type,
+                self.labels,
+                batch_size=self.params.batch_size,
+                image_size=self.params.output_dim[:2],
+                preprocess_fn=self.preprocess_fn,
+                stop_on_empty_dataset=False,
+                include_features=self.params.mvm,
+                reshuffle=False,
+                resample=False,
             )
             if self.test:
-                test_accuracy = self.model.evaluate(self.validate)
+                test_accuracy = self.model.evaluate(self.test)
 
         self.save(run_name, history=history, test_results=test_accuracy)
 
@@ -703,13 +740,18 @@ class KerasModel(Interpreter):
             clip.ffc_frames,
             thermal_median,
             self.params.square_width**2,
-            repeats=4,
+            repeats=1,
             segment_frames=segment_frames,
+            segment_type=self.params.segment_type,
         )
+        features = None
+        if self.params.mvm:
+            features = forestmodel.process_track(clip, track)
         return self.classify_track_data(
             track.get_id(),
             track_data,
             segments,
+            features,
         )
 
     def classify_track(self, clip, track, keep_all=True, segment_frames=None):
@@ -769,11 +811,15 @@ class KerasModel(Interpreter):
         track_id,
         data,
         segments,
+        features=None,
     ):
         track_prediction = TrackPrediction(track_id, self.labels)
         start = time.time()
         predictions = []
         smoothed_predictions = []
+        predict_me = []
+        prediction_frames = []
+        mass = []
         for segment in segments:
             segment_frames = []
             median = np.zeros((len(segment.frame_indices)))
@@ -794,13 +840,26 @@ class KerasModel(Interpreter):
             if frames is None:
                 logging.warn("No frames to predict on")
                 continue
-            output = self.model.predict(frames[np.newaxis, :])
 
-            track_prediction.classified_frames(
-                segment.frame_indices, output[0], max(1, segment.mass)
+            predict_me.append(frames)
+            prediction_frames.append(segment.frame_indices)
+            mass.append(segment.mass)
+        if len(predict_me) > 0:
+            mass = np.array(mass)
+            mass = mass[:, None]
+            predict_me = np.array(predict_me)
+            if self.params.mvm:
+                features = features[np.newaxis, :]
+                features = np.repeat(features, len(predict_me), axis=0)
+                output = self.model.predict([predict_me, features])
+            else:
+                output = self.model.predict(predict_me)
+
+            track_prediction.classified_clip(
+                output, output * output * mass, prediction_frames
             )
+
         track_prediction.classify_time = time.time() - start
-        track_prediction.normalize_score()
         return track_prediction
 
     def predict(self, frame):
@@ -823,7 +882,8 @@ class KerasModel(Interpreter):
 
     def confusion_tfrecords(self, dataset, filename):
         true_categories = tf.concat([y for x, y in dataset], axis=0)
-        true_categories = np.int64(tf.argmax(true_categories, axis=1))
+        if len(true_categories) > 1:
+            true_categories = np.int64(tf.argmax(true_categories, axis=1))
         y_pred = self.model.predict(dataset)
 
         predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
@@ -978,22 +1038,17 @@ def plot_confusion_matrix(cm, class_names):
 def log_confusion_matrix(epoch, logs, model, dataset, writer):
     # Use the model to predict the values from the validation dataset.
 
-    dataset.reload_samples()
-    test_pred_raw = model.predict(dataset)
-    dataset.cur_epoch -= 1
-    batch_y = dataset.get_epoch_labels(epoch=dataset.cur_epoch)
+    true_categories = tf.concat([y for x, y in dataset], axis=0)
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    y_pred = model.model.predict(dataset)
 
-    y = []
-    for batch in batch_y:
-        y.extend(np.argmax(batch, axis=1))
+    predicted_categories = np.int64(tf.argmax(y_pred, axis=1))
 
-    # reset validation generator will be 1 epoch ahead
-    test_pred = np.argmax(test_pred_raw, axis=1)
-
-    cm = confusion_matrix(y, test_pred, labels=np.arange(len(dataset.labels)))
-
+    cm = confusion_matrix(
+        true_categories, predicted_categories, labels=np.arange(len(model.labels))
+    )
     # Log the confusion matrix as an image summary.
-    figure = plot_confusion_matrix(cm, class_names=dataset.labels)
+    figure = plot_confusion_matrix(cm, class_names=model.labels)
     cm_image = plot_to_image(figure)
 
     # Log the confusion matrix as an image summary.
@@ -1026,15 +1081,13 @@ def loss(params):
 
 
 def optimizer(params):
-    if params.learning_rate_decay != 1.0:
-        learning_rate = tf.compat.v1.train.exponential_decay(
-            self.params.learning_rate,
-            self.global_step,
-            1000,
-            self.params["learning_rate_decay"],
+    if params.learning_rate_decay is not None:
+        learning_rate = tf.keras.optimizers.schedules.ExponentialDecay(
+            params.learning_rate,
+            decay_steps=100000,
+            decay_rate=params.learning_rate_decay,
             staircase=True,
         )
-        tf.compat.v1.summary.scalar("params/learning_rate", learning_rate)
     else:
         learning_rate = params.learning_rate  # setup optimizer
     if learning_rate:
@@ -1054,65 +1107,68 @@ def validate_model(model_file):
 # HYPER PARAM TRAINING OF A MODEL
 #
 HP_DENSE_SIZES = hp.HParam("dense_sizes", hp.Discrete([""]))
-HP_TYPE = hp.HParam("type", hp.Discrete([1]))
+HP_MVM = hp.HParam("mvm", hp.Discrete([3.0]))
 
-HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([32]))
+HP_BATCH_SIZE = hp.HParam("batch_size", hp.Discrete([64]))
 HP_OPTIMIZER = hp.HParam("optimizer", hp.Discrete(["adam"]))
-HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.01]))
+HP_LEARNING_RATE = hp.HParam("learning_rate", hp.Discrete([0.001]))
 HP_EPSILON = hp.HParam("epislon", hp.Discrete([1e-7]))  # 1.0 and 0.1 for inception
 HP_DROPOUT = hp.HParam("dropout", hp.Discrete([0.0]))
 HP_RETRAIN = hp.HParam("retrain_layer", hp.Discrete([-1]))
-HP_SEGMENT_TYPE = hp.HParam("segment_type", hp.Discrete([0, 1, 2, 3, 4, 5, 6]))
+HP_LEARNING_RATE_DECAY = hp.HParam("learning_rate_decay", hp.Discrete([1.0]))
 
 METRIC_ACCURACY = "accuracy"
 METRIC_LOSS = "loss"
 
 
 # GRID SEARCH
-def train_test_model(model, hparams, params, log_dir, writer, epochs=15):
+def train_test_model(model, hparams, log_dir, writer, epochs):
     # if not self.model:
-    learning_rate = hparams[HP_SEGMENT_TYPE]
-    # note gp this means we need to keep tracks in dataset file in build step
-    keras_model.train_dataset.recalculate_segments(segment_type=segment_type)
-    keras_model.validation_dataset.recalculate_segments(segment_type=segment_type)
-    keras_model.test_dataset.recalculate_segments(segment_type=segment_type)
-    labels = keras_model.train_dataset.labels
-    train = DataGenerator(
-        keras_model.train_dataset,
-        labels,
-        params.output_dim,
-        batch_size=batch_size,
-        model_preprocess=preprocess_fn,
-        epochs=epochs,
-        shuffle=True,
-        cap_at="bird",
-        type=type,
-        **params,
+    train_files = model.data_dir + "/train"
+    validate_files = model.data_dir + "/validation"
+    test_files = model.data_dir + "/test"
+    mvm = hparams[HP_MVM]
+    if mvm >= 1.0:
+        mvm = True
+    else:
+        mvm = False
+    train, remapped = get_dataset(
+        train_files,
+        model.type,
+        model.labels,
+        batch_size=model.params.batch_size,
+        image_size=model.params.output_dim[:2],
+        preprocess_fn=model.preprocess_fn,
+        include_features=mvm,
+        augment=True,
+        scale_epoch=4,
     )
-    validate = DataGenerator(
-        keras_model.validation_dataset,
-        labels,
-        params.output_dim,
-        batch_size=batch_size,
-        model_preprocess=preprocess_fn,
-        epochs=epochs,
-        shuffle=True,
-        cap_at="bird",
-        type=type,
-        **params,
+    validate, remapped = get_dataset(
+        validate_files,
+        model.type,
+        model.labels,
+        batch_size=model.params.batch_size,
+        image_size=model.params.output_dim[:2],
+        preprocess_fn=model.preprocess_fn,
+        include_features=mvm,
+        augment=False,
+        scale_epoch=4,
     )
-    test = DataGenerator(
-        keras_model.test_dataset,
-        labels,
-        params.output_dim,
-        batch_size=batch_size,
-        model_preprocess=preprocess_fn,
-        epochs=1,
-        shuffle=True,
-        cap_at="bird",
-        type=type,
-        **params,
+
+    test, _ = get_dataset(
+        test_files,
+        model.type,
+        model.labels,
+        batch_size=model.params.batch_size,
+        image_size=model.params.output_dim[:2],
+        preprocess_fn=model.preprocess_fn,
+        include_features=mvm,
+        deterministic=True,
+        augment=False,
     )
+
+    labels = model.labels
+
     opt = None
     learning_rate = hparams[HP_LEARNING_RATE]
     epsilon = hparams[HP_EPSILON]
@@ -1121,56 +1177,45 @@ def train_test_model(model, hparams, params, log_dir, writer, epochs=15):
         opt = tf.keras.optimizers.Adam(learning_rate=learning_rate, epsilon=epsilon)
     else:
         opt = tf.keras.optimizers.SGD(learning_rate=learning_rate, epsilon=epsilon)
-    model.compile(
-        optimizer=opt, loss=loss(params), metrics=["accuracy"], run_eagerly=True
+    model.model.compile(
+        optimizer=opt, loss=loss(model.params), metrics=["accuracy"], run_eagerly=True
     )
-    cm_callback = keras.callbacks.LambdaCallback(
+    cm_callback = tf.keras.callbacks.LambdaCallback(
         on_epoch_end=lambda epoch, logs: log_confusion_matrix(
             epoch, logs, model, test, writer
         )
     )
-    history = model.fit(
+    history = model.model.fit(
         train,
+        validation_data=validate,
         epochs=epochs,
         shuffle=False,
-        validation_data=validate,
-        callbacks=[cm_callback],
+        # callbacks=[cm_callback],
         verbose=2,
     )
-    train.stop_load()
-    validate.stop_load()
-    test.stop_load()
-    validate = None
-    test = None
-    train = None
     tf.keras.backend.clear_session()
     gc.collect()
     del model
     del train
     del validate
-    del test
     gc.collect()
     return history
 
 
-def test_hparams(keras_model, log_dir):
-
-    epochs = 15
-    batch_size = 32
-
-    dir = log_dir + "/hparam_tuning"
+def grid_search(keras_model, epochs=1):
+    dir = keras_model.log_dir + "/hparam_tuning"
     with tf.summary.create_file_writer(dir).as_default():
         hp.hparams_config(
             hparams=[
+                HP_MVM,
                 HP_BATCH_SIZE,
                 HP_DENSE_SIZES,
                 HP_LEARNING_RATE,
                 HP_OPTIMIZER,
                 HP_EPSILON,
-                HP_TYPE,
                 HP_RETRAIN,
                 HP_DROPOUT,
-                HP_SEGMENT_TYPE,
+                HP_LEARNING_RATE_DECAY,
             ],
             metrics=[
                 hp.Metric(METRIC_ACCURACY, display_name="Accuracy"),
@@ -1179,31 +1224,48 @@ def test_hparams(keras_model, log_dir):
         )
     session_num = 0
     hparams = {}
-    for batch_size in HP_BATCH_SIZE.domain.values:
-        for dense_size in HP_DENSE_SIZES.domain.values:
-            for retrain_layer in HP_RETRAIN.domain.values:
-                for learning_rate in HP_LEARNING_RATE.domain.values:
-                    for type in HP_TYPE.domain.values:
+    for mvm in HP_MVM.domain.values:
+        for batch_size in HP_BATCH_SIZE.domain.values:
+            for dense_size in HP_DENSE_SIZES.domain.values:
+                for retrain_layer in HP_RETRAIN.domain.values:
+                    for learning_rate in HP_LEARNING_RATE.domain.values:
                         for optimizer in HP_OPTIMIZER.domain.values:
                             for epsilon in HP_EPSILON.domain.values:
                                 for dropout in HP_DROPOUT.domain.values:
-                                    for segment_type in HP_SEGMENT_TYPE.domain.values:
+                                    for (
+                                        learning_rate_decay
+                                    ) in HP_LEARNING_RATE_DECAY.domain.values:
                                         hparams = {
+                                            HP_MVM: mvm,
                                             HP_DENSE_SIZES: dense_size,
                                             HP_BATCH_SIZE: batch_size,
                                             HP_LEARNING_RATE: learning_rate,
                                             HP_OPTIMIZER: optimizer,
                                             HP_EPSILON: epsilon,
-                                            HP_TYPE: type,
                                             HP_RETRAIN: retrain_layer,
                                             HP_DROPOUT: dropout,
-                                            HP_SEGMENT_TYPE: segment_type,
+                                            HP_LEARNING_RATE_DECAY: learning_rate_decay,
                                         }
 
                                         dense_layers = []
                                         if dense_size != "":
                                             for i, size in enumerate(dense_size):
                                                 dense_layers[i] = int(size)
+
+                                        # for some reason cant have None values in hyper params array
+                                        if learning_rate_decay == 1.0:
+                                            learning_rate_decay = None
+                                        keras_model.params[
+                                            "learning_rate_decay"
+                                        ] = learning_rate_decay
+                                        if mvm >= 1.0:
+                                            keras_model.params["mvm"] = True
+                                            keras_model.params["hq_mvm"] = mvm > 1
+                                            keras_model.params["forest"] = mvm > 2
+
+                                        else:
+                                            keras_model.params["mvm"] = False
+
                                         keras_model.build_model(
                                             dense_sizes=dense_layers,
                                             retrain_from=None
@@ -1211,11 +1273,12 @@ def test_hparams(keras_model, log_dir):
                                             else retrain_layer,
                                             dropout=None if dropout == 0.0 else dropout,
                                         )
+                                        keras_model.model.summary()
 
                                         run_name = "run-%d" % session_num
                                         print("--- Starting trial: %s" % run_name)
                                         print({h.name: hparams[h] for h in hparams})
-                                        self.run(
+                                        run(
                                             keras_model,
                                             dir + "/" + run_name,
                                             hparams,
@@ -1224,12 +1287,10 @@ def test_hparams(keras_model, log_dir):
                                         session_num += 1
 
 
-def run(keras_model, log_dir, hparams, params, epochs):
+def run(keras_model, log_dir, hparams, epochs):
     with tf.summary.create_file_writer(log_dir).as_default() as w:
         hp.hparams(hparams)  # record the values used in this trial
-        history = train_test_model(
-            keras_model, hparams, params, log_dir, w, epochs=epochs
-        )
+        history = train_test_model(keras_model, hparams, log_dir, w, epochs=epochs)
         val_accuracy = history.history["val_accuracy"]
         val_loss = history.history["val_loss"]
         # log_confusion_matrix(epochs, None, self.model, self.validate, None)
@@ -1248,3 +1309,29 @@ class ClearMemory(Callback):
         print("epoch edned", epoch)
         gc.collect()
         tf.keras.backend.clear_session()
+
+
+def get_dataset(
+    pattern,
+    type,
+    labels,
+    **args,
+):
+    if type == "thermal":
+        if args.get("ds_by_label", False):
+            get_ds = get_thermal_dataset_by_label
+        else:
+            get_ds = get_thermal_dataset
+        return get_ds(
+            pattern,
+            labels,
+            **args,
+        )
+    return get_ir_dataset(pattern, labels, **args)
+
+
+class MetaJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, SegmentType):
+            return obj.name
+        return json.JSONEncoder.default(self, obj)

@@ -11,6 +11,7 @@ from ml_tools.imageprocessing import resize_cv, rotate, normalize, resize_and_pa
 from ml_tools.frame import Frame, TrackChannels
 from ml_tools import imageprocessing
 import datetime
+from enum import Enum
 
 FRAMES_PER_SECOND = 9
 
@@ -18,6 +19,17 @@ CPTV_FILE_WIDTH = 160
 CPTV_FILE_HEIGHT = 120
 FRAME_SIZE = 32
 MIN_SIZE = 4
+
+
+class SegmentType(Enum):
+    IMPORTANT_RANDOM = 0
+    ALL_RANDOM = 1
+    IMPORTANT_SEQUENTIAL = 2
+    ALL_SEQUENTIAL = 3
+    TOP_SEQUENTIAL = 4
+    ALL_SECTIONS = 5
+    TOP_RANDOM = 6
+    ALL_RANDOM_NOMIN = 7
 
 
 class Sample(ABC):
@@ -273,21 +285,18 @@ class TrackHeader:
         self,
         segment_frame_spacing,
         segment_width,
+        segment_type,
         segment_min_mass=None,
         use_important=False,
-        random_frames=True,
-        top_frames=False,
-        random_sections=False,
         repeats=1,
+        max_segments=None,
     ):
         min_frames = segment_width
         if self.label == "vehicle" or self.label == "human":
             min_frames = segment_width / 4.0
 
         # in python3.7+ can just take the values and it guarantees order it was added to dict
-        regions = [None] * self.num_frames
-        for i in range(self.num_frames):
-            regions[i] = self.regions_by_frame[i + self.start_frame]
+        regions = self.bounds_history
         self.segments, self.filtered_stats = get_segments(
             self.clip_id,
             self.track_id,
@@ -299,8 +308,6 @@ class TrackHeader:
             frame_temp_median=self.frame_temp_median,
             segment_min_mass=segment_min_mass,
             sample_frames=self.sample_frames if use_important else None,
-            top_frames=top_frames,
-            random_sections=random_sections,
             ffc_frames=self.ffc_frames,
             lower_mass=self.lower_mass,
             repeats=repeats,
@@ -308,6 +315,8 @@ class TrackHeader:
             camera=self.camera,
             skipped_frames=self.skipped_frames,
             start_time=self.start_time,
+            segment_type=segment_type,
+            max_segments=max_segments,
         )
 
     @property
@@ -737,8 +746,8 @@ class SegmentHeader(Sample):
                 frame_numbers=self.frame_numbers - self.start_frame,
             )
 
-            thermals = np.empty(len(frames), dtype=object)
-            filtered = np.empty(len(frames), dtype=object)
+            thermals = []  # np.empty(len(frames), dtype=object)
+            filtered = []  # np.empty(len(frames), dtype=object)
 
             for i, frame in enumerate(frames):
                 frame.float_arrays()
@@ -748,30 +757,39 @@ class SegmentHeader(Sample):
                 frame.resize_with_aspect((32, 32), crop_rectangle, keep_edge=True)
                 frame.thermal -= temp
                 np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
-                filtered[i] = frame.filtered
-                thermals[i] = frame.thermal
-            thermal, success = imageprocessing.square_clip(thermals, 5, (32, 32))
-            if not success:
-                logging.warn(
-                    "Error making thermal square clip (No valid frame data) %s frames %s",
-                    self.clip_id,
-                    [frame.frame_number for frame in frames],
-                )
-                return None
-            filtered, success = imageprocessing.square_clip(filtered, 5, (32, 32))
-            if not success:
-                logging.warn(
-                    "Error making filtered square clip (No valid frame data ) %s frames %s",
-                    filtered,
-                    [frame.frame_number for frame in frames],
-                )
 
-                return None
+                frame.thermal, stats = imageprocessing.normalize(
+                    frame.thermal, new_max=255
+                )
+                if not stats[0]:
+                    frame.thermal = np.zeros((frame.thermal.shape))
+                    # continue
+                frame.filtered, stats = imageprocessing.normalize(
+                    frame.filtered, new_max=255
+                )
+                if not stats[0]:
+                    frame.filtered = np.zeros((frame.filtered.shape))
+
+                # continue
+                # frame.filtered =
+                filtered.append(frame.filtered)
+                thermals.append(frame.thermal)
+            thermals = np.array(thermals)
+            filtered = np.array(filtered)
+            # thermal, success = imageprocessing.square_clip(thermals, 5, (32, 32))
+            # if not success:
+            #     logging.warn("Error making thermal square clip %s", self.clip_id)
+            #     return None
+            # filtered, success = imageprocessing.square_clip(filtered, 5, (32, 32))
+            # if not success:
+            #     logging.warn("Error making filtered square clip %s", filtered)
+            #
+            #     return None
         except:
             logging.error("Cant get segment %s", self, exc_info=True)
             raise "EX"
             return None
-        return thermal, filtered
+        return thermals, filtered
 
 
 def get_cropped_fraction(region: tools.Rectangle, width, height):
@@ -786,8 +804,8 @@ def get_movement_data(regions):
     centrey = np.array([region.mid_y for region in regions])
     xv = np.hstack((0, centrex[1:] - centrex[:-1]))
     yv = np.hstack((0, centrey[1:] - centrey[:-1]))
-    axv = xv / areas ** 0.5
-    ayv = yv / areas ** 0.5
+    axv = xv / areas**0.5
+    ayv = yv / areas**0.5
     bounds = np.array([region.to_ltrb() for region in regions])
     mass = np.array([region.mass for region in regions])
 
@@ -806,9 +824,6 @@ def get_segments(
     label=None,
     segment_min_mass=None,
     sample_frames=None,
-    random_frames=True,
-    top_frames=False,
-    random_sections=False,
     ffc_frames=[],
     lower_mass=0,
     repeats=1,
@@ -818,7 +833,12 @@ def get_segments(
     ignore_mass=False,
     camera=None,
     start_time=None,
+    segment_type=SegmentType.ALL_RANDOM,
+    max_segments=None,
 ):
+
+    if segment_type == SegmentType.ALL_RANDOM_NOMIN:
+        segment_min_mass = None
     if min_frames is None:
         min_frames = 25
     segments = []
@@ -845,7 +865,7 @@ def get_segments(
             segment_min_mass = 1
             # remove blank frames
 
-        if top_frames and random_frames:
+        if segment_type == SegmentType.TOP_RANDOM:
             # take top 50 mass frames
             frame_indices = sorted(
                 frame_indices,
@@ -854,7 +874,8 @@ def get_segments(
             )
             frame_indices = frame_indices[:50]
             frame_indices.sort()
-    if top_frames and not random_frames:
+    # 1 / 0
+    if segment_type == SegmentType.TOP_SEQUENTIAL:
         return get_top_mass_segments(
             clip_id,
             track_id,
@@ -878,53 +899,42 @@ def get_segments(
     frame_indices = np.array(frame_indices)
     segment_count = max(1, len(frame_indices) // segment_frame_spacing)
     segment_count = int(segment_count)
-    # i3d segments get all segments above min mass sequentially
-    if top_frames and not random_frames:
-        segment_mass = []
-
-        for i in range(max(1, len(mass_history) - segment_width)):
-            contains_ffc = False
-            for z in range(segment_width):
-                if (z + i + start_frame) in ffc_frames:
-                    contains_ffc = True
-                    break
-            if contains_ffc:
-                continue
-            mass = np.sum(mass_history[i : i + segment_width])
-            segment_mass.append((i, mass))
-
-        sorted_mass = sorted(segment_mass, key=lambda x: x[1], reverse=True)
-        best_mass = True
-
+    if max_segments is not None:
+        segment_count = min(max_segments, segment_count)
     # take any segment_width frames, this could be done each epoch
     whole_indices = frame_indices
+    random_frames = segment_type in [
+        SegmentType.IMPORTANT_RANDOM,
+        SegmentType.ALL_RANDOM,
+        SegmentType.ALL_RANDOM_NOMIN,
+        SegmentType.TOP_RANDOM,
+        None,
+    ]
     for _ in range(repeats):
 
         frame_indices = whole_indices.copy()
-        np.random.shuffle(frame_indices)
+        if random_frames:
+            # random_frames and not random_sections:
+            np.random.shuffle(frame_indices)
         for i in range(segment_count):
             if (len(frame_indices) < segment_width and len(segments) > 1) or len(
                 frame_indices
             ) < (segment_width / 4.0):
                 break
 
-            if random_frames:
-                if random_sections:
-                    # random frames from section 2.2 * segment_width
-                    section = frame_indices[: int(segment_width * 2.2)]
-                    indices = np.random.choice(
-                        len(section),
-                        min(segment_width, len(section)),
-                        replace=False,
-                    )
-                    frames = section[indices]
-
-                    frame_indices = frame_indices[
-                        frame_indices > frames[0] + segment_frame_spacing
-                    ]
-                else:
-                    frames = frame_indices[:segment_width]
-                    frame_indices = frame_indices[segment_width:]
+            if segment_type == SegmentType.ALL_SECTIONS:
+                # random frames from section 2.2 * segment_width
+                section = frame_indices[: int(segment_width * 2.2)]
+                indices = np.random.choice(
+                    len(section),
+                    min(segment_width, len(section)),
+                    replace=False,
+                )
+                frames = section[indices]
+                frame_indices = frame_indices[segment_frame_spacing:]
+            elif random_frames:
+                frames = frame_indices[:segment_width]
+                frame_indices = frame_indices[segment_width:]
             else:
                 segment_start = i * segment_frame_spacing
                 segment_end = segment_start + segment_width
@@ -968,8 +978,8 @@ def get_segments(
             temp_slice = frame_temp_median[relative_frames]
             region_slice = regions[relative_frames]
             movement_data = None
-            # for z, f in enumerate(frames):
-            #     assert region_slice[z].frame_number == f
+            for z, f in enumerate(frames):
+                assert region_slice[z].frame_number == f
             segment = SegmentHeader(
                 clip_id,
                 track_id,

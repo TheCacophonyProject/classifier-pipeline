@@ -95,7 +95,9 @@ class IRTrackExtractor(ClipTracker):
 
     @property
     def tracker_version(self):
-        return f"IRTrackExtractor-{IRTrackExtractor.VERSION}"
+        return IRTrackExtractor.VERSION
+        #  GPuntil api takes a string
+        # return f"IRTrackExtractor-{IRTrackExtractor.VERSION}"
 
     @property
     def type(self):
@@ -547,18 +549,18 @@ class IRTrackExtractor(ClipTracker):
         #     clip.filtered_tracks.append(("Track filtered. Too Many Blanks", track))
         #     return True
 
-        highest_ratio = 0
-        for other in clip.tracks:
-            if track == other:
-                continue
-            highest_ratio = max(track.get_overlap_ratio(other), highest_ratio)
-
-        if highest_ratio > self.config.track_overlap_ratio:
-            self.print_if_verbose(
-                "Track filtered.  Too much overlap {}".format(highest_ratio)
-            )
-            clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
-            return True
+        # highest_ratio = 0
+        # for other in clip.tracks:
+        #     if track == other:
+        #         continue
+        #     highest_ratio = max(track.get_overlap_ratio(other), highest_ratio)
+        #
+        # if highest_ratio > self.config.track_overlap_ratio:
+        #     self.print_if_verbose(
+        #         "Track filtered.  Too much overlap {}".format(highest_ratio)
+        #     )
+        #     clip.filtered_tracks.append(("Track filtered.  Too much overlap", track))
+        #     return True
 
         return False
 

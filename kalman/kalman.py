@@ -20,5 +20,7 @@ class Kalman:
         return self.kalman.predict()
 
     def correct(self, rect):
-        pts = np.array([np.float32(rect.mid_x), np.float32(rect.mid_y)], np.float32)
+        pts = np.array(
+            [np.float32(rect.centroid[0]), np.float32(rect.centroid[1])], np.float32
+        )
         self.kalman.correct(pts)

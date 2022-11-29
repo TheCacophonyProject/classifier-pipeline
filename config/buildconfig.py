@@ -33,6 +33,7 @@ class BuildConfig(DefaultConfig):
     segment_min_avg_mass = attr.ib()
     min_frame_mass = attr.ib()
     filter_by_lq = attr.ib()
+    max_segments = attr.ib()
 
     @classmethod
     def load(cls, build):
@@ -44,6 +45,7 @@ class BuildConfig(DefaultConfig):
             segment_min_avg_mass=build["segment_min_avg_mass"],
             min_frame_mass=build["min_frame_mass"],
             filter_by_lq=build["filter_by_lq"],
+            max_segments=build["max_segments"],
         )
 
     @classmethod
@@ -56,6 +58,7 @@ class BuildConfig(DefaultConfig):
             segment_min_avg_mass=10,
             min_frame_mass=10,
             filter_by_lq=True,
+            max_segments=5,
         )
 
     def validate(self):

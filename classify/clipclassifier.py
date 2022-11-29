@@ -17,7 +17,6 @@ from ml_tools.preprocess import preprocess_segment
 from ml_tools.previewer import Previewer
 from track.track import Track
 
-from classify.thumbnail import get_thumbnail
 from cptv import CPTVReader
 from datetime import datetime
 from ml_tools.imageprocessing import (
@@ -26,6 +25,8 @@ from ml_tools.imageprocessing import (
     detect_objects_ir,
     theshold_saliency,
 )
+
+from ml_tools.forestmodel import ForestModel
 
 
 class ClipClassifier:
@@ -60,10 +61,13 @@ class ClipClassifier:
             return self.models[model.id]
         load_start = time.time()
         logging.info("classifier loading %s", model.model_file)
-        classifier = KerasModel(self.config.train)
-        classifier.load_model(model.model_file, weights=model.model_weights)
+        if model.type == ForestModel.TYPE:
+            classifier = ForestModel(model.model_file)
+        else:
+            classifier = KerasModel(self.config.train)
+            classifier.load_model(model.model_file, weights=model.model_weights)
+            classifier.model.summary()
         logging.info("classifier loaded (%s)", time.time() - load_start)
-        classifier.model.summary()
         self.models[model.id] = classifier
 
         return classifier
@@ -165,7 +169,7 @@ class ClipClassifier:
         dirname = destination_folder
 
         if self.previewer:
-            mpeg_filename = os.path.join(dirname, base_filename + "-classify.avi")
+            mpeg_filename = os.path.join(dirname, base_filename + "-classify.mp4")
 
             logging.info("Exporting preview to '{}'".format(mpeg_filename))
 
@@ -214,11 +218,14 @@ class ClipClassifier:
             prediction = classifier.classify_track(
                 clip, track, segment_frames=segment_frames
             )
-            predictions.prediction_per_track[track.get_id()] = prediction
-            description = prediction.description()
-            logging.info(
-                " - [{}/{}] prediction: {}".format(i + 1, len(clip.tracks), description)
-            )
+            if prediction is not None:
+                predictions.prediction_per_track[track.get_id()] = prediction
+                description = prediction.description()
+                logging.info(
+                    " - [{}/{}] prediction: {}".format(
+                        i + 1, len(clip.tracks), description
+                    )
+                )
         if self.config.verbose:
             ms_per_frame = (
                 (time.time() - start) * 1000 / max(1, len(clip.frame_buffer.frames))
@@ -249,9 +256,12 @@ class ClipClassifier:
             prediction_info = []
             for model_id, predictions in predictions_per_model.items():
                 prediction = predictions.prediction_for(track.get_id())
-                prediciont_meta = prediction.get_metadata()
-                prediciont_meta["model_id"] = model_id
-                prediction_info.append(prediciont_meta)
+                if prediction is None:
+                    continue
+
+                prediction_meta = prediction.get_metadata()
+                prediction_meta["model_id"] = model_id
+                prediction_info.append(prediction_meta)
             meta_track["predictions"] = prediction_info
 
         model_dictionaries = []
@@ -264,8 +274,6 @@ class ClipClassifier:
             model_dictionaries.append(model_dic)
 
         meta_data["models"] = model_dictionaries
-        thumbnail_region = get_thumbnail(clip, predictions_per_model)
-        meta_data["thumbnail_region"] = thumbnail_region
         if self.config.classify.meta_to_stdout:
             print(json.dumps(meta_data, cls=tools.CustomJSONEncoder))
         else:

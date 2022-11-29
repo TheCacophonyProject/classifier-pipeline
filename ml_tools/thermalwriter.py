@@ -39,13 +39,16 @@ from absl import logging
 import numpy as np
 from PIL import Image, ImageOps
 
-from pycocotools import mask
 import tensorflow as tf
 from . import tfrecord_util
 from ml_tools import tools
 from ml_tools.imageprocessing import normalize
+from ml_tools.forestmodel import forest_features
+from ml_tools import imageprocessing
+from ml_tools.frame import TrackChannels
 
 crop_rectangle = tools.Rectangle(0, 0, 640, 480)
+from functools import lru_cache
 
 
 def create_tf_example(data, image_dir, sample, labels, filename):
@@ -81,37 +84,32 @@ def create_tf_example(data, image_dir, sample, labels, filename):
     """
     average_dim = [r.area for r in sample.regions]
     average_dim = int(round(np.mean(average_dim) ** 0.5))
-    thermal = data[0] * 255
-    filtered = data[1] * 255
-    image_height, image_width = thermal.shape
-    image = Image.fromarray(np.uint8(thermal))
-
-    image_id = sample.id
-
-    encoded_jpg_io = io.BytesIO()
-    image.save(encoded_jpg_io, format="PNG", quality=100, subsampling=0)
-
-    encoded_thermal = encoded_jpg_io.getvalue()
-    thermal_key = hashlib.sha256(encoded_thermal).hexdigest()
-
-    image = Image.fromarray(np.uint8(filtered))
-    image = ImageOps.grayscale(image)
-
-    encoded_jpg_io = io.BytesIO()
-    image.save(encoded_jpg_io, format="PNG", quality=100, subsampling=0)
-    encoded_filtered = encoded_jpg_io.getvalue()
-    filtered_key = hashlib.sha256(encoded_filtered).hexdigest()
+    features = data[1]
+    data = data[0]
+    thermals = list(data[0])
+    filtereds = list(data[1])
+    image_id = sample.unique_track_id
+    image_height, image_width = thermals[0].shape
+    while len(thermals) < 25:
+        # ensure 25 frames even if 0s
+        thermals.append(np.zeros((thermals[0].shape)))
+        filtereds.append(np.zeros((filtereds[0].shape)))
+    thermals = np.array(thermals)
+    filtereds = np.array(filtereds)
+    thermal_key = hashlib.sha256(thermals).hexdigest()
+    filtered_key = hashlib.sha256(filtereds).hexdigest()
 
     feature_dict = {
         "image/avg_dim": tfrecord_util.int64_feature(average_dim),
         "image/height": tfrecord_util.int64_feature(image_height),
         "image/width": tfrecord_util.int64_feature(image_width),
         "image/clip_id": tfrecord_util.int64_feature(sample.clip_id),
-        "image/track_iod": tfrecord_util.int64_feature(sample.track_id),
+        "image/track_id": tfrecord_util.int64_feature(sample.track_id),
         "image/filename": tfrecord_util.bytes_feature(filename.encode("utf8")),
         "image/source_id": tfrecord_util.bytes_feature(str(image_id).encode("utf8")),
-        "image/thermalencoded": tfrecord_util.bytes_feature(encoded_thermal),
-        "image/filteredencoded": tfrecord_util.bytes_feature(encoded_filtered),
+        "image/thermalencoded": tfrecord_util.float_list_feature(thermals.ravel()),
+        "image/filteredencoded": tfrecord_util.float_list_feature(filtereds.ravel()),
+        "image/features": tfrecord_util.float_list_feature(features),
         "image/filteredkey/sha256": tfrecord_util.bytes_feature(
             filtered_key.encode("utf8")
         ),
@@ -128,7 +126,7 @@ def create_tf_example(data, image_dir, sample, labels, filename):
 
 
 def create_tf_records(
-    dataset, output_path, labels, back_thresh, num_shards=1, cropped=True
+    dataset, output_path, labels, back_thresh, num_shards=1, cropped=True, by_label=True
 ):
 
     output_path = Path(output_path)
@@ -143,6 +141,7 @@ def create_tf_records(
     np.random.shuffle(samples)
 
     dataset.load_db()
+    dataset.set_read_only(True)
     db = dataset.db
     total_num_annotations_skipped = 0
     num_labels = len(labels)
@@ -156,16 +155,14 @@ def create_tf_records(
     writers = []
     for label in labels:
         for i in range(num_shards):
-            safe_l = label.replace("/", "-")
-            writers.append(
-                tf.io.TFRecordWriter(
-                    str(
-                        output_path
-                        / (f"{safe_l}-%05d-of-%05d.tfrecord" % (i, num_shards))
-                    )
-                )
-            )
-
+            if by_label:
+                safe_l = label.replace("/", "-")
+                name = f"{safe_l}-%05d-of-%05d.tfrecord" % (i, num_shards)
+            else:
+                name = f"%05d-of-%05d.tfrecord" % (i, num_shards)
+            writers.append(tf.io.TFRecordWriter(str(output_path / name)))
+        if not by_label:
+            break
     load_first = 200
     try:
         count = 0
@@ -173,15 +170,14 @@ def create_tf_records(
             local_set = samples[:load_first]
             samples = samples[load_first:]
             loaded = []
-
             for sample in local_set:
-                data = sample.get_data(db)
+                data, features = get_data(sample, db)
+                # features = forest_features(db, sample.clip_id, sample.track_id)
                 if data is None:
                     continue
 
-                loaded.append((data, sample))
-
-            loaded = np.array(loaded)
+                loaded.append(((data, features), sample))
+            loaded = np.array(loaded, dtype=object)
             np.random.shuffle(loaded)
 
             for data, sample in loaded:
@@ -191,9 +187,13 @@ def create_tf_records(
                     )
                     total_num_annotations_skipped += num_annotations_skipped
                     l_i = labels.index(sample.label)
-                    writers[num_shards * l_i + lbl_counts[l_i] % num_shards].write(
-                        tf_example.SerializeToString()
-                    )
+                    if by_label:
+                        wrtier = writers[
+                            num_shards * l_i + lbl_counts[l_i] % num_shards
+                        ]
+                    else:
+                        writer = writers[count % num_shards]
+                    writer.write(tf_example.SerializeToString())
                     lbl_counts[l_i] += 1
                     # print("saving example", [count % num_shards])
                     count += 1
@@ -202,14 +202,70 @@ def create_tf_records(
                     # count += 1
                 except Exception as e:
                     logging.error("Error saving ", exc_info=True)
-                    raise e
-            # break
+
     except:
         logging.error("Error saving track info", exc_info=True)
-        raise "EX"
     for writer in writers:
         writer.close()
 
     logging.info(
         "Finished writing, skipped %d annotations.", total_num_annotations_skipped
     )
+
+
+@lru_cache(maxsize=1000)
+def get_track_data(clip_id, track_id, db):
+    background = db.get_clip_background(clip_id)
+
+    track_frames = db.get_track(
+        clip_id,
+        track_id,
+        original=False,
+        channels=[TrackChannels.thermal],
+    )
+    clip_meta = db.get_clip_meta(clip_id)
+    frame_temp_median = clip_meta["frame_temp_median"]
+    regions = [f.region for f in track_frames]
+    features = forest_features(track_frames, background, frame_temp_median, regions)
+    return background, track_frames, features, frame_temp_median
+
+
+def get_data(sample, db):
+
+    # prepare the sample data for saving
+    crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
+    try:
+        background, track_frames, features, frame_temp_median = get_track_data(
+            sample.clip_id, sample.track_id, db
+        )
+
+        thermals = []  # np.empty(len(frames), dtype=object)
+        filtered = []  # np.empty(len(frames), dtype=object)
+        for i, frame in enumerate(track_frames):
+            if frame.frame_number not in sample.frame_numbers:
+                continue
+            frame.float_arrays()
+            frame.filtered = frame.thermal - frame.region.subimage(background)
+            temp = frame_temp_median[i]
+            frame.resize_with_aspect((32, 32), crop_rectangle, keep_edge=True)
+            frame.thermal -= temp
+            np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
+
+            frame.thermal, stats = imageprocessing.normalize(frame.thermal, new_max=255)
+            if not stats[0]:
+                frame.thermal = np.zeros((frame.thermal.shape))
+                # continue
+            frame.filtered, stats = imageprocessing.normalize(
+                frame.filtered, new_max=255
+            )
+            if not stats[0]:
+                frame.filtered = np.zeros((frame.filtered.shape))
+
+            filtered.append(frame.filtered)
+            thermals.append(frame.thermal)
+        thermals = np.array(thermals)
+        filtered = np.array(filtered)
+    except:
+        logging.error("Cant get segment %s", sample, exc_info=True)
+        return None
+    return (thermals, filtered), features

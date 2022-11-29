@@ -1,6 +1,6 @@
 from ml_tools.frame import TrackChannels
-from ml_tools.dataset import SegmentType
-from ml_tools.tools import FrameTypes
+from ml_tools.datasetstructures import SegmentType
+from ml_tools.preprocess import FrameTypes
 
 
 class HyperParams(dict):
@@ -54,7 +54,10 @@ class HyperParams(dict):
     @property
     def segment_type(self):
         segment_type = self.get("segment_type", SegmentType.ALL_RANDOM.name)
-        return SegmentType[segment_type]
+        if isinstance(segment_type, str):
+            return SegmentType[segment_type]
+        else:
+            return segment_type
 
     # Model hyper paramters
     @property
@@ -66,6 +69,10 @@ class HyperParams(dict):
         return self.get("mvm", False)
 
     @property
+    def mvm_forest(self):
+        return self.get("mvm_forest", False)
+
+    @property
     def model_name(self):
         return self.get("model_name", "resnetv2")
 
@@ -75,7 +82,7 @@ class HyperParams(dict):
 
     @property
     def dense_sizes(self):
-        return self.get("dense_sizes", [1024, 512])
+        return self.get("dense_sizes", None)
 
     @property
     def label_smoothing(self):
@@ -95,11 +102,11 @@ class HyperParams(dict):
 
     @property
     def learning_rate(self):
-        return self.get("learning_rate")
+        return self.get("learning_rate", 0.001)
 
     @property
     def learning_rate_decay(self):
-        return self.get("learning_rate_decay", 1.0)
+        return self.get("learning_rate_decay", None)
 
     # Datageneration parameters
     @property
