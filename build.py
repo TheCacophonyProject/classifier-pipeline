@@ -368,6 +368,7 @@ def main():
     init_logging()
     args = parse_args()
     config = load_config(args.config_file)
+    logging.info("Building for type %s", config.train.type)
     test_clips = config.build.test_clips()
     if test_clips is None:
         test_clips = []
@@ -443,9 +444,7 @@ def main():
         print_counts(dataset, *datasets)
     for dataset in datasets:
         dir = os.path.join(record_dir, dataset.name)
-        create_tf_records(
-            dataset, dir, datasets[0].labels, threshold, num_shards=100, by_label=False
-        )
+        create_tf_records(dataset, dir, datasets[0].labels, threshold, num_shards=100)
         counts = {}
         for label in dataset.labels:
             count = len(dataset.samples_by_label.get(label, []))

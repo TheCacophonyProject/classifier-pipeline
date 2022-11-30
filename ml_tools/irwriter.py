@@ -43,7 +43,7 @@ import tensorflow as tf
 from . import tfrecord_util
 from ml_tools import tools
 from ml_tools.imageprocessing import normalize, rotate
-from load.irtrackextractor import get_ir_back_filtered
+from track.cliptracker import get_ir_back_filtered
 import cv2
 import random
 import math
@@ -204,17 +204,13 @@ def create_tf_records(
     lbl_counts = [0] * num_labels
 
     writers = []
-    for label in labels:
-        for i in range(num_shards):
+    for i in range(num_shards):
 
-            writers.append(
-                tf.io.TFRecordWriter(
-                    str(
-                        output_path
-                        / (f"{label}-%05d-of-%05d.tfrecord" % (i, num_shards))
-                    )
-                )
+        writers.append(
+            tf.io.TFRecordWriter(
+                str(output_path / (f"%05d-of-%05d.tfrecord" % (i, num_shards)))
             )
+        )
     load_first = 200
     try:
         count = 0
@@ -246,9 +242,8 @@ def create_tf_records(
                     l_i = labels.index(sample.label)
 
                     total_num_annotations_skipped += num_annotations_skipped
-                    writers[num_shards * l_i + lbl_counts[l_i] % num_shards].write(
-                        tf_example.SerializeToString()
-                    )
+                    writer = writers[count % num_shards]
+                    writer.write(tf_example.SerializeToString())
                     count += 1
                     lbl_counts[l_i] += 1
 
