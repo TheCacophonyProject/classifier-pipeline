@@ -106,18 +106,18 @@ class IRMotionDetector(MotionDetector):
                 if erosion_pixels > 0:
                     self.triggered += 1
                     self.triggered = min(self.triggered, 30)
-                    logging.info(
-                        "Got erosion pixel %s triggered %s",
-                        self.num_frames,
-                        self.triggered,
-                    )
+                    # logging.info(
+                    #     "Got erosion pixel %s triggered %s",
+                    #     self.num_frames,
+                    #     self.triggered,
+                    # )
                 else:
-                    if self.triggered > 0:
-                        logging.info(
-                            "Lost erosion %s triggered %s",
-                            self.num_frames,
-                            self.triggered - 1,
-                        )
+                    # if self.triggered > 0:
+                    #     logging.info(
+                    #         "Lost erosion %s triggered %s",
+                    #         self.num_frames,
+                    #         self.triggered - 1,
+                    #     )
 
                     self.triggered -= 1
                     self.triggered = max(self.triggered, 0)

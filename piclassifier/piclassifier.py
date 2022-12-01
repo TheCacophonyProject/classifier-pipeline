@@ -30,6 +30,7 @@ from ml_tools.interpreter import Interpreter
 from ml_tools.logs import init_logging
 from ml_tools.hyperparams import HyperParams
 from ml_tools.tools import CustomJSONEncoder
+from ml_tools.forestmodel import ForestModel
 from track.region import Region
 from . import beacon
 
@@ -44,16 +45,18 @@ import cv2
 
 
 class NeuralInterpreter(Interpreter):
+    TYPE = "Neural"
+
     def __init__(self, model_name):
         from openvino.inference_engine import IENetwork, IECore
 
         super().__init__(model_name)
-
+        model_name = Path(model_name)
         # can use to test on PC
         # device = "CPU"
         device = "MYRIAD"
-        model_xml = model_name + ".xml"
-        model_bin = os.path.splitext(model_xml)[0] + ".bin"
+        model_xml = model_name.with_suffix(".xml")
+        model_bin = model_name.with_suffix(".bin")
         ie = IECore()
         ie.set_config({}, device)
         net = ie.read_network(model=model_xml, weights=model_bin)
@@ -66,8 +69,8 @@ class NeuralInterpreter(Interpreter):
         if input_x is None:
             return None
         input_x = np.float32(input_x)
-        rearranged_arr = np.transpose(input_x, axes=[2, 0, 1])
-        input_x = np.array([[rearranged_arr]])
+        input_x = np.transpose(input_x, axes=[3, 1, 2])
+        # input_x = np.array([[rearranged_arr]])
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
         return res[0]
@@ -77,6 +80,8 @@ class NeuralInterpreter(Interpreter):
 
 
 class LiteInterpreter(Interpreter):
+    TYPE = "TFLite"
+
     def __init__(self, model_name):
         super().__init__(model_name)
 
@@ -96,7 +101,7 @@ class LiteInterpreter(Interpreter):
     def predict(self, input_x):
         start = time.time()
         input_x = np.float32(input_x)
-        input_x = input_x[np.newaxis, :]
+        # input_x = input_x[np.newaxis, :]
 
         self.interpreter.set_tensor(self.input["index"], input_x)
         self.interpreter.invoke()
@@ -109,7 +114,7 @@ class LiteInterpreter(Interpreter):
         return self.input["shape"]
 
 
-def get_full_classifier(model):
+def get_full_classifier(model, data_type):
     from ml_tools.kerasmodel import KerasModel
 
     """
@@ -120,22 +125,29 @@ def get_full_classifier(model):
     logging.info("classifier loading")
     classifier = KerasModel()
     classifier.load_model(model.model_file, weights=model.model_weights)
+    classifier.type = data_type
     logging.info("classifier loaded ({})".format(datetime.now() - t0))
 
     return classifier
 
 
-def get_classifier(model):
-    model_name, model_type = os.path.splitext(model.model_file)
-    logging.info("Loading %s", model_name)
-    if model_type == ".tflite":
-        classifier = LiteInterpreter(model_name)
-    elif model_type == ".xml":
-        classifier = NeuralInterpreter(model_name)
+def get_classifier(model, data_type):
+    # model_name, type = os.path.splitext(model.model_file)
+
+    logging.info(
+        "Loading %s of type %s with datatype %s",
+        model.model_file,
+        model.type,
+        data_type,
+    )
+    if model.type == LiteInterpreter.TYPE:
+        classifier = LiteInterpreter(model.model_file, data_type)
+    elif model.type == NeuralInterpreter.TYPE:
+        classifier = NeuralInterpreter(model.model_file, data_type)
+    elif model.type == ForestModel.TYPE:
+        classifier = ForestModel(model.model_file, data_type)
     else:
-        classifier = get_full_classifier(
-            model,
-        )
+        classifier = get_full_classifier(model, data_type)
     return classifier
 
 
@@ -173,7 +185,7 @@ class PiClassifier(Processor):
     MAX_CONSEC = 1
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
-    SKIP_FRAMES = 10
+    SKIP_FRAMES = 30
 
     def __init__(
         self,
@@ -206,7 +218,7 @@ class PiClassifier(Processor):
         self.bluetooth_beacons = thermal_config.motion.bluetooth_beacons
         self.preview_frames = thermal_config.recorder.preview_secs * headers.fps
 
-        self.fps_timer = SlidingWindow((9), np.float32)
+        self.fps_timer = SlidingWindow((headers.fps), np.float32)
         self.preview_type = preview_type
         self.max_keep_frames = None if preview_type else 0
         if thermal_config.recorder.disable_recordings:
@@ -283,11 +295,21 @@ class PiClassifier(Processor):
 
         if self.classify:
             model = config.classify.models[0]
-            self.classifier = get_classifier(model)
-            self.frames_per_classify = (
-                self.classifier.params.square_width
-                * self.classifier.params.square_width
-            )
+            self.classifier = get_classifier(model, self.type)
+
+            if self.classifier.TYPE == ForestModel.TYPE:
+                self.last_x_frames = 5 * headers.fps
+                self.frames_per_classify = self.last_x_frames
+                PiClassifier.SKIP_FRAMES = 10
+                # probably could be even more
+
+            else:
+                self.last_x_frames = 1
+                self.frames_per_classify = (
+                    self.classifier.params.square_width
+                    * self.classifier.params.square_width
+                )
+
             self.max_keep_frames = (
                 self.frames_per_classify * 2 if not preview_type else None
             )
@@ -377,7 +399,7 @@ class PiClassifier(Processor):
     def startup_classifier(self):
         # classifies an empty frame to force loading of the model into memory
         in_shape = self.classifier.shape()[1:]
-        p_frame = np.zeros((in_shape), np.float32)
+        p_frame = np.zeros((1, *in_shape), np.float32)
         self.classifier.predict(p_frame)
 
     def get_active_tracks(self):
@@ -435,15 +457,18 @@ class PiClassifier(Processor):
             track_prediction = self.predictions.get_or_create_prediction(
                 track, keep_all=False
             )
-            if self.type == "IR":
-                prediction, mass = self.identify_ir(track)
-            else:
-                logging.info("identify thermal %s", track)
-                prediction, mass = self.identify_thermal(track)
+            prediction, mass = self.classifier.predict_track(
+                clip,
+                track,
+                last_x_frames=self.last_x_frames,
+                scale=self.track_extractor.scale,
+                frames_per_classify=self.frames_per_classify,
+            )
             if prediction is None:
                 track_prediction.last_frame_classified = self.clip.current_frame
                 continue
-            track_prediction.classified_frame(self.clip.current_frame, prediction, mass)
+            for p, m in zip(prediction, mass):
+                track_prediction.classified_frame(self.clip.current_frame, p, m)
             logging.info(
                 "Track %s is predicted as %s", track, track_prediction.get_prediction()
             )
@@ -753,11 +778,12 @@ class PiClassifier(Processor):
                 "Ending clip with %s tracks post filtering", len(self.clip.tracks)
             )
             if self.classify:
-                for _, prediction in self.predictions.prediction_per_track.items():
+                for t_id, prediction in self.predictions.prediction_per_track.items():
                     if prediction.max_score:
                         logging.info(
-                            "Clip {} {}".format(
+                            "Clip {} {} {}".format(
                                 self.clip.get_id(),
+                                t_id,
                                 prediction.description(),
                             )
                         )

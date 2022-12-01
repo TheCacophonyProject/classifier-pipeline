@@ -862,8 +862,8 @@ class KerasModel(Interpreter):
         track_prediction.classify_time = time.time() - start
         return track_prediction
 
-    def predict(self, frame):
-        return self.model.predict(frame[np.newaxis, :])[0]
+    def predict(self, frames):
+        return self.model.predict(frames)
 
     def classify_frame(self, frame, thermal_median, preprocess=True):
         if preprocess:

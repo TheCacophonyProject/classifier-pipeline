@@ -227,7 +227,7 @@ class Previewer:
         if type == "IR":
             thermal = thermal[..., np.newaxis]
             thermal = np.repeat(thermal, 3, axis=2)
-            image = Image.fromarray(thermal)
+            image = Image.fromarray(np.uint8(thermal))
         else:
             image = tools.convert_heat_to_img(frame, self.colourmap, h_min, h_max)
 

@@ -170,7 +170,7 @@ class TrackPrediction:
         return self.description()
 
     def get_classified_footer(self, frame_number=None):
-        if len(self.smoothed_predictions) == 0:
+        if len(self.smoothed_predictions) == 0 or not self.keep_all:
             return "no classification"
         score = self.score_at_time(frame_number) * 10
         label = self.labels[self.label_at_time(frame_number)]
@@ -299,6 +299,7 @@ class TrackPrediction:
 
             if a_min <= frame_number:
                 predictions.append(self.smoothed_predictions[i])
+
         class_best_score = np.sum(predictions, axis=0)
         if len(predictions) == 0:
             return 0
