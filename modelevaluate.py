@@ -15,7 +15,7 @@ import os
 import json
 import pickle
 from config.config import Config
-from ml_tools.kerasmodel import KerasModel, plot_confusion_matrix
+from ml_tools.kerasmodel import KerasModel, plot_confusion_matrix, get_dataset
 from ml_tools import tools
 from ml_tools.trackdatabase import TrackDatabase
 import tensorflow as tf
@@ -206,13 +206,19 @@ def main():
         model.load_training_meta(base_dir)
 
         files = base_dir + f"/training-data/{args.dataset}"
-        dataset, _ = model.get_dataset(
+        dataset, _ = get_dataset(
             files,
+            model.type,
+            model.labels,
+            batch_size=64,
+            image_size=model.params.output_dim[:2],
+            preprocess_fn=model.preprocess_fn,
             augment=False,
-            reshuffle=False,
-            deterministic=True,
             resample=False,
-            stop_on_empty_dataset=False,
+            include_features=model.params.mvm,
+            one_hot=True,
+            deterministic=True,
+            reshuffle=False,
         )
         logging.info(
             "Dataset loaded %s, using labels %s",

@@ -524,15 +524,25 @@ class Track:
             return False
         self.bounds_history = []
         self.frame_list = []
-        for position in positions:
+        for i, position in enumerate(positions):
             if isinstance(position, list):
                 region = Region.region_from_array(position[1])
                 if region.frame_number is None:
                     frame_number = round(position[0] * frames_per_second)
+
                     region.frame_number = frame_number
             else:
                 region = Region.region_from_json(position)
-
+                if region.frame_number is None:
+                    if "frameTime" in position:
+                        if i == 0:
+                            region.frame_number = position["frameTime"] * 9
+                        else:
+                            region.frame_number = (
+                                self.bounds_history[0].frame_number + i
+                            )
+                    else:
+                        raise Exception("No frame number info for track")
             if self.start_frame is None:
                 self.start_frame = region.frame_number
             self.end_frame = region.frame_number

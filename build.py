@@ -42,7 +42,7 @@ def parse_args():
     parser.add_argument(
         "-m",
         "--min-samples",
-        default=MIN_SAMPLES,
+        default=None,
         type=int,
         help="Min tracks per dataset (Default 100)",
     )
@@ -85,7 +85,15 @@ def parse_args():
     else:
         if args.date is None:
             args.date = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=30)
-            # args.date = datetime.datetime.now() - datetime.timedelta(days=30)
+
+    if args.min_samples is not None:
+        global MAX_TEST_TRACKS, MAX_TEST_SAMPLES, MIN_SAMPLES, MIN_TRACKS
+        MAX_TEST_TRACKS = args.min_samples
+        MAX_TEST_SAMPLES = args.min_samples
+
+        MIN_SAMPLES = args.min_samples
+        MIN_TRACKS = args.min_samples
+        # args.date = datetime.datetime.now() - datetime.timedelta(days=30)
 
     logging.info("Loading training set up to %s", args.date)
     return args
@@ -218,19 +226,7 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     sample_limit = num_validate_samples
     tracks = set()
     print(
-        label,
-        "looking for val tracks",
-        num_validate_tracks,
-        "  out of tracks",
-        total_tracks,
-        "and # samples",
-        num_validate_samples,
-        "from total samples",
-        total,
-        "# test tracks",
-        num_test_tracks,
-        "# num test samples",
-        num_test_samples,
+        f"{label} - looking for val {num_validate_tracks} tracks out of {total_tracks} tracks and {num_validate_samples} samples from a total of {total} samples  with {num_test_tracks} test tracks and {num_test_samples} test samples"
     )
     for i, sample_bin in enumerate(sample_bins):
         samples = samples_by_bin[sample_bin]

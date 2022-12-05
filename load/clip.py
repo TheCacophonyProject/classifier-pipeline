@@ -238,7 +238,7 @@ class Clip:
                 component[1],
                 component[2],
                 component[3],
-                centoird=centroid,
+                centroid=centroid,
             )
             region.enlarge(2, max=max_region)
             if region.width >= self.res_x or region.height >= self.res_y:
@@ -251,7 +251,7 @@ class Clip:
             background_region = region.subimage(initial_frame)
             norm_back = background_region.copy()
             norm_back, _ = normalize(norm_back, new_max=255)
-            sub_components, sub_connected, sub_stats = detect_objects(
+            sub_components, sub_connected, sub_stats, centroids = detect_objects(
                 norm_back, otsus=True
             )
 

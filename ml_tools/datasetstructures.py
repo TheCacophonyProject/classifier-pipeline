@@ -289,6 +289,7 @@ class TrackHeader:
         segment_min_mass=None,
         use_important=False,
         repeats=1,
+        max_segments=None,
     ):
         min_frames = segment_width
         if self.label == "vehicle" or self.label == "human":
@@ -315,6 +316,7 @@ class TrackHeader:
             skipped_frames=self.skipped_frames,
             start_time=self.start_time,
             segment_type=segment_type,
+            max_segments=max_segments,
         )
 
     @property
@@ -744,8 +746,8 @@ class SegmentHeader(Sample):
                 frame_numbers=self.frame_numbers - self.start_frame,
             )
 
-            thermals = np.empty(len(frames), dtype=object)
-            filtered = np.empty(len(frames), dtype=object)
+            thermals = []  # np.empty(len(frames), dtype=object)
+            filtered = []  # np.empty(len(frames), dtype=object)
 
             for i, frame in enumerate(frames):
                 frame.float_arrays()
@@ -756,25 +758,38 @@ class SegmentHeader(Sample):
                 frame.thermal -= temp
                 np.clip(frame.thermal, a_min=0, a_max=None, out=frame.thermal)
 
-                # frame.thermal, _ = imageprocessing.normalize(frame.thermal, new_max=255)
-                # frame.filtered, _ = imageprocessing.normalize(frame.filtered, new_max=255)
+                frame.thermal, stats = imageprocessing.normalize(
+                    frame.thermal, new_max=255
+                )
+                if not stats[0]:
+                    frame.thermal = np.zeros((frame.thermal.shape))
+                    # continue
+                frame.filtered, stats = imageprocessing.normalize(
+                    frame.filtered, new_max=255
+                )
+                if not stats[0]:
+                    frame.filtered = np.zeros((frame.filtered.shape))
 
-                filtered[i] = frame.filtered
-                thermals[i] = frame.thermal
-            thermal, success = imageprocessing.square_clip(thermals, 5, (32, 32))
-            if not success:
-                logging.warn("Error making thermal square clip %s", self.clip_id)
-                return None
-            filtered, success = imageprocessing.square_clip(filtered, 5, (32, 32))
-            if not success:
-                logging.warn("Error making filtered square clip %s", filtered)
-
-                return None
+                # continue
+                # frame.filtered =
+                filtered.append(frame.filtered)
+                thermals.append(frame.thermal)
+            thermals = np.array(thermals)
+            filtered = np.array(filtered)
+            # thermal, success = imageprocessing.square_clip(thermals, 5, (32, 32))
+            # if not success:
+            #     logging.warn("Error making thermal square clip %s", self.clip_id)
+            #     return None
+            # filtered, success = imageprocessing.square_clip(filtered, 5, (32, 32))
+            # if not success:
+            #     logging.warn("Error making filtered square clip %s", filtered)
+            #
+            #     return None
         except:
             logging.error("Cant get segment %s", self, exc_info=True)
             raise "EX"
             return None
-        return thermal, filtered
+        return thermals, filtered
 
 
 def get_cropped_fraction(region: tools.Rectangle, width, height):
@@ -819,6 +834,7 @@ def get_segments(
     camera=None,
     start_time=None,
     segment_type=SegmentType.ALL_RANDOM,
+    max_segments=None,
 ):
 
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
@@ -883,7 +899,8 @@ def get_segments(
     frame_indices = np.array(frame_indices)
     segment_count = max(1, len(frame_indices) // segment_frame_spacing)
     segment_count = int(segment_count)
-
+    if max_segments is not None:
+        segment_count = min(max_segments, segment_count)
     # take any segment_width frames, this could be done each epoch
     whole_indices = frame_indices
     random_frames = segment_type in [

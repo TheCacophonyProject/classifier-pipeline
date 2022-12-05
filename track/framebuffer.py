@@ -82,7 +82,6 @@ class FrameBuffer:
             return self.current_frame
         elif self.cache:
             return self.cache.get_frame(frame_number)
-
         if len(self.frames) > frame_number:
             return self.frames[frame_number]
         return None
