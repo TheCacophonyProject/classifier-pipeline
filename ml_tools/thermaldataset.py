@@ -23,7 +23,40 @@ insect = None
 fp = None
 
 
-def load_dataset(filenames, num_labels, args):
+def load_dataset(filenames, labels, args):
+    excluded_labels = args.get("excluded_labels", [])
+    global remapped_y
+    remapped = {}
+    keys = []
+    values = []
+    new_labels = labels.copy()
+    for excluded in excluded_labels:
+        if excluded in labels:
+            new_labels.remove(excluded)
+    for l in labels:
+        keys.append(labels.index(l))
+        if l in excluded_labels:
+            remapped[l] = 0
+            values.append(-1)
+            logging.info("Excluding %s", l)
+        else:
+            remapped[l] = [l]
+            values.append(new_labels.index(l))
+    if "false-positive" in labels and "insect" in labels:
+        remapped["false-positive"].append("insect")
+        values[labels.index("insect")] = new_labels.index("false-positive")
+        del remapped["insect"]
+    remapped_y = tf.lookup.StaticHashTable(
+        initializer=tf.lookup.KeyValueTensorInitializer(
+            keys=tf.constant(keys),
+            values=tf.constant(values),
+        ),
+        default_value=tf.constant(-1),
+        name="remapped_y",
+    )
+    for k, v in remapped.items():
+        logging.info("Label %s has these values: %s", k, v)
+    # print("remapped is now", labels, " to ", labels, " k", keys, " values", values)
     deterministic = args.get("deterministic", False)
 
     ignore_order = tf.data.Options()
@@ -44,10 +77,12 @@ def load_dataset(filenames, num_labels, args):
     only_features = args.get("only_features", False)
     one_hot = args.get("one_hot", True)
     dataset = dataset.apply(tf.data.experimental.ignore_errors())
+    excluded_labels = args.get("excluded_labels")
+
     dataset = dataset.map(
         partial(
             read_tfrecord,
-            num_labels=num_labels,
+            num_labels=len(new_labels),
             image_size=image_size,
             labeled=labeled,
             augment=augment,
@@ -61,7 +96,10 @@ def load_dataset(filenames, num_labels, args):
     )
     filter_nan = lambda x, y: not tf.reduce_any(tf.math.is_nan(x[1]))
     dataset = dataset.filter(filter_nan)
-    return dataset
+    filter_excluded = lambda x, y: not tf.math.equal(tf.math.count_nonzero(y), 0)
+    dataset = dataset.filter(filter_excluded)
+
+    return dataset, remapped, new_labels
 
 
 #
@@ -86,28 +124,9 @@ def get_distribution(dataset):
 
 def get_dataset(base_dir, labels, **args):
     num_labels = len(labels)
-    global remapped_y
-    remapped = {}
-    keys = []
-    values = []
-    for l in labels:
-        remapped[l] = [l]
-        keys.append(labels.index(l))
-        values.append(labels.index(l))
-    if "false-positive" in labels and "insect" in labels:
-        remapped["false-positive"].append("insect")
-        values[labels.index("insect")] = labels.index("false-positive")
-        del remapped["insect"]
-    remapped_y = tf.lookup.StaticHashTable(
-        initializer=tf.lookup.KeyValueTensorInitializer(
-            keys=tf.constant(keys),
-            values=tf.constant(values),
-        ),
-        default_value=tf.constant(-1),
-        name="remapped_y",
-    )
+
     filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
-    dataset = load_dataset(filenames, num_labels, args)
+    dataset, remapped, labels = load_dataset(filenames, labels, args)
     resample_data = args.get("resample", True)
     if resample_data:
         logging.info("Resampling data")
@@ -132,7 +151,7 @@ def get_dataset(base_dir, labels, **args):
     batch_size = args.get("batch_size", None)
     if batch_size is not None:
         dataset = dataset.batch(batch_size)
-    return dataset, remapped
+    return dataset, remapped, labels
 
 
 def resample(dataset, labels):
@@ -140,6 +159,7 @@ def resample(dataset, labels):
     num_labels = len(labels)
     true_categories = [y for x, y in dataset]
     if len(true_categories) == 0:
+        logging.info("no data")
         return None
     true_categories = np.int64(tf.argmax(true_categories, axis=1))
     c = Counter(list(true_categories))
@@ -327,8 +347,12 @@ def read_tfrecord(
         label = tf.cast(example["image/class/label"], tf.int32)
         global remapped_y
         label = remapped_y.lookup(label)
+
         if one_hot:
-            label = tf.one_hot(label, num_labels)
+            if tf.math.equal(label, -1):
+                label = tf.zeros(num_labels)
+            else:
+                label = tf.one_hot(label, num_labels)
         if include_features or only_features:
             features = example["image/features"]
             if only_features:
@@ -385,15 +409,15 @@ def main():
     labels = meta.get("labels", [])
     datasets = []
 
-    resampled_ds, remapped = get_dataset(
+    resampled_ds, remapped, labels = get_dataset(
         # dir,
-        f"{config.tracks_folder}/training-data/test",
+        f"{config.tracks_folder}/training-data/validation",
         labels,
-        batch_size=None,
+        batch_size=32,
         image_size=(160, 160),
         # augment=True,
         # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
-        # resample=True,
+        resample=False,
         include_features=True,
     )
     # print(get_distribution(resampled_ds))
@@ -408,21 +432,16 @@ def main():
         print("epoch is size", len(true_categories))
         for i in range(len(labels)):
             print("after have", labels[i], c[i])
+        for x, y in resampled_ds:
+            show_batch(x, y, labels)
 
     # return
 
 
 def show_batch(image_batch, label_batch, labels):
-    features = image_batch[1]
-    for f in features:
-        for v in f:
-            print(v)
-        # print(f.shape, f.dtype)
-        return
     image_batch = image_batch[0]
-    print("features are", features.shape, image_batch.shape)
     plt.figure(figsize=(10, 10))
-    print("images in batch", len(image_batch))
+    print("images in batch", len(image_batch), len(label_batch))
     num_images = min(len(image_batch), 25)
     for n in range(num_images):
         ax = plt.subplot(5, 5, n + 1)
