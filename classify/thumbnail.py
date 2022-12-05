@@ -37,18 +37,23 @@ def best_trackless_thumb(clip):
                 best_filtered[y : y + THUMBNAIL_SIZE, x : x + THUMBNAIL_SIZE]
             )
             if best_region is None:
-                best_region = ((y, x), filtered_sum, thermal_sum)
+                best_region = ((x, y), filtered_sum, thermal_sum)
             elif best_region[1] > 0:
                 if best_region[1] < filtered_sum:
-                    best_region = ((y, x), thermal_sum, filtered_sum)
+                    best_region = ((x, y), thermal_sum, filtered_sum)
             elif best_region[2] < thermal_sum:
-                best_region = ((y, x), thermal_sum, filtered_sum)
+                best_region = ((x, y), thermal_sum, filtered_sum)
+    centroid = (
+        best_region[0][0] + THUMBNAIL_SIZE // 2,
+        best_region[0][1] + THUMBNAIL_SIZE // 2,
+    )
     return Region(
-        best_region[0][1],
+        best_region[0][0],
         best_region[0][1],
         THUMBNAIL_SIZE,
         THUMBNAIL_SIZE,
         frame_number=best_frame_i,
+        centroid=centroid,
     )
 
 
@@ -56,6 +61,7 @@ def get_track_thumb_stats(clip, track):
     Stat = namedtuple("Stat", "region contours median_diff")
     max_mass = 0
     max_median_diff = 0
+    min_median_diff = 0
     max_contour = 0
     stats = []
     for region in track.bounds_history:
@@ -93,25 +99,35 @@ def get_track_thumb_stats(clip, track):
             max_mass = region.mass
         if median_diff > max_median_diff:
             max_median_diff = median_diff
+        if median_diff < min_median_diff:
+            min_median_diff = median_diff
         stats.append(Stat(region, points, median_diff))
-    return stats, max_mass, max_median_diff, max_contour
+    return stats, max_mass, max_median_diff, min_median_diff, max_contour
 
 
 def get_thumbanil_info(clip, track):
-    stats, max_mass, max_median_diff, max_contour = get_track_thumb_stats(clip, track)
+    (
+        stats,
+        max_mass,
+        max_median_diff,
+        min_median_diff,
+        max_contour,
+    ) = get_track_thumb_stats(clip, track)
     if len(stats) == 0:
         return None, 0
     scored_frames = sorted(
         stats,
-        key=lambda s: score(s, max_mass, max_median_diff, max_contour),
+        key=lambda s: score(s, max_mass, max_median_diff, min_median_diff, max_contour),
         reverse=True,
     )
 
-    best_score = score(scored_frames[0], max_mass, max_median_diff, max_contour)
+    best_score = score(
+        scored_frames[0], max_mass, max_median_diff, min_median_diff, max_contour
+    )
     return scored_frames[0], best_score
 
 
-def score(stat, max_mass, max_median_diff, max_contour):
+def score(stat, max_mass, max_median_diff, min_median_diff, max_contour):
     region = stat.region
     # mass out of 40
     mass_percent = region.mass / max_mass
@@ -124,10 +140,17 @@ def score(stat, max_mass, max_median_diff, max_contour):
     centroid_mid = tools.eucl_distance(region.centroid, region.mid) ** 0.5
     centroid_mid *= 2
     # this will be probably between 1-10 could be worth * 1.5
-
     # median diff out of 50
-    diff = stat.median_diff / max_median_diff
-    diff = diff * 40
+    if max_median_diff == 0:
+        # not sure to zero or what here
+        diff = 0
+        if min_median_diff != 0:
+            diff = stat.median_diff + abs(min_median_diff)
+            diff = diff / abs(min_median_diff)
+            diff = diff * 40
+    else:
+        diff = stat.median_diff / max_median_diff
+        diff = diff * 40
 
     score = mass_percent + pts + diff - centroid_mid
 
@@ -196,9 +219,13 @@ def remove_axes(title):
 
 def thumbnail_debug(clip):
     for track in clip.tracks:
-        stats, max_mass, max_median_diff, max_contour = get_track_thumb_stats(
-            clip, track
-        )
+        (
+            stats,
+            max_mass,
+            max_median_diff,
+            min_median_diff,
+            max_contour,
+        ) = get_track_thumb_stats(clip, track)
 
         mass_sorted = sorted(
             stats,
@@ -232,7 +259,9 @@ def thumbnail_debug(clip):
 
         score_sorted = sorted(
             stats,
-            key=lambda s: score(s, max_mass, max_median_diff, max_contour),
+            key=lambda s: score(
+                s, max_mass, max_median_diff, min_median_diff, max_contour
+            ),
             reverse=True,
         )
         scored_frames = []

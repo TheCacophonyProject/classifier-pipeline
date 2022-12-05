@@ -1089,7 +1089,6 @@ def optimizer(params):
             decay_rate=params.learning_rate_decay,
             staircase=True,
         )
-        print("APPLYING DEACAY")
     else:
         learning_rate = params.learning_rate  # setup optimizer
     if learning_rate:
