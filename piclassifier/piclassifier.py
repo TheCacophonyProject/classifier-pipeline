@@ -304,6 +304,8 @@ class PiClassifier(Processor):
                 # probably could be even more
 
             else:
+                self.preprocess_fn = self.get_preprocess_fn()
+
                 self.last_x_frames = 1
                 self.frames_per_classify = (
                     self.classifier.params.square_width
@@ -322,7 +324,6 @@ class PiClassifier(Processor):
                 self.fp_index = self.classifier.labels.index("false-positive")
             except ValueError:
                 self.fp_index = None
-            self.preprocess_fn = self.get_preprocess_fn()
             self.startup_classifier()
 
     def get_preprocess_fn(self):

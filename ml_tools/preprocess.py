@@ -4,7 +4,6 @@ from ml_tools import tools
 from ml_tools.frame import TrackChannels
 import logging
 from ml_tools import imageprocessing
-import tensorflow as tf
 from track.region import Region
 import cv2
 from ml_tools.tools import FrameTypes
@@ -25,6 +24,8 @@ def preprocess_fn(x):
 
 
 def convert(image):
+    import tensorflow as tf
+
     image = tf.image.convert_image_dtype(image, tf.float32)
     return image
 
@@ -38,6 +39,8 @@ def augement_frame(frame, frame_size, dim):
     )
 
     image = convert(frame)
+    import tensorflow as tf
+
     image = tf.image.random_crop(image, size=[dim[0], dim[1], 3])
     if random.random() > 0.50:
         image = tf.image.flip_left_right(image)
