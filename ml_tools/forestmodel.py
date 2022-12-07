@@ -214,6 +214,7 @@ def forest_features(
     minimum_features = None
     all_features = []
     f_count = 0
+    prev_count = 0
     back_med = np.median(background)
     if len(track_frames) <= buf_len:
         return None
