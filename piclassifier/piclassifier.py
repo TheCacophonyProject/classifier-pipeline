@@ -453,6 +453,7 @@ class PiClassifier(Processor):
 
         active_tracks = self.get_active_tracks()
         new_prediction = False
+        logging.info("Identifying %s", active_tracks)
         for i, track in enumerate(active_tracks):
             regions = []
             track_prediction = self.predictions.get_or_create_prediction(

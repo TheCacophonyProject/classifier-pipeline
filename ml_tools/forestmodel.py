@@ -204,9 +204,14 @@ def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
                 int(background.shape[0] * resize),
             ),
         )
-    return forest_features(
+    logging.info("Time taken to prep %s", time.time() - start)
+    start = time.time()
+    x = forest_features(
         frames, background, frame_temp_median, data_bounds, cropped=False
     )
+    logging.info("Time taken to get features %s", time.time() - start)
+
+    return x
 
 
 def forest_features(
