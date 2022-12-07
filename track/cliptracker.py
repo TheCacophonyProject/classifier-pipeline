@@ -147,12 +147,8 @@ class ClipTracker(ABC):
                 if self.config.min_hist_diff is not None:
                     background = clip.background
                     if self.scale:
-                        background = cv2.resize(
-                            background,
-                            (
-                                int(self.res_x),
-                                int(self.res_y),
-                            ),
+                        background = clip.rescaled_background(
+                            (int(self.res_x), int(self.res_y))
                         )
                     hist_v = hist_diff(region, background, cur_frame.thermal)
                     if hist_v > self.config.min_hist_diff:
@@ -467,6 +463,9 @@ class ClipTracker(ABC):
 
 
 class Background(ABC):
+    def __init__(self):
+        self.rescaled = None
+
     @abstractmethod
     def set_background(self, background, frames=1):
         """set_background version"""
@@ -491,6 +490,7 @@ class Background(ABC):
 
 class CVBackground(Background):
     def __init__(self):
+        super().__init__()
         # seems to be better than MOG2
         self.algorithm = cv2.createBackgroundSubtractorKNN(
             history=500, detectShadows=False
@@ -524,6 +524,7 @@ class CVBackground(Background):
 
 class DiffBackground(Background):
     def __init__(self):
+        super().__init__()
         self.frames = 1
         self._background = None
 

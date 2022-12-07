@@ -96,6 +96,21 @@ class Clip:
             self._background = background
             self._background_calculated()
 
+        self.rescaled = None
+
+    def rescaled_background(self, dims):
+        if self.rescaled is not None:
+            if self.rescaled[0] == self.current_frame:
+                logging.info("Loading from cache")
+                # 1 / 0
+                return self.rescaled[1]
+        resized = cv2.resize(
+            self.background,
+            (dims),
+        )
+        self.rescaled = (self.current_frame, resized)
+        return resized
+
     @property
     def background(self):
         return self._background

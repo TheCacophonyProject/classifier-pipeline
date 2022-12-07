@@ -196,15 +196,12 @@ def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
         frame_temp_median[r.frame_number] = np.median(frame.thermal)
         assert frame.frame_number == r.frame_number
     if scale is not None and scale != 1:
-        background = background.copy()
         resize = 1 / scale
-        background = cv2.resize(
-            background,
-            (
-                int(background.shape[1] * resize),
-                int(background.shape[0] * resize),
-            ),
+        background = clip.rescaled_background(
+            (int(background.shape[1] * resize), int(background.shape[0] * resize))
         )
+    else:
+        backgorund = clip.background
     logging.info("Time taken to prep %s", time.time() - start)
     start = time.time()
     x = forest_features(
@@ -227,9 +224,14 @@ def forest_features(
     prev_count = 0
     hist_time = 0
     calc_time = 0
+    min_time = 0
+    count_time = 0
+    prep = 0
+    back_med = np.median(background)
     if len(track_frames) <= buf_len:
         return None
     for i, frame in enumerate(track_frames):
+        start = time.time()
         region = regions[i]
         if region.blank or region.width == 0 or region.height == 0:
             prev_count = 0
@@ -237,25 +239,30 @@ def forest_features(
         # frame.float_arrays()
         feature = FrameFeatures(region)
         sub_back = region.subimage(background)
+        prep += time.time() - start
         start = time.time()
         feature.calc_histogram(sub_back, frame)
         hist_time += time.time() - start
+        start = time.time()
         t_median = frame_temp_median[region.frame_number]
         if cropped:
             cropped_frame = frame
         else:
 
             cropped_frame = region.subimage(frame)
+            # print("cropping from cropped", frame.dtype)
             # frame.crop_by_region(region)
         thermal = np.float32(cropped_frame)
         f_count += 1
 
-        thermal = thermal + np.median(background) - t_median
+        thermal = thermal + back_med - t_median
         filtered = thermal - sub_back
+        prep += time.time() - start
         start = time.time()
         feature.calculate(thermal, sub_back)
         calc_time += time.time() - start
         count_back = min(buf_len, prev_count)
+        start = time.time()
         for i in range(count_back):
             prev = frame_features[-i - 1]
             vel = feature.cent - prev.cent
@@ -265,29 +272,32 @@ def forest_features(
             feature.rel_speed_y[i] = np.abs(vel[1]) / feature.sqrt_area
             feature.speed_x[i] = np.abs(vel[0])
             feature.speed_y[i] = np.abs(vel[1])
-
+        count_time += time.time() - start
         frame_features.append(feature)
         features = feature.features()
         all_features.append(features)
         prev_count += 1
         if maximum_features is None:
-            maximum_features = features.copy()
+            maximum_features = features
             minimum_features = features.copy()
-
-            avg_features = features.copy()
+            avg_features = features
         else:
             maximum_features = np.maximum(features, maximum_features)
-            for i, (new, min_f) in enumerate(zip(features, minimum_features)):
-                if min_f == 0:
-                    minimum_features[i] = new
-                elif new != 0 and new < min_f:
-                    minimum_features[i] = new
+            min_time = 0
+            start = time.time()
+            non_zero = features != 0
+            current_zero = minimum_features == 0
+            minimum_features[current_zero] = features[current_zero]
+            minimum_features[non_zero] = np.minimum(
+                minimum_features[non_zero], features[non_zero]
+            )
             # Aggregate
             avg_features += features
     if f_count <= buf_len:
         return None
     # Compute statistics for all tracks that have the min required duration
     valid_counter = 0
+    start = time.time()
     N = f_count - np.array(
         [
             0,
@@ -344,7 +354,16 @@ def forest_features(
             np.array([len(track_frames)]),
         )
     )
-    logging.info("Hist time %s calc time %s", hist_time, calc_time)
+    logging.info(
+        "Hist time %s calc time %s count %s min %s finals hit %s prep %s total %s",
+        hist_time,
+        calc_time,
+        count_time,
+        min_time,
+        time.time() - start,
+        prep,
+        time.time() - start + min_time + count_time + calc_time + hist_time + prep,
+    )
     return X
 
 
