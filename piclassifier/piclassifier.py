@@ -414,15 +414,20 @@ class PiClassifier(Processor):
         for track in active_tracks:
             pred = self.predictions.prediction_for(track.get_id())
             if pred is not None:
-                if self.clip.current_frame - pred.last_frame_classified < PREDICT_EVERY:
+                if (
+                    pred.last_frame_classified is not None
+                    and self.clip.current_frame - pred.last_frame_classified
+                    < PiClassifier.PREDICT_EVERY
+                ):
                     logging.info(
                         "Skipping %s as predicted %s and now at %s",
                         track,
                         pred.last_frame_classified,
                         self.clip.current_frame,
                     )
-                else:
-                    filtered.append(track)
+                    continue
+
+            filtered.append(track)
         active_tracks = filtered
         if (
             len(active_tracks) <= PiClassifier.NUM_CONCURRENT_TRACKS
