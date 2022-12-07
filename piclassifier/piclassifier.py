@@ -186,6 +186,7 @@ class PiClassifier(Processor):
     # after every MAX_CONSEC frames skip this many frames
     # this gives the cpu a break
     SKIP_FRAMES = 30
+    PREDICT_EVERY = 40
 
     def __init__(
         self,
@@ -409,6 +410,20 @@ class PiClassifier(Processor):
         """
         active_tracks = self.clip.active_tracks
         active_tracks = [track for track in active_tracks if len(track) > 10]
+        filtered = []
+        for track in active_tracks:
+            pred = self.predictions.prediction_for(track.get_id())
+            if pred is not None:
+                if self.clip.current_frame - pred.last_frame_classified < PREDICT_EVERY:
+                    logging.info(
+                        "Skipping %s as predicted %s and now at %s",
+                        track,
+                        pred.last_frame_classified,
+                        self.clip.current_frame,
+                    )
+                else:
+                    filtered.append(track)
+        active_tracks = filtered
         if (
             len(active_tracks) <= PiClassifier.NUM_CONCURRENT_TRACKS
             or not self.classify

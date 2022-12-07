@@ -11,6 +11,8 @@ import joblib
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 import cv2
+import time
+
 
 FEAT_LABELS = [
     "sqrt_area",
@@ -161,7 +163,6 @@ class ForestModel(Interpreter):
 
 
 def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
-    import time
 
     start = time.time()
     background = clip.background
@@ -549,16 +550,17 @@ class FrameFeatures:
             ]
         )
 
-    def calc_histogram(self, sub_back, crop_t):
-        max_v = np.amax(sub_back)
-        min_v = np.amin(sub_back)
-        sub_back = (np.float32(sub_back) - min_v) / (max_v - min_v)
-        max_v = np.amax(crop_t)
-        min_v = np.amin(crop_t)
-        crop_t = (np.float32(crop_t) - min_v) / (max_v - min_v)
+    def calc_histogram(self, sub_back, crop_t, normalize=False):
+        if normalize:
+            max_v = np.amax(sub_back)
+            min_v = np.amin(sub_back)
+            sub_back = (np.float32(sub_back) - min_v) / (max_v - min_v)
+            max_v = np.amax(crop_t)
+            min_v = np.amin(crop_t)
+            crop_t = (np.float32(crop_t) - min_v) / (max_v - min_v)
 
-        sub_back *= 255
-        crop_t *= 255
+            sub_back *= 255
+            crop_t *= 255
 
         # sub_back = np.uint8(sub_back)
         # crop_t = np.uint8(crop_t)
