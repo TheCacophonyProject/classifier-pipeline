@@ -409,7 +409,7 @@ class PiClassifier(Processor):
         Gets current clips active_tracks and returns the top NUM_CONCURRENT_TRACKS order by priority
         """
         active_tracks = self.clip.active_tracks
-        active_tracks = [track for track in active_tracks if len(track) > 10]
+        active_tracks = [track for track in active_tracks if len(track) >= 8]
         filtered = []
         for track in active_tracks:
             pred = self.predictions.prediction_for(track.get_id())
@@ -474,6 +474,8 @@ class PiClassifier(Processor):
         active_tracks = self.get_active_tracks()
         new_prediction = False
         logging.info("Identifying %s", active_tracks)
+        if len(active_tracks) == 0:
+            return False
         for i, track in enumerate(active_tracks):
             regions = []
             track_prediction = self.predictions.get_or_create_prediction(
@@ -526,6 +528,7 @@ class PiClassifier(Processor):
                     if track_prediction:
                         active_predictions.append(track_prediction)
                 beacon.classification(active_predictions)
+        return True
 
     def identify_ir(self, track):
         from ml_tools.preprocess import (
@@ -720,12 +723,13 @@ class PiClassifier(Processor):
                     and not self.clip.on_preview()
                 ):
                     id_start = time.time()
-                    self.identify_last_frame()
-                    self.identify_time += time.time() - id_start
-                    self.classified_consec += 1
-                    if self.classified_consec == PiClassifier.MAX_CONSEC:
-                        self.skip_classifying = PiClassifier.SKIP_FRAMES
-                        self.classified_consec = 0
+                    identified = self.identify_last_frame()
+                    if identified:
+                        self.identify_time += time.time() - id_start
+                        self.classified_consec += 1
+                        if self.classified_consec == PiClassifier.MAX_CONSEC:
+                            self.skip_classifying = PiClassifier.SKIP_FRAMES
+                            self.classified_consec = 0
                 else:
                     self.classified_consec = 0
             elif self.tracking is None and self.tracking_events:
@@ -829,8 +833,15 @@ class PiClassifier(Processor):
 
 
 def on_track_trapped(track):
-    logging.warn("Trapped track %s", track)
-    trapped_event()
+    track.trap_reported = True
+    # GP could make a prediction here
+    global predictions
+    pred = predictions.prediction_for(track.get_id())
+    tag = None
+    if pred is not None:
+        tag = pred.predicted_tag()
+    logging.warn("Trapped track %s with tag %s", track, tag)
+    trapped_event(tag)
 
 
 def on_recording_stopping(filename):
