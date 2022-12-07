@@ -226,7 +226,7 @@ def forest_features(
         # frame.float_arrays()
         feature = FrameFeatures(region)
         sub_back = region.subimage(background)
-        feature.calc_histogram(sub_back, frame)
+        feature.calc_histogram(np.uint8(sub_back), np.uint8(frame))
         t_median = frame_temp_median[region.frame_number]
         if cropped:
             cropped_frame = frame
@@ -254,9 +254,9 @@ def forest_features(
         all_features.append(features)
         prev_count += 1
         if maximum_features is None:
-            maximum_features = features
+            maximum_features = features.copy()
             minimum_features = features.copy()
-            avg_features = features
+            avg_features = features.copy()
         else:
             maximum_features = np.maximum(features, maximum_features)
             non_zero = features != 0
