@@ -224,6 +224,8 @@ def forest_features(
     all_features = []
     f_count = 0
     prev_count = 0
+    hist_time = 0
+    calc_time = 0
     if len(track_frames) <= buf_len:
         return None
     for i, frame in enumerate(track_frames):
@@ -234,7 +236,9 @@ def forest_features(
         # frame.float_arrays()
         feature = FrameFeatures(region)
         sub_back = region.subimage(background)
+        start = time.time()
         feature.calc_histogram(sub_back, frame)
+        hist_time += time.time() - start
         t_median = frame_temp_median[region.frame_number]
         if cropped:
             cropped_frame = frame
@@ -247,8 +251,9 @@ def forest_features(
 
         thermal = thermal + np.median(background) - t_median
         filtered = thermal - sub_back
-
+        start = time.time()
         feature.calculate(thermal, sub_back)
+        calc_time += time.time() - start
         count_back = min(buf_len, prev_count)
         for i in range(count_back):
             prev = frame_features[-i - 1]
@@ -338,6 +343,7 @@ def forest_features(
             np.array([len(track_frames)]),
         )
     )
+    logging.info("Hist time %s calc time %s", hist_time, calc_time)
     return X
 
 
