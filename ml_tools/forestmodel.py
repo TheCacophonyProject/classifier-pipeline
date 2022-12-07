@@ -11,7 +11,6 @@ import joblib
 from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 import cv2
-import time
 
 
 FEAT_LABELS = [
@@ -163,8 +162,6 @@ class ForestModel(Interpreter):
 
 
 def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
-
-    start = time.time()
     background = clip.background
     all_frames = None
     frame_temp_median = {}
@@ -202,13 +199,9 @@ def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
         )
     else:
         backgorund = clip.background
-    logging.info("Time taken to prep %s", time.time() - start)
-    start = time.time()
     x = forest_features(
         frames, background, frame_temp_median, data_bounds, cropped=False
     )
-    logging.info("Time taken to get features %s", time.time() - start)
-
     return x
 
 
@@ -221,17 +214,10 @@ def forest_features(
     minimum_features = None
     all_features = []
     f_count = 0
-    prev_count = 0
-    hist_time = 0
-    calc_time = 0
-    min_time = 0
-    count_time = 0
-    prep = 0
     back_med = np.median(background)
     if len(track_frames) <= buf_len:
         return None
     for i, frame in enumerate(track_frames):
-        start = time.time()
         region = regions[i]
         if region.blank or region.width == 0 or region.height == 0:
             prev_count = 0
@@ -239,30 +225,20 @@ def forest_features(
         # frame.float_arrays()
         feature = FrameFeatures(region)
         sub_back = region.subimage(background)
-        prep += time.time() - start
-        start = time.time()
         feature.calc_histogram(sub_back, frame)
-        hist_time += time.time() - start
-        start = time.time()
         t_median = frame_temp_median[region.frame_number]
         if cropped:
             cropped_frame = frame
         else:
-
             cropped_frame = region.subimage(frame)
-            # print("cropping from cropped", frame.dtype)
-            # frame.crop_by_region(region)
         thermal = np.float32(cropped_frame)
         f_count += 1
 
         thermal = thermal + back_med - t_median
         filtered = thermal - sub_back
-        prep += time.time() - start
-        start = time.time()
+
         feature.calculate(thermal, sub_back)
-        calc_time += time.time() - start
         count_back = min(buf_len, prev_count)
-        start = time.time()
         for i in range(count_back):
             prev = frame_features[-i - 1]
             vel = feature.cent - prev.cent
@@ -272,7 +248,6 @@ def forest_features(
             feature.rel_speed_y[i] = np.abs(vel[1]) / feature.sqrt_area
             feature.speed_x[i] = np.abs(vel[0])
             feature.speed_y[i] = np.abs(vel[1])
-        count_time += time.time() - start
         frame_features.append(feature)
         features = feature.features()
         all_features.append(features)
@@ -283,8 +258,6 @@ def forest_features(
             avg_features = features
         else:
             maximum_features = np.maximum(features, maximum_features)
-            min_time = 0
-            start = time.time()
             non_zero = features != 0
             current_zero = minimum_features == 0
             minimum_features[current_zero] = features[current_zero]
@@ -297,7 +270,6 @@ def forest_features(
         return None
     # Compute statistics for all tracks that have the min required duration
     valid_counter = 0
-    start = time.time()
     N = f_count - np.array(
         [
             0,
@@ -353,16 +325,6 @@ def forest_features(
             burst_features,
             np.array([len(track_frames)]),
         )
-    )
-    logging.info(
-        "Hist time %s calc time %s count %s min %s finals hit %s prep %s total %s",
-        hist_time,
-        calc_time,
-        count_time,
-        min_time,
-        time.time() - start,
-        prep,
-        time.time() - start + min_time + count_time + calc_time + hist_time + prep,
     )
     return X
 
