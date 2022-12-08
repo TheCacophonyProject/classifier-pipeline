@@ -1,6 +1,7 @@
 import time
 import dbus
 import logging
+import json
 
 DBUS_NAME = "org.cacophony.Events"
 DBUS_PATH = "/org/cacophony/Events"
@@ -13,7 +14,7 @@ def trapped_event(tag=None):
         data = {}
         if tag is not None:
             data["tag"] = tag
-        proxy.Add(data, "trapped", dbus.Int64(time.time_ns()))
+        proxy.Add(json.dumps(data), "trapped", dbus.Int64(time.time_ns()))
     except:
         logging.error("trapped dbus error ", exc_info=True)
 
