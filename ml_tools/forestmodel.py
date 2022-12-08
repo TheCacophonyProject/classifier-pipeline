@@ -151,7 +151,7 @@ class ForestModel(Interpreter):
         if x is None:
             logging.warning("Random forest could not classify track")
             return None, None
-        if self.features_used is not None:
+        if self.features_used is not None and len(self.features_used) > 0:
             f_mask = feature_mask(self.features_used)
             x = np.take(x, f_mask)
 
@@ -215,6 +215,7 @@ def forest_features(
     all_features = []
     f_count = 0
     prev_count = 0
+    backgorund = np.uint8(background)
     back_med = np.median(background)
     if len(track_frames) <= buf_len:
         return None
@@ -226,12 +227,13 @@ def forest_features(
         # frame.float_arrays()
         feature = FrameFeatures(region)
         sub_back = region.subimage(background)
-        feature.calc_histogram(np.uint8(sub_back), np.uint8(frame))
         t_median = frame_temp_median[region.frame_number]
         if cropped:
             cropped_frame = frame
         else:
             cropped_frame = region.subimage(frame)
+        feature.calc_histogram(sub_back, np.uint8(cropped_frame))
+
         thermal = np.float32(cropped_frame)
         f_count += 1
 

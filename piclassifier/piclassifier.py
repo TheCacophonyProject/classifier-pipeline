@@ -419,7 +419,7 @@ class PiClassifier(Processor):
                     and self.clip.current_frame - pred.last_frame_classified
                     < PiClassifier.PREDICT_EVERY
                 ):
-                    logging.info(
+                    logging.debug(
                         "Skipping %s as predicted %s and now at %s",
                         track,
                         pred.last_frame_classified,
@@ -473,7 +473,7 @@ class PiClassifier(Processor):
 
         active_tracks = self.get_active_tracks()
         new_prediction = False
-        logging.info("Identifying %s", active_tracks)
+        # logging.info("Identifying %s", active_tracks)
         if len(active_tracks) == 0:
             return False
         for i, track in enumerate(active_tracks):
