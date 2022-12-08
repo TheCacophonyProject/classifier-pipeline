@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 import json
 import logging
-
+import numpy as np
 from ml_tools.hyperparams import HyperParams
 from pathlib import Path
 
@@ -34,30 +34,34 @@ class Interpreter(ABC):
         ...
 
     def predict_track(self, clip, track, **args):
-        preprocessed, mass = self.preprocess(track, args)
-        if preprocessed is None:
+        preprocessed, mass = self.preprocess(clip, track, args)
+        # print("preprocess is %s", preprocessed)
+        if preprocessed is None or len(preprocessed) == 0:
             return None, None
         pred = self.predict(np.array(preprocessed))
         return pred, mass
 
-    def preprocess(self, clip, track, **args):
-        if self.model_type == "RandomForest":
+    def preprocess(self, clip, track, args):
+        if self.TYPE == "RandomForest":
             return
         last_x_frames = args.get("last_x_frames", 1)
         scale = args.get("scale", None)
-        if self.type == "IR":
+        if self.data_type == "IR":
             logging.info("Preprocess IR scale %s last_x %s", scale, last_x_frames)
             from ml_tools.preprocess import (
                 preprocess_ir,
             )
 
+            print(track)
             regions = track.bounds_history[-last_x_frames:]
             frames = clip.frame_buffer.get_last_x(len(regions))
             preprocessed = []
             masses = []
             for i in range(len(regions)):
+                if regions[i].blank:
+                    continue
                 regions[i] = regions[i].copy()
-                if scale and not region.blank:
+                if scale is not None:
                     regions[i].rescale(1 / scale)
 
                 region = regions[i]
@@ -72,7 +76,7 @@ class Interpreter(ABC):
                 ):
                     continue
                 params = self.params
-                preprocessed = preprocess_ir(
+                pre_f = preprocess_ir(
                     frame.copy(),
                     (
                         params.frame_size,
@@ -81,9 +85,9 @@ class Interpreter(ABC):
                     region=region,
                     preprocess_fn=self.preprocess_fn,
                 )
-                if preprocessed is None:
+                if pre_f is None:
                     continue
-                preprocessed.append(preprocessed)
+                preprocessed.append(pre_f)
                 masses.append(1)
             return preprocessed, masses
         elif self.type == "thermal":

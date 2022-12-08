@@ -47,10 +47,10 @@ import cv2
 class NeuralInterpreter(Interpreter):
     TYPE = "Neural"
 
-    def __init__(self, model_name):
+    def __init__(self, model_name, data_type):
         from openvino.inference_engine import IENetwork, IECore
 
-        super().__init__(model_name)
+        super().__init__(model_name, data_type)
         model_name = Path(model_name)
         # can use to test on PC
         # device = "CPU"
@@ -82,14 +82,14 @@ class NeuralInterpreter(Interpreter):
 class LiteInterpreter(Interpreter):
     TYPE = "TFLite"
 
-    def __init__(self, model_name):
-        super().__init__(model_name)
+    def __init__(self, model_name, data_type):
+        super().__init__(model_name, data_type)
 
-        import tensorflow as tf
+        import tflite_runtime.interpreter as tflite
 
         model_name = Path(model_name)
         model_name = model_name.with_suffix(".tflite")
-        self.interpreter = tf.lite.Interpreter(str(model_name))
+        self.interpreter = tflite.Interpreter(str(model_name))
 
         self.interpreter.allocate_tensors()  # Needed before execution!
 
@@ -97,6 +97,7 @@ class LiteInterpreter(Interpreter):
             0
         ]  # Model has single output.
         self.input = self.interpreter.get_input_details()[0]  # Model has single input.
+        self.preprocess_fn = inc3_preprocess
 
     def predict(self, input_x):
         start = time.time()
@@ -105,13 +106,18 @@ class LiteInterpreter(Interpreter):
 
         self.interpreter.set_tensor(self.input["index"], input_x)
         self.interpreter.invoke()
-        pred = self.interpreter.get_tensor(self.output["index"])[0]
+        pred = self.interpreter.get_tensor(self.output["index"])
         logging.info("taken %s to predict", time.time() - start)
-
         return pred
 
     def shape(self):
         return self.input["shape"]
+
+
+def inc3_preprocess(x):
+    x /= 127.5
+    x -= 1.0
+    return x
 
 
 def get_full_classifier(model, data_type):
@@ -301,7 +307,7 @@ class PiClassifier(Processor):
             if self.classifier.TYPE == ForestModel.TYPE:
                 self.last_x_frames = 5 * headers.fps
                 self.frames_per_classify = self.last_x_frames
-                PiClassifier.SKIP_FRAMES = 10
+                PiClassifier.SKIP_FRAMES = 30
                 # probably could be even more
 
             else:
@@ -473,9 +479,10 @@ class PiClassifier(Processor):
 
         active_tracks = self.get_active_tracks()
         new_prediction = False
-        # logging.info("Identifying %s", active_tracks)
         if len(active_tracks) == 0:
             return False
+
+        logging.info("Identifying %s", active_tracks)
         for i, track in enumerate(active_tracks):
             regions = []
             track_prediction = self.predictions.get_or_create_prediction(

@@ -37,6 +37,7 @@ class KerasModel(Interpreter):
     """Defines a deep learning model"""
 
     VERSION = 1
+    TYPE = "Keras"
 
     def __init__(self, train_config=None, labels=None, data_dir=None):
         self.model = None
