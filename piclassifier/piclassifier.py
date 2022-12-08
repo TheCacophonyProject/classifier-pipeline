@@ -311,7 +311,7 @@ class PiClassifier(Processor):
                 # probably could be even more
 
             else:
-                self.preprocess_fn = self.get_preprocess_fn()
+                # self.preprocess_fn = self.get_preprocess_fn()
 
                 self.last_x_frames = 1
                 self.frames_per_classify = (
@@ -333,39 +333,40 @@ class PiClassifier(Processor):
                 self.fp_index = None
             self.startup_classifier()
 
-    def get_preprocess_fn(self):
-        import tensorflow as tf
-
-        pretrained_model = self.classifier.params.model_name
-        if pretrained_model == "resnet":
-            return tf.keras.applications.resnet.preprocess_input
-
-        elif pretrained_model == "resnetv2":
-            return tf.keras.applications.resnet_v2.preprocess_input
-
-        elif pretrained_model == "resnet152":
-            return tf.keras.applications.resnet.preprocess_input
-
-        elif pretrained_model == "vgg16":
-            return tf.keras.applications.vgg16.preprocess_input
-
-        elif pretrained_model == "vgg19":
-            return tf.keras.applications.vgg19.preprocess_input
-
-        elif pretrained_model == "mobilenet":
-            return tf.keras.applications.mobilenet_v2.preprocess_input
-
-        elif pretrained_model == "densenet121":
-            return tf.keras.applications.densenet.preprocess_input
-
-        elif pretrained_model == "inceptionresnetv2":
-            return tf.keras.applications.inception_resnet_v2.preprocess_input
-        elif pretrained_model == "inceptionv3":
-            return tf.keras.applications.inception_v3.preprocess_input
-        logging.warn(
-            "pretrained model %s has no preprocessing function", pretrained_model
-        )
-        return None
+    #
+    # def get_preprocess_fn(self):
+    #     import tensorflow as tf
+    #
+    #     pretrained_model = self.classifier.params.model_name
+    #     if pretrained_model == "resnet":
+    #         return tf.keras.applications.resnet.preprocess_input
+    #
+    #     elif pretrained_model == "resnetv2":
+    #         return tf.keras.applications.resnet_v2.preprocess_input
+    #
+    #     elif pretrained_model == "resnet152":
+    #         return tf.keras.applications.resnet.preprocess_input
+    #
+    #     elif pretrained_model == "vgg16":
+    #         return tf.keras.applications.vgg16.preprocess_input
+    #
+    #     elif pretrained_model == "vgg19":
+    #         return tf.keras.applications.vgg19.preprocess_input
+    #
+    #     elif pretrained_model == "mobilenet":
+    #         return tf.keras.applications.mobilenet_v2.preprocess_input
+    #
+    #     elif pretrained_model == "densenet121":
+    #         return tf.keras.applications.densenet.preprocess_input
+    #
+    #     elif pretrained_model == "inceptionresnetv2":
+    #         return tf.keras.applications.inception_resnet_v2.preprocess_input
+    #     elif pretrained_model == "inceptionv3":
+    #         return tf.keras.applications.inception_v3.preprocess_input
+    #     logging.warn(
+    #         "pretrained model %s has no preprocessing function", pretrained_model
+    #     )
+    #     return None
 
     def new_clip(self, preview_frames):
         self.clip = Clip(
