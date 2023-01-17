@@ -66,6 +66,7 @@ class NeuralInterpreter(Interpreter):
 
         net.batch_size = 1
         self.exec_net = ie.load_network(network=net, device_name=device)
+        self.preprocess_fn = inc3_preprocess
 
     def predict(self, input_x):
         if input_x is None:
@@ -539,93 +540,6 @@ class PiClassifier(Processor):
                         active_predictions.append(track_prediction)
                 beacon.classification(active_predictions)
         return True
-
-    def identify_ir(self, track):
-        from ml_tools.preprocess import (
-            preprocess_ir,
-        )
-
-        region = track.bounds_history[-1]
-        region = region.copy()
-        if self.track_extractor.scale and not region.blank:
-            region.rescale(1 / self.track_extractor.scale)
-
-        frame = self.clip.frame_buffer.get_last_frame()
-        # start_point = (int(region.left), int(region.top))
-        # end_point = (int(region.right), int(region.bottom))
-        # image = cv2.rectangle(frame.thermal, start_point, end_point, (255, 0, 0), 2)
-        #
-        # cv2.imshow("id", image)
-        # cv2.waitKey(100)
-        if frame is None or region.width == 0 or region.height == 0 or region.blank:
-            return None, None
-        params = self.classifier.params
-        preprocessed = preprocess_ir(
-            frame.copy(),
-            (
-                params.frame_size,
-                params.frame_size,
-            ),
-            region=region,
-            preprocess_fn=self.preprocess_fn,
-        )
-        if preprocessed is None:
-            return None, 1
-        prediction = self.classifier.predict(preprocessed)
-        return prediction, 1
-
-    def identify_thermal(self, track):
-        from ml_tools.preprocess import (
-            preprocess_movement,
-        )
-
-        regions = track.bounds_history[-self.frames_per_classify * 2 :]
-        frames = self.clip.frame_buffer.get_last_x(len(regions))
-        if frames is None:
-            return
-        indices = np.random.choice(
-            len(regions),
-            min(self.frames_per_classify, len(regions)),
-            replace=False,
-        )
-        indices.sort()
-        frames = np.array(frames)[indices]
-        regions = np.array(regions)[indices]
-
-        refs = []
-        segment_data = []
-        mass = 0
-        params = self.classifier.params
-
-        for frame, region in zip(frames, regions):
-            if region.blank:
-                continue
-            refs.append(np.median(frame.thermal))
-            thermal_reference = np.median(frame.thermal)
-            f = frame.crop_by_region(region)
-            mass += region.mass
-            f.resize_with_aspect(
-                (params.frame_size, params.frame_size),
-                self.clip.crop_rectangle,
-                True,
-            )
-            segment_data.append(f)
-
-        preprocessed = preprocess_movement(
-            segment_data,
-            params.square_width,
-            params.frame_size,
-            red_type=params.red_type,
-            green_type=params.green_type,
-            blue_type=params.blue_type,
-            preprocess_fn=self.preprocess_fn,
-            reference_level=refs,
-            keep_edge=params.keep_edge,
-        )
-        if preprocessed is None:
-            return None, mass
-        prediction = self.classifier.predict(preprocessed)
-        return prediction, mass
 
     def get_recent_frame(self, last_frame=None):
         # save us having to lock if we dont have a different frame
