@@ -71,7 +71,7 @@ class NeuralInterpreter(Interpreter):
         if input_x is None:
             return None
         input_x = np.float32(input_x)
-        input_x = np.transpose(input_x, axes=[3, 1, 2])
+        # input_x = np.transpose(input_x, axes=[3, 1, 2])
         # input_x = np.array([[rearranged_arr]])
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
