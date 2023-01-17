@@ -62,6 +62,8 @@ class NeuralInterpreter(Interpreter):
         net = ie.read_network(model=model_xml, weights=model_bin)
         self.input_blob = next(iter(net.input_info))
         self.out_blob = next(iter(net.outputs))
+        self.input_shape = net.input_info[self.input_blob].input_data.shape
+
         net.batch_size = 1
         self.exec_net = ie.load_network(network=net, device_name=device)
 
@@ -76,7 +78,7 @@ class NeuralInterpreter(Interpreter):
         return res[0]
 
     def shape(self):
-        return self.input_blob.shape
+        return self.input_shape
 
 
 class LiteInterpreter(Interpreter):
