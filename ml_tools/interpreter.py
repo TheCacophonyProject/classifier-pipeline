@@ -90,7 +90,7 @@ class Interpreter(ABC):
                 preprocessed.append(pre_f)
                 masses.append(1)
             return preprocessed, masses
-        elif self.type == "thermal":
+        elif self.data_type == "thermal":
             from ml_tools.preprocess import (
                 preprocess_movement,
             )
