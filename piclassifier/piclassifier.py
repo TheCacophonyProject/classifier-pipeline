@@ -397,15 +397,19 @@ class PiClassifier(Processor):
         self.clip.update_background(self.motion_detector.background.copy())
         self.clip._background_calculated()
         # no need to retrack all of preview
+        background_frames = None
+        if self.type == "IR":
+            # specify how many frames hae been used in this background
+            background_frames = min(
+                self.motion_detector._background.AVERAGE_OVER,
+                self.motion_detector._background.frames,
+            )
         self.track_extractor.start_tracking(
             self.clip,
             preview_frames,
             track_frames=False,
             background=clip.background,
-            background_frames=min(
-                self.motion_detector._background.AVERAGE_OVER,
-                self.motion_detector._background.frames,
-            ),
+            background_frames=background_frames,
         )
 
     def startup_classifier(self):

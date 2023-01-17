@@ -201,9 +201,9 @@ class IRTrackExtractor(ClipTracker):
         self,
         clip,
         frames=None,
+        track_frames=True,
         background=None,
         background_frames=1,
-        track_frames=True,
     ):
 
         self.res_x = clip.res_x

@@ -140,12 +140,15 @@ class ClipTrackExtractor(ClipTracker):
     def tracking_time(self):
         return self._tracking_time
 
-    def start_tracking(self, clip, frames):
+    def start_tracking(self, clip, frames, track_frames=True, **args):
         # no need to retrack all of preview
+        do_tracking = self.do_tracking
+        self.do_tracking = self.do_tracking and track_frames
         for frame in frames:
             self.process_frame(clip, frame)
+        self.do_tracking = do_tracking
 
-    def process_frame(self, clip, frame):
+    def process_frame(self, clip, frame, **args):
         """
         Tracks objects through frame
         :param thermal: A numpy array of shape (height, width) and type uint16

@@ -65,7 +65,7 @@ class ClipTracker(ABC):
 
     @property
     @abstractmethod
-    def start_tracking(self, clip, preview_frames):
+    def start_tracking(self, clip, preview_frames, track_frames=True):
         """start_tracking"""
         ...
 
