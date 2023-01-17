@@ -169,7 +169,7 @@ class WeightedBackground:
     def process_frame(self, frame):
         if self._background is None:
             res_y, res_x = frame.shape
-            self._backgournd = np.empty(
+            self._background = np.empty(
                 (res_y + self.edge_pixels * 2, res_x + self.edge_pixels * 2)
             )
             self._background[
