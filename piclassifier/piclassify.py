@@ -274,7 +274,7 @@ def handle_connection(connection, config, thermal_config_file):
     processor = get_processor(process_queue, config, thermal_config, headers)
     processor.start()
 
-    edge = config.tracking.edge_pixels
+    edge = config.tracking["thermal"].edge_pixels
     crop_rectangle = tools.Rectangle(
         edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
     )
