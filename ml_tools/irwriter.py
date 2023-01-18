@@ -298,7 +298,7 @@ def get_data(db, sample, cropped, back_thresh):
         f.crop_by_region(region, out=f)
         background = region.subimage(background)
     f.mask = f.filtered
-    f.filtered, _ = get_ir_back_filtered(background, f.thermal, back_thresh)
+    f.filtered = get_ir_back_filtered(background, f.thermal, back_thresh)
 
     assert f.thermal.shape == f.filtered.shape
     f.normalize()
