@@ -570,7 +570,11 @@ class IRTrackExtractor(ClipTracker):
         prev_i = max(0, min(10, clip.current_frame - 10))
         s = time.time()
         prev_frame = clip.frame_buffer.get_frame_ago(prev_i)
-        if prev_i == frame.frame_number or prev_frame.filtered is None:
+        if (
+            prev_frame is None
+            or prev_i == frame.frame_number
+            or prev_frame.filtered is None
+        ):
             return None, None
 
         s = time.time()
