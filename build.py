@@ -214,14 +214,14 @@ def split_label(dataset, label, existing_test_count=0, max_samples=None):
     # should have test covered by test set
 
     min_t = MIN_TRACKS
-
-    if label in LOW_SAMPLES_LABELS:
-        min_t = 1
-
     num_validate_tracks = max(total_tracks * 0.15, min_t)
     num_test_tracks = (
         min(MAX_TEST_TRACKS, max(total_tracks * 0.05, min_t)) - existing_test_count
     )
+
+    if label in LOW_SAMPLES_LABELS:
+        min_t = 1
+        num_test_tracks = 1
     track_limit = num_validate_tracks
     sample_limit = num_validate_samples
     tracks = set()
