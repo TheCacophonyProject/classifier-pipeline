@@ -21,6 +21,8 @@ def resize_and_pad(
     scale_percent = (new_dim[:2] / np.array(frame.shape[:2])).min()
     width = int(frame.shape[1] * scale_percent)
     height = int(frame.shape[0] * scale_percent)
+    width = max(width, 1)
+    height = max(height, 1)
     if len(frame.shape) == 3:
         resize_dim = (width, height, frame.shape[2])
     else:
@@ -29,6 +31,7 @@ def resize_and_pad(
         pad = np.min(frame)
     else:
         pad = 0
+
     resized = np.full(new_dim, pad, dtype=frame.dtype)
     offset_x = 0
     offset_y = 0
@@ -66,7 +69,6 @@ def rotate(image, degrees, mode="nearest", order=1):
 
 
 def resize_cv(image, dim, interpolation=cv2.INTER_LINEAR, extra_h=0, extra_v=0):
-
     return cv2.resize(
         np.float32(image),
         dsize=(dim[0] + extra_h, dim[1] + extra_v),
