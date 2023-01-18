@@ -770,6 +770,7 @@ def on_track_trapped(track):
     tag = None
     if pred is not None:
         tag = pred.predicted_tag()
+        track.trap_tag = tag
     logging.warn("Trapped track %s with tag %s", track, tag)
     trapped_event(tag)
 
