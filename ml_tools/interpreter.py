@@ -52,7 +52,6 @@ class Interpreter(ABC):
                 preprocess_ir,
             )
 
-            print(track)
             regions = track.bounds_history[-last_x_frames:]
             frames = clip.frame_buffer.get_last_x(len(regions))
             preprocessed = []
@@ -96,7 +95,7 @@ class Interpreter(ABC):
             )
 
             frames_per_classify = args.get("frames_per_classify", 25)
-            logging.info("Preprocess IR scale %s last_x %s", scale, last_x_frames)
+            logging.info("Preprocess thermal scale %s last_x %s", scale, last_x_frames)
 
             regions = track.bounds_history[-last_x_frames:]
             frames = clip.frame_buffer.get_last_x(len(regions))

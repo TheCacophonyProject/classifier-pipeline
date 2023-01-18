@@ -76,7 +76,7 @@ class NeuralInterpreter(Interpreter):
         # input_x = np.array([[rearranged_arr]])
         res = self.exec_net.infer(inputs={self.input_blob: input_x})
         res = res[self.out_blob]
-        return res[0]
+        return res
 
     def shape(self):
         return self.input_shape
@@ -321,6 +321,8 @@ class PiClassifier(Processor):
                     self.classifier.params.square_width
                     * self.classifier.params.square_width
                 )
+                if self.frames_per_classify > 1:
+                    self.last_x_frames = self.frames_per_classify * 2
 
             self.max_keep_frames = (
                 self.frames_per_classify * 2 if not preview_type else None
