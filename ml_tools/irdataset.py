@@ -17,38 +17,37 @@ AUTOTUNE = tf.data.AUTOTUNE
 # BATCH_SIZE = 64
 
 
-def load_dataset(
-    filenames,
-    image_size,
-    num_labels,
-    deterministic=False,
-    labeled=True,
-    augment=False,
-    preprocess_fn=None,
-):
+def load_dataset(filenames, num_labels, args):
+    deterministic = args.get("deterministic", False)
+
     ignore_order = tf.data.Options()
     ignore_order.experimental_deterministic = (
         deterministic  # disable order, increase speed
     )
-    dataset = tf.data.TFRecordDataset(
-        filenames
-    )  # automatically interleaves reads from multiple files
+    dataset = tf.data.TFRecordDataset(filenames)
     dataset = dataset.with_options(
         ignore_order
     )  # uses data as soon as it streams in, rather than in its original order
+
+    image_size = args["image_size"]
+    labeled = args.get("labeled", True)
+    augment = args.get("augment", False)
+    preprocess_fn = args.get("preprocess_fn")
+    one_hot = args.get("one_hot", True)
+    dataset = dataset.apply(tf.data.experimental.ignore_errors())
     dataset = dataset.map(
         partial(
             read_tfrecord,
-            image_size=image_size,
             num_labels=num_labels,
+            image_size=image_size,
             labeled=labeled,
             augment=augment,
             preprocess_fn=preprocess_fn,
+            one_hot=one_hot,
         ),
         num_parallel_calls=AUTOTUNE,
         deterministic=deterministic,
     )
-
     return dataset
 
 
@@ -65,30 +64,12 @@ def get_distribution(dataset):
     return dist
 
 
-def get_resampled(
-    base_dir,
-    batch_size,
-    image_size,
-    labels,
-    reshuffle=True,
-    deterministic=False,
-    labeled=True,
-    resample=True,
-    augment=False,
-    weights=None,
-    stop_on_empty_dataset=True,
-    preprocess_fn=None,
-):
-
+def get_dataset(base_dir, labels, **args):
     num_labels = len(labels)
     global remapped_y
-    datasets = []
-
+    remapped = {}
     keys = []
     values = []
-    remapped = {}
-    remapped_y = {}
-
     for l in labels:
         remapped[l] = [l]
         keys.append(labels.index(l))
@@ -96,7 +77,6 @@ def get_resampled(
     if "false-positive" in labels and "insect" in labels:
         remapped["false-positive"].append("insect")
         values[labels.index("insect")] = labels.index("false-positive")
-
         del remapped["insect"]
 
     if "possum" in labels and "cat" in labels:
@@ -112,40 +92,88 @@ def get_resampled(
         default_value=tf.constant(-1),
         name="remapped_y",
     )
-    weights = [1.0] * len(remapped)
-    # if "human" in remapped:
-    #     weights[labels.index("human")] = 0
-    r_l = list(remapped.keys())
-    if "human" in r_l:
-        weights[r_l.index("human")] = 0
-    if "rodent" in r_l:
-        weights[r_l.index("rodent")] = 0.04
-
-    # weights[labels.index("cat")] = 0
-
-    for k, v in remapped.items():
-        filenames = []
-        for label in v:
-            filenames.append(tf.io.gfile.glob(f"{base_dir}/{label}-0*.tfrecord"))
-        dataset = load_dataset(
-            filenames,
-            image_size,
-            num_labels,
-            deterministic=deterministic,
-            labeled=labeled,
-            augment=augment,
-            preprocess_fn=preprocess_fn,
+    filenames = tf.io.gfile.glob(f"{base_dir}/*.tfrecord")
+    dataset = load_dataset(filenames, num_labels, args)
+    if dataset is None:
+        logging.warn("No dataset for %s", filenames)
+        return None, None
+    resample_data = args.get("resample", True)
+    if resample_data:
+        logging.info("Resampling data")
+        dataset = resample(dataset, labels)
+    if dataset is None:
+        logging.warn("No dataset for %s", filenames)
+        return None, None
+    if not args.get("only_features"):
+        logging.info("shuffling data")
+        dataset = dataset.shuffle(
+            4096, reshuffle_each_iteration=args.get("reshuffle", True)
         )
-        dataset = dataset.shuffle(2048, reshuffle_each_iteration=True)
+    # tf refues to run if epoch sizes change so we must decide a costant epoch size even though with reject res
+    # it will chang eeach epoch, to ensure this take this repeat data and always take epoch_size elements
+    epoch_size = len([0 for x, y in dataset])
+    logging.info("Setting dataset size to %s", epoch_size)
+    if not args.get("only_features", False):
+        dataset = dataset.repeat(2)
+    scale_epoch = args.get("scale_epoch", None)
+    if scale_epoch:
+        epoch_size = epoch_size // scale_epoch
+    dataset = dataset.take(epoch_size)
+    dataset = dataset.prefetch(buffer_size=AUTOTUNE)
+    batch_size = args.get("batch_size", None)
+    if batch_size is not None:
+        dataset = dataset.batch(batch_size)
+    return dataset, remapped
 
-        datasets.append(dataset)
-    resampled_ds = tf.data.Dataset.sample_from_datasets(
-        datasets, weights=weights, stop_on_empty_dataset=stop_on_empty_dataset
+
+def resample(dataset, labels):
+    excluded_labels = ["sheep"]
+    num_labels = len(labels)
+    true_categories = [y for x, y in dataset]
+    if len(true_categories) == 0:
+        logging.warn("No data found")
+        return None
+    true_categories = np.int64(tf.argmax(true_categories, axis=1))
+    c = Counter(list(true_categories))
+    dist = np.empty((num_labels), dtype=np.float32)
+    target_dist = np.empty((num_labels), dtype=np.float32)
+    for i in range(num_labels):
+        if labels[i] in excluded_labels:
+            logging.info("Excluding %s for %s", c[i], labels[i])
+            dist[i] = 0
+        else:
+            dist[i] = c[i]
+            logging.info("Have %s for %s", dist[i], labels[i])
+    zeros = dist[dist == 0]
+    non_zero_labels = num_labels - len(zeros)
+    target_dist[:] = 1 / non_zero_labels
+
+    dist = dist / np.sum(dist)
+    dist_max = np.max(dist)
+    # really this is what we want but when the values become too small they never get sampled
+    # so need to try reduce the large gaps in distribution
+    # can use class weights to adjust more, or just throw out some samples
+    max_range = target_dist[0] / 2
+    for i in range(num_labels):
+        if dist[i] == 0:
+            target_dist[i] = 0
+        elif dist_max - dist[i] > (max_range * 2):
+            target_dist[i] = dist[i]
+
+        target_dist[i] = max(0, target_dist[i])
+    target_dist = target_dist / np.sum(target_dist)
+
+    rej = dataset.rejection_resample(
+        class_func=class_func,
+        target_dist=target_dist,
     )
-    resampled_ds = resampled_ds.shuffle(2048, reshuffle_each_iteration=reshuffle)
-    resampled_ds = resampled_ds.prefetch(buffer_size=AUTOTUNE)
-    resampled_ds = resampled_ds.batch(batch_size)
-    return resampled_ds, remapped
+    dataset = rej.map(lambda extra_label, features_and_label: features_and_label)
+    return dataset
+
+
+def class_func(features, label):
+    label = tf.argmax(label)
+    return label
 
 
 #
@@ -156,7 +184,7 @@ def preprocess(data):
 
 
 def read_tfrecord(
-    example, image_size, num_labels, labeled, augment, preprocess_fn=None
+    example, image_size, num_labels, labeled, augment, preprocess_fn=None, one_hot=True
 ):
     tfrecord_format = {
         "image/augmented": tf.io.FixedLenFeature((), tf.int64, 0),
@@ -194,8 +222,9 @@ def read_tfrecord(
         label = tf.cast(example["image/class/label"], tf.int32)
         global remapped_y
         label = remapped_y.lookup(label)
-        onehot_label = tf.one_hot(label, num_labels)
-        return image, onehot_label
+        if one_hot:
+            label = tf.one_hot(label, num_labels)
+        return image, label
     return image
 
 
@@ -225,15 +254,12 @@ def main():
     labels = meta.get("labels", [])
     datasets = []
     # weights = [0.5] * len(labels)
-    resampled_ds, remapped = get_resampled(
+    resampled_ds, remapped = get_dataset(
         f"{config.tracks_folder}/training-data/test",
-        1,
-        (160, 160),
         labels,
-        # distribution=meta["counts"]["test"],
-        stop_on_empty_dataset=True,
+        batch_size=1,
+        image_size=(160, 160),
         augment=False,
-        # preprocess_fn=tf.keras.applications.inception_v3.preprocess_input,
     )
     meta["remapped"] = remapped
     with open(file, "w") as f:
