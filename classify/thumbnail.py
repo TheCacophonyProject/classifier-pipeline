@@ -63,6 +63,8 @@ def get_track_thumb_stats(clip, track):
         if region.blank or region.mass == 0:
             continue
         frame = clip.frame_buffer.get_frame(region.frame_number)
+        if frame is None:
+            continue
         contour_image = frame.filtered if frame.mask is None else frame.mask
         contours, _ = cv2.findContours(
             np.uint8(region.subimage(contour_image)),
@@ -72,7 +74,8 @@ def get_track_thumb_stats(clip, track):
         )
         if len(contours) == 0:
             # shouldnt happen
-            contour_points.append(0)
+            # contour_points.append(0)
+            continue
         else:
             points = len(contours[0])
             if points > max_contour:

@@ -74,7 +74,6 @@ class RegionTracker(Tracker):
         self.crop_rectangle = crop_rectangle
         self._tracking = False
         self.type = tracking_config.type
-        self.trap_tag = None
         self.min_mass_change = tracking_config.params.get(
             "min_mass_change", RegionTracker.MIN_MASS_CHANGE
         )
@@ -351,6 +350,7 @@ class Track:
         self.trap_reported = False
         self.trigger_frame = None
         self.direction = 0
+        self.trap_tag = None
         if not id:
             self._id = Track._track_id
             Track._track_id += 1
