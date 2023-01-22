@@ -510,7 +510,7 @@ class KerasModel(Interpreter):
         )
         if rebalance:
             # LOW LABEL IR NEED TO CONFIG THIS
-            low_labels = ["rodent", "human", "hedgehog", "false-positive"]
+            low_labels = ["rodent", "human", "hedgehog"]
             distribution = get_distribution(self.train)
             logging.info("Distribution of train is %s", distribution)
             self.class_weights = {}
