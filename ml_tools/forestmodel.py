@@ -12,7 +12,6 @@ from ml_tools.interpreter import Interpreter
 from classify.trackprediction import TrackPrediction
 import cv2
 
-
 FEAT_LABELS = [
     "sqrt_area",
     "elongation",
@@ -101,7 +100,6 @@ important_features = [
 
 
 def feature_mask(features_used):
-    print(features_used)
     feature_indexes = []
     for f in features_used:
         feature_indexes.append(ALL_FEATURES.index(f))
@@ -148,6 +146,7 @@ class ForestModel(Interpreter):
         )
         scale = args.get("scale")
         x = process_track(clip, track, last_x_frames, scale=scale)
+
         if x is None:
             logging.warning("Random forest could not classify track")
             return None, None
@@ -208,6 +207,21 @@ def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
 def forest_features(
     track_frames, background, frame_temp_median, regions, buf_len=5, cropped=True
 ):
+    background = clip.background
+    frames = []
+    frame_temp_median = {}
+    for r in track.bounds_history:
+        frame = clip.frame_buffer.get_frame(r.frame_number)
+        frames.append(frame)
+        frame_temp_median[r.frame_number] = np.median(frame.thermal)
+    return forest_features(
+        frames, background, frame_temp_median, track.bounds_history, cropped=False
+    )
+
+
+def forest_features(
+    track_frames, background, frame_temp_median, regions, buf_len=5, cropped=True
+):
     frame_features = []
     avg_features = None
     maximum_features = None
@@ -215,26 +229,25 @@ def forest_features(
     all_features = []
     f_count = 0
     prev_count = 0
-    backgorund = np.uint8(background)
     back_med = np.median(background)
     if len(track_frames) <= buf_len:
         return None
+
     for i, frame in enumerate(track_frames):
         region = regions[i]
         if region.blank or region.width == 0 or region.height == 0:
             prev_count = 0
             continue
-        # frame.float_arrays()
+        frame.float_arrays()
         feature = FrameFeatures(region)
         sub_back = region.subimage(background)
-        t_median = frame_temp_median[region.frame_number]
+        feature.calc_histogram(sub_back, frame.thermal)
+        t_median = frame_temp_median[frame.frame_number]
         if cropped:
             cropped_frame = frame
         else:
-            cropped_frame = region.subimage(frame)
-        feature.calc_histogram(sub_back, np.uint8(cropped_frame))
-
-        thermal = np.float32(cropped_frame)
+            cropped_frame = frame.crop_by_region(region)
+        thermal = cropped_frame.thermal
         f_count += 1
 
         thermal = thermal + back_med - t_median
@@ -251,6 +264,7 @@ def forest_features(
             feature.rel_speed_y[i] = np.abs(vel[1]) / feature.sqrt_area
             feature.speed_x[i] = np.abs(vel[0])
             feature.speed_y[i] = np.abs(vel[1])
+
         frame_features.append(feature)
         features = feature.features()
         all_features.append(features)
@@ -258,6 +272,7 @@ def forest_features(
         if maximum_features is None:
             maximum_features = features.copy()
             minimum_features = features.copy()
+
             avg_features = features.copy()
         else:
             maximum_features = np.maximum(features, maximum_features)

@@ -126,7 +126,13 @@ def create_tf_example(data, image_dir, sample, labels, filename):
 
 
 def create_tf_records(
-    dataset, output_path, labels, back_thresh, num_shards=1, cropped=True, by_label=True
+    dataset,
+    output_path,
+    labels,
+    back_thresh,
+    num_shards=1,
+    cropped=True,
+    by_label=False,
 ):
 
     output_path = Path(output_path)

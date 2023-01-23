@@ -37,18 +37,23 @@ def best_trackless_thumb(clip):
                 best_filtered[y : y + THUMBNAIL_SIZE, x : x + THUMBNAIL_SIZE]
             )
             if best_region is None:
-                best_region = ((y, x), filtered_sum, thermal_sum)
+                best_region = ((x, y), filtered_sum, thermal_sum)
             elif best_region[1] > 0:
                 if best_region[1] < filtered_sum:
-                    best_region = ((y, x), thermal_sum, filtered_sum)
+                    best_region = ((x, y), thermal_sum, filtered_sum)
             elif best_region[2] < thermal_sum:
-                best_region = ((y, x), thermal_sum, filtered_sum)
+                best_region = ((x, y), thermal_sum, filtered_sum)
+    centroid = (
+        best_region[0][0] + THUMBNAIL_SIZE // 2,
+        best_region[0][1] + THUMBNAIL_SIZE // 2,
+    )
     return Region(
-        best_region[0][1],
+        best_region[0][0],
         best_region[0][1],
         THUMBNAIL_SIZE,
         THUMBNAIL_SIZE,
         frame_number=best_frame_i,
+        centroid=centroid,
     )
 
 

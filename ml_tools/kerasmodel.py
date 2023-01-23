@@ -25,9 +25,13 @@ from ml_tools.hyperparams import HyperParams
 from ml_tools.thermaldataset import (
     get_resampled_by_label as get_thermal_dataset_by_label,
     get_dataset as get_thermal_dataset,
+    get_weighting,
 )
 from ml_tools.thermaldataset import get_distribution
 from ml_tools.irdataset import get_dataset as get_ir_dataset
+
+import tensorflow_decision_forests as tfdf
+from ml_tools import forestmodel
 
 import tensorflow_decision_forests as tfdf
 from ml_tools import forestmodel
@@ -509,41 +513,13 @@ class KerasModel(Interpreter):
             # dist=self.dataset_counts["validation"],
         )
         if rebalance:
-            # LOW LABEL IR NEED TO CONFIG THIS
-            low_labels = ["rodent", "human", "hedgehog"]
-            distribution = get_distribution(self.train)
-            logging.info("Distribution of train is %s", distribution)
-            self.class_weights = {}
-            total = 0
-            classes = 0
-            for lbl, count in zip(self.labels, distribution):
-                if lbl not in low_labels:
-                    total += count
-                    classes += 1
-            # total = np.sum(distribution)
-            multiplier = total / classes
-            for index, label in enumerate(self.labels):
-                if label in low_labels:
-                    self.class_weights[index] = 1.2
-                    continue
-                if distribution[index] == 0:
-                    self.class_weights[index] = 0
-                elif label == "bird":
-                    self.class_weights[index] = (
-                        1 / distribution[index] * (total / classes) * 1.2
-                    )
-                elif label == "wallaby":
-                    # wallabies not so important better to predict birds
-                    self.class_weights[index] = (
-                        1 / distribution[index] * (total / classes) * 0.8
-                    )
-                else:
-                    self.class_weights[index] = 1 / distribution[index] * multiplier
-        logging.error(
-            "%s  giving weights %s",
-            self.labels,
-            self.class_weights,
-        )
+            self.class_weights = get_weighting(self.train, self.labels)
+            logging.info(
+                "%s  giving weights %s",
+                self.labels,
+                self.class_weights,
+            )
+
         self.save_metadata(run_name)
 
         checkpoints = self.checkpoints(run_name)
