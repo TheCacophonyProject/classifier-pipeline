@@ -9,15 +9,18 @@ from datetime import timedelta
 import time
 import psutil
 from piclassifier.recorder import Recorder
+from pathlib import Path
+from ml_tools.logs import init_logging
+import multiprocessing
 
-CPTV_TEMP_EXT = ".cptv.temp"
+CPTV_TEMP_EXT = ".temp"
 
 
 class CPTVRecorder(Recorder):
     def __init__(self, thermal_config, headers, on_recording_stopping=None):
         self.location_config = thermal_config.location
         self.device_config = thermal_config.device
-        self.output_dir = thermal_config.recorder.output_dir
+        self.output_dir = Path(thermal_config.recorder.output_dir)
         self.motion = thermal_config.motion
         self.preview_secs = thermal_config.recorder.preview_secs
         self.writer = None
@@ -32,6 +35,8 @@ class CPTVRecorder(Recorder):
         self.write_until = 0
         self.rec_time = 0
         self.on_recording_stopping = on_recording_stopping
+        self.frame_q = multiprocessing.Queue()
+        self.rec_p = None
 
     def force_stop(self):
         if not self.recording:
@@ -42,19 +47,6 @@ class CPTVRecorder(Recorder):
         else:
             logging.info("Recording stopped early deleting short recording")
             self.delete_recording()
-
-    def process_frame(self, movement_detected, cptv_frame, received_at):
-        if self.recording:
-            self.write_frame(cptv_frame)
-            if movement_detected:
-                self.write_until = self.frames + self.min_frames
-            elif self.has_minimum():
-
-                self.stop_recording(received_at)
-                return
-
-            if self.frames == self.max_frames:
-                self.stop_recording(received_at)
 
     def has_minimum(self):
         return self.frames > self.write_until
@@ -68,39 +60,25 @@ class CPTVRecorder(Recorder):
             return False
         self.frames = 0
         self.filename = new_temp_name(frame_time)
-        self.filename = os.path.join(self.output_dir, self.filename)
-        f = open(self.filename, "wb")
-        self.writer = CPTVWriter(f)
-        self.writer.timestamp = datetime.now()
-        self.writer.latitude = self.location_config.latitude
-        self.writer.longitude = self.location_config.longitude
-        self.writer.preview_secs = self.preview_secs
-        default_thresh = self.motion.temp_thresh
-        self.motion.temp_thresh = temp_thresh
-        self.writer.motion_config = yaml.dump(self.motion.as_dict()).encode()[:255]
-        self.motion.temp_thresh = default_thresh
-        if self.headers.model:
-            self.writer.model = self.headers.model.encode()
-        if self.headers.brand:
-            self.writer.brand = self.headers.brand.encode()
-        if self.headers.firmware:
-            self.writer.firmware = self.headers.firmware.encode()
-        self.writer.camera_serial = self.headers.serial
-        f = Frame(background_frame, timedelta(), timedelta(), 0, 0)
-
-        f.background_frame = True
-        self.writer.background_frame = f
-        # add brand model fps etc to cptv when python-cptv supports
-        if self.device_config.name:
-            self.writer.device_name = self.device_config.name.encode()
-        if self.device_config.device_id:
-            self.writer.device_id = self.device_config.device_id
-
-        self.writer.write_header()
-
+        self.filename = self.output_dir / self.filename
+        self.rec_p = multiprocessing.Process(
+            target=record,
+            args=(
+                self.frame_q,
+                self.filename,
+                temp_thresh,
+                self.preview_secs,
+                self.motion,
+                self.headers,
+                self.location_config,
+                self.device_config,
+                background_frame,
+                preview_frames,
+            ),
+        )
+        self.rec_p.start()
         self.recording = True
-        for frame in preview_frames:
-            self.write_frame(frame)
+
         self.write_until = self.frames + self.min_frames
 
         logging.info("recording %s started temp_thresh: %d", self.filename, temp_thresh)
@@ -108,9 +86,22 @@ class CPTVRecorder(Recorder):
         self.rec_time += time.time() - start
         return True
 
-    def write_frame(self, cptv_frame):
+    def process_frame(self, movement_detected, cptv_frame, received_at):
+        if self.recording:
+            self.write_frame(cptv_frame)
+            if movement_detected:
+                self.write_until = self.frames + self.min_frames
+            elif self.has_minimum():
+                self.stop_recording(received_at)
+                return
+
+            if self.frames == self.max_frames:
+                self.stop_recording(received_at)
+
+    def write_frame(self, frame):
         start = time.time()
-        self.writer.write_frame(cptv_frame)
+        self.frame_q.put(frame)
+        # self.writer.next_frame(frame)
         self.frames += 1
         self.rec_time += time.time() - start
 
@@ -118,6 +109,12 @@ class CPTVRecorder(Recorder):
         start = time.time()
         self.rec_time += time.time() - start
         self.recording = False
+        logging.info("Waiting for recorder to finish")
+        self.frame_q.put(0)
+        self.rec_p.join()
+        self.frame_q = multiprocessing.Queue()
+        self.rec_p = None
+
         logging.info(
             "recording ended %s frames %s time recording %s per frame ",
             self.frames,
@@ -125,28 +122,81 @@ class CPTVRecorder(Recorder):
             self.rec_time / self.frames,
         )
         self.rec_time = 0
-
         self.write_until = 0
-        if self.writer is None:
-            return
-        final_name = os.path.splitext(self.filename)[0]
+        final_name = self.filename.with_suffix(".cptv")
+        self.filename.rename(final_name)
         if self.on_recording_stopping is not None:
             self.on_recording_stopping(final_name)
-        self.writer.close()
-        os.rename(self.filename, final_name)
-        self.writer = None
 
     def delete_recording(self):
         self.recording = False
-        if self.writer is None:
-            return
-
-        self.writer.close()
-        os.remove(self.filename)
-        self.writer = None
+        self.filename.unlink()
 
 
 def new_temp_name(frame_time):
     return datetime.fromtimestamp(frame_time).strftime(
         "%Y%m%d.%H%M%S.%f" + CPTV_TEMP_EXT
     )
+
+
+def record(
+    queue,
+    filename,
+    temp_thresh,
+    preview_secs,
+    motion_config,
+    headers,
+    location_config,
+    device_config,
+    background_frame=None,
+    init_frames=None,
+):
+    init_logging()
+    frames = 0
+    try:
+        logging.info("Recorder %s started", filename.resolve())
+        f = open(filename, "wb")
+        writer = CPTVWriter(f)
+        writer.timestamp = datetime.now()
+        writer.latitude = location_config.latitude
+        writer.longitude = location_config.longitude
+        writer.preview_secs = preview_secs
+        motion_config.temp_thresh = temp_thresh
+        writer.motion_config = yaml.dump(motion_config.as_dict()).encode()[:255]
+        if headers.model:
+            writer.model = headers.model.encode()
+        if headers.brand:
+            writer.brand = headers.brand.encode()
+        if headers.firmware:
+            writer.firmware = headers.firmware.encode()
+        writer.camera_serial = headers.serial
+        if background_frame is not None:
+            f = Frame(background_frame, timedelta(), timedelta(), 0, 0)
+            f.background_frame = True
+            writer.background_frame = f
+        # add brand model fps etc to cptv when python-cptv supports
+        if device_config.name:
+            writer.device_name = device_config.name.encode()
+        if device_config.device_id:
+            writer.device_id = device_config.device_id
+
+        writer.write_header()
+        if init_frames is not None:
+            for frame in init_frames:
+                writer.write_frame(frame)
+                frames += 1
+        while True:
+            frame = queue.get()
+            if isinstance(frame, int) and frame == 0:
+                writer.close()
+                break
+            writer.write_frame(frame)
+            frames += 1
+
+    except:
+        logging.error("Error Recording %s", filename.resolve(), exc_info=True)
+        try:
+            writer.close()
+        except:
+            pass
+    logging.info("Recorder %s Written %s", filename.resolve(), frames)

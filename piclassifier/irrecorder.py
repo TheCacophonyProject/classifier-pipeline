@@ -65,11 +65,6 @@ class IRRecorder(Recorder):
             self.stop_recording(time.time())
         else:
             logging.info("Recording stopped early deleting short recording")
-            # self.stop_recording(time.time())
-            self.frame_q.put(0)
-            self.rec_p.join()
-            self.frame_q = multiprocessing.Queue()
-            self.rec_p = None
             self.delete_recording()
 
     def process_frame(self, movement_detected, cptv_frame, received_at):
@@ -156,14 +151,13 @@ class IRRecorder(Recorder):
         # self.writer = None
 
     def delete_recording(self):
-        self.recording = False
-        # if self.writer is None:
-        #     return
-        # self.writer.close()
-
-        # self.writer.release()
+        if self.recording:
+            self.frame_q.put(0)
+            self.rec_p.join()
+            self.frame_q = multiprocessing.Queue()
+            self.rec_p = None
+            self.recording = False
         self.filename.unlink()
-        # self.writer = None
 
 
 def new_temp_name(frame_time):
