@@ -29,6 +29,7 @@ VIDEO_EXT = ".mp4"
 # CODEC = "h264_v4l2m2m"
 CODEC = "h264"
 BITRATE = "1M"
+PIX_FMT = "yuv420p"
 
 
 class IRRecorder(Recorder):
@@ -168,7 +169,9 @@ def record(queue, filename, fps, background=None, init_frames=None):
     try:
         logging.info("Recorder %s started", filename.resolve())
 
-        writer = MPEGCreator(filename, fps=fps, codec=CODEC, bitrate=BITRATE)
+        writer = MPEGCreator(
+            filename, fps=fps, codec=CODEC, bitrate=BITRATE, pix_fmt=PIX_FMT
+        )
         if background is not None:
             writer.next_frame(background)
             frames += 1

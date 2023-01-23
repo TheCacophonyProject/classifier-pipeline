@@ -19,7 +19,15 @@ class MPEGCreator:
     The output from ffmpeg is available via the `output` property.
     """
 
-    def __init__(self, filename, quality=21, fps=9, codec="libx264", bitrate="400K"):
+    def __init__(
+        self,
+        filename,
+        quality=21,
+        fps=9,
+        codec="libx264",
+        bitrate="400K",
+        pix_fmt="bgr24",
+    ):
         self.filename = filename
         self.quality = quality
         self._ffmpeg = None
@@ -27,6 +35,7 @@ class MPEGCreator:
         self.fps = fps
         self.codec = codec
         self.bitrate = bitrate
+        self.pix_fmt = pix_fmt
 
     def next_frame(self, frame):
         if self._ffmpeg is None:
@@ -88,7 +97,7 @@ class MPEGCreator:
             "-s",
             str(width) + "x" + str(height),  # size of one frame
             "-pix_fmt",
-            "bgr24",
+            self.pix_fmt,
             "-r",
             str(self.fps),  # frames per second
             "-i",
