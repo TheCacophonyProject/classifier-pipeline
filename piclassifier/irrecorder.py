@@ -142,13 +142,11 @@ class IRRecorder(Recorder):
         )
         self.rec_time = 0
         self.write_until = 0
-
+        # write metadata first
         if self.on_recording_stopping is not None:
             self.on_recording_stopping(final_name)
-        # self.writer.release()
-        # self.writer.close()
+
         self.filename.rename(final_name)
-        # self.writer = None
 
     def delete_recording(self):
         if self.recording:

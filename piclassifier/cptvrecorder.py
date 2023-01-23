@@ -124,9 +124,10 @@ class CPTVRecorder(Recorder):
         self.rec_time = 0
         self.write_until = 0
         final_name = self.filename.with_suffix(".cptv")
-        self.filename.rename(final_name)
+        # write metadata first
         if self.on_recording_stopping is not None:
             self.on_recording_stopping(final_name)
+        self.filename.rename(final_name)
 
     def delete_recording(self):
         self.recording = False
