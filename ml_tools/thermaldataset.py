@@ -56,7 +56,6 @@ def load_dataset(filenames, labels, args):
     )
     for k, v in remapped.items():
         logging.info("Label %s has these values: %s", k, v)
-    # print("remapped is now", labels, " to ", labels, " k", keys, " values", values)
     deterministic = args.get("deterministic", False)
 
     ignore_order = tf.data.Options()
@@ -470,8 +469,7 @@ def get_weighting(dataset, labels):
             # cap the weights
             weights[i] = min(weights[i], 4)
             weights[i] = max(weights[i], 0.25)
-            # min(weight)
-        print("WEights for ", labels[i], weights[i])
+        logging.info("weights for %s is %s", labels[i], weights[i])
 
 
 def show_batch(image_batch, label_batch, labels):

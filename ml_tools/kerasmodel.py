@@ -510,29 +510,12 @@ class KerasModel(Interpreter):
         )
         # distribution = get_distribution(self.train)
         if rebalance:
-            self.class_weights = {}
-            total = np.sum(distribution)
-            multiplier = total / len(self.labels)
-            for index, label in enumerate(self.labels):
-                if distribution[index] == 0:
-                    self.class_weights[index] = 0
-                elif label == "bird":
-                    self.class_weights[index] = (
-                        1 / distribution[index] * (total / len(self.labels)) * 1.2
-                    )
-                elif label == "wallaby":
-                    # wallabies not so important better to predict birds
-                    self.class_weights[index] = (
-                        1 / distribution[index] * (total / len(self.labels)) * 0.8
-                    )
-                else:
-                    self.class_weights[index] = 1 / distribution[index] * multiplier
-        self.class_weights = get_weighting(self.train, self.labels)
-        logging.info(
-            "%s  giving weights %s",
-            self.labels,
-            self.class_weights,
-        )
+            self.class_weights = get_weighting(self.train, self.labels)
+            logging.info(
+                "%s  giving weights %s",
+                self.labels,
+                self.class_weights,
+            )
 
         self.save_metadata(run_name)
 
