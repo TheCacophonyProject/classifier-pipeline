@@ -37,9 +37,13 @@ class MPEGCreator:
         self.bitrate = bitrate
         self.pix_fmt = pix_fmt
 
-    def next_frame(self, frame):
+    def next_frame(self, frame, shape=None):
         if self._ffmpeg is None:
-            height, width, _ = frame.shape
+            if shape is None:
+                height, width, _ = frame.shape
+            else:
+                print("setting from shape", shape)
+                height, width, _ = shape
             self._ffmpeg = self._start(width, height)
         self._ffmpeg.stdin.write(frame.tobytes())
 

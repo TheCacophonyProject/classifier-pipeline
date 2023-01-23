@@ -163,6 +163,11 @@ def new_temp_name(frame_time):
     return datetime.fromtimestamp(frame_time).strftime("%Y%m%d-%H%M%S.%f" + VIDEO_EXT)
 
 
+def write_frame(writer, frame):
+    yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
+    writer.next_frame(yuv, frame.shape)
+
+
 def record(queue, filename, fps, background=None, init_frames=None):
     init_logging()
     frames = 0
@@ -173,18 +178,18 @@ def record(queue, filename, fps, background=None, init_frames=None):
             filename, fps=fps, codec=CODEC, bitrate=BITRATE, pix_fmt=PIX_FMT
         )
         if background is not None:
-            writer.next_frame(cv2.cvtColor(background, cv2.COLOR_BGR2YUV))
+            write_frame(writer, background)
             frames += 1
         if init_frames is not None:
             for frame in init_frames:
-                writer.next_frame(cv2.cvtColor(frame, cv2.COLOR_BGR2YUV))
+                write_frame(writer, frame)
                 frames += 1
         while True:
             frame = queue.get()
             if isinstance(frame, int) and frame == 0:
                 writer.close()
                 break
-            writer.next_frame(cv2.cvtColor(frame, cv2.COLOR_BGR2YUV))
+            write_frame(writer, frame)
             frames += 1
 
     except:
