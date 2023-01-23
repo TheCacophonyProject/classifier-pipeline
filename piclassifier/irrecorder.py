@@ -27,7 +27,7 @@ VIDEO_EXT = ".mp4"
 # wont set bitrate, wont play back on ubuntu, should check again in future
 # as is very fast
 # CODEC = "h264_v4l2m2m"
-CODEC = "h264"
+CODEC = "libx264"
 BITRATE = "1M"
 PIX_FMT = "yuv420p"
 
@@ -173,18 +173,18 @@ def record(queue, filename, fps, background=None, init_frames=None):
             filename, fps=fps, codec=CODEC, bitrate=BITRATE, pix_fmt=PIX_FMT
         )
         if background is not None:
-            writer.next_frame(background)
+            writer.next_frame(cv2.cvtColor(background, cv2.COLOR_BGR2YUV))
             frames += 1
         if init_frames is not None:
             for frame in init_frames:
-                writer.next_frame(frame)
+                writer.next_frame(cv2.cvtColor(frame, cv2.COLOR_BGR2YUV))
                 frames += 1
         while True:
             frame = queue.get()
             if isinstance(frame, int) and frame == 0:
                 writer.close()
                 break
-            writer.next_frame(frame)
+            writer.next_frame(cv2.cvtColor(frame, cv2.COLOR_BGR2YUV))
             frames += 1
 
     except:
