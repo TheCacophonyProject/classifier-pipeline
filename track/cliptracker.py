@@ -23,8 +23,8 @@ class ClipTracker(ABC):
     ):
         config = config.get(self.type)
         self.scale = scale
-        if scale:
-            config.rescale(scale)
+        # if scale:
+        # config.rescale(scale)
         self.do_tracking = do_tracking
         self.verbose = verbose
         self.config = config

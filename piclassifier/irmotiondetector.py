@@ -54,6 +54,7 @@ class RollingBackground(Background):
 WINDOW_SIZE = 50
 MIN_FRAMES = 10 * 10 * 0  # 10 * 10  # 10seconds
 THRESHOLD = 25
+# maybe put to 12
 TRIGGER_FRAMES = 2
 
 

@@ -219,13 +219,13 @@ class IRTrackExtractor(ClipTracker):
             self.background = CVBackground()
             # self.diff_background = DiffBackground(clip.background_thresh)
             if background_frame is not None:
-                if self.scale:
-                    logging.info("Rescaling back")
-                    background_frame = cv2.resize(
-                        background_frame,
-                        (int(self.res_x * self.scale), int(self.res_y * self.scale)),
-                        interpolation=cv2.INTER_AREA,
-                    )
+                # if self.scale:
+                #     logging.info("Rescaling back")
+                #     background_frame = cv2.resize(
+                #         background_frame,
+                #         (int(self.res_x * self.scale), int(self.res_y * self.scale)),
+                #         interpolation=cv2.INTER_AREA,
+                #     )
                 self.background.set_background(background_frame, background_frames)
                 # self.diff_background.set_background(background, background_frames)
         else:
@@ -366,6 +366,7 @@ class IRTrackExtractor(ClipTracker):
         if self.do_tracking:
             if self.background._background is None:
                 self.background.set_background(frame.copy())
+            # GP NOT using probably can remove
             if DO_SALIENCY:
                 repeats = 1
                 if clip.current_frame < 6:
@@ -474,10 +475,10 @@ class IRTrackExtractor(ClipTracker):
             filtered = self.filter_track(clip, track, track.get_stats())
             in_trap = in_trap or (track.in_trap and not filtered)
             region = track.bounds_history[-1]
-            if self.scale:
-                region = region.copy()
-                region.rescale(1 / self.scale)
-                region.in_trap = track.last_bound.in_trap
+            # if self.scale:
+            #     region = region.copy()
+            #     region.rescale(1 / self.scale)
+            region.in_trap = track.last_bound.in_trap
             start_point = (int(region.left), int(region.top))
             end_point = (int(region.right), int(region.bottom))
             image = cv2.rectangle(image, start_point, end_point, (255, 0, 0), 2)
@@ -657,8 +658,8 @@ def inside_trap_top(track, scale=None):
     TOP_ALLOWANCE = 300
     BOTTOM_ALLOWANCE = 100
     region = track.last_bound.copy()
-    if scale:
-        region.rescale(1 / scale)
+    # if scale:
+    # region.rescale(1 / scale)
     if region.width < 60 or region.height < 40:
         # dont want small regions
         return False
