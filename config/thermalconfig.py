@@ -148,7 +148,7 @@ class RecorderConfig:
                 RelAbsTime(window.get("start-recording"), default_offset=30 * 60),
                 RelAbsTime(window.get("stop-recording"), default_offset=30 * 60),
             ),
-            output_dir=recorder.get("output-dir", "/var/spool/cptv"),
+            output_dir=recorder.get("output-dir", "."),
         )
 
 

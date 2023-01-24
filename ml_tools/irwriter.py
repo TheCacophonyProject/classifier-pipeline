@@ -43,7 +43,7 @@ import tensorflow as tf
 from . import tfrecord_util
 from ml_tools import tools
 from ml_tools.imageprocessing import normalize, rotate
-from track.cliptracker import get_ir_back_filtered
+from track.cliptracker import get_diff_back_filtered
 import cv2
 import random
 import math
@@ -298,7 +298,7 @@ def get_data(db, sample, cropped, back_thresh):
         f.crop_by_region(region, out=f)
         background = region.subimage(background)
     f.mask = f.filtered
-    f.filtered = get_ir_back_filtered(background, f.thermal, back_thresh)
+    f.filtered = get_diff_back_filtered(background, f.thermal, back_thresh)
 
     assert f.thermal.shape == f.filtered.shape
     f.normalize()

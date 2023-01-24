@@ -487,6 +487,16 @@ class Background(ABC):
         """Background image"""
         ...
 
+    @property
+    @abstractmethod
+    def frames(self):
+        """frames used"""
+        ...
+
+    @property
+    def frames(self):
+        return self._frames
+
 
 class CVBackground(Background):
     def __init__(self):
@@ -499,7 +509,7 @@ class CVBackground(Background):
         # i think this is more sensitive than default 400
         # works better on hedgehog videos
         self.algorithm.setkNNSamples(3)
-        self.frames = 0
+        self._frames = 0
         self._background = None
 
     def set_background(self, background, frames=1):
@@ -511,58 +521,65 @@ class CVBackground(Background):
 
     def update_background(self, thermal, filtered=None):
         self._background = self.algorithm.apply(thermal)
-        self.frames += 1
+        self._frames += 1
 
     @property
     def background(self):
         return self._background
 
-    def compute_filtered(self, thermal, background_thresh):
-        self.update_background(thermal)
+    def compute_filtered(self, thermal):
         return self.background
 
 
 class DiffBackground(Background):
-    def __init__(self):
+    def __init__(self, background_thresh):
         super().__init__()
-        self.frames = 1
+        self._frames = 1
         self._background = None
+        self.background_thresh = background_thresh
 
     def set_background(self, background, frames=1):
-        self.frames = frames
+        self._frames = frames
         self._background = np.float32(background) * self.frames
         return
 
-    def update_background(self, thermal, filtered):
+    def update_background(self, thermal):
         background = self.background
-
-        new_thermal = np.where(filtered > 0, background, thermal)
-        self._background += new_thermal
-        self.frames += 1
-
-    def compute_filtered(self, thermal, background_thresh):
-        filtered = get_ir_back_filtered(
+        filtered = get_diff_back_filtered(
             self.background,
             thermal,
-            background_thresh,
+            self.background_thresh,
         )
-        self.update_background(thermal, filtered)
+        new_thermal = np.where(filtered > 0, background, thermal)
+        self._background += new_thermal
+        self._frames += 1
+
+    def compute_filtered(self, thermal):
+        filtered = get_diff_back_filtered(
+            self.background,
+            thermal,
+            self.background_thresh,
+        )
         return filtered
 
     @property
     def background(self):
         return self._background / self.frames
 
+    @property
+    def frames(self):
+        return self._frames
 
-def get_ir_back_filtered(background, thermal, back_thresh):
+
+def get_diff_back_filtered(background, frame, back_thresh):
     """
     Calculates filtered frame from thermal
-    :param thermal: the thermal frame
+    :param frame: the frame
     :param background: (optional) used for background subtraction
     :return: uint8 filtered frame and adjusted clip threshold for normalized frame
     """
 
-    filtered = np.float32(thermal.copy())
+    filtered = np.float32(frame.copy())
     filtered = abs(filtered - background)
     filtered[filtered < back_thresh] = 0
     filtered, stats = normalize(filtered, new_max=255)

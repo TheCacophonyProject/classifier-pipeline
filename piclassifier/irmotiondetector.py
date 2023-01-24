@@ -3,16 +3,24 @@ import cv2
 from .motiondetector import SlidingWindow, MotionDetector
 from cptv import Frame
 import logging
+from track.cliptracker import (
+    ClipTracker,
+    CVBackground,
+    DiffBackground,
+    Background,
+    get_diff_back_filtered,
+)
 
 
-class Background:
+class RollingBackground(Background):
     AVERAGE_OVER = 1000
 
-    def __init__(self):
+    def __init__(self, background_thresh=15):
         self._background = None
         self.frames = 0
+        self.background_thresh = background_thresh
 
-    def process_frame(self, frame):
+    def update_background(self, frame):
         if self._background is None:
             self._background = np.float32(frame.copy())
             return
@@ -31,9 +39,20 @@ class Background:
     def background(self):
         return np.uint8(self._background)
 
+    @property
+    def frames(self):
+        return min(self._frames, AVERAGE_OVER)
+
+    def compute_filtered(self, thermal):
+        return get_diff_back_filtered(
+            self.background,
+            thermal,
+            self.background_thresh,
+        )
+
 
 WINDOW_SIZE = 50
-MIN_FRAMES = 10 * 10  # 10 * 10  # 10seconds
+MIN_FRAMES = 10 * 10 * 0  # 10 * 10  # 10seconds
 THRESHOLD = 25
 TRIGGER_FRAMES = 2
 
@@ -44,7 +63,8 @@ class IRMotionDetector(MotionDetector):
         self.num_preview_frames = thermal_config.recorder.preview_secs * headers.fps
         self.rgb_window = SlidingWindow(self.num_preview_frames, dtype=np.uint8)
         self.gray_window = SlidingWindow(self.num_preview_frames, dtype=np.uint8)
-        self._background = Background()
+        # self._background = Background()
+        self._background = CVBackground()
         self.kernel_trigger = np.ones(
             (15, 15), "uint8"
         )  # kernel for erosion when not recording
@@ -90,7 +110,7 @@ class IRMotionDetector(MotionDetector):
             if self.gray_window.oldest is None:
                 return False
 
-            self._background.process_frame(gray)
+            self._background.update_background(gray)
             if self.num_frames > MIN_FRAMES:
                 # Filter and get diff from background
                 delta = cv2.absdiff(

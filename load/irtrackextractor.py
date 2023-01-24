@@ -117,6 +117,7 @@ class IRTrackExtractor(ClipTracker):
         scale=None,
         do_tracking=True,
         on_trapped=None,
+        update_background=True,
     ):
         super().__init__(
             config,
@@ -132,6 +133,8 @@ class IRTrackExtractor(ClipTracker):
         self.background = None
         self.res_x = None
         self.res_y = None
+        # if false background is being updated else where i.e motion detector
+        self.update_background = update_background
 
     def parse_clip(self, clip, process_background=False):
         """
@@ -181,7 +184,7 @@ class IRTrackExtractor(ClipTracker):
                 ) and np.all(image[:, :, 1] == image[:, :, 2])
                 background_frames = 500 if is_background_frame else 1
                 self.start_tracking(
-                    clip, background=gray, background_frames=background_frames
+                    clip, background_frame=gray, background_frames=background_frames
                 )
                 if is_background_frame:
                     continue
@@ -202,7 +205,8 @@ class IRTrackExtractor(ClipTracker):
         clip,
         frames=None,
         track_frames=True,
-        background=None,
+        background_alg=None,
+        background_frame=None,
         background_frames=1,
     ):
 
@@ -212,17 +216,21 @@ class IRTrackExtractor(ClipTracker):
             self.init_saliency()
         clip.set_model("IR")
         clip.set_video_stats(datetime.now())
-        self.background = CVBackground()
-        self.diff_background = DiffBackground()
-        if background is not None:
-            if self.scale:
-                background = cv2.resize(
-                    background,
-                    (int(self.res_x * self.scale), int(self.res_y * self.scale)),
-                    interpolation=cv2.INTER_AREA,
-                )
-            self.background.set_background(background, background_frames)
-            self.diff_background.set_background(background, background_frames)
+        if background_alg is None:
+            self.background = CVBackground()
+            # self.diff_background = DiffBackground(clip.background_thresh)
+            if background_frame is not None:
+                if self.scale:
+                    logging.info("Rescaling back")
+                    background_frame = cv2.resize(
+                        background_frame,
+                        (int(self.res_x * self.scale), int(self.res_y * self.scale)),
+                        interpolation=cv2.INTER_AREA,
+                    )
+                self.background.set_background(background_frame, background_frames)
+                # self.diff_background.set_background(background, background_frames)
+        else:
+            self.background = backgorund_alg
         self.init_saliency()
         if frames is not None:
             do_tracking = self.do_tracking
@@ -351,40 +359,41 @@ class IRTrackExtractor(ClipTracker):
         :param thermal: A numpy array of shape (height, width) and type uint16
             If specified background subtraction algorithm will be used.
         """
-        repeats = 1
-        if clip.current_frame < 6:
-            # helps init the saliency, when ir tracks have a 5 second preview this shouldnt be needed
-            repeats = 6
+
         start = time.time()
 
         saliencyMap = None
         filtered = None
         if self.do_tracking:
-            tracking_thermal = frame.copy()
-            if self.scale:
-                tracking_thermal = cv2.resize(
-                    tracking_thermal,
-                    (int(self.res_x * self.scale), int(self.res_y * self.scale)),
-                    interpolation=cv2.INTER_AREA,
-                )
             if self.background._background is None:
-                self.background.set_background(tracking_thermal.copy())
+                self.background.set_background(frame.copy())
             if DO_SALIENCY:
+                repeats = 1
+                if clip.current_frame < 6:
+                    # helps init the saliency, when ir tracks have a 5 second preview this shouldnt be needed
+                    repeats = 6
+                saliency_thermal = None
+                tracking_thermal = frame
+                if self.scale:
+                    tracking_thermal = cv2.resize(
+                        tracking_thermal,
+                        (int(self.res_x * self.scale), int(self.res_y * self.scale)),
+                        interpolation=cv2.INTER_AREA,
+                    )
                 saliencyMap, _ = self._get_filtered_frame_ir(
                     tracking_thermal, repeats=repeats
                 )
-
-            filtered = self.background.compute_filtered(
-                tracking_thermal, clip.background_thresh
-            )
+            if self.update_background:
+                self.background.update_background(frame)
+            filtered = self.background.compute_filtered(frame)
             #
             # saliencyMap = self.diff_background.compute_filtered(
             #     tracking_thermal, clip.background_thresh
             # )
 
-            _ = self.diff_background.update_background(tracking_thermal, filtered)
+            # _ = self.diff_background.update_background(tracking_thermal)
             # self.background.update_background(tracking_thermal, filtered)
-            clip.set_background(self.diff_background.background)
+            clip.set_background(self.background.background)
         start = time.time()
 
         threshold = 0

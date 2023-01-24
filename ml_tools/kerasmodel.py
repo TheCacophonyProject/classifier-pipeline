@@ -772,7 +772,14 @@ class KerasModel(Interpreter):
                         clip.get_id(), track.get_id(), region.frame_number
                     )
                 )
-
+            logging.info(
+                "classifying ir with preprocess %s size %s crop? %s f shape %s region %s",
+                self.preprocess_fn.__module__,
+                self.params.frame_size,
+                crop,
+                frame.thermal.shape,
+                region,
+            )
             preprocessed = preprocess_ir(
                 frame.copy(),
                 (
@@ -784,9 +791,35 @@ class KerasModel(Interpreter):
                 self.preprocess_fn,
                 save_info=f"{region.frame_number} - {region}",
             )
+            logging.info(
+                "preprocessed is %s max %s min %s",
+                preprocessed.shape,
+                np.amax(preprocessed),
+                np.amin(preprocessed),
+            )
             frames_used.append(region.frame_number)
             data.append(preprocessed)
         data = np.float32(data)
+        for f in data:
+            image = f.copy()
+            image = (image + 1) * 127.5
+            image = np.uint8(image)
+            image = cv2.resize(image, (600, 600))
+            out = self.model.predict(np.expand_dims(f, axis=0))
+            best_res = np.argmax(out[0])
+            prediction = self.labels[best_res]
+            image = cv2.putText(
+                image,
+                prediction,
+                (10, 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 0, 0),
+            )
+
+            cv2.imshow("f", image)
+            cv2.moveWindow("f", 0, 0)
+            cv2.waitKey()
         output = self.model.predict(data)
         track_prediction = TrackPrediction(track.get_id(), self.labels)
 
