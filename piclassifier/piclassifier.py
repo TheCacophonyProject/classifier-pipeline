@@ -563,8 +563,8 @@ class PiClassifier(Processor):
                     pred = {self.predictions.model.id: self.predictions}
                 meta = track.get_metadata(pred)
                 last_pos = meta["positions"][-1].copy()
-                if self.track_extractor.scale is not None:
-                    last_pos.rescale(1 / self.track_extractor.scale)
+                # if self.track_extractor.scale is not None:
+                # last_pos.rescale(1 / self.track_extractor.scale)
                 meta["positions"] = [last_pos]
                 track_meta.append(meta)
 
@@ -765,12 +765,15 @@ class PiClassifier(Processor):
 def on_track_trapped(track):
     track.trap_reported = True
     # GP could make a prediction here
+
     global predictions
-    pred = predictions.prediction_for(track.get_id())
+
     tag = None
-    if pred is not None:
-        tag = pred.predicted_tag()
-        track.trap_tag = tag
+    if predictions is not None:
+        pred = predictions.prediction_for(track.get_id())
+        if pred is not None:
+            tag = pred.predicted_tag()
+            track.trap_tag = tag
     logging.warn("Trapped track %s with tag %s", track, tag)
     trapped_event(tag)
 
@@ -785,11 +788,11 @@ def on_recording_stopping(filename):
     if clip and track_extractor:
         track_extractor.apply_track_filtering(clip)
         # filter criteria has been scaled so resize after
-        if track_extractor.scale is not None:
-            for track in clip.tracks:
-                for r in track.bounds_history:
-                    # bring back to orignal size
-                    r.rescale(1 / track_extractor.scale)
+        # if track_extractor.scale is not None:
+        #     for track in clip.tracks:
+        #         for r in track.bounds_history:
+        #             # bring back to orignal size
+        #             r.rescale(1 / track_extractor.scale)
 
         meta_name = os.path.splitext(filename)[0] + ".txt"
         logging.debug("saving meta to %s", meta_name)

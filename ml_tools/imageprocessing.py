@@ -181,7 +181,7 @@ def save_image_channels(data, filename):
 index = 0
 
 
-def theshold_saliency(image, otsus=False, threshold=100, kernel=(15, 15)):
+def detect_objects_ir(image, otsus=False, threshold=100, kernel=(15, 15)):
     image = np.uint8(image)
     # image = cv2.fastNlMeansDenoising(np.uint8(image), None)
 
@@ -194,16 +194,6 @@ def theshold_saliency(image, otsus=False, threshold=100, kernel=(15, 15)):
 
     _, image = cv2.threshold(image, threshold, 255, flags)
 
-    components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
-    return components, small_mask, stats
-
-
-def detect_objects_ir(image, otsus=True, threshold=0, kernel=(15, 15)):
-
-    image = np.uint8(image)
-    image = cv2.Canny(image, 100, 200)
-    image = cv2.dilate(image, kernel, iterations=1)
-    image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
     components, small_mask, stats, _ = cv2.connectedComponentsWithStats(image)
     return components, small_mask, stats
 

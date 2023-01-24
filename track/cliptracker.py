@@ -146,10 +146,10 @@ class ClipTracker(ABC):
             if not self.config.filter_regions_pre_match:
                 if self.config.min_hist_diff is not None:
                     background = clip.background
-                    if self.scale:
-                        background = clip.rescaled_background(
-                            (int(self.res_x), int(self.res_y))
-                        )
+                    # if self.scale:
+                    #     background = clip.rescaled_background(
+                    #         (int(self.res_x), int(self.res_y))
+                    #     )
                     hist_v = hist_diff(region, background, cur_frame.thermal)
                     if hist_v > self.config.min_hist_diff:
                         logging.warn(
@@ -275,6 +275,8 @@ class ClipTracker(ABC):
                 frame_number=clip.current_frame,
                 centroid=centroid,
             )
+            if self.scale:
+                region.rescale(1 / self.scale)
             # GP this needs to be checked for themals 29/06/2022
             if clip.type == "IR":
                 if delta_thermal is not None:

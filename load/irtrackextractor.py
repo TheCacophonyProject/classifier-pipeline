@@ -36,8 +36,6 @@ from ml_tools.imageprocessing import (
     detect_objects,
     normalize,
     detect_objects_ir,
-    theshold_saliency,
-    detect_objects_both,
 )
 from track.cliptracker import ClipTracker, CVBackground, DiffBackground
 
@@ -175,6 +173,7 @@ class IRTrackExtractor(ClipTracker):
                 if clip.from_metadata:
                     for track in clip.tracks:
                         track.crop_regions()
+
                 background = np.uint8(gray)
                 # cv2.imshow("bak", np.uint8(background))
                 # cv2.waitKey(1000)
@@ -230,7 +229,7 @@ class IRTrackExtractor(ClipTracker):
                 self.background.set_background(background_frame, background_frames)
                 # self.diff_background.set_background(background, background_frames)
         else:
-            self.background = backgorund_alg
+            self.background = background_alg
         self.init_saliency()
         if frames is not None:
             do_tracking = self.do_tracking
@@ -394,6 +393,7 @@ class IRTrackExtractor(ClipTracker):
             # _ = self.diff_background.update_background(tracking_thermal)
             # self.background.update_background(tracking_thermal, filtered)
             clip.set_background(self.background.background)
+
         start = time.time()
 
         threshold = 0
@@ -411,11 +411,19 @@ class IRTrackExtractor(ClipTracker):
         if not self.do_tracking:
             return
         start = time.time()
-
-        num, mask, component_details = theshold_saliency(filtered, threshold=0)
+        re_f = filtered
+        if self.scale:
+            re_f = cv2.resize(
+                filtered,
+                (int(self.res_x * self.scale), int(self.res_y * self.scale)),
+                interpolation=cv2.INTER_AREA,
+            )
+        num, mask, component_details = detect_objects_ir(re_f, threshold=0)
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
-
+        # if self.scale:
+        #     for i in range((len(component_details))):
+        #         component_details[i] = component_details[i].rescale(1 / self.scale)
         if clip.from_metadata:
             for track in clip.tracks:
                 if clip.current_frame in track.frame_list:

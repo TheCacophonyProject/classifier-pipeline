@@ -757,7 +757,11 @@ class KerasModel(Interpreter):
             if region.blank:
                 continue
             if region.width == 0 or region.height == 0:
-                logging.warn("No width or height for frame %s", region.frame_number)
+                logging.warn(
+                    "No width or height for frame %s regoin %s",
+                    region.frame_number,
+                    region,
+                )
                 continue
             frame = clip.frame_buffer.get_frame(region.frame_number)
             if frame is None:
@@ -800,6 +804,8 @@ class KerasModel(Interpreter):
             frames_used.append(region.frame_number)
             data.append(preprocessed)
         data = np.float32(data)
+
+        # GP TEST STUFF PLEASE DELETE ME LATER
         for f in data:
             image = f.copy()
             image = (image + 1) * 127.5
@@ -820,6 +826,8 @@ class KerasModel(Interpreter):
             cv2.imshow("f", image)
             cv2.moveWindow("f", 0, 0)
             cv2.waitKey()
+        # GP TEST STUFF PLEASE DELETE ME LATER
+
         output = self.model.predict(data)
         track_prediction = TrackPrediction(track.get_id(), self.labels)
 
