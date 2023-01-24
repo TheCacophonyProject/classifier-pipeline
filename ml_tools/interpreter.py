@@ -59,9 +59,9 @@ class Interpreter(ABC):
             for i in range(len(regions)):
                 if regions[i].blank:
                     continue
-                regions[i] = regions[i].copy()
-                if scale is not None:
-                    regions[i].rescale(1 / scale)
+                # regions[i] = regions[i].copy()
+                # if scale is not None:
+                #     regions[i].rescale(1 / scale)
 
                 region = regions[i]
 
@@ -75,6 +75,7 @@ class Interpreter(ABC):
                 ):
                     continue
                 params = self.params
+
                 pre_f = preprocess_ir(
                     frame.copy(),
                     (

@@ -177,12 +177,12 @@ def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
     # bounds = bounds[:50]
     data_bounds = np.empty_like(bounds)
     for i, r in enumerate(bounds):
-        if scale is not None and scale != 1:
-            r = r.copy()
-            r.rescale(1 / scale)
-            data_bounds[i] = r
-        else:
-            data_bounds[i] = bounds[i]
+        # if scale is not None and scale != 1:
+        #     r = r.copy()
+        #     r.rescale(1 / scale)
+        #     data_bounds[i] = r
+        # else:
+        data_bounds[i] = bounds[i]
         if all_frames is None:
             frame = clip.frame_buffer.get_frame(r.frame_number)
         else:

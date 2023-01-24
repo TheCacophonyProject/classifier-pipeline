@@ -611,8 +611,8 @@ MIDDLE = 16
 
 def inside_trap_bottom(track, scale=None):
     region = track.last_bound.copy()
-    if scale:
-        region.rescale(1 / scale)
+    # if scale:
+    #     region.rescale(1 / scale)
     if region.width < 60 or region.height < 40:
         # dont want small regions
         return False
