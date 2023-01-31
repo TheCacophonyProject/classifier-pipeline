@@ -65,11 +65,13 @@ def main():
     args = parse_args()
 
     config = Config.load_from_file(args.config_file)
+    thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
+
     if args.file:
         return parse_file(
             args.file, config, args.thermal_config_file, args.preview_type
         )
-    if args.ir:
+    if args.ir or thermal_config.device.ir:
         while True:
             try:
                 ir_camera(config, args.thermal_config_file)

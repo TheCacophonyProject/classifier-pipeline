@@ -156,10 +156,15 @@ class RecorderConfig:
 class DeviceConfig:
     device_id = attr.ib()
     name = attr.ib()
+    ir = attr.ib(default=False)
 
     @classmethod
     def load(cls, device):
-        return cls(name=device.get("name"), device_id=device.get("id"))
+        return cls(
+            name=device.get("name"),
+            device_id=device.get("id"),
+            ir=device.get("ir", False),
+        )
 
 
 @attr.s
