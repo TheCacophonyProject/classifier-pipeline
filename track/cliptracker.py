@@ -530,7 +530,7 @@ class CVBackground(Background):
         return self.algorithm.getBackgroundImage()
 
     def compute_filtered(self, thermal):
-        return self.background
+        return self._background
 
 
 class DiffBackground(Background):

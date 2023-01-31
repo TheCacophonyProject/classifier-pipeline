@@ -153,7 +153,7 @@ class IRTrackExtractor(ClipTracker):
 
         _, ext = os.path.splitext(clip.source_file)
         background = None
-        vidcap = cv2.VideoCapture(clip.source_file)
+        vidcap = cv2.VideoCapture(str(clip.source_file))
         fail_count = 0
 
         while True:
@@ -184,8 +184,6 @@ class IRTrackExtractor(ClipTracker):
                     image[:, :, 0] == image[:, :, 1]
                 ) and np.all(image[:, :, 1] == image[:, :, 2])
                 background_frames = 500 if is_background_frame else 1
-                # cv2.imshow("backgorund", background)
-                # cv2.waitKey(1000)
                 self.start_tracking(
                     clip, background_frame=gray, background_frames=background_frames
                 )
@@ -398,12 +396,6 @@ class IRTrackExtractor(ClipTracker):
             # _ = self.diff_background.update_background(tracking_thermal)
             # self.background.update_background(tracking_thermal, filtered)
             clip.set_background(self.background.background)
-            # img_b = self.background.algorithm.getBackgroundImage()
-            # img_b = np.uint8(img_b)
-            # cv2.imshow("i", img_b)
-            # cv2.imshow("a", filtered)
-            # cv2.moveWindow("a", 0, 0)
-            # cv2.waitKey(100)
         start = time.time()
 
         threshold = 0

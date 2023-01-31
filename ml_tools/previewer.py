@@ -109,7 +109,7 @@ class Previewer:
             res_x *= 2
             res_y *= 2
 
-        mpeg = MPEGCreator(filename)
+        mpeg = MPEGCreator(str(filename))
         frame_scale = 4
         for frame_number, frame in enumerate(clip.frame_buffer):
             if self.preview_type == self.PREVIEW_RAW:

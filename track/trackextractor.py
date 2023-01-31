@@ -13,7 +13,7 @@ from classify.trackprediction import Predictions
 from load.clip import Clip
 from load.cliptrackextractor import ClipTrackExtractor
 from load.irtrackextractor import IRTrackExtractor
-
+from pathlib import Path
 from ml_tools import tools
 from ml_tools.previewer import Previewer
 from track.track import Track
@@ -102,13 +102,14 @@ def extract_file(filename):
     :param filename: filename to process
     :param enable_preview: if true an MPEG preview file is created.
     """
+    filename = Path(filename)
     global config
     global cache_to_disk
-    if not os.path.exists(filename):
+    if not filename.is_file():
         raise Exception("File {} not found.".format(filename))
     logging.info("Processing file '{}'".format(filename))
     previewer = Previewer.create_if_required(config, config.classify.preview)
-    extension = os.path.splitext(filename)[1]
+    extension = filename.suffix
     if extension == ".cptv":
         track_extractor = ClipTrackExtractor(
             config.tracking,
@@ -144,17 +145,10 @@ def extract_file(filename):
     if not success:
         logging.error("Could not parse %s", filename)
         return
-    out_file = get_output_file(filename)
-    destination_folder = os.path.dirname(out_file)
-    if not os.path.exists(destination_folder):
-        logging.info("Creating folder {}".format(destination_folder))
-        os.makedirs(destination_folder)
-    meta_filename = out_file + ".txt"
+    meta_filename = filename.with_suffix(".txt")
 
     if previewer:
-        base_name = os.path.basename(out_file)
-        mpeg_filename = destination_folder + "/" + base_name + "-tracking.mp4"
-
+        mpeg_filename = filename.parent / f"{filename.stem}-tracking.mp4"
         previewer.export_clip_preview(mpeg_filename, clip)
     logging.info("saving meta data %s", meta_filename)
 
@@ -183,7 +177,7 @@ def save_metadata(filename, meta_filename, clip, track_extractor, config):
         # if no tracks choose a clip thumb
         region = best_trackless_thumb(clip)
         metadata["thumbnail_region"] = region
-    metadata["source"] = filename
+    metadata["source"] = str(filename)
     metadata["tracking_time"] = round(track_extractor.tracking_time, 1)
     metadata["algorithm"] = {}
     metadata["algorithm"]["tracker_version"] = track_extractor.tracker_version
