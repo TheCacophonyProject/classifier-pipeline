@@ -527,7 +527,7 @@ class CVBackground(Background):
 
     @property
     def background(self):
-        return self._background
+        return self.algorithm.getBackgroundImage()
 
     def compute_filtered(self, thermal):
         return self.background
