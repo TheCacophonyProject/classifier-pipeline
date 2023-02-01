@@ -37,7 +37,10 @@ class Service(dbus.service.Object):
         headers["FPS"] = headers.get("fps", 9)
         headers["ResX"] = headers.get("res_x", 160)
         headers["ResY"] = headers.get("res_y", 120)
-
+        if headers.get("model") == "IR":
+            headers["Model"] = 2
+        else:
+            headers["Model"] = 1
         logging.debug("Sending headers %s", headers)
         return headers
 

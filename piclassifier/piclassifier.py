@@ -404,11 +404,11 @@ class PiClassifier(Processor):
         self.clip._background_calculated()
         # no need to retrack all of preview
         background_frames = None
-
+        track_frames = self.type != "IR"
         self.track_extractor.start_tracking(
             self.clip,
             preview_frames,
-            track_frames=False,
+            track_frames=track_frames,
             background_alg=self.motion_detector._background,
             # background_frame=clip.background,
             # background_frames=background_frames,

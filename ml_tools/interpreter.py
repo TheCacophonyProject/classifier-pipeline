@@ -52,20 +52,24 @@ class Interpreter(ABC):
                 preprocess_ir,
             )
 
-            regions = track.bounds_history[-last_x_frames:]
-            frames = clip.frame_buffer.get_last_x(len(regions))
+            frame_ago = 1
+            # get non blank frames
+            regions = []
+            frames = []
+            for r in reversed(track.bounds_history):
+                if not r.blank:
+                    frame = clip.frame_buffer.get_frame_ago(frame_ago)
+                    if frame is None:
+                        break
+                    frames.append(frame)
+                    regions.append(r)
+                    if len(regions) == last_x_frames:
+                        break
+                frame_ago += 1
+
             preprocessed = []
             masses = []
-            for i in range(len(regions)):
-                if regions[i].blank:
-                    continue
-                # regions[i] = regions[i].copy()
-                # if scale is not None:
-                #     regions[i].rescale(1 / scale)
-
-                region = regions[i]
-
-                frame = frames[i]
+            for region, frame in zip(regions, frames):
 
                 if (
                     frame is None
@@ -97,9 +101,22 @@ class Interpreter(ABC):
 
             frames_per_classify = args.get("frames_per_classify", 25)
             logging.info("Preprocess thermal scale %s last_x %s", scale, last_x_frames)
-
-            regions = track.bounds_history[-last_x_frames:]
-            frames = clip.frame_buffer.get_last_x(len(regions))
+            frame_ago = 1
+            # get non blank frames
+            regions = []
+            frames = []
+            for r in reversed(track.bounds_history):
+                if not r.blank:
+                    frame = clip.frame_buffer.get_frame_ago(frame_ago)
+                    if frame is None:
+                        break
+                    regions.append(r)
+                    frames.append(frame)
+                    if len(regions) == frames_per_classify:
+                        break
+                frame_ago += 1
+            # regions = track.bounds_history[-last_x_frames:]
+            # frames = clip.frame_buffer.get_last_x(len(regions))
             if frames is None:
                 return
             indices = np.random.choice(
