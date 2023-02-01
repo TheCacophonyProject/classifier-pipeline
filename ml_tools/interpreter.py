@@ -66,7 +66,8 @@ class Interpreter(ABC):
                     if len(regions) == last_x_frames:
                         break
                 frame_ago += 1
-
+            if len(frames) == 0:
+                return None, None
             preprocessed = []
             masses = []
             for region, frame in zip(regions, frames):
@@ -100,7 +101,11 @@ class Interpreter(ABC):
             )
 
             frames_per_classify = args.get("frames_per_classify", 25)
-            logging.info("Preprocess thermal scale %s last_x %s", scale, last_x_frames)
+            logging.info(
+                "Preprocess thermal scale %s frames_per_classify %s",
+                scale,
+                frames_per_classify,
+            )
             frame_ago = 1
             # get non blank frames
             regions = []
@@ -117,8 +122,8 @@ class Interpreter(ABC):
                 frame_ago += 1
             # regions = track.bounds_history[-last_x_frames:]
             # frames = clip.frame_buffer.get_last_x(len(regions))
-            if frames is None:
-                return
+            if len(frames) == 0:
+                return None, None
             indices = np.random.choice(
                 len(regions),
                 min(frames_per_classify, len(regions)),

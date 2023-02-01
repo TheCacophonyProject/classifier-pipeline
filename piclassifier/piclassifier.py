@@ -274,7 +274,6 @@ class PiClassifier(Processor):
             self.tracking_config = self.track_extractor.config
 
             self.type = "thermal"
-            print("using cptv recorder")
             if not thermal_config.recorder.disable_recordings:
                 self.recorder = CPTVRecorder(
                     thermal_config, headers, on_recording_stopping
