@@ -1,0 +1,11 @@
+tracking:
+  thermal:
+    denoise: false
+classify:
+  models:
+  - id: 1
+    model_file: /home/pi/tflite/converted_model.tflite
+    name: pi-tflite
+    thumbnail_model: true
+    wallaby: false
+    type: TFLite
