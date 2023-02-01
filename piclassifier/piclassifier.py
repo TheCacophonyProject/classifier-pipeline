@@ -427,7 +427,9 @@ class PiClassifier(Processor):
         active_tracks = [track for track in active_tracks if len(track) >= 8]
         filtered = []
         for track in active_tracks:
-            pred = self.predictions.prediction_for(track.get_id())
+            pred = None
+            if self.predictions is not None:
+                pred = self.predictions.prediction_for(track.get_id())
             if pred is not None:
                 if (
                     pred.last_frame_classified is not None
@@ -451,9 +453,7 @@ class PiClassifier(Processor):
             return active_tracks
         active_predictions = []
         for track in active_tracks:
-            prediction = self.predictions.get_or_create_prediction(
-                track, keep_all=False
-            )
+            prediction = self.predictions.get_or_create_prediction(track, keep_all=True)
             active_predictions.append(prediction)
 
         top_priority = sorted(
@@ -495,9 +495,9 @@ class PiClassifier(Processor):
         for i, track in enumerate(active_tracks):
             regions = []
             track_prediction = self.predictions.get_or_create_prediction(
-                track, keep_all=False
+                track, keep_all=True
             )
-            prediction, mass = self.classifier.predict_track(
+            frames, prediction, mass = self.classifier.predict_track(
                 clip,
                 track,
                 last_x_frames=self.last_x_frames,
@@ -508,7 +508,7 @@ class PiClassifier(Processor):
                 track_prediction.last_frame_classified = self.clip.current_frame
                 continue
             for p, m in zip(prediction, mass):
-                track_prediction.classified_frame(self.clip.current_frame, p, m)
+                track_prediction.classified_frames(frames, p, m)
             logging.info(
                 "Track %s is predicted as %s", track, track_prediction.get_prediction()
             )

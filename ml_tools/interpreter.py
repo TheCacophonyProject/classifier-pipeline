@@ -34,12 +34,12 @@ class Interpreter(ABC):
         ...
 
     def predict_track(self, clip, track, **args):
-        preprocessed, mass = self.preprocess(clip, track, args)
+        frames, preprocessed, mass = self.preprocess(clip, track, args)
         # print("preprocess is %s", preprocessed)
         if preprocessed is None or len(preprocessed) == 0:
-            return None, None
+            return None, None, None
         pred = self.predict(np.array(preprocessed))
-        return pred, mass
+        return frames, pred, mass
 
     def preprocess(self, clip, track, args):
         if self.TYPE == "RandomForest":
@@ -94,7 +94,7 @@ class Interpreter(ABC):
                     continue
                 preprocessed.append(pre_f)
                 masses.append(1)
-            return preprocessed, masses
+            return [frame.frame_number for f in frames], preprocessed, masses
         elif self.data_type == "thermal":
             from ml_tools.preprocess import (
                 preprocess_movement,
@@ -102,11 +102,12 @@ class Interpreter(ABC):
 
             frames_per_classify = args.get("frames_per_classify", 25)
             logging.info(
-                "Preprocess thermal scale %s frames_per_classify %s",
+                "Preprocess thermal scale %s frames_per_classify %s last_x %s",
                 scale,
                 frames_per_classify,
+                last_x_frames,
             )
-            frame_ago = 1
+            frame_ago = 0
             # get non blank frames
             regions = []
             frames = []
@@ -115,13 +116,13 @@ class Interpreter(ABC):
                     frame = clip.frame_buffer.get_frame_ago(frame_ago)
                     if frame is None:
                         break
+                    frame = frame
                     regions.append(r)
                     frames.append(frame)
-                    if len(regions) == frames_per_classify:
+                    assert frame.frame_number == r.frame_number
+                    if len(regions) == last_x_frames:
                         break
                 frame_ago += 1
-            # regions = track.bounds_history[-last_x_frames:]
-            # frames = clip.frame_buffer.get_last_x(len(regions))
             if len(frames) == 0:
                 return None, None
             indices = np.random.choice(
@@ -165,4 +166,4 @@ class Interpreter(ABC):
             )
             if preprocessed is None:
                 return None, mass
-            return [preprocessed], [mass]
+            return [f.frame_number for f in frames], [preprocessed], [mass]
