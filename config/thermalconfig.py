@@ -79,7 +79,7 @@ class CameraMotionConfig:
         if model == "lepton3.5":
             return cls(
                 temp_thresh=28000,
-                delta_thresh=200,
+                delta_thresh=150,
                 count_thresh=3,
                 frame_compare_gap=45,
                 one_diff_only=True,
