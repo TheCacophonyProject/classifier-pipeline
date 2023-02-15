@@ -259,6 +259,9 @@ class PiClassifier(Processor):
                 self.recorder = IRRecorder(
                     thermal_config, headers, on_recording_stopping
                 )
+            self.snapshot_recorder = IRRecorder(
+                thermal_config, headers, on_recording_stopping
+            )
             self.motion_detector = IRMotionDetector(
                 thermal_config,
                 headers,
@@ -278,7 +281,9 @@ class PiClassifier(Processor):
                 self.recorder = CPTVRecorder(
                     thermal_config, headers, on_recording_stopping
                 )
-
+            self.snapshot_recorder = CPTVRecorder(
+                thermal_config, headers, on_recording_stopping
+            )
             self.motion_detector = CPTVMotionDetector(
                 thermal_config,
                 self.tracking_config.motion.dynamic_thresh,
@@ -587,10 +592,22 @@ class PiClassifier(Processor):
         if self.clip:
             self.clip.current_frame += 1
 
+    def take_snapshot(self):
+        self.snapshot_recorder.start_recording(
+            None,
+            [],
+            self.motion_detector.temp_thresh,
+            received_at,
+        )
+
     def process_frame(self, lepton_frame, received_at):
         start = time.time()
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
+        if self.snapshot_recorder.recording:
+            self.snapshot_recorder.process_frame(
+                self.motion_detector.movement_detected, lepton_frame, received_at
+            )
         if not self.recorder.recording and self.motion_detector.movement_detected:
             s_r = time.time()
             preview_frames = self.motion_detector.preview_frames()

@@ -83,6 +83,14 @@ class Service(dbus.service.Object):
             json.dumps(track_meta, cls=CustomJSONEncoder),
         )
 
+    @dbus.service.method(
+        DBUS_NAME,
+        in_signature="",
+        out_signature="",
+    )
+    def TakeTestRecording():
+        
+
     @dbus.service.signal(DBUS_NAME, signature="siaib")
     def Tracking(self, what, confidence, region, tracking):
         pass
