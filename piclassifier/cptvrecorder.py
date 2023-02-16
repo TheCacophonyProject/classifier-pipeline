@@ -17,7 +17,9 @@ CPTV_TEMP_EXT = ".temp"
 
 
 class CPTVRecorder(Recorder):
-    def __init__(self, thermal_config, headers, on_recording_stopping=None):
+    def __init__(
+        self, thermal_config, headers, on_recording_stopping=None, name="CPTV"
+    ):
         self.location_config = thermal_config.location
         self.device_config = thermal_config.device
         self.output_dir = Path(thermal_config.recorder.output_dir)
@@ -31,7 +33,7 @@ class CPTVRecorder(Recorder):
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.min_recording = self.preview_secs * headers.fps + self.min_frames
-
+        self.name = name
         self.write_until = 0
         self.rec_time = 0
         self.on_recording_stopping = on_recording_stopping
@@ -49,7 +51,7 @@ class CPTVRecorder(Recorder):
             self.delete_recording()
 
     def has_minimum(self):
-        return self.frames > self.write_until
+        return self.frames >= self.write_until
 
     def start_recording(
         self, background_frame, preview_frames, temp_thresh, frame_time
@@ -109,7 +111,7 @@ class CPTVRecorder(Recorder):
         start = time.time()
         self.rec_time += time.time() - start
         self.recording = False
-        logging.info("Waiting for recorder to finish")
+        logging.info("Waiting for recorder to finish %s")
         self.frame_q.put(0)
         self.rec_p.join()
         self.frame_q = multiprocessing.Queue()

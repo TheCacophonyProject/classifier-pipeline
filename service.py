@@ -15,10 +15,11 @@ DBUS_PATH = "/org/cacophony/thermalrecorder"
 
 
 class Service(dbus.service.Object):
-    def __init__(self, dbus, get_frame, headers):
+    def __init__(self, dbus, get_frame, headers, take_snapshot_fn):
         super().__init__(dbus, DBUS_PATH)
         self.get_frame = get_frame
         self.headers = headers
+        self.take_snapshot = take_snapshot_fn
 
     @dbus.service.method(
         DBUS_NAME,
@@ -85,11 +86,9 @@ class Service(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_NAME,
-        in_signature="",
-        out_signature="",
     )
-    def TakeTestRecording():
-        
+    def TakeTestRecording(self):
+        return self.take_snapshot()
 
     @dbus.service.signal(DBUS_NAME, signature="siaib")
     def Tracking(self, what, confidence, region, tracking):
@@ -97,12 +96,12 @@ class Service(dbus.service.Object):
 
 
 class SnapshotService:
-    def __init__(self, get_frame, headers):
+    def __init__(self, get_frame, headers, take_snapshot_fn):
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
         self.loop = GLib.MainLoop()
         self.t = threading.Thread(
             target=self.run_server,
-            args=(get_frame, headers),
+            args=(get_frame, headers, take_snapshot_fn),
         )
         self.t.start()
         self.service = None
@@ -110,10 +109,10 @@ class SnapshotService:
     def quit(self):
         self.loop.quit()
 
-    def run_server(self, get_frame, headers):
+    def run_server(self, get_frame, headers, take_snapshot_fn):
         session_bus = dbus.SystemBus()
         name = dbus.service.BusName(DBUS_NAME, session_bus)
-        self.service = Service(session_bus, get_frame, headers)
+        self.service = Service(session_bus, get_frame, headers, take_snapshot_fn)
         # tracking_thread = threading.Thread(
         #     target=self.send_tracks,
         # )

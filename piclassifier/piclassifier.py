@@ -180,6 +180,8 @@ def run_classifier(
                     return
                 if frame == "skip":
                     pi_classifier.skip_frame()
+                elif frame == SNAPSHOT_SIGNAL:
+                    pi_classifier.take_snapshot()
             else:
                 pi_classifier.process_frame(frame[0], frame[1])
     except:
@@ -282,7 +284,7 @@ class PiClassifier(Processor):
                     thermal_config, headers, on_recording_stopping
                 )
             self.snapshot_recorder = CPTVRecorder(
-                thermal_config, headers, on_recording_stopping
+                thermal_config, headers, on_recording_stopping, name="SNAP"
             )
             self.motion_detector = CPTVMotionDetector(
                 thermal_config,
@@ -593,21 +595,26 @@ class PiClassifier(Processor):
             self.clip.current_frame += 1
 
     def take_snapshot(self):
-        self.snapshot_recorder.start_recording(
-            None,
-            [],
-            self.motion_detector.temp_thresh,
-            received_at,
+        # if self.snapshot_recorder
+        started = self.snapshot_recorder.start_recording(
+            None, [], self.motion_detector.temp_thresh, time.time()
         )
+        if not started:
+            logging.info("Already taking snapshot recording")
+            return False
+        logging.info("Taking new snapshot recorder")
+        self.snapshot_recorder.write_until = 2 * self.headers.fps
+        return True
 
     def process_frame(self, lepton_frame, received_at):
+        import time
+
+        # time.sleep(30)
         start = time.time()
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
         if self.snapshot_recorder.recording:
-            self.snapshot_recorder.process_frame(
-                self.motion_detector.movement_detected, lepton_frame, received_at
-            )
+            self.snapshot_recorder.process_frame(False, lepton_frame, received_at)
         if not self.recorder.recording and self.motion_detector.movement_detected:
             s_r = time.time()
             preview_frames = self.motion_detector.preview_frames()
