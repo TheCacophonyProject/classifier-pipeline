@@ -79,7 +79,7 @@ def main():
         return parse_file(
             args.file, config, args.thermal_config_file, args.preview_type
         )
-    if args.ir or thermal_config.device.ir:
+    if args.ir or thermal_config.device_setup.ir:
         while True:
             try:
                 ir_camera(config, args.thermal_config_file)
@@ -92,7 +92,7 @@ def main():
     except OSError:
         if os.path.exists(SOCKET_NAME):
             raise
-
+    logging.info("running as thermal")
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
     sock.listen(1)
