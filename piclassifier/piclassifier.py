@@ -34,7 +34,7 @@ from ml_tools.forestmodel import ForestModel
 from track.region import Region
 from . import beacon
 
-from piclassifier.eventreporter import trapped_event
+from piclassifier.trapcontroller import trigger_trap
 
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
@@ -774,7 +774,7 @@ def on_track_trapped(track):
             tag = pred.predicted_tag()
             track.trap_tag = tag
     logging.warn("Trapped track %s with tag %s", track, tag)
-    trapped_event(tag)
+    trigger_trap(tag)
 
 
 def on_recording_stopping(filename):
