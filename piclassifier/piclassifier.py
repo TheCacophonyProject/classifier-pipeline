@@ -284,7 +284,7 @@ class PiClassifier(Processor):
                     thermal_config, headers, on_recording_stopping
                 )
             self.snapshot_recorder = CPTVRecorder(
-                thermal_config, headers, on_recording_stopping, name="SNAP"
+                thermal_config, headers, on_recording_stopping
             )
             self.motion_detector = CPTVMotionDetector(
                 thermal_config,
@@ -595,7 +595,6 @@ class PiClassifier(Processor):
             self.clip.current_frame += 1
 
     def take_snapshot(self):
-        # if self.snapshot_recorder
         started = self.snapshot_recorder.start_recording(
             None, [], self.motion_detector.temp_thresh, time.time()
         )
@@ -609,7 +608,6 @@ class PiClassifier(Processor):
     def process_frame(self, lepton_frame, received_at):
         import time
 
-        # time.sleep(30)
         start = time.time()
         self.motion_detector.process_frame(lepton_frame)
         self.process_time += time.time() - start
