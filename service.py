@@ -29,6 +29,7 @@ class Service(dbus.service.Object):
     def CameraInfo(self):
         logging.debug("Serving headers %s", self.headers)
         headers = self.headers.as_dict()
+        ir = headers.get("model") == "IR"
         for k, v in headers.items():
             try:
                 headers[k] = int(v)
@@ -38,7 +39,7 @@ class Service(dbus.service.Object):
         headers["FPS"] = headers.get("fps", 9)
         headers["ResX"] = headers.get("res_x", 160)
         headers["ResY"] = headers.get("res_y", 120)
-        if headers.get("model") == "IR":
+        if ir:
             headers["Model"] = 2
         else:
             headers["Model"] = 1
