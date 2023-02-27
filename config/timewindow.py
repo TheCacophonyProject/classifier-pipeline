@@ -108,8 +108,6 @@ class TimeWindow:
 
         self.update_sun_times()
 
-    # def next_end(self):
-
 
 class RelAbsTime:
     def __init__(self, time_str, default_offset=None, default_time=None):
@@ -182,8 +180,6 @@ def next_time(rel_time):
     if rel_time.any_time:
         return None
     if rel_time.is_relative:
-        # if datetime.now() > rel_time.time:
-
         return rel_time.dt
     date = rel_time.dt
     return date
