@@ -23,6 +23,7 @@ class TimeWindow:
         self.end = end
         self.location = None
         self.last_sunrise_check = None
+        self.non_stop = not self.use_sunrise_sunset() and self.start.dt == self.end.dt
 
     def next_start(self):
         return next_time(self.start)
@@ -37,10 +38,8 @@ class TimeWindow:
         if self.use_sunrise_sunset():
             self.update_sun_times()
         if self.start.is_before():
-            # before rec window
             return WindowStatus.before
         if self.end.is_before():
-            # in rec window
             return WindowStatus.inside
         return WindowStatus.after
 

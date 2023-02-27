@@ -7,12 +7,13 @@ import psutil
 import socket
 import time
 import cv2
+import json
 
 # fixes logging not showing up in tensorflow
 
 from cptv import CPTVReader
 import numpy as np
-import json
+from threading import Thread
 
 from config.timewindow import WindowStatus
 from config.config import Config
@@ -73,16 +74,25 @@ def main():
         thermal_config.location.altitude,
     )
 
-    global next_snap
-    next_snap = next_snapshot(thermal_config)
     if args.file:
         return parse_file(
             args.file, config, args.thermal_config_file, args.preview_type
         )
+
+    process_queue = multiprocessing.Queue()
+
+    snapshot_thread = Thread(
+        target=take_snapshots,
+        args=(
+            thermal_config,
+            process_queue,
+        ),
+    )
+    snapshot_thread.start()
     if args.ir or thermal_config.device_setup.ir:
         while True:
             try:
-                ir_camera(config, args.thermal_config_file)
+                ir_camera(config, args.thermal_config_file, process_queue)
             except:
                 logging.error("Error reading camera", exc_info=True)
                 time.sleep(10)
@@ -101,7 +111,9 @@ def main():
         connection, client_address = sock.accept()
         logging.info("connection from %s", client_address)
         try:
-            handle_connection(connection, config, args.thermal_config_file)
+            handle_connection(
+                connection, config, args.thermal_config_file, process_queue
+            )
         except:
             logging.error("Error with connection", exc_info=True)
             # return
@@ -123,7 +135,6 @@ def parse_file(file, config, thermal_config_file, preview_type):
 
 
 def parse_ir(file, config, thermal_config_file, preview_type):
-
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, "IR")
     count = 0
     vidcap = cv2.VideoCapture(file)
@@ -200,8 +211,6 @@ def parse_cptv(file, config, thermal_config_file, preview_type):
                 pi_classifier.motion_detector._background._background = frame.pix
                 continue
             pi_classifier.process_frame(frame, time.time())
-            if datetime.now() > next_snap[0]:
-                pi_classifier.take_snapshot()
 
         pi_classifier.disconnected()
 
@@ -234,7 +243,7 @@ def handle_headers(connection):
     return HeaderInfo.parse_header(headers), left_over
 
 
-def ir_camera(config, thermal_config_file):
+def ir_camera(config, thermal_config_file, process_queue):
     FPS = 10
     logging.info("Starting ir video capture")
     cap = cv2.VideoCapture(0)
@@ -257,8 +266,6 @@ def ir_camera(config, thermal_config_file):
         thermal_config = ThermalConfig.load_from_file(
             thermal_config_file, headers.model
         )
-        process_queue = multiprocessing.Queue()
-
         processor = get_processor(process_queue, config, thermal_config, headers)
         processor.start()
         while True:
@@ -286,7 +293,7 @@ def next_snapshot(thermal_config, prev_window_type=None):
     ):
         started = window.next_start()
         return (window.next_start(), WindowStatus.before)
-    elif (
+    elif not window.non_stop and (
         current_status == WindowStatus.inside or prev_window_type == WindowStatus.before
     ):
         started = window.next_start()
@@ -303,18 +310,25 @@ def next_snapshot(thermal_config, prev_window_type=None):
         return (window.next_start(), WindowStatus.before)
 
 
-next_snap = (None, None)
+def take_snapshots(thermal_config, process_queue):
+    next_snap = next_snapshot(thermal_config, None)
+    while True:
+        snap_time = next_snap[0] - timedelta(minutes=2)
+        time_until = (snap_time - datetime.now()).total_seconds()
+        if time_until > 0:
+            logging.info("Taking snapshot at %s", snap_time)
+            time.sleep(time_until)
+        logging.info("Sending snapshot signal")
+        process_queue.put(SNAPSHOT_SIGNAL)
+        next_snap = next_snapshot(thermal_config, next_snap[1])
 
 
-def handle_connection(connection, config, thermal_config_file):
-    global next_snap
+def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )
-
-    process_queue = multiprocessing.Queue()
 
     processor = get_processor(process_queue, config, thermal_config, headers)
     processor.start()
@@ -365,9 +379,7 @@ def handle_connection(connection, config, thermal_config_file):
                 process_queue.put(SKIP_SIGNAL)
             else:
                 process_queue.put((frame, time.time()))
-            if datetime.now() > next_snap[0]:
-                process_queue.put(SNAPSHOT_SIGNAL)
-                next_snap = next_snapshot(thermal_config, next_snap[1])
+
     finally:
         time.sleep(5)
         # give it a moment to close down properly
