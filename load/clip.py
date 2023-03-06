@@ -401,7 +401,6 @@ class Clip:
             track.crop_rectangle = self.crop_rectangle
 
     def _set_crop_rectangle(self):
-
         edge = self.config.edge_pixels
         self.crop_rectangle = Rectangle(
             edge, edge, self.res_x - 2 * edge, self.res_y - 2 * edge

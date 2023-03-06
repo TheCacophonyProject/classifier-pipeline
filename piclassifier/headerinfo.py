@@ -10,7 +10,6 @@ import attr
 
 @attr.s
 class HeaderInfo:
-
     X_RESOLUTION = "ResX"
     Y_RESOLUTION = "ResY"
     FPS = "FPS"

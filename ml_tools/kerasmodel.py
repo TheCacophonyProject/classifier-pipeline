@@ -85,7 +85,6 @@ class KerasModel(Interpreter):
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.params.model_name
         if pretrained_model == "resnet":
-
             return (
                 tf.keras.applications.ResNet50(
                     weights=weights,
@@ -344,7 +343,8 @@ class KerasModel(Interpreter):
         # self.model.summary()
         # self.model.load_weights(dir + "/variables/variables")
 
-    def load_model(self, model_path, training=False, weights=None):
+    def load_model(self, model_path, training=False, weights=None, data_type="thermal"):
+        super().__init__(model_path, data_type)
         logging.info("Loading %s with weight %s", model_path, weights)
         dir = os.path.dirname(model_path)
         self.model = tf.keras.models.load_model(dir)
@@ -1004,7 +1004,6 @@ class KerasModel(Interpreter):
                 if actual[-1] == predictions[-1]:
                     correct += 1
                 else:
-
                     if track_prediction.predicted_tag() in incorrect:
                         incorrect[track_prediction.predicted_tag()].append(
                             track_segments[0].unique_track_id

@@ -86,7 +86,6 @@ class IRRecorder(Recorder):
     def start_recording(
         self, background_frame, preview_frames, temp_thresh, frame_time
     ):
-
         start = time.time()
         if self.recording:
             logging.warn("Already recording, stop recording first")

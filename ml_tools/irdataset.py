@@ -295,5 +295,4 @@ def show_batch(image_batch, label_batch, labels):
 
 
 if __name__ == "__main__":
-
     main()

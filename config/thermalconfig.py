@@ -153,17 +153,26 @@ class RecorderConfig:
 
 
 @attr.s
+class DeviceSetup:
+    ir = attr.ib(default=False)
+
+    @classmethod
+    def load(cls, device):
+        return cls(
+            ir=device.get("ir", False),
+        )
+
+
+@attr.s
 class DeviceConfig:
     device_id = attr.ib()
     name = attr.ib()
-    ir = attr.ib(default=False)
 
     @classmethod
     def load(cls, device):
         return cls(
             name=device.get("name"),
             device_id=device.get("id"),
-            ir=device.get("ir", False),
         )
 
 
@@ -174,6 +183,7 @@ class ThermalConfig:
     device = attr.ib()
     location = attr.ib()
     throttler = attr.ib()
+    device_setup = attr.ib()
 
     @classmethod
     def load_from_file(cls, filename=None, model=None):
@@ -194,6 +204,7 @@ class ThermalConfig:
                 raw.get("thermal-recorder", {}), raw.get("windows", {})
             ),
             device=DeviceConfig.load(raw.get("device", {})),
+            device_setup=DeviceSetup.load(raw.get("device-setup", {})),
             location=LocationConfig.load(raw.get("location", {})),
         )
 

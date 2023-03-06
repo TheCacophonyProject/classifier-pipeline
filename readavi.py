@@ -15,7 +15,6 @@ def load_args():
 
 
 def detect_objects(image, otsus=True, threshold=0, kernel=(15, 15)):
-
     # cv2.imshow("Ca", image)
     # cv2.waitKey(0)
     # image -= np.mean(image)
@@ -415,7 +414,6 @@ def track_avi(args):
 
 
 def background_sub(args):
-
     cap = cv2.VideoCapture(args.cptv)
     fgbg = cv2.createBackgroundSubtractorMOG2(10)
 

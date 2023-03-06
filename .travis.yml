@@ -26,6 +26,7 @@ script:
   gdown.download(\"https://drive.google.com/u/1/uc?id=1CQoQLYbfX9NzRo2_BlpNE_I3c0iG6ZFd\", \"model_hq.tar\", quiet=False)"
 - mkdir model
 - tar -C model -xvf model_hq.tar
+- cp model/val_acc/metadata.txt model/val_acc/saved_model.txt
 - python3 classify.py -c tests/test-config.yaml ./tests/clips/
 - python3 piclassify.py --file tests/clips/possum.cptv  --thermal-config-file tests/config.toml
   -c tests/test-config.yaml

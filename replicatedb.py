@@ -22,7 +22,6 @@ def copy(old_db, new_db):
         frame_keys.sort()
         copy_og = copy_clips[clip_id].create_group("original_frames")
         for k, v in og_frames.items():
-
             copy_frame = copy_og.create_dataset(
                 str(k), shape=v.shape, chunks=v.shape, **gzip_compression, dtype=v.dtype
             )

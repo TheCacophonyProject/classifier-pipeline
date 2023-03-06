@@ -15,7 +15,6 @@ class DummyRecorder(Recorder):
             if movement_detected:
                 self.write_until = self.frames + self.min_frames
             elif self.has_minimum():
-
                 self.stop_recording(received_at)
                 return
 

@@ -182,7 +182,6 @@ class TrackHeader:
             frame_numbers.sort()
 
             for frame_num, frame_temp in zip(frame_numbers, self.frame_temp_median):
-
                 region = self.regions_by_frame[frame_num]
                 if region.mass == 0 or region.blank:
                     continue
@@ -836,7 +835,6 @@ def get_segments(
     segment_type=SegmentType.ALL_RANDOM,
     max_segments=None,
 ):
-
     if segment_type == SegmentType.ALL_RANDOM_NOMIN:
         segment_min_mass = None
     if min_frames is None:
@@ -911,7 +909,6 @@ def get_segments(
         None,
     ]
     for _ in range(repeats):
-
         frame_indices = whole_indices.copy()
         if random_frames:
             # random_frames and not random_sections:

@@ -189,7 +189,7 @@ class RecordingMatch:
 
         if self.summary.unmatched_tracks > 0:
             f.write("Unmatched Tracks\n")
-        for (what, track) in self.unmatched_tracks:
+        for what, track in self.unmatched_tracks:
             f.write(
                 "{} - [{}s]Start-End {} - {}\n".format(
                     what,

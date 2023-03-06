@@ -1,19 +1,21 @@
 #!/usr/bin/python3
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import os
 import psutil
 import socket
 import time
 import cv2
+import json
 
 # fixes logging not showing up in tensorflow
 
 from cptv import CPTVReader
 import numpy as np
-import json
+from threading import Thread
 
+from config.timewindow import WindowStatus
 from config.config import Config
 from config.thermalconfig import ThermalConfig
 from .cptvrecorder import CPTVRecorder
@@ -34,6 +36,7 @@ TELEMETRY_PACKET_COUNT = 4
 STOP_SIGNAL = "stop"
 
 SKIP_SIGNAL = "skip"
+SNAPSHOT_SIGNAL = "snap"
 
 
 # TODO abstract interpreter class
@@ -66,15 +69,30 @@ def main():
 
     config = Config.load_from_file(args.config_file)
     thermal_config = ThermalConfig.load_from_file(args.thermal_config_file)
+    thermal_config.recorder.rec_window.set_location(
+        *thermal_config.location.get_lat_long(use_default=True),
+        thermal_config.location.altitude,
+    )
 
     if args.file:
         return parse_file(
             args.file, config, args.thermal_config_file, args.preview_type
         )
-    if args.ir or thermal_config.device.ir:
+
+    process_queue = multiprocessing.Queue()
+
+    snapshot_thread = Thread(
+        target=take_snapshots,
+        args=(
+            thermal_config,
+            process_queue,
+        ),
+    )
+    snapshot_thread.start()
+    if args.ir or thermal_config.device_setup.ir:
         while True:
             try:
-                ir_camera(config, args.thermal_config_file)
+                ir_camera(config, args.thermal_config_file, process_queue)
             except:
                 logging.error("Error reading camera", exc_info=True)
                 time.sleep(10)
@@ -84,7 +102,7 @@ def main():
     except OSError:
         if os.path.exists(SOCKET_NAME):
             raise
-
+    logging.info("running as thermal")
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_NAME)
     sock.listen(1)
@@ -93,7 +111,9 @@ def main():
         connection, client_address = sock.accept()
         logging.info("connection from %s", client_address)
         try:
-            handle_connection(connection, config, args.thermal_config_file)
+            handle_connection(
+                connection, config, args.thermal_config_file, process_queue
+            )
         except:
             logging.error("Error with connection", exc_info=True)
             # return
@@ -115,7 +135,6 @@ def parse_file(file, config, thermal_config_file, preview_type):
 
 
 def parse_ir(file, config, thermal_config_file, preview_type):
-
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, "IR")
     count = 0
     vidcap = cv2.VideoCapture(file)
@@ -192,6 +211,7 @@ def parse_cptv(file, config, thermal_config_file, preview_type):
                 pi_classifier.motion_detector._background._background = frame.pix
                 continue
             pi_classifier.process_frame(frame, time.time())
+
         pi_classifier.disconnected()
 
 
@@ -223,7 +243,7 @@ def handle_headers(connection):
     return HeaderInfo.parse_header(headers), left_over
 
 
-def ir_camera(config, thermal_config_file):
+def ir_camera(config, thermal_config_file, process_queue):
     FPS = 10
     logging.info("Starting ir video capture")
     cap = cv2.VideoCapture(0)
@@ -246,8 +266,6 @@ def ir_camera(config, thermal_config_file):
         thermal_config = ThermalConfig.load_from_file(
             thermal_config_file, headers.model
         )
-        process_queue = multiprocessing.Queue()
-
         processor = get_processor(process_queue, config, thermal_config, headers)
         processor.start()
         while True:
@@ -264,14 +282,53 @@ def ir_camera(config, thermal_config_file):
         processor.terminate()
 
 
-def handle_connection(connection, config, thermal_config_file):
+def next_snapshot(thermal_config, prev_window_type=None):
+    window = thermal_config.recorder.rec_window
+    current_status = None
+    if prev_window_type is None:
+        current_status = window.window_status()
+
+    if current_status == WindowStatus.before or (
+        prev_window_type == WindowStatus.new or prev_window_type == WindowStatus.after
+    ):
+        started = window.next_start()
+        return (window.next_start(), WindowStatus.before)
+    elif not window.non_stop and (
+        current_status == WindowStatus.inside or prev_window_type == WindowStatus.before
+    ):
+        started = window.next_start()
+        if current_status is not None and started - datetime.now() < timedelta(
+            minutes=30
+        ):
+            print("Started inside window than 30")
+            return (started, WindowStatus.before)
+
+        return (window.next_end(), WindowStatus.inside)
+    else:
+        # next windowtimes
+        window.next_window()
+        return (window.next_start(), WindowStatus.before)
+
+
+def take_snapshots(thermal_config, process_queue):
+    next_snap = next_snapshot(thermal_config, None)
+    while True:
+        snap_time = next_snap[0] - timedelta(minutes=2)
+        time_until = (snap_time - datetime.now()).total_seconds()
+        if time_until > 0:
+            logging.info("Taking snapshot at %s", snap_time)
+            time.sleep(time_until)
+        logging.info("Sending snapshot signal")
+        process_queue.put(SNAPSHOT_SIGNAL)
+        next_snap = next_snapshot(thermal_config, next_snap[1])
+
+
+def handle_connection(connection, config, thermal_config_file, process_queue):
     headers, extra_b = handle_headers(connection)
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, headers.model)
     logging.info(
         "parsed camera headers %s running with config %s", headers, thermal_config
     )
-
-    process_queue = multiprocessing.Queue()
 
     processor = get_processor(process_queue, config, thermal_config, headers)
     processor.start()
@@ -322,6 +379,7 @@ def handle_connection(connection, config, thermal_config_file):
                 process_queue.put(SKIP_SIGNAL)
             else:
                 process_queue.put((frame, time.time()))
+
     finally:
         time.sleep(5)
         # give it a moment to close down properly

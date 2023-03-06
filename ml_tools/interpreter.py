@@ -71,7 +71,6 @@ class Interpreter(ABC):
             preprocessed = []
             masses = []
             for region, frame in zip(regions, frames):
-
                 if (
                     frame is None
                     or region.width == 0

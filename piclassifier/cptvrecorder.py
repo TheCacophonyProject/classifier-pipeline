@@ -31,7 +31,6 @@ class CPTVRecorder(Recorder):
         self.min_frames = thermal_config.recorder.min_secs * headers.fps
         self.max_frames = thermal_config.recorder.max_secs * headers.fps
         self.min_recording = self.preview_secs * headers.fps + self.min_frames
-
         self.write_until = 0
         self.rec_time = 0
         self.on_recording_stopping = on_recording_stopping
@@ -49,7 +48,7 @@ class CPTVRecorder(Recorder):
             self.delete_recording()
 
     def has_minimum(self):
-        return self.frames > self.write_until
+        return self.frames >= self.write_until
 
     def start_recording(
         self, background_frame, preview_frames, temp_thresh, frame_time

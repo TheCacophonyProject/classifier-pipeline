@@ -139,7 +139,6 @@ def show_samples_breakdown(dataset):
 
 
 def print_cameras(train, validation, test):
-
     print("Cameras per set:")
     print("-" * 90)
     print("Train")

@@ -278,7 +278,6 @@ class Dataset:
         return False
 
     def add_clip_sample_mappings(self, sample):
-
         if self.filter_sample(sample):
             return False
         self.samples.append(sample)

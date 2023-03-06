@@ -314,7 +314,6 @@ def _load_colourmap(colourmap_path):
 
 
 def resource_path(name):
-
     for base in [LOCAL_RESOURCES, GLOBAL_RESOURCES]:
         p = os.path.join(base, name)
         if os.path.exists(p):
