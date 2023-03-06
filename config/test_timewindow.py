@@ -16,20 +16,20 @@ class TestRelAbs:
         assert rel_time.is_after()
         assert not rel_time.is_before()
 
-        rel_time = RelAbsTime(None, default_time=cur_date.time())
+        rel_time = RelAbsTime(None, default_time=cur_date)
         assert rel_time.is_after()
         assert not rel_time.is_before()
         assert rel_time.offset_s is None
 
     def test_offset(self):
         cur_date = datetime.now()
-        rel_time = RelAbsTime("30m", default_time=cur_date.time())
+        rel_time = RelAbsTime("30m", default_time=cur_date)
         assert rel_time.offset_s == 30 * 60
         rel_time = RelAbsTime("30s", default_offset=200)
         assert rel_time.offset_s == 30
         rel_time = RelAbsTime("1.5h")
         assert rel_time.offset_s == 1.5 * 60 * 60
-        rel_time = RelAbsTime("1a.d5h", default_time=cur_date.time())
+        rel_time = RelAbsTime("1a.d5h", default_time=cur_date)
         assert rel_time.offset_s is None
         assert rel_time.time == cur_date.time()
 
@@ -75,5 +75,5 @@ class TestWindow:
         time_window.inside_window()
         assert time_window.last_sunrise_check is not None
 
-        time_window.end.time = (cur_date + timedelta(hours=11)).time()
+        time_window.end.dt = cur_date + timedelta(hours=11)
         assert time_window.inside_window()
