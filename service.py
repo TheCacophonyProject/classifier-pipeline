@@ -89,6 +89,7 @@ class Service(dbus.service.Object):
         DBUS_NAME,
     )
     def TakeTestRecording(self):
+        logging.info("Take test recording")
         return self.take_snapshot()
 
     @dbus.service.signal(DBUS_NAME, signature="siaib")
