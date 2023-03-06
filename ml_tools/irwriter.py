@@ -205,7 +205,6 @@ def create_tf_records(
 
     writers = []
     for i in range(num_shards):
-
         writers.append(
             tf.io.TFRecordWriter(
                 str(output_path / (f"%05d-of-%05d.tfrecord" % (i, num_shards)))

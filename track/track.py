@@ -437,7 +437,6 @@ class Track:
         segment_frames=None,
         segment_type=SegmentType.ALL_RANDOM,
     ):
-
         regions = np.array(self.bounds_history)
         frame_temp_median = np.uint16(frame_temp_median)
         segments = []
@@ -577,7 +576,6 @@ class Track:
     #             self.add_blank_frame()
     #
     def add_region(self, region):
-
         if self.prev_frame_num and region.frame_number:
             frame_diff = region.frame_number - self.prev_frame_num - 1
             for _ in range(frame_diff):
@@ -777,7 +775,6 @@ class Track:
         next_frame = self.bounds_history[1]
 
         for i in range(len(self.bounds_history)):
-
             prev_frame = self.bounds_history[max(0, i - 1)]
             current_frame = self.bounds_history[i]
             next_frame = self.bounds_history[min(len(self.bounds_history) - 1, i + 1)]

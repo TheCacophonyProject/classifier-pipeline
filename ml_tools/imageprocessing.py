@@ -102,7 +102,6 @@ def square_clip(data, frames_per_row, tile_dim):
 
 
 def square_clip_flow(data_flow, frames_per_row, tile_dim, use_rgb=False):
-
     if use_rgb:
         new_frame = np.zeros(
             (frames_per_row * tile_dim[0], frames_per_row * tile_dim[1], 3)
@@ -226,7 +225,6 @@ def detect_objects_both(
     # cv2.imshow("backsub.png", np.uint8(backsub))
     both = backsub
     if salicencyMap is not None:
-
         # cv2.imshow("salicencyMap.png", np.uint8(salicencyMap))
         both = backsub | salicencyMap
         # cv2.imshow("both.png", np.uint8(both))
@@ -238,7 +236,6 @@ def detect_objects_both(
 
 
 def detect_objects(image, otsus=False, threshold=30, kernel=(15, 15)):
-
     image = np.uint8(image)
     image = cv2.GaussianBlur(image, kernel, 0)
     flags = cv2.THRESH_BINARY

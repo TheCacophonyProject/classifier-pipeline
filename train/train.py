@@ -75,7 +75,6 @@ def ignore_clips(file_path):
     ignore_clips = []
     with open(file_path) as stream:
         for line in stream:
-
             if line.strip() == "" or line[0] != "[":
                 continue
             try:

@@ -485,7 +485,6 @@ class TrackDatabase:
             frame_iter = iter(frame_numbers)
 
             for frame_number in frame_iter:
-
                 frame = frames_node[str(frame_number)][:, :]
                 frames.append(
                     Frame.from_channels([frame], [TrackChannels.thermal], frame_number)
@@ -535,9 +534,7 @@ class TrackDatabase:
                 frame_iter = iter(frame_numbers)
 
             for frame_number in frame_iter:
-
                 if original:
-
                     region = Region.region_from_array(bounds[frame_number])
                     region.frame_number = frame_number + track_start
                     frame = track_node[str(frame_number + track_start)][:, :]

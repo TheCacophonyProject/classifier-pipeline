@@ -36,7 +36,6 @@ from track.cliptracker import ClipTracker
 
 
 class ClipTrackExtractor(ClipTracker):
-
     PREVIEW = "preview"
     VERSION = 10
     TYPE = "thermal"

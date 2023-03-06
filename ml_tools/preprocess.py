@@ -16,6 +16,7 @@ EDGE = 1
 res_x = 120
 res_y = 160
 
+
 # this is from tf source code same as preprocess_input
 def preprocess_fn(x):
     x /= 127.5
