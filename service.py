@@ -90,7 +90,13 @@ class Service(dbus.service.Object):
     )
     def TakeTestRecording(self):
         logging.info("Take test recording")
-        return self.take_snapshot()
+        result = False
+        try:
+            result = self.take_snapshot()
+        except:
+            logging.error("Error taking test recording", exc_info=True)
+
+        return result
 
     @dbus.service.signal(DBUS_NAME, signature="siaib")
     def Tracking(self, what, confidence, region, tracking):
