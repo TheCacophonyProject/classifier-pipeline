@@ -81,7 +81,7 @@ class IRRecorder(Recorder):
                 self.stop_recording(received_at)
 
     def has_minimum(self):
-        return self.frames > self.write_until
+        return self.frames >= self.write_until
 
     def start_recording(
         self, background_frame, preview_frames, temp_thresh, frame_time
@@ -96,9 +96,10 @@ class IRRecorder(Recorder):
         self.filename = self.temp_dir / self.filename
 
         # self.writer = MPEGCreator(self.filename, fps=self.fps, codec=CODEC)
-
-        back = background_frame[:, :, np.newaxis]
-        back = np.repeat(back, 3, axis=2)
+        back = None
+        if background_frame is not None:
+            back = background_frame[:, :, np.newaxis]
+            back = np.repeat(back, 3, axis=2)
         # preview_frames.insert(0, back)
 
         self.rec_p = multiprocessing.Process(

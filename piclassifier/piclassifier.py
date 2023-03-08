@@ -36,6 +36,7 @@ from . import beacon
 
 from piclassifier.eventreporter import trapped_event
 
+SNAPSHOT_SIGNAL = "snap"
 STOP_SIGNAL = "stop"
 SKIP_SIGNAL = "skip"
 track_extractor = None
@@ -585,6 +586,7 @@ class PiClassifier(Processor):
     def disconnected(self):
         self.motion_detector.disconnected()
         self.recorder.force_stop()
+        self.snapshot_recorder.force_stop()
         self.end_clip()
         self.service.quit()
 
