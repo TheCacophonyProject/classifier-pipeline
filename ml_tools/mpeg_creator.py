@@ -42,7 +42,6 @@ class MPEGCreator:
             if shape is None:
                 height, width, _ = frame.shape
             else:
-                print("setting from shape", shape)
                 height, width, _ = shape
             self._ffmpeg = self._start(width, height)
         self._ffmpeg.stdin.write(frame.tobytes())
