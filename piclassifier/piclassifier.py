@@ -211,7 +211,9 @@ class PiClassifier(Processor):
         classify,
         detect_after=None,
         preview_type=None,
+        constant_recorder=True,
     ):
+        self.constant_recorder = None
         self._output_dir = thermal_config.recorder.output_dir
         self.headers = headers
         super().__init__()
@@ -263,12 +265,20 @@ class PiClassifier(Processor):
                     thermal_config, headers, on_recording_stopping
                 )
             self.snapshot_recorder = IRRecorder(
-                thermal_config, headers, on_recording_stopping
+                thermal_config, headers, on_recording_stopping, name="IR Snapshot"
             )
             self.motion_detector = IRMotionDetector(
                 thermal_config,
                 headers,
             )
+            if constant_recorder:
+                self.constant_recorder = IRRecorder(
+                    thermal_config,
+                    headers,
+                    on_recording_stopping,
+                    name="IR Constant",
+                    constant_recorder=True,
+                )
         else:
             logging.info("Running on Thermal")
             self.track_extractor = ClipTrackExtractor(
@@ -285,7 +295,7 @@ class PiClassifier(Processor):
                     thermal_config, headers, on_recording_stopping
                 )
             self.snapshot_recorder = CPTVRecorder(
-                thermal_config, headers, on_recording_stopping
+                thermal_config, headers, on_recording_stopping, name="CPTV Snapshot"
             )
             self.motion_detector = CPTVMotionDetector(
                 thermal_config,
@@ -293,6 +303,10 @@ class PiClassifier(Processor):
                 headers,
                 detect_after=detect_after,
             )
+            if constant_recorder:
+                self.constant_recorder = CPTVRecorder(
+                    thermal_config, headers, on_recording_stopping, name="CPTV Constant"
+                )
         edge = self.tracking_config.edge_pixels
         self.crop_rectangle = tools.Rectangle(
             edge, edge, headers.res_x - 2 * edge, headers.res_y - 2 * edge
@@ -587,6 +601,8 @@ class PiClassifier(Processor):
         self.motion_detector.disconnected()
         self.recorder.force_stop()
         self.snapshot_recorder.force_stop()
+        self.constant_recorder.force_stop()
+
         self.end_clip()
         self.service.quit()
 
@@ -615,6 +631,17 @@ class PiClassifier(Processor):
         self.process_time += time.time() - start
         if self.snapshot_recorder.recording:
             self.snapshot_recorder.process_frame(False, lepton_frame, received_at)
+        if self.constant_recorder is not None and self.motion_detector.can_record():
+            if self.constant_recorder.recording:
+                self.constant_recorder.process_frame(True, lepton_frame, received_at)
+            else:
+                logging.info("Starting new constant recorder")
+                self.constant_recorder.start_recording(
+                    self.motion_detector.background,
+                    [],
+                    self.motion_detector.temp_thresh,
+                    time.time(),
+                )
         if not self.recorder.recording and self.motion_detector.movement_detected:
             s_r = time.time()
             preview_frames = self.motion_detector.preview_frames()

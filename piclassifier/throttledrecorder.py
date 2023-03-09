@@ -22,6 +22,9 @@ class ThrottledRecorder(Recorder):
         self.min_recording = self.recorder.min_frames
         self.throttled_at = None
 
+    def final_name(self):
+        return self.recorder.final_name()
+
     @property
     def recording(self):
         return self.recorder.recording
