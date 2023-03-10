@@ -15,7 +15,6 @@ from piclassifier.recorder import Recorder
 from load.cliptrackextractor import ClipTrackExtractor
 from ml_tools.logs import init_logging
 
-TEMP_DIR = "temp"
 VIDEO_EXT = ".mp4"
 
 # FOURCC = cv2.VideoWriter_fourcc(*"avc1")
@@ -41,44 +40,19 @@ class IRRecorder(Recorder):
         name="IRRecorder",
         constant_recorder=False,
     ):
-        super().__init__(name)
+        super().__init__(
+            thermal_config,
+            headers,
+            name,
+            constant_recorder,
+            VIDEO_EXT,
+            on_recording_stopping,
+        )
         self.res_x = headers.res_x
         self.res_y = headers.res_y
         self.fps = headers.fps
 
-        self.temp_dir = self.output_dir / TEMP_DIR
-
-        self.temp_dir.mkdir(parents=True, exist_ok=True)
-        self.frame_q = multiprocessing.Queue()
-
-    def process_frame(self, movement_detected, cptv_frame, received_at):
-        if self.recording:
-            self.write_frame(cptv_frame)
-            if movement_detected:
-                self.write_until = self.frames + self.min_frames
-            elif self.has_minimum():
-                self.stop_recording(received_at)
-                return
-
-            if self.frames == self.max_frames:
-                self.stop_recording(received_at)
-
-    def has_minimum(self):
-        return self.frames >= self.write_until
-
-    def start_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time
-    ):
-        start = time.time()
-        if self.recording:
-            logging.warn("%s Already recording, stop recording first", self.name)
-            return False
-        self.frames = 0
-        self.filename = new_temp_name(frame_time)
-
-        self.filename = self.temp_dir / self.filename
-
-        # self.writer = MPEGCreator(self.filename, fps=self.fps, codec=CODEC)
+    def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
         back = None
         if background_frame is not None:
             back = background_frame[:, :, np.newaxis]
@@ -97,29 +71,15 @@ class IRRecorder(Recorder):
             ),
         )
         self.rec_p.start()
-        # self.writer.next_frame(back)
-
-        self.recording = True
-        # for frame in preview_frames:
-        #     self.write_frame(frame)
-        self.write_until = self.frames + self.min_frames
-        logging.info("%s recording %s started", self.name, self.filename.resolve())
-        self.rec_time += time.time() - start
         return True
 
-    def write_frame(self, frame):
-        start = time.time()
-        self.frame_q.put(frame)
-        # self.writer.next_frame(frame)
-        self.frames += 1
-        self.rec_time += time.time() - start
-
     def final_name(self):
-        self.output_dir / self.filename.name
+        return self.output_dir / self.filename.name
 
 
-def new_temp_name(frame_time):
-    return datetime.fromtimestamp(frame_time).strftime("%Y%m%d-%H%M%S.%f" + VIDEO_EXT)
+#
+# def new_temp_name(frame_time):
+#     return datetime.fromtimestamp(frame_time).strftime("%Y%m%d-%H%M%S.%f" + VIDEO_EXT)
 
 
 def write_frame(writer, frame):

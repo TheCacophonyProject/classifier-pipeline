@@ -24,18 +24,16 @@ class CPTVRecorder(Recorder):
         name="CPTVRecorder",
         constant_recorder=False,
     ):
-        super().__init__(thermal_config, headers, name, constant_recorder)
+        super().__init__(
+            thermal_config,
+            headers,
+            name,
+            constant_recorder,
+            CPTV_TEMP_EXT,
+            on_recording_stopping,
+        )
 
-    def start_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time
-    ):
-        start = time.time()
-        if self.recording:
-            logging.warn("%s Already recording, stop recording first", self.name)
-            return False
-        self.frames = 0
-        self.filename = new_temp_name(frame_time)
-        self.filename = self.output_dir / self.filename
+    def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
         self.rec_p = multiprocessing.Process(
             target=record,
             args=(
@@ -52,28 +50,10 @@ class CPTVRecorder(Recorder):
             ),
         )
         self.rec_p.start()
-        self.recording = True
-
-        self.write_until = self.frames + self.min_frames
-
-        logging.info(
-            "%s recording %s started temp_thresh: %d",
-            self.name,
-            self.filename,
-            temp_thresh,
-        )
-
-        self.rec_time += time.time() - start
         return True
 
     def final_name(self):
-        return self.filename.with_suffix(".cptv")
-
-
-def new_temp_name(frame_time):
-    return datetime.fromtimestamp(frame_time).strftime(
-        "%Y%m%d.%H%M%S.%f" + CPTV_TEMP_EXT
-    )
+        return self.output_dir / self.filename.with_suffix(".cptv").name
 
 
 def record(

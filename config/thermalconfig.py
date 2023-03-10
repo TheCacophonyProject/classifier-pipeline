@@ -137,10 +137,12 @@ class RecorderConfig:
     output_dir = attr.ib()
     disable_recordings = attr.ib()
     min_disk_space = attr.ib()
+    constant_recorder = attr.ib()
 
     @classmethod
     def load(cls, recorder, window):
         return cls(
+            constant_recorder=recorder.get("constant-recorder", False),
             min_disk_space=recorder.get("min-disk-space-mb", 200),
             disable_recordings=recorder.get("disable-recordings", False),
             min_secs=recorder.get("min-secs", 5),

@@ -211,7 +211,6 @@ class PiClassifier(Processor):
         classify,
         detect_after=None,
         preview_type=None,
-        constant_recorder=True,
     ):
         self.constant_recorder = None
         self._output_dir = thermal_config.recorder.output_dir
@@ -271,7 +270,7 @@ class PiClassifier(Processor):
                 thermal_config,
                 headers,
             )
-            if constant_recorder:
+            if thermal_config.recorder.constant_recorder:
                 self.constant_recorder = IRRecorder(
                     thermal_config,
                     headers,
@@ -303,9 +302,13 @@ class PiClassifier(Processor):
                 headers,
                 detect_after=detect_after,
             )
-            if constant_recorder:
+            if thermal_config.recorder.constant_recorder:
                 self.constant_recorder = CPTVRecorder(
-                    thermal_config, headers, on_recording_stopping, name="CPTV Constant"
+                    thermal_config,
+                    headers,
+                    on_recording_stopping,
+                    name="CPTV Constant",
+                    constant_recorder=True,
                 )
         edge = self.tracking_config.edge_pixels
         self.crop_rectangle = tools.Rectangle(
@@ -601,7 +604,8 @@ class PiClassifier(Processor):
         self.motion_detector.disconnected()
         self.recorder.force_stop()
         self.snapshot_recorder.force_stop()
-        self.constant_recorder.force_stop()
+        if self.constant_recorder is not None:
+            self.constant_recorder.force_stop()
 
         self.end_clip()
         self.service.quit()
