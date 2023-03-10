@@ -22,6 +22,9 @@ class ThrottledRecorder(Recorder):
         self.min_recording = self.recorder.min_frames
         self.throttled_at = None
 
+    def final_name(self):
+        return self.recorder.final_name()
+
     @property
     def recording(self):
         return self.recorder.recording
@@ -30,6 +33,13 @@ class ThrottledRecorder(Recorder):
         if self.recorder.recording:
             self.last_rec = time.time()
         self.recorder.force_stop()
+
+    def start_recording(
+        self, background_frame, preview_frames, temp_thresh, frame_time
+    ):
+        return self.recorder.start_recording(
+            background_frame, preview_frames, temp_thresh, frame_time
+        )
 
     def process_frame(self, movement_detected, cptv_frame, received_at):
         if movement_detected:
@@ -97,9 +107,7 @@ class ThrottledRecorder(Recorder):
         self.throttled_at = None
         self.tokens = min(self.tokens, self.bucket_size)
 
-    def start_recording(
-        self, background_frame, preview_frames, temp_thresh, frame_time
-    ):
+    def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
         logging.debug("Attempting rec have %s tokens", self.tokens)
         self.update_tokens(frame_time)
         self.last_motion = frame_time
@@ -110,7 +118,7 @@ class ThrottledRecorder(Recorder):
             self.throttle(frame_time)
             return False
         self.take_token(frame_time, len(preview_frames))
-        self.recorder.start_recording(
+        self.recorder.new_recording(
             background_frame, preview_frames, temp_thresh, frame_time
         )
         return True
