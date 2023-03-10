@@ -53,7 +53,7 @@ class CPTVRecorder(Recorder):
         return True
 
     def final_name(self):
-        return self.output_dir / self.filename.with_suffix(".cptv").name
+        return self.output_dir / self.filename.with_suffix(self.file_extention).name
 
 
 def record(
