@@ -187,7 +187,7 @@ class Recorder(ABC):
 
     def new_temp_name(self, frame_time):
         return self.temp_dir / datetime.fromtimestamp(frame_time).strftime(
-            "%Y%m%d.%H%M%S.%f" + self.file_extention
+            "%Y%m%d-%H%M%S.%f" + self.file_extention
         )
 
     @abstractmethod
