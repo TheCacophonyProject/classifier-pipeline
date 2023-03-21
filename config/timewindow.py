@@ -95,8 +95,18 @@ class TimeWindow:
                 )
                 self.end.dt = self.end.dt.replace(tzinfo=None)
 
+                if self.end.dt < self.start.dt:
+                    date = date + timedelta(days=1)
+                    sun_times = self.location.sun(date=date)
+                    self.end.dt = sun_times["sunrise"] + timedelta(
+                        seconds=self.end.offset_s
+                    )
+                    self.end.dt = self.end.dt.replace(tzinfo=None)
+
             logging.info(
-                "start_rec is {} end_rec is {}".format(self.start.dt, self.end.dt)
+                "Updated sun times start is {} end is {}".format(
+                    self.start.dt, self.end.dt
+                )
             )
 
     def set_location(self, lat, lng, altitude=0):
