@@ -12,7 +12,7 @@ from pathlib import Path
 from ml_tools.logs import init_logging
 import multiprocessing
 
-CPTV_TEMP_EXT = ".temp"
+CPTV_EXT = ".cptv"
 
 
 class CPTVRecorder(Recorder):
@@ -29,7 +29,7 @@ class CPTVRecorder(Recorder):
             headers,
             name,
             constant_recorder,
-            CPTV_TEMP_EXT,
+            CPTV_EXT,
             on_recording_stopping,
         )
 
