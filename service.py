@@ -119,10 +119,10 @@ class SnapshotService:
         self.loop.quit()
 
     def run_server(self, get_frame, headers, take_snapshot_fn):
-        session_bus = dbus.SystemBus()
+        self.loop.run()
+        session_bus = dbus.SystemBus(mainloop=self.loop)
         name = dbus.service.BusName(DBUS_NAME, session_bus)
         self.service = Service(session_bus, get_frame, headers, take_snapshot_fn)
-        self.loop.run()
 
     def tracking(self, what, confidence, region, tracking):
         logging.debug(
