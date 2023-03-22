@@ -6,7 +6,7 @@ import time
 import dbus
 import dbus.service
 import dbus.mainloop.glib
-from gi.repository import GLib
+from gi.repository import GLib, GObject
 from ml_tools.tools import CustomJSONEncoder
 from cptv import Frame
 
@@ -106,7 +106,8 @@ class Service(dbus.service.Object):
 class SnapshotService:
     def __init__(self, get_frame, headers, take_snapshot_fn):
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-        self.loop = GLib.MainLoop()
+        dbus.mainloop.glib.threads_init()
+        self.loop = GObject.MainLoop()
         self.t = threading.Thread(
             target=self.run_server,
             args=(get_frame, headers, take_snapshot_fn),
@@ -121,10 +122,6 @@ class SnapshotService:
         session_bus = dbus.SystemBus()
         name = dbus.service.BusName(DBUS_NAME, session_bus)
         self.service = Service(session_bus, get_frame, headers, take_snapshot_fn)
-        # tracking_thread = threading.Thread(
-        #     target=self.send_tracks,
-        # )
-        # tracking_thread.start()
         self.loop.run()
 
     def tracking(self, what, confidence, region, tracking):
