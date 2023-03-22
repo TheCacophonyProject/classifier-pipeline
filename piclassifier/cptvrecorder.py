@@ -11,6 +11,7 @@ from piclassifier.recorder import Recorder
 from pathlib import Path
 from ml_tools.logs import init_logging
 import multiprocessing
+from .eventreporter import log_event
 
 CPTV_EXT = ".cptv"
 
@@ -113,6 +114,7 @@ def record(
 
     except:
         logging.error("%s Error Recording %s", name, filename.resolve(), exc_info=True)
+        log_event("error-recording", ex)
         try:
             writer.close()
         except:

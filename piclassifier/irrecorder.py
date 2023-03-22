@@ -14,6 +14,8 @@ from ml_tools.mpeg_creator import MPEGCreator
 from piclassifier.recorder import Recorder
 from load.cliptrackextractor import ClipTrackExtractor
 from ml_tools.logs import init_logging
+from .eventreporter import log_event
+
 
 VIDEO_EXT = ".mp4"
 
@@ -111,8 +113,9 @@ def record(queue, filename, fps, background=None, init_frames=None, name="IRReco
             write_frame(writer, frame)
             frames += 1
 
-    except:
+    except Exception as ex:
         logging.error("%s Error Recording %s", name, filename.resolve(), exc_info=True)
+        log_event("error-recording", ex)
         try:
             writer.close()
         except:

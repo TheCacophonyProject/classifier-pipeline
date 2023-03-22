@@ -28,7 +28,7 @@ from .cameras import lepton3
 from .cameras.irframe import IRFrame
 import multiprocessing
 from cptv import Frame
-
+from .eventreporter import log_event
 
 SOCKET_NAME = "/var/run/lepton-frames"
 VOSPI_DATA_SIZE = 160
@@ -89,14 +89,22 @@ def main():
         ),
     )
     snapshot_thread.start()
+
     if args.ir or thermal_config.device_setup.ir:
         while True:
             try:
-                ir_camera(config, args.thermal_config_file, process_queue)
-            except:
-                logging.error("Error reading camera", exc_info=True)
+                read = ir_camera(config, args.thermal_config_file, process_queue)
+                if read == 0:
+                    logging.error("Error reading camera try again in 10")
+                    time.sleep(10)
+                else:
+                    log_event("camera-disconnected", f"read {read} frames")
+            except Exception as ex:
+                log_event("camera-disconnected", ex)
+                logging.error("Error reading camera try again in 10", exc_info=True)
                 time.sleep(10)
         return
+
     try:
         os.unlink(SOCKET_NAME)
     except OSError:
@@ -110,11 +118,13 @@ def main():
         logging.info("waiting for a connection")
         connection, client_address = sock.accept()
         logging.info("connection from %s", client_address)
+        log_event("camera-connected", "")
         try:
             handle_connection(
                 connection, config, args.thermal_config_file, process_queue
             )
-        except:
+        except Exception as ex:
+            log_event("camera-disconnected", ex)
             logging.error("Error with connection", exc_info=True)
             # return
         finally:
@@ -248,7 +258,7 @@ def ir_camera(config, thermal_config_file, process_queue):
     logging.info("Starting ir video capture")
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FPS, FPS)
-
+    frames = 0
     try:
         res_x = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
         res_y = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
@@ -274,12 +284,15 @@ def ir_camera(config, thermal_config_file, process_queue):
             if not returned:
                 logging.info("no frame from video capture")
                 process_queue.put(STOP_SIGNAL)
-
                 break
+            frames += 1
+            if frames == 1:
+                log_event("camera-connected", "")
             process_queue.put((frame, time.time()))
     finally:
         time.sleep(5)
         processor.terminate()
+    return frames
 
 
 def next_snapshot(thermal_config, prev_window_type=None):
@@ -365,15 +378,15 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
             frame = raw_frame.parse(data)
             frame.received_at = time.time()
             cropped_frame = crop_rectangle.subimage(frame.pix)
-            t_max = np.amax(cropped_frame)
             t_min = np.amin(cropped_frame)
             # seems to happen if pi is working hard
             if t_min == 0:
                 logging.warning(
-                    "received frame has odd values skipping thermal frame max {} thermal frame min {} cpu % {} memory % {}".format(
-                        t_max, t_min, psutil.cpu_percent(), psutil.virtual_memory()[2]
+                    "received frame has odd values skipping thermal frame min {} cpu % {} memory % {}".format(
+                        t_min, psutil.cpu_percent(), psutil.virtual_memory()[2]
                     )
                 )
+                log_event("bad-thermal-frame", f"Bad Pixel of {t_min}")
                 process_queue.put(SKIP_SIGNAL)
             elif read < 100:
                 process_queue.put(SKIP_SIGNAL)
