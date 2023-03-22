@@ -10,6 +10,8 @@ from gi.repository import GLib
 from ml_tools.tools import CustomJSONEncoder
 from cptv import Frame
 
+from dbus.mainloop.glib import DBusGMainLoop
+
 DBUS_NAME = "org.cacophony.thermalrecorder"
 DBUS_PATH = "/org/cacophony/thermalrecorder"
 
@@ -105,7 +107,7 @@ class Service(dbus.service.Object):
 
 class SnapshotService:
     def __init__(self, get_frame, headers, take_snapshot_fn):
-        dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+        DBusGMainLoop(set_as_default=True)
         dbus.mainloop.glib.threads_init()
         self.loop = GLib.MainLoop()
         self.t = threading.Thread(
@@ -119,10 +121,10 @@ class SnapshotService:
         self.loop.quit()
 
     def run_server(self, get_frame, headers, take_snapshot_fn):
-        self.loop.run()
-        session_bus = dbus.SystemBus(mainloop=self.loop)
+        session_bus = dbus.SystemBus(mainloop=DBusGMainLoop())
         name = dbus.service.BusName(DBUS_NAME, session_bus)
         self.service = Service(session_bus, get_frame, headers, take_snapshot_fn)
+        self.loop.run()
 
     def tracking(self, what, confidence, region, tracking):
         logging.debug(
