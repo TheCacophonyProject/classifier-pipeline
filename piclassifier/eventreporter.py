@@ -26,7 +26,7 @@ def log_event(event_type, details=None):
     try:
         proxy = bus.get_object(DBUS_NAME, DBUS_PATH)
         if data is None:
-            json_d = ""
+            json_d = "{}"
         else:
             json_d = json.dumps(data)
         proxy.Add(json_d, event_type, dbus.Int64(time.time_ns()))
