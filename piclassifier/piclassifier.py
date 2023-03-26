@@ -248,8 +248,8 @@ class PiClassifier(Processor):
             PiClassifier.SKIP_FRAMES = 3
             self.track_extractor = IRTrackExtractor(
                 self.config.tracking,
-                config.use_opt_flow,
-                self.config.classify.cache_to_disk,
+                cache_to_disk=self.config.classify.cache_to_disk,
+                keep_frames=False,
                 verbose=config.verbose,
                 calc_stats=False,
                 scale=0.25,
@@ -284,6 +284,7 @@ class PiClassifier(Processor):
                 self.config.tracking,
                 self.config.use_opt_flow,
                 self.config.classify.cache_to_disk,
+                keep_frames=False,
                 calc_stats=False,
             )
             self.tracking_config = self.track_extractor.config
@@ -419,8 +420,8 @@ class PiClassifier(Processor):
             self.tracking_config.high_quality_optical_flow,
             self.config.classify.cache_to_disk,
             self.config.use_opt_flow,
-            True,
-            self.max_keep_frames,
+            keep_frames=False,
+            max_frames=self.max_keep_frames,
         )
         edge_pixels = self.tracking_config.edge_pixels
 
