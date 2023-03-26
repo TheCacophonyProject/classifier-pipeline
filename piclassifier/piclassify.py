@@ -118,7 +118,7 @@ def main():
         logging.info("waiting for a connection")
         connection, client_address = sock.accept()
         logging.info("connection from %s", client_address)
-        log_event("camera-connected", "")
+        log_event("camera-connected")
         try:
             handle_connection(
                 connection, config, args.thermal_config_file, process_queue
@@ -287,7 +287,7 @@ def ir_camera(config, thermal_config_file, process_queue):
                 break
             frames += 1
             if frames == 1:
-                log_event("camera-connected", "")
+                log_event("camera-connected")
             process_queue.put((frame, time.time()))
     finally:
         time.sleep(5)
