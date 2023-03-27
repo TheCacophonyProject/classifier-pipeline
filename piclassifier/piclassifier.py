@@ -420,7 +420,7 @@ class PiClassifier(Processor):
             self.tracking_config.high_quality_optical_flow,
             self.config.classify.cache_to_disk,
             self.config.use_opt_flow,
-            keep_frames=False,
+            keep_frames=self.max_keep_frames > 0,
             max_frames=self.max_keep_frames,
         )
         edge_pixels = self.tracking_config.edge_pixels

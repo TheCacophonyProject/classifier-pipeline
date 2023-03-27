@@ -60,7 +60,7 @@ class TimeWindow:
             if self.start.is_after() and self.end.is_after():
                 self.next_window()
                 return False
-            if self.end.time < self.start.time:
+            if self.end.dt < self.start.dt:
                 return self.start.is_after() or self.end.is_before()
         elif self.start.time == self.end.time:
             return True
