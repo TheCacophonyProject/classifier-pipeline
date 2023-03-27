@@ -283,7 +283,12 @@ def ir_camera(config, thermal_config_file, process_queue):
         processor.start()
         while True:
             returned, frame = cap.read()
-
+            if not processor.is_alive():
+                logging.info("Processor stopped, restarting %s", processor.is_alive())
+                processor = get_processor(
+                    process_queue, config, thermal_config, headers
+                )
+                processor.start()
             if not returned:
                 logging.info("no frame from video capture")
                 process_queue.put(STOP_SIGNAL)
@@ -357,6 +362,12 @@ def handle_connection(connection, config, thermal_config_file, process_queue):
     read = 0
     try:
         while True:
+            if not processor.is_alive():
+                logging.info("Processor stopped restarting")
+                processor = get_processor(
+                    process_queue, config, thermal_config, headers
+                )
+                processor.start()
             if extra_b is not None:
                 data = extra_b + connection.recv(
                     headers.frame_size - len(extra_b), socket.MSG_WAITALL

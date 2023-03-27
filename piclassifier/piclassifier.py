@@ -187,6 +187,8 @@ def run_classifier(
                 pi_classifier.process_frame(frame[0], frame[1])
     except:
         logging.error("Error running classifier restarting ..", exc_info=True)
+        pi_classifier.disconnected()
+        return
 
 
 predictions = None
