@@ -71,7 +71,7 @@ class Recorder(ABC):
         self.frames += 1
         self.rec_time += time.time() - start
 
-    def can_record(self):
+    def can_record(self, frame_time):
         stat = shutil.disk_usage(self.output_dir)
         free = stat[2] * 0.000001
         if free < self.min_disk_space:
@@ -161,7 +161,7 @@ class Recorder(ABC):
             logging.warn("%s Already recording, stop recording first", self.name)
             return False
 
-        if not self.can_record():
+        if not self.can_record(frame_time):
             logging.warn("%s Cannot record", self.name)
             return False
         self.frames = 0
@@ -172,7 +172,7 @@ class Recorder(ABC):
         )
         if not started:
             return False
-        self.rec_time += time.time() - start
+        self.rec_time = time.time() - start
         self.write_until = self.frames + self.min_frames
         self.recording = True
 

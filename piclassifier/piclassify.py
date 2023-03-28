@@ -321,7 +321,7 @@ def next_snapshot(thermal_config, prev_window_type=None):
         if current_status is not None and started - datetime.now() < timedelta(
             minutes=30
         ):
-            logging.info("Started inside window than 30")
+            logging.info("Started inside window within 30 mins")
             return (started, WindowStatus.before)
 
         return (window.next_end(), WindowStatus.inside)
