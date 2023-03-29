@@ -162,7 +162,7 @@ class Recorder(ABC):
             return False
 
         if not self.can_record(frame_time):
-            logging.warn("%s Cannot record", self.name)
+            # logging.warn("%s Cannot record", self.name)
             return False
         self.frames = 0
 

@@ -70,6 +70,7 @@ class ThrottledRecorder(Recorder):
         was_recording = self.recorder.recording
         self.recorder.process_frame(movement_detected, cptv_frame, received_at)
         self.take_token(received_at)
+        logging.info("have tokens %s", self.tokens)
         if was_recording and not self.recorder.recording:
             self.last_rec = received_at
 
@@ -77,9 +78,9 @@ class ThrottledRecorder(Recorder):
             logging.info("Throttling recording")
             self.stop_recording(received_at)
 
-    def available_tokens(self, frame_time):
+    def update_tokens(self, frame_time):
         if self.last_motion is None:
-            return self.tokens
+            return
 
         update_from = self.last_motion
         if self.last_rec and self.last_rec > self.last_motion:
@@ -90,7 +91,7 @@ class ThrottledRecorder(Recorder):
         if self.throttling:
             since_throttle = frame_time - self.throttled_at
             logging.debug(
-                "Getting tokens %s seconds since motion with no motion %s since throttle %s, max throttle %s",
+                "Updating tokens %s seconds since motion with no motion %s since throttle %s, max throttle %s",
                 round(since_motion),
                 self.no_motion,
                 datetime.fromtimestamp(since_throttle),
@@ -103,34 +104,31 @@ class ThrottledRecorder(Recorder):
                     self.max_throttling_seconds
                     and since_throttle >= self.max_throttling_seconds
                 ):
-                    tokens = self.recorder.min_frames // 2
+                    self.tokens = self.recorder.min_frames // 2
                     logging.info(
                         "Giving a few free tokens %s has been %s seconds since motion",
-                        tokens,
+                        self.tokens,
                         round(since_motion),
                     )
                 else:
-                    return self.tokens
+                    return
             else:
-                tokens = since_motion * self.fps
+                self.tokens += since_motion * self.fps
                 logging.debug(
-                    "Getting tokens %s seconds since motion has earnt %s tokens",
+                    "Updating tokens %s seconds since motion has earnt %s tokens",
                     round(since_motion),
                     since_motion * self.fps,
                 )
         else:
             logging.debug(
-                "Getting tokens %s seconds since motion has earnt %s tokens",
+                "Updating tokens %s seconds since motion has earnt %s tokens",
                 round(since_motion),
                 since_motion * self.fps,
             )
-            tokens = self.tokens + since_motion * self.fps
-        return tokens
-
-    def update_tokens(self, frame_time):
-        tokens = self.available_tokens(frame_time)
+            self.tokens += since_motion * self.fps
         self.throttling = False
         self.throttled_at = None
+        self.tokens = int(self.tokens)
         self.tokens = min(self.tokens, self.bucket_size)
 
     def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
@@ -150,11 +148,19 @@ class ThrottledRecorder(Recorder):
         return True
 
     def can_record(self, frame_time):
-        logging.debug("Attempting rec have %s tokens", self.tokens)
+        prev_throttled = self.throttling
         self.update_tokens(frame_time)
+        logging.debug(
+            "Attempting rec have %s tokens was throttled %s throttled  %s tokens %s",
+            self.tokens,
+            prev_throttled,
+            self.throttling,
+            self.tokens,
+        )
         self.last_motion = frame_time
         if self.throttling:
-            throttled_event()
+            if not prev_throttled:
+                throttled_event()
             return False
         if self.tokens < self.min_recording:
             self.throttle(frame_time)
@@ -177,5 +183,6 @@ class ThrottledRecorder(Recorder):
 
     def take_token(self, frame_time, num_tokens=1):
         self.tokens -= num_tokens
-        if self.tokens == 0:
+        if self.tokens <= 0:
+            self.tokens = 0
             self.throttle(frame_time)
