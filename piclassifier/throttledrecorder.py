@@ -70,7 +70,6 @@ class ThrottledRecorder(Recorder):
         was_recording = self.recorder.recording
         self.recorder.process_frame(movement_detected, cptv_frame, received_at)
         self.take_token(received_at)
-        logging.info("have tokens %s", self.tokens)
         if was_recording and not self.recorder.recording:
             self.last_rec = received_at
 

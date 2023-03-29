@@ -57,11 +57,11 @@ class TimeWindow:
     def inside_window(self):
         if self.use_sunrise_sunset():
             self.update_sun_times()
-            if self.start.is_after() and self.end.is_after():
-                self.next_window()
-                return False
             if self.end.dt < self.start.dt:
                 return self.start.is_after() or self.end.is_before()
+            elif self.start.is_after() and self.end.is_after():
+                self.next_window()
+                return False
         elif self.start.time == self.end.time:
             return True
         if self.start.is_after() and self.end.is_after():
@@ -77,10 +77,19 @@ class TimeWindow:
             raise ValueError(
                 "Location must be set for relative times, by calling set_location"
             )
-        date = datetime.now().date()
-        if next_window:
-            date = date + timedelta(days=1)
-        if self.last_sunrise_check is None or date > self.last_sunrise_check:
+        # if next_window:
+        # date = date + timedelta(days=1)
+        # after_window = self.start.is_before() or self.end.is_before()
+        # if self.last_sunrise_check is not None and (
+        #     self.start.is_before() or self.end.is_before()
+        # ):
+        if self.last_sunrise_check is None or next_window:
+            #     return
+            date = datetime.now().date()
+            if self.last_sunrise_check is not None and next_window:
+                date = self.last_sunrise_check + timedelta(days=1)
+            elif next_window:
+                date = date + timedelta(days=1)
             sun_times = self.location.sun(date=date)
             self.last_sunrise_check = date
             if self.start.is_relative:

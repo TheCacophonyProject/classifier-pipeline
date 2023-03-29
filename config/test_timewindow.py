@@ -77,3 +77,36 @@ class TestWindow:
 
         time_window.end.dt = cur_date + timedelta(hours=11)
         assert time_window.inside_window()
+
+        start = RelAbsTime(cur_date.strftime("0s"))
+        end = RelAbsTime("0s")
+        time_window = TimeWindow(start, end)
+        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
+
+        time_window.update_sun_times()
+        assert time_window.start.dt.date() == datetime.now().date()
+        assert time_window.end.dt > time_window.start.dt
+        assert time_window.end.dt.date() == datetime.now().date() + timedelta(days=1)
+        prev_s = time_window.start.dt.date()
+        time_window.update_sun_times()
+        assert time_window.start.dt.date() == prev_s
+
+        time_window.update_sun_times(True)
+        assert time_window.start.dt.date() == prev_s + timedelta(days=1)
+
+        time_window.inside_window()
+        assert time_window.start.dt.date() == prev_s + timedelta(days=1)
+
+        time_window = TimeWindow(start, end)
+        time_window.set_location(TestWindow.DEFAULT_LAT, TestWindow.DEFAULT_LONG, 0)
+        time_window.update_sun_times()
+        prev_s = time_window.start.dt.date()
+        time_window.inside_window()
+
+        time_window.start.dt = datetime.now() - timedelta(days=1)
+        time_window.end.dt = datetime.now() - timedelta(days=1)
+        prev_s = time_window.start.dt.date()
+
+        # current time is after start and end so sould pick tomorrows sunset window
+        in_w = time_window.inside_window()
+        assert prev_s != time_window.start.dt.date()
