@@ -231,7 +231,9 @@ def get_track_data(clip_id, track_id, db):
     clip_meta = db.get_clip_meta(clip_id)
     frame_temp_median = clip_meta["frame_temp_median"]
     regions = [f.region for f in track_frames]
-    features = forest_features(track_frames, background, frame_temp_median, regions)
+    features = forest_features(
+        track_frames, background, frame_temp_median, regions, normalize=True
+    )
     return background, track_frames, features, frame_temp_median
 
 

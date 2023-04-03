@@ -6,6 +6,7 @@ import json
 DBUS_NAME = "org.cacophony.TrapController"
 DBUS_PATH = "/org/cacophony/TrapController"
 
+
 def trigger_trap(tag=None):
     bus = dbus.SystemBus()
     try:

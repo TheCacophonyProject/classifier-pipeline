@@ -77,15 +77,38 @@ class Line:
         return (y - self.c) / self.m
         # return x * self.m + self.c
 
+    def __str__(self):
+        return f"y={self.m}x + {self.c}"
+
+
+def get_trap_lines(trap_size):
+    if trap_size == "S":
+        lb = Line(1.3, 297.5)
+        rb = Line(-1.4, 1148)
+    else:
+        # just default to large for now
+        lb = Line(1.28, 180)
+        rb = Line(-1.2, 979)
+    logging.info(
+        "Getting trap lines for trap size %s left bottom %s right bottom %s",
+        trap_size,
+        lb,
+        rb,
+    )
+    return lb, rb
+
 
 class IRTrackExtractor(ClipTracker):
     PREVIEW = "preview"
     VERSION = 10
     TYPE = "IR"
-    # new perspective 19-10-2022
-    LEFT_BOTTOM = Line(1.28, 180)
-    RIGHT_BOTTOM = Line(-1.2, 979)
-
+    # # new perspective 19-10-2022
+    # LEFT_BOTTOM = Line(1.28, 180)
+    # RIGHT_BOTTOM = Line(-1.2, 979)
+    #
+    # LEFT_BOTTOM = Line(1.3, 297.5)
+    #
+    # RIGHT_BOTTOM = Line(-1.4, 1148)
     # old perspective
     # LEFT_BOTTOM = Line(5 / 14, 160)
     # RIGHT_BOTTOM = Line(-5 / 12, 421.7)
@@ -115,6 +138,7 @@ class IRTrackExtractor(ClipTracker):
         do_tracking=True,
         on_trapped=None,
         update_background=True,
+        trap_size="L",
     ):
         super().__init__(
             config,
@@ -132,6 +156,8 @@ class IRTrackExtractor(ClipTracker):
         self.res_y = None
         # if false background is being updated else where i.e motion detector
         self.update_background = update_background
+        self.trap_size = trap_size
+        self.left_bottom, self.right_bottom = get_trap_lines(self.trap_size)
 
     def parse_clip(self, clip, process_background=False):
         """
@@ -442,7 +468,7 @@ class IRTrackExtractor(ClipTracker):
             for track in clip.active_tracks:
                 if track.trap_reported:
                     continue
-                inside_trap_top(track, self.scale)
+                self.inside_trap_top(track, self.scale)
                 if track.in_trap:
                     filtered = self.filter_track(clip, track, track.get_stats())
                     if not filtered:
@@ -460,14 +486,14 @@ class IRTrackExtractor(ClipTracker):
         image = frame.copy()
         in_trap = False
         wait = 100
-        start = (0, 480 - int(IRTrackExtractor.LEFT_BOTTOM.y_res(0)))
-        end = (int(IRTrackExtractor.LEFT_BOTTOM.x_res(480)), 0)
+        start = (0, 480 - int(self.left_bottom.y_res(0)))
+        end = (int(self.left_bottom.x_res(480)), 0)
 
-        image = cv2.line(image, start, end, (0, 255, 0), 10)
-        start = (int(IRTrackExtractor.RIGHT_BOTTOM.x_res(480)), 0)
-        end = (int(IRTrackExtractor.RIGHT_BOTTOM.x_res(0)), 480)
+        image = cv2.line(image, start, end, (255, 255, 0), 10)
+        start = (int(self.right_bottom.x_res(480)), 0)
+        end = (int(self.right_bottom.x_res(0)), 480)
 
-        image = cv2.line(image, start, end, (0, 255, 0), 10)
+        image = cv2.line(image, start, end, (255, 255, 0), 10)
 
         for track in clip.active_tracks:
             filtered = self.filter_track(clip, track, track.get_stats())
@@ -518,16 +544,15 @@ class IRTrackExtractor(ClipTracker):
             p = (region.right, 480 - region.bottom)
 
             filter = (
-                IRTrackExtractor.LEFT_BOTTOM.is_above(p)
-                and IRTrackExtractor.LEFT_BOTTOM.is_left(p)
-                # or IRTrackExtractor.RIGHT_BOTTOM.is_above(region)
+                self.left_bottom.is_above(p)
+                and self.left_bottom.is_left(p)
+                # or self.right_bottom.is_above(region)
                 # or IRTrackExtractor.BACK_BOTTOM.is_above(region)
             )
             p = (region.left, 480 - region.bottom)
 
             filter = filter or (
-                IRTrackExtractor.RIGHT_BOTTOM.is_above(p)
-                and IRTrackExtractor.RIGHT_BOTTOM.is_right(p)
+                self.right_bottom.is_above(p) and self.right_bottom.is_right(p)
             )
             p = (region.left, 480 - region.bottom)
 
@@ -599,130 +624,130 @@ class IRTrackExtractor(ClipTracker):
         delta_thermal = np.abs(frame.thermal - prev_frame.thermal)
         return delta_thermal, delta_filtered
 
-
-LEFT = 1
-BOTTOM = 2
-RIGHT = 4
-TOP = 8
-MIDDLE = 16
-
-
-def inside_trap_bottom(track, scale=None):
-    region = track.last_bound.copy()
-    # if scale:
-    #     region.rescale(1 / scale)
-    if region.width < 60 or region.height < 40:
-        # dont want small regions
-        return False
-    if track.direction == 0:
-        if region.left < 100:
-            track.direction |= LEFT
-        if region.right > (640 - 100):
-            track.direction |= RIGHT
-        if region.bottom > (480 - 100):
-            track.direction |= BOTTOM
+    def inside_trap_bottom(self, track, scale=None):
+        region = track.last_bound.copy()
+        # if scale:
+        #     region.rescale(1 / scale)
+        if region.width < 60 or region.height < 40:
+            # dont want small regions
+            return False
         if track.direction == 0:
-            if region.bottom < 300:
-                track.direction |= TOP
-            else:
-                track.direction = MIDDLE
-    p = (region.left, 480 - region.bottom)
-    # bottom left region below left Line
-    # bottom right region below right line
+            if region.left < 100:
+                track.direction |= Direction.LEFT
+            if region.right > (640 - 100):
+                track.direction |= Direction.RIGHT
+            if region.bottom > (480 - 100):
+                track.direction |= Direction.BOTTOM
+            if track.direction == 0:
+                if region.bottom < 300:
+                    track.direction |= Direction.TOP
+                else:
+                    track.direction = Direction.MIDDLE
+        p = (region.left, 480 - region.bottom)
+        # bottom left region below left Line
+        # bottom right region below right line
 
-    # alternative method is to use
-    # top right is below and rigth of left line
-    # top left is below and left of right line
-    # this fixes problem when animal comes from behind trap towards camera
-    # this triggerrs early for bottom areas
-    inside = IRTrackExtractor.LEFT_BOTTOM.is_below(
-        p
-    ) and IRTrackExtractor.LEFT_BOTTOM.is_right(p)
-    p = (region.right, 480 - region.bottom)
-    inside = inside and (
-        IRTrackExtractor.RIGHT_BOTTOM.is_below(p)
-        and IRTrackExtractor.RIGHT_BOTTOM.is_left(p)
-    )
+        # alternative method is to use
+        # top right is below and rigth of left line
+        # top left is below and left of right line
+        # this fixes problem when animal comes from behind trap towards camera
+        # this triggerrs early for bottom areas
+        inside = self.left_bottom.is_below(p) and self.left_bottom.is_right(p)
+        p = (region.right, 480 - region.bottom)
+        inside = inside and (
+            self.right_bottom.is_below(p) and self.right_bottom.is_left(p)
+        )
 
-    x_diff = p[0] - IRTrackExtractor.RIGHT_BOTTOM.x_res(p[1])
-    inside = inside and abs(x_diff) > 150
-    track.last_bound.in_trap = inside
-    track.update_trapped_state()
-    return inside
+        x_diff = p[0] - self.right_bottom.x_res(p[1])
+        inside = inside and abs(x_diff) > 150
+        track.last_bound.in_trap = inside
+        track.update_trapped_state()
+        return inside
 
+    def inside_trap_top(self, track, scale=None):
+        SIDE_ALLOWANCE = 150
+        TOP_ALLOWANCE = 300
+        BOTTOM_ALLOWANCE = 100
+        region = track.last_bound.copy()
+        # if scale:
+        # region.rescale(1 / scale)
+        if region.width < 60 or region.height < 40:
+            # dont want small regions
+            return False
 
-def inside_trap_top(track, scale=None):
-    SIDE_ALLOWANCE = 150
-    TOP_ALLOWANCE = 300
-    BOTTOM_ALLOWANCE = 100
-    region = track.last_bound.copy()
-    # if scale:
-    # region.rescale(1 / scale)
-    if region.width < 60 or region.height < 40:
-        # dont want small regions
-        return False
-
-    # Set direction track is coming from
-    # this should help filter out some FPS
-    if track.direction == 0:
-        if region.left < SIDE_ALLOWANCE:
-            track.direction |= LEFT
-        if region.right > (640 - SIDE_ALLOWANCE):
-            track.direction |= RIGHT
-        if region.bottom > (480 - BOTTOM_ALLOWANCE):
-            track.direction |= BOTTOM
+        # Set direction track is coming from
+        # this should help filter out some FPS
         if track.direction == 0:
-            if region.bottom < TOP_ALLOWANCE:
-                track.direction |= TOP
-            else:
-                track.direction = MIDDLE
+            if region.left < SIDE_ALLOWANCE:
+                track.direction |= Direction.LEFT
+            if region.right > (640 - SIDE_ALLOWANCE):
+                track.direction |= Direction.RIGHT
+            if region.bottom > (480 - BOTTOM_ALLOWANCE):
+                track.direction |= Direction.BOTTOM
+            if track.direction == 0:
+                if region.bottom < TOP_ALLOWANCE:
+                    track.direction |= Direction.TOP
+                else:
+                    track.direction = Direction.MIDDLE
 
-    # check top right is to the left and below left trap boundary line
-    p = (region.right, 480 - region.top)
-    inside = IRTrackExtractor.LEFT_BOTTOM.is_below(
-        p
-    ) and IRTrackExtractor.LEFT_BOTTOM.is_right(p)
-    x_pos = IRTrackExtractor.LEFT_BOTTOM.x_res(p[1])
-    x_diff = abs(p[0] - x_pos)
-    # amount of animal inside trap from left
-    left_percent = x_diff / region.width
+        # check top right is to the left and below left trap boundary line
+        p = (region.right, 480 - region.top)
+        inside = self.left_bottom.is_below(p) and self.left_bottom.is_right(p)
+        x_pos = self.left_bottom.x_res(p[1])
+        x_diff = abs(p[0] - x_pos)
+        # amount of animal inside trap from left
+        left_percent = x_diff / region.width
 
-    p = (region.left, 480 - region.top)
+        p = (region.left, 480 - region.top)
 
-    # check top left is to the right and below right trap boundary line
-    inside = (
-        inside
-        and IRTrackExtractor.RIGHT_BOTTOM.is_below(p)
-        and IRTrackExtractor.RIGHT_BOTTOM.is_left(p)
-    )
+        # check top left is to the right and below right trap boundary line
+        inside = (
+            inside and self.right_bottom.is_below(p) and self.right_bottom.is_left(p)
+        )
 
-    x_pos = IRTrackExtractor.RIGHT_BOTTOM.x_res(p[1])
-    # could try using bottom  rather than region.top here
-    x_diff = abs(p[0] - x_pos)
-    # amount of animal inside trap from right
-    right_percent = x_diff / region.width
+        x_pos = self.right_bottom.x_res(p[1])
+        # could try using bottom  rather than region.top here
+        x_diff = abs(p[0] - x_pos)
+        # amount of animal inside trap from right
+        right_percent = x_diff / region.width
 
-    if not inside:
-        return False
-    in_trap = False
+        if not inside:
+            return False
+        in_trap = False
 
-    # atleast half the animal should be inside the trap, sometimes tails etc
-    # can be outside trap so best to trigger a bit early than not at all
-    if left_percent < 0.5 and right_percent < 0.5:
-        return False
-    if track.direction & LEFT and region.left > 40 and left_percent > 0.5:
-        in_trap = True
+        # atleast half the animal should be inside the trap, sometimes tails etc
+        # can be outside trap so best to trigger a bit early than not at all
+        if left_percent < 0.5 and right_percent < 0.5:
+            return False
+        if track.direction & Direction.LEFT and region.left > 40 and left_percent > 0.5:
+            in_trap = True
 
-    elif track.direction & RIGHT and region.right < 580 and right_percent > 0.5:
-        in_trap = True
+        elif (
+            track.direction & Direction.RIGHT
+            and region.right < 580
+            and right_percent > 0.5
+        ):
+            in_trap = True
 
-    if track.direction == TOP and region.bottom > 300:
-        in_trap = True
-    if track.direction == BOTTOM and region.bottom < 480 - 50:
-        in_trap = True
+        if track.direction == Direction.TOP and region.bottom > 300:
+            in_trap = True
+        if track.direction == Direction.BOTTOM and region.bottom < 480 - 50:
+            in_trap = True
 
-    if track.direction == MIDDLE and region.left > 40 and region.right < 580:
-        in_trap = True
-    track.last_bound.in_trap = in_trap
-    track.update_trapped_state()
-    return in_trap
+        if (
+            track.direction == Direction.MIDDLE
+            and region.left > 40
+            and region.right < 580
+        ):
+            in_trap = True
+        track.last_bound.in_trap = in_trap
+        track.update_trapped_state()
+        return in_trap
+
+
+class Direction:
+    LEFT = 1
+    BOTTOM = 2
+    RIGHT = 4
+    TOP = 8
+    MIDDLE = 16
