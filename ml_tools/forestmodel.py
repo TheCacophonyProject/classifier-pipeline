@@ -205,7 +205,13 @@ def process_track(clip, track, last_x_frames=None, buf_len=5, scale=None):
 
 
 def forest_features(
-    track_frames, background, frame_temp_median, regions, buf_len=5, cropped=True
+    track_frames,
+    background,
+    frame_temp_median,
+    regions,
+    buf_len=5,
+    cropped=True,
+    normalize=False,
 ):
     background = clip.background
     frames = []
@@ -215,12 +221,23 @@ def forest_features(
         frames.append(frame)
         frame_temp_median[r.frame_number] = np.median(frame.thermal)
     return forest_features(
-        frames, background, frame_temp_median, track.bounds_history, cropped=False
+        frames,
+        background,
+        frame_temp_median,
+        track.bounds_history,
+        cropped=False,
+        normalize=normalize,
     )
 
 
 def forest_features(
-    track_frames, background, frame_temp_median, regions, buf_len=5, cropped=True
+    track_frames,
+    background,
+    frame_temp_median,
+    regions,
+    buf_len=5,
+    cropped=True,
+    normalize=False,
 ):
     frame_features = []
     avg_features = None
@@ -241,7 +258,7 @@ def forest_features(
         frame.float_arrays()
         feature = FrameFeatures(region)
         sub_back = region.subimage(background)
-        feature.calc_histogram(sub_back, frame.thermal)
+        feature.calc_histogram(sub_back, frame.thermal, normalize=normalize)
         t_median = frame_temp_median[frame.frame_number]
         if cropped:
             cropped_frame = frame
