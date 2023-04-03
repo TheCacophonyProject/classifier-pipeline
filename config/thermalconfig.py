@@ -160,6 +160,7 @@ class RecorderConfig:
 class DeviceSetup:
     ir = attr.ib(default=False)
     trap_size = attr.ib(default=None)
+    # S or L for small or large
 
     @classmethod
     def load(cls, device):
