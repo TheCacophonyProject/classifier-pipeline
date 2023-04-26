@@ -339,11 +339,12 @@ def add_heat_number(img, frame, scale):
 gzip_compression = {"compression": "gzip"}
 
 
-def eucl_distance(first, second):
+def eucl_distance_sq(first, second):
     first_sq = first[0] - second[0]
     first_sq = first_sq * first_sq
     second_sq = first[1] - second[1]
     second_sq = second_sq * second_sq
+
     return first_sq + second_sq
 
 

@@ -53,6 +53,7 @@ class RollingBackground(Background):
 
 WINDOW_SIZE = 50
 MIN_FRAMES = 10 * 10  # 10 * 10  # 10seconds
+
 THRESHOLD = 12
 # maybe put to 12
 TRIGGER_FRAMES = 2
@@ -127,22 +128,9 @@ class IRMotionDetector(MotionDetector):
                 if erosion_pixels > 0:
                     self.triggered += 1
                     self.triggered = min(self.triggered, 30)
-                    # logging.info(
-                    #     "Got erosion pixel %s triggered %s",
-                    #     self.num_frames,
-                    #     self.triggered,
-                    # )
                 else:
-                    # if self.triggered > 0:
-                    #     logging.info(
-                    #         "Lost erosion %s triggered %s",
-                    #         self.num_frames,
-                    #         self.triggered - 1,
-                    #     )
-
                     self.triggered -= 1
                     self.triggered = max(self.triggered, 0)
-
                 # Check if motion has started or ended
                 if not self.movement_detected and self.triggered > TRIGGER_FRAMES:
                     self.movement_detected = True

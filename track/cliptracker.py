@@ -503,11 +503,12 @@ class CVBackground(Background):
         super().__init__()
         # seems to be better than MOG2
         self.algorithm = cv2.createBackgroundSubtractorKNN(
-            history=500, detectShadows=False
+            history=1000, detectShadows=False
         )
         self.algorithm.setDist2Threshold(200)
         # i think this is more sensitive than default 400
         # works better on hedgehog videos
+
         self.algorithm.setkNNSamples(3)
         self._frames = 0
         self._background = None

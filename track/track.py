@@ -24,7 +24,7 @@ from collections import namedtuple
 from ml_tools.tools import Rectangle
 from track.region import Region
 from kalman.kalman import Kalman
-from ml_tools.tools import eucl_distance
+from ml_tools.tools import eucl_distance_sq
 from ml_tools.datasetstructures import get_segments, SegmentHeader, SegmentType
 import cv2
 import logging
@@ -696,7 +696,7 @@ class Track:
             if region.has_moved(self.bounds_history[i - 1]) or region.is_along_border:
                 distance = (vx**2 + vy**2) ** 0.5
                 movement += distance
-                offset = eucl_distance(first_point, region.mid)
+                offset = eucl_distance_sq(first_point, region.mid)
                 max_offset = max(max_offset, offset)
                 frames_moved += 1
         avg_vel = avg_vel / len(mass_history)

@@ -87,14 +87,14 @@ def match_track(gen_track, expected_tracks):
         start_diff = abs(track.start - gen_track.start_s)
 
         gen_start = gen_track.bounds_history[0]
-        distance = tools.eucl_distance(
+        distance = tools.eucl_distance_sq(
             (track.start_pos.mid_x, track.start_pos.mid_y),
             (gen_start.mid_x, gen_start.mid_y),
         )
-        distance += tools.eucl_distance(
+        distance += tools.eucl_distance_sq(
             (track.start_pos.x, track.start_pos.y), (gen_start.x, gen_start.y)
         )
-        distance += tools.eucl_distance(
+        distance += tools.eucl_distance_sq(
             (track.start_pos.right, track.start_pos.bottom),
             (gen_start.right, gen_start.bottom),
         )

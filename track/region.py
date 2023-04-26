@@ -179,17 +179,17 @@ class Region(Rectangle):
 
         expected_x = int(other.x)
         expected_y = int(other.y)
-        distance = tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
+        distance = tools.eucl_distance_sq((expected_x, expected_y), (self.x, self.y))
         distances.append(distance)
 
         expected_x = int(other.mid_x)
         expected_y = int(other.mid_y)
-        distance = tools.eucl_distance(
+        distance = tools.eucl_distance_sq(
             (expected_x, expected_y), (self.mid_x, self.mid_y)
         )
         distances.append(distance)
 
-        distance = tools.eucl_distance(
+        distance = tools.eucl_distance_sq(
             (
                 other.right,
                 other.bottom,
@@ -198,7 +198,7 @@ class Region(Rectangle):
         )
         # expected_x = int(other.right)
         # expected_y = int(other.bottom)
-        # distance = tools.eucl_distance((expected_x, expected_y), (self.x, self.y))
+        # distance = tools.eucl_distance_sq((expected_x, expected_y), (self.x, self.y))
         distances.append(distance)
 
         return distances

@@ -149,6 +149,9 @@ def parse_file(file, config, thermal_config_file, preview_type):
 
 def parse_ir(file, config, thermal_config_file, preview_type):
     thermal_config = ThermalConfig.load_from_file(thermal_config_file, "IR")
+    from piclassifier import irmotiondetector
+
+    irmotiondetector.MIN_FRAMES = 0
     count = 0
     vidcap = cv2.VideoCapture(file)
     while True:
@@ -187,6 +190,7 @@ def parse_ir(file, config, thermal_config_file, preview_type):
             continue
         # frame = Frame(image, None, None, None, None)
         # frame.received_at = time.time()
+        print("Processing", count)
         pi_classifier.process_frame(image, time.time())
         count += 1
     vidcap.release()
