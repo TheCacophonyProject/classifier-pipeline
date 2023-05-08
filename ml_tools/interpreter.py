@@ -67,7 +67,7 @@ class Interpreter(ABC):
                         break
                 frame_ago += 1
             if len(frames) == 0:
-                return None, None
+                return None, None, None
             preprocessed = []
             masses = []
             for region, frame in zip(regions, frames):
@@ -123,7 +123,7 @@ class Interpreter(ABC):
                         break
                 frame_ago += 1
             if len(frames) == 0:
-                return None, None
+                return None, None, None
             indices = np.random.choice(
                 len(regions),
                 min(frames_per_classify, len(regions)),
