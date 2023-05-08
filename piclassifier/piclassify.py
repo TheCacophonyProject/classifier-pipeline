@@ -182,7 +182,6 @@ def parse_ir(file, config, thermal_config_file, preview_type):
                 preview_type,
             )
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
             pi_classifier.motion_detector._background._background = np.float32(gray)
             pi_classifier.motion_detector._background._frames = 1000
             count += 1
@@ -190,7 +189,6 @@ def parse_ir(file, config, thermal_config_file, preview_type):
             continue
         # frame = Frame(image, None, None, None, None)
         # frame.received_at = time.time()
-        print("Processing", count)
         pi_classifier.process_frame(image, time.time())
         count += 1
     vidcap.release()

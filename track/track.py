@@ -878,10 +878,10 @@ class Track:
     def update_trapped_state(self):
         if self.in_trap:
             return self.in_trap
-        min_frames = 3
+        min_frames = 2
         if len(self.bounds_history) < min_frames:
             return False
-        self.in_trap = all(r.in_trap for r in self.bounds_history[-3:])
+        self.in_trap = all(r.in_trap for r in self.bounds_history[-min_frames:])
         return self.in_trap
 
     @property

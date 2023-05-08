@@ -230,11 +230,13 @@ class IRTrackExtractor(ClipTracker):
         self,
         clip,
         frames=None,
-        track_frames=True,
+        track_frames=-1,
         background_alg=None,
         background_frame=None,
         background_frames=1,
     ):
+        # track frames is the number of frames to track from supplied frames (most recent first)
+        # -1 means all, 0 means none, 1 means just last frame etc
         self.res_x = clip.res_x
         self.res_y = clip.res_y
         if DO_SALIENCY:
@@ -259,9 +261,16 @@ class IRTrackExtractor(ClipTracker):
         self.init_saliency()
         if frames is not None:
             do_tracking = self.do_tracking
-            self.do_tracking = self.do_tracking and track_frames
-            for frame in frames:
+            update_background = self.update_background
+            remaining = len(frames)
+            for i, frame in enumerate(frames):
+                self.do_tracking = do_tracking and (
+                    (track_frames == -1) or (remaining <= track_frames)
+                )
+                self.update_background = self.do_tracking
                 self.process_frame(clip, frame)
+                remaining -= 1
+            self.update_background = update_background
             self.do_tracking = do_tracking
 
     def init_saliency(self):
@@ -305,7 +314,6 @@ class IRTrackExtractor(ClipTracker):
     # keep merging until no more merges are possible, tihs works paticularly well from the IR videos where
     # the filtered image is quite fragmented
     def merge_components(self, rectangles):
-        # return rectangles
         min_mass = 10 * 4
         min_size = 16
         MAX_GAP = 40
@@ -322,9 +330,6 @@ class IRTrackExtractor(ClipTracker):
         # only merge on original rectangle not on resized
         for i in range(len(rectangles)):
             rectangles[i] = (rectangles[i], rectangles[i].copy())
-        # return rectangles
-        # filter out regions with small mass  and samll width / height
-        #  numbers may need adjusting
         rect_i = 0
         rectangles = list(rectangles)
         while rect_i < len(rectangles):
@@ -384,7 +389,6 @@ class IRTrackExtractor(ClipTracker):
         """
 
         start = time.time()
-
         saliencyMap = None
         filtered = None
         if self.do_tracking:
@@ -409,15 +413,8 @@ class IRTrackExtractor(ClipTracker):
                 )
             if self.update_background:
                 self.background.update_background(frame)
+
             filtered = self.background.compute_filtered(frame)
-
-            #
-            # saliencyMap = self.diff_background.compute_filtered(
-            #     tracking_thermal, clip.background_thresh
-            # )
-
-            # _ = self.diff_background.update_background(tracking_thermal)
-            # self.background.update_background(tracking_thermal, filtered)
             clip.set_background(self.background.background)
         start = time.time()
 
@@ -526,7 +523,7 @@ class IRTrackExtractor(ClipTracker):
             wait = 300
 
         cv2.imshow("id", image)
-        cv2.waitKey(wait)
+        cv2.waitKey(100)
         # 1 / 0
 
     def filter_components(self, component_details):
@@ -561,7 +558,6 @@ class IRTrackExtractor(ClipTracker):
         return filtered
 
     def filter_track(self, clip, track, stats):
-        # return False
         # return not track.stable
         # discard any tracks that are less min_duration
         # these are probably glitches anyway, or don't contain enough information.

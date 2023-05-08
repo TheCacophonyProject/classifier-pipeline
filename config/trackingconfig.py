@@ -179,6 +179,8 @@ class TrackingConfig(DefaultConfig):
         )
         if type == "IR":
             # default_tracking.min_hist_diff = 0.95
+            default_tracking.filters["min_duration_secs"] = 0
+            default_tracking.min_duration_secs = 0
             default_tracking.filter_regions_pre_match = False
             default_tracking.areas_of_interest["pixel_variance"] = 0
             default_tracking.areas_of_interest["min_mass"] = 0

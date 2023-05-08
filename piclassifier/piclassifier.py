@@ -42,8 +42,6 @@ SKIP_SIGNAL = "skip"
 track_extractor = None
 clip = None
 
-import cv2
-
 
 class NeuralInterpreter(Interpreter):
     TYPE = "Neural"
@@ -418,6 +416,7 @@ class PiClassifier(Processor):
         clip = self.clip
         self.clip.video_start_time = datetime.now()
         self.clip.num_preview_frames = self.preview_frames
+
         self.clip.set_res(self.res_x, self.res_y)
         self.clip.set_frame_buffer(
             self.tracking_config.high_quality_optical_flow,
@@ -434,7 +433,9 @@ class PiClassifier(Processor):
         self.clip._background_calculated()
         # no need to retrack all of preview
         background_frames = None
-        track_frames = self.type != "IR"
+        track_frames = -1
+        if self.type == "IR":
+            track_frames = 5
         self.track_extractor.start_tracking(
             self.clip,
             preview_frames,
