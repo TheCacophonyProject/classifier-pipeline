@@ -183,6 +183,9 @@ def parse_ir(file, config, thermal_config_file, preview_type):
             )
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             pi_classifier.motion_detector._background._background = np.float32(gray)
+            pi_classifier.motion_detector._background.update_background(
+                gray, learning_rate=1
+            )
             pi_classifier.motion_detector._background._frames = 1000
             count += 1
             # assume this has been run over 1000 frames

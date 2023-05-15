@@ -158,6 +158,7 @@ class IRTrackExtractor(ClipTracker):
         self.update_background = update_background
         self.trap_size = trap_size
         self.left_bottom, self.right_bottom = get_trap_lines(self.trap_size)
+        self.learning_rate = -1
 
     def parse_clip(self, clip, process_background=False):
         """
@@ -267,9 +268,11 @@ class IRTrackExtractor(ClipTracker):
                 self.do_tracking = do_tracking and (
                     (track_frames == -1) or (remaining <= track_frames)
                 )
+                self.learning_rate = 0
                 self.update_background = self.do_tracking
                 self.process_frame(clip, frame)
                 remaining -= 1
+            self.learning_rate = -1
             self.update_background = update_background
             self.do_tracking = do_tracking
 
@@ -412,7 +415,9 @@ class IRTrackExtractor(ClipTracker):
                     tracking_thermal, repeats=repeats
                 )
             if self.update_background:
-                self.background.update_background(frame)
+                self.background.update_background(
+                    frame, learning_rate=self.learning_rate
+                )
 
             filtered = self.background.compute_filtered(frame)
             clip.set_background(self.background.background)

@@ -56,7 +56,7 @@ class IRRecorder(Recorder):
 
     def new_recording(self, background_frame, preview_frames, temp_thresh, frame_time):
         back = None
-        if background_frame is not None:
+        if background_frame is not None and len(background_frame.shape) == 2:
             back = background_frame[:, :, np.newaxis]
             back = np.repeat(back, 3, axis=2)
         # preview_frames.insert(0, back)

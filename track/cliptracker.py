@@ -501,27 +501,24 @@ class Background(ABC):
 class CVBackground(Background):
     def __init__(self):
         super().__init__()
-        # seems to be better than MOG2
-        self.algorithm = cv2.createBackgroundSubtractorKNN(
+        # knn doesnt respect learning rate, but maybe mog2 is better anyway
+        self.algorithm = cv2.createBackgroundSubtractorMOG2(
             history=1000, detectShadows=False
         )
-        self.algorithm.setDist2Threshold(200)
-        # i think this is more sensitive than default 400
-        # works better on hedgehog videos
-
-        self.algorithm.setkNNSamples(3)
+        # self.algorithm = cv2.createBackgroundSubtractorKNN(
+        #     history=1000, detectShadows=False
+        # )
         self._frames = 0
         self._background = None
 
     def set_background(self, background, frames=1):
         # seems to be better to do x times rather than just set background
-        # self._background = self.algorithm.apply(background, learningRate=1.0)
         for _ in range(frames):
             self.update_background(background)
         return
 
-    def update_background(self, thermal, filtered=None):
-        self._background = self.algorithm.apply(thermal)
+    def update_background(self, thermal, filtered=None, learning_rate=-1):
+        self._background = self.algorithm.apply(thermal, None, learning_rate)
         self._frames += 1
 
     @property
