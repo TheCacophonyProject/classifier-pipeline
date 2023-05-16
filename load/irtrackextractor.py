@@ -245,7 +245,7 @@ class IRTrackExtractor(ClipTracker):
         clip.set_model("IR")
         clip.set_video_stats(datetime.now())
         if background_alg is None:
-            self.background = CVBackground()
+            self.background = CVBackground(use_subsense=False)
             # self.diff_background = DiffBackground(clip.background_thresh)
             if background_frame is not None:
                 # if self.scale:
@@ -255,6 +255,7 @@ class IRTrackExtractor(ClipTracker):
                 #         (int(self.res_x * self.scale), int(self.res_y * self.scale)),
                 #         interpolation=cv2.INTER_AREA,
                 #     )
+
                 self.background.set_background(background_frame, background_frames)
                 # self.diff_background.set_background(background, background_frames)
         else:
@@ -415,9 +416,10 @@ class IRTrackExtractor(ClipTracker):
                     tracking_thermal, repeats=repeats
                 )
             if self.update_background:
-                self.background.update_background(
-                    frame, learning_rate=self.learning_rate
-                )
+                has_motion = self.background.movement_detected
+                learning_rate = 0 if has_motion else -1
+                self.background.update_background(frame, learning_rate=learning_rate)
+                self.background.detect_motion()
 
             filtered = self.background.compute_filtered(frame)
             clip.set_background(self.background.background)
@@ -445,6 +447,7 @@ class IRTrackExtractor(ClipTracker):
                 (int(self.res_x * self.scale), int(self.res_y * self.scale)),
                 interpolation=cv2.INTER_AREA,
             )
+        # self.debug_tracking(frame, filtered)
         num, mask, component_details = detect_objects_ir(re_f, threshold=0)
         component_details = component_details[1:]
         component_details = self.merge_components(component_details)
@@ -480,6 +483,14 @@ class IRTrackExtractor(ClipTracker):
             if DEBUG_TRAP:
                 if len(clip.tracks) > 0:
                     self.show_trap_info(clip, frame)
+
+    def debug_tracking(self, frame, filtered):
+        cv2.imshow("gray", frame)
+        cv2.imshow("f", filtered)
+        cv2.imshow("b", self.background.background)
+        cv2.moveWindow("gray", 0, 0)
+        cv2.moveWindow("f", 640, 0)
+        cv2.waitKey()
 
     def show_trap_info(self, clip, frame):
         image = frame.copy()
