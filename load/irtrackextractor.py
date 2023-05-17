@@ -417,9 +417,9 @@ class IRTrackExtractor(ClipTracker):
                 )
             if self.update_background:
                 has_motion = self.background.movement_detected
-                learning_rate = 0 if has_motion else -1
+                learning_rate = 0 if has_motion else self.learning_rate
                 self.background.update_background(frame, learning_rate=learning_rate)
-                self.background.detect_motion()
+                # self.background.detect_motion()
 
             filtered = self.background.compute_filtered(frame)
             clip.set_background(self.background.background)

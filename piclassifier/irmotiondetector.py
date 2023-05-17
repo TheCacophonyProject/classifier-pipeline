@@ -64,7 +64,7 @@ class IRMotionDetector(MotionDetector):
         super().__init__(thermal_config, headers)
         self.num_preview_frames = thermal_config.recorder.preview_secs * headers.fps
         self.rgb_window = SlidingWindow(self.num_preview_frames, dtype=np.uint8)
-        # self.gray_window = SlidingWindow(self.num_preview_frames, dtype=np.uint8)
+        self.gray_window = SlidingWindow(self.num_preview_frames, dtype=np.uint8)
         # self._background = Background()
         self._background = CVBackground()
         self.kernel_trigger = np.ones(

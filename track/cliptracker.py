@@ -531,7 +531,7 @@ class Background(ABC):
 
 
 class CVBackground(Background):
-    def __init__(self, use_subsense):
+    def __init__(self, use_subsense=False):
         super().__init__()
         self.use_subsense = use_subsense
         # knn doesnt respect learning rate, but maybe mog2 is better anyway
@@ -541,7 +541,7 @@ class CVBackground(Background):
             self.algorithm = bgs.SuBSENSE()
         else:
             self.algorithm = cv2.createBackgroundSubtractorMOG2(
-                history=1000, varThreshold=40, detectShadows=False
+                history=1000, detectShadows=False
             )
             # print(self.algorithm.getBackgroundRatio(), "RATION")
             # 1 / 0
