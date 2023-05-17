@@ -121,16 +121,20 @@ class IRMotionDetector(MotionDetector):
                 )  # Get delta from current frame and background
 
                 threshold = cv2.threshold(delta, THRESHOLD, 255, cv2.THRESH_BINARY)[1]
-
+                #
                 erosion_image = cv2.erode(threshold, self.get_kernel())
                 diff_erosion_pixels = len(erosion_image[erosion_image > 0])
+                erosion_image = cv2.erode(
+                    self._background.compute_filtered(None), self.get_kernel()
+                )
+                erosion_pixels = len(erosion_image[erosion_image > 0])
 
-                erosion_pixels = self._background.detect_motion()
-
+                # assert erosion_pixels == self._background.detect_motion()
                 # if any have no pixels lets stop motion detection, wiht not updating
                 # background when motion is detected if the background actually changes
                 # this could cause a problem, this should catch that
-                erosion_pixels = min(diff_erosion_pixels, erosion_pixels)
+                if self.movement_detected:
+                    erosion_pixels = min(diff_erosion_pixels, erosion_pixels)
                 # to do find a value that suites the number of pixesl we want to move
                 # Calculate if there was motion in the current frame
                 # TODO Chenage how much ioldests added to the triggered depending on how big the motion is

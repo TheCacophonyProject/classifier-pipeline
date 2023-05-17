@@ -471,7 +471,7 @@ class Background(ABC):
         self.triggered = 0
         self.movement_detected = False
         self.kernel_trigger = np.ones(
-            (3, 3), "uint8"
+            (15, 15), "uint8"
         )  # kernel for erosion when not recording
         self.kernel_recording = np.ones(
             (10, 10), "uint8"
