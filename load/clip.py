@@ -385,7 +385,6 @@ class Clip:
             track.crop_rectangle = self.crop_rectangle
 
     def _set_crop_rectangle(self):
-
         edge = self.config.edge_pixels
         self.crop_rectangle = Rectangle(
             edge, edge, self.res_x - 2 * edge, self.res_y - 2 * edge
@@ -453,7 +452,7 @@ class ClipStats:
         self.average_delta = None
         self.is_static_background = None
 
-    def add_frame(self, thermal, filtered):
+    def add_frame(self, thermal, filtered=None):
         f_median = np.median(thermal)
         f_max = np.max(thermal)
         f_min = np.min(thermal)
@@ -465,14 +464,13 @@ class ClipStats:
         self.frame_stats_max.append(f_max)
         self.frame_stats_median.append(f_median)
         self.frame_stats_mean.append(f_mean)
-        self.filtered_sum += np.sum(np.abs(filtered))
+        if filtered is not None:
+            self.filtered_sum += np.sum(np.abs(filtered))
 
-    def completed(self, num_frames, height, width):
-        if num_frames == 0:
-            return
-        total = num_frames * height * width
-        self.filtered_deviation = self.filtered_sum / float(total)
-        self.mean_temp = (height * width * sum(self.frame_stats_mean)) / float(total)
+    def completed(self):
+        if self.filtered_sum is not None:
+            self.filtered_deviation = np.mean(np.uint16(self.filtered_sum))
+        self.mean_temp = np.mean(np.uint16(self.frame_stats_mean))
 
 
 def null_safe_compare(a, b, cmp_fn):
