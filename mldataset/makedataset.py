@@ -44,7 +44,7 @@ def process_job(loader, queue, out_dir, config):
     while True:
         i += 1
         filename = queue.get()
-        print(filename)
+        logging.info("Processing %s", filename)
         try:
             if filename == "DONE":
                 break
@@ -112,7 +112,6 @@ class ClipLoader:
         r_id = metadata["id"]
         out_file = out_dir / f"{r_id}.hdf5"
         if out_file.exists():
-            print("ALREADY EXISTS")
             logging.warning("Already loaded %s", filename)
             return
         if len(metadata.get("Tracks")) == 0:
@@ -160,7 +159,6 @@ class ClipLoader:
                     stats = ClipStats()
                     cropped_stats = ClipStats()
                     num_frames = 0
-                    frame_i = 0
                     cptv_frames = []
                     for frame in reader:
                         if frame.background_frame:
@@ -175,13 +173,14 @@ class ClipLoader:
                             continue
                         ffc = is_affected_by_ffc(frame)
                         if ffc:
-                            ffc_frames.append(frame_i)
+                            ffc_frames.append(num_frames)
                         cptv_frames.append(frame.pix)
 
                         thermal_node[:, :] = frame.pix
                         stats.add_frame(frame.pix)
                         cropped_stats.add_frame(clip.crop_rectangle.subimage(frame.pix))
                         num_frames += 1
+
                     cptv_frames = np.uint16(cptv_frames)
                     thermal_node = frames.create_dataset(
                         "thermals",
@@ -252,8 +251,6 @@ class ClipLoader:
                         tags, self.config.load.tag_precedence, 0
                     )
 
-                    for t in tags:
-                        print("Tag", t["data"])
                     master_tag = [
                         t
                         for t in tags
@@ -280,12 +277,8 @@ class ClipLoader:
                             [h[1] for h in human_tags]
                         )
 
-                    start = track.get("start") * FPS
-                    end = track.get("end") * FPS
-                    start = round(start)
-                    end = round(end)
-                    node_attrs["start_frame"] = start
-                    node_attrs["end_frame"] = end
+                    start = None
+                    end = None
 
                     prev_region = None
                     regions = []
@@ -308,7 +301,12 @@ class ClipLoader:
                                     region.frame_number = prev_region.frame_number + 1
                         prev_region = region
                         regions.append(region.to_array())
+                        if start is None:
+                            start = region.frame_number
+                        end = region.frame_number
 
+                    node_attrs["start_frame"] = start
+                    node_attrs["end_frame"] = min(num_frames, end)
                     region_array = np.uint16(regions)
                     regions = track_group.create_dataset(
                         "regions",

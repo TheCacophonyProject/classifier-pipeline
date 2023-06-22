@@ -47,6 +47,9 @@ def main():
         " tags: ",
         clip_attrs.get("tags"),
     )
+    print(clip_attrs)
+    for k in clip_attrs.keys():
+        print(f"{k}: {clip_attrs[k]}")
     ffc_frames = clip_attrs["ffc_frames"]
     frames = f["frames"]
     background = frames["background"]
@@ -97,7 +100,9 @@ def main():
             ai_tag = f"{tag}-{conf}"
         track = Track(id, positions, human_tag, ai_tag)
         tracks.append(track)
-
+        print("For track", track_id)
+        for k in attrs.keys():
+            print(f"{k}: {attrs[k]}")
     frame_i = 0
     for frame in frames["thermals"]:
         frame = frame[
