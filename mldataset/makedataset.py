@@ -162,21 +162,19 @@ class ClipLoader:
                     cptv_frames = []
                     for frame in reader:
                         if frame.background_frame:
-                            thermal_node = frames.create_dataset(
+                            back_node = frames.create_dataset(
                                 "background",
                                 frame.pix.shape,
                                 chunks=frame.pix.shape,
                                 compression="gzip",
                                 dtype=frame.pix.dtype,
                             )
-                            thermal_node[:, :] = frame.pix
+                            back_node[:, :] = frame.pix
                             continue
                         ffc = is_affected_by_ffc(frame)
                         if ffc:
                             ffc_frames.append(num_frames)
                         cptv_frames.append(frame.pix)
-
-                        thermal_node[:, :] = frame.pix
                         stats.add_frame(frame.pix)
                         cropped_stats.add_frame(clip.crop_rectangle.subimage(frame.pix))
                         num_frames += 1
