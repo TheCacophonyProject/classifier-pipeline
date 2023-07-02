@@ -253,6 +253,7 @@ class ClipLoader:
                         t
                         for t in tags
                         if t.get("automatic")
+                        and not isinstance(t.get("data", ""), str)
                         and t.get("data", {}).get("name") == "Master"
                     ]
                     if len(master_tag) > 0:
@@ -280,7 +281,7 @@ class ClipLoader:
 
                     prev_region = None
                     regions = []
-                    for r in track.get("positions"):
+                    for i, r in enumerate(track.get("positions")):
                         if isinstance(r, list):
                             region = Region.region_from_array(r[1])
                             if region.frame_number is None:
@@ -292,9 +293,9 @@ class ClipLoader:
                         else:
                             region = Region.region_from_json(r)
                         if region.frame_number is None:
-                            if "frameTime" in position:
+                            if "frameTime" in r:
                                 if i == 0:
-                                    region.frame_number = position["frameTime"] * 9
+                                    region.frame_number = r["frameTime"] * 9
                                 else:
                                     region.frame_number = prev_region.frame_number + 1
                         prev_region = region
@@ -302,7 +303,6 @@ class ClipLoader:
                         if start is None:
                             start = region.frame_number
                         end = region.frame_number
-
                     node_attrs["start_frame"] = start
                     node_attrs["end_frame"] = min(num_frames, end)
                     region_array = np.uint16(regions)
