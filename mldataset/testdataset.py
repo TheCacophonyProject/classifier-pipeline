@@ -29,11 +29,13 @@ def parse_params():
 Track = namedtuple("Track", "id regions what ai_what")
 
 
+RESCALE = 4
+
+
 def main():
     args = parse_params()
     f = h5py.File(args.target, "r")
     clip_attrs = f.attrs
-
     print(
         "Camera model is",
         clip_attrs.get("model", ""),
@@ -47,12 +49,15 @@ def main():
         " tags: ",
         clip_attrs.get("tags"),
     )
-    print(clip_attrs)
     for k in clip_attrs.keys():
         print(f"{k}: {clip_attrs[k]}")
     ffc_frames = clip_attrs["ffc_frames"]
     frames = f["frames"]
-    background = frames["background"]
+    if "background" in frames:
+        background = frames["background"]
+    else:
+        print("No background found so using first frame")
+        background = frames["thermals"][0]
     crop_rectangle = clip_attrs["crop_rectangle"]
 
     background = background[
@@ -61,7 +66,7 @@ def main():
     norm_back = norm_image(background)
 
     height, width, _ = norm_back.shape
-    norm_back = cv2.resize(norm_back, (width * 4, height * 4))
+    norm_back = cv2.resize(norm_back, (width * RESCALE, height * RESCALE))
     norm_back = cv2.putText(
         norm_back,
         "Background",
@@ -115,8 +120,8 @@ def main():
         frame = norm_image(frame)
 
         height, width, _ = frame.shape
-        frame = cv2.resize(frame, (width * 4, height * 4))
-        filtered = cv2.resize(filtered, (width * 4, height * 4))
+        frame = cv2.resize(frame, (width * RESCALE, height * RESCALE))
+        filtered = cv2.resize(filtered, (width * RESCALE, height * RESCALE))
 
         if frame_i in ffc_frames:
             frame = cv2.putText(
@@ -182,7 +187,9 @@ def main():
         cv2.imshow("filtered", filtered)
         cv2.moveWindow("thermal", 0, 0)
         cv2.moveWindow("filtered", width * 5, 0)
-        cv2.waitKey(10)
+        cv2.waitKey(
+            1000 // 9,
+        )
         frame_i += 1
 
 
