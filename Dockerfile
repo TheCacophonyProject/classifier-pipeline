@@ -20,7 +20,6 @@ RUN mkdir /etc/cacophony/models/inc3 -p
 
 RUN cp classifier-docker.yaml /etc/cacophony/classifier.yaml
 RUN touch /etc/cacophony/classifier
-RUN rm classifier.yaml
 RUN pip install gdown
 RUN gdown --fuzzy "https://drive.google.com/file/d/1DSltJvJc_qj7Eyh6CDWsshOf8gqAD0aM/view?usp=sharing" -O thermal-model.tar
 RUN tar xzvf thermal-model.tar -C /etc/cacophony/models/inc3 --strip-components=1
