@@ -33,7 +33,7 @@ script:
   -c tests/test-config.yaml
 deploy:
   provider: script
-  script: bash docker_push
+  script: bash docker_push.sh
   on:
     repo: TheCacophonyProject/classifier-pipeline
     tags: true
