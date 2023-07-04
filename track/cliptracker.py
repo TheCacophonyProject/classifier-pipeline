@@ -127,7 +127,7 @@ class ClipTracker(ABC):
         matched_tracks = set()
         blanked_tracks = set()
 
-        for (score, track, region) in scores:
+        for score, track, region in scores:
             if (
                 track in matched_tracks
                 or region in used_regions
@@ -233,7 +233,6 @@ class ClipTracker(ABC):
         # find regions of interest
         regions = []
         for i, component in enumerate(component_details):
-
             if component[2] < self.min_dimension or component[3] < self.min_dimension:
                 continue
             if centroids is None:
@@ -435,6 +434,5 @@ class ClipTracker(ABC):
         return False
 
     def print_if_verbose(self, info_string):
-
         if self.verbose:
             logging.info(info_string)

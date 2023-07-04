@@ -54,7 +54,6 @@ def process_job(loader, queue):
 
 class ClipLoader:
     def __init__(self, config, reprocess=False):
-
         self.config = config
         os.makedirs(self.config.tracks_folder, mode=0o775, exist_ok=True)
         self.database = TrackDatabase(

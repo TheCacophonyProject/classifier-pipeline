@@ -134,7 +134,6 @@ def create_tf_records(
     cropped=True,
     by_label=False,
 ):
-
     output_path = Path(output_path)
     if output_path.is_dir():
         logging.info("Clearing dir %s", output_path)
@@ -237,7 +236,6 @@ def get_track_data(clip_id, track_id, db):
 
 
 def get_data(sample, db):
-
     # prepare the sample data for saving
     crop_rectangle = tools.Rectangle(2, 2, 160 - 2 * 2, 140 - 2 * 2)
     try:

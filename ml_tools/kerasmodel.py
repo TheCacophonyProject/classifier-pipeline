@@ -81,7 +81,6 @@ class KerasModel(Interpreter):
     def get_base_model(self, input_shape, weights="imagenet"):
         pretrained_model = self.params.model_name
         if pretrained_model == "resnet":
-
             return (
                 tf.keras.applications.ResNet50(
                     weights=weights,
@@ -959,7 +958,6 @@ class KerasModel(Interpreter):
                 if actual[-1] == predictions[-1]:
                     correct += 1
                 else:
-
                     if track_prediction.predicted_tag() in incorrect:
                         incorrect[track_prediction.predicted_tag()].append(
                             track_segments[0].unique_track_id

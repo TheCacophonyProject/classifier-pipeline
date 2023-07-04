@@ -3,7 +3,6 @@ import attr
 
 @attr.s
 class LocationConfig:
-
     DEFAULT_LAT = -43.5321
     DEFAULT_LONG = 172.6362
 

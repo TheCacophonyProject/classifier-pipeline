@@ -76,7 +76,6 @@ class ClipClassifier:
         """Reads meta-data for a given cptv file."""
         source_meta_filename = os.path.splitext(filename)[0] + ".txt"
         if os.path.exists(source_meta_filename):
-
             meta_data = tools.load_clip_metadata(source_meta_filename)
 
             tags = set()
@@ -196,7 +195,6 @@ class ClipClassifier:
         predictions.model_load_time = time.time() - start
 
         for i, track in enumerate(clip.tracks):
-
             segment_frames = None
             if reuse_frames and classifier.type == "thermal":
                 tracks = meta_data.get("tracks")

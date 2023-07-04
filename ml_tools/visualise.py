@@ -27,12 +27,10 @@ def show_saliency_map(model, X_in, y_in):
     rows = 8
 
     for frame in range(cols):
-
         # plot original image
 
         # plot all 4 channels plus original
         for channel in range(4):
-
             plt.subplot(rows, cols, (cols * channel) + frame + 1)
             frame_data = np.float32(X[frame, channel, :, :])
             if channel in [2, 3]:
@@ -70,12 +68,10 @@ def show_segment(X_in):
     rows = 4
 
     for frame in range(cols):
-
         # plot original image
 
         # plot all 4 channels plus original
         for channel in range(4):
-
             plt.subplot(rows, cols, (cols * channel) + frame + 1)
             frame_data = np.float32(X[frame, channel, :, :])
             if channel in [2, 3]:

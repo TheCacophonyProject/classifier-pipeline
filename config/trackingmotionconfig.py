@@ -88,7 +88,6 @@ class TrackingMotionConfig(DefaultConfig):
 
 @attr.s
 class ThresholdConfig(DefaultConfig):
-
     camera_model = attr.ib()
     temp_thresh = attr.ib()
     background_thresh = attr.ib()

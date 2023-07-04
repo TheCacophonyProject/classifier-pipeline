@@ -204,7 +204,6 @@ def display_track(h_data, id):
 
 
 def remove_axes(title):
-
     ax = plt.gca()
     # hide x-axis
     ax.get_xaxis().set_visible(False)

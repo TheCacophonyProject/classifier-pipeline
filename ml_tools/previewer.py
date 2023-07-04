@@ -35,7 +35,6 @@ from ml_tools.imageprocessing import normalize
 
 
 class Previewer:
-
     PREVIEW_RAW = "raw"
 
     PREVIEW_CLASSIFIED = "classified"
@@ -274,7 +273,6 @@ class Previewer:
         v_offset=0,
         scale=1,
     ):
-
         # look for any tracks that occur on this frame
         for index, track in enumerate(tracks):
             frame_offset = frame_number - track.start_frame
@@ -318,7 +316,6 @@ class Previewer:
         draw.text((center[0], center[1]), footer_text, font=font)
 
     def create_four_tracking_image(self, frame, min_temp, max_temp, type, frame_scale):
-
         thermal = frame.thermal
         filtered = frame.filtered
         if type == "IR":
@@ -406,7 +403,6 @@ def add_class_results(
     v_offset=0,
     scale=1,
 ):
-
     if track_prediction is None:
         return
 

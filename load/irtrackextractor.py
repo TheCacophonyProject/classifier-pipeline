@@ -74,7 +74,6 @@ class Line:
 
 
 class IRTrackExtractor(ClipTracker):
-
     PREVIEW = "preview"
     VERSION = 10
     TYPE = "IR"
@@ -274,7 +273,6 @@ class IRTrackExtractor(ClipTracker):
         return rectangles
 
     def _process_frame(self, clip, thermal, ffc_affected=False):
-
         wait = 1
         """
         Tracks objects through frame
