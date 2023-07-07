@@ -416,8 +416,8 @@ class IRTrackExtractor(ClipTracker):
                     tracking_thermal, repeats=repeats
                 )
             if self.update_background:
-                # has_motion = self.background.movement_detected
-                # learning_rate = 0 if has_motion else self.learning_rate
+                has_motion = self.background.movement_detected
+                learning_rate = 0 if has_motion else self.learning_rate
                 self.background.update_background(
                     frame, learning_rate=self.learning_rate
                 )
