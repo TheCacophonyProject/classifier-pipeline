@@ -32,8 +32,50 @@ Track = namedtuple("Track", "id regions what ai_what")
 RESCALE = 4
 
 
+def makecsv(dir):
+    dbFiles = dir.glob("**/*.hdf5")
+    import csv
+
+    print("MAking csv")
+
+    rec_counts = {}
+    track_counts = {}
+    with open("file-desc.csv", "w") as csvout:
+        writer = csv.writer(csvout)
+        writer.writerow(["file", "human tags"])
+        for dbName in dbFiles:
+            human_tags = set()
+            f = h5py.File(dbName, "r")
+            tracks = f["tracks"]
+            track_ids = tracks.keys()
+            for track_id in track_ids:
+                attrs = tracks[track_id].attrs
+                if "human_tag" not in attrs:
+                    continue
+                tag = attrs["human_tag"]
+                human_tags.add(tag)
+
+                if tag in track_counts:
+                    track_counts[tag] += 1
+                else:
+                    track_counts[tag] = 1
+            human_tags = list(human_tags)
+            human_tags.sort()
+            for t in human_tags:
+                if t in rec_counts:
+                    rec_counts[t] += 1
+                else:
+                    rec_counts[t] = 1
+            writer.writerow([dbName, human_tags])
+
+    print("REC Counts", rec_counts)
+    print("Track Counts", track_counts)
+
+
 def main():
     args = parse_params()
+    makecsv(args.target)
+    return
     f = h5py.File(args.target, "r")
     clip_attrs = f.attrs
     print(
