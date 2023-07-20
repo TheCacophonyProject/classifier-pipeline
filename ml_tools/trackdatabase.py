@@ -697,7 +697,7 @@ class TrackDatabase:
 
     def get_unique_clip_id(self):
         clip_ids = list(self.get_all_clip_ids().keys())
-        clip_ids = np.array(clip_ids).astype(np.int)
+        clip_ids = np.array(clip_ids).astype(np.int64)
         if len(clip_ids) == 0:
             return 1
         max_clip = np.amax(clip_ids)
