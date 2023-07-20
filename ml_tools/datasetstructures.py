@@ -620,7 +620,7 @@ class FrameSample(Sample):
         """Unique name of this segments track."""
         # break into 50 frame keys, since we dont have much data this means multiple sets can have same clip
         i = int(self.frame_number / 50)
-        return f"{self.clip_id}-{self.track_id}-{i}"
+        return f"{self.clip_id}"
 
 
 class SegmentHeader(Sample):
