@@ -122,6 +122,8 @@ def decode_image(image, filtered, image_size, augment):
 
 
 def main():
+    from .tfdataset import get_dataset
+
     config = Config.load_from_file()
 
     file = f"{config.tracks_folder}/training-meta.json"
@@ -131,6 +133,7 @@ def main():
     datasets = []
     # weights = [0.5] * len(labels)
     resampled_ds, remapped = get_dataset(
+        load_dataset,
         f"{config.tracks_folder}/training-data/test",
         labels,
         batch_size=1,
